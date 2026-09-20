@@ -448,3 +448,64 @@ return finish();
 "#
     ));
 }
+
+/// `Duration.prototype.round`/`total` with a `PlainDate` `relativeTo` in the
+/// three lunisolar calendars. A Hebrew or Chinese year has 12 *or* 13 months, so
+/// splitting a month count into years and months must walk the calendar's real
+/// years (`Duration.round` used to divide by a constant 12 for these). The
+/// expected values are derived from the calendar layout, not from the code
+/// under test: Hebrew 5783 has 12 months and 5784 has 13; Chinese 2020 has a
+/// leap `M04L` (13 months) and 2021 has none.
+#[test]
+fn duration_round_and_total_walk_the_real_years_of_a_lunisolar_relative_to() {
+    assert_ok(
+        r#"
+(function() {
+  const failures = [];
+  const text = (value) => (typeof value === "object" ? value.toString() : String(value));
+  const check = (label, got, expected) => {
+    if (text(got) !== text(expected)) failures.push(label + ": expected " + text(expected) + " got " + text(got));
+  };
+  const at = (calendar, year, monthCode) => Temporal.PlainDate.from({ calendar, year, monthCode, day: 1 });
+  const roundYears = (months, relativeTo, extra = {}) =>
+    new Temporal.Duration(0, months).round(Object.assign({ smallestUnit: "months", largestUnit: "years", relativeTo }, extra));
+
+  // Hebrew: 5783 M01 is the first month of a 12-month year followed by a 13-month one.
+  const hebrewCommon = at("hebrew", 5783, "M01");
+  check("hebrew 12mo from a common year", roundYears(12, hebrewCommon), "P1Y");
+  check("hebrew 25mo = 12 + 13 from a common year", roundYears(25, hebrewCommon), "P2Y");
+  check("hebrew 24mo from a common year", roundYears(24, hebrewCommon), "P1Y12M");
+  check("hebrew 13mo from a common year", roundYears(13, hebrewCommon), "P1Y1M");
+  // ... and from the leap year 5784 (13 months, then 12): 12 months stops short of the next year.
+  const hebrewLeap = at("hebrew", 5784, "M01");
+  check("hebrew 12mo from a leap year", roundYears(12, hebrewLeap), "P12M");
+  check("hebrew 13mo from a leap year", roundYears(13, hebrewLeap), "P1Y");
+  check("hebrew 25mo from a leap year", roundYears(25, hebrewLeap), "P2Y");
+  check("hebrew total months for 1y", new Temporal.Duration(1).total({ unit: "months", relativeTo: hebrewCommon }), 12);
+  check("hebrew total months for 1y (leap start)", new Temporal.Duration(1).total({ unit: "months", relativeTo: hebrewLeap }), 13);
+  check("hebrew total years for 25mo", new Temporal.Duration(0, 25).total({ unit: "years", relativeTo: hebrewCommon }), 2);
+
+  // Chinese: 2020 has a leap M04L.
+  const chinese2020 = at("chinese", 2020, "M01");
+  check("chinese 12mo in a leap year", roundYears(12, chinese2020), "P12M");
+  check("chinese 13mo in a leap year", roundYears(13, chinese2020), "P1Y");
+  // 2020 has 13 months and 2021 has 12: 25 months is exactly two years, 24 is one short.
+  check("chinese 25mo from a leap year", roundYears(25, chinese2020), "P2Y");
+  check("chinese 24mo from a leap year", roundYears(24, chinese2020), "P1Y11M");
+  check("chinese total months for 1y", new Temporal.Duration(1).total({ unit: "months", relativeTo: chinese2020 }), 13);
+  check("chinese total months for 2y", new Temporal.Duration(2).total({ unit: "months", relativeTo: chinese2020 }), 25);
+  const chinese2021 = at("chinese", 2021, "M01");
+  check("chinese 12mo in a common year", roundYears(12, chinese2021), "P1Y");
+
+  // Negative durations mirror positive ones (a common sign, the same walk backwards).
+  check("hebrew -25mo", new Temporal.Duration(0, -25).round({ smallestUnit: "months", largestUnit: "years", relativeTo: at("hebrew", 5785, "M01") }), "-P2Y");
+  check("hebrew -12mo (leap year behind)", new Temporal.Duration(0, -12).round({ smallestUnit: "months", largestUnit: "years", relativeTo: at("hebrew", 5785, "M01") }), "-P12M");
+
+  // Compare treats the month count of a real year as that year.
+  check("hebrew compare 13mo vs 1y (leap start)", Temporal.Duration.compare(new Temporal.Duration(0, 13), new Temporal.Duration(1), { relativeTo: hebrewLeap }), 0);
+  check("hebrew compare 12mo vs 1y (common start)", Temporal.Duration.compare(new Temporal.Duration(0, 12), new Temporal.Duration(1), { relativeTo: hebrewCommon }), 0);
+  return failures.length ? "\n" + failures.join("\n") : "ok";
+})()
+"#,
+    );
+}

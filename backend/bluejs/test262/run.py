@@ -398,21 +398,27 @@ ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES = frozenset(
     }
 )
 ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET = 1_000_000
-# Four intl402 fixtures walk a fixed calendar table through the real
+# Seven intl402 fixtures walk a fixed calendar table through the real
 # `Temporal.*.from` path: hebrew-keviah.js visits 2,101 Hebrew years (two
 # `PlainDate.from` calls plus a symbol lookup each), persian-new-year-dates.js
-# checks 293 Nowruz dates, and the two `roundtrip-from-property-bag.js`
-# fixtures run one `from` + a dozen property assertions per row of a 42-row
-# calendar table. Each is finite and its per-row cost is one ordinary call
-# chain; only the row count exceeds the default. Measured minimums are
-# 500,000 (hebrew-keviah) and 200,000 (the other three); the allowance is 4x
-# the largest.
+# checks 293 Nowruz dates, the two `roundtrip-from-property-bag.js` fixtures
+# run one `from` + a dozen property assertions per row of a 42-row calendar
+# table, and the three `dayOfYear/non-iso-calendar-basic.js` fixtures step
+# through every day of one year in each of 15 calendars (about 5,500 dates,
+# each a `year` read, a `dayOfYear` read, an assertion and an `add`). Each is
+# finite and its per-row cost is one ordinary call chain; only the row count
+# exceeds the default. Measured minimums are 500,000 (hebrew-keviah), 240,000
+# (the dayOfYear walks) and 200,000 (the other two); the allowance is 4x the
+# largest.
 TEMPORAL_CALENDAR_TABLE_FIXTURES = frozenset(
     {
         "intl402/Temporal/PlainDate/from/hebrew-keviah.js",
         "intl402/Temporal/PlainDate/from/persian-new-year-dates.js",
         "intl402/Temporal/PlainDateTime/from/roundtrip-from-property-bag.js",
         "intl402/Temporal/ZonedDateTime/from/roundtrip-from-property-bag.js",
+        "intl402/Temporal/PlainDate/prototype/dayOfYear/non-iso-calendar-basic.js",
+        "intl402/Temporal/PlainDateTime/prototype/dayOfYear/non-iso-calendar-basic.js",
+        "intl402/Temporal/ZonedDateTime/prototype/dayOfYear/non-iso-calendar-basic.js",
     }
 )
 TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET = 2_000_000

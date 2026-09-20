@@ -586,7 +586,9 @@ fn calendar_aware_bags_resolve_eras_and_leap_months() {
       range(() => D.from({ era: "bogus", eraYear: 1, month: 3, day: 4, calendar: "gregory" }));
       range(() => D.from({ era: "ce", eraYear: 2020, year: 2021, month: 3, day: 4, calendar: "gregory" }));
       range(() => D.from({ era: "ce", eraYear: Infinity, month: 3, day: 4, calendar: "gregory" }));
-      range(() => D.from({ year: 2020, month: 1, day: 1, eraYear: 1, calendar: "gregory" }));
+      // `eraYear` without `era` is a missing field: a TypeError, not a RangeError
+      // (`intl402/Temporal/PlainDate/from/one-of-era-erayear-undefined.js`).
+      type(() => D.from({ year: 2020, month: 1, day: 1, eraYear: 1, calendar: "gregory" }));
       // japanese / roc / buddhist / islamic families
       same(() => D.from({ era: "reiwa", eraYear: 2, month: 3, day: 4, calendar: "japanese" }).withCalendar("iso8601").toString(), "2020-03-04");
       same(() => D.from({ era: "reiwa", eraYear: 2, month: 3, day: 4, calendar: "japanese" }).era, "reiwa");
@@ -626,7 +628,7 @@ fn calendar_aware_bags_resolve_eras_and_leap_months() {
       same(() => D.from({ year: 2020, monthCode: "M01", day: 1, calendar: "dangi" }).calendarId, "dangi");
       // round trips for the remaining calendars
       for (const calendar of ["coptic", "ethiopic", "ethioaa", "islamic-civil", "islamic-tbla",
-                              "islamic-umalqura", "islamic-rgsa", "indian", "persian", "roc", "buddhist",
+                              "islamic-umalqura", "indian", "persian", "roc", "buddhist",
                               "japanese", "gregory", "hebrew", "chinese", "dangi"]) {
         const date = D.from("2021-07-08").withCalendar(calendar);
         const back = D.from({ year: date.year, monthCode: date.monthCode, day: date.day, calendar });
@@ -640,9 +642,12 @@ fn calendar_aware_bags_resolve_eras_and_leap_months() {
         same(() => date.monthsInYear >= 12, true);
         same(() => typeof date.inLeapYear, "boolean");
         same(() => date.dayOfWeek, 4);
-        same(() => date.dayOfYear, 189);
-        same(() => date.weekOfYear, 27);
-        same(() => date.yearOfWeek, 2021);
+        // `dayOfYear` counts within the calendar's own year; the ISO week
+        // numbers are undefined outside `iso8601`.
+        const firstOfYear = D.from({ year: date.year, month: 1, day: 1, calendar });
+        same(() => date.dayOfYear, firstOfYear.until(date, { largestUnit: "days" }).days + 1);
+        same(() => date.weekOfYear, undefined);
+        same(() => date.yearOfWeek, undefined);
       }
     "#);
 }

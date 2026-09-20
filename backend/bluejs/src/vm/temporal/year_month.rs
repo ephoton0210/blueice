@@ -71,13 +71,13 @@ impl Vm {
 
         // `PrepareCalendarFields` reads and immediately coerces every
         // recognized property in strict alphabetical order -- `era`,
-        // `eraYear` (only for a non-`iso8601` calendar, matching
+        // `eraYear` (only for a calendar that has eras, matching
         // `temporal_plain_date_from_fields`'s identical gate), `month`,
         // `monthCode`, `year` -- interleaved with each field's own
         // immediate conversion. `options`/`overflow` are deliberately
         // resolved only after every field below, per `OverflowInput`'s own
         // doc comment. Verified directly against `order-of-operations.js`.
-        let read_era_fields = calendar != "iso8601";
+        let read_era_fields = calendar::calendar_supports_era(&calendar);
         let era_v = if read_era_fields {
             self.get_property(bag, &"era".into())?
         } else {
@@ -97,16 +97,22 @@ impl Vm {
         } else {
             Value::Undefined
         };
-        let era_year_num = if era_s.is_some() {
-            Some(self.temporal_integer(&era_year_v, i32::MIN, i32::MAX, "era year")?)
-        } else {
-            if !matches!(era_year_v, Value::Undefined) {
-                return Err(RuntimeError::RangeError(
-                    "Temporal eraYear requires an era".into(),
-                ));
-            }
-            None
-        };
+        // `era` and `eraYear` only mean something together (a `TypeError`,
+        // like any other missing field, ahead of every range check --
+        // `one-of-era-erayear-undefined.js`).
+        if era_s.is_some() != !matches!(era_year_v, Value::Undefined) {
+            return Err(RuntimeError::TypeError(
+                "Temporal era and eraYear must be supplied together".into(),
+            ));
+        }
+        let era_year_num = era_s
+            .is_some()
+            .then(|| self.temporal_integer(&era_year_v, i32::MIN, i32::MAX, "era year"))
+            .transpose()?;
+        // `ToPositiveIntegerWithTruncation`: no upper bound. An ordinal `month`
+        // past the year's last is constrained (or rejected) by the calendar,
+        // not by this read, and the cast to `u8` saturates rather than wraps
+        // (`from/overflow-constrain.js`'s `month: 99999`).
         let requested_month = self.temporal_read_optional_positive_integer(bag, "month")?;
         let month_code_s = self.temporal_read_month_code(bag)?;
         // Unbounded at the field-reading stage (`ToIntegerWithTruncation`),
@@ -191,7 +197,7 @@ impl Vm {
         // `ToPositiveIntegerWithTruncation`: only a lower bound of `1`, no
         // upper bound -- the calendar's own `overflow` regulation constrains
         // or rejects an out-of-month-range `day`, not this read.
-        let requested_day = self.temporal_read_optional_integer(bag, "day", 1, i32::MAX)?;
+        let requested_day = self.temporal_read_optional_positive_integer(bag, "day")?;
         // `CalendarExtraFields`: requesting `Year` also reads `era`/`eraYear`
         // for a calendar that supports eras (`iso8601`/`chinese`/`dangi`
         // never do). `intl402/Temporal/PlainMonthDay/prototype/{equals,
@@ -207,7 +213,7 @@ impl Vm {
         };
         // Only a lower bound of `1`: `from/overflow.js`'s `{ month: 999999 }`
         // under `overflow: "constrain"` must succeed as `M12`, not throw here.
-        let requested_month = self.temporal_read_optional_integer(bag, "month", 1, i32::MAX)?;
+        let requested_month = self.temporal_read_optional_positive_integer(bag, "month")?;
         // `monthCode`'s own syntax is checked as soon as it is converted,
         // ahead of `year`'s conversion: `from/monthcode-invalid.js`'s
         // Symbol-`year` cases need a malformed code (`"L99M"`) to throw
@@ -237,22 +243,26 @@ impl Vm {
                 "Temporal era and eraYear must be supplied together".into(),
             ));
         }
-        // A reference year is only derivable from `monthCode` + `day` -- an
-        // ordinal `month`'s identity varies by year. That applies to a
-        // **non-ISO** calendar only: Gecko's `CalendarResolveFields` gives
-        // `iso8601` a narrower branch that needs just `day` and (`monthCode`
-        // or `month`), since its reference year (1972) is fixed. Pinned by
-        // `PlainMonthDay/prototype/equals/basic.js`'s bare `{ month: 1,
-        // day: 22 }`.
+        // An ordinal `month`'s identity varies by year, so a **non-ISO**
+        // calendar needs a `year` (or `era`+`eraYear`) whenever a `month` is
+        // given -- even next to a `monthCode` that would identify the month on
+        // its own (`calendarresolvefields-error-ordering-*.js`'s "Missing year
+        // (required for month)"). Gecko's `CalendarResolveFields` gives `iso8601`
+        // a narrower branch that needs just `day` and (`monthCode` or `month`),
+        // since its reference year (1972) is fixed. Pinned by
+        // `PlainMonthDay/prototype/equals/basic.js`'s bare `{ month: 1, day: 22 }`.
         if calendar != "iso8601"
+            && requested_month.is_some()
             && requested_year.is_none()
-            && month_code_s.is_none()
             && era_s.is_none()
         {
             return Err(RuntimeError::TypeError(
-                "Temporal.PlainMonthDay fields require monthCode or year".into(),
+                "Temporal.PlainMonthDay fields require year when month is given".into(),
             ));
         }
+        // Every missing-field `TypeError` (this one, and the two above) comes
+        // before any `RangeError` -- a `monthCode`/`month` conflict or a day out
+        // of range only surfaces once the fields are complete.
         let day_num = requested_day.ok_or_else(|| {
             RuntimeError::TypeError("Temporal.PlainMonthDay fields require day".into())
         })?;
@@ -269,34 +279,6 @@ impl Vm {
 
         let calendar_kind = calendar::calendar_kind(&calendar)
             .expect("temporal_calendar_identifier validates the calendar identifier");
-        // `icu_calendar`'s reference-year derivation
-        // (`MissingFieldsStrategy::Ecma`) only fires from a `monthCode`+
-        // `day` pair, never a bare ordinal `month`+`day` -- correct in
-        // general (an ordinal month's identity varies by year for a
-        // leap-month calendar), but the ISO calendar's ordinal month and
-        // `monthCode` always correspond 1:1 (`M01`..`M12`, no ambiguity),
-        // so synthesize the equivalent `monthCode` here rather than
-        // requiring the caller to supply a redundant `year`.
-        let iso_month_code = (calendar == "iso8601" && month_code_s.is_none())
-            .then(|| requested_month.map(|value| format!("M{value:02}")))
-            .flatten();
-        let month_code_for_fields = month_code_s.as_deref().or(iso_month_code.as_deref());
-        // Once a `monthCode` is in hand (given directly, or synthesized for
-        // `iso8601` above), drop the redundant `ordinal_month` --
-        // `icu_calendar::Date::try_from_fields` treats a simultaneous
-        // `month_code` + `ordinal_month` as conflicting fields even when
-        // they agree, rather than as redundant-but-consistent input.
-        // Clamp to `u8::MAX` before the cast rather than a bare `as u8`,
-        // which truncates via silent wraparound (`999999 as u8` is `63`) --
-        // any month past `u8::MAX` is unambiguously out of the calendar's
-        // real month range regardless of exactly how large it was, so
-        // saturating here preserves that for the downstream
-        // constrain/reject regulation instead of risking a coincidentally
-        // small, spuriously in-range wrapped value.
-        let ordinal_month_for_fields = month_code_for_fields
-            .is_none()
-            .then(|| requested_month.map(|value| value.min(i32::from(u8::MAX)) as u8))
-            .flatten();
         // `CalendarISOToDate`'s ISO-specific branch (`Calendar.cpp`): a
         // supplied `year` regulates the resolved `day` (e.g. whether 29
         // February constrains/rejects) but never survives into the result
@@ -352,18 +334,17 @@ impl Vm {
             )
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar month-day".into()))?
         } else {
-            // As in `temporal_plain_date_from_fields`: `era`/`eraYear`
-            // (when supplied together) resolve the year entirely on their
-            // own via `icu_calendar`'s own era-aware `Date::try_from_fields`
-            // -- mutually exclusive with `extended_year` here, matching that
-            // function's own established precedent, rather than merged with
-            // a separately-supplied `year`.
+            // `era`/`eraYear` (supplied together) resolve the year on their
+            // own via `icu_calendar`'s era-aware `Date::try_from_fields`; a
+            // `year`, and an ordinal `month` next to a `monthCode`, are passed
+            // along too and cross-checked against the result
+            // (`fields-overspecified.js`).
             let fields = plain_month_day::MonthDayFields {
-                extended_year: era_s.is_none().then_some(requested_year).flatten(),
+                extended_year: requested_year,
                 era: era_s.as_deref().map(str::as_bytes),
                 era_year: requested_era_year,
-                month_code: month_code_for_fields,
-                ordinal_month: ordinal_month_for_fields,
+                month_code: month_code_s.as_deref(),
+                ordinal_month: requested_month.map(|value| value.min(i32::from(u8::MAX)) as u8),
                 day: day_num_u8,
             };
             plain_month_day::month_day_from_fields(calendar_kind, &fields, reject).map_err(
@@ -545,7 +526,7 @@ impl Vm {
         } else {
             (None, None)
         };
-        let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
+        let requested_month = self.temporal_read_optional_positive_integer(like, "month")?;
         let month_code_s = self.temporal_read_month_code(like)?;
         // `ToIntegerWithTruncation`: unbounded at the field-reading stage
         // for `year` (`CalendarFields.cpp`'s `CalendarField::Year` case)
@@ -622,7 +603,7 @@ impl Vm {
             era_year: era_year_field,
             extended_year: extended_year_field,
             month_code: month_code.as_deref(),
-            ordinal_month: requested_month.map(|value| value as u8),
+            ordinal_month: requested_month.map(|value| value.min(i32::from(u8::MAX)) as u8),
         };
         let date = plain_year_month::year_month_from_fields(calendar_kind, &fields, reject)
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
@@ -673,8 +654,8 @@ impl Vm {
         // below, not be rejected outright here. The `u8` field this feeds is
         // saturated rather than truncated so a huge value still clamps
         // sensibly.
-        let requested_day = self.temporal_read_optional_integer(like, "day", 1, i32::MAX)?;
-        let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
+        let requested_day = self.temporal_read_optional_positive_integer(like, "day")?;
+        let requested_month = self.temporal_read_optional_positive_integer(like, "month")?;
         let month_code_s = self.temporal_read_month_code(like)?;
         // `ToIntegerWithTruncation`, unbounded at the field-reading stage,
         // matching `built-ins/Temporal/PlainMonthDay/prototype/with/
@@ -742,7 +723,7 @@ impl Vm {
         // they agree.
         let ordinal_month_for_fields = month_code
             .is_none()
-            .then(|| requested_month.map(|value| value as u8))
+            .then(|| requested_month.map(|value| value.min(i32::from(u8::MAX)) as u8))
             .flatten();
         let day_for_fields = requested_day
             .map(|value| value.min(i32::from(u8::MAX)) as u8)
@@ -774,7 +755,7 @@ impl Vm {
                 }
             }
             let month = requested_month
-                .map(|value| value as u8)
+                .map(|value| value.min(i32::from(u8::MAX)) as u8)
                 .or_else(|| {
                     month_code
                         .as_deref()
@@ -961,9 +942,7 @@ impl Vm {
         // even though `-271821-04`'s first day is not a valid date
         // (`since/throws-if-year-outside-valid-iso-range.js`).
         if (existing.year, existing.month, existing.day) == (other.year, other.month, other.day) {
-            let blank = blueice_ecma402::DurationRecord::try_new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-                .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
-            return self.alloc_temporal_value(Self::temporal_duration_value(blank), false);
+            return self.temporal_duration_create([0; 10]);
         }
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
@@ -1032,15 +1011,33 @@ impl Vm {
         } else {
             mode
         };
-        let (years, months, _, _) = plain_date::round_calendar_duration(
-            calendar_kind,
-            from_date,
-            to_date,
-            Self::temporal_unit_to_date_unit(largest_unit),
-            Self::temporal_unit_to_date_unit(smallest_unit),
-            increment,
-            effective_mode,
-        );
+        // A `smallestUnit` of `month` with an increment of 1 needs no rounding at
+        // all (step 16) -- and therefore builds no rounding window, whose far end
+        // may lie outside the representable range at the very edge of it.
+        let (years, months, _, _) =
+            if smallest_unit == rounding::TemporalUnit::Month && increment == 1 {
+                plain_date::calendar_difference_date(
+                    calendar_kind,
+                    from_date,
+                    to_date,
+                    Self::temporal_unit_to_date_unit(largest_unit),
+                )
+            } else {
+                plain_date::round_calendar_duration(
+                    calendar_kind,
+                    from_date,
+                    to_date,
+                    Self::temporal_unit_to_date_unit(largest_unit),
+                    Self::temporal_unit_to_date_unit(smallest_unit),
+                    increment,
+                    effective_mode,
+                )
+                .ok_or_else(|| {
+                    RuntimeError::RangeError(
+                        "Temporal.PlainYearMonth rounded date is out of range".into(),
+                    )
+                })?
+            };
         let (years, months) = if since {
             (-years, -months)
         } else {

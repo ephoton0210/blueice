@@ -9,6 +9,7 @@
 //! `Month`-identity comparison the leap-month algorithms use (Gecko's
 //! `MonthCode` ordering).
 
+use super::super::calendar::calendar_date_from_civil;
 use super::super::epoch::CivilDate;
 use super::iso_date::compare_date_tuple;
 use icu_calendar::options::{DateFromFieldsOptions, Overflow as IcuOverflow};
@@ -70,9 +71,7 @@ pub(super) fn calendar_has_leap_months(calendar: AnyCalendarKind) -> bool {
 /// by construction (`temporal_calendar_fields`'s own doc comment: "a leap
 /// month therefore increments every following ordinal").
 pub(super) fn to_calendar_ordinal(calendar: AnyCalendarKind, date: CivilDate) -> (i64, i64, i64) {
-    let iso = Date::try_new_iso(date.0, date.1, date.2)
-        .expect("a representable Temporal ISO date always converts to any calendar");
-    let cal_date = iso.to_calendar(AnyCalendar::new(calendar));
+    let cal_date = calendar_date_from_civil(calendar, date);
     (
         i64::from(cal_date.year().extended_year()),
         i64::from(cal_date.month().ordinal),
@@ -120,9 +119,7 @@ pub(super) fn calendar_month_identity(
     calendar: AnyCalendarKind,
     date: CivilDate,
 ) -> (i64, Month, i64) {
-    let iso = Date::try_new_iso(date.0, date.1, date.2)
-        .expect("a representable Temporal ISO date always converts to any calendar");
-    let cal_date = iso.to_calendar(AnyCalendar::new(calendar));
+    let cal_date = calendar_date_from_civil(calendar, date);
     (
         i64::from(cal_date.year().extended_year()),
         cal_date.month().to_input(),
