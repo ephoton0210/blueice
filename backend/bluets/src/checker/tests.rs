@@ -148,6 +148,30 @@ fn infers_known_array_spread_elements() {
 }
 
 #[test]
+fn infers_known_record_spread_properties() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const source: { label: string } = { label: 'Ada' };\n\
+             const person: { label: string; title: string } = { ...source, label: 'Grace', title: 'Countess' };\n\
+             const invalid: { label: number; title: string } = { ...source, label: 'Grace', title: 'Countess' };",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn infers_nullish_coalescing_after_excluding_null_and_undefined() {
     let result = crate::compile(
         "memory:///main.ts",

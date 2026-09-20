@@ -39,9 +39,9 @@ The bridge lowers `new Identifier(args)` directly to BlueJS `New` data. Construc
 
 Direct calls may target identifier, dot-member, or bracket-member expressions. Member calls preserve the BlueJS receiver reference; optional calls remain excluded.
 
-The current direct expression subset supersedes earlier phase summaries: literals and identifiers; quoted-string and non-substituted template escapes; `${identifier}` template slots; direct calls; unary, arithmetic, relational (`in` and `instanceof`), comparison, logical, conditional, assignment, and sequence expressions; non-hole arrays with spread elements; objects with identifier/string/numeric keys and identifier shorthand; dot/bracket reads; property assignments, updates, and deletion. General template expressions, optional chaining, and object spread/computed keys/methods/accessors remain excluded.
+The current direct expression subset supersedes earlier phase summaries: literals and identifiers; quoted-string and non-substituted template escapes; `${identifier}` template slots; direct calls; unary, arithmetic, relational (`in` and `instanceof`), comparison, logical, conditional, assignment, and sequence expressions; non-hole arrays with spread elements; objects with identifier/string/numeric keys, identifier shorthand, and spread properties; dot/bracket reads; property assignments, updates, and deletion. General template expressions, optional chaining, and computed object keys/methods/accessors remain excluded.
 
-Object literal keys may be identifiers, quoted strings, or numbers. Only identifier keys may use shorthand; computed keys, spread, methods, and accessors remain excluded.
+Object literal keys may be identifiers, quoted strings, or numbers. Only identifier keys may use shorthand; computed keys, methods, and accessors remain excluded, while spread properties are supported.
 
 The bridge directly splits a template interpolation only when its content is one identifier reference; nested operators, calls, member reads, and other embedded expression syntax remain unsupported.
 
@@ -49,9 +49,9 @@ Non-substituted template literals share the bridge's ordinary escape decoder and
 
 The bridge decodes simple quoted-string escapes (`\\`, quote, `\n`, `\r`, `\t`, `\b`, `\f`, `\v`, and `\0`) before constructing BlueJS string data. Hexadecimal, Unicode, legacy octal, and line-continuation escapes remain explicit direct-bridge exclusions.
 
-Object literals accept identifier-keyed `key: value` properties and local-binding shorthand `{ key }`; spread, computed keys, methods, and accessors remain outside the direct subset.
+Object literals accept identifier/string/numeric `key: value` properties, local-binding shorthand `{ key }`, and spread properties. Computed keys, methods, and accessors remain outside the direct subset. BlueTSC merges fields from an identifier-bound known record spread source; unknown, non-record, and general spread expressions retain the checker's bounded `unknown` result.
 
-Array literals accept normal and direct spread elements, but holes remain excluded. BlueTSC infers a known `T[]` spread source as element type `T`; a non-array or unknown spread source remains `unknown` in this bounded rule.
+Array literals accept normal and spread elements, but holes remain excluded. BlueTSC infers a known `T[]` spread source as element type `T`; a non-array or unknown spread source remains `unknown` in this bounded rule.
 
 The direct bridge also lowers simple and compound assignments plus prefix/postfix updates whose target is an ordinary dot or bracket property reference. Template, object, and member-call limits continue to apply independently.
 

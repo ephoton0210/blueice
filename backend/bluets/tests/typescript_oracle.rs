@@ -278,6 +278,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "object-spread-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/object-spread-expression/main.ts"),
+        )],
+        expected_stdout: Some("Grace:Countess\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "template-literal-expression",
         modules: &[ (
             "memory:///main.ts",

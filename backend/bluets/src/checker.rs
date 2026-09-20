@@ -2222,6 +2222,27 @@ fn infer_record(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
     let mut fields = Vec::new();
     let mut index = 1usize;
     while index < tokens.len() && !tokens[index].is("}") {
+        if tokens[index].is("...") {
+            let Some(source) = tokens.get(index + 1) else {
+                return Type::Unknown;
+            };
+            let Some(separator) = tokens.get(index + 2) else {
+                return Type::Unknown;
+            };
+            if source.kind != TokenKind::Identifier || !matches!(separator.text.as_str(), "," | "}")
+            {
+                return Type::Unknown;
+            }
+            let Type::Record(spread) = scope.get(&source.text).cloned().unwrap_or(Type::Unknown)
+            else {
+                return Type::Unknown;
+            };
+            for field in spread {
+                insert_inferred_record_field(&mut fields, field);
+            }
+            index += if separator.is(",") { 3 } else { 2 };
+            continue;
+        }
         let name = tokens[index].text.clone();
         let (value, value_end) = if tokens.get(index + 1).is_some_and(|token| token.is(":")) {
             let value_start = index + 2;
@@ -2247,19 +2268,33 @@ fn infer_record(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
         } else {
             return Type::Unknown;
         };
-        fields.push(TypeField {
-            name,
-            optional: false,
-            value,
-            span: SourceSpan::new(
-                "<inferred>",
-                tokens[index].start,
-                tokens[value_end.saturating_sub(1)].end,
-            ),
-        });
+        insert_inferred_record_field(
+            &mut fields,
+            TypeField {
+                name,
+                optional: false,
+                value,
+                span: SourceSpan::new(
+                    "<inferred>",
+                    tokens[index].start,
+                    tokens[value_end.saturating_sub(1)].end,
+                ),
+            },
+        );
         index = value_end.saturating_add(1);
     }
     Type::Record(fields)
+}
+
+fn insert_inferred_record_field(fields: &mut Vec<TypeField>, field: TypeField) {
+    if let Some(existing) = fields
+        .iter_mut()
+        .find(|existing| existing.name == field.name)
+    {
+        *existing = field;
+    } else {
+        fields.push(field);
+    }
 }
 
 fn infer_simple(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
