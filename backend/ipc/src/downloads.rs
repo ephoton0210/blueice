@@ -1077,6 +1077,40 @@ mod tests {
     }
 
     #[test]
+    fn every_error_code_has_a_stable_name_on_the_wire_and_in_display() {
+        for (code, name) in [
+            (ErrorCode::NotFound, "not_found"),
+            (ErrorCode::InvalidRequest, "invalid_request"),
+            (ErrorCode::InvalidState, "invalid_state"),
+            (ErrorCode::UnsupportedVersion, "unsupported_version"),
+            (ErrorCode::Internal, "internal"),
+            (ErrorCode::Unknown, "unknown"),
+        ] {
+            assert_eq!(code.as_str(), name);
+            assert_eq!(code.to_string(), name);
+            assert_eq!(serde_json::to_string(&code).unwrap(), format!("\"{name}\""));
+        }
+    }
+
+    #[test]
+    fn a_reply_of_the_wrong_shape_is_reported_for_every_call_that_expects_a_particular_one() {
+        // A server answering `Ok` to a `List`, and a `Transfers` to a `Remove` and a
+        // `Subscribe`, is not something to guess a meaning for.
+        let (stream, server) = serve(|mut s| {
+            answer_hello(&mut s);
+            for wrong in [DownloadsReply::Ok, DownloadsReply::Transfers(Vec::new()), DownloadsReply::Transfers(Vec::new())] {
+                let (id, _) = read_downloads_request(&mut s).unwrap();
+                write_downloads_reply(&mut s, id, &wrong).unwrap();
+            }
+        });
+        let mut client = DownloadsClient::connect(stream).unwrap();
+        assert!(matches!(client.list(None), Err(ClientError::Unexpected(_))));
+        assert!(matches!(client.remove(1), Err(ClientError::Unexpected(_))));
+        assert!(matches!(client.subscribe(), Err(ClientError::Unexpected(_))));
+        server.join().unwrap();
+    }
+
+    #[test]
     fn client_error_messages_are_human_readable() {
         assert_eq!(ClientError::Remote { code: ErrorCode::NotFound, message: "no transfer 9".to_string() }.to_string(), "downloads process refused the request (not_found): no transfer 9");
         assert_eq!(ClientError::Unexpected("x".to_string()).to_string(), "unexpected reply from the downloads process: x");

@@ -76,6 +76,21 @@ impl Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
+        // Ask it to stop first: a process that exits on its own writes its
+        // coverage profile, one that is killed does not. Only a process that
+        // ignores the request is killed.
+        if self.child.try_wait().ok().flatten().is_none() {
+            if let Ok(mut raw) = UnixStream::connect(&self.socket) {
+                let _ = blueice_ipc::downloads::write_downloads_request(&mut raw, Some(1), &DownloadsRequest::Hello { protocol_version: DOWNLOADS_PROTOCOL_VERSION });
+                let _ = blueice_ipc::downloads::read_downloads_reply(&mut raw);
+                let _ = blueice_ipc::downloads::write_downloads_request(&mut raw, Some(2), &DownloadsRequest::Shutdown);
+                let _ = blueice_ipc::downloads::read_downloads_reply(&mut raw);
+            }
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while self.child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(20));
+            }
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
     }

@@ -645,6 +645,57 @@ mod tests {
     }
 
     #[test]
+    fn a_single_stream_of_unknown_reason_still_says_something() {
+        let mut t = info(TransferState::Active);
+        t.connections = 1;
+        t.mode = TransferMode::SingleStream { reason: SingleStreamReason::Unknown };
+        assert!(summarize(&t).contains("reason unknown"));
+    }
+
+    #[test]
+    fn a_handshake_the_process_refuses_passes_its_code_through() {
+        let dir = Scratch::new("refused");
+        let listener = UnixListener::bind(dir.socket()).unwrap();
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                if let Ok((id, _)) = read_downloads_request(&mut stream) {
+                    let _ = write_downloads_reply(&mut stream, id, &DownloadsReply::Error { code: ErrorCode::UnsupportedVersion, message: "speak v1".to_string() });
+                }
+            }
+        });
+        let handle = DownloadsHandle::with(dir.socket(), never_spawn(), Duration::from_secs(2));
+        match handle.call(true, |c| c.get(1)) {
+            Err(CallError::Remote { code: ErrorCode::UnsupportedVersion, message }) => assert_eq!(message, "speak v1"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_reply_of_the_wrong_shape_is_reported_as_the_process_being_unusable() {
+        let dir = Scratch::new("wrongshape");
+        let listener = UnixListener::bind(dir.socket()).unwrap();
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                thread::spawn(move || {
+                    while let Ok((id, request)) = read_downloads_request(&mut stream) {
+                        let reply = match request {
+                            DownloadsRequest::Hello { .. } => DownloadsReply::Hello { protocol_version: DOWNLOADS_PROTOCOL_VERSION },
+                            _ => DownloadsReply::Ok, // an `Ok` to a `Get` makes no sense
+                        };
+                        if write_downloads_reply(&mut stream, id, &reply).is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        let handle = DownloadsHandle::with(dir.socket(), never_spawn(), Duration::from_secs(2));
+        assert!(matches!(handle.call(true, |c| c.get(1)), Err(CallError::Unavailable(_))));
+    }
+
+    #[test]
     fn call_errors_read_as_plain_sentences() {
         assert_eq!(CallError::Remote { code: ErrorCode::InvalidRequest, message: "bad url".to_string() }.to_string(), "invalid_request: bad url");
         assert_eq!(CallError::Unavailable("gone".to_string()).to_string(), "the downloads process is unavailable: gone");

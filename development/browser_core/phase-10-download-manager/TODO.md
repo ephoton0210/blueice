@@ -2,7 +2,7 @@
 
 [← Back to Phase 10 plan](PLAN.md)
 
-> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. M0 (design), M1 (`blueice-ipc` contract), M2 (`blueice-net` transfer engine) and M3 (the `downloads` process) and M4 (the MCP tools) and M5 (`about:downloads`) are done; only M6 (wrap-up) remains.**
+> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. M0 (design), M1 (`blueice-ipc` contract), M2 (`blueice-net` transfer engine) and M3 (the `downloads` process) and M4 (the MCP tools) M5 (`about:downloads`) and M6 (wrap-up) are done: the first slice is complete.**
 > Branch: `feature/downloads-first-slice`.
 > Design inputs: [`PLAN.md`](PLAN.md) (this phase), [`../phase-7-local-ai/PLAN.md`](../phase-7-local-ai/PLAN.md), [`../phase-12-mcp-server/PLAN.md`](../phase-12-mcp-server/PLAN.md), [`../research/safe-browsing-enforcement.md`](../research/safe-browsing-enforcement.md), [`../research/multi-process-memory.md`](../research/multi-process-memory.md).
 
@@ -113,11 +113,11 @@ Network and files:
 - [x] Tests: unit tests for the HTML generator (every state, the empty state, zh-TW); a session end-to-end test with a fake downloads server (the page content actually changes with progress, and an AI agent's `get_page_representation` reads the same data); no `#paint` fixture (the page is built from live data, so a fixed fixture would only pin the CSS text); instead the page was rendered to PNG and looked at, in both locales, with every state present
 
 ### M6 — Wrap-up
-- [ ] **Test-review pass**: re-read the content of every new test (not just green status and coverage) — fill in edge cases and error paths, delete tests that no longer check anything meaningful
-- [ ] `cargo build --workspace --all-targets`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`
-- [ ] Coverage: `cargo llvm-cov ... --fail-under-lines 90`; if the new crate's `main.rs` is pure wiring, decide whether to add it to `--ignore-filename-regex` following existing practice, and keep `.github/workflows/ci.yml` and `TEST_PLAN.md` in sync
-- [ ] Documentation sync: this phase's `PLAN.md` status and checklist, Phase 12's checklist (`download_file` / `list_transfers`), Phase 8's checklist (registry registration), Phase 7's checklist (clearance for downloads), the phase table in `BROWSER_CORE_PLAN.md`, `CLAUDE.md` project status, and `README.md`
-- [ ] Land each milestone as its own commit
+- [x] **Test-review pass**: re-read the content of every new test (not just green status and coverage) — fill in edge cases and error paths, delete tests that no longer check anything meaningful
+- [x] `cargo build --workspace --all-targets`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`
+- [x] Coverage: `cargo llvm-cov ... --fail-under-lines 90`; if the new crate's `main.rs` is pure wiring, decide whether to add it to `--ignore-filename-regex` following existing practice, and keep `.github/workflows/ci.yml` and `TEST_PLAN.md` in sync
+- [x] Documentation sync: this phase's `PLAN.md` status and checklist, Phase 12's checklist (`download_file` / `list_transfers`), Phase 8's checklist (registry registration), Phase 7's checklist (clearance for downloads), the phase table in `BROWSER_CORE_PLAN.md`, `CLAUDE.md` project status, and `README.md`
+- [x] Land each milestone as its own commit
 
 ---
 

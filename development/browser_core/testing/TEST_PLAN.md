@@ -115,6 +115,17 @@ The concrete lesson, worth stating plainly rather than leaving implicit: a refer
 
 Corpus totals after both fixes above: 56.4% -> **56.7%** (994/1753), unclassified 21 -> **16**.
 
+## Download manager tests (Phase 10)
+
+The download manager is checked at four levels, each through its real public interface, with **no mock between a request and the bytes on disk**:
+
+- **The engine (`blueice-net::download`)** is driven against a hand-rolled HTTP/1.1 server (`backend/net/tests/common/mod.rs`) that can be told to misbehave in exactly the ways real servers do: ignore `Range`, change its `ETag` mid-transfer, answer `5xx` a few times first, cut a body short, stall, throttle (per range, so one segment can be made slow), redirect, or send no `Content-Length`. It logs every request and counts concurrent bodies, so a test can assert that connections really ran in parallel and that a slow segment really was split. The server has tests of its own (`tests/test_server.rs`), since every engine test's credibility rests on it. Every transfer test checks the finished file **byte for byte** against deterministic content in which each position differs from its neighbours', so a misplaced or duplicated range shows up as a mismatch instead of passing by luck.
+- **The gatekeeper mechanism** uses a fake gatekeeper on a real Unix socket (same file) that can clear, reject, answer slowly, hang, hang up, or send garbage. The fail-closed property is tested by construction: every way the gatekeeper can fail to say "yes" must produce no clearance token at all.
+- **The downloads process** is a real `TransferManager` behind a real socket driven by the shared `DownloadsClient` (`backend/downloads/tests/protocol.rs`), plus the compiled binary as a subprocess (`downloads_binary.rs`), including a `kill -9` in the middle of a download followed by a resume that fetches only what was missing.
+- **The MCP surface and the page** are driven the way their real consumers drive them: `backend/mcp-server/tests/mcp_downloads.rs` speaks JSON-RPC over stdio to the compiled `blueice-mcp-server` (which starts the real `blueice-downloads` on demand), and `backend/core/engine/tests/core_binary.rs` opens `about:downloads` in the compiled `blueice-core`, which starts the real downloads process and follows it live.
+
+The test server and fake gatekeeper are shared by *path* (`#[path = "../../net/tests/common/mod.rs"] mod common;`) rather than copied or moved into a covered crate. Subprocess tests end their processes by asking them to shut down (closing stdin for the MCP server, a `Shutdown` request for the downloads process) and only kill one that ignores the request, because a process that exits on its own writes its coverage profile and a killed one does not.
+
 ## Coverage policy
 
 Tool: [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov) (LLVM source-based coverage — more accurate than instrumentation-based tools like tarpaulin, no nightly toolchain required).

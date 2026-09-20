@@ -32,7 +32,7 @@ HTTP (Phase 10) implements this via `reqwest`; FTP via `suppaftp` or `async-ftp`
 
 ## Checklist
 
-- [ ] Decide relationship to Phase 10 (shared subsystem vs. separate) — do this together with Phase 10, not in isolation
+- [x] Decide relationship to Phase 10 (shared subsystem vs. separate) — decided with Phase 10: one shared subsystem, with this phase supplying FTP/SFTP backends. The `TransferBackend` trait itself is deliberately not defined yet (with one implementation its shape would be a guess); Phase 10's engine keeps its ranged fetch behind one function boundary (`blueice_net::download::http`) so extracting it is mechanical once a second backend exists
 - [ ] Confirm protocol scope (FTP, SFTP, and what else if anything)
 - [ ] Evaluate candidate Rust crates for each protocol
 - [ ] Define the common transfer-backend interface these protocols implement, shared with Phase 10's HTTP backend (see the `TransferBackend` sketch above)

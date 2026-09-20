@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Design resolved (see "Wiring design (resolved 2026-09-20)" below); implementation is in progress. Done so far: the `blueice-ipc` contract (the `downloads` wire protocol with its shared client, and the gatekeeper's `CheckDownload` stage); the transfer engine in `blueice-net::download` (probe, segmentation with dynamic re-splitting, retries, stall watchdog, pause/resume/cancel, resume validation, atomic completion, and the gatekeeper clearance typestate); and the `blueice-downloads` process (queue and lifecycle, the gatekeeper review of every start, destination policy, persistence, the socket server with push subscriptions, and its launcher registry slot); the MCP tools in `blueice-mcp-server`; and the `about:downloads` page with live updates and the reference frontend's `downloads`/`download <url>` commands. What remains is the wrap-up: a final review, documentation sync across the other phases, and `CLAUDE.md`/`README.md`. The first slice's work items are tracked in [`TODO.md`](TODO.md).
+**Status**: First slice done (see "Wiring design (resolved 2026-09-20)" below and [`TODO.md`](TODO.md)): the `blueice-ipc` contract, the transfer engine in `blueice-net::download` (probe, segmentation with dynamic re-splitting, retries, stall watchdog, pause/resume/cancel, resume validation, atomic completion, the gatekeeper clearance typestate), the `blueice-downloads` process (queue and lifecycle, the gatekeeper review of every start, destination policy, persistence, the socket server with push subscriptions, its launcher registry slot), the MCP tools in `blueice-mcp-server`, and the `about:downloads` page with live updates plus the reference frontend's `downloads`/`download <url>` commands. Not built, by design (see "Open questions"): a scheduler, speed limits, multi-mirror downloads, cookies/authentication, human-facing pause/resume/cancel controls, navigation-triggered downloads, and FTP/SFTP (Phase 11).
 
 ## Objective
 
@@ -168,4 +168,4 @@ The compile-time guarantee holds only inside one process. Because `mcp-server` a
 - [x] `backend/downloads` process: manager, persistence, destination policy, socket server, launcher registry slot — TODO.md M3
 - [x] MCP tools in `blueice-mcp-server`: `download_file`, `list_transfers`, `get_transfer`, `pause_transfer`, `resume_transfer`, `cancel_transfer`, `remove_transfer` (also ticks Phase 12's `download_file`/`list_transfers` item) — TODO.md M4
 - [x] `about:downloads` visualization with live updates, plus `frontend-reference`'s `downloads`/`download <url>` commands — TODO.md M5
-- [ ] Test-review pass, ≥90% coverage, CI/coverage-regex updates, and documentation sync across the other phases — TODO.md M6
+- [x] Test-review pass, ≥90% coverage, CI/coverage-regex updates, and documentation sync across the other phases — TODO.md M6

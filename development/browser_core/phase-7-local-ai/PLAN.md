@@ -122,7 +122,7 @@ Organizing data, summarization, and **live translation** per the given scope. Ca
 - [x] Scope what the local AI is for — two agents: safety gatekeeper (primary, two-layer AI+rule-base pipeline) and assistant (secondary)
 - [x] Decide fail-open vs. fail-closed — fail-closed
 - [x] Decide the enforcement mechanism — `GatekeeperClearance` capability-token pattern, see `research/safe-browsing-enforcement.md`
-- [x] Wire the capability-token requirement into `core` navigation (minimal slice, per "Wiring design" above) — `backend/downloads`, the `extension` host, and the Phase 12 MCP adapter remain, since none of those exist/are gated yet
+- [x] Wire the capability-token requirement into `core` navigation (minimal slice, per "Wiring design" above) — `backend/downloads` is now gated too (Phase 10: the downloads process reviews every start itself, URL stage then a new `CheckDownload` stage, behind privately-constructed `UrlCleared`/`DownloadClearance` tokens the engine requires, fail-closed and re-run on every resume), and because it does the review itself the Phase 12 MCP adapter's download tools are gated by construction; the `extension` host remains
 - [x] Build the minimal-slice `ai-gatekeeper` process (always-clears stub), the `CheckUrl`/`CheckContent` protocol, and `core`'s non-blocking two-phase dispatch integration — see "Wiring design (resolved 2026-09-08)"
 - [ ] Add IPC-wire-protocol-level enforcement (server-side, not just the client-side compile-time guarantee), with Phase 9
 - [ ] Confirm synchronous-blocking applies to every page load, not just the action-level risk taxonomy
