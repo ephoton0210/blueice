@@ -363,6 +363,11 @@ impl Vm {
         length: &Value,
     ) -> Result<Value, RuntimeError> {
         let buffer = self.array_buffer_receiver(receiver)?;
+        if self.heap.buffer_is_immutable(buffer)? {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer is immutable and cannot be resized".into(),
+            ));
+        }
         let length = self.buffer_index(length)?;
         if !self.heap.buffer_resizable(buffer)? {
             return Err(RuntimeError::TypeError(
@@ -383,16 +388,8 @@ impl Vm {
         args: &[Value],
         fixed_length: bool,
     ) -> Result<Value, RuntimeError> {
-        let source = self.array_buffer_receiver(receiver)?;
-        if self.heap.buffer_is_detached(source)? {
-            return Err(RuntimeError::TypeError("ArrayBuffer is detached".into()));
-        }
-        let source_length = self.heap.buffer_byte_length(source)?;
-        let length = if args.is_empty() || args[0] == Value::Undefined {
-            source_length
-        } else {
-            self.buffer_index(native::argument(args, 0))?
-        };
+        let (source, source_length, length) =
+            self.array_buffer_copy_and_detach_source(receiver, args)?;
         let resizable = !fixed_length && self.heap.buffer_resizable(source)?;
         let maximum = if resizable {
             self.heap.buffer_max_byte_length(source)?
@@ -511,6 +508,11 @@ impl Vm {
             constructor,
         )?;
         let result_buffer = self.array_buffer_receiver(&result)?;
+        if self.heap.buffer_is_immutable(result_buffer)? {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer species returned an immutable buffer".into(),
+            ));
+        }
         if result_buffer == buffer {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer species returned the source buffer".into(),

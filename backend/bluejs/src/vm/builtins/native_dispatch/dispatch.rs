@@ -655,6 +655,13 @@ impl Vm {
                 self.array_buffer_transfer(&receiver, &args, true)
             }
             NativeFunction::ArrayBufferSlice => self.array_buffer_slice(&receiver, &args),
+            NativeFunction::ArrayBufferImmutable => self.array_buffer_immutable(&receiver),
+            NativeFunction::ArrayBufferTransferToImmutable => {
+                self.array_buffer_transfer_to_immutable(&receiver, &args)
+            }
+            NativeFunction::ArrayBufferSliceToImmutable => {
+                self.array_buffer_slice_to_immutable(&receiver, &args)
+            }
             NativeFunction::ArrayBufferIsView => {
                 Ok(Value::Bool(first.object_id().is_some_and(|object| {
                     self.heap.is_data_view(object).unwrap_or(false)

@@ -97,6 +97,7 @@ pub enum HeapError {
     InvalidArrayLength,
     InvalidBufferRange,
     DetachedArrayBuffer,
+    ImmutableArrayBuffer,
     UninitializedModuleExport,
     ReadOnlyProperty,
     HeapLimitExceeded { limit: usize },
@@ -121,6 +122,7 @@ impl fmt::Display for HeapError {
             ),
             Self::InvalidBufferRange => write!(f, "invalid ArrayBuffer view range"),
             Self::DetachedArrayBuffer => write!(f, "ArrayBuffer has been detached"),
+            Self::ImmutableArrayBuffer => write!(f, "ArrayBuffer is immutable"),
             Self::UninitializedModuleExport => {
                 write!(f, "module namespace export is uninitialized")
             }
@@ -823,6 +825,11 @@ enum ObjectKind {
         detached: bool,
         max_byte_length: Option<usize>,
         shared: bool,
+        /// The proposal's `[[ArrayBufferIsImmutable]]` slot. Set once, at
+        /// allocation, by `alloc_immutable_array_buffer`; an immutable buffer
+        /// is always an unshared, fixed-length, never-detached ArrayBuffer
+        /// whose bytes nothing may write after that allocation.
+        immutable: bool,
     },
     DataView {
         buffer: ObjectId,

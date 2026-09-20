@@ -9,6 +9,7 @@ mod binary_data;
 mod execution;
 mod generators;
 mod globals;
+mod immutable_arraybuffer;
 mod math;
 mod native_dispatch;
 mod object;

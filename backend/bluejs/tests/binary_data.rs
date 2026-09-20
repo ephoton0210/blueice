@@ -364,3 +364,16 @@ fn typed_array_prototype_tostringtag_getter_reports_the_kind_of_a_detached_view(
         Value::Bool(true)
     );
 }
+
+#[test]
+fn test262_host_detach_is_idempotent_for_an_already_detached_buffer() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    // A transfer detaches the source; the harness then detaches it again.
+    let source = "let buffer=new ArrayBuffer(4);buffer.transfer();$262.detachArrayBuffer(buffer);$262.detachArrayBuffer(buffer);buffer.byteLength===0";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
