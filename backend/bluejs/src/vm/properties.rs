@@ -331,6 +331,16 @@ impl Vm {
         })?;
         match element {
             PrivateElement::Field => {
+                // The first store of a field is its PrivateFieldAdd, which an
+                // object that stopped being extensible in the meantime (say by
+                // an earlier field initializer) rejects.
+                if self.heap.private_slot(object, owner, &name)?.is_none()
+                    && !self.object_is_extensible(object)?
+                {
+                    return Err(RuntimeError::TypeError(
+                        "cannot add a private element to a non-extensible object".into(),
+                    ));
+                }
                 self.with_roots(|heap| heap.set_private_slot(object, owner, name, value))
             }
             PrivateElement::Method(_) => Err(RuntimeError::TypeError(

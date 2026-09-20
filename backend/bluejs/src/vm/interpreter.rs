@@ -223,6 +223,29 @@ impl Vm {
                         }
                         self.stack.truncate(base + 1);
                     }
+                    Opcode::DefineInstanceField => {
+                        // The receiver and value stay on the operand stack (and
+                        // so rooted) until the definition has completed.
+                        let base = self.stack.len() - 3;
+                        let receiver = self.stack[base].clone();
+                        let key = self.coerce_property_key(&self.stack[base + 1].clone())?;
+                        let value = self.stack[base + 2].clone();
+                        let Value::Object(object) = receiver else {
+                            return Err(RuntimeError::TypeError(
+                                "class fields are defined on an object".into(),
+                            ));
+                        };
+                        if !self.object_define_own_property(
+                            object,
+                            key,
+                            PropertyDescriptor::data(value, true, true, true),
+                        )? {
+                            return Err(RuntimeError::TypeError(
+                                "cannot define class field".into(),
+                            ));
+                        }
+                        self.stack.truncate(base);
+                    }
                     Opcode::DefinePrivateStaticField => {
                         let base = self.stack.len() - 4;
                         let target = self.stack[base + 1].clone();
@@ -241,6 +264,11 @@ impl Vm {
                         let Value::Object(target) = target else {
                             unreachable!("class fields target the constructor")
                         };
+                        if !self.object_is_extensible(target)? {
+                            return Err(RuntimeError::TypeError(
+                                "cannot add a private element to a non-extensible object".into(),
+                            ));
+                        }
                         self.with_roots(|heap| heap.set_private_slot(target, target, name, value))?;
                         self.stack.truncate(base + 1);
                     }
@@ -260,6 +288,16 @@ impl Vm {
                                 "private fields require an object receiver".into(),
                             )
                         })?;
+                        // PrivateMethodOrAccessorAdd / PrivateFieldAdd: an
+                        // object that is no longer extensible cannot gain a
+                        // private element (`nonextensible-applies-to-private`).
+                        if !self.heap.has_private_brand(receiver, owner)?
+                            && !self.object_is_extensible(receiver)?
+                        {
+                            return Err(RuntimeError::TypeError(
+                                "cannot add a private element to a non-extensible object".into(),
+                            ));
+                        }
                         self.with_roots(|heap| heap.add_private_brand(receiver, owner))?;
                     }
                     Opcode::PrivateGet | Opcode::PrivateGetMethod => {
@@ -809,7 +847,11 @@ impl Vm {
                     Opcode::DynamicImport => {
                         let options = self.pop();
                         let specifier = self.pop();
-                        let promise = self.dynamic_import(specifier, options)?;
+                        let promise = self.dynamic_import(
+                            specifier,
+                            options,
+                            ImportPhase::from_operand(operand),
+                        )?;
                         self.stack.push(promise);
                     }
                     Opcode::ImportMeta => {

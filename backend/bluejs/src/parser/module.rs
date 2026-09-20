@@ -27,12 +27,22 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
                 .first()
                 .filter(|request| !matches!(request.import_name, ImportName::Source))
             {
-                requests.push(request.module_request.clone());
+                requests.push(RequestedModule {
+                    specifier: request.module_request.clone(),
+                    phase: if request.import_name == ImportName::DeferredNamespace {
+                        ImportPhase::Defer
+                    } else {
+                        ImportPhase::Evaluation
+                    },
+                });
             }
             imports.extend(declaration);
         } else if parser.check_identifier("export") {
             if let Some(request) = parser.parse_export_declaration(&mut body, &mut exports)? {
-                requests.push(request);
+                requests.push(RequestedModule {
+                    specifier: request,
+                    phase: ImportPhase::Evaluation,
+                });
             }
         } else {
             body.push(parser.parse_statement()?);

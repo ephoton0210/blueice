@@ -1940,11 +1940,19 @@ impl Vm {
                     referrer,
                     specifier,
                     json,
+                    phase,
                 } => {
-                    let result = self.dynamic_import_job(&referrer, &specifier, json);
+                    let result = self.dynamic_import_job(&referrer, &specifier, json, phase);
                     match result {
                         Ok(DynamicImportResult::Fulfilled(namespace)) => {
                             self.settle_promise(target, PromiseStatus::Fulfilled(namespace))?
+                        }
+                        Ok(DynamicImportResult::WaitingDeferred { namespace, modules }) => {
+                            self.deferred_import_waiters.push(DeferredImportWaiter {
+                                promise: target,
+                                namespace,
+                                pending: modules.into_iter().collect(),
+                            });
                         }
                         Ok(DynamicImportResult::Waiting(module)) => {
                             self.module_import_waiters

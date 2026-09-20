@@ -760,6 +760,7 @@ impl Heap {
     pub(crate) fn alloc_module_namespace(
         &mut self,
         mut exports: Vec<(JsString, ObjectId)>,
+        deferred: bool,
     ) -> Result<ObjectId, HeapError> {
         for (_, cell) in &exports {
             self.object(*cell)?;
@@ -769,7 +770,19 @@ impl Heap {
         self.define_own_property(
             namespace,
             JsSymbol::well_known("toStringTag"),
-            PropertyDescriptor::data(Value::String("Module".into()), false, false, false),
+            PropertyDescriptor::data(
+                Value::String(
+                    if deferred {
+                        "Deferred Module"
+                    } else {
+                        "Module"
+                    }
+                    .into(),
+                ),
+                false,
+                false,
+                false,
+            ),
         )?;
         self.prevent_extensions(namespace)?;
         Ok(namespace)
