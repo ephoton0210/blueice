@@ -120,8 +120,8 @@ impl std::error::Error for BridgeError {}
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
 /// non-spread, non-hole array literals, simple object literals with identifier
 /// keys, non-substituted template literals without escapes, dot or bracket
-/// property reads, comma sequences, identifier-only prefix/postfix updates, and
-/// identifier/property simple or compound-assignment operators. Static-only
+/// property reads, comma sequences, identifier/property prefix/postfix updates,
+/// and identifier/property simple or compound-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -1033,7 +1033,7 @@ impl<'a> ExpressionLowerer<'a> {
                 .expect("an update operator was just inspected");
             self.index += 1;
             let arg = self.parse_unary()?;
-            return self.lower_identifier_update(op, arg, true, span);
+            return self.lower_update(op, arg, true, span);
         }
         let expression = self.parse_primary()?;
         let Some(op) = self.update_operator_at(self.index) else {
@@ -1045,7 +1045,7 @@ impl<'a> ExpressionLowerer<'a> {
             .map(|token| self.token_span(token))
             .expect("an update operator was just inspected");
         self.index += 1;
-        self.lower_identifier_update(op, expression, false, span)
+        self.lower_update(op, expression, false, span)
     }
 
     fn update_operator_at(&self, index: usize) -> Option<bluejs::UpdateOp> {
@@ -1058,17 +1058,20 @@ impl<'a> ExpressionLowerer<'a> {
             })
     }
 
-    fn lower_identifier_update(
+    fn lower_update(
         &self,
         op: bluejs::UpdateOp,
         arg: bluejs::Expr,
         prefix: bool,
         span: SourceSpan,
     ) -> Result<bluejs::Expr, BridgeError> {
-        if !matches!(arg, bluejs::Expr::Identifier(_)) {
+        if !matches!(
+            arg,
+            bluejs::Expr::Identifier(_) | bluejs::Expr::Member { .. }
+        ) {
             return Err(unsupported(
                 span,
-                "only identifier update targets are in the v1 direct bridge subset",
+                "only identifier and property update targets are in the v1 direct bridge subset",
             ));
         }
         Ok(bluejs::Expr::Update {
@@ -2202,6 +2205,26 @@ mod tests {
     }
 
     #[test]
+    fn lowers_checked_property_update_expressions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const values: { count: number; index: number } = { count: 1, index: 2 }; \
+                 const postfix: number = values.count++; \
+                 const prefix = ++values['index']; \
+                 postfix + ':' + values.count + ':' + prefix + ':' + values['index'];",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("1:2:3:3".into())
+        );
+    }
+
+    #[test]
     fn lowers_checked_bracket_property_reads() {
         let artifact = compile_direct_script(
             ENTRY,
@@ -2475,13 +2498,13 @@ mod tests {
     }
 
     #[test]
-    fn expression_lowerer_rejects_non_identifier_update_targets() {
+    fn expression_lowerer_rejects_non_property_update_targets() {
         let tokens = expression_tokens(&[("++", TokenKind::Punct), ("1", TokenKind::Number)]);
         let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
         let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
-            panic!("the direct bridge must reject a non-identifier update target");
+            panic!("the direct bridge must reject a non-property update target");
         };
-        assert!(message.contains("identifier update targets"));
+        assert!(message.contains("identifier and property update targets"));
     }
 
     #[test]

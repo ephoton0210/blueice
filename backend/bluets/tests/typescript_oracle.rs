@@ -359,6 +359,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "property-update-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/property-update-expression/main.ts"),
+        )],
+        expected_stdout: Some("1:2:3:3\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "relational-membership-expression",
         modules: &[ (
             "memory:///main.ts",
