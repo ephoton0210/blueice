@@ -14,6 +14,8 @@ from run import (
     ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT,
     TEMPORAL_CALENDAR_TABLE_FIXTURES,
     TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET,
+    TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES,
+    TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET,
     ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES,
     ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET,
     Worker,
@@ -288,6 +290,18 @@ class RunnerTests(unittest.TestCase):
                 TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET,
             )
             # A larger explicit --instruction-budget is never lowered.
+            self.assertEqual(
+                instruction_budget({}, 50_000_000, relative), 50_000_000
+            )
+        self.assertEqual(
+            TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES,
+            frozenset({"intl402/Temporal/ZonedDateTime/links.js"}),
+        )
+        for relative in TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES:
+            self.assertEqual(
+                instruction_budget({}, 100_000, relative),
+                TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET,
+            )
             self.assertEqual(
                 instruction_budget({}, 50_000_000, relative), 50_000_000
             )
