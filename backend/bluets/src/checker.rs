@@ -2188,7 +2188,7 @@ fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
             "]" | ")" | "}" if depth > 0 => depth -= 1,
             "," if depth == 0 => {
                 if start < index {
-                    values.push(infer_simple(&tokens[start..index], scope));
+                    values.push(infer_array_element(&tokens[start..index], scope));
                 }
                 start = index + 1;
             }
@@ -2196,7 +2196,7 @@ fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
         }
     }
     if start + 1 < tokens.len() {
-        values.push(infer_simple(&tokens[start..tokens.len() - 1], scope));
+        values.push(infer_array_element(&tokens[start..tokens.len() - 1], scope));
     }
     let Some(first) = values.first().cloned() else {
         return Type::Array(Box::new(Type::Unknown));
@@ -2206,6 +2206,16 @@ fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
     } else {
         Type::Array(Box::new(Type::Union(values)))
     }
+}
+
+fn infer_array_element(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
+    if tokens.first().is_some_and(|token| token.is("...")) {
+        return match infer_simple(&tokens[1..], scope) {
+            Type::Array(element) => *element,
+            _ => Type::Unknown,
+        };
+    }
+    infer_simple(tokens, scope)
 }
 
 fn infer_record(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {

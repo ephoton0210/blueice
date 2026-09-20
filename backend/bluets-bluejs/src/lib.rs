@@ -118,8 +118,8 @@ impl std::error::Error for BridgeError {}
 /// `delete` with a property target; arithmetic, relational (including `in` and
 /// `instanceof`), equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
-/// non-spread, non-hole array literals, simple object literals with identifier
-/// keys, non-substituted template literals without escapes, dot or bracket
+/// non-hole array literals with spread elements, simple object literals with
+/// identifier keys, non-substituted template literals without escapes, dot or bracket
 /// property reads, comma sequences, identifier/property prefix/postfix updates,
 /// and identifier/property simple or compound-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
@@ -1161,13 +1161,13 @@ impl<'a> ExpressionLowerer<'a> {
                     "array holes are not in the v1 direct bridge subset",
                 ));
             }
-            if token.text == "..." {
-                return Err(unsupported(
-                    self.token_span(token),
-                    "array spread elements are not in the v1 direct bridge subset",
-                ));
-            }
-            elements.push(Some(bluejs::ArrayElement::Normal(self.parse_assignment()?)));
+            let element = if token.text == "..." {
+                self.index += 1;
+                bluejs::ArrayElement::Spread(self.parse_assignment()?)
+            } else {
+                bluejs::ArrayElement::Normal(self.parse_assignment()?)
+            };
+            elements.push(Some(element));
             let Some(separator) = self.tokens.get(self.index) else {
                 return Err(unsupported(opening_span, "unterminated array literal"));
             };
@@ -1699,12 +1699,12 @@ mod tests {
             ENTRY,
             &MapLoader::from([ModuleSource::new(
                 ENTRY,
-                "const values = [1, ...[2]]; values;",
+                "const source = { label: 'Ada' }; const value = { ...source }; value;",
             )]),
             CompilerOptions::default(),
         );
         let Err(error) = result else {
-            panic!("the direct bridge must reject array spread");
+            panic!("the direct bridge must reject object spread");
         };
         let BridgeError::UnsupportedRuntimeTarget { span, .. } = error else {
             panic!("the direct bridge must reject an unsupported runtime shape");
@@ -2225,6 +2225,25 @@ mod tests {
     }
 
     #[test]
+    fn lowers_checked_array_spread_elements() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const suffix: number[] = [2, 3]; \
+                 const values: number[] = [1, ...suffix, 4]; \
+                 values.length === 4 && values[2] === 3;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Bool(true)
+        );
+    }
+
+    #[test]
     fn lowers_checked_bracket_property_reads() {
         let artifact = compile_direct_script(
             ENTRY,
@@ -2391,28 +2410,19 @@ mod tests {
     }
 
     #[test]
-    fn expression_lowerer_rejects_array_holes_and_spread() {
-        for tokens in [
-            expression_tokens(&[
-                ("[", TokenKind::Punct),
-                ("1", TokenKind::Number),
-                (",", TokenKind::Punct),
-                (",", TokenKind::Punct),
-                ("]", TokenKind::Punct),
-            ]),
-            expression_tokens(&[
-                ("[", TokenKind::Punct),
-                ("...", TokenKind::Punct),
-                ("values", TokenKind::Identifier),
-                ("]", TokenKind::Punct),
-            ]),
-        ] {
-            let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
-            let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
-                panic!("the direct bridge must reject an unimplemented array element");
-            };
-            assert!(message.contains("array holes") || message.contains("array spread"));
-        }
+    fn expression_lowerer_rejects_array_holes() {
+        let tokens = expression_tokens(&[
+            ("[", TokenKind::Punct),
+            ("1", TokenKind::Number),
+            (",", TokenKind::Punct),
+            (",", TokenKind::Punct),
+            ("]", TokenKind::Punct),
+        ]);
+        let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
+        let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+            panic!("the direct bridge must reject an array hole");
+        };
+        assert!(message.contains("array holes"));
     }
 
     #[test]

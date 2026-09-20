@@ -124,6 +124,30 @@ fn infers_array_literal_element_types() {
 }
 
 #[test]
+fn infers_known_array_spread_elements() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const suffix: number[] = [2, 3];\n\
+             const values: number[] = [1, ...suffix, 4];\n\
+             const invalid: string[] = [1, ...suffix];",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn infers_nullish_coalescing_after_excluding_null_and_undefined() {
     let result = crate::compile(
         "memory:///main.ts",
