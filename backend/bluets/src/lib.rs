@@ -42,7 +42,7 @@ pub use parser::{
     Module, Parameter, ParserLimits, RawDeclaration, TypeAliasDeclaration, TypeExportDeclaration,
     TypeParameter, ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
 };
-pub use syntax::{Token, TokenKind};
+pub use syntax::{lex, Token, TokenKind};
 
 /// The pinned BlueTS language matrix exposed in emitted fingerprints and
 /// diagnostics.  This is not a claim of complete `tsc` compatibility.

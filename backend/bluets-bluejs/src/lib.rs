@@ -13,7 +13,7 @@
 
 use blueice_bluejs as bluejs;
 use blueice_bluets::{
-    compile, BlueTsDebugInfo, CompilerOptions, Declaration, Diagnostic, FunctionBodyItem,
+    compile, lex, BlueTsDebugInfo, CompilerOptions, Declaration, Diagnostic, FunctionBodyItem,
     FunctionDeclaration, Module, ModuleLoader, Project, SourceSpan, Token, TokenKind,
     VariableDeclaration, VariableKind, LANGUAGE_VERSION,
 };
@@ -119,9 +119,9 @@ impl std::error::Error for BridgeError {}
 /// `instanceof`), equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
 /// non-hole array literals with spread elements, object literals with
-/// identifier/string/numeric keys and spread properties, bounded template
-/// literals, dot or bracket property reads, comma sequences, identifier/property
-/// prefix/postfix updates,
+/// identifier/string/numeric keys and spread properties, template literals
+/// whose substitutions use the same bounded expression subset, dot or bracket
+/// property reads, comma sequences, identifier/property prefix/postfix updates,
 /// calls and constructors with normal/spread arguments, and identifier/property
 /// simple or compound-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
@@ -1547,23 +1547,24 @@ fn lower_template(module: &str, token: &Token) -> Result<bluejs::Expr, BridgeErr
     let mut quasis = Vec::new();
     let mut expressions = Vec::new();
     let mut remainder = body;
-    while let Some(start) = remainder.find("${") {
+    let mut remainder_offset = 1usize;
+    while let Some(start) = template_substitution_start(remainder) {
         quasis.push(decode_string_escapes(module, token, &remainder[..start])?.into());
         let expression_start = start + 2;
-        let Some(end) = remainder[expression_start..].find('}') else {
+        let Some(end) = template_substitution_end(&remainder[expression_start..]) else {
             return Err(unsupported(
                 token_span(module, token),
                 "unterminated template substitution",
             ));
         };
-        let name = &remainder[expression_start..expression_start + end];
-        if !is_template_identifier(name) {
-            return Err(unsupported(
-                token_span(module, token),
-                "only identifier template substitutions are in the v1 direct bridge subset",
-            ));
-        }
-        expressions.push(bluejs::Expr::Identifier(name.to_string()));
+        let expression = &remainder[expression_start..expression_start + end];
+        expressions.push(lower_template_substitution(
+            module,
+            token,
+            expression,
+            remainder_offset + expression_start,
+        )?);
+        remainder_offset += expression_start + end + 1;
         remainder = &remainder[expression_start + end + 1..];
     }
     quasis.push(decode_string_escapes(module, token, remainder)?.into());
@@ -1573,14 +1574,87 @@ fn lower_template(module: &str, token: &Token) -> Result<bluejs::Expr, BridgeErr
     })
 }
 
-fn is_template_identifier(name: &str) -> bool {
-    let mut characters = name.chars();
-    let Some(first) = characters.next() else {
-        return false;
-    };
-    (first == '$' || first == '_' || first.is_alphabetic())
-        && characters
-            .all(|character| character == '$' || character == '_' || character.is_alphanumeric())
+fn template_substitution_start(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut index = 0usize;
+    while index + 1 < bytes.len() {
+        if bytes[index] == b'\\' {
+            index += 2;
+        } else if bytes[index] == b'$' && bytes[index + 1] == b'{' {
+            return Some(index);
+        } else {
+            index += 1;
+        }
+    }
+    None
+}
+
+fn template_substitution_end(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut index = 0usize;
+    let mut depth = 1usize;
+    let mut quote = None;
+    while index < bytes.len() {
+        if let Some(delimiter) = quote {
+            if bytes[index] == b'\\' {
+                index += 2;
+                continue;
+            }
+            if bytes[index] == delimiter {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        match bytes[index] {
+            b'\'' | b'"' => quote = Some(bytes[index]),
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    None
+}
+
+fn lower_template_substitution(
+    module: &str,
+    template: &Token,
+    source: &str,
+    source_offset: usize,
+) -> Result<bluejs::Expr, BridgeError> {
+    if source.is_empty() {
+        return Err(unsupported(
+            token_span(module, template),
+            "empty template substitutions are not expressions",
+        ));
+    }
+    let mut tokens = lex(module, source).map_err(|_| {
+        unsupported(
+            token_span(module, template),
+            "invalid expression in a template substitution",
+        )
+    })?;
+    let eof = tokens
+        .pop()
+        .expect("BlueTS lexer always terminates with EOF");
+    debug_assert_eq!(eof.kind, TokenKind::Eof);
+    if tokens.is_empty() {
+        return Err(unsupported(
+            token_span(module, template),
+            "empty template substitutions are not expressions",
+        ));
+    }
+    for token in &mut tokens {
+        token.start += template.start + source_offset;
+        token.end += template.start + source_offset;
+    }
+    ExpressionLowerer::new(module, &tokens).parse()
 }
 
 fn token_span(module: &str, token: &Token) -> SourceSpan {
@@ -2403,6 +2477,26 @@ mod tests {
     }
 
     #[test]
+    fn lowers_checked_template_substitution_expressions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                concat!(
+                    "const values: number[] = [40, 2];",
+                    "`${({ label: 'BlueTSC' }).label}: ${values[0] + values[1]}`;"
+                ),
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("BlueTSC: 42".into())
+        );
+    }
+
+    #[test]
     fn lowers_checked_simple_string_escapes() {
         let artifact = compile_direct_script(
             ENTRY,
@@ -2518,7 +2612,7 @@ mod tests {
 
     #[test]
     fn expression_lowerer_rejects_unimplemented_template_substitutions_and_escapes() {
-        for text in [r"`value=${person.name}`", r"`line\u0041`"] {
+        for text in [r"`value=${person?.name}`", r"`line\u0041`"] {
             let token = Token {
                 kind: TokenKind::Template,
                 text: text.to_string(),
@@ -2530,9 +2624,30 @@ mod tests {
                 panic!("the direct bridge must reject an unimplemented template shape");
             };
             assert!(
-                message.contains("template substitutions") || message.contains("string escape")
+                message.contains("unsupported expression") || message.contains("string escape")
             );
         }
+    }
+
+    #[test]
+    fn template_substitution_errors_retain_the_original_source_offset() {
+        let source = concat!(
+            "const person: { name: string } = { name: 'Ada' };",
+            "`value=${person?.name}`;"
+        );
+        let error = match compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+            CompilerOptions::default(),
+        ) {
+            Err(error) => error,
+            Ok(_) => panic!("the optional template expression must be rejected by the bridge"),
+        };
+        let BridgeError::UnsupportedRuntimeTarget { span, .. } = error else {
+            panic!("the optional template expression must be rejected by the bridge");
+        };
+        assert_eq!(span.module, ENTRY);
+        assert!(span.start > source.find('`').unwrap());
     }
 
     #[test]

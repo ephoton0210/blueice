@@ -296,6 +296,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "template-substitution-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/template-substitution-expression/main.ts"),
+        )],
+        expected_stdout: Some("BlueTSC: 42\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "property-assignment-expression",
         modules: &[ (
             "memory:///main.ts",

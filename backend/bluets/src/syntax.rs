@@ -246,8 +246,9 @@ pub(crate) fn lex_with_limits(
             });
         } else if byte == b'`' {
             // Templates with substitutions remain a single lexical unit here.
-            // The initial compiler does not type-check template expressions, but
-            // it can faithfully preserve an already-valid JavaScript template.
+            // The checker treats the complete literal as a string; direct
+            // BlueTS-to-BlueJS lowering tokenizes a supported substitution only
+            // when it needs to construct the corresponding expression AST.
             index += 1;
             let mut terminated = false;
             while index < bytes.len() {
