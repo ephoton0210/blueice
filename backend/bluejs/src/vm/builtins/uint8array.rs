@@ -540,7 +540,7 @@ fn decode_hex(input: &JsString, maximum: usize) -> DecodedBytes {
     let units = input.as_code_units();
     // Hex validates its all-or-nothing pair structure before it starts
     // writing, including for a zero-length destination.
-    if units.len() % 2 != 0 {
+    if !units.len().is_multiple_of(2) {
         return DecodedBytes::error(0, Vec::new());
     }
     if maximum == 0 {
@@ -588,7 +588,7 @@ fn encode_base64(bytes: &[u8], alphabet: Base64Alphabet, omit_padding: bool) -> 
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".as_slice()
         }
     };
-    let mut output = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let first = chunk[0];
         output.push(alphabet[(first >> 2) as usize] as char);
