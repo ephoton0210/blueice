@@ -67,22 +67,23 @@ impl Vm {
         };
         let (requested_hour, requested_microsecond, requested_millisecond, requested_minute) =
             if is_date_time {
+                // No range while reading: `RegulateTime` judges it once
+                // `overflow` is known (constrain clamps, reject throws).
                 (
-                    self.temporal_read_optional_integer(like, "hour", 0, 23)?,
-                    self.temporal_read_optional_integer(like, "microsecond", 0, 999)?,
-                    self.temporal_read_optional_integer(like, "millisecond", 0, 999)?,
-                    self.temporal_read_optional_integer(like, "minute", 0, 59)?,
+                    self.temporal_read_optional_time_field(like, "hour")?,
+                    self.temporal_read_optional_time_field(like, "microsecond")?,
+                    self.temporal_read_optional_time_field(like, "millisecond")?,
+                    self.temporal_read_optional_time_field(like, "minute")?,
                 )
             } else {
                 (None, None, None, None)
             };
         let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
-        let month_code_s =
-            self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
+        let month_code_s = self.temporal_read_month_code(like)?;
         let (requested_nanosecond, requested_second) = if is_date_time {
             (
-                self.temporal_read_optional_integer(like, "nanosecond", 0, 999)?,
-                self.temporal_read_optional_integer(like, "second", 0, 59)?,
+                self.temporal_read_optional_time_field(like, "nanosecond")?,
+                self.temporal_read_optional_time_field(like, "second")?,
             )
         } else {
             (None, None)
@@ -176,7 +177,11 @@ impl Vm {
         // regulation, matching `plain_month_day.rs`'s identical fix and
         // Test262's `wrapping-at-end-of-month-*.js` (`date.with({ day:
         // daysInMonth + 1 })` constrains rather than field-bound-rejecting).
-        fields.day = Some(requested_day.unwrap_or(i32::from(existing_fields.day)) as u8);
+        fields.day = Some(
+            requested_day
+                .unwrap_or(i32::from(existing_fields.day))
+                .min(i32::from(u8::MAX)) as u8,
+        );
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
@@ -201,15 +206,24 @@ impl Vm {
         let mut result =
             Self::temporal_value_from_calendar_date(existing.kind, existing.calendar.clone(), date);
         if is_date_time {
-            result.hour = requested_hour.unwrap_or(i32::from(existing.hour)) as u8;
-            result.minute = requested_minute.unwrap_or(i32::from(existing.minute)) as u8;
-            result.second = requested_second.unwrap_or(i32::from(existing.second)) as u8;
-            result.millisecond =
-                requested_millisecond.unwrap_or(i32::from(existing.millisecond)) as u16;
-            result.microsecond =
-                requested_microsecond.unwrap_or(i32::from(existing.microsecond)) as u16;
-            result.nanosecond =
-                requested_nanosecond.unwrap_or(i32::from(existing.nanosecond)) as u16;
+            // `RegulateTime`, once the date has resolved.
+            let time = Self::temporal_regulate_time(
+                [
+                    requested_hour.unwrap_or(i64::from(existing.hour)),
+                    requested_minute.unwrap_or(i64::from(existing.minute)),
+                    requested_second.unwrap_or(i64::from(existing.second)),
+                    requested_millisecond.unwrap_or(i64::from(existing.millisecond)),
+                    requested_microsecond.unwrap_or(i64::from(existing.microsecond)),
+                    requested_nanosecond.unwrap_or(i64::from(existing.nanosecond)),
+                ],
+                reject,
+            )?;
+            result.hour = time.0;
+            result.minute = time.1;
+            result.second = time.2;
+            result.millisecond = time.3;
+            result.microsecond = time.4;
+            result.nanosecond = time.5;
         }
         self.alloc_temporal_value(result, false)
     }

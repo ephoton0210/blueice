@@ -146,7 +146,20 @@ impl Vm {
             native::TemporalGetter::HoursInDay => {
                 let zone = temporal_zoned_date_time_zone(&value);
                 let date = (value.year, value.month, value.day);
-                let length = zoned_date_time::day_length_nanoseconds(&zone, date);
+                // `GetStartOfDay` of today and of tomorrow: at the edge of the
+                // representable range either can be unrepresentable, which is a
+                // `RangeError` rather than a length
+                // (`hoursInDay/get-start-of-day-throws.js`,
+                // `hoursInDay/next-day-out-of-range.js`).
+                let (start, end) =
+                    zoned_date_time::checked_day_bounds(&zone, date).ok_or_else(|| {
+                        RuntimeError::RangeError(
+                            "Temporal.ZonedDateTime.hoursInDay is outside the supported range"
+                                .into(),
+                        )
+                    })?;
+                let length = i128::try_from(&end - &start)
+                    .expect("one day's length fits in i128 many times over");
                 Ok(Value::Number(length as f64 / 3_600_000_000_000.0))
             }
             getter => {
