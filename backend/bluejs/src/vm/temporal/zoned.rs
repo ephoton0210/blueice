@@ -310,16 +310,20 @@ impl Vm {
         plain_time_like: &Value,
     ) -> Result<Value, RuntimeError> {
         let mut value = self.temporal_zoned_date_time_receiver(receiver)?;
-        let time = if *plain_time_like == Value::Undefined {
-            (0, 0, 0, 0, 0, 0)
-        } else {
-            self.temporal_to_plain_time(plain_time_like, &Value::Undefined)?
-        };
         let zone = temporal_zoned_date_time_zone(&value);
         let date = (value.year, value.month, value.day);
-        value.epoch_nanoseconds = zone
-            .epoch_nanoseconds_for(date, time, time_zone::Disambiguation::Compatible)
-            .map_err(temporal_resolution_error)?;
+        value.epoch_nanoseconds = if *plain_time_like == Value::Undefined {
+            // No time given: the result is the day's `GetStartOfDay`, which is
+            // not the `compatible` resolution of local midnight when midnight
+            // is skipped (`withPlainTime/dst-skipped-cross-midnight.js`).
+            temporal_checked_start_of_day(&zone, date)?
+        } else {
+            let time = self.temporal_to_plain_time(plain_time_like, &Value::Undefined)?;
+            let resolved = zone
+                .epoch_nanoseconds_for(date, time, time_zone::Disambiguation::Compatible)
+                .map_err(temporal_resolution_error)?;
+            temporal_require_instant_range(resolved)?
+        };
         temporal_set_local_fields(&mut value, &zone);
         self.alloc_temporal_value(value, false)
     }
@@ -1218,7 +1222,7 @@ impl Vm {
         let mut existing = self.temporal_zoned_date_time_receiver(receiver)?;
         let zone = temporal_zoned_date_time_zone(&existing);
         let date = (existing.year, existing.month, existing.day);
-        existing.epoch_nanoseconds = zone.start_of_day(date);
+        existing.epoch_nanoseconds = temporal_checked_start_of_day(&zone, date)?;
         temporal_set_local_fields(&mut existing, &zone);
         self.alloc_temporal_value(existing, false)
     }
@@ -1419,6 +1423,29 @@ pub(super) fn temporal_set_local_fields(value: &mut TemporalValue, zone: &time_z
     value.millisecond = millisecond;
     value.microsecond = microsecond;
     value.nanosecond = nanosecond;
+}
+
+/// `RangeError` unless `instant` is a representable `Temporal.Instant`.
+pub(super) fn temporal_require_instant_range(instant: BigInt) -> Result<BigInt, RuntimeError> {
+    if epoch::is_in_instant_range(&instant) {
+        Ok(instant)
+    } else {
+        Err(RuntimeError::RangeError(
+            "Temporal.ZonedDateTime epoch nanoseconds are outside the supported range".into(),
+        ))
+    }
+}
+
+/// `GetStartOfDay(timeZone, date)`, which throws a `RangeError` when that
+/// instant is not representable -- a `ZonedDateTime` at the edge of the range
+/// has a wall-clock date whose start of day lies just outside it
+/// (`startOfDay/throws-if-epoch-nanoseconds-outside-valid-limits.js`,
+/// `withPlainTime/get-start-of-day-throws.js`).
+pub(super) fn temporal_checked_start_of_day(
+    zone: &time_zone::TimeZone,
+    date: epoch::CivilDate,
+) -> Result<BigInt, RuntimeError> {
+    temporal_require_instant_range(zone.start_of_day(date))
 }
 
 /// Maps a host-neutral zone-resolution failure onto the `RangeError` the spec

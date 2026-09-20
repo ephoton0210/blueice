@@ -467,3 +467,45 @@ fn round_to_days_lands_on_a_start_of_day_even_when_midnight_occurs_twice() {
     "#,
     );
 }
+
+/// `built-ins/Temporal/ZonedDateTime/prototype/{startOfDay,withPlainTime}/
+/// {throws-if-epoch-nanoseconds-outside-valid-limits,get-start-of-day-throws}.js`
+/// and `intl402/.../withPlainTime/dst-skipped-cross-midnight.js`.
+#[test]
+fn start_of_day_and_with_plain_time_reject_unrepresentable_instants() {
+    check(
+        r#"
+        const min = -864n * 10n ** 19n;
+        // The start of the wall-clock day of an instant at the very edge is out of range...
+        assertRangeError(() => new Temporal.ZonedDateTime(min, "-01").startOfDay(), "startOfDay -01");
+        assertRangeError(() => new Temporal.ZonedDateTime(min, "+01").startOfDay(), "startOfDay +01");
+        assertRangeError(() => new Temporal.ZonedDateTime(min, "-01").withPlainTime(), "withPlainTime() -01");
+        assertRangeError(() => new Temporal.ZonedDateTime(min, "+01").withPlainTime(), "withPlainTime() +01");
+        // ...unless the zone is UTC, where it is exactly the minimum.
+        assertSame(new Temporal.ZonedDateTime(min, "+00").startOfDay().epochNanoseconds, min, "UTC start of day");
+        // An explicit time is resolved through the zone and must itself be representable.
+        assertRangeError(() => new Temporal.ZonedDateTime(min, "-01").withPlainTime("00:00"), "-01 00:00");
+        assertRangeError(() => new Temporal.ZonedDateTime(min, "+01").withPlainTime("00:00"), "+01 00:00");
+        assertRangeError(() => new Temporal.ZonedDateTime(864n * 10n ** 19n, "UTC").withPlainTime("01:00"), "max 01:00");
+    "#,
+    );
+}
+
+/// `intl402/Temporal/ZonedDateTime/prototype/withPlainTime/dst-skipped-cross-midnight.js`:
+/// with no argument the result is the day's start, which is *not* the
+/// `compatible` resolution of a midnight that does not exist.
+#[test]
+fn with_plain_time_without_an_argument_is_the_start_of_the_day() {
+    check(
+        r#"
+        // Toronto's 1919-03-31 gap started at 00:30, so the day starts at 00:30
+        // -- neither 00:00 nor the 01:00 that `compatible` moves midnight to.
+        const instance = Temporal.ZonedDateTime.from({ year: 1919, month: 3, day: 31, hour: 12, timeZone: "America/Toronto" });
+        const startOfDay = instance.withPlainTime();
+        const midnightDisambiguated = instance.withPlainTime(new Temporal.PlainTime());
+        assertSame(startOfDay.epochNanoseconds, instance.startOfDay().epochNanoseconds, "same instant as startOfDay");
+        assertDuration(startOfDay.until(midnightDisambiguated), 0, 0, 0, 0, 0, 30, 0, 0, 0, 0,
+          "start of day is 30 minutes earlier than the disambiguated midnight");
+    "#,
+    );
+}

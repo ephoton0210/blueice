@@ -132,7 +132,7 @@ impl ZonedOrigin<'_> {
 }
 
 /// `GetISODateTimeFor(timeZone, epochNanoseconds)`.
-pub(crate) fn local_date_time(
+fn local_date_time(
     zone: &TimeZone,
     epoch_nanoseconds: &BigInt,
 ) -> (CivilDate, CivilTime) {
@@ -1025,9 +1025,11 @@ mod tests {
     }
 
     #[test]
-    fn a_time_unit_smallest_unit_of_day_or_larger_is_never_nudged_as_time() {
-        // `smallestUnit: "days"` with a zone is `NudgeToCalendarUnit`, so a
-        // 23-hour day rounds 11.5 hours to exactly half.
+    fn day_rounding_measures_progress_through_the_real_day_length() {
+        // `smallestUnit: "days"` with a zone is `NudgeToCalendarUnit`. Vancouver
+        // skips 02:00-03:00 on 2000-04-02, so 12:30 on the wall clock is 11.5
+        // elapsed hours into a 23-hour day: exactly half, which `halfExpand`
+        // rounds up and `halfTrunc` down.
         let vancouver = zone("America/Vancouver");
         let result = difference(
             &vancouver,
@@ -1079,13 +1081,27 @@ mod tests {
         let utc = zone("UTC");
         let from = at(2021, 3, 1, 0, 0);
         let to = at(2021, 3, 7, 12, 0);
-        let weeks =
-            difference(&utc, from, to, TemporalUnit::Week, 1, TemporalUnit::Day, Mode::Expand)
-                .unwrap();
+        let weeks = difference(
+            &utc,
+            from,
+            to,
+            TemporalUnit::Week,
+            1,
+            TemporalUnit::Day,
+            Mode::Expand,
+        )
+        .unwrap();
         assert_eq!(weeks, InternalDuration::from_date(0, 0, 1, 0));
-        let days =
-            difference(&utc, from, to, TemporalUnit::Day, 1, TemporalUnit::Day, Mode::Expand)
-                .unwrap();
+        let days = difference(
+            &utc,
+            from,
+            to,
+            TemporalUnit::Day,
+            1,
+            TemporalUnit::Day,
+            Mode::Expand,
+        )
+        .unwrap();
         assert_eq!(days, InternalDuration::from_date(0, 0, 0, 7));
     }
 
@@ -1133,7 +1149,14 @@ mod tests {
         );
         assert_eq!(
             duration.into_fields(TemporalUnit::Nanosecond)[4..],
-            [0, 0, 0, 0, 0, 26 * 3_600_000_000_000 + 3 * 60_000_000_000 + 4_005_006_007]
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                26 * 3_600_000_000_000 + 3 * 60_000_000_000 + 4_005_006_007
+            ]
         );
     }
 
@@ -1158,7 +1181,10 @@ mod tests {
             Mode::HalfTrunc,
             Mode::HalfEven,
         ] {
-            assert!(!decide(below, 0, 1, mode) && decide(above, 0, 1, mode), "{mode:?}");
+            assert!(
+                !decide(below, 0, 1, mode) && decide(above, 0, 1, mode),
+                "{mode:?}"
+            );
         }
         // ...and differ exactly on it, depending on direction.
         assert!(decide(half, 0, 1, Mode::HalfCeil) && !decide(half, 0, -1, Mode::HalfCeil));
