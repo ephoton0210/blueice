@@ -114,8 +114,9 @@ impl std::error::Error for BridgeError {}
 /// optional literal/identifier/arithmetic initializer, named local functions
 /// with required identifier parameters plus structured local/return bodies,
 /// and standalone expressions made from those same forms or direct calls.
-/// Static-only declarations disappear before lowering. A broader accepted
-/// BlueTS program returns
+/// The expression subset includes unary, arithmetic, relational, equality,
+/// `&&`, and `||` operators. Static-only declarations disappear before
+/// lowering. A broader accepted BlueTS program returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
 /// JavaScript text round trip.
 pub fn compile_direct_script(
@@ -609,12 +610,86 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     fn parse(mut self) -> Result<bluejs::Expr, BridgeError> {
-        let expression = self.parse_additive()?;
+        let expression = self.parse_logical_or()?;
         if let Some(token) = self.tokens.get(self.index) {
             return Err(unsupported(
                 self.token_span(token),
                 format!("unsupported expression token `{}`", token.text),
             ));
+        }
+        Ok(expression)
+    }
+
+    fn parse_logical_or(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let mut expression = self.parse_logical_and()?;
+        while self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == "||")
+        {
+            self.index += 1;
+            expression = bluejs::Expr::Logical {
+                op: bluejs::LogicalOp::Or,
+                left: Box::new(expression),
+                right: Box::new(self.parse_logical_and()?),
+            };
+        }
+        Ok(expression)
+    }
+
+    fn parse_logical_and(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let mut expression = self.parse_equality()?;
+        while self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == "&&")
+        {
+            self.index += 1;
+            expression = bluejs::Expr::Logical {
+                op: bluejs::LogicalOp::And,
+                left: Box::new(expression),
+                right: Box::new(self.parse_equality()?),
+            };
+        }
+        Ok(expression)
+    }
+
+    fn parse_equality(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let mut expression = self.parse_relational()?;
+        while let Some(token) = self.tokens.get(self.index) {
+            let op = match token.text.as_str() {
+                "==" => bluejs::BinaryOp::Eq,
+                "!=" => bluejs::BinaryOp::NotEq,
+                "===" => bluejs::BinaryOp::StrictEq,
+                "!==" => bluejs::BinaryOp::StrictNotEq,
+                _ => break,
+            };
+            self.index += 1;
+            expression = bluejs::Expr::Binary {
+                op,
+                left: Box::new(expression),
+                right: Box::new(self.parse_relational()?),
+            };
+        }
+        Ok(expression)
+    }
+
+    fn parse_relational(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let mut expression = self.parse_additive()?;
+        while let Some(token) = self.tokens.get(self.index) {
+            let op = match token.text.as_str() {
+                "<" => bluejs::BinaryOp::Lt,
+                ">" => bluejs::BinaryOp::Gt,
+                "<=" => bluejs::BinaryOp::LtEq,
+                ">=" => bluejs::BinaryOp::GtEq,
+                _ => break,
+            };
+            self.index += 1;
+            expression = bluejs::Expr::Binary {
+                op,
+                left: Box::new(expression),
+                right: Box::new(self.parse_additive()?),
+            };
         }
         Ok(expression)
     }
@@ -638,7 +713,7 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     fn parse_multiplicative(&mut self) -> Result<bluejs::Expr, BridgeError> {
-        let mut expression = self.parse_primary()?;
+        let mut expression = self.parse_unary()?;
         while let Some(token) = self.tokens.get(self.index) {
             let op = match token.text.as_str() {
                 "*" => bluejs::BinaryOp::Mul,
@@ -650,10 +725,31 @@ impl<'a> ExpressionLowerer<'a> {
             expression = bluejs::Expr::Binary {
                 op,
                 left: Box::new(expression),
-                right: Box::new(self.parse_primary()?),
+                right: Box::new(self.parse_unary()?),
             };
         }
         Ok(expression)
+    }
+
+    fn parse_unary(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let op = self
+            .tokens
+            .get(self.index)
+            .and_then(|token| match token.text.as_str() {
+                "!" => Some(bluejs::UnaryOp::Not),
+                "+" => Some(bluejs::UnaryOp::Plus),
+                "-" => Some(bluejs::UnaryOp::Neg),
+                "~" => Some(bluejs::UnaryOp::BitNot),
+                _ => None,
+            });
+        if let Some(op) = op {
+            self.index += 1;
+            return Ok(bluejs::Expr::Unary {
+                op,
+                arg: Box::new(self.parse_unary()?),
+            });
+        }
+        self.parse_primary()
     }
 
     fn parse_primary(&mut self) -> Result<bluejs::Expr, BridgeError> {
@@ -692,7 +788,7 @@ impl<'a> ExpressionLowerer<'a> {
                 )),
             },
             TokenKind::Punct if token.text == "(" => {
-                let expression = self.parse_additive()?;
+                let expression = self.parse_logical_or()?;
                 let Some(closing) = self.tokens.get(self.index) else {
                     return Err(unsupported(
                         self.token_span(token),
@@ -734,7 +830,7 @@ impl<'a> ExpressionLowerer<'a> {
                 self.index += 1;
             } else {
                 loop {
-                    args.push(bluejs::Argument::Normal(self.parse_additive()?));
+                    args.push(bluejs::Argument::Normal(self.parse_logical_or()?));
                     let Some(separator) = self.tokens.get(self.index) else {
                         return Err(unsupported(
                             SourceSpan::new(self.module, 0, 0),
@@ -940,6 +1036,42 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn lowers_boolean_comparison_logical_and_unary_expressions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function matches(value: number) { \
+                 return !(value < 42) && ~0 === -1 && +value === 42; } matches(42);",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn gives_logical_and_higher_precedence_than_logical_or() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function isBelow(value: number) { \
+                 return value < 42 || value === 42 && false; } isBelow(41);",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Bool(true)
         );
     }
 
