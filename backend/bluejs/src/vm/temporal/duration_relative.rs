@@ -676,7 +676,8 @@ impl Vm {
         )
         .total_nanoseconds()
             + record.days * DAY_NS;
-        let target_days = i64::try_from(time_total.div_euclid(DAY_NS)).map_err(|_| out_of_range())?;
+        let target_days =
+            i64::try_from(time_total.div_euclid(DAY_NS)).map_err(|_| out_of_range())?;
         let target_time =
             duration_math::time_fields_from_nanoseconds(time_total.rem_euclid(DAY_NS));
         let target_date = plain_date::calendar_add_date(
