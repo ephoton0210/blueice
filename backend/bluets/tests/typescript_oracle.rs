@@ -267,6 +267,18 @@ const CASES: &[OracleCase] = &[
         }],
     },
     OracleCase {
+        name: "nullish-logical-mixing-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/nullish-logical-mixing-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::ParseError,
+            line: 5,
+        }],
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",

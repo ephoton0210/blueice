@@ -1038,6 +1038,24 @@ mod tests {
     const MODULE_ENTRY: &str = "memory:///direct-module.ts";
     const GRAPH_ENTRY: &str = "graph/main.ts";
 
+    fn expression_tokens(parts: &[(&str, TokenKind)]) -> Vec<Token> {
+        let mut start = 0;
+        parts
+            .iter()
+            .map(|(text, kind)| {
+                let end = start + text.len();
+                let token = Token {
+                    kind: *kind,
+                    text: (*text).to_string(),
+                    start,
+                    end,
+                };
+                start = end + 1;
+                token
+            })
+            .collect()
+    }
+
     struct AliasedGraphLoader;
 
     impl ModuleLoader for AliasedGraphLoader {
@@ -1240,14 +1258,43 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unparenthesized_nullish_and_logical_mixing() {
+    fn rejects_unparenthesized_nullish_and_logical_mixing_before_direct_lowering() {
         for source in ["false || null ?? 42;", "null ?? false || true;"] {
             let result = compile_direct_script(
                 ENTRY,
                 &MapLoader::from([ModuleSource::new(ENTRY, source)]),
                 CompilerOptions::default(),
             );
-            let Err(BridgeError::UnsupportedRuntimeTarget { message, .. }) = result else {
+            let Err(BridgeError::BlueTs(diagnostics)) = result else {
+                panic!("BlueTS must reject mixed unparenthesized logical operators");
+            };
+            assert!(diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == blueice_bluets::DiagnosticCode::ParseError
+                    && diagnostic.message.contains("parentheses are required")
+            }));
+        }
+    }
+
+    #[test]
+    fn expression_lowerer_defensively_rejects_unparenthesized_nullish_logical_mixing() {
+        for tokens in [
+            expression_tokens(&[
+                ("false", TokenKind::Keyword),
+                ("||", TokenKind::Punct),
+                ("null", TokenKind::Keyword),
+                ("??", TokenKind::Punct),
+                ("42", TokenKind::Number),
+            ]),
+            expression_tokens(&[
+                ("null", TokenKind::Keyword),
+                ("??", TokenKind::Punct),
+                ("false", TokenKind::Keyword),
+                ("||", TokenKind::Punct),
+                ("true", TokenKind::Keyword),
+            ]),
+        ] {
+            let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
+            let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
                 panic!("the direct bridge must reject mixed unparenthesized logical operators");
             };
             assert!(message.contains("parentheses are required"));

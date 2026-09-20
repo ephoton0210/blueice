@@ -345,6 +345,7 @@ impl Parser {
             );
             return Err(self.diagnostics);
         }
+        self.diagnose_unparenthesized_nullish_logical_mixing();
         while !self.at_eof() {
             if self.consume(";") {
                 continue;
@@ -1212,6 +1213,65 @@ impl Parser {
         }
     }
 
+    /// ECMAScript requires parentheses when `??` appears with `&&` or `||`
+    /// in the same logical expression. The bounded parser otherwise retains
+    /// runtime expressions as token spans, so enforce this early error before
+    /// unsupported raw statements can be copied into emitted JavaScript.
+    fn diagnose_unparenthesized_nullish_logical_mixing(&mut self) {
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        enum LogicalFamily {
+            Nullish,
+            AndOr,
+        }
+
+        let mut scopes = vec![None::<LogicalFamily>];
+        for index in 0..self.tokens.len() {
+            let token = self.tokens[index].clone();
+            match token.text.as_str() {
+                "(" | "[" | "{" => scopes.push(None),
+                ")" | "]" | "}" if scopes.len() > 1 => {
+                    scopes.pop();
+                }
+                "," | ";" | "?" | ":" => {
+                    *scopes
+                        .last_mut()
+                        .expect("the global expression scope remains") = None;
+                }
+                "??" => {
+                    let scope = scopes
+                        .last_mut()
+                        .expect("the global expression scope remains");
+                    if *scope == Some(LogicalFamily::AndOr) {
+                        self.error_at(
+                            token.span(&self.id),
+                            DiagnosticCode::ParseError,
+                            "parentheses are required when mixing `??` with `&&` or `||`",
+                        );
+                        *scope = None;
+                    } else {
+                        *scope = Some(LogicalFamily::Nullish);
+                    }
+                }
+                "&&" | "||" => {
+                    let scope = scopes
+                        .last_mut()
+                        .expect("the global expression scope remains");
+                    if *scope == Some(LogicalFamily::Nullish) {
+                        self.error_at(
+                            token.span(&self.id),
+                            DiagnosticCode::ParseError,
+                            "parentheses are required when mixing `??` with `&&` or `||`",
+                        );
+                        *scope = None;
+                    } else {
+                        *scope = Some(LogicalFamily::AndOr);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn parse_call_type_arguments(&mut self, start: usize, end: usize) -> Vec<Type> {
         if start == end {
             return Vec::new();
@@ -1749,6 +1809,27 @@ mod tests {
             let diagnostics = parse_module("memory:///app.ts", source).unwrap_err();
             assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);
         }
+    }
+
+    #[test]
+    fn rejects_unparenthesized_nullish_and_logical_mixing() {
+        for source in [
+            "const value = false || null ?? 42;",
+            "const value = null ?? false || true;",
+            "function choose() { return null ?? false || true; }",
+            "null ?? false || true;",
+        ] {
+            let diagnostics = parse_module("memory:///app.ts", source).unwrap_err();
+            assert_eq!(diagnostics.len(), 1, "{source}: {diagnostics:#?}");
+            assert_eq!(diagnostics[0].code, DiagnosticCode::ParseError, "{source}");
+            assert!(diagnostics[0].message.contains("parentheses are required"));
+        }
+
+        parse_module(
+            "memory:///app.ts",
+            "const left = (false || null) ?? 42; const right = null ?? (false || true);",
+        )
+        .unwrap();
     }
 
     #[test]
