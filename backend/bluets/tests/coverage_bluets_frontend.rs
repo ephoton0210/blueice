@@ -157,6 +157,10 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "mixed value/type imports are not in the initial BlueTS matrix",
         ),
         (
+            "export { a } from './a.ts';",
+            "value re-exports from another module are not in the initial BlueTS matrix",
+        ),
+        (
             "type A = number; interface B extends A { x: string }",
             "interface heritage A must name an interface declaration",
         ),
@@ -439,7 +443,7 @@ fn supported_programs_are_accepted() {
         "function f() { if (true) { return 1; } return 2; }",
         "function f() { return; }",
         "export function f(): number { return 1; }",
-        "export { a };",
+        "const a = 1; export { a };",
         "export type X = number; export interface Y {}",
         "type A = number; export type { A }; export type { A as B };",
         "import type { Shape } from './a.ts'; const s: Shape = { x: 1 };",
@@ -591,6 +595,47 @@ fn named_default_value_exports_require_a_local_runtime_declaration() {
         "declare const ambient: string;\nexport default ambient;",
         "BTS3001",
         "default export `ambient` must name a local runtime declaration",
+    );
+}
+
+#[test]
+fn named_value_exports_preserve_esm_and_emit_a_public_declaration() {
+    let source =
+        "const label: string = 'Hello, Ada';\nexport { label as greeting };\nconsole.log(label);\n";
+    let compilation = compile_with_helper(source);
+    assert!(
+        compilation.diagnostics.is_empty(),
+        "{:#?}",
+        compilation.diagnostics
+    );
+    let javascript = &compilation.output.unwrap().artifacts[ENTRY].javascript;
+    assert!(javascript.contains("const label"));
+    assert!(javascript.contains("export { label as greeting }"));
+    assert!(!javascript.contains(": string"));
+
+    let output = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            declaration: true,
+            ..CompilerOptions::default()
+        },
+    )
+    .output
+    .unwrap();
+    let declaration = output.artifacts[ENTRY].declaration.as_deref().unwrap();
+    assert_eq!(
+        declaration,
+        "declare const label: string;\nexport { label as greeting };\n"
+    );
+}
+
+#[test]
+fn named_value_exports_require_a_local_runtime_declaration() {
+    assert_rejected(
+        "export { missing };",
+        "BTS3001",
+        "exported value `missing` must name a local runtime declaration",
     );
 }
 

@@ -277,7 +277,9 @@ fn emit_declaration(module: &Module) -> String {
             }
             Declaration::Variable(variable)
                 if !variable.declared
-                    && (variable.exported || is_default_export_name(module, &variable.name)) =>
+                    && (variable.exported
+                        || is_default_export_name(module, &variable.name)
+                        || is_value_export_name(module, &variable.name)) =>
             {
                 if variable.exported {
                     output.push_str("export declare ");
@@ -298,7 +300,9 @@ fn emit_declaration(module: &Module) -> String {
                 output.push_str(";\n");
             }
             Declaration::Function(function)
-                if (function.exported || is_default_export_name(module, &function.name))
+                if (function.exported
+                    || is_default_export_name(module, &function.name)
+                    || is_value_export_name(module, &function.name))
                     && (function.overload
                         || !module.declarations.iter().any(|declaration| {
                             matches!(
@@ -365,6 +369,20 @@ fn emit_declaration(module: &Module) -> String {
                 output.push_str(&export.name);
                 output.push_str(";\n");
             }
+            Declaration::ValueExport(export) => {
+                output.push_str("export { ");
+                for (index, binding) in export.bindings.iter().enumerate() {
+                    if index > 0 {
+                        output.push_str(", ");
+                    }
+                    output.push_str(&binding.local);
+                    if binding.local != binding.exported {
+                        output.push_str(" as ");
+                        output.push_str(&binding.exported);
+                    }
+                }
+                output.push_str(" };\n");
+            }
             _ => {}
         }
     }
@@ -374,6 +392,12 @@ fn emit_declaration(module: &Module) -> String {
 fn is_default_export_name(module: &Module, name: &str) -> bool {
     module.declarations.iter().any(|declaration| {
         matches!(declaration, Declaration::DefaultExport(export) if export.name == name)
+    })
+}
+
+fn is_value_export_name(module: &Module, name: &str) -> bool {
+    module.declarations.iter().any(|declaration| {
+        matches!(declaration, Declaration::ValueExport(export) if export.bindings.iter().any(|binding| binding.local == name))
     })
 }
 

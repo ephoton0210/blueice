@@ -170,6 +170,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "named-value-export",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/named-value-export/main.ts"),
+        )],
+        expected_stdout: Some("Hello, Ada\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",
@@ -412,6 +421,9 @@ fn expected_declaration(case: &OracleCase) -> Option<&'static str> {
         }
         "default-value-export" => {
             Some("declare const greeting: string;\nexport default greeting;\n")
+        }
+        "named-value-export" => {
+            Some("declare const label: string;\nexport { label as greeting };\n")
         }
         _ => None,
     }

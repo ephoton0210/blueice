@@ -177,6 +177,7 @@ fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnostic> {
                 Declaration::Function(function) => !function.declared && !function.overload,
                 Declaration::Raw(_) => true,
                 Declaration::DefaultExport(_)
+                | Declaration::ValueExport(_)
                 | Declaration::TypeExport(_)
                 | Declaration::TypeAlias(_)
                 | Declaration::Interface(_) => false,
@@ -399,6 +400,7 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Import(import) => self.bind_import(import),
                 Declaration::TypeExport(export) => self.bind_type_export(export),
                 Declaration::DefaultExport(_) => {}
+                Declaration::ValueExport(_) => {}
                 Declaration::TypeAlias(alias) => {
                     self.insert_type(
                         &alias.name,
@@ -484,6 +486,7 @@ impl<'a> ModuleChecker<'a> {
         }
         self.validate_function_overloads();
         self.validate_default_exports();
+        self.validate_value_exports();
     }
 
     fn validate_default_exports(&mut self) {
@@ -535,6 +538,63 @@ impl<'a> ModuleChecker<'a> {
                         export.name
                     ),
                 ));
+            }
+        }
+    }
+
+    fn validate_value_exports(&mut self) {
+        let mut exported_names = BTreeSet::new();
+        for declaration in &self.module.declarations {
+            match declaration {
+                Declaration::Variable(variable) if variable.exported && !variable.declared => {
+                    exported_names.insert(variable.name.clone());
+                }
+                Declaration::Function(function)
+                    if function.exported && !function.default_export && !function.overload =>
+                {
+                    exported_names.insert(function.name.clone());
+                }
+                _ => {}
+            }
+        }
+
+        for declaration in &self.module.declarations {
+            let Declaration::ValueExport(export) = declaration else {
+                continue;
+            };
+            for binding in &export.bindings {
+                let has_local_runtime_binding =
+                    self.module
+                        .declarations
+                        .iter()
+                        .any(|candidate| match candidate {
+                            Declaration::Variable(variable) => {
+                                variable.name == binding.local && !variable.declared
+                            }
+                            Declaration::Function(function) => {
+                                function.name == binding.local
+                                    && !function.declared
+                                    && !function.overload
+                            }
+                            _ => false,
+                        });
+                if !has_local_runtime_binding {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::UnknownName,
+                        binding.span.clone(),
+                        format!(
+                            "exported value `{}` must name a local runtime declaration",
+                            binding.local
+                        ),
+                    ));
+                }
+                if !exported_names.insert(binding.exported.clone()) {
+                    self.diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::DuplicateDeclaration,
+                        binding.span.clone(),
+                        format!("duplicate exported value `{}`", binding.exported),
+                    ));
+                }
             }
         }
     }
@@ -781,6 +841,7 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
                 | Declaration::DefaultExport(_)
+                | Declaration::ValueExport(_)
                 | Declaration::Raw(_) => {}
             }
         }

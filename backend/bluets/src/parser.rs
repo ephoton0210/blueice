@@ -46,6 +46,7 @@ pub enum Declaration {
     Import(ImportDeclaration),
     TypeExport(TypeExportDeclaration),
     DefaultExport(DefaultExportDeclaration),
+    ValueExport(ValueExportDeclaration),
     TypeAlias(TypeAliasDeclaration),
     Interface(InterfaceDeclaration),
     Variable(VariableDeclaration),
@@ -59,6 +60,7 @@ impl Declaration {
             Self::Import(declaration) => &declaration.span,
             Self::TypeExport(declaration) => &declaration.span,
             Self::DefaultExport(declaration) => &declaration.span,
+            Self::ValueExport(declaration) => &declaration.span,
             Self::TypeAlias(declaration) => &declaration.span,
             Self::Interface(declaration) => &declaration.span,
             Self::Variable(declaration) => &declaration.span,
@@ -99,6 +101,23 @@ pub struct TypeExportDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefaultExportDeclaration {
     pub name: String,
+    pub span: SourceSpan,
+}
+
+/// A value export in the narrowly supported local
+/// `export { localName as publicName }` form. It keeps its JavaScript syntax
+/// and records the public bindings required by static checking and `.d.ts`
+/// emission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueExportDeclaration {
+    pub bindings: Vec<ValueExportBinding>,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueExportBinding {
+    pub local: String,
+    pub exported: String,
     pub span: SourceSpan,
 }
 
@@ -342,6 +361,18 @@ impl Parser {
                     "`export =` is not in the initial BlueTS matrix",
                 );
                 self.skip_statement();
+                continue;
+            }
+            if exported && self.peek("*") {
+                self.unsupported(
+                    self.current().span(&self.id),
+                    "value re-exports from another module are not in the initial BlueTS matrix",
+                );
+                self.skip_statement();
+                continue;
+            }
+            if exported && self.peek("{") {
+                self.parse_value_export(start);
                 continue;
             }
 
@@ -631,6 +662,58 @@ impl Parser {
         self.declarations
             .push(Declaration::DefaultExport(DefaultExportDeclaration {
                 name,
+                span: SourceSpan::new(&self.id, start, end),
+            }));
+    }
+
+    fn parse_value_export(&mut self, start: usize) {
+        self.expect("{");
+        let mut bindings = Vec::new();
+        while !self.at_eof() && !self.consume("}") {
+            if self.peek("type") {
+                self.unsupported(
+                    self.current().span(&self.id),
+                    "type-only bindings in a value export are not in the initial BlueTS matrix; use `export type`",
+                );
+                self.skip_statement();
+                return;
+            }
+            let binding_start = self.current().start;
+            let local = self.require_identifier("expected a value export name");
+            let exported = if self.consume("as") {
+                self.require_identifier("expected an exported value name")
+            } else {
+                local.clone()
+            };
+            if exported == "default" {
+                self.unsupported(
+                    SourceSpan::new(&self.id, binding_start, self.previous().end),
+                    "default aliases in named value exports are not in the initial BlueTS matrix",
+                );
+            }
+            bindings.push(ValueExportBinding {
+                local,
+                exported,
+                span: SourceSpan::new(&self.id, binding_start, self.previous().end),
+            });
+            if !self.consume(",") {
+                self.expect("}");
+                break;
+            }
+        }
+        if self.consume("from") {
+            self.unsupported(
+                self.previous().span(&self.id),
+                "value re-exports from another module are not in the initial BlueTS matrix",
+            );
+            self.skip_statement();
+            return;
+        }
+        self.consume(";");
+        let end = self.previous().end;
+        self.declarations
+            .push(Declaration::ValueExport(ValueExportDeclaration {
+                bindings,
                 span: SourceSpan::new(&self.id, start, end),
             }));
     }
