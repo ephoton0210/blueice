@@ -35,6 +35,8 @@ An incompatible major ABI, an unknown required field, a source hash mismatch, or
 
 ## AST/IR hand-off
 
+The current direct expression subset supersedes earlier phase summaries: literals and identifiers; quoted-string and non-substituted template escapes; `${identifier}` template slots; direct calls; unary, arithmetic, comparison, logical, conditional, assignment, and sequence expressions; arrays; objects with identifier/string/numeric keys and identifier shorthand; dot/bracket reads; property assignments; and identifier-only updates. General template expressions, optional chaining, object spread/computed keys/methods/accessors, and member calls remain excluded.
+
 Object literal keys may be identifiers, quoted strings, or numbers. Only identifier keys may use shorthand; computed keys, spread, methods, and accessors remain excluded.
 
 The bridge directly splits a template interpolation only when its content is one identifier reference; nested operators, calls, member reads, and other embedded expression syntax remain unsupported.

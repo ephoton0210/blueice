@@ -10,6 +10,8 @@ Let a BlueIce page opt in to TypeScript source without a build-time `.js` artifa
 
 ## Standalone implementation and first BlueJS integration status
 
+The current direct bridge subset supersedes earlier phase summaries: literals/identifiers, bounded quoted-string and template escapes, `${identifier}` template slots, direct calls, supported unary/binary/logical/conditional/assignment/sequence expressions, arrays, identifier/string/numeric object keys with identifier shorthand, dot/bracket reads, property assignments, and identifier-only updates. General template expressions, optional chaining, member calls, computed object keys, spread, methods, and accessors remain outside the subset.
+
 The direct bridge accepts identifier, quoted-string, and numeric object keys. Shorthand remains identifier-only; computed keys, spread, methods, and accessors remain excluded.
 
 The direct bridge lowers `${identifier}` template substitutions to BlueJS expression slots without calling a source parser. General embedded template expressions remain excluded.
