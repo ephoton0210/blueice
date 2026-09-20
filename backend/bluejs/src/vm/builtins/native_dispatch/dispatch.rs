@@ -1002,16 +1002,6 @@ impl Vm {
             NativeFunction::ParseFloat => self.parse_float(first),
             NativeFunction::EncodeUri { component } => self.encode_uri(first, component),
             NativeFunction::DecodeUri { component } => self.decode_uri(first, component),
-            NativeFunction::DynamicImport { source } => {
-                if source {
-                    self.dynamic_import_source(first.clone())
-                } else {
-                    // `import.defer(specifier)` reaches this same host
-                    // function as ordinary `import()`; it takes no import
-                    // attributes second argument of its own.
-                    self.dynamic_import(first.clone(), Value::Undefined)
-                }
-            }
             NativeFunction::JsonParse => self.json_parse(first, args.get(1)),
             NativeFunction::JsonStringify => self.json_stringify(&args),
             NativeFunction::JsonRawJson => self.json_raw_json(first),

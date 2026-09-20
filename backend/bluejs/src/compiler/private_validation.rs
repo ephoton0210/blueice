@@ -293,7 +293,9 @@ fn validate_private_expression(expr: &Expr, names: &HashSet<String>) -> Result<(
         | Expr::Update {
             arg: expression, ..
         } => validate_private_expression(expression, names),
-        Expr::DynamicImport { specifier, options } => {
+        Expr::DynamicImport {
+            specifier, options, ..
+        } => {
             validate_private_expression(specifier, names)?;
             options.as_deref().map_or(Ok(()), |expression| {
                 validate_private_expression(expression, names)

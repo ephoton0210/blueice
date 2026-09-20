@@ -7,7 +7,9 @@ use super::*;
 impl Parser {
     pub(super) fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         if self.module
-            && ((self.check_identifier("import") && !self.check_punct_at(1, Punct::LParen))
+            && ((self.check_identifier("import")
+                && !self.check_punct_at(1, Punct::LParen)
+                && !self.check_punct_at(1, Punct::Dot))
                 || self.check_identifier("export"))
         {
             return Err(self.syntax_error(

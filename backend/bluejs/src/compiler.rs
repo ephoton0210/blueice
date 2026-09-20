@@ -907,7 +907,9 @@ fn strict_assignment_in_expression(expression: &Expr) -> bool {
         | Expr::Unary {
             arg: expression, ..
         } => strict_assignment_in_expression(expression),
-        Expr::DynamicImport { specifier, options } => {
+        Expr::DynamicImport {
+            specifier, options, ..
+        } => {
             strict_assignment_in_expression(specifier)
                 || options
                     .as_deref()

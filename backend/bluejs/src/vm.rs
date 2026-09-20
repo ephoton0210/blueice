@@ -14,7 +14,7 @@ use crate::heap::{
 use crate::native::{self, NativeFunction};
 use crate::primitive;
 use crate::{
-    Bytecode, Heap, HeapConfig, HeapError, JsString, JsSymbol, ObjectId, Opcode,
+    Bytecode, Heap, HeapConfig, HeapError, ImportPhase, JsString, JsSymbol, ObjectId, Opcode,
     PropertyDescriptor, PropertyName, RootId, Value,
 };
 use num_bigint::{BigInt, Sign};

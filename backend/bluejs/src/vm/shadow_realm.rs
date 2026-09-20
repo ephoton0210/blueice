@@ -359,8 +359,11 @@ impl Vm {
                     child.module_source_registry = self.module_source_registry.clone();
                     child.active_module_name = self.active_module_name.clone();
                     child.remaining_instructions = child.config.instruction_budget;
-                    let promise_value =
-                        child.dynamic_import(Value::String(specifier.clone()), Value::Undefined)?;
+                    let promise_value = child.dynamic_import(
+                        Value::String(specifier.clone()),
+                        Value::Undefined,
+                        ImportPhase::Evaluation,
+                    )?;
                     let inner_promise = promise_value
                         .object_id()
                         .expect("dynamic_import always returns a Promise object");

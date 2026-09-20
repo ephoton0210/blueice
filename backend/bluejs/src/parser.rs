@@ -444,13 +444,25 @@ impl Parser {
         matches!(self.peek_at(offset), Token::Identifier(name) if name == expected)
     }
 
-    fn eat_identifier(&mut self, expected: &str) -> bool {
-        if self.check_identifier(expected) {
-            self.advance();
-            true
-        } else {
-            false
+    /// Consumes a contextual keyword (`as`, `from`, `with`, ...). It is a
+    /// terminal symbol of its production, so a spelling containing a Unicode
+    /// escape cannot stand in for it: that is a SyntaxError, except when a
+    /// preceding line terminator lets ASI end the statement first (the escaped
+    /// word then starts the next statement as an ordinary identifier).
+    fn eat_contextual_keyword(&mut self, expected: &str) -> Result<bool, ParseError> {
+        if !self.check_identifier(expected) {
+            return Ok(false);
         }
+        if self.current_identifier_escaped() {
+            if self.newline_before() {
+                return Ok(false);
+            }
+            return Err(
+                self.syntax_error(format!("the {expected} keyword cannot contain an escape"))
+            );
+        }
+        self.advance();
+        Ok(true)
     }
 
     fn eat_punct(&mut self, p: Punct) -> bool {

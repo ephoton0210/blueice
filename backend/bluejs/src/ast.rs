@@ -42,6 +42,36 @@ pub enum ImportName {
     Source,
 }
 
+/// The phase an ImportCall requests of its module: `import()` evaluates it,
+/// `import.source()` asks the host for its source object (source-phase
+/// imports proposal), and `import.defer()` links it but postpones evaluation
+/// until its namespace is first observed (import-defer proposal).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportPhase {
+    Evaluation,
+    Source,
+    Defer,
+}
+
+impl ImportPhase {
+    /// The `DynamicImport` instruction's operand encoding of this phase.
+    pub(crate) fn operand(self) -> u32 {
+        match self {
+            ImportPhase::Evaluation => 0,
+            ImportPhase::Source => 1,
+            ImportPhase::Defer => 2,
+        }
+    }
+
+    pub(crate) fn from_operand(operand: usize) -> ImportPhase {
+        match operand {
+            1 => ImportPhase::Source,
+            2 => ImportPhase::Defer,
+            _ => ImportPhase::Evaluation,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportEntry {
     pub module_request: String,
@@ -478,9 +508,12 @@ pub enum Expr {
     /// The `import()` expression is distinct from the static module-item
     /// grammar and always evaluates to a Promise. The optional second
     /// argument carries import attributes (`import(specifier, { with: {...} })`).
+    /// `phase` distinguishes `import()` from `import.source()` and
+    /// `import.defer()`.
     DynamicImport {
         specifier: Box<Expr>,
         options: Option<Box<Expr>>,
+        phase: ImportPhase,
     },
     /// Module-only meta property. Retained independently of host metadata
     /// support so its invalid assignment-target shape is rejected at parse
@@ -888,7 +921,9 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         Expr::Await(expr) | Expr::Unary { arg: expr, .. } | Expr::Update { arg: expr, .. } => {
             expr_contains_super(expr, search)
         }
-        Expr::DynamicImport { specifier, options } => {
+        Expr::DynamicImport {
+            specifier, options, ..
+        } => {
             expr_contains_super(specifier, search)
                 || options
                     .as_deref()

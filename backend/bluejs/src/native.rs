@@ -413,11 +413,6 @@ pub(crate) enum NativeFunction {
     DecodeUri {
         component: bool,
     },
-    /// The source/defer variants of dynamic import. They remain separate from
-    /// ordinary `import()` because their host phase is observable.
-    DynamicImport {
-        source: bool,
-    },
     JsonParse,
     JsonStringify,
     JsonRawJson,

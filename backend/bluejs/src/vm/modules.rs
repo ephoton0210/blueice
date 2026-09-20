@@ -711,10 +711,14 @@ impl Vm {
         &mut self,
         specifier: Value,
         options: Value,
+        phase: ImportPhase,
     ) -> Result<Value, RuntimeError> {
         let promise = self.new_promise()?;
         let outcome = self.evaluate_import_call_arguments(specifier, options);
         match outcome {
+            Ok((specifier, _)) if phase == ImportPhase::Source => {
+                self.dynamic_import_source(promise, &specifier)?;
+            }
             Ok((specifier, json)) => {
                 let referrer = self
                     .active_module_name
@@ -798,24 +802,21 @@ impl Vm {
         Ok((specifier, json))
     }
 
-    /// Source-phase dynamic import has the same promise and ToString boundary
-    /// as ordinary import(), but asks the host for a Module Source object.
-    /// A source-text module therefore rejects with SyntaxError instead of
-    /// linking or evaluating it as an ordinary dynamic import would.
-    pub(super) fn dynamic_import_source(
+    /// Source-phase dynamic import has the same promise and argument
+    /// boundary as ordinary import(), but asks the host for a Module Source
+    /// object. A source-text module therefore rejects with SyntaxError instead
+    /// of linking or evaluating it as an ordinary dynamic import would.
+    fn dynamic_import_source(
         &mut self,
-        specifier: Value,
-    ) -> Result<Value, RuntimeError> {
-        let promise = self.new_promise()?;
+        promise: ObjectId,
+        specifier: &str,
+    ) -> Result<(), RuntimeError> {
         let result = (|| {
-            let specifier = self.coerce_string(&specifier)?.to_utf8().map_err(|_| {
-                RuntimeError::TypeError("module specifier is not a Unicode string".into())
-            })?;
             let referrer = self
                 .active_module_name
                 .clone()
                 .unwrap_or_else(|| "<script>".to_string());
-            let entry = Self::resolve_module_request(&referrer, &specifier)?;
+            let entry = Self::resolve_module_request(&referrer, specifier)?;
             let modules = self.module_registry.clone();
             if modules.contains_key(&entry) {
                 return Err(RuntimeError::SyntaxError(
@@ -832,7 +833,7 @@ impl Vm {
                 self.settle_promise(promise, PromiseStatus::Rejected(error))?;
             }
         }
-        Ok(Value::Object(promise))
+        Ok(())
     }
 
     pub(super) fn dynamic_import_job(
@@ -856,6 +857,10 @@ impl Vm {
                     .module_graph
                     .take()
                     .expect("checked module graph remains installed");
+                if let Some(error) = Self::cycle_root_error(&entry, &modules, &graph.linked)? {
+                    self.module_graph = Some(graph);
+                    return Err(RuntimeError::Thrown(error));
+                }
                 let namespace =
                     self.module_namespace(&entry, &modules, &mut graph.linked, &mut graph.roots);
                 self.module_graph = Some(graph);
@@ -882,6 +887,35 @@ impl Vm {
                 "dynamic import of {entry} did not produce a namespace"
             )))?;
         Ok(DynamicImportResult::Fulfilled(Value::Object(namespace)))
+    }
+
+    /// The evaluation error a finished module inherits from its cycle root.
+    /// When an asynchronous cycle fails, only the module that threw and its
+    /// async parents record the error; a cycle member that had already
+    /// finished stays `evaluated` with no error of its own. Evaluate() on such
+    /// a member is redirected to its [[CycleRoot]], whose recorded
+    /// [[EvaluationError]] is returned again -- so a later import of the member
+    /// must reject with that same error rather than fulfill. Here that is: an
+    /// errored record in the same strongly connected component as `module`.
+    fn cycle_root_error(
+        module: &str,
+        modules: &HashMap<String, Bytecode>,
+        linked: &HashMap<String, LinkedModule>,
+    ) -> Result<Option<Value>, RuntimeError> {
+        let mut candidates: Vec<_> = linked
+            .iter()
+            .filter(|(name, record)| name.as_str() != module && record.error.is_some())
+            .map(|(name, _)| name.as_str())
+            .collect();
+        candidates.sort_unstable();
+        for candidate in candidates {
+            if Self::module_reaches(module, candidate, modules, &mut HashSet::new())?
+                && Self::module_reaches(candidate, module, modules, &mut HashSet::new())?
+            {
+                return Ok(linked[candidate].error.clone());
+            }
+        }
+        Ok(None)
     }
 
     pub(super) fn suspend_module_execution(&mut self) -> SuspendedModuleExecution {

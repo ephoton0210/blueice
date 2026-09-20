@@ -552,7 +552,10 @@ def module_sources(
     *static* instead -- preserving the original, established behavior for a
     plain dynamic `import()` with a variable specifier (where such a
     candidate's own parse failure must still hard-fail eagerly, exactly as
-    it always has). Pass `speculative_relative_strings=True` only when a
+    it always has). The string token that *is* a literal `import('...')`
+    argument is not such a candidate: it stays the dynamic edge it already
+    is, so a fixture that is only invalid as a module rejects that import's
+    promise instead of failing the whole run. Pass `speculative_relative_strings=True` only when a
     relative-string candidate may be a deliberately invalid, never-actually-
     imported fixture (e.g. reached via `ShadowRealm.prototype.importValue`'s
     own heuristic trigger), so the adapter's lazy per-import rejection
@@ -594,12 +597,21 @@ def module_sources(
             for match in DYNAMIC_IMPORT_SOURCE_OR_DEFER_REQUEST.finditer(source)
         )
         if include_dynamic_string_roots:
+            # The specifier of a literal `import('...')` is already a dynamic
+            # edge above; its own string token must not be re-read as a
+            # relative-string candidate, or that (statically classified)
+            # candidate would silently override the edge and force a fixture
+            # that is invalid only *as a module* to fail eagerly.
+            literal_dynamic_spans = {
+                match.span(1) for match in DYNAMIC_IMPORT_PLAIN_REQUEST.finditer(source)
+            }
             requests.extend(
                 (
                     match.group(1),
                     "dynamic" if speculative_relative_strings else "static",
                 )
                 for match in RELATIVE_STRING.finditer(source)
+                if match.span(1) not in literal_dynamic_spans
             )
         for request, sub_reason in requests:
             if not request or not request.startswith("."):

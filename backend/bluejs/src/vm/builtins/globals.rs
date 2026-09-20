@@ -107,14 +107,14 @@ impl Vm {
         } else {
             prototype
         };
-        let id = if matches!(name, "Reflect" | "globalThis" | "import" | "Atomics") {
+        let id = if matches!(name, "Reflect" | "globalThis" | "Atomics") {
             self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?
         } else {
             self.with_roots(|heap| heap.alloc_native_function(native, name, native_prototype))?
         };
         let root = self.heap.root(id)?;
         let result = (|| {
-            if !matches!(name, "Reflect" | "globalThis" | "import" | "Atomics") {
+            if !matches!(name, "Reflect" | "globalThis" | "Atomics") {
                 self.define_data(
                     id,
                     "length",
@@ -1149,21 +1149,6 @@ impl Vm {
                         NativeFunction::ObjectMethod(method),
                     )?;
                 }
-            } else if name == "import" {
-                self.install_native(
-                    id,
-                    prototype,
-                    "source",
-                    1,
-                    NativeFunction::DynamicImport { source: true },
-                )?;
-                self.install_native(
-                    id,
-                    prototype,
-                    "defer",
-                    1,
-                    NativeFunction::DynamicImport { source: false },
-                )?;
             }
             Ok(Value::Object(id))
         })();
