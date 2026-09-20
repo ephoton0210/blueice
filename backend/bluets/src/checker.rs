@@ -7,8 +7,8 @@
 use crate::compiler::{is_declaration_module, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{
-    Declaration, FunctionBodyItem, FunctionDeclaration, InterfaceDeclaration, Module, Parameter,
-    TypeField, TypeParameter,
+    Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch, FunctionIfStatement,
+    InterfaceDeclaration, Module, Parameter, TypeField, TypeParameter,
 };
 use crate::syntax::{Token, TokenKind};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -1072,22 +1072,31 @@ impl<'a> ModuleChecker<'a> {
             let (tokens, span) = match item {
                 FunctionBodyItem::Expression { tokens, span }
                 | FunctionBodyItem::Throw { tokens, span } => (tokens, span),
-                FunctionBodyItem::If {
-                    test,
-                    consequent,
-                    alternate,
-                    span,
-                } => {
-                    self.check_direct_runtime_expression(test, scope, span);
-                    self.check_function_body_expressions(consequent, scope);
-                    if let Some(alternate) = alternate {
-                        self.check_function_body_expressions(alternate, scope);
-                    }
+                FunctionBodyItem::If(statement) => {
+                    self.check_direct_function_if(statement, scope);
                     continue;
                 }
                 _ => continue,
             };
             self.check_direct_runtime_expression(tokens, scope, span);
+        }
+    }
+
+    fn check_direct_function_if(
+        &mut self,
+        statement: &FunctionIfStatement,
+        scope: &BTreeMap<String, Type>,
+    ) {
+        self.check_direct_runtime_expression(&statement.test, scope, &statement.span);
+        self.check_function_body_expressions(&statement.consequent, scope);
+        match &statement.alternate {
+            Some(FunctionElseBranch::Braced(alternate)) => {
+                self.check_function_body_expressions(alternate, scope);
+            }
+            Some(FunctionElseBranch::ElseIf(alternate)) => {
+                self.check_direct_function_if(alternate, scope);
+            }
+            None => {}
         }
     }
 

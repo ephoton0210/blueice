@@ -92,6 +92,33 @@ fn checks_direct_calls_in_braced_if_conditions() {
 }
 
 #[test]
+fn checks_direct_calls_in_braced_else_if_conditions() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "function takes_number(value: number): number { return value; }\n\
+             function choose(): number {\n\
+                 if (false) { return 0; }\n\
+                 else if (takes_number('wrong')) { return 1; }\n\
+                 else { return 2; }\n\
+             }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn rejects_function_throw_statements_without_a_same_line_value() {
     for source in [
         "function fail(): never { throw; }",

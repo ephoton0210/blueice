@@ -250,20 +250,31 @@ pub enum FunctionBodyItem {
         tokens: Vec<Token>,
         span: SourceSpan,
     },
-    /// A braced `if` statement. Both branches use the same structured body
-    /// items as their enclosing function so direct lowering retains source
-    /// order without reparsing emitted JavaScript.
-    If {
-        test: Vec<Token>,
-        consequent: Vec<FunctionBodyItem>,
-        alternate: Option<Vec<FunctionBodyItem>>,
-        span: SourceSpan,
-    },
+    /// A braced `if` statement. Its typed representation distinguishes an
+    /// `else if` from a braced `else` block so direct lowering preserves the
+    /// BlueJS AST shape without adding an artificial block scope.
+    If(FunctionIfStatement),
     Return {
         tokens: Vec<Token>,
         span: SourceSpan,
     },
     Opaque(SourceSpan),
+}
+
+/// The bounded function-body representation for one `if` statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionIfStatement {
+    pub test: Vec<Token>,
+    pub consequent: Vec<FunctionBodyItem>,
+    pub alternate: Option<FunctionElseBranch>,
+    pub span: SourceSpan,
+}
+
+/// The direct bridge distinguishes a braced `else` block from `else if`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FunctionElseBranch {
+    Braced(Vec<FunctionBodyItem>),
+    ElseIf(Box<FunctionIfStatement>),
 }
 
 /// A generic parameter's static-only declaration. Constraints and defaults
@@ -1086,39 +1097,9 @@ impl Parser {
                 && brackets == 0
                 && is_direct_braced_if_statement(&self.tokens, self.index)
             {
-                let if_start = self.current().start;
-                self.bump();
-                let test_start = self.index + 1;
-                let test_end = matching_closing_delimiter(
-                    &self.tokens,
-                    self.index,
-                    self.tokens.len() - 1,
-                    "(",
-                    ")",
-                )
-                .expect("the direct braced-if preflight found a closing parenthesis");
-                let test = self.tokens[test_start..test_end].to_vec();
-                self.collect_expression_type_edits(test_start, test_end);
-                self.index = test_end + 1;
-                self.expect("{");
-                let consequent_start = self.previous().start;
-                let mut consequent = Vec::new();
-                self.parse_function_body(consequent_start, &mut consequent, returns, locals);
-                let alternate = if self.consume("else") {
-                    self.expect("{");
-                    let alternate_start = self.previous().start;
-                    let mut alternate = Vec::new();
-                    self.parse_function_body(alternate_start, &mut alternate, returns, locals);
-                    Some(alternate)
-                } else {
-                    None
-                };
-                body.push(FunctionBodyItem::If {
-                    test,
-                    consequent,
-                    alternate,
-                    span: SourceSpan::new(&self.id, if_start, self.previous().end),
-                });
+                body.push(FunctionBodyItem::If(
+                    self.parse_direct_braced_if_statement(returns, locals),
+                ));
                 continue;
             }
             if self.consume("{") {
@@ -1237,6 +1218,59 @@ impl Parser {
                 "unterminated function body",
             );
         }
+    }
+
+    /// Parses a preflighted direct `if` statement. The preflight guarantees
+    /// explicit branch braces and a complete alternate before this method
+    /// consumes input, preserving opaque fallback behavior for every other
+    /// control-flow shape.
+    fn parse_direct_braced_if_statement(
+        &mut self,
+        returns: &mut Vec<Vec<Token>>,
+        locals: &mut Vec<VariableDeclaration>,
+    ) -> FunctionIfStatement {
+        debug_assert!(is_direct_braced_if_statement(&self.tokens, self.index));
+        let if_start = self.current().start;
+        self.bump();
+        let test_start = self.index + 1;
+        let test_end =
+            matching_closing_delimiter(&self.tokens, self.index, self.tokens.len() - 1, "(", ")")
+                .expect("the direct braced-if preflight found a closing parenthesis");
+        let test = self.tokens[test_start..test_end].to_vec();
+        self.collect_expression_type_edits(test_start, test_end);
+        self.index = test_end + 1;
+        let consequent = self.parse_direct_function_block(returns, locals);
+        let alternate = if self.consume("else") {
+            if self.peek("{") {
+                Some(FunctionElseBranch::Braced(
+                    self.parse_direct_function_block(returns, locals),
+                ))
+            } else {
+                Some(FunctionElseBranch::ElseIf(Box::new(
+                    self.parse_direct_braced_if_statement(returns, locals),
+                )))
+            }
+        } else {
+            None
+        };
+        FunctionIfStatement {
+            test,
+            consequent,
+            alternate,
+            span: SourceSpan::new(&self.id, if_start, self.previous().end),
+        }
+    }
+
+    fn parse_direct_function_block(
+        &mut self,
+        returns: &mut Vec<Vec<Token>>,
+        locals: &mut Vec<VariableDeclaration>,
+    ) -> Vec<FunctionBodyItem> {
+        self.expect("{");
+        let block_start = self.previous().start;
+        let mut body = Vec::new();
+        self.parse_function_body(block_start, &mut body, returns, locals);
+        body
     }
 
     fn collect_expression_type_edits(&mut self, start: usize, end: usize) {
@@ -2108,11 +2142,13 @@ fn is_direct_braced_if_statement(tokens: &[Token], start: usize) -> bool {
     if !next.is("else") {
         return true;
     }
-    let Some(alternate_opening) = tokens.get(consequent_end + 2) else {
+    let Some(alternate_start) = tokens.get(consequent_end + 2) else {
         return false;
     };
-    alternate_opening.is("{")
-        && matching_closing_delimiter(tokens, consequent_end + 2, limit, "{", "}").is_some()
+    if alternate_start.is("{") {
+        return matching_closing_delimiter(tokens, consequent_end + 2, limit, "{", "}").is_some();
+    }
+    alternate_start.is("if") && is_direct_braced_if_statement(tokens, consequent_end + 2)
 }
 
 fn matching_closing_delimiter(
