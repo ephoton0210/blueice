@@ -10,7 +10,9 @@ Let a BlueIce page opt in to TypeScript source without a build-time `.js` artifa
 
 ## Standalone implementation and first BlueJS integration status
 
-Non-substituted template literals use the same ordinary escape decoder as quoted strings; `${...}` remains outside the direct bridge subset.
+The direct bridge lowers `${identifier}` template substitutions to BlueJS expression slots without calling a source parser. General embedded template expressions remain excluded.
+
+Non-substituted template literals use the same ordinary escape decoder as quoted strings.
 
 The direct bridge decodes ordinary quoted-string escapes (`\\`, quote, `\n`, `\r`, `\t`, `\b`, `\f`, `\v`, and `\0`) to BlueJS strings. Unicode, hexadecimal, legacy octal, and line-continuation escape forms remain deliberately unsupported in this bounded subset.
 

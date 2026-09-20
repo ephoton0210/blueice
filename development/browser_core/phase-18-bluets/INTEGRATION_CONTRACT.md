@@ -35,7 +35,9 @@ An incompatible major ABI, an unknown required field, a source hash mismatch, or
 
 ## AST/IR hand-off
 
-Non-substituted template literals share the bridge's ordinary escape decoder; substitutions remain unsupported and are never reparsed as generated JavaScript.
+The bridge directly splits a template interpolation only when its content is one identifier reference; nested operators, calls, member reads, and other embedded expression syntax remain unsupported.
+
+Non-substituted template literals share the bridge's ordinary escape decoder and are never reparsed as generated JavaScript.
 
 The bridge decodes simple quoted-string escapes (`\\`, quote, `\n`, `\r`, `\t`, `\b`, `\f`, `\v`, and `\0`) before constructing BlueJS string data. Hexadecimal, Unicode, legacy octal, and line-continuation escapes remain explicit direct-bridge exclusions.
 

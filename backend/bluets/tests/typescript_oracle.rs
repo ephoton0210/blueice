@@ -314,6 +314,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "template-identifier-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/template-identifier-expression/main.ts"),
+        )],
+        expected_stdout: Some("Hello, Ada!\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-arithmetic-expression",
         modules: &[ (
             "memory:///main.ts",

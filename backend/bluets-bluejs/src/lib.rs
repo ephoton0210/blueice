@@ -1422,16 +1422,43 @@ fn lower_template(module: &str, token: &Token) -> Result<bluejs::Expr, BridgeErr
         .strip_prefix('`')
         .and_then(|text| text.strip_suffix('`'))
         .ok_or_else(|| unsupported(token_span(module, token), "invalid template token"))?;
-    if body.contains("${") {
-        return Err(unsupported(
-            token_span(module, token),
-            "template substitutions are not yet in the v1 direct bridge subset",
-        ));
+    let mut quasis = Vec::new();
+    let mut expressions = Vec::new();
+    let mut remainder = body;
+    while let Some(start) = remainder.find("${") {
+        quasis.push(decode_string_escapes(module, token, &remainder[..start])?.into());
+        let expression_start = start + 2;
+        let Some(end) = remainder[expression_start..].find('}') else {
+            return Err(unsupported(
+                token_span(module, token),
+                "unterminated template substitution",
+            ));
+        };
+        let name = &remainder[expression_start..expression_start + end];
+        if !is_template_identifier(name) {
+            return Err(unsupported(
+                token_span(module, token),
+                "only identifier template substitutions are in the v1 direct bridge subset",
+            ));
+        }
+        expressions.push(bluejs::Expr::Identifier(name.to_string()));
+        remainder = &remainder[expression_start + end + 1..];
     }
+    quasis.push(decode_string_escapes(module, token, remainder)?.into());
     Ok(bluejs::Expr::Template {
-        quasis: vec![decode_string_escapes(module, token, body)?.into()],
-        expressions: Vec::new(),
+        quasis,
+        expressions,
     })
+}
+
+fn is_template_identifier(name: &str) -> bool {
+    let mut characters = name.chars();
+    let Some(first) = characters.next() else {
+        return false;
+    };
+    (first == '$' || first == '_' || first.is_alphabetic())
+        && characters
+            .all(|character| character == '$' || character == '_' || character.is_alphanumeric())
 }
 
 fn token_span(module: &str, token: &Token) -> SourceSpan {
@@ -2061,6 +2088,23 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::String("Ada\nGrace".into())
+        );
+    }
+
+    #[test]
+    fn lowers_checked_identifier_template_substitutions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const label: string = 'Ada'; `Hello, ${label}!`;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("Hello, Ada!".into())
         );
     }
 
