@@ -723,6 +723,32 @@ fn checks_direct_call_and_record_property_boundaries() {
 }
 
 #[test]
+fn checks_record_literal_fields_for_direct_property_reads() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "interface Person { name: string; age: number }\n\
+             const person: Person = { name: 'Ada', age: 42 };\n\
+             const label: string = person.name;\n\
+             const invalid: number = person.name;",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(result.has_errors());
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn checks_optional_fields_and_explicit_undefined_arguments() {
     let result = crate::compile(
         "memory:///main.ts",

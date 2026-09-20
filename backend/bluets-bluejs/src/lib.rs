@@ -117,9 +117,9 @@ impl std::error::Error for BridgeError {}
 /// The expression subset includes `!`, `+`, `-`, `~`, `typeof`, and `void`
 /// unary expressions; arithmetic, relational, equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
-/// non-spread, non-hole array literals, comma sequences, identifier-only
-/// prefix/postfix updates, and identifier-only simple or compound-assignment
-/// operators. Static-only
+/// non-spread, non-hole array literals, simple object literals with identifier
+/// keys, dot property reads, comma sequences, identifier-only prefix/postfix
+/// updates, and identifier-only simple or compound-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -1060,7 +1060,7 @@ impl<'a> ExpressionLowerer<'a> {
 
     fn parse_primary(&mut self) -> Result<bluejs::Expr, BridgeError> {
         let expression = self.parse_atom()?;
-        self.parse_call_suffixes(expression)
+        self.parse_suffixes(expression)
     }
 
     fn parse_atom(&mut self) -> Result<bluejs::Expr, BridgeError> {
@@ -1111,6 +1111,7 @@ impl<'a> ExpressionLowerer<'a> {
                 Ok(bluejs::Expr::Parenthesized(Box::new(expression)))
             }
             TokenKind::Punct if token.text == "[" => self.parse_array_literal(token),
+            TokenKind::Punct if token.text == "{" => self.parse_object_literal(token),
             _ => Err(unsupported(
                 self.token_span(token),
                 format!("unsupported runtime expression token `{}`", token.text),
@@ -1161,15 +1162,109 @@ impl<'a> ExpressionLowerer<'a> {
         }
     }
 
-    fn parse_call_suffixes(
+    fn parse_object_literal(&mut self, opening: &Token) -> Result<bluejs::Expr, BridgeError> {
+        let opening_span = self.token_span(opening);
+        let mut properties = Vec::new();
+        loop {
+            let Some(token) = self.tokens.get(self.index) else {
+                return Err(unsupported(opening_span, "unterminated object literal"));
+            };
+            if token.text == "}" {
+                self.index += 1;
+                return Ok(bluejs::Expr::Object(properties));
+            }
+            if token.text == "..." {
+                return Err(unsupported(
+                    self.token_span(token),
+                    "object spread properties are not in the v1 direct bridge subset",
+                ));
+            }
+            if token.text == "[" {
+                return Err(unsupported(
+                    self.token_span(token),
+                    "computed object property keys are not in the v1 direct bridge subset",
+                ));
+            }
+            if token.kind != TokenKind::Identifier {
+                return Err(unsupported(
+                    self.token_span(token),
+                    "only identifier object property keys are in the v1 direct bridge subset",
+                ));
+            }
+            let name = token.text.clone();
+            self.index += 1;
+            let Some(colon) = self.tokens.get(self.index) else {
+                return Err(unsupported(opening_span, "unterminated object literal"));
+            };
+            if colon.text != ":" {
+                return Err(unsupported(
+                    self.token_span(colon),
+                    "object shorthand and methods are not in the v1 direct bridge subset",
+                ));
+            }
+            self.index += 1;
+            properties.push(bluejs::ObjectProp::KeyValue {
+                key: bluejs::PropertyKey::Identifier(name),
+                value: self.parse_assignment()?,
+                shorthand: false,
+            });
+            let Some(separator) = self.tokens.get(self.index) else {
+                return Err(unsupported(opening_span, "unterminated object literal"));
+            };
+            match separator.text.as_str() {
+                "," => self.index += 1,
+                "}" => {
+                    self.index += 1;
+                    return Ok(bluejs::Expr::Object(properties));
+                }
+                _ => {
+                    return Err(unsupported(
+                        self.token_span(separator),
+                        "expected `,` or `}` in object literal",
+                    ));
+                }
+            }
+        }
+    }
+
+    fn parse_suffixes(
         &mut self,
-        mut callee: bluejs::Expr,
+        mut expression: bluejs::Expr,
     ) -> Result<bluejs::Expr, BridgeError> {
-        while self
-            .tokens
-            .get(self.index)
-            .is_some_and(|token| token.text == "(")
-        {
+        loop {
+            let Some(token) = self.tokens.get(self.index) else {
+                return Ok(expression);
+            };
+            if token.text == "." {
+                let dot_span = self.token_span(token);
+                self.index += 1;
+                let Some(property) = self.tokens.get(self.index) else {
+                    return Err(unsupported(dot_span, "expected a property name after `.`"));
+                };
+                if property.kind != TokenKind::Identifier {
+                    return Err(unsupported(
+                        self.token_span(property),
+                        "only identifier dot property names are in the v1 direct bridge subset",
+                    ));
+                }
+                let name = property.text.clone();
+                self.index += 1;
+                expression = bluejs::Expr::Member {
+                    object: Box::new(expression),
+                    property: Box::new(bluejs::Expr::Identifier(name)),
+                    computed: false,
+                };
+                continue;
+            }
+            if token.text != "(" {
+                return Ok(expression);
+            }
+            if !matches!(&expression, bluejs::Expr::Identifier(_)) {
+                return Err(unsupported(
+                    self.token_span(token),
+                    "only direct identifier calls are in the v1 direct bridge subset",
+                ));
+            }
             self.index += 1;
             let mut args = Vec::new();
             if self
@@ -1202,12 +1297,11 @@ impl<'a> ExpressionLowerer<'a> {
                     }
                 }
             }
-            callee = bluejs::Expr::Call {
-                callee: Box::new(callee),
+            expression = bluejs::Expr::Call {
+                callee: Box::new(expression),
                 args,
             };
         }
-        Ok(callee)
     }
 
     fn shift_operator_at(&self, index: usize) -> Option<(bluejs::BinaryOp, usize)> {
@@ -1723,6 +1817,53 @@ mod tests {
     }
 
     #[test]
+    fn lowers_checked_simple_object_literals_and_dot_property_reads() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const person: { name: string; age: number } = { name: 'Ada', age: 42 }; \
+                 person.name + ':' + person.age;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            artifact.program,
+            bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+                if matches!(
+                    body.as_slice(),
+                    [bluejs::Stmt::VarDecl(_, declarations), bluejs::Stmt::Expr(_)]
+                        if matches!(
+                            declarations.as_slice(),
+                            [bluejs::VarDeclarator {
+                                init: Some(bluejs::Expr::Object(properties)),
+                                ..
+                            }] if matches!(
+                                properties.as_slice(),
+                                [
+                                    bluejs::ObjectProp::KeyValue {
+                                        key: bluejs::PropertyKey::Identifier(name),
+                                        shorthand: false,
+                                        ..
+                                    },
+                                    bluejs::ObjectProp::KeyValue {
+                                        key: bluejs::PropertyKey::Identifier(age),
+                                        shorthand: false,
+                                        ..
+                                    },
+                                ] if name == "name" && age == "age"
+                            )
+                        )
+                )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("Ada:42".into())
+        );
+    }
+
+    #[test]
     fn expression_lowerer_rejects_array_holes_and_spread() {
         for tokens in [
             expression_tokens(&[
@@ -1744,6 +1885,50 @@ mod tests {
                 panic!("the direct bridge must reject an unimplemented array element");
             };
             assert!(message.contains("array holes") || message.contains("array spread"));
+        }
+    }
+
+    #[test]
+    fn expression_lowerer_rejects_unimplemented_object_properties_and_member_calls() {
+        for tokens in [
+            expression_tokens(&[
+                ("{", TokenKind::Punct),
+                ("...", TokenKind::Punct),
+                ("person", TokenKind::Identifier),
+                ("}", TokenKind::Punct),
+            ]),
+            expression_tokens(&[
+                ("{", TokenKind::Punct),
+                ("name", TokenKind::Identifier),
+                ("}", TokenKind::Punct),
+            ]),
+            expression_tokens(&[
+                ("{", TokenKind::Punct),
+                ("[", TokenKind::Punct),
+                ("name", TokenKind::Identifier),
+                ("]", TokenKind::Punct),
+                (":", TokenKind::Punct),
+                ("1", TokenKind::Number),
+                ("}", TokenKind::Punct),
+            ]),
+            expression_tokens(&[
+                ("person", TokenKind::Identifier),
+                (".", TokenKind::Punct),
+                ("label", TokenKind::Identifier),
+                ("(", TokenKind::Punct),
+                (")", TokenKind::Punct),
+            ]),
+        ] {
+            let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
+            let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+                panic!("the direct bridge must reject an unimplemented object runtime shape");
+            };
+            assert!(
+                message.contains("object spread")
+                    || message.contains("object shorthand")
+                    || message.contains("computed object")
+                    || message.contains("direct identifier calls")
+            );
         }
     }
 
