@@ -196,6 +196,9 @@ pub struct FunctionDeclaration {
     pub type_parameters: Vec<TypeParameter>,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
+    /// Ordered body items retained for direct runtime lowering. The existing
+    /// `returns` and `locals` collections remain the checker-oriented views.
+    pub body: Vec<FunctionBodyItem>,
     pub returns: Vec<Vec<Token>>,
     pub locals: Vec<VariableDeclaration>,
     pub exported: bool,
@@ -214,9 +217,26 @@ pub struct FunctionDeclaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parameter {
     pub name: String,
+    pub rest: bool,
     pub optional: bool,
     pub annotation: Option<Type>,
     pub span: SourceSpan,
+}
+
+/// A function-body item recognized by the bounded TypeScript parser.
+///
+/// Direct runtime lowering only accepts the structured variants. `Opaque`
+/// records a source token that remains meaningful to the standalone parser
+/// but has not been assigned direct BlueJS semantics, so a bridge cannot
+/// accidentally erase and execute around it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FunctionBodyItem {
+    Variable(VariableDeclaration),
+    Return {
+        tokens: Vec<Token>,
+        span: SourceSpan,
+    },
+    Opaque(SourceSpan),
 }
 
 /// A generic parameter's static-only declaration. Constraints and defaults
@@ -899,7 +919,7 @@ impl Parser {
         let mut parameters = Vec::new();
         while !self.at_eof() && !self.consume(")") {
             let parameter_start = self.current().start;
-            self.consume("...");
+            let rest = self.consume("...");
             let parameter_name = self.require_identifier("expected a parameter name");
             let optional_start = self.current().start;
             let mut optional = self.consume("?");
@@ -932,6 +952,7 @@ impl Parser {
             let parameter_end = self.previous().end;
             parameters.push(Parameter {
                 name: parameter_name,
+                rest,
                 optional,
                 annotation,
                 span: SourceSpan::new(&self.id, parameter_start, parameter_end),
@@ -955,11 +976,12 @@ impl Parser {
             None
         };
 
+        let mut body = Vec::new();
         let mut returns = Vec::new();
         let mut locals = Vec::new();
         let overload = if self.consume("{") {
             let body_start = self.previous().start;
-            self.parse_function_body(body_start, &mut returns, &mut locals);
+            self.parse_function_body(body_start, &mut body, &mut returns, &mut locals);
             false
         } else if self.consume(";") {
             !declared
@@ -984,6 +1006,7 @@ impl Parser {
                 type_parameters,
                 parameters,
                 return_type,
+                body,
                 returns,
                 locals,
                 exported,
@@ -997,6 +1020,7 @@ impl Parser {
     fn parse_function_body(
         &mut self,
         body_start: usize,
+        body: &mut Vec<FunctionBodyItem>,
         returns: &mut Vec<Vec<Token>>,
         locals: &mut Vec<VariableDeclaration>,
     ) {
@@ -1014,18 +1038,27 @@ impl Parser {
             }
             if self.consume("{") {
                 depth += 1;
+                body.push(FunctionBodyItem::Opaque(self.previous().span(&self.id)));
                 continue;
             }
             if self.consume("}") {
                 depth -= 1;
+                if depth > 0 {
+                    body.push(FunctionBodyItem::Opaque(self.previous().span(&self.id)));
+                }
                 continue;
             }
             if self.consume("return") {
+                let return_start = self.previous().start;
                 let expression_start = self.index;
                 let expression = self.collect_until_statement_end();
                 self.collect_expression_type_edits(expression_start, self.index);
-                returns.push(expression);
+                returns.push(expression.clone());
                 self.consume(";");
+                body.push(FunctionBodyItem::Return {
+                    tokens: expression,
+                    span: SourceSpan::new(&self.id, return_start, self.previous().end),
+                });
                 continue;
             }
             if self.peek("const") || self.peek("let") || self.peek("var") {
@@ -1037,10 +1070,13 @@ impl Parser {
                     _ => unreachable!("variable declaration was guarded by its keyword"),
                 };
                 self.bump();
-                locals.push(self.parse_variable_declaration(start, false, false, kind));
+                let variable = self.parse_variable_declaration(start, false, false, kind);
+                locals.push(variable.clone());
+                body.push(FunctionBodyItem::Variable(variable));
                 continue;
             }
             if self.peek("as") || self.peek("satisfies") {
+                body.push(FunctionBodyItem::Opaque(self.current().span(&self.id)));
                 let end = find_balanced_delimiter(
                     &self.tokens,
                     self.index + 1,
@@ -1050,6 +1086,10 @@ impl Parser {
                 self.index = self.erase_assertion(self.index, end);
                 continue;
             }
+            if self.consume(";") {
+                continue;
+            }
+            body.push(FunctionBodyItem::Opaque(self.current().span(&self.id)));
             self.bump();
         }
         if depth != 0 {

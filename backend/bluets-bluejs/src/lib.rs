@@ -8,12 +8,14 @@
 //! consumes BlueTS's checked, already-tokenized declarations and constructs
 //! BlueJS AST nodes directly; it never receives or reparses BlueTSC JavaScript
 //! emission. The first executable bridge deliberately covers only classic
-//! scripts with typed variable declarations and bounded runtime expressions.
+//! scripts with typed variable and function declarations plus bounded runtime
+//! expressions.
 
 use blueice_bluejs as bluejs;
 use blueice_bluets::{
-    compile, CompilerOptions, Declaration, Diagnostic, Module, ModuleLoader, SourceSpan, Token,
-    TokenKind, VariableDeclaration, VariableKind, LANGUAGE_VERSION,
+    compile, CompilerOptions, Declaration, Diagnostic, FunctionBodyItem, FunctionDeclaration,
+    Module, ModuleLoader, SourceSpan, Token, TokenKind, VariableDeclaration, VariableKind,
+    LANGUAGE_VERSION,
 };
 use std::fmt;
 
@@ -85,9 +87,11 @@ impl std::error::Error for BridgeError {}
 ///
 /// The v1 direct subset has exactly one non-declaration module and no runtime
 /// import/export entries. It accepts `var`/`let`/`const` declarations with an
-/// optional literal/identifier/arithmetic initializer and standalone
-/// expressions made from those same forms. Static-only declarations disappear
-/// before lowering. A broader accepted BlueTS program returns
+/// optional literal/identifier/arithmetic initializer, named local functions
+/// with required identifier parameters plus structured local/return bodies,
+/// and standalone expressions made from those same forms or direct calls.
+/// Static-only declarations disappear before lowering. A broader accepted
+/// BlueTS program returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
 /// JavaScript text round trip.
 pub fn compile_direct_script(
@@ -190,15 +194,73 @@ fn lower_script(
                     "declared or exported variables require a non-script bridge mode",
                 ));
             }
+            Declaration::Function(function)
+                if !function.exported
+                    && !function.default_export
+                    && !function.declared
+                    && !function.overload =>
+            {
+                body.push(lower_function(module, function)?);
+                provenance.push(LoweringProvenance {
+                    source: function.span.clone(),
+                });
+            }
             Declaration::Function(function) => {
                 return Err(unsupported(
                     function.span.clone(),
-                    "function lowering is not yet in the v1 direct bridge subset",
+                    "declared, overloaded, or exported functions require a non-script bridge mode",
                 ));
             }
         }
     }
     Ok((body, provenance))
+}
+
+fn lower_function(
+    module: &Module,
+    function: &FunctionDeclaration,
+) -> Result<bluejs::Stmt, BridgeError> {
+    let mut params = Vec::with_capacity(function.parameters.len());
+    for parameter in &function.parameters {
+        if parameter.rest || parameter.optional {
+            return Err(unsupported(
+                parameter.span.clone(),
+                "optional, default, and rest parameters are not yet in the v1 direct bridge subset",
+            ));
+        }
+        params.push(bluejs::Param {
+            pattern: bluejs::Pattern::Identifier(parameter.name.clone()),
+            default: None,
+            rest: false,
+        });
+    }
+
+    let mut body = Vec::with_capacity(function.body.len());
+    for item in &function.body {
+        match item {
+            FunctionBodyItem::Variable(variable) => body.push(lower_variable(module, variable)?),
+            FunctionBodyItem::Return { tokens, .. } => {
+                let value = (!tokens.is_empty())
+                    .then(|| ExpressionLowerer::new(&module.id, tokens).parse())
+                    .transpose()?;
+                body.push(bluejs::Stmt::Return(value));
+            }
+            FunctionBodyItem::Opaque(span) => {
+                return Err(unsupported(
+                    span.clone(),
+                    "function body syntax is not yet in the v1 direct bridge subset",
+                ));
+            }
+        }
+    }
+
+    Ok(bluejs::Stmt::FunctionDecl(bluejs::Function {
+        name: Some(function.name.clone()),
+        params,
+        body,
+        generator: false,
+        is_async: false,
+    }))
 }
 
 fn lower_variable(
@@ -285,6 +347,11 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     fn parse_primary(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let expression = self.parse_atom()?;
+        self.parse_call_suffixes(expression)
+    }
+
+    fn parse_atom(&mut self) -> Result<bluejs::Expr, BridgeError> {
         let Some(token) = self.tokens.get(self.index) else {
             return Err(unsupported(
                 SourceSpan::new(self.module, 0, 0),
@@ -336,6 +403,55 @@ impl<'a> ExpressionLowerer<'a> {
                 format!("unsupported runtime expression token `{}`", token.text),
             )),
         }
+    }
+
+    fn parse_call_suffixes(
+        &mut self,
+        mut callee: bluejs::Expr,
+    ) -> Result<bluejs::Expr, BridgeError> {
+        while self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == "(")
+        {
+            self.index += 1;
+            let mut args = Vec::new();
+            if self
+                .tokens
+                .get(self.index)
+                .is_some_and(|token| token.text == ")")
+            {
+                self.index += 1;
+            } else {
+                loop {
+                    args.push(bluejs::Argument::Normal(self.parse_additive()?));
+                    let Some(separator) = self.tokens.get(self.index) else {
+                        return Err(unsupported(
+                            SourceSpan::new(self.module, 0, 0),
+                            "unterminated call expression",
+                        ));
+                    };
+                    match separator.text.as_str() {
+                        "," => self.index += 1,
+                        ")" => {
+                            self.index += 1;
+                            break;
+                        }
+                        _ => {
+                            return Err(unsupported(
+                                self.token_span(separator),
+                                "expected `,` or `)` in call expression",
+                            ));
+                        }
+                    }
+                }
+            }
+            callee = bluejs::Expr::Call {
+                callee: Box::new(callee),
+                args,
+            };
+        }
+        Ok(callee)
     }
 
     fn token_span(&self, token: &Token) -> SourceSpan {
@@ -445,5 +561,45 @@ mod tests {
         };
         assert_eq!(span.module, ENTRY);
         assert!(span.start > 0);
+    }
+
+    #[test]
+    fn lowers_typed_local_functions_and_direct_calls() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function add(left: number, right: number): number { \
+                 const sum: number = left + right; return sum; } add(20, 22);",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            artifact.program,
+            bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+                if matches!(body.as_slice(), [bluejs::Stmt::FunctionDecl(_), bluejs::Stmt::Expr(bluejs::Expr::Call { .. })])
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn refuses_to_silently_drop_an_unstructured_function_body_statement() {
+        let result = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function answer(): number { unknown; return 42; } answer();",
+            )]),
+            CompilerOptions::default(),
+        );
+        let Err(BridgeError::UnsupportedRuntimeTarget { span, message }) = result else {
+            panic!("the direct bridge must reject an opaque function body item");
+        };
+        assert_eq!(span.module, ENTRY);
+        assert!(message.contains("function body syntax"));
     }
 }
