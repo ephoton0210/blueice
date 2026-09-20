@@ -310,9 +310,11 @@ impl Vm {
         let requested_millisecond =
             self.temporal_read_optional_integer(bag, "millisecond", 0, 999)?;
         let requested_minute = self.temporal_read_optional_integer(bag, "minute", 0, 59)?;
-        let requested_month = self.temporal_read_optional_integer(bag, "month", 1, 99)?;
-        let month_code =
-            self.temporal_read_optional_string(bag, "monthCode", "invalid Temporal month code")?;
+        // Like every other property-bag reader: `month` has no upper bound at
+        // read time (`constrain` regulates it) and `monthCode` goes through
+        // `ToMonthCode` (a `String` is required, its syntax checked on read).
+        let requested_month = self.temporal_read_optional_positive_integer(bag, "month")?;
+        let month_code = self.temporal_read_month_code(bag)?;
         let requested_nanosecond =
             self.temporal_read_optional_integer(bag, "nanosecond", 0, 999)?;
         // `offset` goes through `ToPrimitive` with a string hint and then
@@ -363,7 +365,9 @@ impl Vm {
         if let Some(month_code) = month_code.as_deref() {
             fields.month_code = Some(month_code.as_bytes());
         } else if let Some(month) = requested_month {
-            fields.ordinal_month = Some(month as u8);
+            // Saturate rather than wrap: 257 must stay out of range, not
+            // become month 1.
+            fields.ordinal_month = Some(u8::try_from(month).unwrap_or(u8::MAX));
         } else {
             return Err(RuntimeError::TypeError(
                 "Temporal date fields require month or monthCode".into(),
@@ -371,7 +375,7 @@ impl Vm {
         }
         let requested_day = requested_day
             .ok_or_else(|| RuntimeError::TypeError("Temporal date fields require day".into()))?;
-        fields.day = Some(requested_day as u8);
+        fields.day = Some(u8::try_from(requested_day).unwrap_or(u8::MAX));
         let calendar_kind = calendar::calendar_kind(&calendar)
             .expect("temporal_calendar_identifier validates the calendar identifier");
         let mut icu_options = icu_calendar::options::DateFromFieldsOptions::default();
@@ -382,7 +386,7 @@ impl Vm {
         let actual_month = date.month().ordinal;
         if requested_year.is_some_and(|year| year != actual_year)
             || (month_code.is_some()
-                && requested_month.is_some_and(|month| month as u8 != actual_month))
+                && requested_month.is_some_and(|month| month != i32::from(actual_month)))
         {
             return Err(RuntimeError::RangeError(
                 "inconsistent Temporal calendar fields".into(),
