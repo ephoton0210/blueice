@@ -116,4 +116,23 @@ impl Vm {
             self.with_roots(|heap| heap.alloc_immutable_array_buffer(bytes, Some(prototype)))?;
         Ok(Value::Object(result))
     }
+
+    /// The `~write~` half of ValidateTypedArray's brand check: throws a
+    /// TypeError when `receiver` is a TypedArray backed by an immutable
+    /// buffer. Anything that is not a TypedArray passes through untouched so
+    /// the caller's own receiver validation reports it.
+    pub(super) fn reject_immutable_typed_array(
+        &self,
+        receiver: &Value,
+    ) -> Result<(), RuntimeError> {
+        let Some(object) = receiver.object_id() else {
+            return Ok(());
+        };
+        if self.heap.is_typed_array(object)? && self.heap.typed_array_is_immutable(object)? {
+            return Err(RuntimeError::TypeError(
+                "TypedArray is backed by an immutable ArrayBuffer".into(),
+            ));
+        }
+        Ok(())
+    }
 }

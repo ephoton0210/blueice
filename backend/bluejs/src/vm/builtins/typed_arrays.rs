@@ -16,6 +16,17 @@ impl Vm {
         Ok((object, length, kind))
     }
 
+    /// `ValidateTypedArray(O, ~seq-cst~, ~write~)` for a mutating method:
+    /// like `typed_array_method_receiver`, but a view over an immutable
+    /// ArrayBuffer is rejected first, before any argument is read.
+    fn typed_array_write_receiver(
+        &self,
+        receiver: &Value,
+    ) -> Result<(ObjectId, usize, TypedArrayKind), RuntimeError> {
+        self.reject_immutable_typed_array(receiver)?;
+        self.typed_array_method_receiver(receiver)
+    }
+
     fn typed_array_new_same_kind(
         &mut self,
         length: usize,
@@ -71,6 +82,9 @@ impl Vm {
     /// TypedArrayCreate(constructor, argumentList) for the single-length-
     /// argument case: constructs, then validates the result is a
     /// non-detached TypedArray whose length is at least the requested one.
+    /// Every caller (species `map`/`filter`/`slice`, `from`, `of`) creates a
+    /// destination it goes on to write, i.e. `TypedArrayCreateFromConstructor`
+    /// with `~write~`, so a result over an immutable ArrayBuffer is rejected.
     pub(super) fn typed_array_create(
         &mut self,
         constructor: Value,
@@ -88,6 +102,7 @@ impl Vm {
             true,
             constructor,
         )?;
+        self.reject_immutable_typed_array(&result)?;
         let (_, _, result_length, result_kind) = self.typed_array_receiver(&result)?;
         if result_length < length {
             return Err(RuntimeError::TypeError(
@@ -903,7 +918,7 @@ impl Vm {
             }
             TypedArrayMethod::LastIndexOf => self.typed_array_last_index_of(receiver, args),
             TypedArrayMethod::CopyWithin => {
-                let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
+                let (object, length, kind) = self.typed_array_write_receiver(receiver)?;
                 let target = self.relative_buffer_index(native::argument(args, 0), length)?;
                 let start = self.relative_buffer_index(native::argument(args, 1), length)?;
                 let end = if args.get(2).is_some_and(|value| *value != Value::Undefined) {
@@ -925,7 +940,7 @@ impl Vm {
                 Ok(receiver.clone())
             }
             TypedArrayMethod::Fill => {
-                let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
+                let (object, length, kind) = self.typed_array_write_receiver(receiver)?;
                 let start = self.relative_buffer_index(native::argument(args, 1), length)?;
                 let end = if args.get(2).is_some_and(|value| *value != Value::Undefined) {
                     self.relative_buffer_index(native::argument(args, 2), length)?
@@ -1004,7 +1019,7 @@ impl Vm {
                 Ok(accumulator)
             }
             TypedArrayMethod::Reverse => {
-                let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
+                let (object, length, kind) = self.typed_array_write_receiver(receiver)?;
                 let values = self.typed_array_read_values(object, 0, length)?;
                 let reversed: Vec<_> = values.into_iter().rev().collect();
                 self.typed_array_write_values(object, kind, 0, &reversed)?;
@@ -1012,7 +1027,7 @@ impl Vm {
             }
             TypedArrayMethod::Slice => self.typed_array_slice(receiver, args),
             TypedArrayMethod::Sort => {
-                let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
+                let (object, length, kind) = self.typed_array_write_receiver(receiver)?;
                 let mut values = self.typed_array_read_values(object, 0, length)?;
                 if self.typed_array_sort_values(
                     &mut values,

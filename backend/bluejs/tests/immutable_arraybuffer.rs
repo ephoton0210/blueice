@@ -576,6 +576,406 @@ check('zeroLength', new Uint8Array(new ArrayBuffer(0).transferToImmutable()).len
     );
 }
 
+// --- TypedArray ----------------------------------------------------------
+
+/// Every concrete TypedArray constructor this engine has, with a converter for
+/// one element value: BigInt arrays take BigInt elements.
+const EACH_TYPED_ARRAY: &str = r#"
+var kinds = [Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array, Int32Array,
+  Uint32Array, Float32Array, Float64Array, BigInt64Array, BigUint64Array];
+if (typeof Float16Array !== 'undefined') kinds.push(Float16Array);
+function element(TA, n) { return TA === BigInt64Array || TA === BigUint64Array ? BigInt(n) : n; }
+function immutableView(TA, values) {
+  var source = new TA(values.map(function (n) { return element(TA, n); }));
+  return new TA(source.buffer.transferToImmutable());
+}
+function snapshot(view) { return Array.prototype.map.call(view, String).join(); }
+"#;
+
+fn assert_no_failures_for_each_kind(body: &str) {
+    assert_no_failures(&format!("{EACH_TYPED_ARRAY}\n{body}"));
+}
+
+#[test]
+fn typed_array_mutators_reject_an_immutable_buffer_before_reading_arguments() {
+    assert_no_failures_for_each_kind(
+        r#"
+kinds.forEach(function (TA) {
+  var name = TA.name;
+  var view = immutableView(TA, [1, 2, 3, 4]);
+  var before = snapshot(view);
+  var calls = [];
+  function spy(label, value) {
+    return { valueOf: function () { calls.push(label); return value; } };
+  }
+  check(name + ' copyWithin', typeError(function () {
+    view.copyWithin(spy('target', 1), spy('start', 2), spy('end', 2));
+  }));
+  check(name + ' fill', typeError(function () {
+    view.fill(spy('value', element(TA, 8)), spy('start', 1), spy('end', 1));
+  }));
+  check(name + ' reverse', typeError(function () { view.reverse(); }));
+  check(name + ' setArrayLike', typeError(function () {
+    view.set({ get length() { calls.push('length'); return 1; }, get 0() { calls.push('0'); return element(TA, 8); } },
+             spy('offset', 1));
+  }));
+  check(name + ' setTypedArray', typeError(function () { view.set(new TA(1), spy('offset', 0)); }));
+  check(name + ' sort', typeError(function () {
+    view.sort(function () { calls.push('compare'); return 0; });
+  }));
+  check(name + ' argumentsUntouched', calls.length === 0);
+  check(name + ' contents', snapshot(view) === before);
+  // A zero-length view is rejected as well: the check does not depend on
+  // having anything to write.
+  var empty = new TA(new ArrayBuffer(0).transferToImmutable());
+  check(name + ' emptySort', typeError(function () { empty.sort(); }));
+  check(name + ' emptyFill', typeError(function () { empty.fill(element(TA, 1)); }));
+  check(name + ' emptySet', typeError(function () { empty.set([]); }));
+  check(name + ' emptyReverse', typeError(function () { empty.reverse(); }));
+  check(name + ' emptyCopyWithin', typeError(function () { empty.copyWithin(0, 0); }));
+});
+"#,
+    );
+}
+
+#[test]
+fn typed_array_mutators_still_work_on_ordinary_resizable_and_shared_buffers() {
+    assert_no_failures_for_each_kind(
+        r#"
+kinds.forEach(function (TA) {
+  var name = TA.name;
+  var buffers = {
+    ordinary: new ArrayBuffer(4 * TA.BYTES_PER_ELEMENT),
+    resizable: new ArrayBuffer(4 * TA.BYTES_PER_ELEMENT, { maxByteLength: 8 * TA.BYTES_PER_ELEMENT }),
+    shared: new SharedArrayBuffer(4 * TA.BYTES_PER_ELEMENT)
+  };
+  for (var kind in buffers) {
+    var view = new TA(buffers[kind]);
+    var label = name + '/' + kind;
+    view.fill(element(TA, 5));
+    check(label + ' fill', snapshot(view) === '5,5,5,5');
+    view.set([element(TA, 1), element(TA, 2)], 1);
+    check(label + ' set', snapshot(view) === '5,1,2,5');
+    view.reverse();
+    check(label + ' reverse', snapshot(view) === '5,2,1,5');
+    view.sort();
+    check(label + ' sort', snapshot(view) === '1,2,5,5');
+    view.copyWithin(0, 2);
+    check(label + ' copyWithin', snapshot(view) === '5,5,5,5');
+    view[0] = element(TA, 9);
+    check(label + ' indexWrite', view[0] === element(TA, 9));
+  }
+});
+"#,
+    );
+}
+
+#[test]
+fn species_results_backed_by_an_immutable_buffer_are_rejected_by_map_filter_and_slice() {
+    assert_no_failures_for_each_kind(
+        r#"
+kinds.forEach(function (TA) {
+  var name = TA.name;
+  ['map', 'filter', 'slice'].forEach(function (method) {
+    var calls = [];
+    var view = new TA([element(TA, 1), element(TA, 2)]);
+    var iab = new TA([element(TA, 3), element(TA, 4)]).buffer.transferToImmutable();
+    var constructor = {};
+    Object.defineProperty(view, 'constructor', {
+      get: function () { calls.push('constructor'); return constructor; }
+    });
+    Object.defineProperty(constructor, Symbol.species, {
+      get: function () {
+        calls.push('species');
+        return function () { calls.push('construct'); return new TA(iab); };
+      }
+    });
+    check(name + ' ' + method, typeError(function () {
+      view[method](function (value) { calls.push('callback'); return true; });
+    }));
+    // The species result is validated as soon as it is constructed; nothing
+    // is written into it, and its bytes are untouched.
+    check(name + ' ' + method + ' calls',
+      calls.filter(function (c) { return c === 'construct'; }).length === 1);
+    check(name + ' ' + method + ' bytes', snapshot(new TA(iab)) === '3,4');
+  });
+  // subarray creates a view over the receiver's buffer, not a write target:
+  // it may legitimately hand an immutable buffer to its constructor.
+  var over = immutableView(TA, [1, 2, 3]);
+  check(name + ' subarray', snapshot(over.subarray(1)) === '2,3' && over.subarray(1).buffer.immutable === true);
+});
+"#,
+    );
+}
+
+#[test]
+fn typed_array_from_and_of_reject_a_constructor_returning_an_immutable_view() {
+    assert_no_failures_for_each_kind(
+        r#"
+kinds.forEach(function (TA) {
+  var name = TA.name;
+  var calls = [];
+  var custom = immutableView(TA, [0, 0]);
+  var ctor = function (length) { calls.push('construct(' + length + ')'); return custom; };
+  var arrayLike = {
+    get length() { calls.push('length'); return 1; },
+    get 0() { calls.push('get 0'); return element(TA, 8); }
+  };
+  check(name + ' fromArrayLike', typeError(function () { TA.from.call(ctor, arrayLike, function (v) { calls.push('map'); return v; }); }));
+  check(name + ' fromArrayLikeCalls', calls.join() === 'length,construct(1)');
+  calls = [];
+  check(name + ' fromIterable', typeError(function () { TA.from.call(ctor, [element(TA, 1)]); }));
+  check(name + ' fromIterableCalls', calls.join() === 'construct(1)');
+  calls = [];
+  var a = { valueOf: function () { calls.push('a'); return element(TA, 1); } };
+  check(name + ' of', typeError(function () { TA.of.call(ctor, a, a); }));
+  check(name + ' ofCalls', calls.join() === 'construct(2)');
+  check(name + ' unchanged', snapshot(custom) === '0,0');
+  // An ordinary custom result is still filled in.
+  var plain = new TA(1);
+  check(name + ' ofMutable', TA.of.call(function () { return plain; }, element(TA, 6))[0] === element(TA, 6));
+});
+"#,
+    );
+}
+
+#[test]
+fn integer_indexed_set_fails_for_every_numeric_key_on_an_immutable_view() {
+    assert_no_failures(
+        r#"
+var view = new Uint8Array(immutableOf([1, 2, 3, 4]));
+var calls = [];
+var value = { valueOf: function () { calls.push('valueOf'); return 9; } };
+check('inRange', Reflect.set(view, 0, 9) === false);
+check('outOfRange', Reflect.set(view, 10, 9) === false);
+check('negativeZero', Reflect.set(view, '-0', 9) === false);
+check('fractional', Reflect.set(view, '1.5', 9) === false);
+check('infinity', Reflect.set(view, 'Infinity', 9) === false);
+check('otherReceiver', Reflect.set(view, 0, 9, {}) === false);
+check('valueNotConverted', Reflect.set(view, 0, value) === false && calls.length === 0);
+check('unchanged', view.join() === '1,2,3,4');
+view[0] = 9;
+check('sloppyAssignmentIsSilent', view[0] === 1);
+check('strictAssignmentThrows', typeError(function () { 'use strict'; view[0] = 9; }));
+check('strictOutOfRangeThrows', typeError(function () { 'use strict'; view[10] = 9; }));
+// Non-numeric keys are ordinary properties and stay writable.
+view.tag = 'ok';
+check('namedProperty', view.tag === 'ok' && Reflect.set(view, 'tag', 'again') === true);
+// A view over an immutable buffer in a prototype chain refuses the write too.
+var child = Object.create(view);
+check('inheritedInRange', Reflect.set(child, 0, 9) === false && !Object.prototype.hasOwnProperty.call(child, '0'));
+check('inheritedOutOfRange', Reflect.set(child, 10, 9) === false);
+check('inheritedStrict', typeError(function () { 'use strict'; child[0] = 9; }));
+child.other = 1;
+check('inheritedNamedProperty', child.other === 1);
+"#,
+    );
+}
+
+#[test]
+fn integer_indexed_elements_of_an_immutable_view_are_frozen_data_properties() {
+    assert_no_failures(
+        r#"
+var view = new Uint8Array(immutableOf([1, 2, 3, 4]));
+var d = Object.getOwnPropertyDescriptor(view, '2');
+check('descriptor', d.value === 3 && d.writable === false && d.enumerable === true && d.configurable === false);
+check('outOfRangeDescriptor', Object.getOwnPropertyDescriptor(view, '4') === undefined);
+var mutable = Object.getOwnPropertyDescriptor(new Uint8Array(4), '0');
+check('mutableDescriptor', mutable.writable === true && mutable.configurable === true);
+
+// [[DefineOwnProperty]] succeeds only for a descriptor compatible with that.
+function define(descriptor) { return Reflect.defineProperty(view, '2', descriptor); }
+check('emptyDescriptor', define({}) === true);
+check('sameValue', define({ value: 3 }) === true);
+check('fullCompatible', define({ value: 3, writable: false, enumerable: true, configurable: false }) === true);
+check('differentValue', define({ value: 4 }) === false);
+check('sameNumberOtherType', define({ value: '3' }) === false);
+check('writable', define({ writable: true }) === false);
+check('configurable', define({ configurable: true }) === false);
+check('notEnumerable', define({ enumerable: false }) === false);
+check('accessor', define({ get: function () { return 3; } }) === false);
+check('outOfRange', Reflect.defineProperty(view, '9', { value: 1 }) === false);
+check('definePropertyThrows', typeError(function () { Object.defineProperty(view, '2', { value: 4 }); }));
+check('unchanged', view.join() === '1,2,3,4');
+
+var floats = new Float64Array(new Float64Array([NaN, 0]).buffer.transferToImmutable());
+check('nanIsSameValue', Reflect.defineProperty(floats, '0', { value: NaN }) === true);
+check('negativeZeroDiffers', Reflect.defineProperty(floats, '1', { value: -0 }) === false);
+check('positiveZeroSame', Reflect.defineProperty(floats, '1', { value: 0 }) === true);
+"#,
+    );
+}
+
+#[test]
+fn immutable_views_can_be_frozen_and_sealed_but_mutable_ones_cannot() {
+    assert_no_failures(
+        r#"
+var view = new Uint8Array(immutableOf([1, 2, 3, 4]));
+check('extensibleBefore', Object.isExtensible(view) === true);
+check('frozenBefore', Object.isFrozen(view) === false);
+check('sealBefore', Object.isSealed(view) === false);
+check('freezeReturnsView', Object.freeze(view) === view);
+check('frozenAfter', Object.isFrozen(view) === true && Object.isSealed(view) === true);
+check('notExtensible', Object.isExtensible(view) === false);
+check('contents', view.join() === '1,2,3,4');
+
+var sealed = new Uint8Array(immutableOf([1, 2]));
+check('seal', Object.seal(sealed) === sealed && Object.isSealed(sealed));
+var prevented = new Uint8Array(immutableOf([1, 2]));
+check('preventExtensions', Object.preventExtensions(prevented) === prevented && Object.isFrozen(prevented));
+
+// An empty view has no elements to freeze either way.
+check('emptyFreeze', Object.isFrozen(Object.freeze(new Uint8Array(new ArrayBuffer(0).transferToImmutable()))));
+// A view over an ordinary buffer keeps failing to freeze while it has elements.
+check('mutableFreezeThrows', typeError(function () { Object.freeze(new Uint8Array(2)); }));
+check('mutableSealThrows', typeError(function () { Object.seal(new Uint8Array(2)); }));
+"#,
+    );
+}
+
+#[test]
+fn generic_array_mutators_fail_on_an_immutable_view_and_leave_it_unchanged() {
+    // The generic Array algorithms write through [[Set]]/[[Delete]] with
+    // `throw = true`, so an immutable-backed view surfaces as a TypeError.
+    assert_no_failures(
+        r#"
+var view = new Uint8Array(immutableOf([3, 1, 2]));
+['fill', 'reverse', 'pop', 'shift', 'unshift', 'splice'].forEach(function (method) {
+  check(method, typeError(function () { Array.prototype[method].call(view, 9, 0, 1); }));
+});
+check('unchanged', view.join() === '3,1,2');
+"#,
+    );
+}
+
+#[test]
+fn integer_indexed_delete_and_has_are_unchanged_on_an_immutable_view() {
+    assert_no_failures(
+        r#"
+var view = new Uint8Array(immutableOf([1, 2, 3, 4]));
+check('deleteInRange', Reflect.deleteProperty(view, '1') === false);
+check('deleteOutOfRange', Reflect.deleteProperty(view, '9') === true);
+check('strictDeleteThrows', typeError(function () { 'use strict'; delete view[1]; }));
+check('has', (1 in view) && !(9 in view));
+check('ownKeys', Object.keys(view).join() === '0,1,2,3');
+check('hasOwn', Object.prototype.hasOwnProperty.call(view, '3'));
+check('unchanged', view.join() === '1,2,3,4');
+"#,
+    );
+}
+
+// --- DataView ------------------------------------------------------------
+
+#[test]
+fn data_view_setters_reject_an_immutable_buffer_before_reading_arguments() {
+    assert_no_failures(
+        r#"
+var setters = ['setInt8', 'setUint8', 'setInt16', 'setUint16', 'setInt32', 'setUint32',
+  'setFloat32', 'setFloat64', 'setBigInt64', 'setBigUint64'];
+if (typeof DataView.prototype.setFloat16 === 'function') setters.push('setFloat16');
+var getters = { setInt8: 'getInt8', setUint8: 'getUint8', setInt16: 'getInt16', setUint16: 'getUint16',
+  setInt32: 'getInt32', setUint32: 'getUint32', setFloat32: 'getFloat32', setFloat64: 'getFloat64',
+  setBigInt64: 'getBigInt64', setBigUint64: 'getBigUint64', setFloat16: 'getFloat16' };
+setters.forEach(function (setter) {
+  var iab = new ArrayBuffer(16).transferToImmutable();
+  var view = new DataView(iab);
+  var calls = [];
+  var byteOffset = { valueOf: function () { calls.push('byteOffset'); return 0; } };
+  var value = { valueOf: function () { calls.push('value'); return '1'; } };
+  var littleEndian = { valueOf: function () { calls.push('littleEndian'); return true; } };
+  check(setter + ' throws', typeError(function () { view[setter](byteOffset, value, littleEndian); }));
+  check(setter + ' argumentsUntouched', calls.length === 0);
+  check(setter + ' outOfRangeStillTypeError', typeError(function () { view[setter](1000, 1); }));
+  check(setter + ' reads', view[getters[setter]](0) == 0);
+  // The same call on a view over an ordinary buffer works.
+  var ordinary = new DataView(new ArrayBuffer(16));
+  var one = setter.indexOf('Big') >= 0 ? 1n : 1;
+  ordinary[setter](0, one);
+  check(setter + ' ordinaryWrites', ordinary[getters[setter]](0) == 1);
+});
+// Offset and length views are rejected the same way.
+var sub = new DataView(new ArrayBuffer(16).transferToImmutable(), 4, 8);
+check('subView', typeError(function () { sub.setUint8(0, 1); }) && sub.getUint8(0) === 0);
+check('subViewWrongOrder', typeError(function () { sub.setUint8(100, 1); }));
+"#,
+    );
+}
+
+// --- Atomics -------------------------------------------------------------
+
+#[test]
+fn atomics_writes_reject_an_immutable_buffer_before_reading_arguments() {
+    assert_no_failures(
+        r#"
+var ints = [Int8Array, Uint8Array, Int16Array, Uint16Array, Int32Array, Uint32Array,
+  BigInt64Array, BigUint64Array];
+var operations = ['add', 'and', 'compareExchange', 'exchange', 'or', 'store', 'sub', 'xor'];
+function element(TA, n) { return TA === BigInt64Array || TA === BigUint64Array ? BigInt(n) : n; }
+ints.forEach(function (TA) {
+  operations.forEach(function (operation) {
+    var view = new TA(new TA(8).buffer.transferToImmutable());
+    var calls = [];
+    var index = { valueOf: function () { calls.push('index'); return 0; } };
+    var value = { valueOf: function () { calls.push('value'); return element(TA, 1); } };
+    check(TA.name + ' ' + operation, typeError(function () {
+      Atomics[operation](view, index, value, value);
+    }));
+    check(TA.name + ' ' + operation + ' argumentsUntouched', calls.length === 0);
+    check(TA.name + ' ' + operation + ' unchanged', Array.prototype.every.call(view, function (v) { return v == 0; }));
+  });
+  // Read-only operations keep working on an immutable buffer.
+  var view = new TA(new TA([element(TA, 7)]).buffer.transferToImmutable());
+  check(TA.name + ' load', Atomics.load(view, 0) === element(TA, 7));
+});
+// Atomics.notify and Atomics.wait never write. An immutable buffer is not
+// shared, so notify reports 0 waiters (after coercing its arguments) and wait
+// rejects it exactly as it rejects any non-shared buffer.
+[Int32Array, BigInt64Array].forEach(function (TA) {
+  var view = new TA(new TA(4).buffer.transferToImmutable());
+  var calls = [];
+  var index = { valueOf: function () { calls.push('index'); return 0; } };
+  var count = { valueOf: function () { calls.push('count'); return 1; } };
+  check(TA.name + ' notify', Atomics.notify(view, index, count) === 0);
+  check(TA.name + ' notifyCalls', calls.join() === 'index,count');
+  check(TA.name + ' wait', typeError(function () { Atomics.wait(view, 0, element(TA, 0), 0); }));
+});
+check('ordinaryStillWrites', (function () {
+  var view = new Int32Array(4);
+  Atomics.store(view, 0, 5);
+  return Atomics.add(view, 0, 1) === 5 && view[0] === 6;
+})());
+"#,
+    );
+}
+
+// --- Uint8Array base64 / hex --------------------------------------------
+
+#[test]
+fn uint8_array_set_from_rejects_an_immutable_target_before_reading_arguments() {
+    assert_no_failures(
+        r#"
+var view = new Uint8Array(new Uint8Array([1, 2, 3, 4]).buffer.transferToImmutable());
+var calls = [];
+var options = {
+  get alphabet() { calls.push('alphabet'); return undefined; },
+  get lastChunkHandling() { calls.push('lastChunkHandling'); return undefined; }
+};
+check('base64', typeError(function () { view.setFromBase64('Zm9v', options); }));
+check('emptyBase64', typeError(function () { view.setFromBase64('', options); }));
+check('optionsUntouched', calls.length === 0);
+check('hex', typeError(function () { view.setFromHex('666f6f'); }));
+check('emptyHex', typeError(function () { view.setFromHex(''); }));
+check('unchanged', view.join() === '1,2,3,4');
+// The read-only encoders keep working; an ordinary target keeps decoding.
+check('toBase64', view.toBase64() === 'AQIDBA==');
+check('toHex', view.toHex() === '01020304');
+var ordinary = new Uint8Array(4);
+check('ordinaryBase64', ordinary.setFromBase64('Zm9v').written === 3 && ordinary.join() === '102,111,111,0');
+check('ordinaryHex', ordinary.setFromHex('0102').written === 2 && ordinary.join() === '1,2,111,0');
+"#,
+    );
+}
+
 #[test]
 fn a_failing_check_is_reported_by_name() {
     // The harness itself: a failing `check` must be reported, not swallowed.

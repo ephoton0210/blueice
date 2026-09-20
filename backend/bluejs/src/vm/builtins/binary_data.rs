@@ -717,7 +717,12 @@ impl Vm {
         floating: bool,
         bigint: bool,
     ) -> Result<Value, RuntimeError> {
-        self.data_view_raw_receiver(receiver)?;
+        let (viewed_buffer, _, _) = self.data_view_raw_receiver(receiver)?;
+        if self.heap.buffer_is_immutable(viewed_buffer)? {
+            return Err(RuntimeError::TypeError(
+                "DataView is backed by an immutable ArrayBuffer".into(),
+            ));
+        }
         let index = self.buffer_index(native::argument(args, 0))?;
         // SetViewValue converts its value before observing detachment or an
         // out-of-range index. This matters when valueOf throws or detaches.
@@ -902,6 +907,9 @@ impl Vm {
         args: &[Value],
         operation: AtomicOp,
     ) -> Result<Value, RuntimeError> {
+        if operation != AtomicOp::Load {
+            self.reject_immutable_typed_array(native::argument(args, 0))?;
+        }
         let (object, index, kind) = self.atomics_access(args, false)?;
         let result = match operation {
             AtomicOp::Load => self.atomics_modify(object, index, |old| (None, old)),
@@ -1496,6 +1504,8 @@ impl Vm {
                 "TypedArray method requires a TypedArray receiver".into(),
             ));
         }
+        // An immutable backing buffer is rejected before `offset` is read.
+        self.reject_immutable_typed_array(receiver)?;
         let source = native::argument(args, 0);
         let target_offset = self.buffer_index(native::argument(args, 1))?;
         // ToIntegerOrInfinity(offset) is observable.  Revalidate after it:
