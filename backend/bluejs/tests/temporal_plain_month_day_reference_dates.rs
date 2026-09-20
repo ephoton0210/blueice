@@ -357,3 +357,50 @@ return done();
 "#
     ));
 }
+
+/// Every route to a `PlainMonthDay` derives the same reference date from the
+/// same month code and day: `PlainDate` and `ZonedDateTime`
+/// `toPlainMonthDay` (`PlainDateTime` has none), `PlainMonthDay.from` of a string, and `toPlainDate` back.
+#[test]
+fn every_route_to_a_month_day_agrees_on_the_reference_date() {
+    assert_ok(&format!(
+        r#"
+(function() {{
+{PRELUDE}
+for (const [calendar, monthCode, day, referenceYear] of [
+  ["hebrew", "M05L", 1, 1970], ["hebrew", "M02", 30, 1971], ["hebrew", "M04", 26, 1972],
+  ["chinese", "M04L", 15, 1963], ["dangi", "M03L", 1, 1966], ["gregory", "M02", 29, 1972],
+  // Coptic 1687 (ISO 1970-71) is a leap year, so its 6th intercalary day is 1971-08-30.
+  // Persian 1350 is a leap year in the 33-year cycle (1350 mod 33 = 30), so Esfand 30
+  // is 1972-03-20, inside ISO 1972.
+  ["coptic", "M13", 6, 1971], ["persian", "M12", 30, 1972],
+]) {{
+  const label = calendar + " " + monthCode + "-" + day;
+  // A date in some year that has the month-day (search a window of years).
+  let plain;
+  for (let year = 1; year < 6000 && plain === undefined; year++) {{
+    try {{
+      const candidate = Temporal.PlainDate.from({{ year: calendar === "hebrew" ? 5700 + (year % 300) : 1900 + (year % 150), monthCode, day, calendar }}, {{ overflow: "reject" }});
+      if (candidate.monthCode === monthCode && candidate.day === day) plain = candidate;
+    }} catch (e) {{}}
+  }}
+  if (plain === undefined) {{ failures.push(label + ": no probe date found"); continue; }}
+  const routes = {{
+    "PlainDate.toPlainMonthDay": plain.toPlainMonthDay(),
+    "ZonedDateTime.toPlainMonthDay": plain.toZonedDateTime({{ timeZone: "UTC", plainTime: "12:30" }}).toPlainMonthDay(),
+    "PlainMonthDay.from(bag)": MD.from({{ monthCode, day, calendar }}),
+    "PlainMonthDay.from(string)": MD.from(plain.toPlainMonthDay().toString()),
+  }};
+  for (const [route, value] of Object.entries(routes)) {{
+    const got = [value.monthCode, value.day, refYear(value)].join();
+    if (got !== [monthCode, day, referenceYear].join()) failures.push(label + " via " + route + ": " + got);
+  }}
+  // Going back to a PlainDate keeps the month code and day, in whichever year is asked for.
+  const back = plain.toPlainMonthDay().toPlainDate({{ year: plain.year }});
+  if (!back.equals(plain)) failures.push(label + ": toPlainDate round trip " + back.toString());
+}}
+return done();
+}})()
+"#
+    ));
+}
