@@ -120,7 +120,7 @@ impl std::error::Error for BridgeError {}
 /// non-spread, non-hole array literals, simple object literals with identifier
 /// keys, non-substituted template literals without escapes, dot or bracket
 /// property reads, comma sequences, identifier-only prefix/postfix updates, and
-/// identifier-only simple or compound-assignment operators. Static-only
+/// identifier/property simple or compound-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -680,10 +680,13 @@ impl<'a> ExpressionLowerer<'a> {
             .map(|token| self.token_span(token))
             .expect("an assignment operator was just inspected");
         self.index += 1;
-        if !matches!(&target, bluejs::Expr::Identifier(_)) {
+        if !matches!(
+            &target,
+            bluejs::Expr::Identifier(_) | bluejs::Expr::Member { .. }
+        ) {
             return Err(unsupported(
                 span,
-                "only identifier assignment targets are in the v1 direct bridge subset",
+                "only identifier and property assignment targets are in the v1 direct bridge subset",
             ));
         }
         Ok(bluejs::Expr::Assign {
@@ -1975,6 +1978,56 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::String("BlueTS!".into())
+        );
+    }
+
+    #[test]
+    fn lowers_checked_property_assignments() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const person: { name: string } = { name: 'Ada' }; \
+                 person.name = 'Grace'; person.name;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            artifact.program,
+            bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+                if matches!(
+                    body.as_slice(),
+                    [
+                        bluejs::Stmt::VarDecl(_, _),
+                        bluejs::Stmt::Expr(bluejs::Expr::Assign {
+                            target,
+                            ..
+                        }),
+                        bluejs::Stmt::Expr(_),
+                    ] if matches!(target.as_ref(), bluejs::Expr::Member { computed: false, ..})
+                )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("Grace".into())
+        );
+    }
+
+    #[test]
+    fn lowers_checked_compound_property_assignments() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const values: number[] = [1, 2]; values[1] += 40; values[1];",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(42.0)
         );
     }
 
