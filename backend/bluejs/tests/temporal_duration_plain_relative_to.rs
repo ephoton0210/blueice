@@ -201,6 +201,13 @@ fn round_and_total_use_the_real_month_count_of_a_hebrew_leap_year() {
         assertSame(new Temporal.Duration(0, 13).total({ unit: "years", relativeTo }), 1, "13 months total years");
         assertSame(new Temporal.Duration(0, 12).total({ unit: "years", relativeTo }) < 1, true, "12 months is under a year");
         assertSame(new Temporal.Duration(0, 25).total({ unit: "years", relativeTo }), 2, "25 months total years");
+
+        // Backwards from 1 Tishrei 5785, the year before (5784) is the 13-month one.
+        const next = Temporal.PlainDate.from({ year: 5785, monthCode: "M01", day: 1, calendar: "hebrew" });
+        const back = { largestUnit: "years", smallestUnit: "months", relativeTo: next };
+        assertDuration(new Temporal.Duration(0, -13).round(back), -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, "-13 months is a whole year back");
+        assertDuration(new Temporal.Duration(0, -12).round(back), 0, -12, 0, 0, 0, 0, 0, 0, 0, 0, "-12 months stays inside it");
+        assertSame(new Temporal.Duration(0, -13).total({ unit: "years", relativeTo: next }), -1, "-13 months total years");
     "#,
     );
 }
@@ -242,6 +249,20 @@ fn a_plain_relative_to_outside_the_date_time_range_only_matters_for_a_non_blank_
           assertRangeError(() => minutes.round({ smallestUnit: "minutes", relativeTo }), "round " + relativeTo);
           assertRangeError(() => minutes.total({ unit: "minutes", relativeTo }), "total " + relativeTo);
         }
+        // The date-time the duration lands on must itself be within ISODateTimeWithinLimits,
+        // which starts one nanosecond after midnight on -271821-04-19: a day back from the
+        // first representable date lands exactly on that midnight.
+        const first = "-271821-04-20";
+        assertDuration(new Temporal.Duration(0, 0, 0, 0, -23).round({ smallestUnit: "hours", relativeTo: first }),
+          0, 0, 0, 0, -23, 0, 0, 0, 0, 0, "23 hours back is representable");
+        assertRangeError(() => new Temporal.Duration(0, 0, 0, 0, -24).round({ smallestUnit: "hours", relativeTo: first }),
+          "24 hours back lands on the excluded midnight");
+        assertRangeError(() => new Temporal.Duration(0, 0, 0, -1).total({ unit: "days", relativeTo: first }), "total, a day back");
+        // A rounding window whose far end is not representable is a RangeError too.
+        assertRangeError(() => new Temporal.Duration(0, 0, 0, 0, 1).round({ smallestUnit: "month", relativeTo: "+275760-09-12" }),
+          "month window past the end");
+        assertRangeError(() => new Temporal.Duration(0, 0, 0, 1).total({ unit: "month", relativeTo: "+275760-09-12" }),
+          "month total window past the end");
         // A landing date past the last representable one is a RangeError, not a panic.
         assertRangeError(() => new Temporal.Duration(0, 0, 0, 1).round({ smallestUnit: "day", relativeTo: "+275760-09-13" }),
           "one day past the end");

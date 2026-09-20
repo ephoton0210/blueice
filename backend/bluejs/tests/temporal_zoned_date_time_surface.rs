@@ -22,7 +22,9 @@
 //!
 //! Also pins `TimeZone` equality for the `GMT` link group.
 //!
-//! Every expectation is taken from a real Test262 fixture, named at each test.
+//! Every expectation is taken from a real Test262 fixture, named at each test,
+//! except where a comment says it is derived from the specification algorithm
+//! (`RegulateTime` clamping a negative time field under `constrain`).
 
 use blueice_bluejs::{compile, parse, Value, Vm};
 
@@ -133,6 +135,16 @@ fn to_string_rounds_a_sub_minute_offset_but_the_offset_getter_does_not() {
         const beforeByNs = first.add({ nanoseconds: -1 });
         assertSame(beforeByNs.toString(), "1911-03-10T23:59:59.999999999+00:09[Europe/Paris]", "one ns before");
         assertSame(beforeByNs.getTimeZoneTransition("next").toString(), "1911-03-10T23:50:39+00:00[Europe/Paris]", "next from -1ns");
+        // Looking back, a fractional instant just after a transition already has it in the past,
+        // and a transition does not count as before itself. Paris' local mean time (+00:09:21) and
+        // Paris Mean Time before 1891 shared one offset, so nothing precedes the 1911 change.
+        assertSame(first.getTimeZoneTransition("previous"), null, "no earlier offset change");
+        const second = first.getTimeZoneTransition("next");
+        assertSame(second.epochNanoseconds > first.epochNanoseconds, true, "the next one is later");
+        assertSame(second.getTimeZoneTransition("previous").epochNanoseconds, first.epochNanoseconds, "previous of the second");
+        assertSame(second.add({ nanoseconds: 1 }).getTimeZoneTransition("previous").epochNanoseconds, second.epochNanoseconds, "previous from +1ns");
+        assertSame(second.add({ seconds: 1 }).getTimeZoneTransition("previous").epochNanoseconds, second.epochNanoseconds, "previous from +1s");
+        assertSame(second.add({ nanoseconds: -1 }).getTimeZoneTransition("previous").epochNanoseconds, first.epochNanoseconds, "previous from -1ns");
     "#,
     );
 }
