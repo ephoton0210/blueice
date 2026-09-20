@@ -134,17 +134,6 @@ impl Vm {
         }
     }
 
-    pub(in super::super::super) fn temporal_unit_to_date_unit(
-        unit: rounding::TemporalUnit,
-    ) -> plain_date::DateUnit {
-        match unit {
-            rounding::TemporalUnit::Year => plain_date::DateUnit::Year,
-            rounding::TemporalUnit::Month => plain_date::DateUnit::Month,
-            rounding::TemporalUnit::Week => plain_date::DateUnit::Week,
-            _ => plain_date::DateUnit::Day,
-        }
-    }
-
     /// `ToTemporalDate`.
     pub(in super::super::super) fn temporal_to_plain_date(
         &mut self,
