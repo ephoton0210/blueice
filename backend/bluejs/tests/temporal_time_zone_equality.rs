@@ -14,7 +14,11 @@
 //! identifiers (`blueice_ecma402::primary_time_zone_identifier`), which also
 //! decide `Intl.supportedValuesOf("timeZone")`.
 //!
-//! Every expectation is taken from a Test262 fixture, named at each test.
+//! Expectations are taken from the Test262 fixtures named at each test. The
+//! groups in `zones_tzdata_merged_into_one_link_are_still_distinct` are the
+//! places where the old byte comparison was wrong: zones whose TZif data is
+//! identical in the bundled database, all listed in `zone.tab`, which
+//! `canonical-not-equal.js` requires to differ.
 
 use blueice_bluejs::{compile, parse, Value, Vm};
 
@@ -63,7 +67,7 @@ fn aliases_equal_their_primary_zone_and_keep_their_spelling() {
         // Names are matched ASCII-case-insensitively and reported as the database spells them.
         assertSame(zdt("asia/calcutta").timeZoneId, "Asia/Calcutta", "case-insensitive lookup");
         assertSame(zdt("asia/calcutta").equals(zdt("ASIA/KOLKATA")), true, "case-insensitive equals");
-        // The alias whose zone.tab entry differs from the Link target stays distinct from it.
+        // A fixed-offset Etc zone is its own primary identifier, so it is not UTC.
         assertSame(zdt("Etc/GMT+1").equals(zdt("UTC")), false, "Etc/GMT+1 is not UTC");
     "#,
     );
