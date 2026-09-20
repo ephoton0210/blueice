@@ -638,14 +638,20 @@ impl Vm {
                     .array_buffer_byte_length(self.array_buffer_receiver(&receiver)?)?
                     as f64,
             )),
+            NativeFunction::ArrayBufferDetached => Ok(Value::Bool(
+                self.heap
+                    .array_buffer_is_detached(self.array_buffer_receiver(&receiver)?)?,
+            )),
             NativeFunction::ArrayBufferMaxByteLength => Ok(Value::Number(
                 self.heap
                     .buffer_max_byte_length(self.array_buffer_receiver(&receiver)?)?
                     as f64,
             )),
+            // IsResizableArrayBuffer looks only at the buffer's kind, so a
+            // detached resizable buffer still reports true.
             NativeFunction::ArrayBufferResizable => Ok(Value::Bool(
                 self.heap
-                    .buffer_resizable(self.array_buffer_receiver(&receiver)?)?,
+                    .array_buffer_is_resizable(self.array_buffer_receiver(&receiver)?)?,
             )),
             NativeFunction::ArrayBufferResize => self.buffer_resize(&receiver, first),
             NativeFunction::ArrayBufferTransfer => {

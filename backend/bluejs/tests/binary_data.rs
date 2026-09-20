@@ -316,7 +316,7 @@ fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
             Value::Bool(true),
         ),
         (
-            "let source=new ArrayBuffer(4,{maxByteLength:8});new Uint8Array(source).set([1,2,3,4]);let moved=source.transfer(6);let preserving=moved.resizable&&moved.maxByteLength===8&&moved.byteLength===6;let fixed=moved.transferToFixedLength(3);let detached=source.byteLength===0&&moved.byteLength===0;preserving&&detached&&moved.resizable===false&&fixed.resizable===false&&fixed.maxByteLength===3&&fixed.byteLength===3&&new Uint8Array(fixed).join()==='1,2,3'",
+            "let source=new ArrayBuffer(4,{maxByteLength:8});new Uint8Array(source).set([1,2,3,4]);let moved=source.transfer(6);let preserving=moved.resizable&&moved.maxByteLength===8&&moved.byteLength===6;let fixed=moved.transferToFixedLength(3);let detached=source.byteLength===0&&moved.byteLength===0;preserving&&detached&&moved.resizable===true&&fixed.resizable===false&&fixed.maxByteLength===3&&fixed.byteLength===3&&new Uint8Array(fixed).join()==='1,2,3'",
             Value::Bool(true),
         ),
         (
