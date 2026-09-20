@@ -148,14 +148,8 @@ impl Vm {
                 // instance at the edge of the range has no upper (or lower)
                 // bound to round toward (`day-rounding-out-of-range.js`,
                 // `get-start-of-day-throws.js`).
-                let next = plain_date::add_iso_date(date, 0, 0, 0, 1, false)
-                    .filter(|next| epoch::is_date_within_limits(*next))
-                    .ok_or_else(out_of_range)?;
-                let start = zone.start_of_day(date);
-                let end = zone.start_of_day(next);
-                if !epoch::is_in_instant_range(&start) || !epoch::is_in_instant_range(&end) {
-                    return Err(out_of_range());
-                }
+                let (start, end) =
+                    zoned_date_time::checked_day_bounds(&zone, date).ok_or_else(out_of_range)?;
                 let day_length = i128::try_from(&end - &start)
                     .expect("one day's length fits in i128 many times over");
                 // `RoundZonedDateTime` step 19.f: when the wall-clock date's

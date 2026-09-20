@@ -93,19 +93,22 @@ impl Vm {
                 self.temporal_read_optional_integer(like, "eraYear", i32::MIN, i32::MAX)?;
             (era_s, era_year_num)
         };
-        let requested_hour = self.temporal_read_optional_integer(like, "hour", 0, 23)?;
+        let requested_hour =
+            self.temporal_read_optional_integer(like, "hour", i32::MIN, i32::MAX)?;
         let requested_microsecond =
-            self.temporal_read_optional_integer(like, "microsecond", 0, 999)?;
+            self.temporal_read_optional_integer(like, "microsecond", i32::MIN, i32::MAX)?;
         let requested_millisecond =
-            self.temporal_read_optional_integer(like, "millisecond", 0, 999)?;
-        let requested_minute = self.temporal_read_optional_integer(like, "minute", 0, 59)?;
+            self.temporal_read_optional_integer(like, "millisecond", i32::MIN, i32::MAX)?;
+        let requested_minute =
+            self.temporal_read_optional_integer(like, "minute", i32::MIN, i32::MAX)?;
         let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
         let month_code_s =
             self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
         let requested_nanosecond =
-            self.temporal_read_optional_integer(like, "nanosecond", 0, 999)?;
+            self.temporal_read_optional_integer(like, "nanosecond", i32::MIN, i32::MAX)?;
         let offset_string = self.temporal_read_optional_offset_string(like)?;
-        let requested_second = self.temporal_read_optional_integer(like, "second", 0, 59)?;
+        let requested_second =
+            self.temporal_read_optional_integer(like, "second", i32::MIN, i32::MAX)?;
         let requested_year = self.temporal_read_optional_integer(like, "year", -9_999, 9_999)?;
         if [
             requested_day,
@@ -211,14 +214,24 @@ impl Vm {
             existing.calendar.clone(),
             date,
         );
-        result.hour = requested_hour.unwrap_or(i32::from(existing.hour)) as u8;
-        result.minute = requested_minute.unwrap_or(i32::from(existing.minute)) as u8;
-        result.second = requested_second.unwrap_or(i32::from(existing.second)) as u8;
+        // `RegulateTime`: every time field was read unbounded above (so its own
+        // conversion could not throw `RangeError` before `overflow` was known);
+        // `constrain` now clamps it into range and `reject` throws.
+        let regulate = |requested: Option<i32>, current: i32, maximum: i32| match requested {
+            None => Ok(current),
+            Some(value) if (0..=maximum).contains(&value) => Ok(value),
+            Some(_) if reject => Err(RuntimeError::RangeError("invalid Temporal time".into())),
+            Some(value) => Ok(value.clamp(0, maximum)),
+        };
+        result.hour = regulate(requested_hour, i32::from(existing.hour), 23)? as u8;
+        result.minute = regulate(requested_minute, i32::from(existing.minute), 59)? as u8;
+        result.second = regulate(requested_second, i32::from(existing.second), 59)? as u8;
         result.millisecond =
-            requested_millisecond.unwrap_or(i32::from(existing.millisecond)) as u16;
+            regulate(requested_millisecond, i32::from(existing.millisecond), 999)? as u16;
         result.microsecond =
-            requested_microsecond.unwrap_or(i32::from(existing.microsecond)) as u16;
-        result.nanosecond = requested_nanosecond.unwrap_or(i32::from(existing.nanosecond)) as u16;
+            regulate(requested_microsecond, i32::from(existing.microsecond), 999)? as u16;
+        result.nanosecond =
+            regulate(requested_nanosecond, i32::from(existing.nanosecond), 999)? as u16;
 
         let zone = temporal_zoned_date_time_zone(&existing);
         let offset_nanoseconds = match offset_string.as_deref() {
