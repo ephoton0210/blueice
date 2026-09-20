@@ -727,3 +727,48 @@ fn copy_within_flat_and_flat_map_root_their_intermediate_objects_under_gc_stress
     );
     assert!(vm.heap().stats().minor_collections > 10);
 }
+
+#[test]
+fn array_push_on_a_non_array_receiver_follows_the_generic_algorithm() {
+    assert_all_true(&[
+        // A missing or non-numeric `length` goes through ToLength; the
+        // result and the written-back `length` are the new length.
+        "let o={};let r=Array.prototype.push.call(o,'a','b');r===2&&o[0]==='a'&&o[1]==='b'&&o.length===2",
+        "let o={length:'2'};let r=Array.prototype.push.call(o,'x');r===3&&o[2]==='x'&&o.length===3",
+        "let o={length:-5};let r=Array.prototype.push.call(o,'x');r===1&&o[0]==='x'&&o.length===1",
+        // With no arguments `length` is still written back, as ToLength(length).
+        "let o={length:'1.9'};let r=Array.prototype.push.call(o);r===1&&o.length===1",
+        // A getter-only `length` makes the final strict Set throw, after the
+        // element itself was stored.
+        "let o={get length(){return 1}};let caught;try{Array.prototype.push.call(o,'x')}catch(e){caught=e instanceof TypeError}caught===true&&o[1]==='x'",
+        // Growing past 2**53-1 throws before anything is written.
+        "let o={length:9007199254740991};let caught;try{Array.prototype.push.call(o,'x')}catch(e){caught=e instanceof TypeError}caught===true&&!('9007199254740991' in o)&&o.length===9007199254740991",
+        // Genuine arrays keep working (including holes and appended values).
+        "let a=[1,,3];let r=a.push(4,5);r===5&&a.length===5&&!(1 in a)&&a[3]===4&&a[4]===5",
+    ]);
+}
+
+#[test]
+fn array_push_on_a_typed_array_throws_a_type_error_instead_of_crashing() {
+    assert_all_true(&[
+        // `length` is a getter-only accessor on %TypedArray%.prototype, so the
+        // final Set(O, "length", len, true) fails with a TypeError.
+        "let ta=new Uint8Array(2);let caught;try{Array.prototype.push.call(ta,1)}catch(e){caught=e instanceof TypeError}caught===true&&ta.length===2&&ta[0]===0&&ta[1]===0",
+        "let ta=new Uint8Array(2);let caught;try{Array.prototype.push.call(ta)}catch(e){caught=e instanceof TypeError}caught===true",
+    ]);
+}
+
+#[test]
+fn array_push_on_a_frozen_or_length_locked_array_throws_a_type_error() {
+    assert_all_true(&[
+        // The strict Set of `length` (or of the new index) fails, so push
+        // throws instead of silently dropping the write.
+        "let a=[1];Object.defineProperty(a,'length',{writable:false});let caught;try{a.push(2)}catch(e){caught=e instanceof TypeError}caught===true&&a.length===1&&!(1 in a)",
+        "let a=Object.freeze([1]);let caught;try{a.push(2)}catch(e){caught=e instanceof TypeError}caught===true&&a.length===1&&!(1 in a)",
+        // Even with no arguments the final Set of `length` must fail.
+        "let a=Object.freeze([1]);let caught;try{a.push()}catch(e){caught=e instanceof TypeError}caught===true",
+        "let a=[];Object.defineProperty(a,'length',{writable:false});let caught;try{a.push()}catch(e){caught=e instanceof TypeError}caught===true",
+        // A sealed (non-extensible) array cannot grow either.
+        "let a=Object.preventExtensions([1]);let caught;try{a.push(2)}catch(e){caught=e instanceof TypeError}caught===true&&a.length===1",
+    ]);
+}

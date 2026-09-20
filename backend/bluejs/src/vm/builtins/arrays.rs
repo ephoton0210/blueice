@@ -91,6 +91,42 @@ impl Vm {
         Ok(index as u64)
     }
 
+    /// `Array.prototype.push` for a receiver whose `length` is not a plain
+    /// Number (an array-like, a proxy, a TypedArray): ToLength(Get(O,
+    /// "length")), one strict Set per argument, then a strict Set of the new
+    /// `length`. Genuine arrays never get here.
+    pub(in super::super) fn array_push_generic(
+        &mut self,
+        object: ObjectId,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+        let object_value = Value::Object(object);
+        let base = self.stack.len();
+        self.stack.push(object_value.clone());
+        self.stack.extend(args.iter().cloned());
+        let result = (|| {
+            let length = self.get_property(&object_value, &"length".into())?;
+            let mut length = self.coerce_length(&length)?;
+            if length + args.len() as f64 > MAX_SAFE_INTEGER {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.push would exceed the maximum array-like length".into(),
+                ));
+            }
+            for value in args {
+                self.charge_step()?;
+                let key: PropertyName = (length as u64).to_string().into();
+                self.array_set_or_throw(object, key, value)?;
+                length += 1.0;
+            }
+            let length = Value::Number(length);
+            self.array_set_or_throw(object, "length".into(), &length)?;
+            Ok(length)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
     /// `Array.prototype.copyWithin`, built from `HasProperty`, `Get`, `Set`
     /// and `DeletePropertyOrThrow` at the ordinary property boundary, so an
     /// array-like, Proxy or TypedArray receiver observes every step (a

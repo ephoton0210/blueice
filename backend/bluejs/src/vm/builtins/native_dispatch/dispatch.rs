@@ -1000,16 +1000,35 @@ impl Vm {
             NativeFunction::ArrayReduceRight => self.array_reduce_right(&receiver, &args),
             NativeFunction::ArrayPush => {
                 let object = self.coerce_object(&receiver)?;
-                let array = Value::Object(object);
-                self.stack.push(array.clone());
-                let result = (|| {
-                    for value in &args {
-                        self.array_push(&array, value, 0)?;
-                    }
-                    self.heap.get(object, "length").map_err(Into::into)
-                })();
-                self.stack.pop();
-                result
+                // Genuine, growable arrays (whose `length` is a valid uint32
+                // by construction) keep the direct element/length stores.
+                // Every other receiver, including a frozen array or one with a
+                // locked `length`, goes through the generic algorithm so its
+                // strict Sets can throw.
+                let direct = matches!(self.heap.is_array(object), Ok(true))
+                    && matches!(self.heap.get(object, "length"), Ok(Value::Number(_)))
+                    && matches!(self.heap.is_extensible(object), Ok(true))
+                    && matches!(
+                        self.heap.get_own_property_descriptor(object, "length"),
+                        Ok(Some(PropertyDescriptor {
+                            writable: Some(true),
+                            ..
+                        }))
+                    );
+                if direct {
+                    let array = Value::Object(object);
+                    self.stack.push(array.clone());
+                    let result = (|| {
+                        for value in &args {
+                            self.array_push(&array, value, 0)?;
+                        }
+                        self.heap.get(object, "length").map_err(Into::into)
+                    })();
+                    self.stack.pop();
+                    result
+                } else {
+                    self.array_push_generic(object, &args)
+                }
             }
             NativeFunction::ArrayPop => self.array_pop(&receiver),
             NativeFunction::ArrayShift => self.array_shift(&receiver),
