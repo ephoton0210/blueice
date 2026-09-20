@@ -27,10 +27,12 @@ impl Heap {
             nursery: Vec::new(),
             remembered: HashSet::new(),
             roots: HashMap::new(),
+            scoped_roots: Vec::new(),
             managed_bytes: 0,
             next_major_bytes: config.major_threshold_bytes,
             minor_collections: 0,
             major_collections: 0,
+            root_registrations: 0,
         })
     }
 

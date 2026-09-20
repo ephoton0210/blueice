@@ -979,7 +979,7 @@ impl Vm {
                         "TypedArray method requires a TypedArray receiver".into(),
                     ));
                 }
-                self.array_to_locale_string(receiver, args)
+                self.array_to_locale_string(receiver, args, true)
             }
             TypedArrayMethod::ReduceRight => {
                 let (object, length, _) = self.typed_array_method_receiver(receiver)?;

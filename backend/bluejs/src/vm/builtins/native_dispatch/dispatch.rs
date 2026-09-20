@@ -958,6 +958,11 @@ impl Vm {
             NativeFunction::ArrayIsArray => Ok(Value::Bool(self.is_array(first)?)),
             NativeFunction::ArrayAt => self.array_at(&receiver, first),
             NativeFunction::ArrayFill => self.array_fill(&receiver, &args),
+            NativeFunction::ArrayCopyWithin => self.array_copy_within(&receiver, &args),
+            NativeFunction::ArrayFlat => self.array_flat(&receiver, first),
+            NativeFunction::ArrayFlatMap => {
+                self.array_flat_map(&receiver, first, native::argument(&args, 1))
+            }
             NativeFunction::ArrayOf => self.array_of_method(&receiver, &args),
             NativeFunction::ArraySpecies => Ok(receiver),
             NativeFunction::ArrayFrom => self.array_from_method(&args),
@@ -1017,7 +1022,9 @@ impl Vm {
             NativeFunction::ArraySlice => self.array_slice(&receiver, &args),
             NativeFunction::ArraySplice => self.array_splice(&receiver, &args),
             NativeFunction::ArraySort => self.array_sort(&receiver, first),
-            NativeFunction::ArrayToLocaleString => self.array_to_locale_string(&receiver, &args),
+            NativeFunction::ArrayToLocaleString => {
+                self.array_to_locale_string(&receiver, &args, false)
+            }
             NativeFunction::NumberMethod(method) => self.number_method(&receiver, &args, method),
             NativeFunction::Eval => self.indirect_eval(first),
             NativeFunction::IsNaN => Ok(Value::Bool(self.coerce_number(first)?.is_nan())),

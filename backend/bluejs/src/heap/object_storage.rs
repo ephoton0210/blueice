@@ -441,6 +441,7 @@ impl Heap {
         };
         self.next_root = next;
         self.roots.insert(id, object);
+        self.root_registrations += 1;
         Ok(id)
     }
 

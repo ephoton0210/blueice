@@ -147,6 +147,8 @@ pub struct HeapStats {
     pub next_major_bytes: usize,
     pub minor_collections: u64,
     pub major_collections: u64,
+    /// Cumulative number of individual `Heap::root` registrations.
+    pub root_registrations: u64,
 }
 
 pub(crate) type RegExpIteratorState = (ObjectId, JsString, bool, bool, bool);
@@ -1533,10 +1535,14 @@ pub struct Heap {
     nursery: Vec<ObjectId>,
     remembered: HashSet<ObjectId>,
     roots: HashMap<RootId, ObjectId>,
+    /// Batches of temporary roots, innermost last. A VM safepoint registers
+    /// everything it holds as one batch instead of one `roots` entry each.
+    scoped_roots: Vec<Vec<ObjectId>>,
     managed_bytes: usize,
     next_major_bytes: usize,
     minor_collections: u64,
     major_collections: u64,
+    root_registrations: u64,
 }
 
 impl Default for Heap {

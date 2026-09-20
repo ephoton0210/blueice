@@ -6,7 +6,9 @@
 //! Copying an ObjectId is not a root; tests retain live objects through
 //! Heap::root or through properties on an already-rooted object.
 
-use blueice_bluejs::{Heap, HeapConfig, HeapError, PropertyDescriptor, Value};
+use blueice_bluejs::{
+    compile, parse, Heap, HeapConfig, HeapError, PropertyDescriptor, Value, Vm, VmConfig,
+};
 
 #[test]
 fn ordinary_properties_distinguish_missing_from_undefined_and_preserve_values() {
@@ -655,4 +657,60 @@ fn heap_errors_have_usable_diagnostics() {
         assert!(error.to_string().contains(&detail));
         assert!(error.source().is_none());
     }
+}
+
+/// A native allocation is a collection safepoint, so the VM must expose every
+/// object it holds to the heap around it. That cost must not scale with the
+/// number of live VM roots per allocation: registering each root in the heap's
+/// root table made every iterator result, every `push` and every array `set`
+/// pay one hash insert and one hash removal per root, which is what made
+/// Test262's 10,000-element TypedArray fixtures miss their wall deadline.
+#[test]
+fn native_safepoints_do_not_register_vm_roots_one_at_a_time() {
+    let mut vm = Vm::default();
+    let code = compile(
+        &parse(
+            "let keep=[{},{},{}];let source=[];for(let i=0;i<200;i++)source.push({index:i});\
+             let copy=Array.from(source);let typed=new Uint8Array(source.map(function(x){return x.index}));\
+             copy.length+typed.length",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let before = vm.heap().stats().root_registrations;
+    assert_eq!(vm.execute(&code).unwrap(), Value::Number(400.0));
+    let registered = vm.heap().stats().root_registrations - before;
+    // Hundreds of allocating native calls ran above, each with several live
+    // VM values. A per-root registration would cost thousands of entries.
+    assert!(
+        registered < 200,
+        "{registered} individual root registrations for one script"
+    );
+}
+
+/// The batched safepoint roots must still keep every VM-held object alive
+/// when an allocation collects: a one-object nursery makes every native
+/// allocation a collection point.
+#[test]
+fn batched_safepoint_roots_keep_vm_held_objects_alive_across_collections() {
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            ..HeapConfig::default()
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let source = "let held={name:'held',list:[1,2,3]};\
+        function keep(){let inner={tag:'inner'};return [inner,[held]];}\
+        let rows=[];for(let i=0;i<40;i++)rows.push(keep());\
+        let copy=Array.from(rows);\
+        let flat=copy.map(function(row){return row[0].tag+row[1][0].name;});\
+        held.list.length===3&&flat.length===40&&flat.every(function(v){return v==='innerheld';})";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(vm.heap().stats().minor_collections > 40);
 }

@@ -874,6 +874,7 @@ impl Vm {
         index: usize,
         modify: impl FnOnce(Value) -> (Option<Value>, T),
     ) -> Result<T, RuntimeError> {
+        self.atomics_revalidate(object, index)?;
         let (buffer, _, _, _) = self.heap.typed_array_info(object)?;
         if self.heap.buffer_is_shared(buffer)? {
             self.heap
@@ -884,6 +885,24 @@ impl Vm {
                 .typed_array_atomic_modify(object, index, modify)
                 .map_err(Into::into)
         }
+    }
+
+    /// `RevalidateAtomicAccess`: coercing the index or an operand can run
+    /// user code that detaches or shrinks the buffer after `atomics_access`
+    /// validated the view, so re-check before touching the element.
+    fn atomics_revalidate(&self, object: ObjectId, index: usize) -> Result<(), RuntimeError> {
+        if self.heap.typed_array_is_out_of_bounds(object)? {
+            return Err(RuntimeError::TypeError(
+                "TypedArray is out of bounds".into(),
+            ));
+        }
+        let (_, _, length, _) = self.heap.typed_array_info(object)?;
+        if index >= length {
+            return Err(RuntimeError::RangeError(
+                "Atomics index is outside TypedArray".into(),
+            ));
+        }
+        Ok(())
     }
 
     fn atomics_element_value(
@@ -946,8 +965,18 @@ impl Vm {
         let result = match operation {
             AtomicOp::Load => self.atomics_modify(object, index, |old| (None, old)),
             AtomicOp::Store => {
-                let value = self.atomics_element_value(kind, native::argument(args, 2))?;
-                self.atomics_modify(object, index, move |_| (Some(value.clone()), value))
+                // `Atomics.store` returns the coerced value itself
+                // (`ToIntegerOrInfinity` / `ToBigInt`), not the wrapped
+                // element it writes.
+                let value = self.typed_array_element_value(kind, native::argument(args, 2))?;
+                let value = match value {
+                    Value::Number(number) => {
+                        Value::Number((if number.is_nan() { 0.0 } else { number.trunc() }) + 0.0)
+                    }
+                    other => other,
+                };
+                let stored = self.heap.typed_array_normalize_value(kind, &value);
+                self.atomics_modify(object, index, move |_| (Some(stored), value))
             }
             AtomicOp::CompareExchange => {
                 let expected = self.atomics_element_value(kind, native::argument(args, 2))?;
