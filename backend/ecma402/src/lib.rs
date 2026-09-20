@@ -46,6 +46,7 @@ mod plural_rules;
 mod relative_time_format;
 mod segmenter;
 mod supported_values;
+mod time_zone_identifiers;
 
 pub use collator::*;
 pub use date_time_format::*;
@@ -59,6 +60,7 @@ pub use plural_rules::*;
 pub use relative_time_format::*;
 pub use segmenter::*;
 pub use supported_values::*;
+pub use time_zone_identifiers::*;
 
 /// An error from structurally validating and canonicalizing an ECMA-402
 /// Unicode locale identifier.

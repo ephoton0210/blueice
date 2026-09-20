@@ -267,8 +267,6 @@ fn bidi_controls_and_static_helpers_cover_their_boundaries() {
     assert!(!contains(&["a", "b"], "c"));
     assert!(str_eq("same", "same"));
     assert!(!str_eq("same", "different"));
-    assert_eq!(canonical_time_zone("Etc/GMT0"), "UTC");
-    assert_eq!(canonical_time_zone("America/Toronto"), "America/Toronto");
     assert_eq!(
         NumberFormatCoverageCount {
             data_backed: 1,

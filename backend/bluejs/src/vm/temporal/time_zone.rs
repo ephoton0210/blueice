@@ -229,60 +229,27 @@ impl TimeZone {
 
     /// `TimeZoneEquals`: whether `self` and `other` denote the same time
     /// zone -- an offset identifier compares by exact minutes, and a named
-    /// identifier compares by IANA *primary-zone* identity, not by spelling.
-    /// `Self::Iana`'s own stored identifier deliberately preserves whichever
-    /// alias was written (`Asia/Calcutta` stays `Asia/Calcutta`, see that
-    /// variant's doc comment) precisely so a `ZonedDateTime`'s `timeZoneId`
-    /// getter can report it back unchanged
-    /// (`canonicalize-utc-timezone.js`'s own "should be preserved" checks) --
-    /// so identity for *this* comparison has to be computed separately
-    /// rather than read off that stored spelling.
+    /// identifier compares by ECMA-402 *primary identifier*, not by spelling
+    /// or by the zone's data. `Self::Iana`'s own stored identifier deliberately
+    /// preserves whichever alias was written (`Asia/Calcutta` stays
+    /// `Asia/Calcutta`, see that variant's doc comment) so a `ZonedDateTime`'s
+    /// `timeZoneId` getter can report it back unchanged.
     ///
-    /// Two real zones can be spelled differently yet be the exact same zone
-    /// (an IANA `Link`, e.g. `Asia/Calcutta`/`Asia/Kolkata`): the pinned
-    /// `jiff_tzdb` database already de-duplicates a `Link`'s TZif bytes with
-    /// its target's, so comparing the looked-up byte slices is a correct,
-    /// alias-table-free way to detect this
-    /// (`canonicalize-iana-names.js`/`canonical-iana-names.js`). The one
-    /// group this does *not* catch is `Etc/GMT`/`GMT`/`Etc/GMT0`/`GMT0`,
-    /// which ECMA-402's `AvailableNamedTimeZoneIdentifiers` step 5.c
-    /// explicitly special-cases to primary identifier `"UTC"` even though
-    /// their own TZif bytes are not the bundled database's byte-identical
-    /// copy of `UTC`'s (`canonicalize-utc-timezone.js`) -- confirmed by
-    /// direct measurement, not assumed, since `Etc/UTC`/`Etc/UCT` *do*
-    /// already match by byte identity alone.
+    /// Two names have the same primary identifier when one is a
+    /// backward-compatibility alias of the other (`Asia/Calcutta` and
+    /// `Asia/Kolkata`; every spelling of UTC and GMT). Zones that the tz
+    /// database merely *stores* with identical data are distinct
+    /// (`Africa/Accra` and `Africa/Abidjan`, both listed in `zone.tab`), so
+    /// comparing TZif bytes -- the earlier approach -- is wrong in both
+    /// directions. See [`blueice_ecma402::primary_time_zone_identifier`].
     pub(crate) fn time_zone_equals(&self, other: &TimeZone) -> bool {
         match (self, other) {
             (Self::Offset(a), Self::Offset(b)) => a == b,
             (Self::Iana(a), Self::Iana(b)) => {
-                fn etc_gmt_family(name: &str) -> bool {
-                    matches!(
-                        name,
-                        "Etc/GMT"
-                            | "Etc/GMT+0"
-                            | "Etc/GMT-0"
-                            | "Etc/GMT0"
-                            | "Etc/Greenwich"
-                            | "GMT"
-                            | "GMT+0"
-                            | "GMT-0"
-                            | "GMT0"
-                            | "Greenwich"
-                    )
-                }
-                fn primary_utc(name: &str) -> bool {
-                    name == "UTC" || etc_gmt_family(name)
-                }
-                if a == b {
-                    return true;
-                }
-                if primary_utc(a) && primary_utc(b) {
-                    return true;
-                }
-                match (jiff_tzdb::get(a), jiff_tzdb::get(b)) {
-                    (Some((_, data_a)), Some((_, data_b))) => data_a == data_b,
-                    _ => false,
-                }
+                a == b
+                    || blueice_ecma402::primary_time_zone_identifier(a)
+                        .zip(blueice_ecma402::primary_time_zone_identifier(b))
+                        .is_some_and(|(one, two)| one == two)
             }
             _ => false,
         }
@@ -549,6 +516,40 @@ mod tests {
         assert_eq!(parse_identifier("Mars/Olympus_Mons"), None);
         assert_eq!(parse_identifier("America/Nonexistent"), None);
         assert_eq!(parse_identifier(""), None);
+    }
+
+    fn zone(name: &str) -> TimeZone {
+        parse_identifier(name).unwrap_or_else(|| panic!("{name} is a bundled zone"))
+    }
+
+    #[test]
+    fn time_zone_equality_follows_primary_identifiers_not_spelling_or_data() {
+        // A backward-compatibility alias is the same zone as its target, in
+        // either order and whatever the spelling's case.
+        assert!(zone("Asia/Calcutta").time_zone_equals(&zone("Asia/Kolkata")));
+        assert!(zone("asia/kolkata").time_zone_equals(&zone("ASIA/CALCUTTA")));
+        assert!(zone("Etc/GMT+0").time_zone_equals(&zone("UTC")));
+        assert!(zone("Zulu").time_zone_equals(&zone("Etc/GMT")));
+        // Zones the tz database stores with identical data are still distinct
+        // when both are in `zone.tab`.
+        assert!(!zone("Africa/Accra").time_zone_equals(&zone("Africa/Abidjan")));
+        assert!(!zone("Europe/Amsterdam").time_zone_equals(&zone("Europe/Brussels")));
+        assert!(!zone("Etc/GMT+1").time_zone_equals(&zone("UTC")));
+        // Offsets compare by minutes and never equal a named zone.
+        assert!(zone("+01:00").time_zone_equals(&zone("+01:00")));
+        assert!(!zone("+01:00").time_zone_equals(&zone("+02:00")));
+        assert!(!zone("+00:00").time_zone_equals(&zone("UTC")));
+        assert!(!zone("UTC").time_zone_equals(&zone("+00:00")));
+    }
+
+    #[test]
+    fn a_name_unknown_to_the_table_only_equals_itself() {
+        // Not reachable through `parse_identifier`, which only yields bundled
+        // names; the comparison still fails closed rather than panicking.
+        let unknown = TimeZone::Iana("Mars/Olympus_Mons");
+        assert!(unknown.time_zone_equals(&unknown));
+        assert!(!unknown.time_zone_equals(&zone("UTC")));
+        assert!(!zone("UTC").time_zone_equals(&unknown));
     }
 
     #[test]

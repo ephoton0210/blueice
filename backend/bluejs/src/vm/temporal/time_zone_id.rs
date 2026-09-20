@@ -8,9 +8,12 @@
 //! offset or an IANA name), `ParseTemporalTimeZoneString`'s fallback that
 //! reads a zone out of a full ISO date-time string, and
 //! `GetAvailableNamedTimeZoneIdentifier`'s case-insensitive lookup against the
-//! same pinned IANA registry `Intl.supportedValuesOf("timeZone")` already
-//! exposes — so Temporal and ECMA-402 can never disagree about which zone
-//! names exist.
+//! same pinned IANA database `Intl.supportedValuesOf("timeZone")` and
+//! `Intl.DateTimeFormat` read — so Temporal and ECMA-402 can never disagree
+//! about which zone names exist. Every Zone *and Link* name is available,
+//! whether or not it is a primary identifier: `Asia/Calcutta` is accepted (and
+//! keeps its spelling) though `Intl.supportedValuesOf` lists only
+//! `Asia/Kolkata`.
 //!
 //! Deliberately *identifier*-only for parsing/validation. Resolving a named
 //! zone's real UTC offset at an arbitrary instant needs the IANA transition
@@ -20,8 +23,6 @@
 //! instant.
 
 use num_bigint::BigInt;
-use std::collections::BTreeMap;
-use std::sync::OnceLock;
 
 /// The time zone `Temporal.Now`'s optional argument defaults to, and what
 /// `Temporal.Now.timeZoneId()` reports.
@@ -101,26 +102,11 @@ fn is_iana_name(source: &str) -> bool {
         })
 }
 
-/// The pinned IANA Zone-and-Link registry, keyed by its ASCII-lowercased
-/// spelling so lookup is case-insensitive as the spec requires.
-fn named_registry() -> &'static BTreeMap<String, String> {
-    static REGISTRY: OnceLock<BTreeMap<String, String>> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        blueice_ecma402::supported_values_of("timeZone")
-            .unwrap_or_default()
-            .into_iter()
-            .map(|zone| (zone.to_ascii_lowercase(), zone))
-            .collect()
-    })
-}
-
-/// `GetAvailableNamedTimeZoneIdentifier`: the registry's own spelling of
-/// `name`, matched without regard to ASCII case, or `None` when no such zone
-/// is bundled.
+/// `GetAvailableNamedTimeZoneIdentifier`: the pinned database's own spelling of
+/// `name`, matched without regard to ASCII case, or `None` when no such Zone or
+/// Link is bundled.
 fn available_named(name: &str) -> Option<&'static str> {
-    named_registry()
-        .get(&name.to_ascii_lowercase())
-        .map(String::as_str)
+    jiff_tzdb::get(name).map(|(canonical, _)| canonical)
 }
 
 /// `ToTemporalTimeZoneIdentifier`'s string path: resolves `source` to the
