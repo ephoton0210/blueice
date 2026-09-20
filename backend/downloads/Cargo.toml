@@ -1,0 +1,19 @@
+[package]
+name = "blueice-downloads"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "blueice_downloads"
+path = "src/lib.rs"
+
+[[bin]]
+name = "blueice-downloads"
+path = "src/bin/blueice-downloads.rs"
+
+[dependencies]
+blueice-ipc = { path = "../ipc" }
+blueice-net = { path = "../net" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

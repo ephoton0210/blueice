@@ -456,6 +456,8 @@ pub enum GateReply {
     Reject { reason: String, category: String },
     /// Accept the connection and never answer (for this long).
     Hang(Duration),
+    /// Take this long to answer, then clear -- a slow but working gatekeeper.
+    SlowClear(Duration),
     /// Accept the connection and hang up without answering.
     Close,
     /// Answer with bytes that are not a valid frame.
@@ -499,6 +501,10 @@ impl FakeGatekeeper {
                                     let _ = write_gatekeeper_reply(&mut stream, &GatekeeperReply::Rejected { reason, category });
                                 }
                                 GateReply::Hang(how_long) => thread::sleep(how_long),
+                                GateReply::SlowClear(how_long) => {
+                                    thread::sleep(how_long);
+                                    let _ = write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared);
+                                }
                                 GateReply::Close => {}
                                 GateReply::Garbage => {
                                     let bad = b"nope";

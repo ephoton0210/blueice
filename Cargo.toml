@@ -11,6 +11,7 @@ members = [
     "backend/core/paint",
     "backend/core/raster",
     "backend/core/engine",
+    "backend/downloads",
     "backend/extension",
     "backend/frontend-reference",
     "backend/i18n",

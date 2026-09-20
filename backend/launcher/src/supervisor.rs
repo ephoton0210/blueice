@@ -74,6 +74,28 @@ impl ProcessRegistry {
         ProcessRegistry { entries: HashMap::new() }
     }
 
+    /// The roles `blueice-launcher` supervises today, in one place so the
+    /// launcher binary and its tests agree on them:
+    ///
+    /// * `core` -- `AlwaysResident`, with no child held here (its real
+    ///   child is owned and torn down by `SpawnedCore`; see
+    ///   [`Self::is_resident`]).
+    /// * `mcp-server` and `downloads` -- typed, inert `IdleTeardown`
+    ///   slots: real in the data model, but with no automatic spawn path
+    ///   yet (`phase-8-live-core-hotswap/PLAN.md`'s follow-up). Each
+    ///   client instead connects to the process's well-known socket and
+    ///   spawns the sibling binary if nothing answers. `downloads` is
+    ///   only ever a teardown candidate once it has no active or queued
+    ///   transfers (`research/multi-process-memory.md`), which is the
+    ///   process's own knowledge to report, not the registry's.
+    pub fn default_fleet(now: Instant) -> Self {
+        let mut registry = ProcessRegistry::new();
+        registry.register("core", ProcessPolicy::AlwaysResident, None, now);
+        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(300) }, None, now);
+        registry.register("downloads", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(300) }, None, now);
+        registry
+    }
+
     /// Registers `role` under `policy`. `resident` is `Some` if a
     /// process is already running for this role at registration time
     /// (e.g. `core`, spawned unconditionally before this call), `None`
@@ -225,6 +247,31 @@ mod tests {
         assert!(registry.idle_eligible_for_teardown(start + Duration::from_secs(30)).is_empty(), "not yet past the timeout");
         assert_eq!(registry.idle_eligible_for_teardown(start + Duration::from_secs(61)), vec!["mcp-server".to_string()]);
 
+        registry.teardown("mcp-server");
+    }
+
+    #[test]
+    fn the_default_fleet_registers_core_always_resident_and_the_others_as_idle_teardown_slots() {
+        let start = Instant::now();
+        let mut registry = ProcessRegistry::default_fleet(start);
+
+        assert!(registry.is_resident("core"), "core is AlwaysResident");
+        assert!(registry.idle_eligible_for_teardown(start + Duration::from_secs(1_000_000)).is_empty(), "nothing is resident to tear down yet");
+
+        // `downloads` (`phase-10-download-manager/PLAN.md`) and `mcp-server`
+        // are inert slots until something spawns them; once resident, each
+        // becomes eligible for teardown only after its idle timeout.
+        for role in ["downloads", "mcp-server"] {
+            assert!(!registry.is_resident(role), "{role} is not spawned automatically");
+            assert!(registry.set_resident(role, spawn_dummy_child(), start).is_none(), "{role} must be a registered slot");
+            assert!(registry.is_resident(role));
+        }
+        assert!(registry.idle_eligible_for_teardown(start + Duration::from_secs(299)).is_empty());
+        let mut eligible = registry.idle_eligible_for_teardown(start + Duration::from_secs(301));
+        eligible.sort();
+        assert_eq!(eligible, vec!["downloads".to_string(), "mcp-server".to_string()]);
+
+        registry.teardown("downloads");
         registry.teardown("mcp-server");
     }
 

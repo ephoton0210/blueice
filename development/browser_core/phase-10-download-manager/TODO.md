@@ -2,7 +2,7 @@
 
 [← Back to Phase 10 plan](PLAN.md)
 
-> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. M0 (design), M1 (`blueice-ipc` contract) and M2 (`blueice-net` transfer engine) are done; M3 onward has not started.**
+> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. M0 (design), M1 (`blueice-ipc` contract), M2 (`blueice-net` transfer engine) and M3 (the `downloads` process) are done; M4 onward has not started.**
 > Branch: `feature/downloads-first-slice`.
 > Design inputs: [`PLAN.md`](PLAN.md) (this phase), [`../phase-7-local-ai/PLAN.md`](../phase-7-local-ai/PLAN.md), [`../phase-12-mcp-server/PLAN.md`](../phase-12-mcp-server/PLAN.md), [`../research/safe-browsing-enforcement.md`](../research/safe-browsing-enforcement.md), [`../research/multi-process-memory.md`](../research/multi-process-memory.md).
 
@@ -86,14 +86,14 @@ Network and files:
 - [x] End-to-end tests: connections really run in parallel (concurrent connections > 1), dynamic re-splitting really happens (a slow segment gets split), large-file content is byte-for-byte correct, pause → resume, resume after a restart (drop the `Transfer` and rebuild it), and a server change mid-transfer is detected
 
 ### M3 — `backend/downloads` process
-- [ ] New crate `blueice-downloads` (lib + `blueice-downloads` bin), added to the workspace members
-- [ ] `TransferManager`: id allocation, queueing (3 at a time), and the state machine Queued → AwaitingClearance → Active ⇄ Paused → Completed/Failed/Cancelled/Blocked
-- [ ] A worker thread per transfer: `review_url` → probe → `review_download` → `Transfer::begin`, checking for pause/cancel between steps
-- [ ] Persistence: `transfers.json` (atomic writes) loaded at startup; anything that was Active becomes Paused (reason: process restarted)
-- [ ] Download-directory confinement and `dest` resolution (D10); file-name conflict handling
-- [ ] Unix-socket server: handshake, request dispatch, `Subscribe` push (a slow client only delays itself)
-- [ ] Register `downloads` in the launcher's `ProcessRegistry` (D12)
-- [ ] Tests: manager unit tests (fake gatekeeper, local HTTP server); a **real-subprocess end-to-end test** (like `core_binary.rs`): start the binary, complete a download over the socket, get rejected by the gatekeeper, pause/resume, and still see history after a restart
+- [x] New crate `blueice-downloads` (lib + `blueice-downloads` bin), added to the workspace members
+- [x] `TransferManager`: id allocation, queueing (3 at a time), and the state machine Queued → AwaitingClearance → Active ⇄ Paused → Completed/Failed/Cancelled/Blocked
+- [x] A worker thread per transfer: `review_url` → probe → `review_download` → `Transfer::begin`, checking for pause/cancel between steps
+- [x] Persistence: `transfers.json` (atomic writes) loaded at startup; anything that was Active becomes Paused (reason: process restarted)
+- [x] Download-directory confinement and `dest` resolution (D10); file-name conflict handling
+- [x] Unix-socket server: handshake, request dispatch, `Subscribe` push (a slow client only delays itself)
+- [x] Register `downloads` in the launcher's `ProcessRegistry` (D12)
+- [x] Tests: manager unit tests (fake gatekeeper, local HTTP server); a **real-subprocess end-to-end test** (like `core_binary.rs`): start the binary, complete a download over the socket, get rejected by the gatekeeper, pause/resume, and still see history after a restart
 
 ### M4 — MCP tools (`blueice-mcp-server`)
 - [ ] Tools: `download_file(url, dest?)`, `list_transfers(state?)`, `get_transfer(id)`, `pause_transfer`, `resume_transfer`, `cancel_transfer`, `remove_transfer`

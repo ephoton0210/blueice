@@ -159,6 +159,16 @@ name = "blueice-dom"
 version = "0.1.0"
 
 [[package]]
+name = "blueice-downloads"
+version = "0.1.0"
+dependencies = [
+ "blueice-ipc",
+ "blueice-net",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "blueice-engine"
 version = "0.1.0"
 dependencies = [

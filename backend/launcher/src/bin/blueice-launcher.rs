@@ -14,7 +14,7 @@
 //! `UnixListener` to that already-tested logic.
 
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
-use blueice_launcher::supervisor::{ProcessPolicy, ProcessRegistry};
+use blueice_launcher::supervisor::ProcessRegistry;
 use blueice_launcher::{default_control_socket_path, default_rendezvous_socket_path, run_broker, SpawnedCore};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
@@ -102,22 +102,12 @@ fn main() -> ExitCode {
     };
 
     // `phase-8-live-core-hotswap/PLAN.md`'s fleet-memory-supervisor
-    // minimal first slice: `core` is registered `AlwaysResident` with
-    // `resident: None` (its real child is owned and torn down by
-    // `SpawnedCore` above, not this registry -- see `ProcessRegistry::
-    // is_resident`'s own docs for why an `AlwaysResident` role never
-    // needs the registry to hold the child at all). `mcp-server` is
-    // registered as a typed but inert `IdleTeardown` slot: real in the
-    // data model and exercised in tests, but with no automatic spawn
-    // path yet (see `phase-8-live-core-hotswap/PLAN.md`'s own follow-up
-    // item for why that's a separate, still-open transport question).
-    let registry = Arc::new(Mutex::new(ProcessRegistry::new()));
-    {
-        let mut registry = registry.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let now = Instant::now();
-        registry.register("core", ProcessPolicy::AlwaysResident, None, now);
-        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(300) }, None, now);
-    }
+    // minimal first slice: the roles this launcher supervises are
+    // registered in one place, `ProcessRegistry::default_fleet` (`core`
+    // `AlwaysResident`; `mcp-server` and `downloads` typed but inert
+    // `IdleTeardown` slots with no automatic spawn path yet -- see that
+    // function's docs).
+    let registry = Arc::new(Mutex::new(ProcessRegistry::default_fleet(Instant::now())));
     let memory_source: Arc<dyn memory_pressure::MemorySource> =
         if args.simulate_low_memory { Arc::new(memory_pressure::FixedMemorySource(0.0)) } else { Arc::new(SystemMemorySource::new()) };
     let _pressure_monitor = memory_pressure::spawn_pressure_monitor(Arc::clone(&registry), memory_source, memory_pressure::DEFAULT_PRESSURE_THRESHOLD, args.memory_poll_interval);
