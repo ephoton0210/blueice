@@ -35,6 +35,8 @@ An incompatible major ABI, an unknown required field, a source hash mismatch, or
 
 ## AST/IR hand-off
 
+The bridge lowers `new Identifier(args)` directly to BlueJS `New` data. Constructor members, omitted parentheses, and spread arguments remain excluded.
+
 Direct calls may target identifier, dot-member, or bracket-member expressions. Member calls preserve the BlueJS receiver reference; optional calls remain excluded.
 
 The current direct expression subset supersedes earlier phase summaries: literals and identifiers; quoted-string and non-substituted template escapes; `${identifier}` template slots; direct calls; unary, arithmetic, comparison, logical, conditional, assignment, and sequence expressions; arrays; objects with identifier/string/numeric keys and identifier shorthand; dot/bracket reads; property assignments; and identifier-only updates. General template expressions, optional chaining, and object spread/computed keys/methods/accessors remain excluded.

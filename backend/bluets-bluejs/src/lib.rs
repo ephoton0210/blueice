@@ -1090,6 +1090,7 @@ impl<'a> ExpressionLowerer<'a> {
                 "false" => Ok(bluejs::Expr::Bool(false)),
                 "null" => Ok(bluejs::Expr::Null),
                 "undefined" => Ok(bluejs::Expr::Identifier("undefined".to_string())),
+                "new" => self.parse_new_expression(token),
                 _ => Err(unsupported(
                     self.token_span(token),
                     format!(
@@ -1165,6 +1166,71 @@ impl<'a> ExpressionLowerer<'a> {
                 }
             }
         }
+    }
+
+    fn parse_new_expression(&mut self, keyword: &Token) -> Result<bluejs::Expr, BridgeError> {
+        let Some(callee) = self.tokens.get(self.index) else {
+            return Err(unsupported(
+                self.token_span(keyword),
+                "expected a constructor after `new`",
+            ));
+        };
+        if callee.kind != TokenKind::Identifier {
+            return Err(unsupported(
+                self.token_span(callee),
+                "only identifier constructors are in the v1 direct bridge subset",
+            ));
+        }
+        let callee = bluejs::Expr::Identifier(callee.text.clone());
+        self.index += 1;
+        let Some(opening) = self.tokens.get(self.index) else {
+            return Err(unsupported(
+                self.token_span(keyword),
+                "expected `(` after a constructor",
+            ));
+        };
+        if opening.text != "(" {
+            return Err(unsupported(
+                self.token_span(opening),
+                "only constructor calls with parentheses are in the v1 direct bridge subset",
+            ));
+        }
+        self.index += 1;
+        let mut args = Vec::new();
+        if self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == ")")
+        {
+            self.index += 1;
+        } else {
+            loop {
+                args.push(bluejs::Argument::Normal(self.parse_assignment()?));
+                let Some(separator) = self.tokens.get(self.index) else {
+                    return Err(unsupported(
+                        self.token_span(keyword),
+                        "unterminated constructor call",
+                    ));
+                };
+                match separator.text.as_str() {
+                    "," => self.index += 1,
+                    ")" => {
+                        self.index += 1;
+                        break;
+                    }
+                    _ => {
+                        return Err(unsupported(
+                            self.token_span(separator),
+                            "expected `,` or `)` in constructor call",
+                        ))
+                    }
+                }
+            }
+        }
+        Ok(bluejs::Expr::New {
+            callee: Box::new(callee),
+            args,
+        })
     }
 
     fn parse_object_literal(&mut self, opening: &Token) -> Result<bluejs::Expr, BridgeError> {
@@ -2058,6 +2124,23 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::String("ADA".into())
+        );
+    }
+
+    #[test]
+    fn lowers_checked_identifier_constructor_calls() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const value = new Object(); typeof value === 'object';",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Bool(true)
         );
     }
 
