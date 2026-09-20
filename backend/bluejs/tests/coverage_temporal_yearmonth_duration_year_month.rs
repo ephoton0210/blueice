@@ -504,8 +504,12 @@ fn until_and_since_round_symmetrically_and_reflect_direction_sensitive_modes() {
         check("negative years", "P3Y", () => new YM(-5, 1).until(new YM(-2, 1)));
         check("since equal", "PT0S", () => early.since(early));
         check("wide span", "P1000Y", () => new YM(1000, 1).until(new YM(2000, 1)));
-        check("extremes", "P547581Y5M", () => new YM(-271821, 4).until(new YM(275760, 9)));
-        check("extremes months", "P6570977M", () => new YM(-271821, 4).until(new YM(275760, 9), { largestUnit: "month" }));
+        // The difference is taken between the *first days* of the two months, and
+        // -271821-04-01 is before the minimum date, so the true minimum
+        // year-month cannot be an endpoint (`since`/`until/
+        // throws-if-year-outside-valid-iso-range.js`); the next month can.
+        check("extremes", "P547581Y4M", () => new YM(-271821, 5).until(new YM(275760, 9)));
+        check("extremes months", "P6570976M", () => new YM(-271821, 5).until(new YM(275760, 9), { largestUnit: "month" }));
         "#,
     );
 }
