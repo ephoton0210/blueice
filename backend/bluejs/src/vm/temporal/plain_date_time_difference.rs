@@ -501,7 +501,7 @@ fn nudge_to_calendar_unit(
 /// (`ApplyUnsignedRoundingMode` over the exact `numerator / denominator`
 /// position between the two brackets; `sign` orients `ceil`/`floor` and the
 /// half-`ceil`/`floor` modes).
-fn rounds_up(
+pub(crate) fn rounds_up(
     numerator: i128,
     denominator: i128,
     r1: i64,
