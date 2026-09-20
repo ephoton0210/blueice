@@ -56,6 +56,17 @@ exercise a hundred years of non-ISO calendar conversion, including lunisolar
 leap months, and must not cause the ordinary Intl or Temporal timeout policy
 to become permissive.
 
+Seven exact intl402 Temporal fixtures walk a fixed calendar table through the
+real `Temporal.*.from` path and receive a 2,000,000-dispatch allowance (the
+default is 100,000): `PlainDate/from/hebrew-keviah.js`,
+`PlainDate/from/persian-new-year-dates.js`, the two
+`roundtrip-from-property-bag.js` fixtures, and the three
+`{PlainDate,PlainDateTime,ZonedDateTime}/prototype/dayOfYear/
+non-iso-calendar-basic.js` fixtures, which step through every day of one year
+in fifteen calendars (about 240,000 dispatches at minimum). The list is exact
+and pinned by `test_runner.py`; a neighbouring fixture keeps the default, and an
+unbounded loop still exhausts the allowance.
+
 Each supervising worker owns a process group. A whole-case timeout or adapter crash kills and reaps that group, including a regex child, before the next case creates a replacement. Regex operations additionally have their own engine-level deadline. Transport uses nonblocking bounded IO, so a blocked pipe does not disable the case deadline.
 
 The checked-in [summary](../../../development/browser_core/phase-13-bluejs-engine/test262-summary.json) records the current complete inventory. Full passing conformance, complete host hooks, the remaining ECMA-402 constructors, and unsupported language/API subsystems remain open work.

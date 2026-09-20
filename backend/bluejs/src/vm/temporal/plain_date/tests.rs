@@ -11,10 +11,34 @@ use super::calendar_difference::*;
 use super::format::*;
 use super::iso_date::*;
 use super::month_structure::*;
-use super::round_duration::*;
 use icu_calendar::options::Overflow as IcuOverflow;
 use icu_calendar::types::Month;
 use icu_calendar::{AnyCalendarKind, Iso};
+
+/// [`super::round_duration::round_calendar_duration`] for a pair whose rounding
+/// window is inside Temporal's range (every case below): shadows the glob-imported
+/// `Option`-returning function so those cases read as plain tuples. The
+/// out-of-range window is exercised separately.
+fn round_calendar_duration(
+    calendar: AnyCalendarKind,
+    start: CivilDate,
+    end: CivilDate,
+    largest_unit: DateUnit,
+    smallest_unit: DateUnit,
+    increment: i128,
+    mode: blueice_ecma402::NumberRoundingMode,
+) -> (i64, i64, i64, i64) {
+    super::round_duration::round_calendar_duration(
+        calendar,
+        start,
+        end,
+        largest_unit,
+        smallest_unit,
+        increment,
+        mode,
+    )
+    .expect("the rounding window is inside Temporal's range")
+}
 
 #[test]
 fn computes_iso_day_of_week_matching_a_known_monday() {
@@ -770,5 +794,131 @@ fn calendar_difference_date_leap_month_compares_the_raw_day_when_resolving_the_a
     assert_eq!(
         calendar_difference_date(calendar, start29, end, DateUnit::Month),
         (0, 13, 0, 0)
+    );
+}
+
+#[test]
+fn round_calendar_duration_rounds_the_months_remainder_by_the_increment() {
+    // PlainYearMonth/prototype/{since,until}/roundingincrement-as-expected.js:
+    // 2019-01 -> 2021-09 is 2 years 8 months.
+    use blueice_ecma402::NumberRoundingMode::{Ceil, Floor, HalfExpand, Trunc};
+    let iso = AnyCalendarKind::Iso;
+    let (start, end) = ((2019, 1, 1), (2021, 9, 1));
+    let round = |largest, smallest, increment, mode| {
+        round_calendar_duration(iso, start, end, largest, smallest, increment, mode)
+    };
+    // The increment applies to the 8-month remainder, not to the 32-month total.
+    assert_eq!(
+        round(DateUnit::Year, DateUnit::Month, 5, Trunc),
+        (2, 5, 0, 0)
+    );
+    assert_eq!(
+        round(DateUnit::Year, DateUnit::Month, 5, Ceil),
+        (2, 10, 0, 0)
+    );
+    assert_eq!(
+        round(DateUnit::Year, DateUnit::Month, 5, Floor),
+        (2, 5, 0, 0)
+    );
+    // A pure-months difference has no separate remainder: 32 -> 30.
+    assert_eq!(
+        round(DateUnit::Month, DateUnit::Month, 10, Trunc),
+        (0, 30, 0, 0)
+    );
+    // Year rounding: 2.67 years to an increment of 4.
+    assert_eq!(
+        round(DateUnit::Year, DateUnit::Year, 4, HalfExpand),
+        (4, 0, 0, 0)
+    );
+    // The same span backwards: every field is negative, `Ceil`/`Floor` swap roles.
+    let back =
+        |mode| round_calendar_duration(iso, end, start, DateUnit::Year, DateUnit::Month, 5, mode);
+    assert_eq!(back(Trunc), (-2, -5, 0, 0));
+    assert_eq!(back(Ceil), (-2, -5, 0, 0));
+    assert_eq!(back(Floor), (-2, -10, 0, 0));
+}
+
+#[test]
+fn round_calendar_duration_bubbles_a_full_months_remainder_into_the_years() {
+    use blueice_ecma402::NumberRoundingMode::Expand;
+    // 2 years 10 months, rounded *up* to an increment of 6 months, is 12
+    // months: a whole extra year with no months.
+    assert_eq!(
+        round_calendar_duration(
+            AnyCalendarKind::Iso,
+            (2019, 1, 1),
+            (2021, 11, 1),
+            DateUnit::Year,
+            DateUnit::Month,
+            6,
+            Expand
+        ),
+        (3, 0, 0, 0)
+    );
+    // ... and backwards.
+    assert_eq!(
+        round_calendar_duration(
+            AnyCalendarKind::Iso,
+            (2021, 11, 1),
+            (2019, 1, 1),
+            DateUnit::Year,
+            DateUnit::Month,
+            6,
+            Expand
+        ),
+        (-3, 0, 0, 0)
+    );
+    // Not rounded up: the remainder stays under the increment.
+    assert_eq!(
+        round_calendar_duration(
+            AnyCalendarKind::Iso,
+            (2019, 1, 1),
+            (2021, 11, 1),
+            DateUnit::Year,
+            DateUnit::Month,
+            6,
+            blueice_ecma402::NumberRoundingMode::Trunc
+        ),
+        (2, 6, 0, 0)
+    );
+}
+
+#[test]
+fn round_calendar_duration_reports_a_window_outside_the_range_as_none() {
+    // PlainYearMonth/prototype/{since,until}/throws-if-rounded-date-outside-
+    // valid-iso-range.js: an increment of 100,000,000 months sends `start + r2`
+    // far outside Temporal's range.
+    use blueice_ecma402::NumberRoundingMode::Trunc;
+    for (largest, smallest) in [
+        (DateUnit::Year, DateUnit::Month),
+        (DateUnit::Month, DateUnit::Month),
+        (DateUnit::Year, DateUnit::Year),
+    ] {
+        assert_eq!(
+            super::round_duration::round_calendar_duration(
+                AnyCalendarKind::Iso,
+                (1970, 1, 1),
+                (1971, 1, 1),
+                largest,
+                smallest,
+                100_000_000,
+                Trunc
+            ),
+            None,
+            "{largest:?}/{smallest:?}"
+        );
+    }
+    // The same window in a non-ISO calendar (the conversion must not panic either).
+    assert_eq!(
+        super::round_duration::round_calendar_duration(
+            AnyCalendarKind::Hebrew,
+            (1970, 1, 1),
+            (1971, 1, 1),
+            DateUnit::Year,
+            DateUnit::Month,
+            100_000_000,
+            Trunc
+        ),
+        None
     );
 }
