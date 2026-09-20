@@ -56,6 +56,7 @@ impl Heap {
                 detached: false,
                 max_byte_length,
                 shared: true,
+                immutable: false,
             },
             prototype,
         )
@@ -81,6 +82,31 @@ impl Heap {
                 detached: false,
                 max_byte_length,
                 shared,
+                immutable: false,
+            },
+            prototype,
+        )
+    }
+
+    /// AllocateImmutableArrayBuffer: the only operation that supplies the
+    /// contents of an immutable ArrayBuffer. `bytes` becomes the whole,
+    /// permanent data block, so no later write path exists to reach it.
+    pub(crate) fn alloc_immutable_array_buffer(
+        &mut self,
+        bytes: Vec<u8>,
+        prototype: Option<ObjectId>,
+    ) -> Result<ObjectId, HeapError> {
+        if bytes.len() > self.max_array_buffer_byte_length() {
+            return Err(HeapError::InvalidBufferRange);
+        }
+        self.alloc(
+            ObjectKind::ArrayBuffer {
+                bytes,
+                shared_backing: None,
+                detached: false,
+                max_byte_length: None,
+                shared: false,
+                immutable: true,
             },
             prototype,
         )
@@ -248,6 +274,23 @@ impl Heap {
         Ok(*shared)
     }
 
+    /// IsImmutableBuffer: whether the buffer has an
+    /// `[[ArrayBufferIsImmutable]]` slot.
+    pub(crate) fn buffer_is_immutable(&self, object: ObjectId) -> Result<bool, HeapError> {
+        let ObjectKind::ArrayBuffer { immutable, .. } = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(*immutable)
+    }
+
+    /// `IsImmutableBuffer(O.[[ViewedArrayBuffer]])` for a TypedArray.
+    pub(crate) fn typed_array_is_immutable(&self, object: ObjectId) -> Result<bool, HeapError> {
+        let ObjectKind::TypedArray { buffer, .. } = self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        self.buffer_is_immutable(buffer)
+    }
+
     fn validate_buffer(&self, object: ObjectId) -> Result<usize, HeapError> {
         if self.buffer_is_detached(object)? {
             return Err(HeapError::DetachedArrayBuffer);
@@ -264,6 +307,7 @@ impl Heap {
             bytes,
             detached,
             shared,
+            immutable,
             ..
         } = &mut obj.kind
         else {
@@ -271,6 +315,9 @@ impl Heap {
         };
         if *shared {
             return Err(HeapError::InvalidInternalSlot(object));
+        }
+        if *immutable {
+            return Err(HeapError::ImmutableArrayBuffer);
         }
         if *detached {
             return Err(HeapError::DetachedArrayBuffer);
@@ -370,17 +417,21 @@ impl Heap {
         shared_operation: bool,
     ) -> Result<(), HeapError> {
         let current = self.buffer_byte_length(object)?;
-        let (detached, shared, maximum) = match &self.object(object)?.kind {
+        let (detached, shared, maximum, immutable) = match &self.object(object)?.kind {
             ObjectKind::ArrayBuffer {
                 detached,
                 shared,
                 max_byte_length,
+                immutable,
                 ..
-            } => (*detached, *shared, *max_byte_length),
+            } => (*detached, *shared, *max_byte_length, *immutable),
             _ => return Err(HeapError::InvalidInternalSlot(object)),
         };
         if shared != shared_operation || (!shared && detached) {
             return Err(HeapError::InvalidInternalSlot(object));
+        }
+        if immutable {
+            return Err(HeapError::ImmutableArrayBuffer);
         }
         let Some(maximum) = maximum else {
             return Err(HeapError::InvalidBufferRange);
@@ -720,11 +771,17 @@ impl Heap {
             return Err(HeapError::InvalidBufferRange);
         }
         let start = byte_offset + index * kind.byte_width();
-        let bytes = self.buffer_bytes_mut(buffer)?;
-        let current = typed_read(kind, &bytes[start..]);
+        // `Atomics.load` reaches this helper with no replacement, and must
+        // keep working on an immutable buffer; only an actual store needs
+        // the mutable byte access an immutable buffer refuses.
+        let current = typed_read(kind, &self.buffer_bytes(buffer)?[start..]);
         let (replacement, result) = modify(current);
         if let Some(replacement) = replacement {
-            typed_write(kind, &mut bytes[start..], &replacement);
+            typed_write(
+                kind,
+                &mut self.buffer_bytes_mut(buffer)?[start..],
+                &replacement,
+            );
         }
         Ok(result)
     }
@@ -756,6 +813,7 @@ impl Heap {
             bytes,
             detached,
             shared,
+            immutable,
             ..
         } = &mut self
             .objects
@@ -767,6 +825,12 @@ impl Heap {
         };
         if !*shared && *detached {
             return Err(HeapError::DetachedArrayBuffer);
+        }
+        // Every ordinary-buffer write funnels through here, so this one check
+        // makes an immutable buffer's bytes unwritable even for a path the VM
+        // failed to reject at its own, earlier, specified step.
+        if *immutable {
+            return Err(HeapError::ImmutableArrayBuffer);
         }
         Ok(bytes)
     }

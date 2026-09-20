@@ -544,6 +544,27 @@ impl Vm {
                         0,
                         NativeFunction::ArrayBufferTransferToFixedLength,
                     )?;
+                    // Immutable ArrayBuffer proposal.
+                    self.install_native_getter(
+                        buffer_prototype,
+                        prototype,
+                        "immutable",
+                        NativeFunction::ArrayBufferImmutable,
+                    )?;
+                    self.install_native(
+                        buffer_prototype,
+                        prototype,
+                        "transferToImmutable",
+                        0,
+                        NativeFunction::ArrayBufferTransferToImmutable,
+                    )?;
+                    self.install_native(
+                        buffer_prototype,
+                        prototype,
+                        "sliceToImmutable",
+                        2,
+                        NativeFunction::ArrayBufferSliceToImmutable,
+                    )?;
                 }
                 self.install_native(
                     buffer_prototype,

@@ -472,6 +472,7 @@ impl Vm {
         let ordinary_buffer = buffer_transport
             .as_ref()
             .is_some_and(|(shared, ..)| !shared);
+        let immutable_buffer = ordinary_buffer && self.heap.buffer_is_immutable(source)?;
         // Only opaque ordinary objects receive write-back support. Arrays,
         // TypedArrays, and buffers have purpose-built transport snapshots or
         // backing-store mirrors, whose indexed state must not be mistaken for
@@ -506,6 +507,13 @@ impl Vm {
                             Some(prototype),
                         )
                     })?
+                } else if immutable_buffer {
+                    // An immutable buffer stays immutable in the child realm;
+                    // its bytes are supplied once, at allocation.
+                    let bytes = bytes.clone().unwrap_or_default();
+                    realm.vm.with_roots(|heap| {
+                        heap.alloc_immutable_array_buffer(bytes, Some(prototype))
+                    })?
                 } else if *maximum != *byte_length {
                     realm.vm.with_roots(|heap| {
                         heap.alloc_resizable_array_buffer(*byte_length, *maximum, Some(prototype))
@@ -519,7 +527,7 @@ impl Vm {
                     realm
                         .vm
                         .with_roots(|heap| heap.detach_array_buffer(buffer))?;
-                } else if let Some(bytes) = bytes {
+                } else if let (Some(bytes), false) = (bytes, immutable_buffer) {
                     realm
                         .vm
                         .with_roots(|heap| heap.array_buffer_write(buffer, 0, bytes))?;
@@ -908,6 +916,14 @@ impl Vm {
                 .transpose()?;
             (shared, detached, byte_length, maximum, bytes, backing)
         };
+        let immutable = !shared
+            && self
+                .test262_realms
+                .get(&realm_id)
+                .expect("foreign realm remains live")
+                .vm
+                .heap
+                .buffer_is_immutable(target)?;
         let prototype = if shared {
             self.buffer_prototype("SharedArrayBuffer")?
         } else {
@@ -921,6 +937,9 @@ impl Vm {
                     Some(prototype),
                 )
             })?
+        } else if immutable {
+            let bytes = bytes.clone().unwrap_or_default();
+            self.with_roots(|heap| heap.alloc_immutable_array_buffer(bytes, Some(prototype)))?
         } else if maximum != byte_length {
             self.with_roots(|heap| {
                 heap.alloc_resizable_array_buffer(byte_length, maximum, Some(prototype))
@@ -932,7 +951,9 @@ impl Vm {
             self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
         }
         if let Some(bytes) = bytes {
-            self.with_roots(|heap| heap.array_buffer_write(buffer, 0, &bytes))?;
+            if !immutable {
+                self.with_roots(|heap| heap.array_buffer_write(buffer, 0, &bytes))?;
+            }
             let buffer_root = self.heap.root(buffer)?;
             self.test262_foreign_buffer_mirrors.insert(
                 (buffer, realm_id),
@@ -980,7 +1001,10 @@ impl Vm {
             })
             .collect::<Vec<_>>();
         for (buffer, target) in mirrors {
-            if !self.heap.is_buffer(buffer)? || self.heap.buffer_is_detached(buffer)? {
+            if !self.heap.is_buffer(buffer)?
+                || self.heap.buffer_is_detached(buffer)?
+                || self.heap.buffer_is_immutable(buffer)?
+            {
                 continue;
             }
             let byte_length = self.heap.buffer_byte_length(buffer)?;
@@ -990,6 +1014,7 @@ impl Vm {
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
             if !realm.vm.heap.buffer_is_detached(target)?
+                && !realm.vm.heap.buffer_is_immutable(target)?
                 && realm.vm.heap.buffer_byte_length(target)? == byte_length
             {
                 realm.vm.heap.array_buffer_write(target, 0, &bytes)?;
@@ -1089,7 +1114,9 @@ impl Vm {
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            if realm.vm.heap.buffer_is_detached(target)? {
+            if realm.vm.heap.buffer_is_detached(target)?
+                || realm.vm.heap.buffer_is_immutable(target)?
+            {
                 return Ok(());
             }
             let byte_length = realm.vm.heap.buffer_byte_length(target)?;

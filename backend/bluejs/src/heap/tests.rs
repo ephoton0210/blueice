@@ -68,6 +68,154 @@ fn typed_array_backing_buffer_survives_minor_and_major_collection() {
 }
 
 #[test]
+fn immutable_array_buffer_holds_its_bytes_and_rejects_every_heap_mutation() {
+    let mut heap = Heap::default();
+    let buffer = heap
+        .alloc_immutable_array_buffer(vec![1, 2, 3, 4], None)
+        .unwrap();
+    let view = heap
+        .alloc_typed_array(buffer, 0, 4, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    assert_eq!(heap.buffer_is_immutable(buffer), Ok(true));
+    assert_eq!(heap.typed_array_is_immutable(view), Ok(true));
+    // Immutable buffers are fixed-length, non-detached, unshared ArrayBuffers
+    // whose maximum length is their length.
+    assert_eq!(heap.is_array_buffer(buffer), Ok(true));
+    assert_eq!(heap.buffer_is_shared(buffer), Ok(false));
+    assert_eq!(heap.buffer_is_detached(buffer), Ok(false));
+    assert_eq!(heap.buffer_resizable(buffer), Ok(false));
+    assert_eq!(heap.buffer_byte_length(buffer), Ok(4));
+    assert_eq!(heap.buffer_max_byte_length(buffer), Ok(4));
+    assert_eq!(heap.array_buffer_copy(buffer, 1, 2), Ok(vec![2, 3]));
+    assert_eq!(
+        heap.typed_array_index_value(view, 3),
+        Ok(Some(Value::Number(4.0)))
+    );
+
+    let refused = HeapError::ImmutableArrayBuffer;
+    assert_eq!(heap.array_buffer_write(buffer, 0, &[9]), Err(refused));
+    assert_eq!(
+        heap.typed_array_set_index(view, 0, &Value::Number(9.0)),
+        Err(refused)
+    );
+    assert_eq!(
+        heap.typed_array_atomic_modify(view, 0, |old| (Some(Value::Number(9.0)), old)),
+        Err(refused)
+    );
+    assert_eq!(heap.detach_array_buffer(buffer), Err(refused));
+    assert_eq!(heap.resize_array_buffer(buffer, 2), Err(refused));
+    // A read-only Atomics operation (no replacement) is still allowed.
+    assert_eq!(
+        heap.typed_array_atomic_modify(view, 1, |old| (None, old)),
+        Ok(Value::Number(2.0))
+    );
+    // Every refusal left the contents and the buffer's state untouched.
+    assert_eq!(heap.array_buffer_copy(buffer, 0, 4), Ok(vec![1, 2, 3, 4]));
+    assert_eq!(heap.buffer_is_detached(buffer), Ok(false));
+    assert_eq!(heap.buffer_byte_length(buffer), Ok(4));
+}
+
+#[test]
+fn ordinary_and_shared_buffers_are_not_immutable() {
+    let mut heap = Heap::default();
+    let ordinary = heap.alloc_array_buffer(4, None).unwrap();
+    let resizable = heap.alloc_resizable_array_buffer(2, 8, None).unwrap();
+    let shared = heap.alloc_shared_array_buffer(4, Some(8), None).unwrap();
+    let plain = heap.alloc_object(None).unwrap();
+    for buffer in [ordinary, resizable, shared] {
+        assert_eq!(heap.buffer_is_immutable(buffer), Ok(false));
+    }
+    let view = heap
+        .alloc_typed_array(ordinary, 0, 4, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    assert_eq!(heap.typed_array_is_immutable(view), Ok(false));
+    // Only buffers and views carry the slot.
+    assert_eq!(
+        heap.buffer_is_immutable(plain),
+        Err(HeapError::InvalidInternalSlot(plain))
+    );
+    assert_eq!(
+        heap.typed_array_is_immutable(ordinary),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+    // A mutable buffer still accepts every write the immutable one refuses.
+    assert_eq!(heap.array_buffer_write(ordinary, 0, &[7]), Ok(()));
+    assert_eq!(heap.resize_array_buffer(resizable, 4), Ok(()));
+    assert_eq!(heap.detach_array_buffer(ordinary), Ok(()));
+}
+
+#[test]
+fn immutable_array_buffer_is_accounted_bounded_and_survives_collection() {
+    let mut heap = Heap::new(HeapConfig {
+        nursery_capacity: 1,
+        major_threshold_bytes: 256,
+        max_heap_bytes: 8192,
+    })
+    .unwrap();
+    let before = heap.stats().managed_bytes;
+    let buffer = heap
+        .alloc_immutable_array_buffer(vec![5; 64], None)
+        .unwrap();
+    let view = heap
+        .alloc_typed_array(buffer, 0, 64, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    assert!(heap.stats().managed_bytes >= before + 64);
+    let root = heap.root(view).unwrap();
+    heap.collect_minor();
+    heap.collect_major();
+    // The flag and the bytes both live through promotion and collection.
+    assert_eq!(heap.buffer_is_immutable(buffer), Ok(true));
+    assert_eq!(heap.array_buffer_copy(buffer, 0, 64), Ok(vec![5; 64]));
+    heap.unroot(root).unwrap();
+    heap.collect_major();
+    assert!(!heap.contains(buffer));
+    assert!(heap.stats().managed_bytes < before + 64);
+    // A buffer larger than the heap can hold is refused, not allocated.
+    assert_eq!(
+        heap.alloc_immutable_array_buffer(vec![0; 16384], None),
+        Err(HeapError::InvalidBufferRange)
+    );
+}
+
+#[test]
+fn immutable_typed_array_index_descriptors_are_neither_writable_nor_configurable() {
+    let mut heap = Heap::default();
+    let immutable = heap.alloc_immutable_array_buffer(vec![1, 2], None).unwrap();
+    let ordinary = heap.alloc_array_buffer(2, None).unwrap();
+    let frozen = heap
+        .alloc_typed_array(immutable, 0, 2, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    let mutable = heap
+        .alloc_typed_array(ordinary, 0, 2, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    let descriptor = |heap: &Heap, view, key| {
+        let d = heap
+            .get_own_property_descriptor(view, key)
+            .unwrap()
+            .unwrap();
+        (d.value, d.writable, d.enumerable, d.configurable)
+    };
+    assert_eq!(
+        descriptor(&heap, frozen, "1"),
+        (
+            Some(Value::Number(2.0)),
+            Some(false),
+            Some(true),
+            Some(false)
+        )
+    );
+    assert_eq!(
+        descriptor(&heap, mutable, "1"),
+        (Some(Value::Number(0.0)), Some(true), Some(true), Some(true))
+    );
+    // Out-of-range indices stay absent either way.
+    assert!(heap
+        .get_own_property_descriptor(frozen, "2")
+        .unwrap()
+        .is_none());
+}
+
+#[test]
 fn weak_collection_values_follow_live_keys_to_an_ephemeron_fixed_point() {
     let mut heap = Heap::default();
     let first = heap.alloc_weak_collection(true, None).unwrap();

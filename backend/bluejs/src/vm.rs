@@ -119,6 +119,7 @@ impl From<HeapError> for RuntimeError {
                 Self::RangeError("invalid ArrayBuffer view range".into())
             }
             HeapError::DetachedArrayBuffer
+            | HeapError::ImmutableArrayBuffer
             | HeapError::InvalidWeakTarget
             | HeapError::InvalidInternalSlot(_)
             | HeapError::RevokedProxy => Self::TypeError(error.to_string()),

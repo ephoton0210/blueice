@@ -81,6 +81,26 @@ impl Vm {
         if self.heap.buffer_is_detached(buffer)? || index >= length {
             return Ok(false);
         }
+        if self.heap.buffer_is_immutable(buffer)? {
+            // Immutable-buffer elements behave as permanently frozen data
+            // properties: only a descriptor compatible with the current
+            // { value, writable: false, enumerable: true, configurable: false }
+            // succeeds, and `descriptor.value` is compared as given (SameValue)
+            // rather than converted, so redefining an element never writes.
+            let current = PropertyDescriptor::data(
+                self.heap
+                    .typed_array_index_value(object, index)?
+                    .expect("a valid integer index has a value"),
+                false,
+                true,
+                false,
+            );
+            return Ok(compatible_property_descriptor(
+                false,
+                Some(&current),
+                &descriptor,
+            ));
+        }
         if descriptor.accessor()
             || descriptor.configurable == Some(false)
             || descriptor.enumerable == Some(false)
@@ -264,6 +284,11 @@ impl Vm {
             return Ok(false);
         }
         if let Some(numeric) = self.heap.typed_array_numeric_key(target, key)? {
+            // An immutable backing buffer fails every canonical-numeric
+            // assignment outright: no conversion, no receiver distinction.
+            if self.heap.typed_array_is_immutable(target)? {
+                return Ok(false);
+            }
             let valid = match numeric {
                 TypedArrayNumericKey::Index(index) => {
                     self.heap.typed_array_index_value(target, index)?.is_some()
@@ -304,6 +329,9 @@ impl Vm {
             }
             if object != target {
                 if let Some(numeric) = self.heap.typed_array_numeric_key(object, key)? {
+                    if self.heap.typed_array_is_immutable(object)? {
+                        return Ok(false);
+                    }
                     let valid = matches!(numeric, TypedArrayNumericKey::Index(index) if self
                         .heap
                         .typed_array_index_value(object, index)?

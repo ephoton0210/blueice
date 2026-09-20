@@ -100,6 +100,37 @@ fn native_property_helpers_validate_descriptors_and_constructibility() {
 }
 
 #[test]
+fn native_accessor_helper_checks_the_name_and_length_getter_form() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    // The `{ name, length }` form describes the accessor function itself, as
+    // the corpus's own propertyHelper.js does; omitted fields default to the
+    // built-in accessor conventions ("get "/"set " + key, length 0/1).
+    for source in [
+        "verifyPrimordialAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{name:'get byteLength',length:0},set:undefined});true",
+        "verifyPrimordialAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{},set:undefined});true",
+        "verifyAccessorProperty(ArrayBuffer,Symbol.species,{get:{},set:undefined});true",
+        "let o={set x(v){}};verifyAccessorProperty(o,'x',{set:{},enumerable:true});verifyAccessorProperty(o,'x',{set:{name:'set x',length:1},enumerable:true});true",
+        "let o={set x(v){}};assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{set:{length:2},enumerable:true}));assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{set:{name:'x'},enumerable:true}));true",
+        "verifyAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{},set:undefined,configurable:true,enumerable:false});true",
+        // A wrong name, a wrong length, a non-accessor and a missing
+        // property are all reported as Test262Errors.
+        "assert.throws(Test262Error,()=>verifyAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{name:'get length'}}));true",
+        "assert.throws(Test262Error,()=>verifyAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{length:1}}));true",
+        "assert.throws(Test262Error,()=>verifyAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{},set:{}}));true",
+        "assert.throws(Test262Error,()=>verifyAccessorProperty(Math,'PI',{get:{}}));true",
+        "assert.throws(Test262Error,()=>verifyAccessorProperty(Math,'missing',{get:{}}));true",
+    ] {
+        assert_eq!(
+            vm.execute(&compile(&parse(source).unwrap()).unwrap())
+                .unwrap(),
+            Value::Bool(true),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn harness_allocation_failures_leave_the_vm_usable() {
     use blueice_bluejs::{HeapConfig, HeapError, VmConfig};
     let alive = compile(&parse("1+1").unwrap()).unwrap();

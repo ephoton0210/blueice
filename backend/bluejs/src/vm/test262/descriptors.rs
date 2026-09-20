@@ -226,7 +226,7 @@ impl Vm {
         key: &Value,
         expected: &Value,
     ) -> Result<Value, RuntimeError> {
-        let (_, actual) = self.test262_own_descriptor(target, key)?;
+        let (property, actual) = self.test262_own_descriptor(target, key)?;
         let Some(actual) = actual else {
             return Err(self.test262_failure("verifyAccessorProperty"));
         };
@@ -243,8 +243,12 @@ impl Vm {
                 } else {
                     actual.set.clone().unwrap_or(Value::Undefined)
                 };
-                if !crate::heap::same_value(&got, &want) {
-                    return Err(self.test262_failure("verifyAccessorProperty"));
+                if matches!(want, Value::Undefined) || self.is_callable(&want)? {
+                    if !crate::heap::same_value(&got, &want) {
+                        return Err(self.test262_failure("verifyAccessorProperty"));
+                    }
+                } else {
+                    self.test262_verify_accessor_function(&property, field, &got, &want)?;
                 }
             }
         }
@@ -263,6 +267,51 @@ impl Vm {
             }
         }
         Ok(Value::Bool(true))
+    }
+
+    /// The `{ name?, length? }` form of `verifyAccessorProperty`'s `get`/`set`
+    /// expectation: the accessor must be a function whose configurable,
+    /// non-writable, non-enumerable `name`/`length` follow the built-in
+    /// accessor conventions (`"get "`/`"set "` plus the property key, and
+    /// length 0/1), unless the expectation overrides either.
+    fn test262_verify_accessor_function(
+        &mut self,
+        property: &PropertyName,
+        field: &str,
+        function: &Value,
+        expected: &Value,
+    ) -> Result<(), RuntimeError> {
+        if !self.is_callable(function)? {
+            return Err(self.test262_failure("verifyAccessorProperty"));
+        }
+        let name = self.get_property(expected, &"name".into())?;
+        let name = if name == Value::Undefined {
+            let maximum = self.config.max_string_bytes;
+            let mut name = JsString::from(if field == "get" { "get " } else { "set " });
+            match property {
+                PropertyName::String(key) => native::append(&mut name, key, maximum)?,
+                PropertyName::Symbol(symbol) => {
+                    native::append(&mut name, &"[".into(), maximum)?;
+                    native::append(
+                        &mut name,
+                        &symbol.description.clone().unwrap_or_default(),
+                        maximum,
+                    )?;
+                    native::append(&mut name, &"]".into(), maximum)?;
+                }
+            }
+            Value::String(name)
+        } else {
+            name
+        };
+        let length = self.get_property(expected, &"length".into())?;
+        let length = if length == Value::Undefined {
+            Value::Number(if field == "get" { 0.0 } else { 1.0 })
+        } else {
+            length
+        };
+        self.test262_compare_function_property(function, "name", &name, &Value::Undefined)?;
+        self.test262_compare_function_property(function, "length", &length, &Value::Undefined)
     }
 
     pub(in super::super) fn test262_own_descriptor(
