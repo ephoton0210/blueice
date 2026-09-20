@@ -670,14 +670,34 @@ impl Vm {
                     ));
                 }
                 let date = (existing.year, existing.month, existing.day);
-                let start = zone.start_of_day(date);
-                let next = plain_date::add_iso_date(date, 0, 0, 0, 1, false).ok_or_else(|| {
+                let out_of_range = || {
                     RuntimeError::RangeError("Temporal.ZonedDateTime.round is out of range".into())
-                })?;
+                };
+                // `dateEnd` must itself be a representable date, and both
+                // `GetStartOfDay` results a representable instant -- an
+                // instance at the edge of the range has no upper (or lower)
+                // bound to round toward (`day-rounding-out-of-range.js`,
+                // `get-start-of-day-throws.js`).
+                let next = plain_date::add_iso_date(date, 0, 0, 0, 1, false)
+                    .filter(|next| epoch::is_date_within_limits(*next))
+                    .ok_or_else(out_of_range)?;
+                let start = zone.start_of_day(date);
                 let end = zone.start_of_day(next);
+                if !epoch::is_in_instant_range(&start) || !epoch::is_in_instant_range(&end) {
+                    return Err(out_of_range());
+                }
                 let day_length = i128::try_from(&end - &start)
                     .expect("one day's length fits in i128 many times over");
-                let offset_into_day = i128::try_from(&existing.epoch_nanoseconds - &start)
+                // `RoundZonedDateTime` step 19.f: when the wall-clock date's
+                // midnight occurs twice (Antarctica/Casey turned its clocks
+                // back across 2010-03-05T00:00), an instant on the *second*
+                // occurrence is later than the next day's start; clamp it to the
+                // last nanosecond of this day so rounding still lands on one of
+                // its two start-of-day boundaries
+                // (`same-date-starts-twice.js`).
+                let last_of_day = &end - BigInt::from(1);
+                let this_ns = std::cmp::min(&existing.epoch_nanoseconds, &last_of_day);
+                let offset_into_day = i128::try_from(this_ns - &start)
                     .expect("an offset within one day fits in i128");
                 let rounded =
                     rounding::round_to_increment_as_if_positive(offset_into_day, day_length, mode);
@@ -687,14 +707,17 @@ impl Vm {
                     rounding::parse_time_unit(smallest_unit_text).ok_or_else(|| {
                         RuntimeError::RangeError("invalid smallestUnit option".into())
                     })?;
-                // `Instant`/`ZonedDateTime.round`'s own rule: the increment
-                // must divide a whole day (inclusive) -- not `PlainTime`'s
-                // narrower "must stay below the unit's own place value" one.
-                let day_ns = 86_400_000_000_000_i128;
-                let step = smallest_unit.nanoseconds() * increment;
-                if day_ns % step != 0 {
+                // `ValidateTemporalRoundingIncrement(increment,
+                // MaximumTemporalDurationRoundingIncrement(unit), false)`: unlike
+                // `Instant.round` (whose increment may be a whole day), the
+                // increment must stay *below* the count of this unit in the next
+                // larger one and divide it -- `{ smallestUnit: "hour",
+                // roundingIncrement: 24 }` throws
+                // (`throws-on-invalid-increments.js`).
+                let maximum = smallest_unit.increment_dividend();
+                if increment >= maximum || maximum % increment != 0 {
                     return Err(RuntimeError::RangeError(
-                        "roundingIncrement does not divide evenly into a day".into(),
+                        "roundingIncrement does not divide evenly into the next larger unit".into(),
                     ));
                 }
                 let time_ns = duration_math::time_fields_to_nanoseconds(
@@ -741,166 +764,40 @@ impl Vm {
         result
     }
 
-    /// Maps a `rounding::TemporalUnit` (the wide ten-variant vocabulary) down
-    /// to its `rounding::TimeUnit` counterpart -- only ever called once the
-    /// caller already knows the unit is `hour`..`nanosecond`.
-    pub(in super::super) fn temporal_unit_to_time_unit(
-        unit: rounding::TemporalUnit,
-    ) -> rounding::TimeUnit {
-        match unit {
-            rounding::TemporalUnit::Hour => rounding::TimeUnit::Hour,
-            rounding::TemporalUnit::Minute => rounding::TimeUnit::Minute,
-            rounding::TemporalUnit::Second => rounding::TimeUnit::Second,
-            rounding::TemporalUnit::Millisecond => rounding::TimeUnit::Millisecond,
-            rounding::TemporalUnit::Microsecond => rounding::TimeUnit::Microsecond,
-            _ => rounding::TimeUnit::Nanosecond,
-        }
-    }
-
-    /// `Temporal.ZonedDateTime.prototype.until`/`since`:
-    /// `DifferenceTemporalZonedDateTime`. When `largestUnit` never reaches a
-    /// calendar day, this is pure exact-nanosecond `Instant` difference (no
-    /// zone or calendar consulted at all); otherwise the date part comes
-    /// from `zoned_date_time::difference_zoned_date_time` (real calendar-day
-    /// arithmetic, honouring a DST-shortened/lengthened day exactly) and
-    /// only the sub-day remainder is a time duration.
+    /// `DifferenceTemporalZonedDateTime`'s field-level core: `TemporalDurationFromInternal`
+    /// of `DifferenceZonedDateTimeWithRounding(receiver, other, ...)` — returned
+    /// as the ten Duration fields, in the receiver-to-argument direction.
     ///
-    /// Known simplification, documented rather than silently approximated:
-    /// when `smallestUnit` itself reaches a calendar day (week/month/year),
-    /// a nonzero sub-day exact-time remainder is folded into a whole extra
-    /// day toward the later endpoint before calendar rounding, rather than
-    /// `RoundRelativeDuration`'s own exact fractional-day position within
-    /// that specific (possibly 23/25-hour) day. This keeps every result
-    /// field sign-consistent with the overall direction (`DurationRecord`'s
-    /// own invariant) and is exact whenever the remainder is zero (the
-    /// common case: two `ZonedDateTime`s that share the same local time of
-    /// day), which is the case every `since`/`until` calendar-unit fixture
-    /// this slice was verified against exercises.
-    /// The field-level core of [`Self::temporal_zoned_date_time_difference`],
-    /// extracted so `Temporal.Duration.prototype.round`/`total`/static
-    /// `compare`'s own `ZonedDateTime`-`relativeTo` paths can reuse the exact
-    /// same "since/until with rounding" algorithm Gecko's `Duration_round`
-    /// itself delegates to (`DifferenceZonedDateTimeWithRounding`), rather
-    /// than re-deriving it: `round`/`total` compute a target instant via
-    /// `AddZonedDateTime` and then call this with `(anchor, target)` as the
-    /// two endpoints, exactly as `ZonedDateTime.prototype.until`/`since`
-    /// call it with two real `ZonedDateTime`s.
-    ///
-    /// The `smallestUnit` day/week/month/year branch is `RoundRelativeDuration`'s
-    /// real, day-length-aware fractional-position algorithm
-    /// (`zoned_date_time::nudge_to_calendar_unit`/`bubble_relative_duration`,
-    /// ported directly from Gecko's `NudgeToCalendarUnit`/
-    /// `BubbleRelativeDuration`) rather than the earlier, simpler
-    /// approximation this function used to have (folding any nonzero sub-day
-    /// remainder into a whole extra day toward the overall duration's sign,
-    /// regardless of `roundingMode` — correct only for `"ceil"`/`"expand"`,
-    /// confirmed wrong for every other mode by the pinned Test262 corpus's
-    /// own `since`/`until` `roundingmode-*.js` fixtures at `smallestUnit:
-    /// "days"`).
-    #[allow(clippy::too_many_arguments)]
+    /// This is deliberately the same pipeline `Temporal.Duration.prototype.
+    /// round`/`total` run for a `ZonedDateTime` `relativeTo` (see
+    /// [`zoned_difference`]): the specification defines all four in terms of it,
+    /// and none of them may treat a named zone's day as a fixed 24 hours.
     pub(in super::super) fn temporal_zoned_date_time_difference_fields(
-        zone: &time_zone::TimeZone,
-        calendar_kind: AnyCalendarKind,
-        existing_epoch_ns: &BigInt,
-        date1: epoch::CivilDate,
-        time1: epoch::CivilTime,
+        origin: &zoned_difference::ZonedOrigin,
         other_epoch_ns: &BigInt,
-        date2: epoch::CivilDate,
-        time2: epoch::CivilTime,
         largest_unit: rounding::TemporalUnit,
         smallest_unit: rounding::TemporalUnit,
         increment: i128,
         mode: blueice_ecma402::NumberRoundingMode,
-    ) -> Result<DateTimeDurationFields, RuntimeError> {
-        if largest_unit < rounding::TemporalUnit::Day {
-            let diff_ns = i128::try_from(other_epoch_ns - existing_epoch_ns)
-                .expect("an Instant-range difference fits in i128");
-            let rounded = duration_math::TimeDuration::from_nanoseconds(diff_ns).round(
-                Self::temporal_unit_to_time_unit(smallest_unit),
-                increment,
-                mode,
-            );
-            let [h, m, s, ms, us, ns] =
-                rounded.balance_to(Self::temporal_unit_to_time_unit(largest_unit));
-            Ok((0, 0, 0, 0, h, m, s, ms, us, ns))
-        } else if existing_epoch_ns == other_epoch_ns {
-            // `DifferenceTemporalZonedDateTime` step 8: once the epoch
-            // instants are already known equal, short-circuit to a blank
-            // duration *before* doing any calendar-day bracketing at all --
-            // not just an optimization, a real spec-ordering requirement
-            // (Gecko's own `ZonedDateTime.cpp` checks this ahead of calling
-            // `DifferenceZonedDateTimeWithRounding`). Confirmed as a real,
-            // previously-missing fast path via `built-ins/Temporal/
-            // ZonedDateTime/prototype/{since,until}/same-epoch-nanoseconds.js`,
-            // which iterates every `smallestUnit`/`largestUnit`/time-zone
-            // combination (660 calls) with the receiver and argument always
-            // at the *same* instant -- expensive enough, run unconditionally
-            // through the full calendar-bracketing path below, to exhaust
-            // the Test262 harness's own per-script instruction budget before
-            // this fast path existed.
-            Ok((0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
-        } else {
-            let range_error =
-                || RuntimeError::RangeError("Temporal.since/until is out of range".into());
-            let date_unit_largest = Self::temporal_unit_to_date_unit(largest_unit);
-            let (years, months, weeks, days, remainder_ns) =
-                zoned_date_time::difference_zoned_date_time(
-                    zone,
-                    calendar_kind,
-                    existing_epoch_ns,
-                    date1,
-                    time1,
-                    other_epoch_ns,
-                    date2,
-                    time2,
-                    date_unit_largest,
-                )
-                .ok_or_else(range_error)?;
-            if smallest_unit >= rounding::TemporalUnit::Day {
-                let overall_sign = match other_epoch_ns - existing_epoch_ns {
-                    diff if diff > BigInt::from(0) => 1_i64,
-                    diff if diff < BigInt::from(0) => -1_i64,
-                    _ => 0_i64,
-                };
-                let date_unit_smallest = Self::temporal_unit_to_date_unit(smallest_unit);
-                let nudge = zoned_date_time::nudge_to_calendar_unit(
-                    zone,
-                    calendar_kind,
-                    date1,
-                    time1,
-                    other_epoch_ns,
-                    (years, months, weeks, days),
-                    date_unit_smallest,
-                    increment,
-                    overall_sign,
-                    mode,
-                )
-                .ok_or_else(range_error)?;
-                let (years, months, weeks, days) =
-                    if nudge.expanded && date_unit_smallest != plain_date::DateUnit::Week {
-                        zoned_date_time::bubble_relative_duration(
-                            zone,
-                            calendar_kind,
-                            date1,
-                            time1,
-                            &nudge,
-                            date_unit_largest,
-                            date_unit_smallest,
-                            overall_sign,
-                        )
-                        .ok_or_else(range_error)?
-                    } else {
-                        (nudge.years, nudge.months, nudge.weeks, nudge.days)
-                    };
-                Ok((years, months, weeks, days, 0, 0, 0, 0, 0, 0))
-            } else {
-                let time_unit = Self::temporal_unit_to_time_unit(smallest_unit);
-                let rounded = duration_math::TimeDuration::from_nanoseconds(remainder_ns)
-                    .round(time_unit, increment, mode);
-                let [h, m, s, ms, us, ns] = rounded.balance_to(rounding::TimeUnit::Hour);
-                Ok((years, months, weeks, days, h, m, s, ms, us, ns))
-            }
+    ) -> Result<[i64; 10], RuntimeError> {
+        // `DifferenceTemporalZonedDateTime` step 8: equal instants are a blank
+        // duration *before* any calendar-day bracketing happens -- not just a
+        // fast path but a real spec-ordering requirement (and what keeps
+        // `same-epoch-nanoseconds.js`, 660 unit/zone combinations at one
+        // instant, inside the Test262 harness's instruction budget).
+        if origin.epoch_nanoseconds == other_epoch_ns {
+            return Ok([0; 10]);
         }
+        let internal = zoned_difference::difference_with_rounding(
+            origin,
+            other_epoch_ns,
+            largest_unit,
+            increment,
+            smallest_unit,
+            mode,
+        )
+        .ok_or_else(|| RuntimeError::RangeError("Temporal.since/until is out of range".into()))?;
+        Ok(internal.into_fields(largest_unit))
     }
 
     pub(in super::super) fn temporal_zoned_date_time_difference(
@@ -969,17 +866,28 @@ impl Vm {
             ));
         }
         let increment = Self::temporal_validated_rounding_increment(increment_raw)?;
+        // `GetDifferenceSettings`' last step: a time unit's increment must be
+        // below, and divide, the count of it in the next larger unit
+        // (`MaximumTemporalDurationRoundingIncrement`, `inclusive` false) --
+        // `{ smallestUnit: "hours", roundingIncrement: 24 }` throws. Date units
+        // have no such bound.
+        if let Some(maximum) = smallest_unit.maximum_rounding_increment() {
+            if increment >= maximum || maximum % increment != 0 {
+                return Err(RuntimeError::RangeError(
+                    "roundingIncrement does not divide evenly into the next larger unit".into(),
+                ));
+            }
+        }
         let mode = Self::temporal_validated_rounding_mode(
             mode_raw.as_deref(),
             blueice_ecma402::NumberRoundingMode::Trunc,
         )?;
         // Same reflection `Vm::temporal_date_difference` needs, and for the
-        // identical reason: `temporal_zoned_date_time_difference_fields`'s
-        // own rounding steps (`TimeDuration::round` for the sub-day branch,
-        // `zoned_date_time::nudge_to_calendar_unit`'s `nudge_expand_decision`
-        // for the calendar-unit branch) both round a *real*, direction-aware
-        // signed quantity computed in the fixed receiver-to-argument
-        // direction — `Ceil`/`Floor` round toward a fixed end of the real
+        // identical reason: `zoned_difference`'s rounding steps
+        // (`TimeDuration::round` for a sub-day `smallestUnit`,
+        // `nudge_expand_decision` for a calendar-unit one) both round a *real*,
+        // direction-aware signed quantity computed in the fixed
+        // receiver-to-argument direction — `Ceil`/`Floor` round toward a fixed end of the real
         // number line, not toward a fixed end of whichever internal
         // direction happened to be computed — so negating the *result* for
         // `since` without also reflecting an asymmetric mode here would
@@ -1003,23 +911,12 @@ impl Vm {
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
 
-        let (
-            years,
-            months,
-            weeks,
-            days,
-            hours,
-            minutes,
-            seconds,
-            milliseconds,
-            microseconds,
-            nanoseconds,
-        ) = Self::temporal_zoned_date_time_difference_fields(
-            &zone,
-            calendar_kind,
-            &existing.epoch_nanoseconds,
-            (existing.year, existing.month, existing.day),
-            (
+        let origin = zoned_difference::ZonedOrigin {
+            zone: &zone,
+            calendar: calendar_kind,
+            epoch_nanoseconds: &existing.epoch_nanoseconds,
+            date: (existing.year, existing.month, existing.day),
+            time: (
                 existing.hour,
                 existing.minute,
                 existing.second,
@@ -1027,73 +924,26 @@ impl Vm {
                 existing.microsecond,
                 existing.nanosecond,
             ),
+        };
+        let fields = Self::temporal_zoned_date_time_difference_fields(
+            &origin,
             &other.epoch_nanoseconds,
-            (other.year, other.month, other.day),
-            (
-                other.hour,
-                other.minute,
-                other.second,
-                other.millisecond,
-                other.microsecond,
-                other.nanosecond,
-            ),
             largest_unit,
             smallest_unit,
             increment,
             effective_mode,
         )?;
-
-        let (
-            years,
-            months,
-            weeks,
-            days,
-            hours,
-            minutes,
-            seconds,
-            milliseconds,
-            microseconds,
-            nanoseconds,
-        ) = if since {
-            (
-                -years,
-                -months,
-                -weeks,
-                -days,
-                -hours,
-                -minutes,
-                -seconds,
-                -milliseconds,
-                -microseconds,
-                -nanoseconds,
-            )
+        // `since` is `until` with the finished Duration negated.
+        let fields = if since {
+            fields.map(|field| -field)
         } else {
-            (
-                years,
-                months,
-                weeks,
-                days,
-                hours,
-                minutes,
-                seconds,
-                milliseconds,
-                microseconds,
-                nanoseconds,
-            )
+            fields
         };
-        let record = blueice_ecma402::DurationRecord::try_new(
-            i128::from(years),
-            i128::from(months),
-            i128::from(weeks),
-            i128::from(days),
-            i128::from(hours),
-            i128::from(minutes),
-            i128::from(seconds),
-            i128::from(milliseconds),
-            i128::from(microseconds),
-            i128::from(nanoseconds),
-        )
-        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        // `CreateTemporalDuration` rounds every field to the nearest float64
+        // before its range check (`temporal_duration_record`): a difference
+        // too large for a double to hold exactly is observably rounded
+        // (`prototype/{since,until}/float64-representable-integer.js`).
+        let record = Self::temporal_duration_record(fields.map(i128::from))?;
         self.alloc_temporal_value(Self::temporal_duration_value(record), false)
     }
 
@@ -1656,6 +1506,20 @@ pub(super) fn temporal_interpret_offset(
             .epoch_nanoseconds_for(date, time, disambiguation)
             .map_err(temporal_resolution_error);
     };
+    // `InterpretISODateTimeOffset` step 7 (`prefer`/`reject`): unlike `use`
+    // and `ignore`, matching the offset against the zone's possible instants
+    // starts from the *wall-clock* date itself, which must be within
+    // `CheckISODaysRange`'s +/-10^8 days of the epoch -- a day narrower at
+    // the start of the range than `PlainDateTime`'s own limits, so
+    // `-271821-04-19T23:00-01:00[-01:00]` (an in-range instant) is still
+    // rejected (`ZonedDateTime/from/argument-string-limits.js`).
+    if matches!(offset_option, "prefer" | "reject")
+        && plain_date::iso_date_to_epoch_days(date).abs() > 100_000_000
+    {
+        return Err(RuntimeError::RangeError(
+            "the wall-clock date is outside the representable range of ZonedDateTime".into(),
+        ));
+    }
     let possible = zone.possible_epoch_nanoseconds(date, time);
     for candidate in &possible {
         let candidate_offset = zone.offset_nanoseconds_for(candidate);

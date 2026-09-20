@@ -31,6 +31,7 @@ mod rounding;
 mod time_zone;
 mod time_zone_id;
 mod zoned_date_time;
+mod zoned_difference;
 
 /// The calendar fields exposed by Temporal are derived from its ISO internal
 /// date. Keeping ISO fields in `TemporalValue` preserves the invariant used
@@ -91,14 +92,6 @@ pub(super) struct TemporalCalendarFields {
     days_in_year: u16,
     in_leap_year: bool,
 }
-
-/// `(years, months, weeks, days, hours, minutes, seconds, milliseconds,
-/// microseconds, nanoseconds)` — the balanced date/time duration fields
-/// [`Vm::temporal_zoned_date_time_difference_fields`] resolves a
-/// `since`/`until`/`round`/`total` request down to. Named to keep that
-/// function's `Result<_, RuntimeError>` signature under clippy's
-/// `type_complexity` threshold.
-pub(super) type DateTimeDurationFields = (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64);
 
 /// How many sub-second digits an ISO serialization prints, as
 /// `ToSecondsStringPrecision` resolves it: `Minute` omits the seconds field
