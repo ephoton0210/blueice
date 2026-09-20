@@ -362,6 +362,11 @@ impl Vm {
                         native::DateMethod::ToLocaleTimeString,
                     ),
                     ("toUTCString", 0, native::DateMethod::ToUtcString),
+                    (
+                        "toTemporalInstant",
+                        0,
+                        native::DateMethod::ToTemporalInstant,
+                    ),
                     ("valueOf", 0, native::DateMethod::ValueOf),
                 ] {
                     self.install_native(
