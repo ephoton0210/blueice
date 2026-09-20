@@ -36,6 +36,7 @@
 //! way a real platform-native frontend (not necessarily even Rust)
 //! would.
 
+use blueice_ipc::downloads::{default_downloads_socket_path, DownloadsClient, TransferInfo};
 use blueice_ipc::{shm, ClientMessage, ServerMessage};
 use softbuffer::{Context, Surface};
 use std::io::BufRead;
@@ -108,12 +109,18 @@ fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
 /// than imported, per the module docs above.
 const CREDITS_URL: &str = "about:credits";
 
+/// The built-in downloads page (`blueice_engine::downloads_page::
+/// DOWNLOADS_URL`) -- duplicated for the same reason as `CREDITS_URL`.
+const DOWNLOADS_URL: &str = "about:downloads";
+
 #[derive(Debug)]
 enum UserEvent {
     Server(ServerMessage),
     Disconnected,
     SetVisible(bool),
     Navigate(String),
+    /// `download <url>`: ask the downloads process to fetch a URL.
+    StartDownload(String),
     Quit,
 }
 
@@ -281,7 +288,14 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 self.send(&ClientMessage::Chrome(blueice_ipc::ChromeCommand::SetVisible(visible)));
             }
-            UserEvent::Navigate(url) => self.send(&ClientMessage::Navigate { url }),
+            UserEvent::Navigate(url) => self.send(&ClientMessage::Navigate { url: navigation_url(&url, self.locale) }),
+            UserEvent::StartDownload(url) => {
+                // Blocking I/O (and possibly starting a process): off the UI thread.
+                std::thread::spawn(move || match start_download(&url) {
+                    Ok(transfer) => eprintln!("blueice-frontend: download {} queued for {} (type `downloads` to watch it)", transfer.id, transfer.url),
+                    Err(message) => eprintln!("blueice-frontend: could not start the download: {message}"),
+                });
+            }
             UserEvent::Quit => {
                 self.send(&ClientMessage::Shutdown);
                 event_loop.exit();
@@ -294,6 +308,58 @@ impl ApplicationHandler<UserEvent> for App {
     }
 }
 
+/// The URL actually sent for a navigation: the bare downloads page is
+/// opened in the window's own language (`about:downloads?lang=<locale>`),
+/// everything else exactly as given.
+fn navigation_url(url: &str, locale: &str) -> String {
+    if url == DOWNLOADS_URL {
+        format!("{url}?lang={locale}")
+    } else {
+        url.to_string()
+    }
+}
+
+/// `blueice-downloads` is expected to sit next to this binary in the same
+/// build output directory, like `core`.
+fn sibling_downloads_binary(this_exe: &Path) -> PathBuf {
+    let name = if cfg!(windows) { "blueice-downloads.exe" } else { "blueice-downloads" };
+    this_exe.parent().map(|dir| dir.join(name)).unwrap_or_else(|| PathBuf::from(name))
+}
+
+/// Asks the downloads process at `socket` to fetch `url`, starting it first
+/// (via `spawn`) if nothing is listening. The frontend talks to the
+/// downloads process directly rather than through `core`
+/// (`phase-10-download-manager/PLAN.md`): `core` has no downloads command in
+/// its protocol, and a starting download needs no page.
+fn start_download_at(socket: &Path, spawn: &dyn Fn() -> std::io::Result<()>, url: &str) -> Result<TransferInfo, String> {
+    let stream = match UnixStream::connect(socket) {
+        Ok(stream) => stream,
+        Err(_) => {
+            spawn().map_err(|e| format!("the downloads service is not running and could not be started: {e}"))?;
+            if !wait_for_socket(socket, Duration::from_secs(5)) {
+                return Err("the downloads service was started but did not start listening in time".to_string());
+            }
+            UnixStream::connect(socket).map_err(|e| format!("could not connect to the downloads service: {e}"))?
+        }
+    };
+    let mut client = DownloadsClient::connect(stream).map_err(|e| e.to_string())?;
+    client.start(url, None, false).map_err(|e| e.to_string())
+}
+
+/// [`start_download_at`] against the well-known socket, starting the
+/// sibling `blueice-downloads` binary if need be.
+fn start_download(url: &str) -> Result<TransferInfo, String> {
+    let socket = default_downloads_socket_path();
+    let spawn = || -> std::io::Result<()> {
+        let mut child = Command::new(sibling_downloads_binary(&std::env::current_exe()?)).arg("--socket").arg(&socket).spawn()?;
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        Ok(())
+    };
+    start_download_at(&socket, &spawn, url)
+}
+
 /// Maps one trimmed stdin line to the event it requests, or `None` for
 /// a blank/unrecognized line -- split out from [`spawn_stdin_commands`]
 /// so this mapping is a plain unit-testable function, not something
@@ -303,16 +369,29 @@ fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
         "show" => Some(UserEvent::SetVisible(true)),
         "hide" => Some(UserEvent::SetVisible(false)),
         "credits" => Some(UserEvent::Navigate(CREDITS_URL.to_string())),
+        "downloads" => Some(UserEvent::Navigate(DOWNLOADS_URL.to_string())),
         "quit" => Some(UserEvent::Quit),
+        other if other.strip_prefix("download").is_some_and(|rest| rest.starts_with(char::is_whitespace)) => {
+            let url = other["download".len()..].trim();
+            if url.is_empty() {
+                None
+            } else {
+                Some(UserEvent::StartDownload(url.to_string()))
+            }
+        }
+        "download" => {
+            eprintln!("blueice-frontend: `download` needs a URL (download <url>)");
+            None
+        }
         other if !other.is_empty() => {
-            eprintln!("blueice-frontend: unrecognized command {other:?} (try show/hide/credits/quit)");
+            eprintln!("blueice-frontend: unrecognized command {other:?} (try show/hide/credits/downloads/download <url>/quit)");
             None
         }
         _ => None,
     }
 }
 
-/// Reads `show`/`hide`/`credits`/`quit` lines from stdin and forwards
+/// Reads `show`/`hide`/`credits`/`downloads`/`download <url>`/`quit` lines from stdin and forwards
 /// them as events -- see module docs for why stdin stands in for a
 /// real AI-facing control channel here.
 fn spawn_stdin_commands(proxy: EventLoopProxy<UserEvent>) {
@@ -487,4 +566,99 @@ mod tests {
     fn detect_locale_is_case_insensitive() {
         assert_eq!(detect_locale(Some("ZH_tw.UTF-8")), "zh-TW");
     }
+
+    // ---- downloads: `downloads` and `download <url>` -------------------
+
+    #[test]
+    fn stdin_downloads_command_navigates_to_the_built_in_downloads_page() {
+        assert!(matches!(stdin_line_to_event("downloads"), Some(UserEvent::Navigate(url)) if url == DOWNLOADS_URL));
+        assert!(matches!(stdin_line_to_event("  downloads "), Some(UserEvent::Navigate(_))));
+    }
+
+    #[test]
+    fn stdin_download_command_carries_the_url_to_fetch() {
+        assert!(matches!(stdin_line_to_event("download https://example.com/a.iso"), Some(UserEvent::StartDownload(url)) if url == "https://example.com/a.iso"));
+        assert!(matches!(stdin_line_to_event("  download   https://example.com/b.iso  "), Some(UserEvent::StartDownload(url)) if url == "https://example.com/b.iso"));
+    }
+
+    #[test]
+    fn stdin_download_without_a_url_is_not_a_command() {
+        assert!(stdin_line_to_event("download").is_none());
+        assert!(stdin_line_to_event("download   ").is_none());
+    }
+
+    #[test]
+    fn the_downloads_page_is_opened_in_the_windows_own_language() {
+        assert_eq!(navigation_url("about:downloads", "zh-TW"), "about:downloads?lang=zh-TW");
+        assert_eq!(navigation_url("about:downloads", "en"), "about:downloads?lang=en");
+        for other in ["about:credits", "https://example.com/", "about:downloads?lang=en", "about:blank"] {
+            assert_eq!(navigation_url(other, "zh-TW"), other, "only the bare downloads URL is localized here");
+        }
+    }
+
+    #[test]
+    fn sibling_downloads_binary_sits_next_to_the_frontend_binary() {
+        let exe = PathBuf::from("/opt/blueice/bin/blueice-frontend");
+        assert_eq!(sibling_downloads_binary(&exe), PathBuf::from("/opt/blueice/bin/blueice-downloads"));
+    }
+
+    fn fake_downloads_process(socket: &Path) -> std::thread::JoinHandle<()> {
+        use blueice_ipc::downloads::{read_downloads_request, write_downloads_reply, DownloadsReply, DownloadsRequest, DOWNLOADS_PROTOCOL_VERSION};
+        let listener = std::os::unix::net::UnixListener::bind(socket).unwrap();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                std::thread::spawn(move || {
+                    while let Ok((id, request)) = read_downloads_request(&mut stream) {
+                        let reply = match request {
+                            DownloadsRequest::Hello { .. } => DownloadsReply::Hello { protocol_version: DOWNLOADS_PROTOCOL_VERSION },
+                            DownloadsRequest::Start { url, .. } => DownloadsReply::Started(TransferInfo { id: 5, url, ..TransferInfo::default() }),
+                            _ => DownloadsReply::Ok,
+                        };
+                        if write_downloads_reply(&mut stream, id, &reply).is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        })
+    }
+
+    fn scratch_socket(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("bf-{label}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("d.sock")
+    }
+
+    #[test]
+    fn a_download_is_started_on_a_running_downloads_process_without_spawning_anything() {
+        let socket = scratch_socket("running");
+        let _server = fake_downloads_process(&socket);
+        let started = start_download_at(&socket, &|| panic!("nothing should be spawned"), "https://example.com/a.iso").unwrap();
+        assert_eq!((started.id, started.url.as_str()), (5, "https://example.com/a.iso"));
+    }
+
+    #[test]
+    fn a_download_starts_the_downloads_process_first_when_nothing_is_listening() {
+        let socket = scratch_socket("spawn");
+        let spawn_socket = socket.clone();
+        let spawner = move || -> std::io::Result<()> {
+            let socket = spawn_socket.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(100));
+                let _ = fake_downloads_process(&socket);
+            });
+            Ok(())
+        };
+        let started = start_download_at(&socket, &spawner, "https://example.com/b.iso").unwrap();
+        assert_eq!(started.id, 5);
+    }
+
+    #[test]
+    fn a_download_that_cannot_reach_or_start_the_service_says_so() {
+        let socket = scratch_socket("fail");
+        let error = start_download_at(&socket, &|| Err(std::io::Error::other("no such binary")), "https://example.com/c.iso").unwrap_err();
+        assert!(error.contains("no such binary"), "{error}");
+    }
+
 }

@@ -16,8 +16,10 @@
 //! un-reversed). What changes is that `core` now owns a collection of
 //! them instead of exactly one.
 
+use crate::downloads_page::DownloadsSource;
 use crate::Page;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Stable identity for a tab, assigned once at [`TabManager::open_tab`]
 /// (or at [`TabManager::new`] for the initial tab) and never reused --
@@ -74,6 +76,9 @@ pub struct TabManager {
     /// window's current size is, not a hardcoded default.
     viewport_width: f64,
     viewport_height: f64,
+    /// Handed to every tab (existing and future) so `about:downloads` works
+    /// in any of them.
+    downloads: Option<Arc<DownloadsSource>>,
 }
 
 impl TabManager {
@@ -84,7 +89,7 @@ impl TabManager {
         let default_tab = TabId(1);
         let mut tabs = HashMap::new();
         tabs.insert(default_tab, Page::new(viewport_width, viewport_height));
-        TabManager { tabs, order: vec![default_tab], next_tab_id: 2, default_tab, viewport_width, viewport_height }
+        TabManager { tabs, order: vec![default_tab], next_tab_id: 2, default_tab, viewport_width, viewport_height, downloads: None }
     }
 
     pub fn default_tab(&self) -> TabId {
@@ -96,9 +101,25 @@ impl TabManager {
     pub fn open_tab(&mut self) -> TabId {
         let id = TabId(self.next_tab_id);
         self.next_tab_id += 1;
-        self.tabs.insert(id, Page::new(self.viewport_width, self.viewport_height));
+        let mut page = Page::new(self.viewport_width, self.viewport_height);
+        page.set_downloads_source(self.downloads.clone());
+        self.tabs.insert(id, page);
         self.order.push(id);
         id
+    }
+
+    /// Where every tab's `about:downloads` reads from -- applied to the
+    /// tabs that exist now and to every tab opened later.
+    pub fn set_downloads_source(&mut self, source: Arc<DownloadsSource>) {
+        for page in self.tabs.values_mut() {
+            page.set_downloads_source(Some(source.clone()));
+        }
+        self.downloads = Some(source);
+    }
+
+    /// The source `about:downloads` reads from, if one was set.
+    pub fn downloads_source(&self) -> Option<&Arc<DownloadsSource>> {
+        self.downloads.as_ref()
     }
 
     /// Closes `id`, returning `true` if it existed. Closing the last
@@ -213,4 +234,21 @@ mod tests {
         let id = TabId::from_u64(42);
         assert_eq!(TabId::from_u64(id.as_u64()), id);
     }
+
+    #[test]
+    fn the_downloads_source_reaches_existing_and_newly_opened_tabs() {
+        let mut tabs = TabManager::new(300.0, 200.0);
+        let before = tabs.open_tab();
+        assert!(tabs.downloads_source().is_none() && tabs.get(before).unwrap().downloads_source().is_none());
+
+        let source = Arc::new(DownloadsSource::without_spawner(std::path::PathBuf::from("/nonexistent/downloads.sock")));
+        tabs.set_downloads_source(source.clone());
+        let after = tabs.open_tab();
+        for id in [tabs.default_tab(), before, after] {
+            let page_source = tabs.get(id).unwrap().downloads_source().unwrap_or_else(|| panic!("tab {id:?} has no source"));
+            assert!(Arc::ptr_eq(page_source, &source), "every tab shares the one source");
+        }
+        assert!(Arc::ptr_eq(tabs.downloads_source().unwrap(), &source));
+    }
+
 }

@@ -20,40 +20,7 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 
-const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
-
-/// `1234567` -> `1.2 MiB`: binary units, one decimal (rounded half up),
-/// bumping to the next unit rather than printing `1024.0 KiB`.
-pub fn format_bytes(bytes: u64) -> String {
-    if bytes < 1024 {
-        return format!("{bytes} B");
-    }
-    let mut unit = 1usize;
-    loop {
-        let divisor = 1u128 << (10 * unit);
-        let tenths = (u128::from(bytes) * 10 + divisor / 2) / divisor;
-        if tenths < 10_240 || unit == UNITS.len() - 1 {
-            return format!("{}.{} {}", tenths / 10, tenths % 10, UNITS[unit]);
-        }
-        unit += 1;
-    }
-}
-
-pub fn format_speed(bytes_per_second: u64) -> String {
-    format!("{}/s", format_bytes(bytes_per_second))
-}
-
-/// `80` -> `1 min 20 s`; a unit that no longer matters at that scale is dropped.
-pub fn format_duration(seconds: u64) -> String {
-    let part = |n: u64, unit: &str| format!("{n} {unit}");
-    let join = |major: String, minor: u64, unit: &str| if minor == 0 { major } else { format!("{major} {}", part(minor, unit)) };
-    match seconds {
-        0..=59 => part(seconds, "s"),
-        60..=3599 => join(part(seconds / 60, "min"), seconds % 60, "s"),
-        3600..=86_399 => join(part(seconds / 3600, "h"), (seconds % 3600) / 60, "min"),
-        _ => join(part(seconds / 86_400, "d"), (seconds % 86_400) / 3600, "h"),
-    }
-}
+pub use blueice_ipc::downloads::{format_bytes, format_duration, format_speed};
 
 fn progress_text(info: &TransferInfo) -> String {
     match info.fraction_complete() {
@@ -340,28 +307,6 @@ mod tests {
             total_bytes: Some(3 * MIB),
             completed_bytes: MIB + MIB / 5,
             ..TransferInfo::default()
-        }
-    }
-
-    // ---- formatting ---------------------------------------------------
-
-    #[test]
-    fn byte_counts_use_binary_units_with_one_decimal() {
-        for (bytes, text) in [(0, "0 B"), (1, "1 B"), (1023, "1023 B"), (1024, "1.0 KiB"), (1536, "1.5 KiB"), (MIB, "1.0 MiB"), (12 * MIB + MIB / 4, "12.3 MiB"), (5 * 1024 * MIB, "5.0 GiB"), (3 * 1024 * 1024 * MIB, "3.0 TiB")] {
-            assert_eq!(format_bytes(bytes), text, "{bytes}");
-        }
-    }
-
-    #[test]
-    fn speeds_are_bytes_per_second() {
-        assert_eq!(format_speed(0), "0 B/s");
-        assert_eq!(format_speed(12 * MIB + MIB / 4), "12.3 MiB/s");
-    }
-
-    #[test]
-    fn durations_read_naturally_and_drop_the_finest_unit_once_it_stops_mattering() {
-        for (secs, text) in [(0, "0 s"), (59, "59 s"), (60, "1 min"), (80, "1 min 20 s"), (3599, "59 min 59 s"), (3600, "1 h"), (3725, "1 h 2 min"), (86_400, "1 d"), (90_000, "1 d 1 h")] {
-            assert_eq!(format_duration(secs), text, "{secs}");
         }
     }
 

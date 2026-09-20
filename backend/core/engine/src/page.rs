@@ -24,7 +24,9 @@ use blueice_ipc::{AiSnapshot, NodeAction};
 use blueice_layout::{layout, Constraints, Fragment};
 use blueice_paint::{paint, Color, Frame, PaintCommand, Rect};
 use blueice_raster::{rasterize, Pixmap};
+use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsSource, DownloadsView};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct Page {
     doc: Document,
@@ -38,6 +40,9 @@ pub struct Page {
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     highlighted: Option<NodeId>,
+    /// Where `about:downloads` reads its list from; `None` (the default)
+    /// renders the "service is not running" page.
+    downloads: Option<Arc<DownloadsSource>>,
 }
 
 impl Page {
@@ -54,6 +59,7 @@ impl Page {
             hovered: None,
             focused: None,
             highlighted: None,
+            downloads: None,
         }
     }
 
@@ -90,15 +96,58 @@ impl Page {
     /// page -- except for the handful of built-in `about:` pages
     /// ([`built_in_page`]), which never hit the network at all.
     pub fn navigate(&mut self, url: &str) -> Result<(), blueice_net::FetchError> {
-        if let Some(html) = built_in_page(url) {
-            self.load_html(&html);
-            self.url = Some(url.to_string());
+        if self.load_built_in(url) {
             return Ok(());
         }
         let fetched = blueice_net::fetch(url)?;
         self.load_html(&fetched.body);
         self.url = Some(fetched.final_url);
         Ok(())
+    }
+
+    /// Where `about:downloads` gets its list (see
+    /// [`DownloadsSource`]); every tab of one `core` shares one source.
+    pub fn set_downloads_source(&mut self, source: Option<Arc<DownloadsSource>>) {
+        self.downloads = source;
+    }
+
+    pub fn downloads_source(&self) -> Option<&Arc<DownloadsSource>> {
+        self.downloads.as_ref()
+    }
+
+    /// Loads the built-in page for `url` if it is one (`about:blank`,
+    /// `about:credits`, `about:downloads`), returning whether it was --
+    /// never touching the network. The downloads page reads the downloads
+    /// process over its socket, quickly and with a hard time bound (a
+    /// hung process must not stall the session), and falls back to the
+    /// "service is not running" page rather than failing the navigation.
+    pub(crate) fn load_built_in(&mut self, url: &str) -> bool {
+        let html = if let Some(html) = built_in_page(url) {
+            html
+        } else if is_downloads_url(url) {
+            let locale = crate::credits::locale_from_url(url);
+            match self.downloads.as_ref().map(|source| source.fetch_quick()) {
+                Some(Ok(transfers)) => downloads_html(&DownloadsView::Transfers(&transfers), locale),
+                _ => downloads_html(&DownloadsView::Unavailable, locale),
+            }
+        } else {
+            return false;
+        };
+        self.load_html(&html);
+        self.url = Some(url.to_string());
+        true
+    }
+
+    /// Replaces the current document with `html` *keeping the scroll
+    /// position* (clamped to what still exists) -- for a live-updating
+    /// built-in page such as `about:downloads`, where a reader halfway down
+    /// a long list must not be thrown back to the top every half second.
+    /// The URL is left as it is.
+    pub(crate) fn refresh_html(&mut self, html: &str) {
+        let scroll = self.scroll_y;
+        self.load_html(html);
+        let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
+        self.scroll_y = scroll.min(max_scroll);
     }
 
     /// Loads `html` directly, with no network fetch -- used by tests,
@@ -622,4 +671,84 @@ mod tests {
         let scrolled = page.render_visible();
         assert_eq!(scrolled.get_pixel(0, 0), [0, 0, 255, 255], "scrolled down 10px, blue div is now visible");
     }
+
+    // ---- about:downloads ------------------------------------------------
+
+    use crate::downloads_page::test_support::{fake_downloads, Scratch};
+    use crate::downloads_page::DownloadsSource;
+    use blueice_ipc::downloads::{TransferInfo, TransferState};
+    use std::sync::Arc;
+
+    fn transfer(id: u64, name: &str, state: TransferState) -> TransferInfo {
+        TransferInfo { id, url: format!("https://example.com/{name}"), dest_path: format!("/d/{name}"), state, total_bytes: Some(1000), completed_bytes: 400, ..TransferInfo::default() }
+    }
+
+    fn page_reading(socket: std::path::PathBuf) -> Page {
+        let mut page = Page::new(400.0, 300.0);
+        page.set_downloads_source(Some(Arc::new(DownloadsSource::without_spawner(socket))));
+        page
+    }
+
+    #[test]
+    fn navigating_to_about_downloads_renders_the_live_list_without_a_network_fetch() {
+        let dir = Scratch::new("page-live");
+        let _server = fake_downloads(&dir.socket(), vec![transfer(1, "alpha.iso", TransferState::Active), transfer(2, "beta.zip", TransferState::Completed)], false, blueice_ipc::downloads::DOWNLOADS_PROTOCOL_VERSION);
+        let mut page = page_reading(dir.socket());
+
+        page.navigate("about:downloads").expect("a built-in page never fails to navigate");
+        assert_eq!(page.url(), Some("about:downloads"));
+        let dump = page.dom_dump();
+        assert!(dump.contains("alpha.iso") && dump.contains("beta.zip"), "{dump}");
+        assert!(dump.contains("Downloading") && dump.contains("Completed"), "{dump}");
+    }
+
+    #[test]
+    fn about_downloads_says_the_service_is_not_running_when_there_is_no_source_or_it_is_unreachable() {
+        let mut without = Page::new(400.0, 300.0);
+        without.navigate("about:downloads").unwrap();
+        assert!(without.dom_dump().contains("The downloads service is not running"), "{}", without.dom_dump());
+
+        let dir = Scratch::new("page-dead");
+        let mut unreachable = page_reading(dir.socket()); // nothing listens there
+        unreachable.navigate("about:downloads").unwrap();
+        assert!(unreachable.dom_dump().contains("The downloads service is not running"));
+        assert!(!unreachable.dom_dump().contains("No downloads yet."), "unreachable is not the same as empty");
+    }
+
+    #[test]
+    fn about_downloads_honors_a_lang_parameter() {
+        let dir = Scratch::new("page-lang");
+        let _server = fake_downloads(&dir.socket(), vec![transfer(1, "alpha.iso", TransferState::Active)], false, blueice_ipc::downloads::DOWNLOADS_PROTOCOL_VERSION);
+        let mut page = page_reading(dir.socket());
+        page.navigate("about:downloads?lang=zh-TW").unwrap();
+        assert_eq!(page.url(), Some("about:downloads?lang=zh-TW"));
+        assert!(page.dom_dump().contains("下載中"), "{}", page.dom_dump());
+    }
+
+    #[test]
+    fn refreshing_keeps_the_scroll_position_a_navigation_would_reset() {
+        let long: String = (0..60).map(|i| format!("<p>line {i}</p>")).collect();
+        let mut page = Page::new(400.0, 100.0);
+        page.load_html_str(&long, Some("about:downloads".to_string()));
+        page.scroll_by(200.0);
+        assert_eq!(page.scroll_y(), 200.0);
+
+        page.refresh_html(&long);
+        assert_eq!(page.scroll_y(), 200.0, "a live refresh must not throw a reader back to the top");
+        page.load_html_str(&long, None);
+        assert_eq!(page.scroll_y(), 0.0, "whereas a real navigation does start at the top");
+    }
+
+    #[test]
+    fn refreshing_to_shorter_content_clamps_the_scroll_to_what_still_exists() {
+        let long: String = (0..60).map(|i| format!("<p>line {i}</p>")).collect();
+        let mut page = Page::new(400.0, 100.0);
+        page.load_html_str(&long, Some("about:downloads".to_string()));
+        page.scroll_by(500.0);
+        let before = page.scroll_y();
+        assert!(before > 100.0);
+        page.refresh_html("<p>just one line</p>");
+        assert_eq!(page.scroll_y(), 0.0, "nothing left to scroll to");
+    }
+
 }

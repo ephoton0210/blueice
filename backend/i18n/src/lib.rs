@@ -43,8 +43,10 @@ pub const SUPPORTED_LOCALES: &[&str] = &["en", "zh-TW"];
 fn resource_text(locale: &str, namespace: &str) -> Option<&'static str> {
     match (locale, namespace) {
         ("en", "credits") => Some(include_str!("../locales/en/credits.ftl")),
+        ("en", "downloads") => Some(include_str!("../locales/en/downloads.ftl")),
         ("en", "frontend") => Some(include_str!("../locales/en/frontend.ftl")),
         ("zh-TW", "credits") => Some(include_str!("../locales/zh-TW/credits.ftl")),
+        ("zh-TW", "downloads") => Some(include_str!("../locales/zh-TW/downloads.ftl")),
         ("zh-TW", "frontend") => Some(include_str!("../locales/zh-TW/frontend.ftl")),
         // Test-only fixtures for the two defensive panics in
         // `bundle_for` below, which no real bundled `.ftl` file should
@@ -164,6 +166,41 @@ mod tests {
         "translation-notice",
     ];
     const FRONTEND_KEYS: &[&str] = &["window-title-default", "window-title-navigated"];
+    /// The `about:downloads` page (`phase-10-download-manager/PLAN.md`).
+    /// Deliberately no message takes an argument: Fluent wraps a placeable in
+    /// bidi-isolation marks, which would show up as stray glyphs in page text,
+    /// so the page composes values and labels in Rust instead.
+    const DOWNLOADS_KEYS: &[&str] = &[
+        "downloads-title",
+        "downloads-empty",
+        "downloads-unavailable",
+        "downloads-count-one",
+        "downloads-count-other",
+        "state-queued",
+        "state-awaiting-clearance",
+        "state-active",
+        "state-paused",
+        "state-completed",
+        "state-failed",
+        "state-cancelled",
+        "state-blocked",
+        "state-unknown",
+        "label-of",
+        "label-total-unknown",
+        "label-speed",
+        "label-eta",
+        "label-connections",
+        "label-mode",
+        "label-retries",
+        "label-last-error",
+        "label-blocked",
+        "label-saved-to",
+        "mode-segmented",
+        "mode-single-stream",
+        "mode-single-unknown-length",
+        "note-resume-unsafe",
+        "segments-heading",
+    ];
 
     #[test]
     fn every_supported_locale_defines_every_key_the_default_locale_does() {
@@ -171,12 +208,23 @@ mod tests {
         // documents -- a resource file silently missing a key it
         // should have, discovered here at test time rather than by a
         // user seeing English leak into an otherwise-translated screen.
-        for (namespace, keys) in [("credits", CREDITS_KEYS), ("frontend", FRONTEND_KEYS)] {
+        for (namespace, keys) in [("credits", CREDITS_KEYS), ("frontend", FRONTEND_KEYS), ("downloads", DOWNLOADS_KEYS)] {
             for locale in SUPPORTED_LOCALES {
                 let bundle = bundle_for(locale, namespace).unwrap_or_else(|| panic!("{locale}/{namespace} has no resource at all"));
                 for key in keys {
                     assert!(bundle.has_message(key), "{locale}/{namespace} is missing key {key:?} that {DEFAULT_LOCALE} defines");
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn no_downloads_message_takes_an_argument_so_no_isolation_marks_reach_the_page() {
+        for locale in SUPPORTED_LOCALES {
+            for key in DOWNLOADS_KEYS {
+                let text = translate(locale, "downloads", key, &[("x", "y")]);
+                assert!(!text.contains(FSI) && !text.contains(PDI), "{locale}/{key}: {text:?}");
+                assert!(!text.contains("{ $") && !text.contains("{$"), "{locale}/{key} has a placeable: {text:?}");
             }
         }
     }

@@ -50,16 +50,18 @@
 //! around the loop again," never as a disconnect (every *other* read
 //! error still means disconnect, exactly as before gating existed).
 
+use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsView};
 use crate::gatekeeper_client::{self, NavOutcome};
 use crate::{Page, TabId, TabManager};
 use blueice_dom::NodeId;
+use blueice_ipc::downloads::TransferInfo;
 use blueice_ipc::{shm, ClientMessage, NodeAction, ServerMessage, TabSummary};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// How long `run_session`'s read blocks waiting for the next client
 /// message before giving up and polling the completion channel instead
@@ -152,6 +154,8 @@ pub fn run_session<S: Read + Write + ReadTimeout>(tabs: &mut TabManager, stream:
 
     let (completion_tx, completion_rx) = mpsc::channel::<Completion>();
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
+    let (listing_tx, listing_rx) = mpsc::channel::<DownloadsListing>();
+    let mut downloads_refresher = DownloadsRefresher::default();
 
     loop {
         match blueice_ipc::read_client_message_with_ids(stream) {
@@ -309,6 +313,108 @@ pub fn run_session<S: Read + Write + ReadTimeout>(tabs: &mut TabManager, stream:
         while let Ok(completion) = completion_rx.try_recv() {
             apply_completion(tabs, stream, frame_dir, generation, &pending_nav_seq, completion)?;
         }
+
+        // Keep any open `about:downloads` tab current, off this thread.
+        downloads_refresher.tick(tabs, &listing_tx, Instant::now());
+        while let Ok(listing) = listing_rx.try_recv() {
+            downloads_refresher.apply(tabs, stream, frame_dir, generation, listing)?;
+        }
+    }
+}
+
+/// How often a tab showing `about:downloads` asks the downloads process for
+/// its list.
+const DOWNLOADS_REFRESH_INTERVAL: Duration = Duration::from_millis(500);
+
+/// One background read of the downloads list, on its way back to the loop.
+struct DownloadsListing {
+    tab_id: TabId,
+    /// The URL the tab was showing when the read started -- the result is
+    /// dropped if the tab has moved on since.
+    url: String,
+    outcome: Result<Vec<TransferInfo>, String>,
+}
+
+/// Keeps every tab that is showing `about:downloads` current
+/// (`phase-10-download-manager/PLAN.md`'s "Live updates"). Driven from the
+/// session's poll tick; the reads happen on background threads and come
+/// back over a channel, exactly like a gated navigation's result, so a slow
+/// or hung downloads process never delays another tab or client sharing
+/// this loop. A page is re-rendered -- and a fresh frame pushed -- only when
+/// what it would show actually changed.
+#[derive(Default)]
+struct DownloadsRefresher {
+    /// Tabs with a read outstanding: never more than one per tab.
+    in_flight: HashSet<TabId>,
+    /// When each tab is next due.
+    due: HashMap<TabId, Instant>,
+    /// The downloads URL each tab was last seen on. A change is a fresh
+    /// visit: read at once, and this first read may start the downloads
+    /// process (opening the panel is a legitimate reason to).
+    seen_url: HashMap<TabId, String>,
+    fresh_visit: HashSet<TabId>,
+    /// The HTML last pushed to each tab, so an identical one is skipped.
+    rendered: HashMap<TabId, String>,
+}
+
+impl DownloadsRefresher {
+    fn tick(&mut self, tabs: &TabManager, tx: &mpsc::Sender<DownloadsListing>, now: Instant) {
+        let open: HashSet<TabId> = tabs.ids().collect();
+        self.seen_url.retain(|id, _| open.contains(id));
+        self.due.retain(|id, _| open.contains(id));
+        self.rendered.retain(|id, _| open.contains(id));
+        self.fresh_visit.retain(|id| open.contains(id));
+
+        for id in open {
+            let Some(page) = tabs.get(id) else { continue };
+            let Some(url) = page.url().filter(|u| is_downloads_url(u)) else {
+                // Left the page (or never on it): forget it, so coming back is a fresh visit.
+                self.seen_url.remove(&id);
+                self.due.remove(&id);
+                self.rendered.remove(&id);
+                self.fresh_visit.remove(&id);
+                continue;
+            };
+            let Some(source) = page.downloads_source().cloned() else { continue };
+
+            if self.seen_url.get(&id).map(String::as_str) != Some(url) {
+                self.seen_url.insert(id, url.to_string());
+                self.rendered.remove(&id);
+                self.due.remove(&id);
+                self.fresh_visit.insert(id);
+            }
+            if self.in_flight.contains(&id) || self.due.get(&id).is_some_and(|due| now < *due) {
+                continue;
+            }
+            self.in_flight.insert(id);
+            self.due.insert(id, now + DOWNLOADS_REFRESH_INTERVAL);
+            let may_start_the_service = self.fresh_visit.remove(&id);
+            let (tx, url) = (tx.clone(), url.to_string());
+            thread::spawn(move || {
+                let outcome = if may_start_the_service { source.fetch_spawning() } else { source.fetch_observing() };
+                let _ = tx.send(DownloadsListing { tab_id: id, url, outcome });
+            });
+        }
+    }
+
+    fn apply<S: Write>(&mut self, tabs: &mut TabManager, stream: &mut S, frame_dir: &Path, generation: &mut u64, listing: DownloadsListing) -> io::Result<()> {
+        let DownloadsListing { tab_id, url, outcome } = listing;
+        self.in_flight.remove(&tab_id);
+        let Some(page) = tabs.get_mut(tab_id) else { return Ok(()) };
+        if page.url() != Some(url.as_str()) {
+            return Ok(()); // the tab moved on while the read was in flight
+        }
+        let locale = crate::credits::locale_from_url(&url);
+        let html = match &outcome {
+            Ok(transfers) => downloads_html(&DownloadsView::Transfers(transfers), locale),
+            Err(_) => downloads_html(&DownloadsView::Unavailable, locale),
+        };
+        if self.rendered.get(&tab_id) == Some(&html) {
+            return Ok(());
+        }
+        page.refresh_html(&html);
+        self.rendered.insert(tab_id, html);
+        send_frame(page, stream, frame_dir, generation, Some(tab_id.as_u64()), None)
     }
 }
 
@@ -371,8 +477,7 @@ fn begin_gated_navigation<S: Write>(
     completion_tx: &mpsc::Sender<Completion>,
     gatekeeper_socket: &Path,
 ) -> io::Result<()> {
-    if let Some(html) = crate::page::built_in_page(&url) {
-        page.load_html_str(&html, Some(url));
+    if page.load_built_in(&url) {
         return reply_success(page, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id.as_u64());
     }
     if let Err(e) = blueice_net::validate_url_scheme(&url) {
@@ -1892,4 +1997,213 @@ mod tests {
         let dir = handle.join().unwrap();
         let _ = std::fs::remove_dir_all(dir);
     }
+
+    // ---- about:downloads: navigation and live refresh -----------------------
+
+    use crate::downloads_page::test_support::{fake_downloads_live, FakeState, Scratch as DownloadsScratch};
+    use crate::downloads_page::DownloadsSource;
+    use blueice_ipc::downloads::{TransferInfo, TransferState, DOWNLOADS_PROTOCOL_VERSION};
+    use std::sync::{Arc, Mutex};
+
+    fn dl(id: u64, name: &str, state: TransferState, done: u64) -> TransferInfo {
+        TransferInfo { id, url: format!("https://example.com/{name}"), dest_path: format!("/d/{name}"), state, total_bytes: Some(1000), completed_bytes: done, ..TransferInfo::default() }
+    }
+
+    /// A session whose tabs read `about:downloads` from `socket`; returns
+    /// the client end and the session thread.
+    fn downloads_session(label: &str, socket: PathBuf) -> (UnixStream, thread::JoinHandle<()>) {
+        let dir = temp_frame_dir(label);
+        let gatekeeper = clearing_gatekeeper(label);
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(400.0, 300.0);
+            tabs.set_downloads_source(Arc::new(DownloadsSource::without_spawner(socket)));
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
+        });
+        handshake(&mut client);
+        (client, handle)
+    }
+
+    fn navigate_to(client: &mut UnixStream, url: &str) -> u64 {
+        client.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        blueice_ipc::write_client_message(client, &ClientMessage::Navigate { url: url.to_string() }).unwrap();
+        assert_eq!(blueice_ipc::read_server_message(client).unwrap(), ServerMessage::Navigated { url: url.to_string() });
+        let ServerMessage::FrameReady { generation, .. } = blueice_ipc::read_server_message(client).unwrap() else { panic!("expected the frame after Navigated") };
+        generation
+    }
+
+    /// The next `FrameReady` the session pushes within `wait`, if any.
+    fn next_pushed_frame(client: &mut UnixStream, wait: Duration) -> Option<u64> {
+        client.set_read_timeout(Some(wait)).unwrap();
+        match blueice_ipc::read_server_message_with_ids(client) {
+            Ok((_, request_id, ServerMessage::FrameReady { generation, .. })) => {
+                assert_eq!(request_id, None, "a refresh is unsolicited, so it carries no request id");
+                Some(generation)
+            }
+            Ok((_, _, other)) => panic!("unexpected message {other:?}"),
+            Err(e) if is_timeout(&e) => None,
+            Err(e) => panic!("{e}"),
+        }
+    }
+
+    fn dom_text(client: &mut UnixStream) -> String {
+        client.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        blueice_ipc::write_client_message(client, &ClientMessage::GetDom).unwrap();
+        loop {
+            match blueice_ipc::read_server_message(client).unwrap() {
+                ServerMessage::Dom(text) => return text,
+                ServerMessage::FrameReady { .. } => {} // a refresh landed in between
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+    }
+
+    fn finish_session(mut client: UnixStream, handle: thread::JoinHandle<()>) {
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn navigating_to_about_downloads_replies_at_once_and_shows_the_live_list() {
+        let dir = DownloadsScratch::new("sess-nav");
+        let state = FakeState { transfers: Arc::new(Mutex::new(vec![dl(1, "alpha.iso", TransferState::Active, 400)])), ..FakeState::default() };
+        let _server = fake_downloads_live(&dir.socket(), state, false, DOWNLOADS_PROTOCOL_VERSION);
+        let (mut client, handle) = downloads_session("sess-nav", dir.socket());
+
+        navigate_to(&mut client, "about:downloads");
+        let dom = dom_text(&mut client);
+        assert!(dom.contains("alpha.iso") && dom.contains("Downloading"), "{dom}");
+        finish_session(client, handle);
+    }
+
+    #[test]
+    fn the_page_updates_itself_and_pushes_a_frame_when_a_transfer_changes() {
+        let dir = DownloadsScratch::new("sess-live");
+        let state = FakeState { transfers: Arc::new(Mutex::new(vec![dl(1, "alpha.iso", TransferState::Active, 400)])), ..FakeState::default() };
+        let live = state.transfers.clone();
+        let _server = fake_downloads_live(&dir.socket(), state, false, DOWNLOADS_PROTOCOL_VERSION);
+        let (mut client, handle) = downloads_session("sess-live", dir.socket());
+        let first = navigate_to(&mut client, "about:downloads");
+        // Let the first (initial) refresh settle, whatever it pushes.
+        while next_pushed_frame(&mut client, Duration::from_millis(1200)).is_some() {}
+
+        *live.lock().unwrap() = vec![dl(1, "alpha.iso", TransferState::Completed, 1000), dl(2, "beta.zip", TransferState::Active, 100)];
+        let pushed = next_pushed_frame(&mut client, Duration::from_secs(5)).expect("a changed list must push a fresh frame");
+        assert!(pushed > first, "the pushed frame is newer: {pushed} vs {first}");
+
+        // The human-visible frame and the AI-facing representation come from the same render pass.
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+        let ServerMessage::Representation(snapshot) = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected Representation") };
+        assert_eq!(snapshot.generation, pushed, "the frame just pushed and the representation share one generation");
+        let dom = dom_text(&mut client);
+        assert!(dom.contains("Completed") && dom.contains("beta.zip"), "{dom}");
+        finish_session(client, handle);
+    }
+
+    #[test]
+    fn an_unchanged_list_does_not_keep_pushing_frames() {
+        let dir = DownloadsScratch::new("sess-quiet");
+        let state = FakeState { transfers: Arc::new(Mutex::new(vec![dl(1, "alpha.iso", TransferState::Paused, 400)])), ..FakeState::default() };
+        let lists = state.lists.clone();
+        let _server = fake_downloads_live(&dir.socket(), state, false, DOWNLOADS_PROTOCOL_VERSION);
+        let (mut client, handle) = downloads_session("sess-quiet", dir.socket());
+        navigate_to(&mut client, "about:downloads");
+        while next_pushed_frame(&mut client, Duration::from_millis(1200)).is_some() {}
+
+        let polled_before = lists.load(Ordering::SeqCst);
+        assert!(next_pushed_frame(&mut client, Duration::from_millis(1600)).is_none(), "nothing changed, so nothing should be pushed");
+        assert!(lists.load(Ordering::SeqCst) > polled_before, "it kept looking, it just had nothing new to say");
+        finish_session(client, handle);
+    }
+
+    #[test]
+    fn refreshing_stops_once_the_tab_navigates_away() {
+        let dir = DownloadsScratch::new("sess-away");
+        let state = FakeState { transfers: Arc::new(Mutex::new(vec![dl(1, "alpha.iso", TransferState::Active, 400)])), ..FakeState::default() };
+        let lists = state.lists.clone();
+        let _server = fake_downloads_live(&dir.socket(), state, false, DOWNLOADS_PROTOCOL_VERSION);
+        let (mut client, handle) = downloads_session("sess-away", dir.socket());
+        navigate_to(&mut client, "about:downloads");
+        while next_pushed_frame(&mut client, Duration::from_millis(1200)).is_some() {}
+
+        navigate_to(&mut client, "about:blank");
+        thread::sleep(Duration::from_millis(300)); // any refresh already in flight lands
+        let at_departure = lists.load(Ordering::SeqCst);
+        thread::sleep(Duration::from_millis(1600));
+        assert_eq!(lists.load(Ordering::SeqCst), at_departure, "a tab that left the page must not keep polling the downloads process");
+        assert!(next_pushed_frame(&mut client, Duration::from_millis(100)).is_none());
+        finish_session(client, handle);
+    }
+
+    #[test]
+    fn an_absent_service_shows_the_not_running_page_and_the_list_appears_when_it_starts() {
+        let dir = DownloadsScratch::new("sess-late");
+        let (mut client, handle) = downloads_session("sess-late", dir.socket());
+        navigate_to(&mut client, "about:downloads");
+        assert!(dom_text(&mut client).contains("The downloads service is not running"));
+        // A fresh visit pushes one refresh of its own; let it land before the service exists.
+        while next_pushed_frame(&mut client, Duration::from_millis(1200)).is_some() {}
+
+        // The service comes up later; the open page notices without being reloaded.
+        let state = FakeState { transfers: Arc::new(Mutex::new(vec![dl(3, "gamma.bin", TransferState::Active, 10)])), ..FakeState::default() };
+        let _server = fake_downloads_live(&dir.socket(), state, false, DOWNLOADS_PROTOCOL_VERSION);
+        assert!(next_pushed_frame(&mut client, Duration::from_secs(6)).is_some(), "the recovered service must be shown");
+        let dom = dom_text(&mut client);
+        assert!(dom.contains("gamma.bin") && !dom.contains("not running"), "{dom}");
+        finish_session(client, handle);
+    }
+
+    #[test]
+    fn a_hung_downloads_service_cannot_stall_the_session() {
+        let dir = DownloadsScratch::new("sess-hung");
+        let _server = fake_downloads_live(&dir.socket(), FakeState::default(), true, DOWNLOADS_PROTOCOL_VERSION);
+        let (mut client, handle) = downloads_session("sess-hung", dir.socket());
+        // The first text layout in a process loads the fonts (seconds, in a
+        // debug build): pay that here so the timing below is about the read.
+        navigate_to(&mut client, "about:credits");
+
+        let started = std::time::Instant::now();
+        navigate_to(&mut client, "about:downloads"); // the quick read gives up after a fraction of a second
+        assert!(started.elapsed() < Duration::from_secs(3), "navigation took {:?}", started.elapsed());
+        assert!(dom_text(&mut client).contains("not running"), "a service that does not answer is shown as unavailable");
+
+        // Meanwhile background refreshes are stuck on the hung service; ordinary requests are not.
+        let started = std::time::Instant::now();
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Resize { width: 123, height: 234 }).unwrap();
+        loop {
+            match blueice_ipc::read_server_message(&mut client).unwrap() {
+                ServerMessage::FrameReady { width: 123, height: 234, .. } => break,
+                ServerMessage::FrameReady { .. } => {}
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+        assert!(started.elapsed() < Duration::from_secs(2), "Resize waited behind the hung service, took {:?}", started.elapsed());
+        finish_session(client, handle);
+    }
+
+    #[test]
+    fn a_link_to_about_downloads_is_followed_like_any_built_in_page() {
+        let dir = DownloadsScratch::new("sess-link");
+        let state = FakeState { transfers: Arc::new(Mutex::new(vec![dl(1, "alpha.iso", TransferState::Completed, 1000)])), ..FakeState::default() };
+        let _server = fake_downloads_live(&dir.socket(), state, false, DOWNLOADS_PROTOCOL_VERSION);
+        let (mut client, handle) = downloads_session("sess-link", dir.socket());
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: Some("about:downloads".to_string()) }).unwrap();
+        client.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        let ServerMessage::TabOpened { tab_id, url } = blueice_ipc::read_server_message(&mut client).unwrap() else { panic!("expected TabOpened") };
+        assert_eq!(url.as_deref(), Some("about:downloads"));
+        blueice_ipc::write_client_message_with_ids(&mut client, Some(tab_id), None, &ClientMessage::GetDom).unwrap();
+        loop {
+            match blueice_ipc::read_server_message(&mut client).unwrap() {
+                ServerMessage::Dom(text) => {
+                    assert!(text.contains("alpha.iso"), "a tab opened straight onto the page shows the list: {text}");
+                    break;
+                }
+                ServerMessage::FrameReady { .. } => {}
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+        finish_session(client, handle);
+    }
+
 }

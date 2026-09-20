@@ -2,7 +2,7 @@
 
 [← Back to Phase 10 plan](PLAN.md)
 
-> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. M0 (design), M1 (`blueice-ipc` contract), M2 (`blueice-net` transfer engine) and M3 (the `downloads` process) and M4 (the MCP tools) are done; M5 onward has not started.**
+> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. M0 (design), M1 (`blueice-ipc` contract), M2 (`blueice-net` transfer engine) and M3 (the `downloads` process) and M4 (the MCP tools) and M5 (`about:downloads`) are done; only M6 (wrap-up) remains.**
 > Branch: `feature/downloads-first-slice`.
 > Design inputs: [`PLAN.md`](PLAN.md) (this phase), [`../phase-7-local-ai/PLAN.md`](../phase-7-local-ai/PLAN.md), [`../phase-12-mcp-server/PLAN.md`](../phase-12-mcp-server/PLAN.md), [`../research/safe-browsing-enforcement.md`](../research/safe-browsing-enforcement.md), [`../research/multi-process-memory.md`](../research/multi-process-memory.md).
 
@@ -104,13 +104,13 @@ Network and files:
 - [x] Update the server `instructions` in `get_info()`
 
 ### M5 — `about:downloads` visualization
-- [ ] **First step**: verify whether layout supports percentage widths (D13) and decide between `%` and px
-- [ ] Add `downloads.ftl` to `blueice-i18n` (`en` + `zh-TW`); every UI string goes through i18n
-- [ ] `downloads_html(transfers, locale)`: one row per transfer — file name, state, progress bar, downloaded/total, speed, ETA, a segment block map (per-segment completion, in the style of Free Download Manager), and retries / error / blocked reason
-- [ ] `Page::navigate("about:downloads")` is generated as a built-in page, like `about:credits`; when the downloads process is unreachable, show an empty state rather than failing
-- [ ] Live updates: on `session.rs`'s poll tick, if a tab is on `about:downloads`, fetch a fresh snapshot within ~500 ms and re-render only when it changed; `FrameReady` and the matching `Representation` keep sharing one `generation`
-- [ ] `frontend-reference`: stdin commands `downloads` and `download <url>` (D14)
-- [ ] Tests: unit tests for the HTML generator (every state, the empty state, zh-TW); a session end-to-end test with a fake downloads server (the page content actually changes with progress, and an AI agent's `get_page_representation` reads the same data); a `#paint` fixture if feasible
+- [x] **First step**: verify whether layout supports percentage widths (D13) and decide between `%` and px
+- [x] Add `downloads.ftl` to `blueice-i18n` (`en` + `zh-TW`); every UI string goes through i18n
+- [x] `downloads_html(transfers, locale)`: one row per transfer — file name, state, progress bar, downloaded/total, speed, ETA, a segment block map (per-segment completion, in the style of Free Download Manager), and retries / error / blocked reason
+- [x] `Page::navigate("about:downloads")` is generated as a built-in page, like `about:credits`; when the downloads process is unreachable, show an empty state rather than failing
+- [x] Live updates: on `session.rs`'s poll tick, if a tab is on `about:downloads`, fetch a fresh snapshot within ~500 ms and re-render only when it changed; `FrameReady` and the matching `Representation` keep sharing one `generation`
+- [x] `frontend-reference`: stdin commands `downloads` and `download <url>` (D14)
+- [x] Tests: unit tests for the HTML generator (every state, the empty state, zh-TW); a session end-to-end test with a fake downloads server (the page content actually changes with progress, and an AI agent's `get_page_representation` reads the same data); no `#paint` fixture (the page is built from live data, so a fixed fixture would only pin the CSS text); instead the page was rendered to PNG and looked at, in both locales, with every state present
 
 ### M6 — Wrap-up
 - [ ] **Test-review pass**: re-read the content of every new test (not just green status and coverage) — fill in edge cases and error paths, delete tests that no longer check anything meaningful

@@ -17,10 +17,12 @@
 //! disconnects or sends `Shutdown` -- there is no multi-frontend
 //! support in this reference implementation.
 
+use blueice_engine::downloads_page::DownloadsSource;
 use blueice_engine::{session, TabManager};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 #[derive(Debug, PartialEq)]
 struct Args {
@@ -36,6 +38,12 @@ struct Args {
     /// subprocess at its own fake/stub gatekeeper instead of the
     /// system-wide default path.
     gatekeeper_socket: Option<PathBuf>,
+    /// Where `about:downloads` reads the downloads list from, and where a
+    /// downloads process started on the page's behalf listens -- `None`
+    /// (the common case) resolves to `blueice_ipc::downloads::
+    /// default_downloads_socket_path()`. Overridable for the same reason
+    /// `gatekeeper_socket` is: a test points a real subprocess at its own.
+    downloads_socket: Option<PathBuf>,
 }
 
 /// Takes an injectable argument iterator (rather than reading
@@ -51,6 +59,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut height = 600.0;
     let mut frame_dir = None;
     let mut gatekeeper_socket = None;
+    let mut downloads_socket = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -61,12 +70,13 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--height" => height = value()?.parse().map_err(|_| "--height must be a number".to_string())?,
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
+            "--downloads-socket" => downloads_socket = Some(PathBuf::from(value()?)),
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
 
     let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
-    Ok(Args { socket, width, height, frame_dir, gatekeeper_socket })
+    Ok(Args { socket, width, height, frame_dir, gatekeeper_socket, downloads_socket })
 }
 
 fn main() -> ExitCode {
@@ -80,6 +90,7 @@ fn main() -> ExitCode {
 
     let frame_dir = args.frame_dir.unwrap_or_else(|| std::env::temp_dir().join(format!("blueice-core-frames-{}", std::process::id())));
     let gatekeeper_socket = args.gatekeeper_socket.unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
+    let downloads_socket = args.downloads_socket;
 
     // A stale socket file from a previous run (e.g. one that crashed
     // instead of exiting cleanly) makes bind() fail with AddrInUse
@@ -97,6 +108,10 @@ fn main() -> ExitCode {
     let result = (|| -> std::io::Result<()> {
         let (mut stream, _) = listener.accept()?;
         let mut tabs = TabManager::new(args.width, args.height);
+        tabs.set_downloads_source(Arc::new(match downloads_socket {
+            Some(socket) => DownloadsSource::at(socket),
+            None => DownloadsSource::new(),
+        }));
         let mut generation = 0u64;
         session::run_session(&mut tabs, &mut stream, &frame_dir, &mut generation, &gatekeeper_socket)
     })();
@@ -138,7 +153,7 @@ mod tests {
 
     #[test]
     fn every_flag_is_parsed() {
-        let parsed = args(&["--socket", "/tmp/x.sock", "--width", "100", "--height", "50", "--frame-dir", "/tmp/frames", "--gatekeeper-socket", "/tmp/gk.sock"]).unwrap();
+        let parsed = args(&["--socket", "/tmp/x.sock", "--width", "100", "--height", "50", "--frame-dir", "/tmp/frames", "--gatekeeper-socket", "/tmp/gk.sock", "--downloads-socket", "/tmp/dl.sock"]).unwrap();
         assert_eq!(
             parsed,
             Args {
@@ -147,6 +162,7 @@ mod tests {
                 height: 50.0,
                 frame_dir: Some(PathBuf::from("/tmp/frames")),
                 gatekeeper_socket: Some(PathBuf::from("/tmp/gk.sock")),
+                downloads_socket: Some(PathBuf::from("/tmp/dl.sock")),
             }
         );
     }
