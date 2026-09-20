@@ -397,8 +397,7 @@ mod tests {
         let page = page_with("<p>hi</p>");
         let snap = build(&page, 0, 1);
         let node = &snap.nodes[0];
-        let real_id = page.doc().root(); // just to confirm `id` is a real, resolvable NodeId
-        assert!(real_id.as_u64() != node.id || true); // root itself isn't represented; sanity that as_u64 exists
+        // `id` must be a real, resolvable NodeId of this document.
         assert!(page.doc().contains(NodeId::from_u64(node.id)));
     }
 
