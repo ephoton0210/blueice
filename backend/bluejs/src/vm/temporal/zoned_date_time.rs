@@ -170,12 +170,32 @@ pub(crate) fn difference_zoned_date_time(
 /// definition of a day's boundary, not a fixed UTC-day assumption —
 /// `ZonedDateTime`'s entire reason to have its own rounding/`hoursInDay`
 /// behaviour distinct from `Instant`'s.
+///
+/// Unchecked: for a date at the very edge of Temporal's range the next day's
+/// start is not a representable instant, which `GetStartOfDay` turns into a
+/// `RangeError` -- use [`checked_day_bounds`] wherever the specification does.
 pub(crate) fn day_length_nanoseconds(zone: &TimeZone, date: CivilDate) -> i128 {
     let start = zone.start_of_day(date);
     let next = plain_date::add_iso_date(date, 0, 0, 0, 1, false)
         .expect("a representable date's next calendar day is also representable");
     let end = zone.start_of_day(next);
     i128::try_from(&end - &start).expect("one day's length fits in i128 many times over")
+}
+
+/// `GetStartOfDay(timeZone, date)` and `GetStartOfDay` of the following day:
+/// the instants one wall-clock day spans, `[start, end)`.
+///
+/// `None` when the next date, or either start instant, is not representable --
+/// the specification's `RangeError` for `ZonedDateTime.prototype.hoursInDay`,
+/// `round` to a day, `startOfDay` and `withPlainTime()` on a value at the edge
+/// of the range (`hoursInDay/next-day-out-of-range.js`,
+/// `round/get-start-of-day-throws.js`).
+pub(crate) fn checked_day_bounds(zone: &TimeZone, date: CivilDate) -> Option<(BigInt, BigInt)> {
+    let next = plain_date::add_iso_date(date, 0, 0, 0, 1, false)
+        .filter(|next| epoch::is_date_within_limits(*next))?;
+    let start = zone.start_of_day(date);
+    let end = zone.start_of_day(next);
+    (epoch::is_in_instant_range(&start) && epoch::is_in_instant_range(&end)).then_some((start, end))
 }
 
 #[cfg(test)]
@@ -365,5 +385,27 @@ mod tests {
             day_length_nanoseconds(&TimeZone::Offset(-300), (2024, 6, 1)),
             24 * 3_600_000_000_000
         );
+    }
+
+    #[test]
+    fn checked_day_bounds_span_the_real_day_and_refuse_the_edges_of_the_range() {
+        let vancouver = TimeZone::Iana("America/Vancouver");
+        let (start, end) = checked_day_bounds(&vancouver, (2000, 4, 2)).unwrap();
+        assert_eq!(&end - &start, BigInt::from(23 * 3_600_000_000_000_i64));
+        let (start, end) = checked_day_bounds(&utc(), (1970, 1, 1)).unwrap();
+        assert_eq!(start, BigInt::from(0));
+        assert_eq!(end, BigInt::from(86_400_000_000_000_i64));
+        // The last representable date has no representable following day...
+        assert!(checked_day_bounds(&utc(), (275_760, 9, 13)).is_none());
+        // ...and the first has a start of day one day before the first instant.
+        assert!(checked_day_bounds(&utc(), (-271_821, 4, 19)).is_none());
+        assert!(checked_day_bounds(&utc(), (-271_821, 4, 20)).is_some());
+        // The zone shifts which side runs out first: west of UTC the next start of
+        // day for the second-to-last date is past the last instant, east of UTC the
+        // first date's own start of day is before the first instant.
+        assert!(checked_day_bounds(&TimeZone::Offset(60), (275_760, 9, 12)).is_some());
+        assert!(checked_day_bounds(&TimeZone::Offset(-60), (275_760, 9, 12)).is_none());
+        assert!(checked_day_bounds(&TimeZone::Offset(-60), (-271_821, 4, 20)).is_some());
+        assert!(checked_day_bounds(&TimeZone::Offset(60), (-271_821, 4, 20)).is_none());
     }
 }

@@ -82,7 +82,7 @@ pub(in super::super) fn temporal_zoned_date_time_zone(
 /// zero. Only meaningful for [`temporal_interpret_offset`]'s `match_minutes`
 /// (`MatchBehaviour::MatchMinutes`) comparison -- see that function's own
 /// doc comment.
-fn round_offset_nanoseconds_to_minutes(offset_nanoseconds: i64) -> i64 {
+pub(super) fn round_offset_nanoseconds_to_minutes(offset_nanoseconds: i64) -> i64 {
     const MINUTE: i64 = 60_000_000_000;
     let quotient = offset_nanoseconds / MINUTE;
     let remainder = offset_nanoseconds % MINUTE;

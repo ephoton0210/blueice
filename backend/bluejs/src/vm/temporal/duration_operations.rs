@@ -250,29 +250,33 @@ impl Vm {
             if anchor.is_some() && record.sign() == 0 {
                 return self.temporal_duration_create([0; 10]);
             }
-            if let Some(anchor) = &anchor {
-                Self::temporal_duration_anchor_datetime_in_range(anchor.date())?;
+            // A `Plain` anchor: add the whole duration to it (days folded with
+            // the time part at 24 hours each) and take
+            // `DifferencePlainDateTimeWithRounding` between the anchor at
+            // midnight and where that lands -- the same routine
+            // `PlainDateTime.prototype.until` runs
+            // (`vm/temporal/plain_date_time_difference.rs`).
+            if let Some(DurationAnchor::Plain { calendar, date }) = &anchor {
+                let (origin, target) =
+                    Self::temporal_duration_plain_endpoints(*calendar, *date, &record)?;
+                let fields = plain_date_time_difference::difference_plain_date_time(
+                    *calendar, origin, target, largest, increment, smallest, mode,
+                )
+                .ok_or_else(|| {
+                    RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
+                })?;
+                return self.temporal_duration_create(fields);
             }
+            // No anchor at all: only a duration with no years/months/weeks
+            // (and no such unit requested) has a fixed length.
             let needs_calendar = Self::temporal_duration_largest_unit(&record).is_calendar()
                 || largest.is_calendar()
                 || smallest.is_calendar();
             if needs_calendar {
-                let anchor = anchor.ok_or_else(|| {
-                    RuntimeError::RangeError(
-                        "a Temporal.Duration with years, months or weeks needs a relativeTo \
-                         anchor"
-                            .into(),
-                    )
-                })?;
-                return self.temporal_duration_round_relative(
-                    anchor.calendar(),
-                    anchor.date(),
-                    &record,
-                    largest,
-                    smallest,
-                    increment,
-                    mode,
-                );
+                return Err(RuntimeError::RangeError(
+                    "a Temporal.Duration with years, months or weeks needs a relativeTo anchor"
+                        .into(),
+                ));
             }
             let step = smallest
                 .nanoseconds()
@@ -296,416 +300,6 @@ impl Vm {
         })();
         self.stack.truncate(base);
         result
-    }
-
-    /// The calendar-aware half of `round`: `smallestUnit`/`largestUnit`
-    /// involves a `year`/`month`/`week`, or the receiver's own largest
-    /// nonzero field does, so the answer needs `anchor + record`'s real
-    /// calendar-date landing rather than a fixed-length nanosecond total.
-    /// Mirrors `plain_date::round_calendar_duration`'s own algorithm shape
-    /// (`temporal_date_difference` uses the identical split, between two
-    /// already-known dates instead of an anchor plus a duration to add).
-    #[allow(clippy::too_many_arguments)]
-    pub(in super::super) fn temporal_duration_round_relative(
-        &mut self,
-        calendar: AnyCalendarKind,
-        anchor: epoch::CivilDate,
-        record: &blueice_ecma402::DurationRecord,
-        largest: rounding::TemporalUnit,
-        smallest: rounding::TemporalUnit,
-        increment: i128,
-        mode: blueice_ecma402::NumberRoundingMode,
-    ) -> Result<Value, RuntimeError> {
-        const DAY_NS: i128 = 86_400_000_000_000;
-        let time_total = duration_math::TimeDuration::from_fields(
-            record.hours,
-            record.minutes,
-            record.seconds,
-            record.milliseconds,
-            record.microseconds,
-            record.nanoseconds,
-        )
-        .total_nanoseconds();
-        if smallest >= rounding::TemporalUnit::Day {
-            // Deliberately *not* `plain_date::round_calendar_duration` here:
-            // that function only ever sees a whole-day remainder (it takes
-            // two already-known dates), so a duration whose only remaining
-            // content below `largestUnit` is a sub-day time part would lose
-            // exactly the precision `ceil`/`floor`/`halfEven`/etc. need to
-            // decide whether that remainder rounds up — Test262's
-            // `roundingmode-ceil.js` is what catches this (a `largestUnit:
-            // "years"`/no explicit `smallestUnit` case whose only remaining
-            // content is ~40.5 leftover hours must still round the day count
-            // up under "ceil"). This reimplements the same bracketing shape
-            // `round_calendar_duration`/its private `round_month_or_year`
-            // use, but carries the exact nanosecond remainder all the way
-            // through the rounding decision instead of pre-folding it into a
-            // possibly-truncated day count.
-            return self.temporal_duration_round_calendar_exact(
-                calendar, anchor, record, time_total, largest, smallest, increment, mode,
-            );
-        }
-        let (intermediate, ns_of_day) =
-            Self::temporal_duration_intermediate(calendar, anchor, record)?;
-        // `smallest` is a time unit: round the exact sub-day remainder first,
-        // then recombine with the whole-day calendar difference — the same
-        // shape `temporal_date_difference`'s own sub-day branch uses, with
-        // `anchor`/`intermediate` standing in for that function's `from`/
-        // `adjusted_to` and `ns_of_day` standing in for its `time_diff` (both
-        // already exact and sign-consistent, so no day-adjustment step is
-        // needed here the way two independent wall-clock endpoints require).
-        let time_unit = match smallest {
-            rounding::TemporalUnit::Hour => rounding::TimeUnit::Hour,
-            rounding::TemporalUnit::Minute => rounding::TimeUnit::Minute,
-            rounding::TemporalUnit::Second => rounding::TimeUnit::Second,
-            rounding::TemporalUnit::Millisecond => rounding::TimeUnit::Millisecond,
-            rounding::TemporalUnit::Microsecond => rounding::TimeUnit::Microsecond,
-            _ => rounding::TimeUnit::Nanosecond,
-        };
-        let rounded = duration_math::TimeDuration::from_nanoseconds(ns_of_day)
-            .round(time_unit, increment, mode);
-        let total = rounded.total_nanoseconds();
-        let day_carry = total / DAY_NS;
-        let ns_of_day = total % DAY_NS;
-        let time_largest = if largest >= rounding::TemporalUnit::Day {
-            rounding::TimeUnit::Hour
-        } else {
-            match largest {
-                rounding::TemporalUnit::Hour => rounding::TimeUnit::Hour,
-                rounding::TemporalUnit::Minute => rounding::TimeUnit::Minute,
-                rounding::TemporalUnit::Second => rounding::TimeUnit::Second,
-                rounding::TemporalUnit::Millisecond => rounding::TimeUnit::Millisecond,
-                rounding::TemporalUnit::Microsecond => rounding::TimeUnit::Microsecond,
-                _ => rounding::TimeUnit::Nanosecond,
-            }
-        };
-        let balanced =
-            duration_math::TimeDuration::from_nanoseconds(ns_of_day).balance_to(time_largest);
-        let whole_days = plain_date::calendar_difference_date(
-            calendar,
-            anchor,
-            intermediate,
-            plain_date::DateUnit::Day,
-        )
-        .3;
-        let total_days = whole_days + day_carry as i64;
-        let day_target =
-            plain_date::calendar_add_date(calendar, anchor, 0, 0, 0, total_days, false)
-                .ok_or_else(|| {
-                    RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
-                })?;
-        let (years, months, weeks, days) = plain_date::calendar_difference_date(
-            calendar,
-            anchor,
-            day_target,
-            Self::temporal_unit_to_date_unit(largest),
-        );
-        self.temporal_duration_create([
-            years as i128,
-            months as i128,
-            weeks as i128,
-            days as i128,
-            i128::from(balanced[0]),
-            i128::from(balanced[1]),
-            i128::from(balanced[2]),
-            i128::from(balanced[3]),
-            i128::from(balanced[4]),
-            i128::from(balanced[5]),
-        ])
-    }
-
-    /// `round`'s calendar-aware `day`/`week`/`month`/`year`-granularity
-    /// rounding, keeping the exact sub-day nanosecond remainder alive all
-    /// the way through the rounding decision (see the caller's own comment
-    /// for why `plain_date::round_calendar_duration` can't be reused
-    /// directly here).
-    ///
-    /// Also fixes a real, separate discrepancy found while deriving this
-    /// against `roundingmode-ceil.js`'s own `weeks` case:
-    /// `round_calendar_duration`'s `Week` branch only places its rounded
-    /// value in the `weeks` output field when `largestUnit` is itself
-    /// `"weeks"`, folding it into `days` (as an always-multiple-of-7 value)
-    /// otherwise — but Temporal's actual field-population rule is that
-    /// `weeks` appears whenever `smallestUnit` is `"weeks"`, regardless of
-    /// `largestUnit` (`{ largestUnit: "years", smallestUnit: "weeks" }` on a
-    /// multi-year duration still reports a real `weeks` field alongside
-    /// `years`/`months`, never a `days` value in the hundreds). This
-    /// function's own `smallest == Week` handling corrects that locally
-    /// rather than by editing the shared, already-merged
-    /// `plain_date::round_calendar_duration` (out of this pass's file
-    /// scope — see this phase's own scope notes); `temporal_date_difference`
-    /// (`PlainDate`/`PlainDateTime.prototype.since`/`until`) calls the
-    /// unmodified original directly and likely has the identical gap for
-    /// the same option combination, which is worth its own owner's
-    /// attention.
-    #[allow(clippy::too_many_arguments)]
-    pub(in super::super) fn temporal_duration_round_calendar_exact(
-        &mut self,
-        calendar: AnyCalendarKind,
-        anchor: epoch::CivilDate,
-        record: &blueice_ecma402::DurationRecord,
-        time_total: i128,
-        largest: rounding::TemporalUnit,
-        smallest: rounding::TemporalUnit,
-        increment: i128,
-        mode: blueice_ecma402::NumberRoundingMode,
-    ) -> Result<Value, RuntimeError> {
-        const DAY_NS: i128 = 86_400_000_000_000;
-        let date_unit_largest = Self::temporal_unit_to_date_unit(largest);
-        // The date-only landing point (no time contribution at all yet) —
-        // used both to find the exact pre-rounding remainder below
-        // `largestUnit` and, for `month`/`year`, as the fractional-position
-        // anchor `round_month_or_year` itself would use.
-        let date_only = plain_date::calendar_add_date(
-            calendar,
-            anchor,
-            record.years as i64,
-            record.months as i64,
-            record.weeks as i64,
-            record.days as i64,
-            false,
-        )
-        .ok_or_else(|| {
-            RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
-        })?;
-        // See `temporal_duration_intermediate`'s own identical comment:
-        // `calendar_add_date` alone doesn't catch a numerically valid but
-        // unrepresentable landing date. Checked against the *whole* date part
-        // including the time component folded into whole days (not just
-        // `date_only`, which omits it), since a huge time component alone
-        // (e.g. `Number.MAX_SAFE_INTEGER` seconds, `record.days == 0`) is
-        // exactly what
-        // `relativeto-plaindate-large-time-component-out-of-range.js` checks
-        // for every `smallestUnit` (`year`/`month`/`week`), not only the
-        // `Day`/`Week` branch below.
-        let time_folded_days = record.days + time_total / DAY_NS;
-        let date_with_time = plain_date::calendar_add_date(
-            calendar,
-            anchor,
-            record.years as i64,
-            record.months as i64,
-            record.weeks as i64,
-            time_folded_days as i64,
-            false,
-        )
-        .ok_or_else(|| {
-            RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
-        })?;
-        if !epoch::is_date_within_limits(date_only) || !epoch::is_date_within_limits(date_with_time)
-        {
-            return Err(RuntimeError::RangeError(
-                "Temporal date arithmetic is out of range".into(),
-            ));
-        }
-
-        if matches!(
-            smallest,
-            rounding::TemporalUnit::Day | rounding::TemporalUnit::Week
-        ) {
-            let (years0, months0, weeks0, days0) = plain_date::calendar_difference_date(
-                calendar,
-                anchor,
-                date_only,
-                date_unit_largest,
-            );
-            let remainder_ns = i128::from(weeks0 * 7 + days0) * DAY_NS + time_total;
-            let step_days: i128 = if smallest == rounding::TemporalUnit::Week {
-                7
-            } else {
-                1
-            };
-            let step_ns = DAY_NS * step_days * increment;
-            let rounded_ns = rounding::round_to_increment(remainder_ns, step_ns, mode);
-            let rounded_days = (rounded_ns / DAY_NS) as i64;
-            // `calendar_difference_date` only ever splits out a years/months
-            // component when its own `largest_unit` is `Year`/`Month`; for a
-            // `Day`/`Week` `largestUnit` there is no such split (the whole
-            // duration collapses to a flat day count from `anchor`), so the
-            // pre-offset must match that or the final re-split below would
-            // double-count a years/months contribution. Crucially, the
-            // pre-offset uses `years0`/`months0` — the *calendar-bracketed*
-            // decomposition of the whole `date_only` landing point computed
-            // just above — rather than `record.years`/`record.months`
-            // directly: the record's own `weeks`/`days` (and any leftover
-            // time) can themselves push the whole-months/-years count past
-            // what the record's own `years`/`months` fields alone would
-            // suggest (e.g. 6 months + 7 weeks + 8 days lands on a real
-            // 7th month), and it is *that* landing which must anchor the
-            // rounding step, not the record's raw field split.
-            let years_months_point = if matches!(
-                date_unit_largest,
-                plain_date::DateUnit::Year | plain_date::DateUnit::Month
-            ) {
-                plain_date::calendar_add_date(calendar, anchor, years0, months0, 0, 0, false)
-                    .ok_or_else(|| {
-                        RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
-                    })?
-            } else {
-                anchor
-            };
-            let day_target = plain_date::calendar_add_date(
-                calendar,
-                years_months_point,
-                0,
-                0,
-                0,
-                rounded_days,
-                false,
-            )
-            .ok_or_else(|| {
-                RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
-            })?;
-            let (years, months, weeks, days) = plain_date::calendar_difference_date(
-                calendar,
-                anchor,
-                day_target,
-                date_unit_largest,
-            );
-            // See this function's own doc comment: `weeks` must carry the
-            // rounded value whenever `smallest` is `week`, even if
-            // `largestUnit` folded it into `days` above.
-            let (weeks, days) = if smallest == rounding::TemporalUnit::Week
-                && largest != rounding::TemporalUnit::Week
-            {
-                (days / 7, 0)
-            } else {
-                (weeks, days)
-            };
-            return self.temporal_duration_create([
-                years as i128,
-                months as i128,
-                weeks as i128,
-                days as i128,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-            ]);
-        }
-
-        // `smallest` is `month` or `year`: the anchor-relative fractional
-        // bracketing every Temporal implementation uses (mirrors
-        // `plain_date::round_month_or_year`'s own numerator/denominator
-        // exact-integer shape), generalized to weigh the exact leftover
-        // nanoseconds rather than only a whole-day position.
-        let sign = match plain_date::compare_iso_date(anchor, date_only) {
-            std::cmp::Ordering::Less => 1_i64,
-            std::cmp::Ordering::Greater => -1,
-            std::cmp::Ordering::Equal if time_total == 0 => {
-                return self.temporal_duration_create([0; 10]);
-            }
-            std::cmp::Ordering::Equal => {
-                if time_total < 0 {
-                    -1
-                } else {
-                    1
-                }
-            }
-        };
-        // Decompose at `smallest`'s own granularity (not `largestUnit`'s) to
-        // get the true combined count: `calendar_difference_date(...,
-        // largest_unit: Year)` only ever returns a *remainder* months field
-        // (0..11), never years-and-months combined, whereas `smallest ==
-        // "months"` needs the single combined total (mirrors
-        // `round_calendar_duration`'s own Month branch computing
-        // `total_months` this same way when `largestUnit` is `"years"`).
-        let count_unit = Self::temporal_unit_to_date_unit(smallest);
-        let (count_years, count_months, _, _) =
-            plain_date::calendar_difference_date(calendar, anchor, date_only, count_unit);
-        // `calendar_difference_date`'s own `Year`/`Month` branches put the
-        // combined count in different tuple slots (`years` when its own
-        // `largest_unit` is `Year`, `months` — already years*12+months
-        // combined — when it is `Month`).
-        let count = if smallest == rounding::TemporalUnit::Year {
-            count_years
-        } else {
-            count_months
-        };
-        let add_n = |n: i64| -> epoch::CivilDate {
-            let (y, m) = if smallest == rounding::TemporalUnit::Year {
-                (n, 0)
-            } else {
-                (0, n)
-            };
-            plain_date::calendar_add_date(calendar, anchor, y, m, 0, 0, false)
-                .expect("constrain-mode single-unit addition always succeeds")
-        };
-        let lower = add_n(count);
-        let upper = add_n(count + sign);
-        let total_span_ns = i128::from(
-            (plain_date::iso_date_to_epoch_days(upper) - plain_date::iso_date_to_epoch_days(lower))
-                .unsigned_abs(),
-        ) * DAY_NS;
-        let progressed_ns = i128::from(
-            (plain_date::iso_date_to_epoch_days(date_only)
-                - plain_date::iso_date_to_epoch_days(lower))
-            .unsigned_abs(),
-        ) * DAY_NS
-            + time_total.unsigned_abs() as i128;
-
-        let magnitude = i128::from(count.unsigned_abs());
-        let increment_i128 = increment.max(1);
-        let lower_multiple = (magnitude / increment_i128) * increment_i128;
-        let upper_multiple = lower_multiple + increment_i128;
-        let extra = magnitude - lower_multiple;
-        let numerator = extra * total_span_ns + progressed_ns;
-        let denominator = increment_i128 * total_span_ns;
-        let round_up = if denominator == 0 || numerator == 0 {
-            false
-        } else {
-            use blueice_ecma402::NumberRoundingMode as Mode;
-            match mode {
-                Mode::Ceil => sign > 0,
-                Mode::Floor => sign < 0,
-                Mode::Expand => true,
-                Mode::Trunc => false,
-                Mode::HalfCeil => {
-                    if sign > 0 {
-                        2 * numerator >= denominator
-                    } else {
-                        2 * numerator > denominator
-                    }
-                }
-                Mode::HalfFloor => {
-                    if sign < 0 {
-                        2 * numerator >= denominator
-                    } else {
-                        2 * numerator > denominator
-                    }
-                }
-                Mode::HalfExpand => 2 * numerator >= denominator,
-                Mode::HalfTrunc => 2 * numerator > denominator,
-                Mode::HalfEven => {
-                    if 2 * numerator == denominator {
-                        (lower_multiple / increment_i128) % 2 != 0
-                    } else {
-                        2 * numerator > denominator
-                    }
-                }
-            }
-        };
-        let final_magnitude = if round_up {
-            upper_multiple
-        } else {
-            lower_multiple
-        };
-        let rounded_count = sign * (final_magnitude as i64);
-        let (years, months) = if smallest == rounding::TemporalUnit::Year {
-            (rounded_count, 0)
-        } else if largest == rounding::TemporalUnit::Year {
-            // A year holds `calendar_months_per_year` months (13 for the
-            // intercalary-month `coptic`/`ethiopic`/`ethioaa`, not 12).
-            let months_per_year = super::calendar::calendar_months_per_year(calendar);
-            (
-                rounded_count / months_per_year,
-                rounded_count % months_per_year,
-            )
-        } else {
-            (0, rounded_count)
-        };
-        self.temporal_duration_create([years as i128, months as i128, 0, 0, 0, 0, 0, 0, 0, 0])
     }
 
     pub(in super::super) fn temporal_duration_total(
@@ -775,25 +369,30 @@ impl Vm {
             if anchor.is_some() && record.sign() == 0 {
                 return Ok(Value::Number(0.0));
             }
-            if let Some(anchor) = &anchor {
-                Self::temporal_duration_anchor_datetime_in_range(anchor.date())?;
+            // A `Plain` anchor: `DifferencePlainDateTimeWithTotal` between the
+            // anchor at midnight and where the whole duration lands (see `round`).
+            if let Some(DurationAnchor::Plain { calendar, date }) = &anchor {
+                let (origin, target) =
+                    Self::temporal_duration_plain_endpoints(*calendar, *date, &record)?;
+                let (numerator, denominator) =
+                    plain_date_time_difference::difference_plain_date_time_total(
+                        *calendar, origin, target, unit,
+                    )
+                    .ok_or_else(|| {
+                        RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
+                    })?;
+                return Ok(Value::Number(rounding::exact_ratio_to_f64(
+                    numerator,
+                    denominator,
+                )));
             }
             let needs_calendar =
                 Self::temporal_duration_largest_unit(&record).is_calendar() || unit.is_calendar();
             if needs_calendar {
-                let anchor = anchor.ok_or_else(|| {
-                    RuntimeError::RangeError(
-                        "a Temporal.Duration with years, months or weeks needs a relativeTo \
-                         anchor"
-                            .into(),
-                    )
-                })?;
-                return Ok(Value::Number(self.temporal_duration_total_relative(
-                    anchor.calendar(),
-                    anchor.date(),
-                    &record,
-                    unit,
-                )?));
+                return Err(RuntimeError::RangeError(
+                    "a Temporal.Duration with years, months or weeks needs a relativeTo anchor"
+                        .into(),
+                ));
             }
             Ok(Value::Number(
                 duration_math::TimeDuration::from_record_with_24_hour_days(&record).total_in(unit),
@@ -801,132 +400,6 @@ impl Vm {
         })();
         self.stack.truncate(base);
         result
-    }
-
-    /// The calendar-aware half of `total`: the exact (fractional) count of
-    /// `unit`s from `anchor` to `anchor + record`. For `day`/`week` this is
-    /// exact days converted directly (with the `years`/`months`/`weeks` part
-    /// resolved through the calendar first); for `month`/`year` it is the
-    /// anchor-relative bracketing position `plain_date::round_month_or_year`
-    /// also uses, computed here as a continuous fraction instead of rounded
-    /// to an increment (that function is `round_calendar_duration`'s own
-    /// private helper, so this mirrors its shape locally with the
-    /// `pub(crate)` primitives `calendar_add_date`/`calendar_difference_date`
-    /// rather than reaching into `plain_date.rs`, which Phase 26's own Track
-    /// B scope leaves to its other in-flight owners).
-    pub(in super::super) fn temporal_duration_total_relative(
-        &mut self,
-        calendar: AnyCalendarKind,
-        anchor: epoch::CivilDate,
-        record: &blueice_ecma402::DurationRecord,
-        unit: rounding::TemporalUnit,
-    ) -> Result<f64, RuntimeError> {
-        const DAY_NS: i128 = 86_400_000_000_000;
-        let (intermediate, ns_of_day) =
-            Self::temporal_duration_intermediate(calendar, anchor, record)?;
-        let day_fraction_abs = ns_of_day.unsigned_abs() as f64 / DAY_NS as f64;
-        let sign = match plain_date::compare_iso_date(anchor, intermediate) {
-            std::cmp::Ordering::Less => 1_i64,
-            std::cmp::Ordering::Greater => -1,
-            std::cmp::Ordering::Equal if ns_of_day == 0 => return Ok(0.0),
-            // A same-day, sub-day-only remainder: its own sign (not the
-            // date's, which didn't move) is the direction of travel.
-            std::cmp::Ordering::Equal => {
-                if ns_of_day < 0 {
-                    -1
-                } else {
-                    1
-                }
-            }
-        };
-        match unit {
-            // Both `day` and `week` are calendar-invariant fixed lengths
-            // (7 days is 7 days regardless of calendar), so the total is
-            // just the exact whole-day span from `anchor` plus the exact
-            // sub-day remainder — computed as one integer ratio (never an
-            // intermediate float) so it matches the spec's single
-            // correctly-rounded final division exactly, bit for bit
-            // (`relativeto-total-of-each-unit.js` is what catches a
-            // two-step float version drifting by one ULP).
-            rounding::TemporalUnit::Day | rounding::TemporalUnit::Week => {
-                let total_ns = i128::from(
-                    plain_date::iso_date_to_epoch_days(intermediate)
-                        - plain_date::iso_date_to_epoch_days(anchor),
-                ) * DAY_NS
-                    + ns_of_day;
-                let denominator = if unit == rounding::TemporalUnit::Week {
-                    7 * DAY_NS
-                } else {
-                    DAY_NS
-                };
-                Ok(rounding::exact_ratio_to_f64(total_ns, denominator))
-            }
-            rounding::TemporalUnit::Month | rounding::TemporalUnit::Year => {
-                let date_unit = Self::temporal_unit_to_date_unit(unit);
-                let (years, months, _, _) =
-                    plain_date::calendar_difference_date(calendar, anchor, intermediate, date_unit);
-                let count = if unit == rounding::TemporalUnit::Year {
-                    years
-                } else {
-                    months
-                };
-                let add_n = |n: i64| -> epoch::CivilDate {
-                    let (y, m) = if unit == rounding::TemporalUnit::Year {
-                        (n, 0)
-                    } else {
-                        (0, n)
-                    };
-                    plain_date::calendar_add_date(calendar, anchor, y, m, 0, 0, false)
-                        .expect("constrain-mode single-unit addition always succeeds")
-                };
-                let lower = add_n(count);
-                let upper = add_n(count + sign);
-                // `add_n`'s own `calendar_add_date` call only range-checks
-                // calendar-day validity (an i32-year check), not Temporal's
-                // narrower representable range: bracketing one unit *past*
-                // an anchor already at the exact max/min boundary lands on a
-                // numerically valid but unrepresentable date without
-                // otherwise erroring —
-                // `throws-if-date-time-invalid-with-plaindate-relative.js`.
-                if !epoch::is_date_within_limits(lower) || !epoch::is_date_within_limits(upper) {
-                    return Err(RuntimeError::RangeError(
-                        "Temporal date arithmetic is out of range".into(),
-                    ));
-                }
-                let total_span = (plain_date::iso_date_to_epoch_days(upper)
-                    - plain_date::iso_date_to_epoch_days(lower))
-                .unsigned_abs() as f64;
-                let progressed = (plain_date::iso_date_to_epoch_days(intermediate)
-                    - plain_date::iso_date_to_epoch_days(lower))
-                .unsigned_abs() as f64
-                    + day_fraction_abs;
-                let fraction = if total_span == 0.0 {
-                    0.0
-                } else {
-                    progressed / total_span
-                };
-                Ok(count as f64 + (sign as f64) * fraction)
-            }
-            // A time-granularity `unit` still reaches this function whenever
-            // the *record itself* has a nonzero year/month/week field (the
-            // caller's `needs_calendar` gate is keyed on the record, not
-            // `unit` alone) — e.g. `duration.total({ unit: "hours",
-            // relativeTo })` on a multi-year `Duration`. The exact total
-            // relative to `anchor` is just the whole-day span plus the exact
-            // sub-day remainder, in `unit`s.
-            _ => {
-                let total_ns = i128::from(
-                    plain_date::iso_date_to_epoch_days(intermediate)
-                        - plain_date::iso_date_to_epoch_days(anchor),
-                ) * DAY_NS
-                    + ns_of_day;
-                Ok(rounding::exact_ratio_to_f64(
-                    total_ns,
-                    unit.nanoseconds()
-                        .expect("every time unit has an exact length"),
-                ))
-            }
-        }
     }
 
     pub(in super::super) fn temporal_duration_compare(

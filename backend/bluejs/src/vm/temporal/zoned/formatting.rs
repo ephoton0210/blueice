@@ -6,6 +6,7 @@
 //! formatting helpers.
 
 use super::super::*;
+use super::resolution::round_offset_nanoseconds_to_minutes;
 use super::resolution::temporal_zoned_date_time_zone;
 
 impl Vm {
@@ -36,10 +37,13 @@ impl Vm {
             let mode =
                 self.temporal_rounding_mode(&options, blueice_ecma402::NumberRoundingMode::Trunc)?;
             let smallest_unit = self.temporal_unit_option(&options, "smallestUnit", false)?;
-            let smallest_unit = Self::temporal_time_unit(smallest_unit, "smallestUnit", false)?;
+            // `timeZoneName` is the last option, read with the others -- before
+            // `smallestUnit` (already read above) is validated, so an invalid
+            // unit cannot hide it from an observer.
             let show_time_zone = self
                 .temporal_string_option(&options, "timeZoneName", &["auto", "never", "critical"])?
                 .unwrap_or_else(|| "auto".into());
+            let smallest_unit = Self::temporal_time_unit(smallest_unit, "smallestUnit", false)?;
             let (precision, unit, increment) = match smallest_unit {
                 Some(rounding::TimeUnit::Minute) => {
                     (SecondsPrecision::Minute, rounding::TimeUnit::Minute, 1)
@@ -99,7 +103,12 @@ impl Vm {
             let local = &rounded_ns + BigInt::from(offset_ns);
             let mut result = format_zoned_date_time_date_time(&local, precision);
             if show_offset != "never" {
-                result.push_str(&format_offset_nanoseconds_exact(offset_ns));
+                // `FormatDateTimeUTCOffsetRounded`: the string carries a
+                // minute-precision offset even where the zone's real (local mean
+                // time) offset has seconds -- unlike the `offset` getter.
+                result.push_str(&format_offset_nanoseconds_exact(
+                    round_offset_nanoseconds_to_minutes(offset_ns),
+                ));
             }
             if show_time_zone != "never" {
                 result.push('[');
@@ -123,13 +132,11 @@ impl Vm {
 }
 
 /// `FormatUTCOffsetNanoseconds`: an *exact* `±HH:MM[:SS[.sssssssss]]`
-/// representation -- unlike `format_instant_string`'s own offset formatting
-/// (`FormatDateTimeUTCOffsetRounded`, always rounded to the nearest minute,
-/// which is what `Instant.prototype.toString`'s optional `timeZone` display
-/// specifically calls for). `ZonedDateTime`'s own `offset`
-/// getter/`getISOFields`/`toString` all need the real, possibly sub-minute
-/// historical offset a named zone can carry (e.g. Monrovia's pre-1972
-/// -00:44:30), because round-tripping the string must be exact.
+/// representation, which is what the `ZonedDateTime` `offset` getter needs --
+/// the real, possibly sub-minute historical offset a named zone can carry
+/// (e.g. Monrovia's pre-1972 -00:44:30). `toString` rounds the offset to the
+/// minute first (`FormatDateTimeUTCOffsetRounded`), since an ISO string's
+/// offset is minute-precision.
 pub(in super::super) fn format_offset_nanoseconds_exact(offset: i64) -> String {
     let sign = if offset < 0 { '-' } else { '+' };
     let magnitude = offset.unsigned_abs();
