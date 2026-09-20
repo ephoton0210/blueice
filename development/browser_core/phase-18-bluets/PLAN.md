@@ -14,9 +14,11 @@ The direct bridge lowers parenthesized `new Identifier(args)` expressions. Membe
 
 The direct bridge lowers `delete` only for ordinary dot or bracket property references (without optional chaining). Identifier and non-reference operands remain outside the v1 subset.
 
+The direct bridge lowers relational `in` and `instanceof` expressions. BlueTSC gives both a `boolean` result in the bounded checker; narrowing and custom-instance analysis remain future work.
+
 Direct calls may use identifier, dot-member, or bracket-member callees, preserving the BlueJS receiver. Optional calls remain excluded.
 
-The current direct bridge subset supersedes earlier phase summaries: literals/identifiers, bounded quoted-string and template escapes, `${identifier}` template slots, direct calls, supported unary/binary/logical/conditional/assignment/sequence expressions, arrays, identifier/string/numeric object keys with identifier shorthand, dot/bracket reads, property assignments/deletion, and identifier-only updates. General template expressions, optional chaining, computed object keys, spread, methods, and accessors remain outside the subset.
+The current direct bridge subset supersedes earlier phase summaries: literals/identifiers, bounded quoted-string and template escapes, `${identifier}` template slots, direct calls, supported unary/binary/logical/conditional/assignment/sequence expressions including relational `in`/`instanceof`, arrays, identifier/string/numeric object keys with identifier shorthand, dot/bracket reads, property assignments/deletion, and identifier-only updates. General template expressions, optional chaining, computed object keys, spread, methods, and accessors remain outside the subset.
 
 The direct bridge accepts identifier, quoted-string, and numeric object keys. Shorthand remains identifier-only; computed keys, spread, methods, and accessors remain excluded.
 

@@ -1204,7 +1204,18 @@ impl<'a> ModuleChecker<'a> {
         }
         if top_level_binary_parts(
             tokens,
-            &["===", "!==", "==", "!=", "<", ">", "<=", ">="],
+            &[
+                "===",
+                "!==",
+                "==",
+                "!=",
+                "<",
+                ">",
+                "<=",
+                ">=",
+                "in",
+                "instanceof",
+            ],
             |start| self.module.generic_call_type_arguments.contains_key(&start),
         )
         .is_some()

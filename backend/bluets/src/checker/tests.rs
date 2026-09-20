@@ -52,6 +52,31 @@ fn infers_boolean_comparisons_and_conditional_branch_types() {
 }
 
 #[test]
+fn infers_in_and_instanceof_expressions_as_boolean() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const record: { label: string } = { label: 'Ada' };\n\
+             const hasLabel: boolean = 'label' in record;\n\
+             const isObject: boolean = record instanceof Object;\n\
+             const invalid: string = 'label' in record;",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn infers_typeof_and_void_unary_expression_types() {
     let result = crate::compile(
         "memory:///main.ts",

@@ -115,7 +115,8 @@ impl std::error::Error for BridgeError {}
 /// with required identifier parameters plus structured local/return bodies,
 /// and standalone expressions made from those same forms or direct calls.
 /// The expression subset includes `!`, `+`, `-`, `~`, `typeof`, `void`, and
-/// `delete` with a property target; arithmetic, relational, equality, logical,
+/// `delete` with a property target; arithmetic, relational (including `in` and
+/// `instanceof`), equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
 /// non-spread, non-hole array literals, simple object literals with identifier
 /// keys, non-substituted template literals without escapes, dot or bracket
@@ -881,6 +882,8 @@ impl<'a> ExpressionLowerer<'a> {
                 ">" => bluejs::BinaryOp::Gt,
                 "<=" => bluejs::BinaryOp::LtEq,
                 ">=" => bluejs::BinaryOp::GtEq,
+                "in" => bluejs::BinaryOp::In,
+                "instanceof" => bluejs::BinaryOp::Instanceof,
                 _ => break,
             };
             self.index += 1;
@@ -2147,6 +2150,27 @@ mod tests {
             &MapLoader::from([ModuleSource::new(
                 ENTRY,
                 "const value = new Object(); typeof value === 'object';",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn lowers_checked_in_and_instanceof_expressions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const record: { label: string } = { label: 'Ada' }; \
+                 const hasLabel: boolean = 'label' in record; \
+                 const value = new Object(); \
+                 const isObject: boolean = value instanceof Object; \
+                 hasLabel && isObject;",
             )]),
             CompilerOptions::default(),
         )
