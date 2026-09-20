@@ -622,7 +622,8 @@ impl Vm {
         // time-unit increment must be strictly smaller than, and divide
         // evenly into, the count of that unit in the next larger one
         // (`PlainDateTime` is the only receiver whose `smallestUnit` can be
-        // a time unit; the date units have no such maximum).
+        // a time unit; the date units have no such maximum, so a `PlainDate`
+        // never reaches this check with a `Some`).
         if let Some(maximum) = smallest_unit.maximum_rounding_increment() {
             if increment >= maximum || maximum % increment != 0 {
                 return Err(RuntimeError::RangeError(
@@ -634,7 +635,7 @@ impl Vm {
             mode_raw.as_deref(),
             blueice_ecma402::NumberRoundingMode::Trunc,
         )?;
-        // Both rounding paths below (`round_calendar_duration` for a
+        // Both difference paths below (`difference_plain_date` for a
         // `PlainDate`, `difference_plain_date_time` for a `PlainDateTime`)
         // round a *real*, direction-aware signed
         // quantity computed in the fixed receiver-to-argument direction —
@@ -718,27 +719,19 @@ impl Vm {
                 RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
             })?
         } else {
-            let (years, months, weeks, days) = plain_date::round_calendar_duration(
+            // `DifferenceTemporalPlainDate` is the same algorithm at midnight.
+            plain_date_time_difference::difference_plain_date(
                 calendar_kind,
                 from,
                 to,
-                Self::temporal_unit_to_date_unit(largest_unit),
-                Self::temporal_unit_to_date_unit(smallest_unit),
+                largest_unit,
                 increment,
+                smallest_unit,
                 effective_mode,
-            );
-            [
-                i128::from(years),
-                i128::from(months),
-                i128::from(weeks),
-                i128::from(days),
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-            ]
+            )
+            .ok_or_else(|| {
+                RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
+            })?
         };
         // Step 10 of `DifferenceTemporalPlainDate`/`DifferenceTemporalPlainDateTime`:
         // `since` negates every field of the finished result.
