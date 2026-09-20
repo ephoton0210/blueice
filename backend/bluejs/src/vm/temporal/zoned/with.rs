@@ -102,8 +102,7 @@ impl Vm {
         let requested_minute =
             self.temporal_read_optional_integer(like, "minute", i32::MIN, i32::MAX)?;
         let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
-        let month_code_s =
-            self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
+        let month_code_s = self.temporal_read_month_code(like)?;
         let requested_nanosecond =
             self.temporal_read_optional_integer(like, "nanosecond", i32::MIN, i32::MAX)?;
         let offset_string = self.temporal_read_optional_offset_string(like)?;
@@ -189,7 +188,11 @@ impl Vm {
         // `ToPositiveIntegerWithTruncation` has no upper bound: `date.with({
         // day: daysInMonth + 1 })` must reach the calendar's own `overflow`
         // regulation, per `wrapping-at-end-of-month-*.js`.
-        fields.day = Some(requested_day.unwrap_or(i32::from(existing_fields.day)) as u8);
+        fields.day = Some(
+            requested_day
+                .unwrap_or(i32::from(existing_fields.day))
+                .min(i32::from(u8::MAX)) as u8,
+        );
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
