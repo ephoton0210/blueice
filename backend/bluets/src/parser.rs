@@ -346,6 +346,7 @@ impl Parser {
             return Err(self.diagnostics);
         }
         self.diagnose_unparenthesized_nullish_logical_mixing();
+        self.diagnose_unparenthesized_unary_exponentiation();
         while !self.at_eof() {
             if self.consume(";") {
                 continue;
@@ -1272,6 +1273,31 @@ impl Parser {
         }
     }
 
+    /// `ExponentiationExpression` accepts an update expression as its left
+    /// operand, not an unparenthesized unary expression. The bounded parser
+    /// otherwise retains runtime token spans, so keep this ECMAScript early
+    /// error from reaching emitted JavaScript unchanged.
+    fn diagnose_unparenthesized_unary_exponentiation(&mut self) {
+        for exponent in 0..self.tokens.len() {
+            if !self.tokens[exponent].is("**") {
+                continue;
+            }
+            let Some(base_start) = exponentiation_base_start(&self.tokens, exponent) else {
+                continue;
+            };
+            let Some(operator) = base_start.checked_sub(1) else {
+                continue;
+            };
+            if is_unparenthesized_unary_exponent_base(&self.tokens, operator) {
+                self.error_at(
+                    self.tokens[exponent].span(&self.id),
+                    DiagnosticCode::ParseError,
+                    "a unary expression cannot be the unparenthesized base of exponentiation",
+                );
+            }
+        }
+    }
+
     fn parse_call_type_arguments(&mut self, start: usize, end: usize) -> Vec<Type> {
         if start == end {
             return Vec::new();
@@ -1675,6 +1701,111 @@ fn is_typed_arrow_parameter(tokens: &[Token], colon: usize, end: usize) -> bool 
     false
 }
 
+fn exponentiation_base_start(tokens: &[Token], exponent: usize) -> Option<usize> {
+    let mut start = exponent.checked_sub(1)?;
+    loop {
+        match tokens.get(start)?.text.as_str() {
+            ")" => {
+                let open = matching_opening_delimiter(tokens, start, "(", ")")?;
+                if open > 0 && token_ends_runtime_primary(&tokens[open - 1]) {
+                    start = open - 1;
+                    continue;
+                }
+                return Some(open);
+            }
+            "]" => {
+                let open = matching_opening_delimiter(tokens, start, "[", "]")?;
+                if open > 0 && token_ends_runtime_primary(&tokens[open - 1]) {
+                    start = open - 1;
+                    continue;
+                }
+                return Some(open);
+            }
+            _ if start >= 2
+                && tokens[start - 1].is(".")
+                && token_ends_runtime_primary(&tokens[start - 2]) =>
+            {
+                start -= 2;
+            }
+            _ => return Some(start),
+        }
+    }
+}
+
+fn matching_opening_delimiter(
+    tokens: &[Token],
+    close: usize,
+    opening: &str,
+    closing: &str,
+) -> Option<usize> {
+    debug_assert!(tokens.get(close).is_some_and(|token| token.is(closing)));
+    let mut depth = 0usize;
+    for index in (0..=close).rev() {
+        let token = &tokens[index];
+        if token.is(closing) {
+            depth += 1;
+        } else if token.is(opening) {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                return Some(index);
+            }
+        }
+    }
+    None
+}
+
+fn token_ends_runtime_primary(token: &Token) -> bool {
+    matches!(
+        token.kind,
+        TokenKind::Identifier | TokenKind::Number | TokenKind::String | TokenKind::Template
+    ) || matches!(
+        token.text.as_str(),
+        "true" | "false" | "null" | "undefined" | ")" | "]"
+    )
+}
+
+fn is_unparenthesized_unary_exponent_base(tokens: &[Token], operator: usize) -> bool {
+    let token = &tokens[operator];
+    match token.text.as_str() {
+        "!" | "~" | "typeof" | "void" | "delete" => true,
+        "+" | "-" => {
+            operator == 0
+                || tokens.get(operator - 1).is_some_and(|previous| {
+                    matches!(
+                        previous.text.as_str(),
+                        "(" | "["
+                            | "{"
+                            | "?"
+                            | ":"
+                            | ","
+                            | ";"
+                            | "="
+                            | "+"
+                            | "-"
+                            | "*"
+                            | "/"
+                            | "%"
+                            | "**"
+                            | "<<"
+                            | ">>"
+                            | ">>>"
+                            | "&"
+                            | "^"
+                            | "|"
+                            | "&&"
+                            | "||"
+                            | "??"
+                            | "return"
+                            | "throw"
+                            | "case"
+                            | "=>"
+                    )
+                })
+        }
+        _ => false,
+    }
+}
+
 /// Generic arrow functions need type-parameter erasure, but the initial
 /// matrix only supports generic declarations and direct calls. Recognize the
 /// complete `<...>(...) =>` shape so it cannot be preserved as invalid
@@ -1828,6 +1959,26 @@ mod tests {
         parse_module(
             "memory:///app.ts",
             "const left = (false || null) ?? 42; const right = null ?? (false || true);",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn rejects_unparenthesized_unary_exponentiation_bases() {
+        for source in [
+            "const invalid: number = -2 ** 2;",
+            "const invalid: number = ~(2) ** 2;",
+            "function value() { return -value() ** 2; }",
+        ] {
+            let diagnostics = parse_module("memory:///app.ts", source).unwrap_err();
+            assert_eq!(diagnostics.len(), 1, "{source}: {diagnostics:#?}");
+            assert_eq!(diagnostics[0].code, DiagnosticCode::ParseError, "{source}");
+            assert!(diagnostics[0].message.contains("unparenthesized base"));
+        }
+
+        parse_module(
+            "memory:///app.ts",
+            "const reciprocal: number = 2 ** -3; const squared: number = (-2) ** 2;",
         )
         .unwrap();
     }

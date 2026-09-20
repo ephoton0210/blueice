@@ -115,8 +115,8 @@ impl std::error::Error for BridgeError {}
 /// with required identifier parameters plus structured local/return bodies,
 /// and standalone expressions made from those same forms or direct calls.
 /// The expression subset includes unary, arithmetic, relational, equality,
-/// logical, nullish-coalescing, bitwise/shift, conditional, and
-/// identifier-assignment operators. Static-only
+/// logical, nullish-coalescing, arithmetic exponentiation, bitwise/shift,
+/// conditional, and identifier-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -887,7 +887,7 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     fn parse_multiplicative(&mut self) -> Result<bluejs::Expr, BridgeError> {
-        let mut expression = self.parse_unary()?;
+        let mut expression = self.parse_exponentiation()?;
         while let Some(token) = self.tokens.get(self.index) {
             let op = match token.text.as_str() {
                 "*" => bluejs::BinaryOp::Mul,
@@ -899,10 +899,49 @@ impl<'a> ExpressionLowerer<'a> {
             expression = bluejs::Expr::Binary {
                 op,
                 left: Box::new(expression),
-                right: Box::new(self.parse_unary()?),
+                right: Box::new(self.parse_exponentiation()?),
             };
         }
         Ok(expression)
+    }
+
+    fn parse_exponentiation(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let unary_base = self.starts_unary_expression();
+        let expression = if unary_base {
+            self.parse_unary()?
+        } else {
+            self.parse_primary()?
+        };
+        if self
+            .tokens
+            .get(self.index)
+            .is_none_or(|token| token.text != "**")
+        {
+            return Ok(expression);
+        }
+        let span = self
+            .tokens
+            .get(self.index)
+            .map(|token| self.token_span(token))
+            .expect("an exponentiation operator was just inspected");
+        if unary_base {
+            return Err(unsupported(
+                span,
+                "a unary expression cannot be the unparenthesized base of exponentiation",
+            ));
+        }
+        self.index += 1;
+        Ok(bluejs::Expr::Binary {
+            op: bluejs::BinaryOp::Exponent,
+            left: Box::new(expression),
+            right: Box::new(self.parse_exponentiation()?),
+        })
+    }
+
+    fn starts_unary_expression(&self) -> bool {
+        self.tokens
+            .get(self.index)
+            .is_some_and(|token| matches!(token.text.as_str(), "!" | "+" | "-" | "~"))
     }
 
     fn parse_unary(&mut self) -> Result<bluejs::Expr, BridgeError> {
@@ -1345,6 +1384,38 @@ mod tests {
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::Number(54.0)
         );
+    }
+
+    #[test]
+    fn lowers_right_associative_exponentiation_with_unary_right_operands() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function power(): number { return 2 ** 3 ** 2 + 2 ** -3 + (-2) ** 2; } power();",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(516.125)
+        );
+    }
+
+    #[test]
+    fn expression_lowerer_rejects_unparenthesized_unary_exponentiation_bases() {
+        let tokens = expression_tokens(&[
+            ("-", TokenKind::Punct),
+            ("2", TokenKind::Number),
+            ("**", TokenKind::Punct),
+            ("2", TokenKind::Number),
+        ]);
+        let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
+        let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+            panic!("the direct bridge must reject an unparenthesized unary exponent base");
+        };
+        assert!(message.contains("unparenthesized base"));
     }
 
     #[test]

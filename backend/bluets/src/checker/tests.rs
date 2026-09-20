@@ -127,6 +127,31 @@ fn infers_bitwise_and_shift_expressions_and_rejects_known_non_numbers() {
 }
 
 #[test]
+fn infers_right_associative_exponentiation_and_rejects_known_non_numbers() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const chained: number = 2 ** 3 ** 2;\n\
+             const reciprocal: number = 2 ** -3;\n\
+             const squared: number = (-2) ** 2;\n\
+             const invalid: number = 'BlueIce' ** 2;",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn keeps_bounded_expression_inference_structural() {
     let grouped = crate::syntax::lex("memory:///tokens.ts", "((flag))").unwrap();
     let grouped = &grouped[..grouped.len() - 1];

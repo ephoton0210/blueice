@@ -1238,6 +1238,14 @@ impl<'a> ModuleChecker<'a> {
                 self.infer_expression(right, scope),
             );
         }
+        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["**"], |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            return infer_numeric_binary_expression(
+                self.infer_expression(left, scope),
+                self.infer_expression(right, scope),
+            );
+        }
         let Some(first) = tokens.first() else {
             return Type::Undefined;
         };
@@ -1675,6 +1683,18 @@ impl<'a> ModuleChecker<'a> {
         }
         if let Some((left, operator, right)) =
             top_level_binary_parts(tokens, &["*", "/", "%"], generic_call)
+        {
+            self.check_arithmetic_operators(left, scope, span);
+            self.check_arithmetic_operators(right, scope, span);
+            self.check_known_arithmetic_operands(
+                operator,
+                &self.infer_expression(left, scope),
+                &self.infer_expression(right, scope),
+                span,
+            );
+            return;
+        }
+        if let Some((left, operator, right)) = top_level_binary_parts(tokens, &["**"], generic_call)
         {
             self.check_arithmetic_operators(left, scope, span);
             self.check_arithmetic_operators(right, scope, span);
