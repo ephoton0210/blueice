@@ -23,6 +23,14 @@
 //!   calendar bracket outside the representable range is a `RangeError`.
 //! - Duration fields are Numbers: totals past 2^53 lose precision instead of
 //!   wrapping (`nanoseconds` used to be truncated through an `i64`).
+//!
+//! `Temporal.PlainDate.prototype.until`/`since` is the same algorithm at
+//! midnight (`DifferenceTemporalPlainDate` builds two midnight date-times and
+//! calls `RoundRelativeDuration`), so it shares the module and these tests:
+//! a rounded calendar bracket outside the valid range must throw
+//! (`PlainDate/prototype/{until,since}/throws-if-rounded-date-outside-valid-iso-range.js`),
+//! and a months/years increment rounds the *months remainder* of the
+//! duration (`ComputeNudgeWindow`), never a flattened `years * 12 + months`.
 
 use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 
@@ -38,8 +46,14 @@ fn evaluate_err(source: &str) -> RuntimeError {
         .expect_err(&format!("{source}\n  -> expected an error, got a value"))
 }
 
+/// Expects `true`; a script may instead return a string describing the first
+/// case that failed, which is reported as text rather than as UTF-16 units.
 fn assert_true(source: &str) {
-    assert_eq!(evaluate(source), Value::Bool(true), "{source}");
+    match evaluate(source) {
+        Value::Bool(true) => {}
+        Value::String(reason) => panic!("{}", reason.to_utf8().unwrap()),
+        other => panic!("{source}\n  -> {other:?}"),
+    }
 }
 
 fn assert_range_error(source: &str) {
@@ -516,8 +530,50 @@ fn a_huge_rounding_increment_is_a_range_error_on_every_calendar() {
                      new Temporal.PlainDateTime(2021, 1, 1, 0, 0, 0, 0, 0, 0, "{calendar}"),
                      {{ smallestUnit: "{unit}", roundingIncrement: 1000000000 }})"#
             ));
+            assert_range_error(&format!(
+                r#"new Temporal.PlainDate(2020, 1, 1, "{calendar}").{method}(
+                     new Temporal.PlainDate(2021, 1, 1, "{calendar}"),
+                     {{ smallestUnit: "{unit}", roundingIncrement: 1000000000 }})"#
+            ));
         }
     }
+}
+
+/// `DifferenceTemporalPlainDate` is `DifferenceTemporalPlainDateTime` at
+/// midnight, so the two receivers must agree on every calendar, direction,
+/// unit pair and rounding mode — including the errors they raise.
+#[test]
+fn a_plain_date_and_a_midnight_plain_date_time_agree() {
+    assert_true(
+        r#"(function() {
+          const spans = [["2020-01-31", "2021-03-15"], ["2019-12-25", "2020-02-29"], ["2020-03-01", "2020-03-01"]];
+          const pairs = [["years", "months"], ["years", "days"], ["months", "weeks"],
+                         ["months", "months"], ["weeks", "days"], ["days", "days"]];
+          const modes = ["trunc", "expand", "ceil", "floor", "halfExpand", "halfEven"];
+          const show = (run) => { try { const d = run(); return d.toString(); } catch (e) { return e.name; } };
+          for (const calendar of ["iso8601", "gregory", "hebrew", "chinese", "islamic-civil", "japanese"]) {
+            for (const [a, b] of spans) {
+              const date = [Temporal.PlainDate.from(a + "[u-ca=" + calendar + "]"),
+                            Temporal.PlainDate.from(b + "[u-ca=" + calendar + "]")];
+              const time = date.map((d) => d.toPlainDateTime());
+              for (const [largestUnit, smallestUnit] of pairs) {
+                for (const roundingMode of modes) {
+                  for (const [i, j] of [[0, 1], [1, 0]]) {
+                    for (const method of ["until", "since"]) {
+                      const options = { largestUnit, smallestUnit, roundingMode, roundingIncrement: largestUnit === "years" ? 3 : 1 };
+                      const one = show(() => date[i][method](date[j], options));
+                      const two = show(() => time[i][method](time[j], options));
+                      if (one !== two) return calendar + " " + a + " " + b + " " + [largestUnit, smallestUnit, roundingMode, i, method]
+                        + ": PlainDate " + one + " vs PlainDateTime " + two;
+                    }
+                  }
+                }
+              }
+            }
+          }
+          return true;
+        })()"#,
+    );
 }
 
 /// A difference near the ends of the supported range still resolves
@@ -547,4 +603,92 @@ fn identical_date_times_are_a_zero_duration() {
                    && dt.since(dt, { largestUnit: unit }).blank);
         })()"#,
     );
+}
+
+/// `PlainDate/prototype/{until,since}/throws-if-rounded-date-outside-valid-iso-range.js`:
+/// rounding to a bracket that needs a date millions of years out is a
+/// `RangeError` for a `PlainDate` too, not a silent zero duration.
+#[test]
+fn a_plain_date_rounded_bracket_outside_the_valid_range_throws() {
+    for method in ["until", "since"] {
+        for unit in ["months", "years", "weeks"] {
+            assert_range_error(&format!(
+                r#"new Temporal.PlainDate(1970, 1, 1).{method}(new Temporal.PlainDate(1971, 1, 1),
+                     {{ roundingIncrement: 100000000, smallestUnit: "{unit}" }})"#
+            ));
+        }
+    }
+    // A day increment is arithmetic on the duration alone, so it is not a bracket.
+    assert_fields(
+        r#"new Temporal.PlainDate(1970, 1, 1).until(new Temporal.PlainDate(1971, 1, 1),
+             { roundingIncrement: 100000000, smallestUnit: "days" })"#,
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    );
+}
+
+/// `ComputeNudgeWindow` truncates only the *months* remainder to the
+/// increment, keeping `years` fixed: 1 year 3 months to a 5-month increment
+/// brackets `[1y 0m, 1y 5m]`, and 3 months is 90 of the bracket's 151 days.
+/// Flattening to 15 months first gave `1y 3m` for every mode.
+#[test]
+fn a_plain_date_month_increment_rounds_the_months_remainder() {
+    let early = "new Temporal.PlainDate(2020, 1, 1)";
+    let late = "new Temporal.PlainDate(2021, 4, 1)";
+    for (mode, months) in [("trunc", 0), ("floor", 0), ("halfExpand", 5), ("ceil", 5)] {
+        assert_fields(
+            &format!(
+                r#"{early}.until({late}, {{ largestUnit: "years", smallestUnit: "months",
+                     roundingIncrement: 5, roundingMode: "{mode}" }})"#
+            ),
+            [1, months, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+    }
+    // The same rounding for a `PlainDateTime` at midnight agrees.
+    assert_fields(
+        r#"new Temporal.PlainDateTime(2020, 1, 1).until(new Temporal.PlainDateTime(2021, 4, 1),
+             { largestUnit: "years", smallestUnit: "months", roundingIncrement: 5,
+               roundingMode: "halfExpand" })"#,
+        [1, 5, 0, 0, 0, 0, 0, 0, 0, 0],
+    );
+}
+
+/// A day increment on a `PlainDate` rounds whole days.
+#[test]
+fn a_plain_date_day_increment_rounds_whole_days() {
+    let early = "new Temporal.PlainDate(2020, 1, 1)";
+    assert_fields(
+        &format!(
+            r#"{early}.until(new Temporal.PlainDate(2020, 1, 20),
+                 {{ smallestUnit: "days", roundingIncrement: 7, roundingMode: "ceil" }})"#
+        ),
+        [0, 0, 0, 21, 0, 0, 0, 0, 0, 0],
+    );
+    // 2 months (60 days) is exactly two 30-day steps.
+    assert_fields(
+        &format!(
+            r#"{early}.until(new Temporal.PlainDate(2020, 3, 1),
+                 {{ smallestUnit: "days", roundingIncrement: 30, roundingMode: "expand" }})"#
+        ),
+        [0, 0, 0, 60, 0, 0, 0, 0, 0, 0],
+    );
+}
+
+/// Date arithmetic must never overflow a host integer on its way to reporting
+/// an out-of-range date (`epoch::nanoseconds_since_epoch` used to overflow an
+/// `i64` near two-billion-year results): each of these is an ordinary
+/// `RangeError`.
+#[test]
+fn out_of_range_date_arithmetic_is_a_range_error_not_an_overflow() {
+    for source in [
+        r#"Temporal.PlainDate.from("2020-01-01").add({ years: 2000000000 })"#,
+        r#"Temporal.PlainDate.from("2020-01-01").subtract({ years: 2000000000 })"#,
+        r#"Temporal.PlainDateTime.from("2020-01-01T00:00").add({ years: 2000000000 })"#,
+        r#"Temporal.PlainDateTime.from("2020-01-01T00:00").subtract({ years: 2000000000 })"#,
+        r#"new Temporal.PlainDate(2020, 1, 1).until(new Temporal.PlainDate(2021, 1, 1),
+             { smallestUnit: "years", roundingIncrement: 1000000000 })"#,
+        r#"new Temporal.PlainDateTime(2020, 1, 1).until(new Temporal.PlainDateTime(2021, 1, 1),
+             { smallestUnit: "years", roundingIncrement: 1000000000 })"#,
+    ] {
+        assert_range_error(source);
+    }
 }
