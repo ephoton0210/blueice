@@ -188,6 +188,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "typeof-void-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/typeof-void-expression/main.ts"),
+        )],
+        expected_stdout: Some("number:undefined\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-arithmetic-expression",
         modules: &[ (
             "memory:///main.ts",
@@ -215,6 +224,18 @@ const CASES: &[OracleCase] = &[
             include_str!(
                 "fixtures/typescript_oracle/strict-equality-disjoint-primitive-error/main.ts"
             ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 5,
+        }],
+    },
+    OracleCase {
+        name: "typeof-assignment-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/typeof-assignment-error/main.ts"),
         )],
         expected_stdout: None,
         expected_diagnostics: &[ExpectedDiagnostic {

@@ -1215,6 +1215,12 @@ impl<'a> ModuleChecker<'a> {
         let Some(first) = tokens.first() else {
             return Type::Undefined;
         };
+        if first.is("typeof") {
+            return Type::String;
+        }
+        if first.is("void") {
+            return Type::Undefined;
+        }
         if matches!(first.text.as_str(), "!") {
             return Type::Boolean;
         }

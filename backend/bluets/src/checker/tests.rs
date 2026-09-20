@@ -52,6 +52,30 @@ fn infers_boolean_comparisons_and_conditional_branch_types() {
 }
 
 #[test]
+fn infers_typeof_and_void_unary_expression_types() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const kind: string = typeof 1;\n\
+             const absent: undefined = void 1;\n\
+             const invalid: number = typeof false;",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn keeps_bounded_expression_inference_structural() {
     let grouped = crate::syntax::lex("memory:///tokens.ts", "((flag))").unwrap();
     let grouped = &grouped[..grouped.len() - 1];
