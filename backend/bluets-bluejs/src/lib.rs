@@ -115,8 +115,8 @@ impl std::error::Error for BridgeError {}
 /// with required identifier parameters plus structured local/return bodies,
 /// and standalone expressions made from those same forms or direct calls.
 /// The expression subset includes unary, arithmetic, relational, equality,
-/// logical, nullish-coalescing, conditional, and identifier-assignment
-/// operators. Static-only
+/// logical, nullish-coalescing, bitwise/shift, conditional, and
+/// identifier-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -743,7 +743,7 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     fn parse_logical_and(&mut self) -> Result<(bluejs::Expr, bool), BridgeError> {
-        let mut expression = self.parse_equality()?;
+        let mut expression = self.parse_bitwise_or()?;
         let mut logical = false;
         while self
             .tokens
@@ -754,7 +754,7 @@ impl<'a> ExpressionLowerer<'a> {
             expression = bluejs::Expr::Logical {
                 op: bluejs::LogicalOp::And,
                 left: Box::new(expression),
-                right: Box::new(self.parse_equality()?),
+                right: Box::new(self.parse_bitwise_or()?),
             };
             logical = true;
         }
@@ -781,9 +781,63 @@ impl<'a> ExpressionLowerer<'a> {
         Ok(expression)
     }
 
+    fn parse_bitwise_or(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let mut expression = self.parse_bitwise_xor()?;
+        while self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == "|")
+        {
+            self.index += 1;
+            expression = bluejs::Expr::Binary {
+                op: bluejs::BinaryOp::BitOr,
+                left: Box::new(expression),
+                right: Box::new(self.parse_bitwise_xor()?),
+            };
+        }
+        Ok(expression)
+    }
+
+    fn parse_bitwise_xor(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let mut expression = self.parse_bitwise_and()?;
+        while self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == "^")
+        {
+            self.index += 1;
+            expression = bluejs::Expr::Binary {
+                op: bluejs::BinaryOp::BitXor,
+                left: Box::new(expression),
+                right: Box::new(self.parse_bitwise_and()?),
+            };
+        }
+        Ok(expression)
+    }
+
+    fn parse_bitwise_and(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let mut expression = self.parse_equality()?;
+        while self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == "&")
+        {
+            self.index += 1;
+            expression = bluejs::Expr::Binary {
+                op: bluejs::BinaryOp::BitAnd,
+                left: Box::new(expression),
+                right: Box::new(self.parse_equality()?),
+            };
+        }
+        Ok(expression)
+    }
+
     fn parse_relational(&mut self) -> Result<bluejs::Expr, BridgeError> {
-        let mut expression = self.parse_additive()?;
+        let mut expression = self.parse_shift()?;
         while let Some(token) = self.tokens.get(self.index) {
+            if self.shift_operator_at(self.index).is_some() {
+                break;
+            }
             let op = match token.text.as_str() {
                 "<" => bluejs::BinaryOp::Lt,
                 ">" => bluejs::BinaryOp::Gt,
@@ -792,6 +846,19 @@ impl<'a> ExpressionLowerer<'a> {
                 _ => break,
             };
             self.index += 1;
+            expression = bluejs::Expr::Binary {
+                op,
+                left: Box::new(expression),
+                right: Box::new(self.parse_shift()?),
+            };
+        }
+        Ok(expression)
+    }
+
+    fn parse_shift(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let mut expression = self.parse_additive()?;
+        while let Some((op, width)) = self.shift_operator_at(self.index) {
+            self.index += width;
             expression = bluejs::Expr::Binary {
                 op,
                 left: Box::new(expression),
@@ -965,6 +1032,27 @@ impl<'a> ExpressionLowerer<'a> {
             };
         }
         Ok(callee)
+    }
+
+    fn shift_operator_at(&self, index: usize) -> Option<(bluejs::BinaryOp, usize)> {
+        if self
+            .tokens
+            .get(index)
+            .is_some_and(|token| token.text == "<<")
+        {
+            return Some((bluejs::BinaryOp::ShiftLeft, 1));
+        }
+        let first = self.tokens.get(index)?;
+        let second = self.tokens.get(index + 1)?;
+        if first.text != ">" || second.text != ">" || first.end != second.start {
+            return None;
+        }
+        if let Some(third) = self.tokens.get(index + 2) {
+            if third.text == ">" && second.end == third.start {
+                return Some((bluejs::BinaryOp::UnsignedShiftRight, 3));
+            }
+        }
+        Some((bluejs::BinaryOp::ShiftRight, 2))
     }
 
     fn token_span(&self, token: &Token) -> SourceSpan {
@@ -1237,6 +1325,48 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn lowers_bitwise_and_shift_expressions_with_ecmascript_precedence() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function combine(value: number): number { \
+                 return ((((value << 1) | 1) & 62) ^ 10) + (value >> 1) + (value >>> 1); \
+                 } combine(20);",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(54.0)
+        );
+    }
+
+    #[test]
+    fn expression_lowerer_gives_equality_higher_precedence_than_bitwise_and() {
+        let tokens = expression_tokens(&[
+            ("1", TokenKind::Number),
+            ("&", TokenKind::Punct),
+            ("3", TokenKind::Number),
+            ("===", TokenKind::Punct),
+            ("0", TokenKind::Number),
+        ]);
+        assert_eq!(
+            ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap(),
+            bluejs::Expr::Binary {
+                op: bluejs::BinaryOp::BitAnd,
+                left: Box::new(bluejs::Expr::Number(1.0)),
+                right: Box::new(bluejs::Expr::Binary {
+                    op: bluejs::BinaryOp::StrictEq,
+                    left: Box::new(bluejs::Expr::Number(3.0)),
+                    right: Box::new(bluejs::Expr::Number(0.0)),
+                }),
+            }
         );
     }
 

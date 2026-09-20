@@ -206,6 +206,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "bitwise-shift-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/bitwise-shift-expression/main.ts"),
+        )],
+        expected_stdout: Some("34:10:10\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-arithmetic-expression",
         modules: &[ (
             "memory:///main.ts",
@@ -219,6 +228,18 @@ const CASES: &[OracleCase] = &[
         modules: &[ (
             "memory:///main.ts",
             include_str!("fixtures/typescript_oracle/arithmetic-operand-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 5,
+        }],
+    },
+    OracleCase {
+        name: "bitwise-operand-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/bitwise-operand-error/main.ts"),
         )],
         expected_stdout: None,
         expected_diagnostics: &[ExpectedDiagnostic {

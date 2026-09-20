@@ -1192,6 +1192,16 @@ impl<'a> ModuleChecker<'a> {
                 self.infer_expression(right, scope),
             );
         }
+        for operators in [&["|"][..], &["^"][..], &["&"][..]] {
+            if let Some((left, _, right)) = top_level_binary_parts(tokens, operators, |start| {
+                self.module.generic_call_type_arguments.contains_key(&start)
+            }) {
+                return infer_numeric_binary_expression(
+                    self.infer_expression(left, scope),
+                    self.infer_expression(right, scope),
+                );
+            }
+        }
         if top_level_binary_parts(
             tokens,
             &["===", "!==", "==", "!=", "<", ">", "<=", ">="],
@@ -1200,6 +1210,14 @@ impl<'a> ModuleChecker<'a> {
         .is_some()
         {
             return Type::Boolean;
+        }
+        if let Some((left, _, right)) = top_level_shift_parts(tokens, |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            return infer_numeric_binary_expression(
+                self.infer_expression(left, scope),
+                self.infer_expression(right, scope),
+            );
         }
         if let Some((left, operator, right)) =
             top_level_binary_parts(tokens, &["+", "-"], |start| {
@@ -1596,6 +1614,21 @@ impl<'a> ModuleChecker<'a> {
                 return;
             }
         }
+        for operators in [&["|"][..], &["^"][..], &["&"][..]] {
+            if let Some((left, operator, right)) =
+                top_level_binary_parts(tokens, operators, generic_call)
+            {
+                self.check_arithmetic_operators(left, scope, span);
+                self.check_arithmetic_operators(right, scope, span);
+                self.check_known_numeric_operands(
+                    &operator.text,
+                    &self.infer_expression(left, scope),
+                    &self.infer_expression(right, scope),
+                    span,
+                );
+                return;
+            }
+        }
         if let Some((left, operator, right)) =
             top_level_binary_parts(tokens, &["===", "!=="], generic_call)
         {
@@ -1614,6 +1647,17 @@ impl<'a> ModuleChecker<'a> {
         {
             self.check_arithmetic_operators(left, scope, span);
             self.check_arithmetic_operators(right, scope, span);
+            return;
+        }
+        if let Some((left, operator, right)) = top_level_shift_parts(tokens, generic_call) {
+            self.check_arithmetic_operators(left, scope, span);
+            self.check_arithmetic_operators(right, scope, span);
+            self.check_known_numeric_operands(
+                operator.text(),
+                &self.infer_expression(left, scope),
+                &self.infer_expression(right, scope),
+                span,
+            );
             return;
         }
         if let Some((left, operator, right)) =
@@ -1685,6 +1729,29 @@ impl<'a> ModuleChecker<'a> {
                 format!(
                     "operator `{}` compares disjoint types `{}` and `{}`",
                     operator.text,
+                    type_label(left),
+                    type_label(right),
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+        }
+    }
+
+    fn check_known_numeric_operands(
+        &mut self,
+        operator: &str,
+        left: &Type,
+        right: &Type,
+        span: &SourceSpan,
+    ) {
+        if !is_known_primitive_type(left) || !is_known_primitive_type(right) {
+            return;
+        }
+        if left != &Type::Number || right != &Type::Number {
+            self.type_error(
+                span,
+                format!(
+                    "operator `{operator}` cannot be applied to types `{}` and `{}`",
                     type_label(left),
                     type_label(right),
                 ),
@@ -2209,7 +2276,8 @@ fn top_level_binary_parts<'a>(
             ")" | "]" | "}" if depth > 0 => depth -= 1,
             _ if depth == 0
                 && operators.contains(&token.text.as_str())
-                && !is_prefix_arithmetic_operator(tokens, index) =>
+                && !is_prefix_arithmetic_operator(tokens, index)
+                && !is_shift_operator_token(tokens, index) =>
             {
                 operator_index = Some(index);
             }
@@ -2223,6 +2291,87 @@ fn top_level_binary_parts<'a>(
         &tokens[index],
         &tokens[index + 1..],
     ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShiftOperator {
+    Left,
+    Right,
+    UnsignedRight,
+}
+
+impl ShiftOperator {
+    fn text(self) -> &'static str {
+        match self {
+            Self::Left => "<<",
+            Self::Right => ">>",
+            Self::UnsignedRight => ">>>",
+        }
+    }
+}
+
+/// Returns the operands and final top-level shift operator. Runtime `>>` and
+/// `>>>` arrive as adjacent `>` tokens because the parser splits generic
+/// closers for type syntax, so recognize only source-contiguous runs here.
+fn top_level_shift_parts(
+    tokens: &[Token],
+    is_explicit_generic_call: impl Fn(usize) -> bool,
+) -> Option<(&[Token], ShiftOperator, &[Token])> {
+    let mut depth = 0usize;
+    let mut operator = None;
+    let mut index = 0usize;
+    while index < tokens.len() {
+        let token = &tokens[index];
+        if token.kind == TokenKind::Identifier && is_explicit_generic_call(token.start) {
+            if let Some(close) = explicit_generic_call_close(tokens, index) {
+                index = close + 1;
+                continue;
+            }
+        }
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            _ if depth == 0 => {
+                if let Some((kind, width)) = shift_operator_at(tokens, index) {
+                    operator = Some((index, kind, width));
+                    index += width;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    let (index, operator, width) = operator?;
+    (index > 0 && index + width < tokens.len()).then_some((
+        &tokens[..index],
+        operator,
+        &tokens[index + width..],
+    ))
+}
+
+fn is_shift_operator_token(tokens: &[Token], index: usize) -> bool {
+    (index.saturating_sub(2)..=index).any(|start| {
+        shift_operator_at(tokens, start)
+            .is_some_and(|(_, width)| start <= index && index < start + width)
+    })
+}
+
+fn shift_operator_at(tokens: &[Token], index: usize) -> Option<(ShiftOperator, usize)> {
+    if tokens.get(index).is_some_and(|token| token.is("<<")) {
+        return Some((ShiftOperator::Left, 1));
+    }
+    let first = tokens.get(index)?;
+    let second = tokens.get(index + 1)?;
+    if !first.is(">") || !second.is(">") || first.end != second.start {
+        return None;
+    }
+    if let Some(third) = tokens.get(index + 2) {
+        if third.is(">") && second.end == third.start {
+            return Some((ShiftOperator::UnsignedRight, 3));
+        }
+    }
+    Some((ShiftOperator::Right, 2))
 }
 
 fn is_prefix_arithmetic_operator(tokens: &[Token], index: usize) -> bool {

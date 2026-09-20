@@ -101,6 +101,32 @@ fn infers_nullish_coalescing_after_excluding_null_and_undefined() {
 }
 
 #[test]
+fn infers_bitwise_and_shift_expressions_and_rejects_known_non_numbers() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const shifted: number = 20 << 1;\n\
+             const combined: number = ((shifted | 1) & 62) ^ 10;\n\
+             const signed: number = 20 >> 1;\n\
+             const unsigned: number = 20 >>> 1;\n\
+             const invalid: number = 'BlueIce' & 1;",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn keeps_bounded_expression_inference_structural() {
     let grouped = crate::syntax::lex("memory:///tokens.ts", "((flag))").unwrap();
     let grouped = &grouped[..grouped.len() - 1];
