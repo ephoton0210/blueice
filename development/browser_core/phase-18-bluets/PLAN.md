@@ -10,6 +10,8 @@ Let a BlueIce page opt in to TypeScript source without a build-time `.js` artifa
 
 ## Standalone implementation and first BlueJS integration status
 
+The direct bridge decodes ordinary quoted-string escapes (`\\`, quote, `\n`, `\r`, `\t`, `\b`, `\f`, `\v`, and `\0`) to BlueJS strings. Unicode, hexadecimal, legacy octal, and line-continuation escape forms remain deliberately unsupported in this bounded subset.
+
 Record inference and direct lowering accept identifier-keyed object shorthand `{ key }` for a local binding; object spread, computed keys, methods, and accessors remain excluded.
 
 The direct bridge lowers simple and compound assignments to non-optional dot or bracket property reads. Prefix and postfix updates remain identifier-only, and the existing template/object/member-call boundaries remain in force.

@@ -35,6 +35,8 @@ An incompatible major ABI, an unknown required field, a source hash mismatch, or
 
 ## AST/IR hand-off
 
+The bridge decodes simple quoted-string escapes (`\\`, quote, `\n`, `\r`, `\t`, `\b`, `\f`, `\v`, and `\0`) before constructing BlueJS string data. Hexadecimal, Unicode, legacy octal, and line-continuation escapes remain explicit direct-bridge exclusions.
+
 Object literals accept identifier-keyed `key: value` properties and local-binding shorthand `{ key }`; spread, computed keys, methods, and accessors remain outside the direct subset.
 
 The direct bridge also lowers simple and compound assignments whose target is a non-optional dot or bracket property read. Prefix and postfix updates remain identifier-only; template, object, and member-call limits continue to apply independently.

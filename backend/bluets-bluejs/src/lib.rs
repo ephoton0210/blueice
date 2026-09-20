@@ -1374,13 +1374,45 @@ fn lower_string(module: &str, token: &Token) -> Result<bluejs::Expr, BridgeError
         .filter(|last| *last == quote)
         .map(|_| &token.text[quote.len_utf8()..token.text.len() - quote.len_utf8()])
         .ok_or_else(|| unsupported(token_span(module, token), "unterminated string token"))?;
-    if body.contains('\\') {
-        return Err(unsupported(
-            token_span(module, token),
-            "string escapes are not yet in the v1 direct bridge subset",
-        ));
+    Ok(bluejs::Expr::String(
+        decode_string_escapes(module, token, body)?.into(),
+    ))
+}
+
+fn decode_string_escapes(module: &str, token: &Token, body: &str) -> Result<String, BridgeError> {
+    let mut output = String::new();
+    let mut characters = body.chars();
+    while let Some(character) = characters.next() {
+        if character != '\\' {
+            output.push(character);
+            continue;
+        }
+        let Some(escape) = characters.next() else {
+            return Err(unsupported(
+                token_span(module, token),
+                "unterminated string escape",
+            ));
+        };
+        output.push(match escape {
+            '\\' => '\\',
+            '\'' => '\'',
+            '"' => '"',
+            'n' => '\n',
+            'r' => '\r',
+            't' => '\t',
+            'b' => '\u{0008}',
+            'f' => '\u{000C}',
+            'v' => '\u{000B}',
+            '0' => '\0',
+            _ => {
+                return Err(unsupported(
+                    token_span(module, token),
+                    "unsupported string escape in the v1 direct bridge subset",
+                ));
+            }
+        });
     }
-    Ok(bluejs::Expr::String(body.into()))
+    Ok(output)
 }
 
 fn lower_template(module: &str, token: &Token) -> Result<bluejs::Expr, BridgeError> {
@@ -2017,6 +2049,23 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::String("BlueTS!".into())
+        );
+    }
+
+    #[test]
+    fn lowers_checked_simple_string_escapes() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const label: string = 'Ada\\nGrace'; label;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("Ada\nGrace".into())
         );
     }
 
