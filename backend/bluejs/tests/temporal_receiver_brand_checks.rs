@@ -125,6 +125,10 @@ const AUDIT_BODY: &str = r#"
         wrong.push(["Object.create(" + kind + ".prototype)", () => Object.create(prototype)]);
         wrong.push([kind + ".prototype", () => prototype]);
         wrong.push([kind + " constructor", () => constructor]);
+        // Neither a proxy for a valid instance nor an object that inherits
+        // from one has the internal slot itself.
+        wrong.push(["a Proxy for a " + kind, () => new Proxy(factories[kind](), {})]);
+        wrong.push(["an object inheriting from a " + kind, () => Object.create(factories[kind]())]);
         for (const other of kinds) {
           if (other !== kind) wrong.push(["a " + other, factories[other]]);
         }
