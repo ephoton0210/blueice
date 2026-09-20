@@ -223,6 +223,29 @@ impl Vm {
                         }
                         self.stack.truncate(base + 1);
                     }
+                    Opcode::DefineInstanceField => {
+                        // The receiver and value stay on the operand stack (and
+                        // so rooted) until the definition has completed.
+                        let base = self.stack.len() - 3;
+                        let receiver = self.stack[base].clone();
+                        let key = self.coerce_property_key(&self.stack[base + 1].clone())?;
+                        let value = self.stack[base + 2].clone();
+                        let Value::Object(object) = receiver else {
+                            return Err(RuntimeError::TypeError(
+                                "class fields are defined on an object".into(),
+                            ));
+                        };
+                        if !self.object_define_own_property(
+                            object,
+                            key,
+                            PropertyDescriptor::data(value, true, true, true),
+                        )? {
+                            return Err(RuntimeError::TypeError(
+                                "cannot define class field".into(),
+                            ));
+                        }
+                        self.stack.truncate(base);
+                    }
                     Opcode::DefinePrivateStaticField => {
                         let base = self.stack.len() - 4;
                         let target = self.stack[base + 1].clone();

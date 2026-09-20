@@ -196,6 +196,7 @@ opcodes! {
     DefineMethod: 1, 0;
     DefineClassAccessor: 5, 0;
     DefineClassStaticField: 1, 0;
+    DefineInstanceField: 1, 0;
     DefinePrivateStaticField: 1, 0;
     DefinePrivateField: 5, 0;
     DefinePrivateMethod: 5, 0;
