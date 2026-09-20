@@ -46,6 +46,17 @@ impl Vm {
             return self
                 .test262_foreign_typed_array_native_call(function, receiver, args, construct);
         }
+        if matches!(
+            function,
+            NativeFunction::Atomics(_)
+                | NativeFunction::AtomicsNotify
+                | NativeFunction::AtomicsWait
+                | NativeFunction::AtomicsWaitAsync
+        ) {
+            if let Some(result) = self.test262_foreign_atomics_call(function, &args)? {
+                return Ok(result);
+            }
+        }
         let first = native::argument(&args, 0);
         match function {
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
@@ -638,14 +649,20 @@ impl Vm {
                     .array_buffer_byte_length(self.array_buffer_receiver(&receiver)?)?
                     as f64,
             )),
+            NativeFunction::ArrayBufferDetached => Ok(Value::Bool(
+                self.heap
+                    .array_buffer_is_detached(self.array_buffer_receiver(&receiver)?)?,
+            )),
             NativeFunction::ArrayBufferMaxByteLength => Ok(Value::Number(
                 self.heap
                     .buffer_max_byte_length(self.array_buffer_receiver(&receiver)?)?
                     as f64,
             )),
+            // IsResizableArrayBuffer looks only at the buffer's kind, so a
+            // detached resizable buffer still reports true.
             NativeFunction::ArrayBufferResizable => Ok(Value::Bool(
                 self.heap
-                    .buffer_resizable(self.array_buffer_receiver(&receiver)?)?,
+                    .array_buffer_is_resizable(self.array_buffer_receiver(&receiver)?)?,
             )),
             NativeFunction::ArrayBufferResize => self.buffer_resize(&receiver, first),
             NativeFunction::ArrayBufferTransfer => {

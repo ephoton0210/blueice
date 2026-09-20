@@ -490,6 +490,14 @@ impl Vm {
                         NativeFunction::ArrayBufferByteLength
                     },
                 )?;
+                if !shared {
+                    self.install_native_getter(
+                        buffer_prototype,
+                        prototype,
+                        "detached",
+                        NativeFunction::ArrayBufferDetached,
+                    )?;
+                }
                 self.install_native_getter(
                     buffer_prototype,
                     prototype,

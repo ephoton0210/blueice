@@ -774,6 +774,69 @@ impl Vm {
         self.test262_import_foreign_result(realm_id, result)
     }
 
+    /// Runs an `Atomics` function whose first argument is a facade denoting a
+    /// TypedArray in another Test262 Realm. Atomics validates and accesses
+    /// that argument's internal slots, which live in the child VM's heap, so
+    /// the whole operation executes there against the real array. Unlike the
+    /// `%TypedArray%` methods, an `Atomics` function is not a member of the
+    /// array's Realm and its errors belong to the calling Realm: a Rust-level
+    /// TypeError or RangeError is returned unconverted for this Realm to
+    /// materialize, and only a thrown JavaScript value crosses the membrane.
+    /// Returns `Ok(None)` when the first argument is not such a facade, so
+    /// the caller continues with the ordinary same-Realm validation.
+    pub(in super::super) fn test262_foreign_atomics_call(
+        &mut self,
+        function: NativeFunction,
+        args: &[Value],
+    ) -> Result<Option<Value>, RuntimeError> {
+        let Some(wrapper) = args.first().and_then(Value::object_id) else {
+            return Ok(None);
+        };
+        let Some((realm_id, target, _, _)) = self.test262_foreign_reference(wrapper) else {
+            return Ok(None);
+        };
+        let source_buffer = {
+            let heap = &self
+                .test262_realms
+                .get(&realm_id)
+                .expect("foreign realm remains live")
+                .vm
+                .heap;
+            if !heap.is_typed_array(target)? {
+                return Ok(None);
+            }
+            heap.typed_array_info(target)?.0
+        };
+        // The index, value and timeout arguments are always converted with
+        // ToPrimitive(number) (via ToIndex, ToNumber or ToBigInt), which runs
+        // user code that belongs to this Realm. An object crossing the
+        // membrane is an opaque stand-in whose hooks the child could not
+        // call, so perform that step here and pass the child the primitive.
+        let mut converted = Vec::with_capacity(args.len());
+        converted.push(args[0].clone());
+        for value in &args[1..] {
+            converted.push(self.coerce_primitive(value, "number")?);
+        }
+        self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        let args = converted
+            .iter()
+            .map(|value| self.test262_export_foreign_value(realm_id, value))
+            .collect::<Result<Vec<_>, _>>()?;
+        let result = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            realm
+                .vm
+                .native_call(function, Value::Undefined, args, false)
+        };
+        self.test262_refresh_foreign_buffer_mirrors(realm_id, source_buffer)?;
+        self.test262_import_foreign_result(realm_id, result)
+            .map(Some)
+    }
+
     /// Snapshots the elements of a foreign TypedArray through its internal
     /// slots. Algorithms such as `%TypedArray%.prototype.set` must not read
     /// an observable own `length` property from a cross-Realm source; they

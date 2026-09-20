@@ -296,6 +296,7 @@ pub(crate) enum NativeFunction {
     TemporalZonedDateTimeGetTimeZoneTransition,
     ArrayBuffer,
     ArrayBufferByteLength,
+    ArrayBufferDetached,
     ArrayBufferMaxByteLength,
     ArrayBufferResizable,
     ArrayBufferResize,

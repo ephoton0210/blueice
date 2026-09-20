@@ -319,6 +319,22 @@ impl Heap {
         Ok(!*shared && !*detached && max_byte_length.is_some())
     }
 
+    /// `IsResizableArrayBuffer` for a non-shared buffer: whether it was
+    /// created with a `maxByteLength`. Unlike `buffer_resizable`, which also
+    /// requires the buffer to still be attached, this is a property of the
+    /// buffer's kind and is unaffected by detachment.
+    pub(crate) fn array_buffer_is_resizable(&self, object: ObjectId) -> Result<bool, HeapError> {
+        let ObjectKind::ArrayBuffer {
+            max_byte_length,
+            shared,
+            ..
+        } = &self.object(object)?.kind
+        else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        Ok(!*shared && max_byte_length.is_some())
+    }
+
     pub(crate) fn buffer_growable(&self, object: ObjectId) -> Result<bool, HeapError> {
         let ObjectKind::ArrayBuffer {
             max_byte_length,
