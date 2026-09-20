@@ -251,6 +251,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "array-literal-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/array-literal-expression/main.ts"),
+        )],
+        expected_stdout: Some("object:3:2\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-arithmetic-expression",
         modules: &[ (
             "memory:///main.ts",

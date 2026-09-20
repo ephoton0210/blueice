@@ -117,8 +117,9 @@ impl std::error::Error for BridgeError {}
 /// The expression subset includes `!`, `+`, `-`, `~`, `typeof`, and `void`
 /// unary expressions; arithmetic, relational, equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
-/// comma sequences, identifier-only prefix/postfix updates, and
-/// identifier-only simple or compound-assignment operators. Static-only
+/// non-spread, non-hole array literals, comma sequences, identifier-only
+/// prefix/postfix updates, and identifier-only simple or compound-assignment
+/// operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -1109,10 +1110,54 @@ impl<'a> ExpressionLowerer<'a> {
                 self.index += 1;
                 Ok(bluejs::Expr::Parenthesized(Box::new(expression)))
             }
+            TokenKind::Punct if token.text == "[" => self.parse_array_literal(token),
             _ => Err(unsupported(
                 self.token_span(token),
                 format!("unsupported runtime expression token `{}`", token.text),
             )),
+        }
+    }
+
+    fn parse_array_literal(&mut self, opening: &Token) -> Result<bluejs::Expr, BridgeError> {
+        let opening_span = self.token_span(opening);
+        let mut elements = Vec::new();
+        loop {
+            let Some(token) = self.tokens.get(self.index) else {
+                return Err(unsupported(opening_span, "unterminated array literal"));
+            };
+            if token.text == "]" {
+                self.index += 1;
+                return Ok(bluejs::Expr::Array(elements));
+            }
+            if token.text == "," {
+                return Err(unsupported(
+                    self.token_span(token),
+                    "array holes are not in the v1 direct bridge subset",
+                ));
+            }
+            if token.text == "..." {
+                return Err(unsupported(
+                    self.token_span(token),
+                    "array spread elements are not in the v1 direct bridge subset",
+                ));
+            }
+            elements.push(Some(bluejs::ArrayElement::Normal(self.parse_assignment()?)));
+            let Some(separator) = self.tokens.get(self.index) else {
+                return Err(unsupported(opening_span, "unterminated array literal"));
+            };
+            match separator.text.as_str() {
+                "," => self.index += 1,
+                "]" => {
+                    self.index += 1;
+                    return Ok(bluejs::Expr::Array(elements));
+                }
+                _ => {
+                    return Err(unsupported(
+                        self.token_span(separator),
+                        "expected `,` or `]` in array literal",
+                    ));
+                }
+            }
         }
     }
 
@@ -1643,6 +1688,63 @@ mod tests {
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::Number(3.0)
         );
+    }
+
+    #[test]
+    fn lowers_checked_non_spread_array_literals() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const values: number[] = [1, 2, 3]; typeof values === 'object';",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            artifact.program,
+            bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+                if matches!(
+                    body.as_slice(),
+                    [bluejs::Stmt::VarDecl(_, declarations), bluejs::Stmt::Expr(_)]
+                        if matches!(
+                            declarations.as_slice(),
+                            [bluejs::VarDeclarator {
+                                init: Some(bluejs::Expr::Array(elements)),
+                                ..
+                            }] if elements.len() == 3
+                        )
+                )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn expression_lowerer_rejects_array_holes_and_spread() {
+        for tokens in [
+            expression_tokens(&[
+                ("[", TokenKind::Punct),
+                ("1", TokenKind::Number),
+                (",", TokenKind::Punct),
+                (",", TokenKind::Punct),
+                ("]", TokenKind::Punct),
+            ]),
+            expression_tokens(&[
+                ("[", TokenKind::Punct),
+                ("...", TokenKind::Punct),
+                ("values", TokenKind::Identifier),
+                ("]", TokenKind::Punct),
+            ]),
+        ] {
+            let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
+            let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+                panic!("the direct bridge must reject an unimplemented array element");
+            };
+            assert!(message.contains("array holes") || message.contains("array spread"));
+        }
     }
 
     #[test]

@@ -76,6 +76,29 @@ fn infers_typeof_and_void_unary_expression_types() {
 }
 
 #[test]
+fn infers_array_literal_element_types() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const values: number[] = [1, 2, 3];\n\
+             const invalid: string[] = [1, 2, 3];",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn infers_nullish_coalescing_after_excluding_null_and_undefined() {
     let result = crate::compile(
         "memory:///main.ts",
