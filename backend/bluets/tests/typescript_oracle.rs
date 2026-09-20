@@ -152,6 +152,24 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "default-function-export",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/default-function-export/main.ts"),
+        )],
+        expected_stdout: Some("Hello, Ada\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "default-value-export",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/default-value-export/main.ts"),
+        )],
+        expected_stdout: Some("Hello, Ada\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",
@@ -270,6 +288,7 @@ fn pinned_bluetsc_oracle_matches_the_supported_fixture_matrix() {
 
 fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
     let temporary = TestDirectory::new();
+    write_esm_package(temporary.path());
     let sources = case
         .modules
         .iter()
@@ -280,18 +299,23 @@ fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
     }
+    let expected_declaration = expected_declaration(case);
     let options = CompilerOptions {
         source_map: true,
+        declaration: expected_declaration.is_some(),
         ..CompilerOptions::default()
     };
     let compilation = compile("memory:///main.ts", &MapLoader::from(sources), options);
     let typescript_output = temporary.path().join("typescript");
+    fs::create_dir_all(&typescript_output).unwrap();
+    write_esm_package(&typescript_output);
     let input = temporary.path().join("main.ts");
     let tsc_output = run_tsc(
         tsc,
         &input,
         &typescript_output,
         case.expected_stdout.is_none(),
+        expected_declaration.is_some(),
     );
 
     match case.expected_stdout {
@@ -322,6 +346,20 @@ fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
                 &fs::read_to_string(typescript_output.join("main.js.map")).unwrap(),
                 "TypeScript",
             );
+            if let Some(expected_declaration) = expected_declaration {
+                assert_eq!(
+                    artifact.declaration.as_deref(),
+                    Some(expected_declaration),
+                    "{} BlueTSC declaration",
+                    case.name
+                );
+                assert_eq!(
+                    fs::read_to_string(typescript_output.join("main.d.ts")).unwrap(),
+                    expected_declaration,
+                    "{} TypeScript declaration",
+                    case.name
+                );
+            }
             let blueice_result = run_node(node, &blueice_output);
             let typescript_result = run_node(node, &typescript_output.join("main.js"));
             assert_success(&blueice_result, "Node could not execute BlueTSC output");
@@ -364,6 +402,18 @@ fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
                 case.name
             );
         }
+    }
+}
+
+fn expected_declaration(case: &OracleCase) -> Option<&'static str> {
+    match case.name {
+        "default-function-export" => {
+            Some("export default function greeting(name: string): string;\n")
+        }
+        "default-value-export" => {
+            Some("declare const greeting: string;\nexport default greeting;\n")
+        }
+        _ => None,
     }
 }
 
@@ -460,13 +510,13 @@ fn assert_pinned_version(tsc: &Path) {
     );
 }
 
-fn run_tsc(tsc: &Path, input: &Path, output: &Path, no_emit: bool) -> Output {
+fn run_tsc(tsc: &Path, input: &Path, output: &Path, no_emit: bool, declaration: bool) -> Output {
     let mut command = Command::new(tsc);
     command.args([
         "--target",
         "ES2022",
         "--module",
-        "none",
+        "ES2022",
         "--strict",
         "--pretty",
         "false",
@@ -477,7 +527,14 @@ fn run_tsc(tsc: &Path, input: &Path, output: &Path, no_emit: bool) -> Output {
     } else {
         command.arg("--outDir").arg(output);
     }
+    if declaration {
+        command.arg("--declaration");
+    }
     command.arg(input).output().unwrap()
+}
+
+fn write_esm_package(directory: &Path) {
+    fs::write(directory.join("package.json"), "{\"type\":\"module\"}\n").unwrap();
 }
 
 fn run_node(node: &std::ffi::OsStr, input: &Path) -> Output {

@@ -176,7 +176,8 @@ fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnostic> {
                 Declaration::Variable(variable) => !variable.declared,
                 Declaration::Function(function) => !function.declared && !function.overload,
                 Declaration::Raw(_) => true,
-                Declaration::TypeExport(_)
+                Declaration::DefaultExport(_)
+                | Declaration::TypeExport(_)
                 | Declaration::TypeAlias(_)
                 | Declaration::Interface(_) => false,
             };
@@ -397,6 +398,7 @@ impl<'a> ModuleChecker<'a> {
             match declaration {
                 Declaration::Import(import) => self.bind_import(import),
                 Declaration::TypeExport(export) => self.bind_type_export(export),
+                Declaration::DefaultExport(_) => {}
                 Declaration::TypeAlias(alias) => {
                     self.insert_type(
                         &alias.name,
@@ -481,6 +483,60 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         self.validate_function_overloads();
+        self.validate_default_exports();
+    }
+
+    fn validate_default_exports(&mut self) {
+        let defaults = self
+            .module
+            .declarations
+            .iter()
+            .filter_map(|declaration| match declaration {
+                Declaration::DefaultExport(export) => Some(export.span.clone()),
+                Declaration::Function(function) if function.default_export => {
+                    Some(function.span.clone())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if defaults.len() > 1 {
+            for span in defaults.iter().skip(1) {
+                self.diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::DuplicateDeclaration,
+                    span.clone(),
+                    "a module can have only one default export",
+                ));
+            }
+        }
+
+        for declaration in &self.module.declarations {
+            let Declaration::DefaultExport(export) = declaration else {
+                continue;
+            };
+            let has_local_runtime_binding =
+                self.module
+                    .declarations
+                    .iter()
+                    .any(|candidate| match candidate {
+                        Declaration::Variable(variable) => {
+                            variable.name == export.name && !variable.declared
+                        }
+                        Declaration::Function(function) => {
+                            function.name == export.name && !function.declared && !function.overload
+                        }
+                        _ => false,
+                    });
+            if !has_local_runtime_binding {
+                self.diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::UnknownName,
+                    export.span.clone(),
+                    format!(
+                        "default export `{}` must name a local runtime declaration",
+                        export.name
+                    ),
+                ));
+            }
+        }
     }
 
     fn validate_function_overloads(&mut self) {
@@ -722,7 +778,10 @@ impl<'a> ModuleChecker<'a> {
                 }
                 Declaration::Variable(variable) => self.check_variable(variable),
                 Declaration::Function(function) => self.check_function(function),
-                Declaration::Import(_) | Declaration::TypeExport(_) | Declaration::Raw(_) => {}
+                Declaration::Import(_)
+                | Declaration::TypeExport(_)
+                | Declaration::DefaultExport(_)
+                | Declaration::Raw(_) => {}
             }
         }
     }

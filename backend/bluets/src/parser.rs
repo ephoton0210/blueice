@@ -45,6 +45,7 @@ pub struct Module {
 pub enum Declaration {
     Import(ImportDeclaration),
     TypeExport(TypeExportDeclaration),
+    DefaultExport(DefaultExportDeclaration),
     TypeAlias(TypeAliasDeclaration),
     Interface(InterfaceDeclaration),
     Variable(VariableDeclaration),
@@ -57,6 +58,7 @@ impl Declaration {
         match self {
             Self::Import(declaration) => &declaration.span,
             Self::TypeExport(declaration) => &declaration.span,
+            Self::DefaultExport(declaration) => &declaration.span,
             Self::TypeAlias(declaration) => &declaration.span,
             Self::Interface(declaration) => &declaration.span,
             Self::Variable(declaration) => &declaration.span,
@@ -88,6 +90,15 @@ pub struct ImportBinding {
 pub struct TypeExportDeclaration {
     pub bindings: Vec<String>,
     pub specifier: Option<String>,
+    pub span: SourceSpan,
+}
+
+/// A value export in the narrowly supported `export default localName` form.
+/// The referenced local remains the runtime declaration, while this node
+/// records the public ESM binding for checking and declaration emission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DefaultExportDeclaration {
+    pub name: String,
     pub span: SourceSpan,
 }
 
@@ -124,11 +135,30 @@ pub struct TypeField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariableDeclaration {
     pub name: String,
+    pub kind: VariableKind,
     pub annotation: Option<Type>,
     pub initializer: Vec<Token>,
     pub exported: bool,
     pub declared: bool,
     pub span: SourceSpan,
+}
+
+/// The runtime binding form retained for declaration output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VariableKind {
+    Const,
+    Let,
+    Var,
+}
+
+impl VariableKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Const => "const",
+            Self::Let => "let",
+            Self::Var => "var",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,6 +170,10 @@ pub struct FunctionDeclaration {
     pub returns: Vec<Vec<Token>>,
     pub locals: Vec<VariableDeclaration>,
     pub exported: bool,
+    /// A named `export default function` declaration. Its runtime ESM syntax
+    /// stays in the emitted JavaScript, while its declaration output uses the
+    /// corresponding default-export form rather than `export declare`.
+    pub default_export: bool,
     pub declared: bool,
     /// A signature-only function declaration preceding an implementation.
     /// It is static-only and is erased from JavaScript, but remains a direct
@@ -269,11 +303,37 @@ impl Parser {
             let start = self.current().start;
             let exported = self.consume("export");
             if exported && self.consume("default") {
-                self.unsupported(
-                    self.previous().span(&self.id),
-                    "default exports are not in the initial BlueTS matrix",
-                );
-                self.skip_statement();
+                let default_span = self.previous().span(&self.id);
+                let async_start = self.consume("async");
+                if self.consume("function") {
+                    if self.current().kind == TokenKind::Identifier {
+                        self.parse_function(start, true, true, false, async_start);
+                    } else {
+                        self.unsupported(
+                            default_span,
+                            "anonymous default function exports are not in the initial BlueTS matrix",
+                        );
+                        self.skip_statement();
+                    }
+                } else if !async_start
+                    && self.current().kind == TokenKind::Identifier
+                    && (self
+                        .tokens
+                        .get(self.index + 1)
+                        .is_some_and(|token| token.is(";"))
+                        || self
+                            .tokens
+                            .get(self.index + 1)
+                            .is_some_and(|token| token.kind == TokenKind::Eof))
+                {
+                    self.parse_default_export(start);
+                } else {
+                    self.unsupported(
+                        default_span,
+                        "default export expressions are not in the initial BlueTS matrix",
+                    );
+                    self.skip_statement();
+                }
                 continue;
             }
             if exported && self.peek("=") {
@@ -308,7 +368,7 @@ impl Parser {
                 let declared = self.consume("declare");
                 let async_start = self.consume("async");
                 if self.consume("function") {
-                    self.parse_function(start, exported, declared, async_start);
+                    self.parse_function(start, exported, false, declared, async_start);
                 } else if self.peek("const")
                     && self
                         .tokens
@@ -321,8 +381,14 @@ impl Parser {
                     );
                     self.skip_statement();
                 } else if self.peek("const") || self.peek("let") || self.peek("var") {
+                    let kind = match self.current().text.as_str() {
+                        "const" => VariableKind::Const,
+                        "let" => VariableKind::Let,
+                        "var" => VariableKind::Var,
+                        _ => unreachable!("variable declaration was guarded by its keyword"),
+                    };
                     self.bump();
-                    self.parse_variable(start, exported, declared);
+                    self.parse_variable(start, exported, declared, kind);
                 } else if self.peek_any(&[
                     "enum",
                     "namespace",
@@ -558,6 +624,17 @@ impl Parser {
             }));
     }
 
+    fn parse_default_export(&mut self, start: usize) {
+        let name = self.require_identifier("expected a default export name");
+        self.consume(";");
+        let end = self.previous().end;
+        self.declarations
+            .push(Declaration::DefaultExport(DefaultExportDeclaration {
+                name,
+                span: SourceSpan::new(&self.id, start, end),
+            }));
+    }
+
     fn parse_type_alias(&mut self, start: usize, exported: bool) {
         let name = self.require_identifier("expected a type alias name");
         let type_parameters = self.parse_type_parameters();
@@ -647,8 +724,8 @@ impl Parser {
             }));
     }
 
-    fn parse_variable(&mut self, start: usize, exported: bool, declared: bool) {
-        let declaration = self.parse_variable_declaration(start, exported, declared);
+    fn parse_variable(&mut self, start: usize, exported: bool, declared: bool, kind: VariableKind) {
+        let declaration = self.parse_variable_declaration(start, exported, declared, kind);
         self.declarations.push(Declaration::Variable(declaration));
     }
 
@@ -657,6 +734,7 @@ impl Parser {
         start: usize,
         exported: bool,
         declared: bool,
+        kind: VariableKind,
     ) -> VariableDeclaration {
         let name = self.require_identifier("expected a variable name");
         if self.consume("?") {
@@ -697,6 +775,7 @@ impl Parser {
         }
         VariableDeclaration {
             name,
+            kind,
             annotation,
             initializer,
             exported,
@@ -705,7 +784,14 @@ impl Parser {
         }
     }
 
-    fn parse_function(&mut self, start: usize, exported: bool, declared: bool, _async_start: bool) {
+    fn parse_function(
+        &mut self,
+        start: usize,
+        exported: bool,
+        default_export: bool,
+        declared: bool,
+        _async_start: bool,
+    ) {
         let name = self.require_identifier("expected a function name");
         let type_parameter_start = self.current().start;
         let type_parameters = self.parse_type_parameters();
@@ -808,6 +894,7 @@ impl Parser {
                 returns,
                 locals,
                 exported,
+                default_export,
                 declared,
                 overload,
                 span: SourceSpan::new(&self.id, start, end),
@@ -850,8 +937,14 @@ impl Parser {
             }
             if self.peek("const") || self.peek("let") || self.peek("var") {
                 let start = self.current().start;
+                let kind = match self.current().text.as_str() {
+                    "const" => VariableKind::Const,
+                    "let" => VariableKind::Let,
+                    "var" => VariableKind::Var,
+                    _ => unreachable!("variable declaration was guarded by its keyword"),
+                };
                 self.bump();
-                locals.push(self.parse_variable_declaration(start, false, false));
+                locals.push(self.parse_variable_declaration(start, false, false, kind));
                 continue;
             }
             if self.peek("as") || self.peek("satisfies") {

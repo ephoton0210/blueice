@@ -56,7 +56,11 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
     for (source, message) in [
         (
             "export default 1;",
-            "default exports are not in the initial BlueTS matrix",
+            "default export expressions are not in the initial BlueTS matrix",
+        ),
+        (
+            "export default function () { return 1; }",
+            "anonymous default function exports are not in the initial BlueTS matrix",
         ),
         (
             "export = foo;",
@@ -512,6 +516,82 @@ export { nonNull };
             "`{kept}` must survive in:\n{javascript}"
         );
     }
+}
+
+#[test]
+fn named_default_function_exports_preserve_esm_and_emit_a_public_declaration() {
+    let source = "export default function greeting(name: string): string { return `Hello, ${name}`; }\nconsole.log(greeting('Ada'));\n";
+    let compilation = compile_with_helper(source);
+    assert!(
+        compilation.diagnostics.is_empty(),
+        "{:#?}",
+        compilation.diagnostics
+    );
+    let javascript = &compilation.output.unwrap().artifacts[ENTRY].javascript;
+    assert!(javascript.contains("export default function greeting(name)"));
+    assert!(!javascript.contains(": string"));
+
+    let output = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            declaration: true,
+            ..CompilerOptions::default()
+        },
+    )
+    .output
+    .unwrap();
+    let declaration = output.artifacts[ENTRY].declaration.as_deref().unwrap();
+    assert_eq!(
+        declaration,
+        "export default function greeting(name: string): string;\n"
+    );
+}
+
+#[test]
+fn named_default_value_exports_preserve_esm_and_emit_a_public_declaration() {
+    let source = "const greeting: string = 'Hello, Ada';\nexport default greeting;\nconsole.log(greeting);\n";
+    let compilation = compile_with_helper(source);
+    assert!(
+        compilation.diagnostics.is_empty(),
+        "{:#?}",
+        compilation.diagnostics
+    );
+    let javascript = &compilation.output.unwrap().artifacts[ENTRY].javascript;
+    assert!(javascript.contains("const greeting"));
+    assert!(javascript.contains("'Hello, Ada'"));
+    assert!(javascript.contains("export default greeting"));
+    assert!(!javascript.contains(": string"));
+
+    let output = compile(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+        CompilerOptions {
+            declaration: true,
+            ..CompilerOptions::default()
+        },
+    )
+    .output
+    .unwrap();
+    let declaration = output.artifacts[ENTRY].declaration.as_deref().unwrap();
+    assert_eq!(
+        declaration,
+        "declare const greeting: string;\nexport default greeting;\n"
+    );
+}
+
+#[test]
+fn named_default_value_exports_require_a_local_runtime_declaration() {
+    assert_rejected(
+        "export default missing;",
+        "BTS3001",
+        "default export `missing` must name a local runtime declaration",
+    );
+    assert_rejected(
+        "declare const ambient: string;\nexport default ambient;",
+        "BTS3001",
+        "default export `ambient` must name a local runtime declaration",
+    );
 }
 
 #[test]
