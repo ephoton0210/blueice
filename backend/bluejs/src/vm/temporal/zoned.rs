@@ -60,6 +60,15 @@ impl Vm {
     }
 
     /// `ToTemporalZonedDateTime`.
+    ///
+    /// The three argument shapes share one option protocol, and what is
+    /// observable is its *order*: the argument itself is fully read (a
+    /// `ZonedDateTime` is used as-is, a property bag has every field read and
+    /// converted, a string is parsed) strictly before `options` is touched, and
+    /// then `disambiguation`, `offset` and `overflow` are read in exactly that
+    /// order (`from/order-of-operations.js`, `from/observable-get-overflow-*.js`,
+    /// `from/options-read-before-algorithmic-validation.js`). A primitive
+    /// `options` therefore throws only after the argument has been accepted.
     pub(in super::super) fn temporal_to_zoned_date_time(
         &mut self,
         value: &Value,
@@ -71,134 +80,13 @@ impl Vm {
                     // Options are still read (for validation/ordering parity)
                     // even though a `ZonedDateTime` argument is used as-is.
                     let resolved_options = self.temporal_options(options)?;
-                    self.temporal_overflow_option(&resolved_options)?;
                     self.temporal_disambiguation(&resolved_options)?;
                     self.temporal_offset_option(&resolved_options, "reject")?;
+                    self.temporal_overflow_option(&resolved_options)?;
                     return Ok(temporal);
                 }
             }
-            // A property bag: `timeZone` is required, `offset` optional;
-            // every calendar-date and time-of-day field is the same set
-            // `temporal_plain_date_from_fields` already resolves for
-            // `PlainDateTime` (a `ZonedDateTime`'s own field list per
-            // `PrepareCalendarFields`/`CalendarDateFromFields` is identical
-            // once `timeZone`/`offset` are set aside), so that resolution is
-            // reused rather than re-derived, with the result's `kind`
-            // overridden afterward.
-            let resolved_options = self.temporal_options(options)?;
-            let reject = self.temporal_overflow_option(&resolved_options)?;
-            let disambiguation = self.temporal_disambiguation(&resolved_options)?;
-            let offset_option = self.temporal_offset_option(&resolved_options, "reject")?;
-            // `PrepareCalendarFields` reads and validates `calendar` before
-            // any other field -- an invalid `calendar` is a `RangeError`
-            // even when `timeZone` is missing entirely
-            // (`argument-propertybag-calendar-invalid-iso-string.js`,
-            // `argument-propertybag-calendar-year-zero.js`). The result is
-            // discarded here (`temporal_plain_date_from_fields` below
-            // re-resolves it) -- this call exists purely to get the ordering
-            // of *when* a bad calendar throws right; a second, harmless
-            // re-read of the same property is an already-documented,
-            // separate gap shared with every other field-ordering fixture
-            // this file doesn't yet pass (`order-of-operations.js`).
-            let calendar_value = self.get_property(value, &"calendar".into())?;
-            self.temporal_calendar_identifier(&calendar_value)?;
-            let time_zone_value = self.get_property(value, &"timeZone".into())?;
-            if time_zone_value == Value::Undefined {
-                return Err(RuntimeError::TypeError(
-                    "Temporal.ZonedDateTime property bag requires timeZone".into(),
-                ));
-            }
-            let zone = self.temporal_time_zone(&time_zone_value)?;
-            // `offset`'s own *syntax* is read and validated here, ahead of
-            // `year`/`month`/`day`/etc. below -- `offset-string-invalid.js`
-            // pins this exact ordering both ways: a syntactically invalid
-            // offset (`"--00:00"`) is a `RangeError` even when `year` is a
-            // `Symbol` that would otherwise throw `TypeError` first, but a
-            // syntactically *valid* offset that merely doesn't match the
-            // zone (`"+04:30"` against `"UTC"`) only surfaces *after* `year`
-            // has already thrown -- because that later *semantic* mismatch
-            // check only runs once every field (including `year`) below has
-            // been fully resolved.
-            let offset_value = self.get_property(value, &"offset".into())?;
-            // A property bag's `offset` field goes through `ToPrimitive`
-            // with a string hint (never a blanket `ToString`) and then must
-            // *already be* a String -- an object's own `toString`/`valueOf`
-            // is genuinely called (`order-of-operations.js`'s "get
-            // other.offset.toString" / "call other.offset.toString"), but a
-            // non-object, non-string primitive (`Number`/`null`/`Boolean`/
-            // `BigInt`) is a `TypeError` without ever being stringified,
-            // since `ToPrimitive` on an already-primitive value is the
-            // identity (`relativeto-propertybag-invalid-offset-string.js`,
-            // reached via `Temporal.Duration`'s own `relativeTo` reuse of
-            // this function, still rejects a plain `1000`/`null`/`true`/
-            // `1000n`). Matches `temporal_to_instant_epoch`'s own
-            // `coerce_primitive`-then-check-`String` pattern.
-            let offset_primitive = (!matches!(offset_value, Value::Undefined))
-                .then(|| self.coerce_primitive(&offset_value, "string"))
-                .transpose()?;
-            if let Some(primitive) = &offset_primitive {
-                if !matches!(primitive, Value::String(_)) {
-                    return Err(RuntimeError::TypeError(
-                        "Temporal.ZonedDateTime offset must be a string".into(),
-                    ));
-                }
-            }
-            let offset_string = offset_primitive
-                .map(|primitive| self.coerce_string(&primitive))
-                .transpose()?
-                .map(|text| {
-                    text.to_utf8()
-                        .map_err(|_| RuntimeError::RangeError("invalid Temporal offset".into()))
-                })
-                .transpose()?;
-            let offset_nanoseconds = match offset_string.as_deref() {
-                None => None,
-                Some(text) => {
-                    Some(iso::parse_offset_string_nanoseconds(text).ok_or_else(|| {
-                        RuntimeError::RangeError("invalid Temporal offset".into())
-                    })?)
-                }
-            };
-            // Now resolve the rest of the calendar-date/time-of-day fields
-            // (`year`/`month`/`monthCode`/`day`/`era`/`eraYear`/`hour`../
-            // `nanosecond`) -- `year`'s own `TypeError` for a non-convertible
-            // value (e.g. a `Symbol`) has to come *after* `offset`'s syntax
-            // check above, per this function's own doc comment.
-            let mut fields = self.temporal_plain_date_from_fields(
-                TemporalKind::PlainDateTime,
-                value,
-                OverflowInput::Resolved(reject),
-            )?;
-            let date = (fields.year, fields.month, fields.day);
-            let time = (
-                fields.hour,
-                fields.minute,
-                fields.second,
-                fields.millisecond,
-                fields.microsecond,
-                fields.nanosecond,
-            );
-            let epoch_nanoseconds = temporal_interpret_offset(
-                &zone,
-                date,
-                time,
-                offset_nanoseconds,
-                false,
-                disambiguation,
-                &offset_option,
-                false, // a property-bag `offset` field is always `MatchExactly`.
-            )?;
-            if !epoch::is_in_instant_range(&epoch_nanoseconds) {
-                return Err(RuntimeError::RangeError(
-                    "Temporal.ZonedDateTime epoch nanoseconds are outside the supported range"
-                        .into(),
-                ));
-            }
-            fields.kind = TemporalKind::ZonedDateTime;
-            fields.epoch_nanoseconds = epoch_nanoseconds;
-            fields.time_zone = zone.identifier();
-            temporal_set_local_fields(&mut fields, &zone);
-            return Ok(fields);
+            return self.temporal_zoned_date_time_from_bag(value, options);
         }
         // `ToTemporalZonedDateTime`'s non-object branch requires a literal
         // `String`, never `ToString`-coerced -- a `Number`/`Boolean`/`null`/
@@ -215,11 +103,66 @@ impl Vm {
         let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
             RuntimeError::RangeError("invalid Temporal.ZonedDateTime string".into())
         })?;
+        let parsed = Self::temporal_parse_zoned_date_time_string(&source)?;
         let resolved_options = self.temporal_options(options)?;
-        self.temporal_overflow_option(&resolved_options)?;
         let disambiguation = self.temporal_disambiguation(&resolved_options)?;
         let offset_option = self.temporal_offset_option(&resolved_options, "reject")?;
-        Self::temporal_value_from_zoned_date_time_string(&source, disambiguation, &offset_option)
+        self.temporal_overflow_option(&resolved_options)?;
+        Self::temporal_interpret_zoned_date_time_string(parsed, disambiguation, &offset_option)
+    }
+
+    /// `ToTemporalZonedDateTime`'s property-bag branch. `timeZone` is required,
+    /// `offset` optional; every calendar-date and time-of-day field is the same
+    /// set `temporal_calendar_date_from_bag` already resolves for
+    /// `PlainDateTime` (a `ZonedDateTime`'s own field list per
+    /// `PrepareCalendarFields`/`CalendarDateFromFields` is identical once
+    /// `timeZone`/`offset` are set aside), so that resolution is reused -- with
+    /// `offset` and `timeZone` read *inside* it, in their alphabetical position
+    /// -- and only the result's `kind` and instant are filled in here.
+    fn temporal_zoned_date_time_from_bag(
+        &mut self,
+        value: &Value,
+        options: &Value,
+    ) -> Result<TemporalValue, RuntimeError> {
+        let mut zoned = ZonedBagFields::new();
+        let mut fields = self.temporal_calendar_date_from_bag(
+            TemporalKind::PlainDateTime,
+            value,
+            OverflowInput::Options(options),
+            Some(&mut zoned),
+        )?;
+        let zone = zoned
+            .time_zone
+            .expect("temporal_calendar_date_from_bag requires a timeZone");
+        let date = (fields.year, fields.month, fields.day);
+        let time = (
+            fields.hour,
+            fields.minute,
+            fields.second,
+            fields.millisecond,
+            fields.microsecond,
+            fields.nanosecond,
+        );
+        let epoch_nanoseconds = temporal_interpret_offset(
+            &zone,
+            date,
+            time,
+            zoned.offset_nanoseconds,
+            false,
+            zoned.disambiguation,
+            &zoned.offset_option,
+            false, // a property-bag `offset` field is always `MatchExactly`.
+        )?;
+        if !epoch::is_in_instant_range(&epoch_nanoseconds) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.ZonedDateTime epoch nanoseconds are outside the supported range".into(),
+            ));
+        }
+        fields.kind = TemporalKind::ZonedDateTime;
+        fields.epoch_nanoseconds = epoch_nanoseconds;
+        fields.time_zone = zone.identifier();
+        temporal_set_local_fields(&mut fields, &zone);
+        Ok(fields)
     }
 
     /// `ParseTemporalZonedDateTimeString` + resolution: a
@@ -233,6 +176,17 @@ impl Vm {
         disambiguation: time_zone::Disambiguation,
         offset_option: &str,
     ) -> Result<TemporalValue, RuntimeError> {
+        let parsed = Self::temporal_parse_zoned_date_time_string(source)?;
+        Self::temporal_interpret_zoned_date_time_string(parsed, disambiguation, offset_option)
+    }
+
+    /// The half of `ToTemporalZonedDateTime`'s string branch that is settled
+    /// from the string alone -- its syntax, the mandatory time-zone annotation,
+    /// and the calendar -- and so must throw its `RangeError` *before* the
+    /// `options` argument is read.
+    pub(in super::super) fn temporal_parse_zoned_date_time_string(
+        source: &str,
+    ) -> Result<ParsedZonedDateTimeString, RuntimeError> {
         let parsed = iso::parse_date_time(source).ok_or_else(|| {
             RuntimeError::RangeError("invalid Temporal.ZonedDateTime string".into())
         })?;
@@ -250,6 +204,25 @@ impl Vm {
             })?,
             None => "iso8601".to_string(),
         };
+        Ok(ParsedZonedDateTimeString {
+            parsed,
+            zone,
+            calendar,
+        })
+    }
+
+    /// The other half: interpreting the string's wall-clock reading and offset
+    /// against its zone under the `disambiguation`/`offset` options.
+    pub(in super::super) fn temporal_interpret_zoned_date_time_string(
+        string: ParsedZonedDateTimeString,
+        disambiguation: time_zone::Disambiguation,
+        offset_option: &str,
+    ) -> Result<TemporalValue, RuntimeError> {
+        let ParsedZonedDateTimeString {
+            parsed,
+            zone,
+            calendar,
+        } = string;
         let (year, month, day) = (parsed.year, parsed.month, parsed.day);
         let time = parsed.time.unwrap_or((0, 0, 0, 0, 0, 0));
         let epoch_nanoseconds = temporal_interpret_offset(
@@ -368,34 +341,32 @@ impl Vm {
                 self.temporal_read_optional_integer(like, "eraYear", i32::MIN, i32::MAX)?;
             (era_s, era_year_num)
         };
-        let requested_hour = self.temporal_read_optional_integer(like, "hour", 0, 23)?;
-        let requested_microsecond =
-            self.temporal_read_optional_integer(like, "microsecond", 0, 999)?;
-        let requested_millisecond =
-            self.temporal_read_optional_integer(like, "millisecond", 0, 999)?;
-        let requested_minute = self.temporal_read_optional_integer(like, "minute", 0, 59)?;
+        // The time fields carry no range while being read: `RegulateTime`
+        // judges them once `overflow` is known (constrain clamps, reject
+        // throws), as `temporal_calendar_date_from_bag` does.
+        let requested_hour = self.temporal_read_optional_time_field(like, "hour")?;
+        let requested_microsecond = self.temporal_read_optional_time_field(like, "microsecond")?;
+        let requested_millisecond = self.temporal_read_optional_time_field(like, "millisecond")?;
+        let requested_minute = self.temporal_read_optional_time_field(like, "minute")?;
         let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
-        let month_code_s =
-            self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
-        let requested_nanosecond =
-            self.temporal_read_optional_integer(like, "nanosecond", 0, 999)?;
+        let month_code_s = self.temporal_read_month_code(like)?;
+        let requested_nanosecond = self.temporal_read_optional_time_field(like, "nanosecond")?;
         let offset_string = self.temporal_read_optional_offset_string(like)?;
-        let requested_second = self.temporal_read_optional_integer(like, "second", 0, 59)?;
+        let requested_second = self.temporal_read_optional_time_field(like, "second")?;
         let requested_year = self.temporal_read_optional_integer(like, "year", -9_999, 9_999)?;
-        if [
-            requested_day,
-            era_year_num,
-            requested_hour,
-            requested_microsecond,
-            requested_millisecond,
-            requested_minute,
-            requested_month,
-            requested_nanosecond,
-            requested_second,
-            requested_year,
-        ]
-        .iter()
-        .all(Option::is_none)
+        if [requested_day, era_year_num, requested_month, requested_year]
+            .iter()
+            .all(Option::is_none)
+            && [
+                requested_hour,
+                requested_microsecond,
+                requested_millisecond,
+                requested_minute,
+                requested_nanosecond,
+                requested_second,
+            ]
+            .iter()
+            .all(Option::is_none)
             && era_s.is_none()
             && month_code_s.is_none()
             && offset_string.is_none()
@@ -461,7 +432,11 @@ impl Vm {
         // `ToPositiveIntegerWithTruncation` has no upper bound: `date.with({
         // day: daysInMonth + 1 })` must reach the calendar's own `overflow`
         // regulation, per `wrapping-at-end-of-month-*.js`.
-        fields.day = Some(requested_day.unwrap_or(i32::from(existing_fields.day)) as u8);
+        fields.day = Some(
+            requested_day
+                .unwrap_or(i32::from(existing_fields.day))
+                .min(i32::from(u8::MAX)) as u8,
+        );
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
@@ -486,14 +461,24 @@ impl Vm {
             existing.calendar.clone(),
             date,
         );
-        result.hour = requested_hour.unwrap_or(i32::from(existing.hour)) as u8;
-        result.minute = requested_minute.unwrap_or(i32::from(existing.minute)) as u8;
-        result.second = requested_second.unwrap_or(i32::from(existing.second)) as u8;
-        result.millisecond =
-            requested_millisecond.unwrap_or(i32::from(existing.millisecond)) as u16;
-        result.microsecond =
-            requested_microsecond.unwrap_or(i32::from(existing.microsecond)) as u16;
-        result.nanosecond = requested_nanosecond.unwrap_or(i32::from(existing.nanosecond)) as u16;
+        // `RegulateTime`, once the date has resolved.
+        let time = Self::temporal_regulate_time(
+            [
+                requested_hour.unwrap_or(i64::from(existing.hour)),
+                requested_minute.unwrap_or(i64::from(existing.minute)),
+                requested_second.unwrap_or(i64::from(existing.second)),
+                requested_millisecond.unwrap_or(i64::from(existing.millisecond)),
+                requested_microsecond.unwrap_or(i64::from(existing.microsecond)),
+                requested_nanosecond.unwrap_or(i64::from(existing.nanosecond)),
+            ],
+            reject,
+        )?;
+        result.hour = time.0;
+        result.minute = time.1;
+        result.second = time.2;
+        result.millisecond = time.3;
+        result.microsecond = time.4;
+        result.nanosecond = time.5;
 
         let zone = temporal_zoned_date_time_zone(&existing);
         let offset_nanoseconds = match offset_string.as_deref() {
@@ -1161,10 +1146,14 @@ impl Vm {
             let mode =
                 self.temporal_rounding_mode(&options, blueice_ecma402::NumberRoundingMode::Trunc)?;
             let smallest_unit = self.temporal_unit_option(&options, "smallestUnit", false)?;
-            let smallest_unit = Self::temporal_time_unit(smallest_unit, "smallestUnit", false)?;
             let show_time_zone = self
                 .temporal_string_option(&options, "timeZoneName", &["auto", "never", "critical"])?
                 .unwrap_or_else(|| "auto".into());
+            // Only now that every option has been read is `smallestUnit`
+            // judged: a date unit is a `RangeError`, but it must not stop
+            // `timeZoneName` from being read first
+            // (`toString/options-read-before-algorithmic-validation.js`).
+            let smallest_unit = Self::temporal_time_unit(smallest_unit, "smallestUnit", false)?;
             let (precision, unit, increment) = match smallest_unit {
                 Some(rounding::TimeUnit::Minute) => {
                     (SecondsPrecision::Minute, rounding::TimeUnit::Minute, 1)
@@ -1656,6 +1645,16 @@ pub(super) fn temporal_interpret_offset(
             .epoch_nanoseconds_for(date, time, disambiguation)
             .map_err(temporal_resolution_error);
     };
+    // `InterpretISODateTimeOffset` step 6: only the `prefer`/`reject` paths
+    // (those that look the wall-clock reading up in the zone) need the
+    // wall-clock *date* itself to be within +/-10^8 days of the epoch --
+    // `use` and `ignore` only need the resulting instant to be in range, which
+    // the callers check. So `-271821-04-19T23:00-01:00[-01:00]` names the
+    // minimum instant but is still a `RangeError` under `prefer`/`reject`
+    // (`from/argument-string-limits.js`).
+    if matches!(offset_option, "prefer" | "reject") {
+        check_iso_days_range(date)?;
+    }
     let possible = zone.possible_epoch_nanoseconds(date, time);
     for candidate in &possible {
         let candidate_offset = zone.offset_nanoseconds_for(candidate);
@@ -1674,6 +1673,27 @@ pub(super) fn temporal_interpret_offset(
             .epoch_nanoseconds_for(date, time, disambiguation)
             .map_err(temporal_resolution_error),
     }
+}
+
+/// What [`Vm::temporal_parse_zoned_date_time_string`] settles from a
+/// `TemporalZonedDateTimeString` before `options` is read.
+pub(in super::super) struct ParsedZonedDateTimeString {
+    parsed: iso::Parsed,
+    zone: time_zone::TimeZone,
+    calendar: String,
+}
+
+/// `CheckISODaysRange`: the date is within 10^8 days of the epoch.
+fn check_iso_days_range(date: epoch::CivilDate) -> Result<(), RuntimeError> {
+    let days = epoch::nanoseconds_since_epoch(date, (0, 0, 0, 0, 0, 0), 0)
+        / BigInt::from(86_400_000_000_000_i64);
+    let limit = BigInt::from(100_000_000);
+    if days > limit || days < -limit {
+        return Err(RuntimeError::RangeError(
+            "the date is outside the supported range".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// `FormatUTCOffsetNanoseconds`: an *exact* `±HH:MM[:SS[.sssssssss]]`

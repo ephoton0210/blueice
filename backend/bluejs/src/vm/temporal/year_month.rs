@@ -107,9 +107,8 @@ impl Vm {
             }
             None
         };
-        let requested_month = self.temporal_read_optional_integer(bag, "month", 1, 99)?;
-        let month_code_s =
-            self.temporal_read_optional_string(bag, "monthCode", "invalid Temporal month code")?;
+        let requested_month = self.temporal_read_optional_positive_integer(bag, "month")?;
+        let month_code_s = self.temporal_read_month_code(bag)?;
         // Unbounded at the field-reading stage (`ToIntegerWithTruncation`),
         // matching `temporal_year_month_with`'s own identical fix's doc
         // comment -- `iso::is_year_month_within_limits` below still
@@ -143,7 +142,6 @@ impl Vm {
                 let resolved_options = self.temporal_options(options)?;
                 self.temporal_overflow_option(&resolved_options)?
             }
-            OverflowInput::Resolved(reject) => reject,
         };
         let calendar_kind = calendar::calendar_kind(&calendar)
             .expect("temporal_calendar_identifier validates the calendar identifier");
@@ -152,7 +150,7 @@ impl Vm {
             era_year: era_year_num,
             extended_year: requested_year,
             month_code: month_code_s.as_deref(),
-            ordinal_month: requested_month.map(|value| value as u8),
+            ordinal_month: requested_month.map(|value| value.min(i32::from(u8::MAX)) as u8),
         };
         let date = plain_year_month::year_month_from_fields(calendar_kind, &fields, reject)
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
@@ -216,8 +214,7 @@ impl Vm {
         // `RangeError` before `year` is ever converted (`TypeError`), while
         // a well-formed-but-unsuitable one (`"M99L"`, judged later, once a
         // calendar resolution is attempted) lets `year`'s `TypeError` win.
-        let month_code_s =
-            self.temporal_read_optional_string(bag, "monthCode", "invalid Temporal month code")?;
+        let month_code_s = self.temporal_read_month_code(bag)?;
         if let Some(code) = month_code_s.as_deref() {
             if !plain_month_day::is_well_formed_month_code(code) {
                 return Err(RuntimeError::RangeError(
@@ -268,7 +265,6 @@ impl Vm {
                 let resolved_options = self.temporal_options(options)?;
                 self.temporal_overflow_option(&resolved_options)?
             }
-            OverflowInput::Resolved(reject) => reject,
         };
 
         let calendar_kind = calendar::calendar_kind(&calendar)
@@ -413,9 +409,14 @@ impl Vm {
         let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
             RuntimeError::RangeError("invalid Temporal.PlainYearMonth string".into())
         })?;
+        // The string is parsed strictly *before* `options` is touched, as
+        // `temporal_to_plain_month_day` below already does: an invalid string
+        // reports its `RangeError` with `options` unread, even when `options`
+        // would itself throw (`from/options-wrong-type.js`,
+        // `from/observable-get-overflow-argument-string-invalid.js`).
+        let parsed = self.temporal_value_from_string(TemporalKind::PlainYearMonth, &source)?;
         let resolved_options = self.temporal_options(options)?;
         self.temporal_overflow_option(&resolved_options)?;
-        let parsed = self.temporal_value_from_string(TemporalKind::PlainYearMonth, &source)?;
         if parsed.calendar == "iso8601" {
             return Ok(parsed);
         }
@@ -545,8 +546,7 @@ impl Vm {
             (None, None)
         };
         let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
-        let month_code_s =
-            self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
+        let month_code_s = self.temporal_read_month_code(like)?;
         // `ToIntegerWithTruncation`: unbounded at the field-reading stage
         // for `year` (`CalendarFields.cpp`'s `CalendarField::Year` case)
         // -- the real representable-range check happens once, below,
@@ -675,8 +675,7 @@ impl Vm {
         // sensibly.
         let requested_day = self.temporal_read_optional_integer(like, "day", 1, i32::MAX)?;
         let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
-        let month_code_s =
-            self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
+        let month_code_s = self.temporal_read_month_code(like)?;
         // `ToIntegerWithTruncation`, unbounded at the field-reading stage,
         // matching `built-ins/Temporal/PlainMonthDay/prototype/with/
         // iso-year-used-only-for-overflow.js`: for `PlainMonthDay` a huge
