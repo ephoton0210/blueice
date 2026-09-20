@@ -39,6 +39,23 @@ pub(crate) fn calendar_kind(calendar: &str) -> Option<AnyCalendarKind> {
     })
 }
 
+/// `CalendarMonthsPerYear ( calendar )` for a calendar whose year always has
+/// the same number of months: `13` for the three calendars with a 5/6-day
+/// intercalary `M13` (`coptic`, `ethiopic`, `ethioaa` -- twelve 30-day months
+/// plus that short thirteenth), `12` for every other one. The lunisolar
+/// calendars (`chinese`, `dangi`, `hebrew`) have no constant answer -- their
+/// month count depends on the year, via a leap month -- and Gecko routes them
+/// through a separate leap-month difference algorithm that never asks; a
+/// caller must not use this for them.
+pub(crate) fn calendar_months_per_year(calendar: AnyCalendarKind) -> i64 {
+    match calendar {
+        AnyCalendarKind::Coptic
+        | AnyCalendarKind::Ethiopian
+        | AnyCalendarKind::EthiopianAmeteAlem => 13,
+        _ => 12,
+    }
+}
+
 /// `CalendarSupportsEra ( calendar )`, per Gecko's own `Era.h`
 /// (`development/browser_core/reference/gecko/js/src/builtin/temporal/Era.h`):
 /// every recognized calendar has at least one era except `iso8601`,
@@ -54,6 +71,31 @@ pub(crate) fn calendar_supports_era(calendar: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_intercalary_month_calendars_have_thirteen_months_per_year() {
+        for id in ["coptic", "ethiopic", "ethioaa"] {
+            let kind = calendar_kind(id).unwrap();
+            assert_eq!(calendar_months_per_year(kind), 13, "{id}");
+        }
+        for id in [
+            "iso8601",
+            "gregory",
+            "buddhist",
+            "indian",
+            "islamic",
+            "islamic-civil",
+            "islamic-rgsa",
+            "islamic-tbla",
+            "islamic-umalqura",
+            "japanese",
+            "persian",
+            "roc",
+        ] {
+            let kind = calendar_kind(id).unwrap();
+            assert_eq!(calendar_months_per_year(kind), 12, "{id}");
+        }
+    }
 
     #[test]
     fn only_iso_chinese_and_dangi_lack_era_support() {
