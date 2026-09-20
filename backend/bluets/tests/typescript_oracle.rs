@@ -197,6 +197,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "nullish-coalescing-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/nullish-coalescing-expression/main.ts"),
+        )],
+        expected_stdout: Some("guest:42\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "generic-arithmetic-expression",
         modules: &[ (
             "memory:///main.ts",
@@ -241,6 +250,20 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[ExpectedDiagnostic {
             code: DiagnosticCode::TypeMismatch,
             line: 5,
+        }],
+    },
+    OracleCase {
+        name: "nullish-coalescing-assignment-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/nullish-coalescing-assignment-error/main.ts"
+            ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 6,
         }],
     },
     OracleCase {

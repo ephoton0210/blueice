@@ -1168,6 +1168,14 @@ impl<'a> ModuleChecker<'a> {
                 self.infer_expression(alternate, scope),
             );
         }
+        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["??"], |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            return infer_nullish_coalescing_expression(
+                self.infer_expression(left, scope),
+                self.infer_expression(right, scope),
+            );
+        }
         if let Some((left, _, right)) = top_level_binary_parts(tokens, &["||"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
@@ -1573,6 +1581,11 @@ impl<'a> ModuleChecker<'a> {
             self.check_arithmetic_operators(condition, scope, span);
             self.check_arithmetic_operators(consequent, scope, span);
             self.check_arithmetic_operators(alternate, scope, span);
+            return;
+        }
+        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["??"], generic_call) {
+            self.check_arithmetic_operators(left, scope, span);
+            self.check_arithmetic_operators(right, scope, span);
             return;
         }
         for operators in [&["||"][..], &["&&"][..]] {
@@ -2328,6 +2341,31 @@ fn is_known_primitive_type(value: &Type) -> bool {
 
 fn is_strict_equality_primitive_type(value: &Type) -> bool {
     matches!(value, Type::Boolean | Type::Number | Type::String)
+}
+
+fn infer_nullish_coalescing_expression(left: Type, right: Type) -> Type {
+    match exclude_nullish_type(left) {
+        None => right,
+        Some(left) => merge_conditional_branch_types(left, right),
+    }
+}
+
+fn exclude_nullish_type(value: Type) -> Option<Type> {
+    match value {
+        Type::Null | Type::Undefined => None,
+        Type::Union(values) => {
+            let mut values = values
+                .into_iter()
+                .filter(|value| !matches!(value, Type::Null | Type::Undefined))
+                .collect::<Vec<_>>();
+            match values.len() {
+                0 => None,
+                1 => values.pop(),
+                _ => Some(Type::Union(values)),
+            }
+        }
+        value => Some(value),
+    }
 }
 
 fn merge_conditional_branch_types(consequent: Type, alternate: Type) -> Type {

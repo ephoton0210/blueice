@@ -76,6 +76,31 @@ fn infers_typeof_and_void_unary_expression_types() {
 }
 
 #[test]
+fn infers_nullish_coalescing_after_excluding_null_and_undefined() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const optional: string | undefined = undefined;\n\
+             const label: string = optional ?? 'guest';\n\
+             const count: number = null ?? 42;\n\
+             const invalid: number = undefined ?? 'guest';",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn keeps_bounded_expression_inference_structural() {
     let grouped = crate::syntax::lex("memory:///tokens.ts", "((flag))").unwrap();
     let grouped = &grouped[..grouped.len() - 1];
