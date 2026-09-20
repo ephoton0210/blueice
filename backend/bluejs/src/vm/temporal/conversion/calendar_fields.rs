@@ -420,6 +420,15 @@ impl Vm {
         let mut value = self.heap.temporal_value(object)?.ok_or_else(|| {
             RuntimeError::TypeError("Temporal.withCalendar requires a Temporal receiver".into())
         })?;
+        // `ToTemporalCalendarIdentifier(undefined)` is a `TypeError`: unlike a
+        // property bag's optional `calendar` field (which defaults to
+        // `iso8601`, and is what `temporal_calendar_identifier` models), the
+        // `withCalendar` argument is required (`withCalendar/missing-argument.js`).
+        if *calendar == Value::Undefined {
+            return Err(RuntimeError::TypeError(
+                "Temporal.withCalendar requires a calendar argument".into(),
+            ));
+        }
         value.calendar = self.temporal_calendar_identifier(calendar)?;
         self.alloc_temporal_value(value, false)
     }

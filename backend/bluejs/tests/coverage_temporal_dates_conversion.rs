@@ -305,10 +305,14 @@ fn conversions_through_equals_accept_zoned_and_plain_values() {
       same(() => D.compare(utc, "2023-11-14"), 0);
       same(() => D.compare(off, utc), 1);
       same(() => DT.compare(utc, off), -1);
-      // a named IANA zone is not supported by this conversion
-      range(() => D.from("2023-11-14").equals(named));
-      range(() => DT.from("2023-11-14T22:13:20").equals(named));
-      range(() => D.compare(named, "2023-11-14"));
+      // a named IANA zone converts through its local (wall-clock) slots too:
+      // Paris is UTC+1 in November, so the instant is 2023-11-14T23:13:20.123456789
+      same(() => D.from("2023-11-14").equals(named), true);
+      same(() => D.from("2023-11-15").equals(named), false);
+      same(() => DT.from("2023-11-14T23:13:20.123456789").equals(named), true);
+      same(() => DT.from("2023-11-14T22:13:20.123456789").equals(named), false);
+      same(() => D.compare(named, "2023-11-14"), 0);
+      same(() => D.compare("2023-11-15", named), 1);
       // options are validated on the object fast paths too
       same(() => D.from("2023-11-14").equals({ year: 2023, month: 11, day: 14 }), true);
       same(() => DT.from("2023-11-14T01:02:03").equals({ year: 2023, month: 11, day: 14, hour: 1, minute: 2, second: 3 }), true);
@@ -700,8 +704,12 @@ fn with_replaces_fields_and_validates_the_like_object() {
       same(() => dt.with({ day: 1 }).toString(), "2020-05-01T07:08:09.010011012");
       range(() => dt.with({ hour: 24 }, { overflow: "reject" }));
       range(() => dt.with({ minute: 60 }, { overflow: "reject" }));
-      range(() => dt.with({ hour: -1 }));
-      range(() => dt.with({ millisecond: 1000 }));
+      // an out-of-range time field is `RegulateTime`'s: clamped by default
+      // (`overflow: "constrain"`), rejected only under `"reject"`
+      same(() => dt.with({ hour: -1 }).toString(), "2020-05-06T00:08:09.010011012");
+      same(() => dt.with({ millisecond: 1000 }).toString(), "2020-05-06T07:08:09.999011012");
+      range(() => dt.with({ hour: -1 }, { overflow: "reject" }));
+      range(() => dt.with({ millisecond: 1000 }, { overflow: "reject" }));
       range(() => dt.with({ hour: Infinity }));
       type(() => dt.with({ }));
       type(() => dt.with({ calendar: "iso8601", hour: 1 }));

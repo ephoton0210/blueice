@@ -747,21 +747,6 @@ fn parses_utc_designators_and_offsets_down_to_nanoseconds() {
     for source in ["2022-09-15+00:00", "2022-09-15-02:30", "2022-09-15Z"] {
         assert_eq!(parse_date_time(source), None, "{source}");
     }
-    // A fixed-offset time-zone identifier, read on its own.
-    assert_eq!(
-        parse_offset_identifier_nanoseconds("+01:00"),
-        Some(3_600_000_000_000)
-    );
-    assert_eq!(
-        parse_offset_identifier_nanoseconds("-0130"),
-        Some(-5_400_000_000_000)
-    );
-    assert_eq!(parse_offset_identifier_nanoseconds("Z"), None);
-    assert_eq!(parse_offset_identifier_nanoseconds("+25:00"), None);
-    assert_eq!(parse_offset_identifier_nanoseconds("+00:00junk"), None);
-    // An identifier stays minute-precision: sub-minute belongs to a
-    // string's own offset, never to its zone annotation.
-    assert_eq!(parse_offset_identifier_nanoseconds("-07:00:01"), None);
 }
 
 #[test]

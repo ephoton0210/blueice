@@ -37,28 +37,27 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let a = self.temporal_to_matching(one, kind, &Value::Undefined)?;
         let b = self.temporal_to_matching(two, kind, &Value::Undefined)?;
-        let ord = (
-            a.year,
-            a.month,
-            a.day,
-            a.hour,
-            a.minute,
-            a.second,
-            a.millisecond,
-            a.microsecond,
-            a.nanosecond,
-        )
-            .cmp(&(
-                b.year,
-                b.month,
-                b.day,
-                b.hour,
-                b.minute,
-                b.second,
-                b.millisecond,
-                b.microsecond,
-                b.nanosecond,
-            ));
+        // A `PlainDate` has no time: `CompareISODate` judges the date alone.
+        // A value converted from a string such as `"2000-05-02T15:23"` still
+        // carries the time it parsed, which must not make it unequal to
+        // `2000-05-02` (`compare/argument-string-time-separators.js`,
+        // `compare/leap-second.js`).
+        let key = |value: &TemporalValue| {
+            let time = if kind == TemporalKind::PlainDateTime {
+                (
+                    value.hour,
+                    value.minute,
+                    value.second,
+                    value.millisecond,
+                    value.microsecond,
+                    value.nanosecond,
+                )
+            } else {
+                (0, 0, 0, 0, 0, 0)
+            };
+            ((value.year, value.month, value.day), time)
+        };
+        let ord = key(&a).cmp(&key(&b));
         Ok(Value::Number(match ord {
             std::cmp::Ordering::Less => -1.0,
             std::cmp::Ordering::Equal => 0.0,

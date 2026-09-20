@@ -87,6 +87,53 @@ impl Vm {
         Ok(value)
     }
 
+    /// The representable-range check `CreateTemporalDate`,
+    /// `CreateTemporalDateTime` and `CreateTemporalYearMonth` all make before
+    /// building an object, on the value's stored ISO fields: a date's noon must
+    /// be representable (`ISODateWithinLimits`), a date-time itself
+    /// (`ISODateTimeWithinLimits`, one day narrower at the low end), a
+    /// year-month its own (`ISOYearMonthWithinLimits`). Every creation path --
+    /// the numeric constructors, `from`, `with`, `withPlainTime`,
+    /// `toPlainDateTime`, `toPlainDate`, `round`, arithmetic -- ends in
+    /// [`Vm::alloc_temporal_value`], so making the check there covers them all
+    /// instead of each caller remembering (the constructors and several
+    /// conversions did not).
+    ///
+    /// Only these three kinds are judged here: an `Instant`/`ZonedDateTime` is
+    /// bounded by its epoch nanoseconds, a `PlainTime` has no range, and a
+    /// `PlainMonthDay`'s reference year is chosen by its calendar.
+    pub(in super::super::super) fn temporal_check_creation_limits(
+        value: &TemporalValue,
+    ) -> Result<(), RuntimeError> {
+        let date = (value.year, value.month, value.day);
+        let within_limits = match value.kind {
+            TemporalKind::PlainDate => epoch::is_date_within_limits(date),
+            TemporalKind::PlainDateTime => epoch::is_date_time_within_limits(
+                date,
+                (
+                    value.hour,
+                    value.minute,
+                    value.second,
+                    value.millisecond,
+                    value.microsecond,
+                    value.nanosecond,
+                ),
+            ),
+            TemporalKind::PlainYearMonth => {
+                iso::is_year_month_within_limits(value.year, value.month)
+            }
+            _ => true,
+        };
+        if within_limits {
+            Ok(())
+        } else {
+            Err(RuntimeError::RangeError(format!(
+                "Temporal.{} is outside the supported range",
+                value.kind.name()
+            )))
+        }
+    }
+
     pub(in super::super::super) fn temporal_unit_to_date_unit(
         unit: rounding::TemporalUnit,
     ) -> plain_date::DateUnit {
@@ -111,22 +158,13 @@ impl Vm {
                         (temporal.year, temporal.month, temporal.day),
                         temporal.calendar.clone(),
                     )),
-                    TemporalKind::ZonedDateTime => {
-                        let offset = if temporal.time_zone == "UTC" {
-                            0
-                        } else {
-                            iso::parse_offset_identifier_nanoseconds(&temporal.time_zone)
-                                .ok_or_else(|| {
-                                    RuntimeError::RangeError(
-                                        "Temporal.PlainDate conversion supports UTC and fixed \
-                                         offsets"
-                                            .into(),
-                                    )
-                                })?
-                        };
-                        let local = &temporal.epoch_nanoseconds + BigInt::from(offset);
-                        Some((epoch::instant_fields(&local).0, temporal.calendar.clone()))
-                    }
+                    // A `ZonedDateTime`'s stored ISO fields are already its local
+                    // wall-clock ones (in any zone, named or fixed-offset), and
+                    // `ToTemporalDate` reads exactly those slots.
+                    TemporalKind::ZonedDateTime => Some((
+                        (temporal.year, temporal.month, temporal.day),
+                        temporal.calendar.clone(),
+                    )),
                     _ => None,
                 };
                 if let Some((date, calendar)) = resolved {
@@ -187,23 +225,19 @@ impl Vm {
                         (0, 0, 0, 0, 0, 0),
                         temporal.calendar.clone(),
                     )),
-                    TemporalKind::ZonedDateTime => {
-                        let offset = if temporal.time_zone == "UTC" {
-                            0
-                        } else {
-                            iso::parse_offset_identifier_nanoseconds(&temporal.time_zone)
-                                .ok_or_else(|| {
-                                    RuntimeError::RangeError(
-                                        "Temporal.PlainDateTime conversion supports UTC and \
-                                         fixed offsets"
-                                            .into(),
-                                    )
-                                })?
-                        };
-                        let local = &temporal.epoch_nanoseconds + BigInt::from(offset);
-                        let (date, time) = epoch::instant_fields(&local);
-                        Some((date, time, temporal.calendar.clone()))
-                    }
+                    // As for `PlainDate` above: the local wall-clock slots.
+                    TemporalKind::ZonedDateTime => Some((
+                        (temporal.year, temporal.month, temporal.day),
+                        (
+                            temporal.hour,
+                            temporal.minute,
+                            temporal.second,
+                            temporal.millisecond,
+                            temporal.microsecond,
+                            temporal.nanosecond,
+                        ),
+                        temporal.calendar.clone(),
+                    )),
                     _ => None,
                 };
                 if let Some((date, time, calendar)) = resolved {

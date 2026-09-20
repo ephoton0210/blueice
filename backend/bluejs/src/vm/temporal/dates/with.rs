@@ -65,24 +65,30 @@ impl Vm {
         } else {
             (None, None)
         };
+        // Time fields are `ToIntegerWithTruncation`'d without an upper bound:
+        // an out-of-range value is `RegulateTime`'s to clamp (`constrain`) or
+        // reject, once `overflow` is known -- not something the field read
+        // may throw for (`with/overflow-undefined.js`).
         let (requested_hour, requested_microsecond, requested_millisecond, requested_minute) =
             if is_date_time {
                 (
-                    self.temporal_read_optional_integer(like, "hour", 0, 23)?,
-                    self.temporal_read_optional_integer(like, "microsecond", 0, 999)?,
-                    self.temporal_read_optional_integer(like, "millisecond", 0, 999)?,
-                    self.temporal_read_optional_integer(like, "minute", 0, 59)?,
+                    self.temporal_read_optional_time_field(like, "hour")?,
+                    self.temporal_read_optional_time_field(like, "microsecond")?,
+                    self.temporal_read_optional_time_field(like, "millisecond")?,
+                    self.temporal_read_optional_time_field(like, "minute")?,
                 )
             } else {
                 (None, None, None, None)
             };
-        let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
+        // `month` is a positive integer with no upper bound either; the
+        // calendar constrains (or rejects) it against its own month count.
+        let requested_month = self.temporal_read_optional_integer(like, "month", 1, i32::MAX)?;
         let month_code_s =
             self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
         let (requested_nanosecond, requested_second) = if is_date_time {
             (
-                self.temporal_read_optional_integer(like, "nanosecond", 0, 999)?,
-                self.temporal_read_optional_integer(like, "second", 0, 59)?,
+                self.temporal_read_optional_time_field(like, "nanosecond")?,
+                self.temporal_read_optional_time_field(like, "second")?,
             )
         } else {
             (None, None)
@@ -163,10 +169,15 @@ impl Vm {
             }
         }
 
+        // The calendar's own `overflow` handling does the real range check, so
+        // an oversized month/day only has to stay out of range once narrowed to
+        // the `u8` the calendar takes: saturate instead of wrapping (`259 as
+        // u8` is 3, which would silently select March).
+        let saturate = |value: i32| value.min(i32::from(u8::MAX)) as u8;
         if let Some(month_code) = month_code_s.as_deref() {
             fields.month_code = Some(month_code.as_bytes());
         } else if let Some(month) = requested_month {
-            fields.ordinal_month = Some(month as u8);
+            fields.ordinal_month = Some(saturate(month));
         } else {
             fields.month_code = Some(existing_fields.month_code.as_bytes());
         }
@@ -176,7 +187,9 @@ impl Vm {
         // regulation, matching `plain_month_day.rs`'s identical fix and
         // Test262's `wrapping-at-end-of-month-*.js` (`date.with({ day:
         // daysInMonth + 1 })` constrains rather than field-bound-rejecting).
-        fields.day = Some(requested_day.unwrap_or(i32::from(existing_fields.day)) as u8);
+        fields.day = Some(saturate(
+            requested_day.unwrap_or(i32::from(existing_fields.day)),
+        ));
 
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
@@ -192,7 +205,7 @@ impl Vm {
         // `month` is only cross-checked when `monthCode` was also supplied.
         if requested_year.is_some_and(|year| year != date.year().extended_year())
             || (month_code_s.is_some()
-                && requested_month.is_some_and(|month| month as u8 != date.month().ordinal))
+                && requested_month.is_some_and(|month| saturate(month) != date.month().ordinal))
         {
             return Err(RuntimeError::RangeError(
                 "inconsistent Temporal calendar fields".into(),
@@ -201,16 +214,42 @@ impl Vm {
         let mut result =
             Self::temporal_value_from_calendar_date(existing.kind, existing.calendar.clone(), date);
         if is_date_time {
-            result.hour = requested_hour.unwrap_or(i32::from(existing.hour)) as u8;
-            result.minute = requested_minute.unwrap_or(i32::from(existing.minute)) as u8;
-            result.second = requested_second.unwrap_or(i32::from(existing.second)) as u8;
-            result.millisecond =
-                requested_millisecond.unwrap_or(i32::from(existing.millisecond)) as u16;
-            result.microsecond =
-                requested_microsecond.unwrap_or(i32::from(existing.microsecond)) as u16;
-            result.nanosecond =
-                requested_nanosecond.unwrap_or(i32::from(existing.nanosecond)) as u16;
+            // `InterpretTemporalDateTimeFields`: the date first (above), then
+            // `RegulateTime` on the merged time fields under the same `overflow`.
+            let (hour, minute, second, millisecond, microsecond, nanosecond) =
+                Self::temporal_regulate_time(
+                    [
+                        requested_hour.unwrap_or(i64::from(existing.hour)),
+                        requested_minute.unwrap_or(i64::from(existing.minute)),
+                        requested_second.unwrap_or(i64::from(existing.second)),
+                        requested_millisecond.unwrap_or(i64::from(existing.millisecond)),
+                        requested_microsecond.unwrap_or(i64::from(existing.microsecond)),
+                        requested_nanosecond.unwrap_or(i64::from(existing.nanosecond)),
+                    ],
+                    reject,
+                )?;
+            result.hour = hour;
+            result.minute = minute;
+            result.second = second;
+            result.millisecond = millisecond;
+            result.microsecond = microsecond;
+            result.nanosecond = nanosecond;
         }
         self.alloc_temporal_value(result, false)
+    }
+
+    /// One optional time field of a property bag: `Get`, then immediately
+    /// `ToIntegerWithTruncation` (a non-finite number is a `RangeError`), with no
+    /// range check -- that is `RegulateTime`'s job. Kept as its own step so the
+    /// read/convert interleave stays observable in the spec's alphabetical order.
+    fn temporal_read_optional_time_field(
+        &mut self,
+        like: &Value,
+        name: &'static str,
+    ) -> Result<Option<i64>, RuntimeError> {
+        let value = self.get_property(like, &name.into())?;
+        (!matches!(value, Value::Undefined))
+            .then(|| self.temporal_truncated_integer(&value, name))
+            .transpose()
     }
 }

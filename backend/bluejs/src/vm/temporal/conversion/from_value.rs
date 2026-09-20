@@ -417,6 +417,9 @@ impl Vm {
         value: TemporalValue,
         use_new_target: bool,
     ) -> Result<Value, RuntimeError> {
+        // Range first: `CreateTemporalDate` (and the others) throw before
+        // `OrdinaryCreateFromConstructor` ever reads `newTarget.prototype`.
+        Self::temporal_check_creation_limits(&value)?;
         self.temporal_global()?;
         let constructor = self.globals[&format!("%Temporal.{}%", value.kind.name())];
         let default = self
@@ -534,13 +537,21 @@ impl Vm {
                 }
             }
             if matches!(kind, TemporalKind::PlainDate | TemporalKind::PlainDateTime) {
-                // `options` is passed through unread here -- `ToTemporalDate`/
-                // `ToTemporalDateTime`'s real algorithm reads `fields` before
-                // `resolvedOptions`, which `temporal_plain_date_from_fields`
-                // itself now does internally (see its own doc comment).
-                return self
-                    .temporal_plain_date_from_fields(kind, value, OverflowInput::Options(options))
-                    .and_then(|temporal| self.alloc_temporal_value(temporal, false));
+                // `Temporal.PlainDate.from`/`PlainDateTime.from` *are*
+                // `ToTemporalDate`/`ToTemporalDateTime`: a `PlainDate`,
+                // `PlainDateTime` or `ZonedDateTime` argument is converted by
+                // its internal slots -- never its (observable) getters -- and
+                // any other object is read as a property bag, with `options`
+                // left unread until after that (`temporal_plain_date_from_fields`
+                // documents why). Both conversions already do exactly this
+                // (`from/argument-plaindatetime.js`, `argument-plaindate.js`,
+                // `argument-zoneddatetime-slots.js`).
+                let temporal = if kind == TemporalKind::PlainDate {
+                    self.temporal_to_plain_date(value, options)?
+                } else {
+                    self.temporal_to_plain_date_time(value, options)?
+                };
+                return self.alloc_temporal_value(temporal, false);
             }
         }
         let source = self.coerce_string(value)?;
