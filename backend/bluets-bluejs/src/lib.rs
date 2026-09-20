@@ -1397,6 +1397,7 @@ fn decode_string_escapes(module: &str, token: &Token, body: &str) -> Result<Stri
             '\\' => '\\',
             '\'' => '\'',
             '"' => '"',
+            '`' => '`',
             'n' => '\n',
             'r' => '\r',
             't' => '\t',
@@ -1421,12 +1422,6 @@ fn lower_template(module: &str, token: &Token) -> Result<bluejs::Expr, BridgeErr
         .strip_prefix('`')
         .and_then(|text| text.strip_suffix('`'))
         .ok_or_else(|| unsupported(token_span(module, token), "invalid template token"))?;
-    if body.contains('\\') {
-        return Err(unsupported(
-            token_span(module, token),
-            "template escapes are not yet in the v1 direct bridge subset",
-        ));
-    }
     if body.contains("${") {
         return Err(unsupported(
             token_span(module, token),
@@ -1434,7 +1429,7 @@ fn lower_template(module: &str, token: &Token) -> Result<bluejs::Expr, BridgeErr
         ));
     }
     Ok(bluejs::Expr::Template {
-        quasis: vec![body.into()],
+        quasis: vec![decode_string_escapes(module, token, body)?.into()],
         expressions: Vec::new(),
     })
 }
@@ -2049,6 +2044,23 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::String("BlueTS!".into())
+        );
+    }
+
+    #[test]
+    fn lowers_checked_escaped_template_literals() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const label: string = `Ada\\nGrace`; label;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("Ada\nGrace".into())
         );
     }
 
