@@ -63,21 +63,18 @@ impl Vm {
                 }
             }
             TemporalKind::ZonedDateTime => {
-                value.epoch_nanoseconds = match native::argument(args, 0) {
-                    Value::BigInt(value) => value.clone(),
-                    _ => {
-                        return Err(RuntimeError::TypeError(
-                            "Temporal.ZonedDateTime requires epoch nanoseconds as a BigInt".into(),
-                        ));
-                    }
-                };
+                // `ToBigInt`, exactly as `Temporal.Instant`'s constructor does:
+                // a Boolean is `0n`/`1n` and a numeric String parses, while a
+                // Number, `undefined`, `null` or Symbol is a `TypeError`
+                // (`ZonedDateTime/argument-convert.js`).
+                value.epoch_nanoseconds = self.temporal_to_big_int(native::argument(args, 0))?;
                 if !epoch::is_in_instant_range(&value.epoch_nanoseconds) {
                     return Err(RuntimeError::RangeError(
                         "Temporal.ZonedDateTime epoch nanoseconds are outside the supported range"
                             .into(),
                     ));
                 }
-                let zone = self.temporal_time_zone(native::argument(args, 1))?;
+                let zone = self.temporal_constructor_time_zone(native::argument(args, 1))?;
                 // The constructor's own third positional argument is a bare
                 // calendar ID (like `PlainDate`'s), not
                 // `ToTemporalCalendarIdentifier`'s wider string grammar --
@@ -306,7 +303,17 @@ impl Vm {
         if kind == TemporalKind::PlainTime {
             return Ok(Self::plain_time_value(time));
         }
-        let (hour, minute, second, millisecond, microsecond, nanosecond) = time;
+        // A date-only type keeps none of a date-time string's time of day: a
+        // `PlainDate` parsed from `"2016-12-31T23:59:60"` is `2016-12-31`
+        // exactly, or it would compare unequal to `2016-12-31`
+        // (`PlainDate/compare/leap-second.js`). Only the range check above
+        // has any use for `time`.
+        let (hour, minute, second, millisecond, microsecond, nanosecond) = match kind {
+            TemporalKind::PlainDate
+            | TemporalKind::PlainYearMonth
+            | TemporalKind::PlainMonthDay => (0, 0, 0, 0, 0, 0),
+            _ => time,
+        };
         // A year-month or month-day string that never spelled the missing
         // half cannot be resolved in a calendar whose months do not line up
         // with ISO's, so those combinations are out of range rather than
@@ -454,114 +461,86 @@ impl Vm {
         result
     }
 
+    /// `Temporal.<Type>.from`: for every type it is exactly the matching
+    /// `ToTemporal<Type>` abstract operation, so this only dispatches. That
+    /// includes `PlainDate`/`PlainDateTime`: an earlier version of this
+    /// function handled them itself, `ToString`-ing any primitive (so
+    /// `PlainDate.from(19761118)` parsed as a date and `PlainDate.from()`
+    /// was a `RangeError`) and reading a `PlainDateTime`/`ZonedDateTime`
+    /// argument through its property getters instead of its internal slots.
     pub(in super::super::super) fn temporal_from(
         &mut self,
         kind: TemporalKind,
         value: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        if kind == TemporalKind::PlainTime {
+        match kind {
             // `ToTemporalTime` covers every accepted argument shape at once
             // (PlainTime/PlainDateTime/ZonedDateTime, property bag, string)
             // and is the only `from` that reads the `overflow` option.
-            let base = self.stack.len();
-            let result = self
-                .temporal_to_plain_time(value, options)
-                .and_then(|fields| {
-                    self.alloc_temporal_value(Self::plain_time_value(fields), false)
-                });
-            self.stack.truncate(base);
-            return result;
-        }
-        if kind == TemporalKind::Duration {
+            TemporalKind::PlainTime => {
+                let base = self.stack.len();
+                let result = self
+                    .temporal_to_plain_time(value, options)
+                    .and_then(|fields| {
+                        self.alloc_temporal_value(Self::plain_time_value(fields), false)
+                    });
+                self.stack.truncate(base);
+                result
+            }
             // `Temporal.Duration.from` is exactly `ToTemporalDuration`, which
             // already accepts a Duration, an ISO string and a property bag.
-            let record = self.temporal_duration_from_value(value)?;
-            return self.alloc_temporal_value(Self::temporal_duration_value(record), false);
-        }
-        if kind == TemporalKind::Instant {
+            TemporalKind::Duration => {
+                let record = self.temporal_duration_from_value(value)?;
+                self.alloc_temporal_value(Self::temporal_duration_value(record), false)
+            }
             // `Temporal.Instant.from` *is* `ToTemporalInstant`, including its
             // ZonedDateTime fast path and its TypeError for non-strings.
-            let epoch_nanoseconds = self.temporal_to_instant_epoch(value)?;
-            return self.instant_from_epoch_nanoseconds(epoch_nanoseconds);
-        }
-        if kind == TemporalKind::PlainYearMonth {
-            // `Temporal.PlainYearMonth.from` *is* `ToTemporalYearMonth`,
-            // which (unlike `PlainDate`/`PlainDateTime`) is handled entirely
-            // by one function rather than split between this generic
-            // dispatcher's object/string branches below -- both a
-            // property-bag object and a calendar-annotated string need the
-            // same `CalendarYearMonthFromFields` re-resolution.
-            let resolved = self.temporal_to_plain_year_month(value, options)?;
-            return self.alloc_temporal_value(resolved, false);
-        }
-        if kind == TemporalKind::PlainMonthDay {
-            // Same rationale as `PlainYearMonth` above, for
-            // `ToTemporalMonthDay`.
-            let resolved = self.temporal_to_plain_month_day(value, options)?;
-            return self.alloc_temporal_value(resolved, false);
-        }
-        if kind == TemporalKind::ZonedDateTime {
-            // `Temporal.ZonedDateTime.from` *is* `ToTemporalZonedDateTime`,
-            // which (like `PlainYearMonth`/`PlainMonthDay` above) needs its
-            // own dedicated conversion rather than the generic object/string
-            // dispatcher below: a property bag needs a `timeZone` (and
-            // optional `offset`) read alongside the calendar-date fields,
-            // and a string needs a *mandatory* time-zone annotation resolved
-            // through real zone/disambiguation logic -- neither of which the
-            // generic dispatcher (built for the calendar-only plain types)
-            // has any notion of.
-            let resolved = self.temporal_to_zoned_date_time(value, options)?;
-            return self.alloc_temporal_value(resolved, false);
-        }
-        if let Some(object) = value.object_id() {
-            if let Some(temporal) = self.heap.temporal_value(object)? {
-                if temporal.kind == kind {
-                    // Options are still read (for validation/ordering
-                    // parity) even though a same-kind argument is used
-                    // as-is -- every other `ToTemporal*` conversion's own
-                    // identical fast path already does this
-                    // (`temporal_to_plain_date`/`temporal_to_plain_date_time`/
-                    // `temporal_to_plain_year_month`/
-                    // `temporal_to_plain_month_day`/
-                    // `temporal_to_zoned_date_time`); this generic
-                    // dispatcher's own fast path had simply never had it
-                    // added (`order-of-operations.js`'s "order of
-                    // operations when cloning a PlainDate instance" case).
-                    let resolved_options = self.temporal_options(options)?;
-                    self.temporal_overflow_option(&resolved_options)?;
-                    return self.alloc_temporal_value(temporal, false);
+            TemporalKind::Instant => {
+                let epoch_nanoseconds = self.temporal_to_instant_epoch(value)?;
+                self.instant_from_epoch_nanoseconds(epoch_nanoseconds)
+            }
+            // `ToTemporalYearMonth`/`ToTemporalMonthDay`/`ToTemporalZonedDateTime`
+            // each handle both a property-bag object and a
+            // calendar-annotated string with one function (the bag and the
+            // string need the same `CalendarYearMonthFromFields`-style
+            // re-resolution; a `ZonedDateTime` bag also needs `timeZone`/
+            // `offset` and real disambiguation logic).
+            TemporalKind::PlainYearMonth => {
+                let base = self.stack.len();
+                let result = self
+                    .temporal_to_plain_year_month(value, options)
+                    .and_then(|resolved| self.alloc_temporal_value(resolved, false));
+                self.stack.truncate(base);
+                result
+            }
+            TemporalKind::PlainMonthDay => {
+                let base = self.stack.len();
+                let result = self
+                    .temporal_to_plain_month_day(value, options)
+                    .and_then(|resolved| self.alloc_temporal_value(resolved, false));
+                self.stack.truncate(base);
+                result
+            }
+            TemporalKind::ZonedDateTime => {
+                let base = self.stack.len();
+                let result = self
+                    .temporal_to_zoned_date_time(value, options)
+                    .and_then(|resolved| self.alloc_temporal_value(resolved, false));
+                self.stack.truncate(base);
+                result
+            }
+            TemporalKind::PlainDate | TemporalKind::PlainDateTime => {
+                let base = self.stack.len();
+                let result = if kind == TemporalKind::PlainDate {
+                    self.temporal_to_plain_date(value, options)
+                } else {
+                    self.temporal_to_plain_date_time(value, options)
                 }
-            }
-            if matches!(kind, TemporalKind::PlainDate | TemporalKind::PlainDateTime) {
-                // `options` is passed through unread here -- `ToTemporalDate`/
-                // `ToTemporalDateTime`'s real algorithm reads `fields` before
-                // `resolvedOptions`, which `temporal_plain_date_from_fields`
-                // itself now does internally (see its own doc comment).
-                return self
-                    .temporal_plain_date_from_fields(kind, value, OverflowInput::Options(options))
-                    .and_then(|temporal| self.alloc_temporal_value(temporal, false));
+                .and_then(|resolved| self.alloc_temporal_value(resolved, false));
+                self.stack.truncate(base);
+                result
             }
         }
-        let source = self.coerce_string(value)?;
-        let source = source
-            .to_utf8()
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal string".into()))?;
-        // The string is parsed (and, on failure, throws `RangeError`)
-        // strictly *before* `options`/`overflow` are ever read --
-        // `observable-get-overflow-argument-string-invalid.js` pins this
-        // exact ordering: an ISO-invalid string must throw without
-        // `options.overflow` ever being read. `options`/`overflow` is
-        // still read (for validation/ordering parity) once parsing
-        // succeeds, even though a fully-specified ISO string never
-        // actually needs to regulate anything -- every other
-        // `ToTemporal*` conversion's own string branch already does this
-        // (e.g. `temporal_to_plain_date`'s), and `order-of-operations.js`'s
-        // "order of operations when parsing a string" case expects it here
-        // too.
-        let temporal = self.temporal_value_from_string(kind, &source)?;
-        let resolved_options = self.temporal_options(options)?;
-        self.temporal_overflow_option(&resolved_options)?;
-        self.alloc_temporal_value(temporal, false)
     }
 }

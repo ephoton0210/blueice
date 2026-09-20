@@ -218,7 +218,8 @@ fn from_a_property_bag_requires_and_validates_fields() {
       range(() => D.from({ year: 2020, monthCode: "M01L", day: 1 }));
       range(() => D.from({ year: 2020, monthCode: "M01L", day: 1 }, { overflow: "reject" }));
       range(() => D.from({ year: 2020, monthCode: "", day: 1 }));
-      range(() => D.from({ year: 2020, monthCode: 5, day: 1 }));
+      // `ToMonthCode` never stringifies: a non-String monthCode is a TypeError.
+      type(() => D.from({ year: 2020, monthCode: 5, day: 1 }));
       type(() => D.from({ year: 2020, monthCode: Symbol("x"), day: 1 }));
       // conflicting month and monthCode
       range(() => D.from({ year: 2020, month: 1, monthCode: "M02", day: 1 }));
@@ -267,10 +268,17 @@ fn from_a_property_bag_for_plain_date_time_reads_time_fields() {
            "2020-01-01T01:02:03.004005006");
       same(() => DT.from({ year: 2020, month: 1, day: 1, second: 60 }).toString(), "2020-01-01T00:00:59");
       same(() => DT.from({ year: 2020, month: 1, day: 1, hour: "5", minute: "6.9" }).toString(), "2020-01-01T05:06:00");
-      range(() => DT.from({ year: 2020, month: 1, day: 1, minute: 60 }));
-      range(() => DT.from({ year: 2020, month: 1, day: 1, millisecond: 1000 }));
-      range(() => DT.from({ year: 2020, month: 1, day: 1, microsecond: -1 }));
-      range(() => DT.from({ year: 2020, month: 1, day: 1, nanosecond: 1000 }));
+      // `RegulateTime`: an out-of-range time field is clamped by the default
+      // `overflow: "constrain"` and only rejected under `"reject"`.
+      same(() => DT.from({ year: 2020, month: 1, day: 1, minute: 60 }).toString(), "2020-01-01T00:59:00");
+      same(() => DT.from({ year: 2020, month: 1, day: 1, millisecond: 1000 }).toString(), "2020-01-01T00:00:00.999");
+      same(() => DT.from({ year: 2020, month: 1, day: 1, microsecond: -1 }).toString(), "2020-01-01T00:00:00");
+      same(() => DT.from({ year: 2020, month: 1, day: 1, nanosecond: 1000 }).toString(), "2020-01-01T00:00:00.000000999");
+      same(() => DT.from({ year: 2020, month: 1, day: 1, hour: 24 }).toString(), "2020-01-01T23:00:00");
+      range(() => DT.from({ year: 2020, month: 1, day: 1, minute: 60 }, { overflow: "reject" }));
+      range(() => DT.from({ year: 2020, month: 1, day: 1, millisecond: 1000 }, { overflow: "reject" }));
+      range(() => DT.from({ year: 2020, month: 1, day: 1, microsecond: -1 }, { overflow: "reject" }));
+      range(() => DT.from({ year: 2020, month: 1, day: 1, nanosecond: 1000 }, { overflow: "reject" }));
       range(() => DT.from({ year: 2020, month: 1, day: 1, hour: Infinity }));
       type(() => DT.from({ year: 2020, month: 1 }));
       same(() => DT.from({ year: 2020, month: 1, day: 1, hour: 12 }, { overflow: "reject" }).hour, 12);
@@ -305,10 +313,13 @@ fn conversions_through_equals_accept_zoned_and_plain_values() {
       same(() => D.compare(utc, "2023-11-14"), 0);
       same(() => D.compare(off, utc), 1);
       same(() => DT.compare(utc, off), -1);
-      // a named IANA zone is not supported by this conversion
-      range(() => D.from("2023-11-14").equals(named));
-      range(() => DT.from("2023-11-14T22:13:20").equals(named));
-      range(() => D.compare(named, "2023-11-14"));
+      // a named IANA zone converts through the zoned value's stored local
+      // fields: 2023-11-14T23:13:20.123456789 in Paris (UTC+1 in November)
+      same(() => D.from("2023-11-14").equals(named), true);
+      same(() => D.from("2023-11-15").equals(named), false);
+      same(() => DT.from("2023-11-14T23:13:20.123456789").equals(named), true);
+      same(() => DT.from("2023-11-14T22:13:20").equals(named), false);
+      same(() => D.compare(named, "2023-11-14"), 0);
       // options are validated on the object fast paths too
       same(() => D.from("2023-11-14").equals({ year: 2023, month: 11, day: 14 }), true);
       same(() => DT.from("2023-11-14T01:02:03").equals({ year: 2023, month: 11, day: 14, hour: 1, minute: 2, second: 3 }), true);
@@ -700,8 +711,12 @@ fn with_replaces_fields_and_validates_the_like_object() {
       same(() => dt.with({ day: 1 }).toString(), "2020-05-01T07:08:09.010011012");
       range(() => dt.with({ hour: 24 }, { overflow: "reject" }));
       range(() => dt.with({ minute: 60 }, { overflow: "reject" }));
-      range(() => dt.with({ hour: -1 }));
-      range(() => dt.with({ millisecond: 1000 }));
+      range(() => dt.with({ hour: -1 }, { overflow: "reject" }));
+      // The default `overflow: "constrain"` clamps an out-of-range time field.
+      same(() => dt.with({ hour: -1 }).hour, 0);
+      same(() => dt.with({ hour: 24 }).hour, 23);
+      same(() => dt.with({ minute: 67 }).minute, 59);
+      same(() => dt.with({ millisecond: 1000 }).millisecond, 999);
       range(() => dt.with({ hour: Infinity }));
       type(() => dt.with({ }));
       type(() => dt.with({ calendar: "iso8601", hour: 1 }));

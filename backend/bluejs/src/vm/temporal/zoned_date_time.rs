@@ -164,24 +164,6 @@ pub(crate) fn difference_zoned_date_time(
     }
 }
 
-/// The exact elapsed length, in nanoseconds, of the wall-clock day
-/// containing `date` in `zone` — 86,400e9 on an ordinary day, but 82,800e9
-/// (23h) or 90,000e9 (25h) across a DST transition. `GetStartOfDay`'s own
-/// definition of a day's boundary, not a fixed UTC-day assumption —
-/// `ZonedDateTime`'s entire reason to have its own rounding/`hoursInDay`
-/// behaviour distinct from `Instant`'s.
-///
-/// Unchecked: for a date at the very edge of Temporal's range the next day's
-/// start is not a representable instant, which `GetStartOfDay` turns into a
-/// `RangeError` -- use [`checked_day_bounds`] wherever the specification does.
-pub(crate) fn day_length_nanoseconds(zone: &TimeZone, date: CivilDate) -> i128 {
-    let start = zone.start_of_day(date);
-    let next = plain_date::add_iso_date(date, 0, 0, 0, 1, false)
-        .expect("a representable date's next calendar day is also representable");
-    let end = zone.start_of_day(next);
-    i128::try_from(&end - &start).expect("one day's length fits in i128 many times over")
-}
-
 /// `GetStartOfDay(timeZone, date)` and `GetStartOfDay` of the following day:
 /// the instants one wall-clock day spans, `[start, end)`.
 ///
@@ -204,6 +186,14 @@ mod tests {
 
     fn utc() -> TimeZone {
         TimeZone::Offset(0)
+    }
+
+    /// The exact elapsed length, in nanoseconds, of the wall-clock day containing
+    /// `date`: 86,400e9 on an ordinary day, 82,800e9 (23h) or 90,000e9 (25h)
+    /// across a DST transition.
+    fn day_length_nanoseconds(zone: &TimeZone, date: CivilDate) -> i128 {
+        let (start, end) = checked_day_bounds(zone, date).expect("a date well inside the range");
+        i128::try_from(&end - &start).expect("one day's length fits in i128")
     }
 
     #[test]

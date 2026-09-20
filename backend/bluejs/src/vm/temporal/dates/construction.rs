@@ -111,22 +111,14 @@ impl Vm {
                         (temporal.year, temporal.month, temporal.day),
                         temporal.calendar.clone(),
                     )),
-                    TemporalKind::ZonedDateTime => {
-                        let offset = if temporal.time_zone == "UTC" {
-                            0
-                        } else {
-                            iso::parse_offset_identifier_nanoseconds(&temporal.time_zone)
-                                .ok_or_else(|| {
-                                    RuntimeError::RangeError(
-                                        "Temporal.PlainDate conversion supports UTC and fixed \
-                                         offsets"
-                                            .into(),
-                                    )
-                                })?
-                        };
-                        let local = &temporal.epoch_nanoseconds + BigInt::from(offset);
-                        Some((epoch::instant_fields(&local).0, temporal.calendar.clone()))
-                    }
+                    // A `ZonedDateTime` already stores the *local* wall-clock
+                    // fields of its own zone (`temporal_set_local_fields`),
+                    // so its date is read straight from the slots -- for a
+                    // named zone as much as for `UTC` or a fixed offset.
+                    TemporalKind::ZonedDateTime => Some((
+                        (temporal.year, temporal.month, temporal.day),
+                        temporal.calendar.clone(),
+                    )),
                     _ => None,
                 };
                 if let Some((date, calendar)) = resolved {
@@ -156,9 +148,13 @@ impl Vm {
             .coerce_string(value)?
             .to_utf8()
             .map_err(|_| RuntimeError::RangeError("invalid Temporal.PlainDate string".into()))?;
+        // The string is parsed strictly before `options` is read: an invalid
+        // string throws its `RangeError` with `options` untouched
+        // (`from/observable-get-overflow-argument-string-invalid.js`).
+        let parsed = self.temporal_value_from_string(TemporalKind::PlainDate, &source)?;
         let resolved_options = self.temporal_options(options)?;
         self.temporal_overflow_option(&resolved_options)?;
-        self.temporal_value_from_string(TemporalKind::PlainDate, &source)
+        Ok(parsed)
     }
 
     /// `ToTemporalDateTime`.
@@ -187,23 +183,19 @@ impl Vm {
                         (0, 0, 0, 0, 0, 0),
                         temporal.calendar.clone(),
                     )),
-                    TemporalKind::ZonedDateTime => {
-                        let offset = if temporal.time_zone == "UTC" {
-                            0
-                        } else {
-                            iso::parse_offset_identifier_nanoseconds(&temporal.time_zone)
-                                .ok_or_else(|| {
-                                    RuntimeError::RangeError(
-                                        "Temporal.PlainDateTime conversion supports UTC and \
-                                         fixed offsets"
-                                            .into(),
-                                    )
-                                })?
-                        };
-                        let local = &temporal.epoch_nanoseconds + BigInt::from(offset);
-                        let (date, time) = epoch::instant_fields(&local);
-                        Some((date, time, temporal.calendar.clone()))
-                    }
+                    // Local wall-clock fields, as above.
+                    TemporalKind::ZonedDateTime => Some((
+                        (temporal.year, temporal.month, temporal.day),
+                        (
+                            temporal.hour,
+                            temporal.minute,
+                            temporal.second,
+                            temporal.millisecond,
+                            temporal.microsecond,
+                            temporal.nanosecond,
+                        ),
+                        temporal.calendar.clone(),
+                    )),
                     _ => None,
                 };
                 if let Some((date, time, calendar)) = resolved {
@@ -233,9 +225,11 @@ impl Vm {
         let source = self.coerce_string(value)?.to_utf8().map_err(|_| {
             RuntimeError::RangeError("invalid Temporal.PlainDateTime string".into())
         })?;
+        // Parse first, read `options` second -- see `temporal_to_plain_date`.
+        let parsed = self.temporal_value_from_string(TemporalKind::PlainDateTime, &source)?;
         let resolved_options = self.temporal_options(options)?;
         self.temporal_overflow_option(&resolved_options)?;
-        self.temporal_value_from_string(TemporalKind::PlainDateTime, &source)
+        Ok(parsed)
     }
 
     pub(in super::super::super) fn temporal_to_matching(

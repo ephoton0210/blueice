@@ -99,7 +99,7 @@ pub(crate) fn parse_identifier(source: &str) -> Option<TimeZone> {
 }
 
 /// `TimeZoneIdentifier ::: UTCOffset[~SubMinutePrecision] | TimeZoneIANAName`
-fn parse_bare_identifier(source: &str) -> Option<TimeZone> {
+pub(crate) fn parse_bare_identifier(source: &str) -> Option<TimeZone> {
     if matches!(source.as_bytes().first(), Some(b'+' | b'-')) {
         return parse_minute_offset(source).map(TimeZone::Offset);
     }
