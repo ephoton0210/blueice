@@ -1307,10 +1307,13 @@ impl<'a> ExpressionLowerer<'a> {
             if token.text != "(" {
                 return Ok(expression);
             }
-            if !matches!(&expression, bluejs::Expr::Identifier(_)) {
+            if !matches!(
+                &expression,
+                bluejs::Expr::Identifier(_) | bluejs::Expr::Member { .. }
+            ) {
                 return Err(unsupported(
                     self.token_span(token),
-                    "only direct identifier calls are in the v1 direct bridge subset",
+                    "only direct identifier and property calls are in the v1 direct bridge subset",
                 ));
             }
             self.index += 1;
@@ -2038,6 +2041,23 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::String("Ada:answer".into())
+        );
+    }
+
+    #[test]
+    fn lowers_checked_member_calls_with_the_receiver() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const label: string = 'ada'; label.toUpperCase();",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("ADA".into())
         );
     }
 
