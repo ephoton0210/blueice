@@ -490,7 +490,14 @@ fn fastrand_like_suffix() -> u128 {
 /// <profile>/deps/`, so this steps back out of a `deps` directory
 /// before joining, letting the same lookup work from either place.
 fn sibling_core_binary(this_exe: &Path) -> PathBuf {
-    let name = if cfg!(windows) { "blueice-core.exe" } else { "blueice-core" };
+    sibling_binary(this_exe, "blueice-core")
+}
+
+/// The workspace binary `stem` next to `this_exe` -- the same lookup for
+/// `blueice-core` and `blueice-downloads`, since both land in the same
+/// `target/<profile>/` directory as this crate's own binary.
+pub(crate) fn sibling_binary(this_exe: &Path, stem: &str) -> PathBuf {
+    let name = if cfg!(windows) { format!("{stem}.exe") } else { stem.to_string() };
     let dir = this_exe.parent().unwrap_or_else(|| Path::new("."));
     let dir = if dir.file_name().is_some_and(|n| n == "deps") { dir.parent().unwrap_or(dir) } else { dir };
     dir.join(name)
@@ -613,6 +620,7 @@ impl Drop for CoreProcess {
     }
 }
 
+pub mod downloads;
 pub mod server;
 pub use server::BlueIceMcpServer;
 

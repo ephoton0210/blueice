@@ -2,7 +2,7 @@
 
 [← Back to Phase 10 plan](PLAN.md)
 
-> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. M0 (design), M1 (`blueice-ipc` contract), M2 (`blueice-net` transfer engine) and M3 (the `downloads` process) are done; M4 onward has not started.**
+> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. M0 (design), M1 (`blueice-ipc` contract), M2 (`blueice-net` transfer engine) and M3 (the `downloads` process) and M4 (the MCP tools) are done; M5 onward has not started.**
 > Branch: `feature/downloads-first-slice`.
 > Design inputs: [`PLAN.md`](PLAN.md) (this phase), [`../phase-7-local-ai/PLAN.md`](../phase-7-local-ai/PLAN.md), [`../phase-12-mcp-server/PLAN.md`](../phase-12-mcp-server/PLAN.md), [`../research/safe-browsing-enforcement.md`](../research/safe-browsing-enforcement.md), [`../research/multi-process-memory.md`](../research/multi-process-memory.md).
 
@@ -96,12 +96,12 @@ Network and files:
 - [x] Tests: manager unit tests (fake gatekeeper, local HTTP server); a **real-subprocess end-to-end test** (like `core_binary.rs`): start the binary, complete a download over the socket, get rejected by the gatekeeper, pause/resume, and still see history after a restart
 
 ### M4 — MCP tools (`blueice-mcp-server`)
-- [ ] Tools: `download_file(url, dest?)`, `list_transfers(state?)`, `get_transfer(id)`, `pause_transfer`, `resume_transfer`, `cancel_transfer`, `remove_transfer`
-- [ ] Return structured JSON plus a one-sentence plain-language `summary` (e.g. "8 connections, 41%, 12.3 MB/s, about 1 min 20 s left", "blocked by the gatekeeper: <reason>")
-- [ ] Wrap every result that carries server-supplied text (URLs, file names, error messages, events) with `wrap_untrusted_page_content`
-- [ ] Connect-or-spawn the downloads process (logic in `lib.rs`; `server.rs` stays thin `rmcp` glue)
-- [ ] Tests: unit tests against a fake downloads responder; a real-subprocess test; one manual `initialize` / `tools/list` / `tools/call` session with a real MCP client (the same way the existing tools were verified)
-- [ ] Update the server `instructions` in `get_info()`
+- [x] Tools: `download_file(url, dest?)`, `list_transfers(state?)`, `get_transfer(id)`, `pause_transfer`, `resume_transfer`, `cancel_transfer`, `remove_transfer`
+- [x] Return structured JSON plus a one-sentence plain-language `summary` (e.g. "8 connections, 41%, 12.3 MB/s, about 1 min 20 s left", "blocked by the gatekeeper: <reason>")
+- [x] Wrap every result that carries server-supplied text (URLs, file names, error messages, events) with `wrap_untrusted_page_content`
+- [x] Connect-or-spawn the downloads process (logic in `lib.rs`; `server.rs` stays thin `rmcp` glue)
+- [x] Tests: unit tests against a fake downloads responder; a real-subprocess test; an automated JSON-RPC session over stdio (`initialize` / `tools/list` / `tools/call`) against the compiled `blueice-mcp-server` — a scripted MCP client, not Claude Code itself, which remains Phase 12's open item
+- [x] Update the server `instructions` in `get_info()`
 
 ### M5 — `about:downloads` visualization
 - [ ] **First step**: verify whether layout supports percentage widths (D13) and decide between `%` and px

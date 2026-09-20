@@ -470,13 +470,24 @@ pub struct FakeGatekeeper {
     requests: Arc<Mutex<Vec<GatekeeperRequest>>>,
     stop: Arc<AtomicBool>,
     accept: Option<JoinHandle<()>>,
-    _dir: TempDir,
+    _dir: Option<TempDir>,
 }
 
 impl FakeGatekeeper {
     pub fn start(policy: impl Fn(&GatekeeperRequest) -> GateReply + Send + Sync + 'static) -> Self {
         let dir = TempDir::new();
         let socket = dir.join("g.sock");
+        FakeGatekeeper::start_owning(socket, Some(dir), policy)
+    }
+
+    /// Like [`Self::start`], but listening at `socket` -- for a process that
+    /// looks for its gatekeeper at a well-known path rather than being told.
+    pub fn start_at(socket: PathBuf, policy: impl Fn(&GatekeeperRequest) -> GateReply + Send + Sync + 'static) -> Self {
+        let _ = std::fs::remove_file(&socket);
+        FakeGatekeeper::start_owning(socket, None, policy)
+    }
+
+    fn start_owning(socket: PathBuf, dir: Option<TempDir>, policy: impl Fn(&GatekeeperRequest) -> GateReply + Send + Sync + 'static) -> Self {
         let listener = UnixListener::bind(&socket).unwrap();
         listener.set_nonblocking(true).unwrap();
         let requests = Arc::new(Mutex::new(Vec::new()));
