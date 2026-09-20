@@ -34,7 +34,16 @@ diagnostics. It keeps the ordinary 100,000-dispatch and two-second per-mode
 limits; the runner rejects a changed helper call rather than silently applying
 the adapter. The exact immutable finite
 stress-fixture list in the runner receives a 90-second per-mode deadline for
-its documented TypedArray and interpreter stress loops. The exact
+its documented TypedArray and interpreter stress loops; that list includes
+`ArrayBuffer/prototype/sliceToImmutable/argument-coercion.js`, whose
+argument-coercion matrix is finite but far above the default fuel. The three
+`TypedArray/prototype/copyWithin/coerced-values-{start,end}-detached*.js`
+fixtures have their own exact-path 50,000,000-dispatch / 120-second envelope
+(`TYPED_ARRAY_DETACH_COERCION_FIXTURES`): the shared `testTypedArray.js`
+byte-copy loop runs about 27 million dispatches for them, measured at about
+27 seconds per mode on an idle debug adapter and about 50 seconds under load.
+Sibling fixtures keep the generic 10,000,000-dispatch / 60-second TypedArray
+harness envelope. The exact
 `Function/prototype/toString/built-in-function-object.js` graph traversal has
 its separately measured 180-second bound, and the two exact RegExp
 match-indices warm-up fixtures have 30 seconds; neither broadens the ordinary
