@@ -115,7 +115,8 @@ impl std::error::Error for BridgeError {}
 /// with required identifier parameters plus structured local/return bodies,
 /// and standalone expressions made from those same forms or direct calls.
 /// The expression subset includes unary, arithmetic, relational, equality,
-/// logical, conditional, and identifier-assignment operators. Static-only
+/// logical, nullish-coalescing, conditional, and identifier-assignment
+/// operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -658,7 +659,7 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     fn parse_conditional(&mut self) -> Result<bluejs::Expr, BridgeError> {
-        let test = self.parse_logical_or()?;
+        let test = self.parse_nullish()?;
         if self
             .tokens
             .get(self.index)
@@ -688,8 +689,43 @@ impl<'a> ExpressionLowerer<'a> {
         })
     }
 
-    fn parse_logical_or(&mut self) -> Result<bluejs::Expr, BridgeError> {
-        let mut expression = self.parse_logical_and()?;
+    fn parse_nullish(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let (mut expression, logical) = self.parse_logical_or()?;
+        while self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == "??")
+        {
+            let coalescing_span = self
+                .tokens
+                .get(self.index)
+                .map(|token| self.token_span(token))
+                .expect("a nullish-coalescing operator was just inspected");
+            if logical {
+                return Err(unsupported(
+                    coalescing_span,
+                    "parentheses are required when mixing `??` with `&&` or `||`",
+                ));
+            }
+            self.index += 1;
+            let (right, logical_right) = self.parse_logical_or()?;
+            if logical_right {
+                return Err(unsupported(
+                    coalescing_span,
+                    "parentheses are required when mixing `??` with `&&` or `||`",
+                ));
+            }
+            expression = bluejs::Expr::Logical {
+                op: bluejs::LogicalOp::Nullish,
+                left: Box::new(expression),
+                right: Box::new(right),
+            };
+        }
+        Ok(expression)
+    }
+
+    fn parse_logical_or(&mut self) -> Result<(bluejs::Expr, bool), BridgeError> {
+        let (mut expression, mut logical) = self.parse_logical_and()?;
         while self
             .tokens
             .get(self.index)
@@ -699,14 +735,16 @@ impl<'a> ExpressionLowerer<'a> {
             expression = bluejs::Expr::Logical {
                 op: bluejs::LogicalOp::Or,
                 left: Box::new(expression),
-                right: Box::new(self.parse_logical_and()?),
+                right: Box::new(self.parse_logical_and()?.0),
             };
+            logical = true;
         }
-        Ok(expression)
+        Ok((expression, logical))
     }
 
-    fn parse_logical_and(&mut self) -> Result<bluejs::Expr, BridgeError> {
+    fn parse_logical_and(&mut self) -> Result<(bluejs::Expr, bool), BridgeError> {
         let mut expression = self.parse_equality()?;
+        let mut logical = false;
         while self
             .tokens
             .get(self.index)
@@ -718,8 +756,9 @@ impl<'a> ExpressionLowerer<'a> {
                 left: Box::new(expression),
                 right: Box::new(self.parse_equality()?),
             };
+            logical = true;
         }
-        Ok(expression)
+        Ok((expression, logical))
     }
 
     fn parse_equality(&mut self) -> Result<bluejs::Expr, BridgeError> {
@@ -1141,6 +1180,78 @@ mod tests {
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::Bool(true)
         );
+    }
+
+    #[test]
+    fn lowers_nullish_coalescing_with_bluejs_short_circuiting() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function fallback(): number { return 42; } \
+                 function choose(value: number | null): number { return value ?? fallback(); } \
+                 choose(null) + choose(0);",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            artifact.program,
+            bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+                if matches!(
+                    body.as_slice(),
+                    [
+                        bluejs::Stmt::FunctionDecl(_),
+                        bluejs::Stmt::FunctionDecl(bluejs::Function {
+                            body: ref choose_body,
+                            ..
+                        }),
+                        bluejs::Stmt::Expr(_),
+                    ] if matches!(
+                        choose_body.as_slice(),
+                        [bluejs::Stmt::Return(Some(bluejs::Expr::Logical {
+                            op: bluejs::LogicalOp::Nullish,
+                            ..
+                        }))]
+                    )
+                )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn lowers_parenthesized_nullish_logical_mixing() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const value = (0 || 4) ?? 7; value;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(4.0)
+        );
+    }
+
+    #[test]
+    fn rejects_unparenthesized_nullish_and_logical_mixing() {
+        for source in ["false || null ?? 42;", "null ?? false || true;"] {
+            let result = compile_direct_script(
+                ENTRY,
+                &MapLoader::from([ModuleSource::new(ENTRY, source)]),
+                CompilerOptions::default(),
+            );
+            let Err(BridgeError::UnsupportedRuntimeTarget { message, .. }) = result else {
+                panic!("the direct bridge must reject mixed unparenthesized logical operators");
+            };
+            assert!(message.contains("parentheses are required"));
+        }
     }
 
     #[test]
