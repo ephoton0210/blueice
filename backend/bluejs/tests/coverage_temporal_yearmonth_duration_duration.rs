@@ -396,9 +396,13 @@ fn round_and_total_with_named_zone_anchor_respect_daylight_saving() {
         // Sub-day rounding through the zone (NudgeToZonedTime).
         const hour = (record, options, anchor) => record.round({ relativeTo: anchor || spring, ...options });
         check("13h to 12h increments", "PT12H", () => hour(new D(0, 0, 0, 0, 13), { smallestUnit: "hour", roundingIncrement: 12 }));
-        check("18h to 12h increments spills into the 23h day", "PT23H", () => hour(new D(0, 0, 0, 0, 18), { smallestUnit: "hour", roundingIncrement: 12 }));
+        // A time `largestUnit` (the default here) is `DifferenceInstant`: the
+        // zone's day length is never consulted, so 18h rounds to a full 24h even
+        // though this particular day is 23h long. Only a `day`-or-larger
+        // `largestUnit` (next line) carries the excess into `days`.
+        check("18h to 12h increments does not spill into the 23h day", "PT24H", () => hour(new D(0, 0, 0, 0, 18), { smallestUnit: "hour", roundingIncrement: 12 }));
         check("18h spill with day largest", "P1D", () => hour(new D(0, 0, 0, 0, 18), { smallestUnit: "hour", roundingIncrement: 12, largestUnit: "day" }));
-        check("negative 18h spill", "-PT23H", () => hour(new D(0, 0, 0, 0, -18), { smallestUnit: "hour", roundingIncrement: 12 }, springDay));
+        check("negative 18h does not spill", "-PT24H", () => hour(new D(0, 0, 0, 0, -18), { smallestUnit: "hour", roundingIncrement: 12 }, springDay));
         check("negative 18h spill with day largest", "-P1D", () => hour(new D(0, 0, 0, 0, -18), { smallestUnit: "hour", roundingIncrement: 12, largestUnit: "day" }, springDay));
         check("minutes round within a day", "PT5H10M", () => hour(new D(0, 0, 0, 0, 5, 7), { smallestUnit: "minute", roundingIncrement: 10, roundingMode: "ceil" }));
         check("seconds round", "PT1M1S", () => hour(new D(0, 0, 0, 0, 0, 1, 0, 700), { smallestUnit: "second" }));
