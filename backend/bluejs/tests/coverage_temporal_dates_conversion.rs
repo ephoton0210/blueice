@@ -469,7 +469,11 @@ fn getters_report_iso_fields_and_reject_wrong_receivers() {
         type(() => g.call({}));
         type(() => g.call(Temporal.PlainYearMonth.from("2020-01")));
         type(() => g.call(new Temporal.Instant(0n)));
-        same(() => typeof g.call(new Temporal.PlainTime()), "number");
+        // A time of day is not a `PlainDateTime`; only the exact type passes
+        // the receiver brand check.
+        type(() => g.call(new Temporal.PlainTime()));
+        type(() => g.call(new Temporal.ZonedDateTime(0n, "UTC")));
+        same(() => typeof g.call(dt), "number");
       }
       // day/year on receivers that lack that field
       const md = Temporal.PlainMonthDay.from("01-15");
@@ -482,20 +486,32 @@ fn getters_report_iso_fields_and_reject_wrong_receivers() {
       type(() => getter(D, "daysInMonth").call(md));
       type(() => getter(D, "daysInYear").call(md));
       type(() => getter(D, "inLeapYear").call(md));
-      same(() => getter(D, "month").call(md), 1);
-      same(() => getter(D, "monthCode").call(md), "M01");
-      same(() => getter(D, "day").call(md), 15);
-      same(() => getter(D, "year").call(ym), 2020);
-      same(() => getter(D, "month").call(ym), 3);
-      same(() => getter(D, "daysInMonth").call(ym), 31);
-      same(() => getter(D, "monthsInYear").call(ym), 12);
+      // `PlainDate`'s getters do not accept a `PlainMonthDay` or a
+      // `PlainYearMonth` either, even for the fields both types have; those
+      // are read through the getter of the type's own prototype.
+      type(() => getter(D, "month").call(md));
+      type(() => getter(D, "monthCode").call(md));
+      type(() => getter(D, "day").call(md));
+      type(() => getter(D, "year").call(ym));
+      type(() => getter(D, "month").call(ym));
+      type(() => getter(D, "daysInMonth").call(ym));
+      type(() => getter(D, "monthsInYear").call(ym));
+      same(() => getter(Temporal.PlainMonthDay, "month").call(md), 1);
+      same(() => getter(Temporal.PlainMonthDay, "monthCode").call(md), "M01");
+      same(() => getter(Temporal.PlainMonthDay, "day").call(md), 15);
+      same(() => getter(Temporal.PlainYearMonth, "year").call(ym), 2020);
+      same(() => getter(Temporal.PlainYearMonth, "month").call(ym), 3);
+      same(() => getter(Temporal.PlainYearMonth, "daysInMonth").call(ym), 31);
+      same(() => getter(Temporal.PlainYearMonth, "monthsInYear").call(ym), 12);
       type(() => getter(D, "dayOfWeek").call(ym));
       type(() => getter(D, "dayOfYear").call(md));
       type(() => getter(D, "weekOfYear").call(md));
       type(() => getter(D, "yearOfWeek").call(ym));
       type(() => getter(D, "daysInWeek").call(ym));
-      same(() => getter(D, "dayOfWeek").call(dt), 4);
-      same(() => getter(D, "daysInWeek").call(new Temporal.ZonedDateTime(0n, "UTC")), 7);
+      type(() => getter(D, "dayOfWeek").call(dt));
+      type(() => getter(D, "daysInWeek").call(new Temporal.ZonedDateTime(0n, "UTC")));
+      same(() => getter(DT, "dayOfWeek").call(dt), 4);
+      same(() => getter(Temporal.ZonedDateTime, "daysInWeek").call(new Temporal.ZonedDateTime(0n, "UTC")), 7);
       // Instant / ZonedDateTime / Duration accessors given the wrong receiver
       type(() => getter(Temporal.Instant, "epochMilliseconds").call(d));
       type(() => getter(Temporal.Instant, "epochNanoseconds").call(d));
@@ -507,7 +523,9 @@ fn getters_report_iso_fields_and_reject_wrong_receivers() {
       type(() => getter(Temporal.Duration, "sign").call(d));
       type(() => getter(Temporal.Duration, "blank").call(d));
       type(() => getter(Temporal.Duration, "years").call({}));
-      same(() => getter(Temporal.Instant, "epochMilliseconds").call(new Temporal.ZonedDateTime(-1n, "UTC")), -1);
+      type(() => getter(Temporal.Instant, "epochMilliseconds").call(new Temporal.ZonedDateTime(-1n, "UTC")));
+      type(() => getter(Temporal.ZonedDateTime, "epochMilliseconds").call(new Temporal.Instant(-1n)));
+      same(() => getter(Temporal.ZonedDateTime, "epochMilliseconds").call(new Temporal.ZonedDateTime(-1n, "UTC")), -1);
       same(() => getter(Temporal.Instant, "epochMilliseconds").call(new Temporal.Instant(-1_000_001n)), -2);
       same(() => getter(Temporal.Instant, "epochMilliseconds").call(new Temporal.Instant(-1_000_000n)), -1);
       same(() => getter(Temporal.Instant, "epochMilliseconds").call(new Temporal.Instant(1_999_999n)), 1);

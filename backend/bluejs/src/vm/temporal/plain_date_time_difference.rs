@@ -2,8 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Host-neutral `Temporal.PlainDateTime.prototype.until`/`since` arithmetic
-//! (Phase 26 Stage 3, `development/browser_core/phase-26-ecma262-temporal/PLAN.md`).
+//! Host-neutral `Temporal.PlainDateTime.prototype.until`/`since` and
+//! `Temporal.PlainDate.prototype.until`/`since` arithmetic (Phase 26 Stage 3,
+//! `development/browser_core/phase-26-ecma262-temporal/PLAN.md`).
+//!
+//! `DifferenceTemporalPlainDate` is `DifferenceTemporalPlainDateTime` at
+//! midnight, so both receivers share the rounding steps below and differ only
+//! in their entry point ([`difference_plain_date`] and
+//! [`difference_plain_date_time`]).
 //!
 //! A `PlainDateTime` difference is not a `PlainDate` difference plus a
 //! separately-rounded time-of-day: the time part decides whether the date
@@ -122,6 +128,52 @@ pub(crate) fn difference_plain_date_time(
     Some(duration_from_internal(rounded, largest))
 }
 
+/// `DifferenceTemporalPlainDate`'s numeric core (steps 5-12): the same
+/// algorithm as [`difference_plain_date_time`] with both times at midnight,
+/// so there is no time-of-day borrow and `largest`/`smallest` are never finer
+/// than a day. The specification skips rounding only for the default
+/// `smallest` of `day` with an increment of 1 (step 11), where the calendar
+/// difference is already whole days.
+///
+/// `None` only when a rounding bracket leaves the representable range; the
+/// caller maps that to the specification's `RangeError`.
+pub(crate) fn difference_plain_date(
+    calendar: AnyCalendarKind,
+    date1: CivilDate,
+    date2: CivilDate,
+    largest: TemporalUnit,
+    increment: i128,
+    smallest: TemporalUnit,
+    mode: blueice_ecma402::NumberRoundingMode,
+) -> Option<DifferenceFields> {
+    const MIDNIGHT: CivilTime = (0, 0, 0, 0, 0, 0);
+    if date1 == date2 {
+        return Some([0; 10]);
+    }
+    let (years, months, weeks, days) =
+        plain_date::calendar_difference_date(calendar, date1, date2, date_unit(largest));
+    let diff = InternalDuration::new((years, months, weeks, days), 0);
+    let rounded = if smallest == TemporalUnit::Day && increment == 1 {
+        diff
+    } else {
+        let origin = Point {
+            calendar,
+            date: date1,
+            time: MIDNIGHT,
+        };
+        round_relative_duration(
+            origin,
+            epoch_nanoseconds(date2, MIDNIGHT),
+            diff,
+            largest,
+            increment,
+            smallest,
+            mode,
+        )?
+    };
+    Some(duration_from_internal(rounded, largest))
+}
+
 fn time_nanoseconds(time: CivilTime) -> i128 {
     duration_math::time_fields_to_nanoseconds(time.0, time.1, time.2, time.3, time.4, time.5)
 }
@@ -197,18 +249,9 @@ impl Point {
             days,
             false,
         )?;
-        // No representable date is anywhere near a million years out; the
-        // guard also keeps the limit check's own day arithmetic from
-        // overflowing for a bracket a huge `roundingIncrement` slides to the
-        // edge of `i32` years.
-        (date.0.unsigned_abs() <= MAX_YEAR_MAGNITUDE && epoch::is_date_within_limits(date))
-            .then(|| epoch_nanoseconds(date, self.time))
+        epoch::is_date_within_limits(date).then(|| epoch_nanoseconds(date, self.time))
     }
 }
-
-/// Far beyond Temporal's ±275,760-year range, and still safe for
-/// [`epoch::is_date_within_limits`]'s `i64` day arithmetic.
-const MAX_YEAR_MAGNITUDE: u32 = 1_000_000;
 
 /// `RoundRelativeDuration` with no time zone.
 fn round_relative_duration(
@@ -590,6 +633,22 @@ mod tests {
     }
 
     #[test]
+    fn a_same_day_difference_is_the_time_of_day_alone_in_either_direction() {
+        // Equal dates have no date direction to disagree with, so there is no
+        // borrow: 12:00 -> 06:00 is -6 hours, never "-1 day + 18 hours".
+        let noon = ((2020, 1, 2), (12, 0, 0, 0, 0, 0));
+        let six = ((2020, 1, 2), (6, 0, 0, 0, 0, 0));
+        assert_eq!(
+            exact(noon, six, TemporalUnit::Year),
+            [0, 0, 0, 0, -6, 0, 0, 0, 0, 0]
+        );
+        assert_eq!(
+            exact(six, noon, TemporalUnit::Year),
+            [0, 0, 0, 0, 6, 0, 0, 0, 0, 0]
+        );
+    }
+
+    #[test]
     fn a_time_of_day_running_against_the_date_direction_borrows_one_day() {
         // 2020-01-02T12:00 -> 2020-01-03T06:00 is 18 hours, not "1 day - 6 hours".
         let early = ((2020, 1, 2), (12, 0, 0, 0, 0, 0));
@@ -704,33 +763,37 @@ mod tests {
 
     #[test]
     fn a_bracket_the_argument_overshoots_slides_one_increment_outward() {
-        // A duration claiming one month for a target two and a half months
-        // out — what an inconsistent calendar difference can hand back. The
-        // first bracket [Feb 1, Mar 1] misses the target, so the window slides
-        // to [Mar 1, Apr 1] and the result counts as expanded.
+        // Jan 31 12:00 -> Mar 1 06:00 has no whole month (Jan 31 + 1 month
+        // constrains to Feb 29), so the calendar difference is days-only —
+        // yet the argument lies past the first month bracket
+        // [Jan 31, Feb 29]. The window slides to [Feb 29, Mar 31] and the
+        // result counts as expanded even under `trunc`.
+        let noon = (12, 0, 0, 0, 0, 0);
         let origin = Point {
             calendar: AnyCalendarKind::Iso,
-            date: (2020, 1, 1),
-            time: MIDNIGHT,
+            date: (2020, 1, 31),
+            time: noon,
         };
+        let eighteen_hours = 18 * 3_600_000_000_000;
         let (nudged, position, expanded) = nudge_to_calendar_unit(
             origin,
-            epoch_nanoseconds((2020, 3, 15), MIDNIGHT),
-            InternalDuration::new((0, 1, 0, 0), 0),
+            epoch_nanoseconds((2020, 3, 1), (6, 0, 0, 0, 0, 0)),
+            InternalDuration::new((0, 0, 0, 29), eighteen_hours),
             1,
             TemporalUnit::Month,
             Mode::Trunc,
         )
         .expect("in-range bracket");
-        assert_eq!(nudged.date(), (0, 2, 0, 0));
-        assert_eq!(position, epoch_nanoseconds((2020, 3, 1), MIDNIGHT));
+        assert_eq!(nudged.date(), (0, 1, 0, 0));
+        assert_eq!(position, epoch_nanoseconds((2020, 2, 29), noon));
         assert!(expanded);
     }
 
     #[test]
     fn a_bracket_far_outside_the_representable_years_is_reported_not_overflowed() {
-        // Two billion years fits an `i32` year but not the limit check's day
-        // arithmetic: the result must be `None`, never an overflow panic.
+        // Two billion years still fits an `i32` year, so the calendar addition
+        // succeeds and only the range check can reject it: `None`, never an
+        // overflow panic on the way there.
         assert_eq!(
             difference_plain_date_time(
                 AnyCalendarKind::Iso,
@@ -742,6 +805,174 @@ mod tests {
                 Mode::Trunc,
             ),
             None
+        );
+    }
+
+    fn date_diff(
+        from: CivilDate,
+        to: CivilDate,
+        largest: TemporalUnit,
+        increment: i128,
+        smallest: TemporalUnit,
+        mode: Mode,
+    ) -> Option<DifferenceFields> {
+        difference_plain_date(
+            AnyCalendarKind::Iso,
+            from,
+            to,
+            largest,
+            increment,
+            smallest,
+            mode,
+        )
+    }
+
+    #[test]
+    fn a_plain_date_difference_without_rounding_is_the_calendar_difference() {
+        let day = TemporalUnit::Day;
+        assert_eq!(
+            date_diff(
+                (2020, 1, 1),
+                (2020, 1, 1),
+                TemporalUnit::Year,
+                1,
+                day,
+                Mode::Trunc
+            ),
+            Some([0; 10])
+        );
+        assert_eq!(
+            date_diff(
+                (2020, 1, 1),
+                (2021, 3, 15),
+                TemporalUnit::Year,
+                1,
+                day,
+                Mode::Trunc
+            ),
+            Some([1, 2, 0, 14, 0, 0, 0, 0, 0, 0])
+        );
+        assert_eq!(
+            date_diff(
+                (2021, 3, 15),
+                (2020, 1, 1),
+                TemporalUnit::Month,
+                1,
+                day,
+                Mode::Trunc
+            ),
+            Some([0, -14, 0, -14, 0, 0, 0, 0, 0, 0])
+        );
+        // A `largest` of days folds the whole span into days.
+        assert_eq!(
+            date_diff((2020, 2, 1), (2021, 2, 1), day, 1, day, Mode::Trunc),
+            Some([0, 0, 0, 366, 0, 0, 0, 0, 0, 0])
+        );
+    }
+
+    #[test]
+    fn a_plain_date_month_increment_rounds_only_the_months_remainder() {
+        // 1 year 3 months: the 5-month bracket is [1y 0m, 1y 5m], 90 of 151 days in.
+        let (year, month) = (TemporalUnit::Year, TemporalUnit::Month);
+        let round = |mode| date_diff((2020, 1, 1), (2021, 4, 1), year, 5, month, mode);
+        assert_eq!(round(Mode::Trunc), Some([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            round(Mode::HalfExpand),
+            Some([1, 5, 0, 0, 0, 0, 0, 0, 0, 0])
+        );
+        assert_eq!(round(Mode::HalfTrunc), Some([1, 5, 0, 0, 0, 0, 0, 0, 0, 0]));
+        // Backwards: 91 of the bracket's 152 days, so the same decisions with
+        // every field negated (`floor`/`ceil` swap under negation).
+        let back = |mode| date_diff((2021, 4, 1), (2020, 1, 1), year, 5, month, mode);
+        assert_eq!(back(Mode::Trunc), Some([-1, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            back(Mode::HalfExpand),
+            Some([-1, -5, 0, 0, 0, 0, 0, 0, 0, 0])
+        );
+        assert_eq!(back(Mode::Ceil), Some([-1, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(back(Mode::Floor), Some([-1, -5, 0, 0, 0, 0, 0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn a_plain_date_week_bracket_keeps_the_months_a_month_largest_unit_reports() {
+        // 1 month 9 days: the whole-week bracket starts at the month, so the
+        // rounded weeks are reported in the `weeks` field alongside the month
+        // (`NudgeToCalendarUnit`'s `{ years, months, r1 }` start duration),
+        // not folded into days.
+        let (month, week) = (TemporalUnit::Month, TemporalUnit::Week);
+        let round = |mode| date_diff((2020, 1, 1), (2020, 2, 10), month, 1, week, mode);
+        assert_eq!(round(Mode::Trunc), Some([0, 1, 1, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(round(Mode::Expand), Some([0, 1, 2, 0, 0, 0, 0, 0, 0, 0]));
+        // Two whole weeks past the month need no rounding whatever the mode.
+        assert_eq!(
+            date_diff((2020, 1, 1), (2020, 2, 15), month, 1, week, Mode::Expand),
+            Some([0, 1, 2, 0, 0, 0, 0, 0, 0, 0])
+        );
+    }
+
+    #[test]
+    fn a_plain_date_day_increment_rounds_whole_days_and_can_bubble() {
+        let day = TemporalUnit::Day;
+        assert_eq!(
+            date_diff((2020, 1, 1), (2020, 1, 20), day, 7, day, Mode::Ceil),
+            Some([0, 0, 0, 21, 0, 0, 0, 0, 0, 0])
+        );
+        // 1 month 28 days rounded up to a 30-day step is 1 month 30 days, which
+        // reaches past Mar 1: with months as the largest unit it bubbles to 2.
+        assert_eq!(
+            date_diff(
+                (2020, 1, 1),
+                (2020, 2, 29),
+                TemporalUnit::Month,
+                30,
+                day,
+                Mode::Expand
+            ),
+            Some([0, 2, 0, 0, 0, 0, 0, 0, 0, 0])
+        );
+        // A whole month needs no rounding whatever the mode or increment.
+        assert_eq!(
+            date_diff(
+                (2020, 1, 1),
+                (2020, 2, 1),
+                TemporalUnit::Month,
+                30,
+                day,
+                Mode::Expand
+            ),
+            Some([0, 1, 0, 0, 0, 0, 0, 0, 0, 0])
+        );
+    }
+
+    #[test]
+    fn a_plain_date_bracket_beyond_the_representable_range_is_reported() {
+        // Rounding one year to 100,000,000-month steps needs a date millions
+        // of years out.
+        for unit in [TemporalUnit::Year, TemporalUnit::Month, TemporalUnit::Week] {
+            assert_eq!(
+                date_diff(
+                    (1970, 1, 1),
+                    (1971, 1, 1),
+                    unit,
+                    100_000_000,
+                    unit,
+                    Mode::Trunc
+                ),
+                None,
+                "{unit:?}"
+            );
+        }
+        // Days round arithmetically, with no bracket to place on the calendar.
+        assert_eq!(
+            date_diff(
+                (1970, 1, 1),
+                (1971, 1, 1),
+                TemporalUnit::Day,
+                100_000_000,
+                TemporalUnit::Day,
+                Mode::Trunc
+            ),
+            Some([0; 10])
         );
     }
 

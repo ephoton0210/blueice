@@ -46,6 +46,11 @@ impl Vm {
             return self
                 .test262_foreign_typed_array_native_call(function, receiver, args, construct);
         }
+        // `RequireInternalSlot(this, ...)` is every Temporal prototype
+        // member's first step, ahead of any argument access.
+        if let Some(kind) = function.temporal_receiver_kind() {
+            self.require_temporal_receiver(&receiver, kind)?;
+        }
         let first = native::argument(&args, 0);
         match function {
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
@@ -254,14 +259,16 @@ impl Vm {
             NativeFunction::TemporalFrom(kind) => {
                 self.temporal_from(kind, first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalWithCalendar => self.temporal_with_calendar(&receiver, first),
-            NativeFunction::TemporalPlainToZonedDateTime => {
+            NativeFunction::TemporalWithCalendar(_) => {
+                self.temporal_with_calendar(&receiver, first)
+            }
+            NativeFunction::TemporalPlainToZonedDateTime(_) => {
                 self.temporal_plain_to_zoned_date_time(&receiver, first, native::argument(&args, 1))
             }
             NativeFunction::TemporalInstantToZonedDateTimeIso => {
                 self.temporal_instant_to_zoned_date_time_iso(&receiver, first)
             }
-            NativeFunction::TemporalGetter(getter) => self.temporal_getter(&receiver, getter),
+            NativeFunction::TemporalGetter(_, getter) => self.temporal_getter(&receiver, getter),
             NativeFunction::TemporalZonedDateTimeToLocaleString => {
                 self.temporal_zoned_date_time_to_locale_string(&receiver, &args)
             }
@@ -381,30 +388,32 @@ impl Vm {
                 self.temporal_duration_to_locale_string(&receiver, &args)
             }
             NativeFunction::TemporalDurationValueOf => self.temporal_duration_value_of(),
-            NativeFunction::TemporalDateWith => {
+            NativeFunction::TemporalDateWith(_) => {
                 self.temporal_date_with(&receiver, first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalDateAdd => {
+            NativeFunction::TemporalDateAdd(_) => {
                 self.temporal_date_add(&receiver, first, native::argument(&args, 1), false)
             }
-            NativeFunction::TemporalDateSubtract => {
+            NativeFunction::TemporalDateSubtract(_) => {
                 self.temporal_date_add(&receiver, first, native::argument(&args, 1), true)
             }
-            NativeFunction::TemporalDateUntil => {
+            NativeFunction::TemporalDateUntil(_) => {
                 self.temporal_date_difference(&receiver, first, native::argument(&args, 1), false)
             }
-            NativeFunction::TemporalDateSince => {
+            NativeFunction::TemporalDateSince(_) => {
                 self.temporal_date_difference(&receiver, first, native::argument(&args, 1), true)
             }
-            NativeFunction::TemporalDateEquals => self.temporal_date_equals(&receiver, first),
+            NativeFunction::TemporalDateEquals(_) => self.temporal_date_equals(&receiver, first),
             NativeFunction::TemporalDateCompare(kind) => {
                 self.temporal_date_compare(kind, first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalDateToString => self.temporal_date_to_string(&receiver, first),
-            NativeFunction::TemporalDateToJson => {
+            NativeFunction::TemporalDateToString(_) => {
+                self.temporal_date_to_string(&receiver, first)
+            }
+            NativeFunction::TemporalDateToJson(_) => {
                 self.temporal_date_to_string(&receiver, &Value::Undefined)
             }
-            NativeFunction::TemporalDateToLocaleString => {
+            NativeFunction::TemporalDateToLocaleString(_) => {
                 self.temporal_date_to_locale_string(&receiver, &args)
             }
             NativeFunction::TemporalDateValueOf => self.temporal_date_value_of(),

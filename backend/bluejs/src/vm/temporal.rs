@@ -28,6 +28,7 @@ mod plain_date;
 mod plain_date_time_difference;
 mod plain_month_day;
 mod plain_year_month;
+mod receiver;
 mod rounding;
 mod time_zone;
 mod time_zone_id;
@@ -239,7 +240,10 @@ impl Vm {
                         TemporalKind::PlainMonthDay => 2,
                         TemporalKind::PlainTime => 0,
                         TemporalKind::PlainYearMonth => 2,
-                        TemporalKind::Instant | TemporalKind::ZonedDateTime => 1,
+                        TemporalKind::Instant => 1,
+                        // `ZonedDateTime(epochNanoseconds, timeZone [, calendar])`:
+                        // only the trailing `calendar` is optional.
+                        TemporalKind::ZonedDateTime => 2,
                     },
                     NativeFunction::TemporalConstructor(kind),
                 )?;
@@ -284,28 +288,28 @@ impl Vm {
                         function_prototype,
                         "withCalendar",
                         1,
-                        NativeFunction::TemporalWithCalendar,
+                        NativeFunction::TemporalWithCalendar(kind),
                     )?;
                     self.install_native(
                         prototype,
                         function_prototype,
                         "toZonedDateTime",
                         1,
-                        NativeFunction::TemporalPlainToZonedDateTime,
+                        NativeFunction::TemporalPlainToZonedDateTime(kind),
                     )?;
                     for (name, arity, method) in [
-                        ("with", 1, NativeFunction::TemporalDateWith),
-                        ("add", 1, NativeFunction::TemporalDateAdd),
-                        ("subtract", 1, NativeFunction::TemporalDateSubtract),
-                        ("until", 1, NativeFunction::TemporalDateUntil),
-                        ("since", 1, NativeFunction::TemporalDateSince),
-                        ("equals", 1, NativeFunction::TemporalDateEquals),
-                        ("toString", 0, NativeFunction::TemporalDateToString),
-                        ("toJSON", 0, NativeFunction::TemporalDateToJson),
+                        ("with", 1, NativeFunction::TemporalDateWith(kind)),
+                        ("add", 1, NativeFunction::TemporalDateAdd(kind)),
+                        ("subtract", 1, NativeFunction::TemporalDateSubtract(kind)),
+                        ("until", 1, NativeFunction::TemporalDateUntil(kind)),
+                        ("since", 1, NativeFunction::TemporalDateSince(kind)),
+                        ("equals", 1, NativeFunction::TemporalDateEquals(kind)),
+                        ("toString", 0, NativeFunction::TemporalDateToString(kind)),
+                        ("toJSON", 0, NativeFunction::TemporalDateToJson(kind)),
                         (
                             "toLocaleString",
                             0,
-                            NativeFunction::TemporalDateToLocaleString,
+                            NativeFunction::TemporalDateToLocaleString(kind),
                         ),
                         ("valueOf", 0, NativeFunction::TemporalDateValueOf),
                     ] {
@@ -539,7 +543,7 @@ impl Vm {
                         function_prototype,
                         (*name).into(),
                         &format!("get {name}"),
-                        NativeFunction::TemporalGetter(*getter),
+                        NativeFunction::TemporalGetter(kind, *getter),
                     )?;
                 }
                 if kind == TemporalKind::PlainDateTime {
@@ -559,7 +563,7 @@ impl Vm {
                             function_prototype,
                             name.into(),
                             &format!("get {name}"),
-                            NativeFunction::TemporalGetter(getter),
+                            NativeFunction::TemporalGetter(kind, getter),
                         )?;
                     }
                 }
@@ -573,7 +577,11 @@ impl Vm {
                     )?;
                     for (name, arity, method) in [
                         ("with", 1, NativeFunction::TemporalZonedDateTimeWith),
-                        ("withCalendar", 1, NativeFunction::TemporalWithCalendar),
+                        (
+                            "withCalendar",
+                            1,
+                            NativeFunction::TemporalWithCalendar(kind),
+                        ),
                         (
                             "withTimeZone",
                             1,
