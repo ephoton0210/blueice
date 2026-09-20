@@ -1036,19 +1036,7 @@ impl<'a> ModuleChecker<'a> {
                 local.annotation.clone().unwrap_or(Type::Unknown),
             );
         }
-        for item in &function.body {
-            let (tokens, span) = match item {
-                FunctionBodyItem::Expression { tokens, span }
-                | FunctionBodyItem::Throw { tokens, span } => (tokens, span),
-                _ => continue,
-            };
-            if tokens.is_empty() {
-                continue;
-            }
-            self.check_function_call(tokens, &scope, span);
-            self.check_direct_property_access(tokens, &scope, span);
-            self.check_arithmetic_operators(tokens, &scope, span);
-        }
+        self.check_function_body_expressions(&function.body, &scope);
         if let Some(return_type) = &function.return_type {
             self.check_type(return_type, &function.span);
             for returned in &function.returns {
@@ -1073,6 +1061,48 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         self.type_parameters = previous_parameters;
+    }
+
+    fn check_function_body_expressions(
+        &mut self,
+        items: &[FunctionBodyItem],
+        scope: &BTreeMap<String, Type>,
+    ) {
+        for item in items {
+            let (tokens, span) = match item {
+                FunctionBodyItem::Expression { tokens, span }
+                | FunctionBodyItem::Throw { tokens, span } => (tokens, span),
+                FunctionBodyItem::If {
+                    test,
+                    consequent,
+                    alternate,
+                    span,
+                } => {
+                    self.check_direct_runtime_expression(test, scope, span);
+                    self.check_function_body_expressions(consequent, scope);
+                    if let Some(alternate) = alternate {
+                        self.check_function_body_expressions(alternate, scope);
+                    }
+                    continue;
+                }
+                _ => continue,
+            };
+            self.check_direct_runtime_expression(tokens, scope, span);
+        }
+    }
+
+    fn check_direct_runtime_expression(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        if tokens.is_empty() {
+            return;
+        }
+        self.check_function_call(tokens, scope, span);
+        self.check_direct_property_access(tokens, scope, span);
+        self.check_arithmetic_operators(tokens, scope, span);
     }
 
     fn check_type(&mut self, value: &Type, span: &SourceSpan) {

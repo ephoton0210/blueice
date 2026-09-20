@@ -560,8 +560,23 @@ fn lower_function(
         });
     }
 
-    let mut body = Vec::with_capacity(function.body.len());
-    for item in &function.body {
+    let body = lower_function_body(module, &function.body)?;
+
+    Ok(bluejs::Stmt::FunctionDecl(bluejs::Function {
+        name: Some(function.name.clone()),
+        params,
+        body,
+        generator: false,
+        is_async: false,
+    }))
+}
+
+fn lower_function_body(
+    module: &Module,
+    items: &[FunctionBodyItem],
+) -> Result<Vec<bluejs::Stmt>, BridgeError> {
+    let mut body = Vec::with_capacity(items.len());
+    for item in items {
         match item {
             FunctionBodyItem::Variable(variable) => body.push(lower_variable(module, variable)?),
             FunctionBodyItem::Expression { tokens, .. } => body.push(bluejs::Stmt::Expr(
@@ -576,6 +591,29 @@ fn lower_function(
                     .transpose()?;
                 body.push(bluejs::Stmt::Return(value));
             }
+            FunctionBodyItem::If {
+                test,
+                consequent,
+                alternate,
+                ..
+            } => {
+                let test = ExpressionLowerer::new(&module.id, test).parse()?;
+                let consequent = Box::new(bluejs::Stmt::Block(lower_function_body(
+                    module, consequent,
+                )?));
+                let alternate = alternate
+                    .as_deref()
+                    .map(|alternate| {
+                        lower_function_body(module, alternate)
+                            .map(|body| Box::new(bluejs::Stmt::Block(body)))
+                    })
+                    .transpose()?;
+                body.push(bluejs::Stmt::If {
+                    test,
+                    consequent,
+                    alternate,
+                });
+            }
             FunctionBodyItem::Opaque(span) => {
                 return Err(unsupported(
                     span.clone(),
@@ -584,14 +622,7 @@ fn lower_function(
             }
         }
     }
-
-    Ok(bluejs::Stmt::FunctionDecl(bluejs::Function {
-        name: Some(function.name.clone()),
-        params,
-        body,
-        generator: false,
-        is_async: false,
-    }))
+    Ok(body)
 }
 
 fn lower_variable(
@@ -3011,12 +3042,81 @@ mod tests {
     }
 
     #[test]
+    fn lowers_braced_if_else_statements_in_direct_functions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function label(value: number): string { if (value > 0) { return 'positive'; } else { return 'other'; } } label(2) + ':' + label(0);",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+            panic!("the direct script bridge must produce a script program");
+        };
+        assert!(matches!(
+            program.body.as_slice(),
+            [
+                bluejs::Stmt::FunctionDecl(bluejs::Function { body, .. }),
+                bluejs::Stmt::Expr(_),
+            ] if matches!(
+                body.as_slice(),
+                [bluejs::Stmt::If {
+                    test: bluejs::Expr::Binary { op: bluejs::BinaryOp::Gt, .. },
+                    consequent,
+                    alternate: Some(alternate),
+                }]
+                    if matches!(consequent.as_ref(), bluejs::Stmt::Block(items) if matches!(items.as_slice(), [bluejs::Stmt::Return(Some(_))]))
+                        && matches!(alternate.as_ref(), bluejs::Stmt::Block(items) if matches!(items.as_slice(), [bluejs::Stmt::Return(Some(_))]))
+            )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("positive:other".into())
+        );
+    }
+
+    #[test]
+    fn lowers_nested_braced_if_statements_in_direct_functions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function label(value: number): string { if (value > 0) { if (value > 1) { return 'many'; } else { return 'one'; } } else { return 'none'; } } label(2) + ':' + label(0);",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+            panic!("the direct script bridge must produce a script program");
+        };
+        assert!(matches!(
+            program.body.as_slice(),
+            [bluejs::Stmt::FunctionDecl(bluejs::Function { body, .. }), bluejs::Stmt::Expr(_)]
+                if matches!(
+                    body.as_slice(),
+                    [bluejs::Stmt::If { consequent, .. }]
+                        if matches!(
+                            consequent.as_ref(),
+                            bluejs::Stmt::Block(items)
+                                if matches!(items.as_slice(), [bluejs::Stmt::If { .. }])
+                        )
+                )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("many:none".into())
+        );
+    }
+
+    #[test]
     fn refuses_to_silently_drop_an_unstructured_function_body_statement() {
         let result = compile_direct_script(
             ENTRY,
             &MapLoader::from([ModuleSource::new(
                 ENTRY,
-                "function answer(): number { if (true) { return 42; } return 0; } answer();",
+                "function answer(): number { if (true) return 42; return 0; } answer();",
             )]),
             CompilerOptions::default(),
         );
