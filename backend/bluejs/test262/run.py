@@ -138,6 +138,22 @@ SM_TYPED_ARRAY_LONG_FIXTURES = frozenset(
     {"staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"}
 )
 SM_TYPED_ARRAY_LONG_TIMEOUT = 90
+# These three copyWithin fixtures build a 10,000-element source array and run
+# testTypedArray.js's byte-by-byte `copyIntoArrayBuffer` loop for every
+# constructor/factory pair (about 26 dispatches per byte, roughly 27M in
+# total), which exceeds the generic testTypedArray.js envelope above. Measured
+# at 27 s per mode on an idle debug adapter and about 50 s under load, so the
+# allowance is scoped to these exact files with margin for scheduler
+# contention rather than raising the harness-wide limits.
+TYPED_ARRAY_DETACH_COERCION_FIXTURES = frozenset(
+    {
+        "built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js",
+        "built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached.js",
+        "built-ins/TypedArray/prototype/copyWithin/coerced-values-start-detached.js",
+    }
+)
+TYPED_ARRAY_DETACH_COERCION_TIMEOUT = 120
+TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET = 50_000_000
 # `testIntl.js` runs every asserted result through a finite locale and
 # numbering-system matrix. Debug interpreter dispatch exceeds the ordinary
 # two-second process deadline, so grant that upstream harness a bounded wall
@@ -250,6 +266,9 @@ FINITE_STRESS_FIXTURES = frozenset(
         "annexB/built-ins/RegExp/RegExp-leading-escape-BMP.js",
         "annexB/built-ins/RegExp/RegExp-trailing-escape-BMP.js",
         "built-ins/Array/prototype/concat/Array.prototype.concat_large-typed-array.js",
+        # Its argument-coercion matrix (every start/end coercion outcome
+        # against every buffer state) is finite but far above the default fuel.
+        "built-ins/ArrayBuffer/prototype/sliceToImmutable/argument-coercion.js",
         # This walks the complete reachable graph of well-known intrinsics
         # and checks each built-in function's NativeFunction source form.
         "built-ins/Function/prototype/toString/built-in-function-object.js",
@@ -753,6 +772,8 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, URI_EXHAUSTIVE_INSTRUCTION_BUDGET)
     if is_uri_global_fixture(relative):
         return max(default, URI_GLOBAL_INSTRUCTION_BUDGET)
+    if relative in TYPED_ARRAY_DETACH_COERCION_FIXTURES:
+        return max(default, TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET)
     if relative in FINITE_STRESS_FIXTURES:
         return max(default, FINITE_STRESS_INSTRUCTION_BUDGET)
     if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
@@ -776,6 +797,8 @@ def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
     if relative in SM_TYPED_ARRAY_LONG_FIXTURES:
         return max(default, SM_TYPED_ARRAY_LONG_TIMEOUT)
+    if relative in TYPED_ARRAY_DETACH_COERCION_FIXTURES:
+        return max(default, TYPED_ARRAY_DETACH_COERCION_TIMEOUT)
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_TIMEOUT)
     if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
