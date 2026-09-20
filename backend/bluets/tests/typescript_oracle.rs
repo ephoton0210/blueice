@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Opt-in compatibility checks against a pinned external TypeScript compiler.
+//! Opt-in BlueTSC compatibility checks against a pinned external TypeScript
+//! compiler.
 //!
 //! The fixtures are deliberately narrow: each one is already part of BlueTS's
 //! documented language matrix. The oracle never makes a new syntax supported.
@@ -255,11 +256,11 @@ const CASES: &[OracleCase] = &[
 ];
 
 /// This test is ignored in ordinary Rust builds because the reference compiler
-/// is an explicitly provisioned test tool, not a BlueTS dependency.
+/// is an explicitly provisioned test tool, not a BlueTSC or BlueTS dependency.
 #[test]
-#[ignore = "requires BLUEICE_TSC to point to the pinned TypeScript compiler"]
-fn pinned_typescript_oracle_matches_the_supported_fixture_matrix() {
-    let tsc = pinned_tsc();
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_bluetsc_oracle_matches_the_supported_fixture_matrix() {
+    let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);
     let node = env::var_os("BLUEICE_NODE").unwrap_or_else(|| "node".into());
     for case in CASES {
@@ -443,10 +444,10 @@ fn assert_source_map(source_map: &str, producer: &str) {
         .is_some_and(|value| !value.is_empty()));
 }
 
-fn pinned_tsc() -> PathBuf {
-    env::var_os("BLUEICE_TSC")
+fn pinned_bluetsc_oracle() -> PathBuf {
+    env::var_os("BLUEICE_BLUETSC_ORACLE")
         .map(PathBuf::from)
-        .expect("set BLUEICE_TSC to the TypeScript 5.9.3 tsc executable")
+        .expect("set BLUEICE_BLUETSC_ORACLE to the TypeScript 5.9.3 tsc executable")
 }
 
 fn assert_pinned_version(tsc: &Path) {
@@ -455,7 +456,7 @@ fn assert_pinned_version(tsc: &Path) {
     assert_eq!(
         String::from_utf8(output.stdout).unwrap().trim(),
         format!("Version {PINNED_TYPESCRIPT_VERSION}"),
-        "BLUEICE_TSC must be the pinned oracle compiler"
+        "BLUEICE_BLUETSC_ORACLE must be the pinned BlueTSC oracle compiler"
     );
 }
 
