@@ -1201,17 +1201,21 @@ impl<'a> ExpressionLowerer<'a> {
             let Some(colon) = self.tokens.get(self.index) else {
                 return Err(unsupported(opening_span, "unterminated object literal"));
             };
-            if colon.text != ":" {
+            let (value, shorthand) = if colon.text == ":" {
+                self.index += 1;
+                (self.parse_assignment()?, false)
+            } else if matches!(colon.text.as_str(), "," | "}") {
+                (bluejs::Expr::Identifier(name.clone()), true)
+            } else {
                 return Err(unsupported(
                     self.token_span(colon),
-                    "object shorthand and methods are not in the v1 direct bridge subset",
+                    "object methods are not in the v1 direct bridge subset",
                 ));
-            }
-            self.index += 1;
+            };
             properties.push(bluejs::ObjectProp::KeyValue {
                 key: bluejs::PropertyKey::Identifier(name),
-                value: self.parse_assignment()?,
-                shorthand: false,
+                value,
+                shorthand,
             });
             let Some(separator) = self.tokens.get(self.index) else {
                 return Err(unsupported(opening_span, "unterminated object literal"));
@@ -1917,6 +1921,41 @@ mod tests {
     }
 
     #[test]
+    fn lowers_checked_object_shorthand_properties() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const label: string = 'Ada'; const person: { label: string } = { label }; person.label;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            artifact.program,
+            bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+                if matches!(
+                    body.as_slice(),
+                    [bluejs::Stmt::VarDecl(_, _), bluejs::Stmt::VarDecl(_, declarations), bluejs::Stmt::Expr(_)]
+                        if matches!(
+                            declarations.as_slice(),
+                            [bluejs::VarDeclarator {
+                                init: Some(bluejs::Expr::Object(properties)),
+                                ..
+                            }] if matches!(
+                                properties.as_slice(),
+                                [bluejs::ObjectProp::KeyValue { shorthand: true, .. }]
+                            )
+                        )
+                )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("Ada".into())
+        );
+    }
+
+    #[test]
     fn lowers_checked_bracket_property_reads() {
         let artifact = compile_direct_script(
             ENTRY,
@@ -2063,11 +2102,6 @@ mod tests {
                 ("{", TokenKind::Punct),
                 ("...", TokenKind::Punct),
                 ("person", TokenKind::Identifier),
-                ("}", TokenKind::Punct),
-            ]),
-            expression_tokens(&[
-                ("{", TokenKind::Punct),
-                ("name", TokenKind::Identifier),
                 ("}", TokenKind::Punct),
             ]),
             expression_tokens(&[

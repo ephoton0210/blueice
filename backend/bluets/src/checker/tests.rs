@@ -749,6 +749,31 @@ fn checks_record_literal_fields_for_direct_property_reads() {
 }
 
 #[test]
+fn infers_record_shorthand_fields_from_local_bindings() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const label: string = 'Ada';\n\
+             const person: { label: string } = { label };\n\
+             const invalid: number = person.label;",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(result.has_errors());
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn checks_template_literal_string_annotations() {
     let result = crate::compile(
         "memory:///main.ts",

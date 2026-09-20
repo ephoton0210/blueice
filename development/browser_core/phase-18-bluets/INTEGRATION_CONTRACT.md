@@ -35,6 +35,8 @@ An incompatible major ABI, an unknown required field, a source hash mismatch, or
 
 ## AST/IR hand-off
 
+Object literals accept identifier-keyed `key: value` properties and local-binding shorthand `{ key }`; spread, computed keys, methods, and accessors remain outside the direct subset.
+
 The direct bridge also lowers simple and compound assignments whose target is a non-optional dot or bracket property read. Prefix and postfix updates remain identifier-only; template, object, and member-call limits continue to apply independently.
 
 The program boundary is structured data, not generated JavaScript text. BlueJS owns `BlueJsProgramV1`, whose current variants wrap its public `Program` (classic script) and `Module` ASTs; its `compile` method dispatches to BlueJS's compiler. BlueTS lowers supported TypeScript syntax once through the bridge to that BlueJS-owned AST. BlueJS remains the authority for ECMAScript semantics, bytecode generation, realm ownership, GC accounting, capability summary and execution.

@@ -2200,20 +2200,36 @@ fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
 fn infer_record(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
     let mut fields = Vec::new();
     let mut index = 1usize;
-    while index + 2 < tokens.len() && !tokens[index].is("}") {
+    while index < tokens.len() && !tokens[index].is("}") {
         let name = tokens[index].text.clone();
-        if !tokens[index + 1].is(":") {
+        let (value, value_end) = if tokens.get(index + 1).is_some_and(|token| token.is(":")) {
+            let value_start = index + 2;
+            let mut value_end = value_start;
+            while value_end < tokens.len()
+                && !tokens[value_end].is(",")
+                && !tokens[value_end].is("}")
+            {
+                value_end += 1;
+            }
+            (
+                infer_simple(&tokens[value_start..value_end], scope),
+                value_end,
+            )
+        } else if tokens
+            .get(index + 1)
+            .is_some_and(|token| token.is(",") || token.is("}"))
+        {
+            (
+                scope.get(&name).cloned().unwrap_or(Type::Unknown),
+                index + 1,
+            )
+        } else {
             return Type::Unknown;
-        }
-        let value_start = index + 2;
-        let mut value_end = value_start;
-        while value_end < tokens.len() && !tokens[value_end].is(",") && !tokens[value_end].is("}") {
-            value_end += 1;
-        }
+        };
         fields.push(TypeField {
             name,
             optional: false,
-            value: infer_simple(&tokens[value_start..value_end], scope),
+            value,
             span: SourceSpan::new(
                 "<inferred>",
                 tokens[index].start,
