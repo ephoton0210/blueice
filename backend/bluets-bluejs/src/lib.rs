@@ -14,9 +14,10 @@
 use blueice_bluejs as bluejs;
 use blueice_bluets::{
     compile, BlueTsDebugInfo, CompilerOptions, Declaration, Diagnostic, FunctionBodyItem,
-    FunctionDeclaration, Module, ModuleLoader, SourceSpan, Token, TokenKind, VariableDeclaration,
-    VariableKind, LANGUAGE_VERSION,
+    FunctionDeclaration, Module, ModuleLoader, Project, SourceSpan, Token, TokenKind,
+    VariableDeclaration, VariableKind, LANGUAGE_VERSION,
 };
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
 /// The first directly executable BlueTS-to-BlueJS bridge ABI.
@@ -60,6 +61,17 @@ pub struct DirectModule {
     pub compiler_options_fingerprint: String,
     pub sources: Vec<BridgeSource>,
     pub provenance: Vec<LoweringProvenance>,
+}
+
+/// A checked, direct BlueJS compilation of a closed TypeScript module graph.
+#[derive(Clone)]
+pub struct DirectModuleGraph {
+    pub bridge_abi: &'static str,
+    pub entry: String,
+    pub modules: BTreeMap<String, DirectModule>,
+    pub language_version: String,
+    pub compiler_options_fingerprint: String,
+    pub sources: Vec<BridgeSource>,
 }
 
 /// The bridge either propagates BlueTS diagnostics, rejects a checker-accepted
@@ -141,7 +153,7 @@ pub fn compile_direct_module(
     options: CompilerOptions,
 ) -> Result<DirectModule, BridgeError> {
     let (module, debug_info) = checked_entry(entry, loader, options)?;
-    let (module, provenance) = lower_module(&module)?;
+    let (module, provenance) = lower_module(None, &module)?;
     let program = bluejs::BlueJsProgramV1::Module(module);
     let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
     let sources = bridge_sources(&debug_info);
@@ -154,6 +166,117 @@ pub fn compile_direct_module(
         sources,
         provenance,
     })
+}
+
+/// Parses, resolves and checks a caller-authorized TypeScript module graph,
+/// then directly constructs the corresponding BlueJS Module ASTs and bytecode.
+///
+/// Every runtime request carries the canonical target selected by BlueTS's
+/// [`ModuleLoader`], rather than re-resolving its original TypeScript
+/// specifier under BlueJS's relative-path rules. Declaration modules remain
+/// type-only and do not become BlueJS graph nodes.
+pub fn compile_direct_module_graph(
+    entry: &str,
+    loader: &dyn ModuleLoader,
+    options: CompilerOptions,
+) -> Result<DirectModuleGraph, BridgeError> {
+    let compilation = compile(entry, loader, options);
+    if compilation.has_errors() {
+        return Err(BridgeError::BlueTs(compilation.diagnostics));
+    }
+    let debug_info = compilation
+        .debug_info
+        .expect("a successful BlueTS compilation always has debug information");
+    let runtime_modules = runtime_module_ids(&compilation.project, entry)?;
+    let mut modules = BTreeMap::new();
+    for id in runtime_modules {
+        let module = compilation
+            .project
+            .modules
+            .get(&id)
+            .expect("runtime-reachable module was selected from the project");
+        let (module, provenance) = lower_module(Some(&compilation.project), module)?;
+        let program = bluejs::BlueJsProgramV1::Module(module);
+        let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
+        let sources = debug_info
+            .sources
+            .iter()
+            .filter(|source| source.module == id)
+            .map(|source| BridgeSource {
+                module: source.module.clone(),
+                content_hash: source.content_hash.clone(),
+            })
+            .collect();
+        modules.insert(
+            id,
+            DirectModule {
+                bridge_abi: BLUE_TS_BLUEJS_BRIDGE_ABI_V1,
+                program,
+                bytecode,
+                language_version: LANGUAGE_VERSION.to_string(),
+                compiler_options_fingerprint: debug_info.compiler_options_hash.clone(),
+                sources,
+                provenance,
+            },
+        );
+    }
+    if !modules.contains_key(entry) {
+        return Err(unsupported(
+            SourceSpan::new(entry, 0, 0),
+            "a declaration module cannot be the direct module-graph entry",
+        ));
+    }
+    let sources = bridge_sources(&debug_info);
+    Ok(DirectModuleGraph {
+        bridge_abi: BLUE_TS_BLUEJS_BRIDGE_ABI_V1,
+        entry: entry.to_string(),
+        modules,
+        language_version: LANGUAGE_VERSION.to_string(),
+        compiler_options_fingerprint: debug_info.compiler_options_hash,
+        sources,
+    })
+}
+
+fn runtime_module_ids(project: &Project, entry: &str) -> Result<BTreeSet<String>, BridgeError> {
+    let mut modules = BTreeSet::new();
+    let mut pending = vec![entry.to_string()];
+    while let Some(module_id) = pending.pop() {
+        if !modules.insert(module_id.clone()) {
+            continue;
+        }
+        let module = project.modules.get(&module_id).ok_or_else(|| {
+            unsupported(
+                SourceSpan::new(entry, 0, 0),
+                "the requested module-graph entry was not retained in the checked source graph",
+            )
+        })?;
+        if module.id.ends_with(".d.ts") {
+            return Err(unsupported(
+                SourceSpan::new(&module.id, 0, 0),
+                "a declaration module cannot be the direct module-graph entry",
+            ));
+        }
+        for declaration in &module.declarations {
+            let Declaration::Import(import) = declaration else {
+                continue;
+            };
+            if import.type_only {
+                continue;
+            }
+            let target = project
+                .resolved_module(&module.id, &import.specifier)
+                .ok_or_else(|| {
+                    unsupported(
+                        import.specifier_span.clone(),
+                        "BlueTS did not retain a canonical target for this runtime import",
+                    )
+                })?;
+            if !target.ends_with(".d.ts") {
+                pending.push(target.to_string());
+            }
+        }
+    }
+    Ok(modules)
 }
 
 fn checked_entry(
@@ -274,9 +397,14 @@ fn lower_script(
     Ok((body, provenance))
 }
 
-fn lower_module(module: &Module) -> Result<(bluejs::Module, Vec<LoweringProvenance>), BridgeError> {
+fn lower_module(
+    project: Option<&Project>,
+    module: &Module,
+) -> Result<(bluejs::Module, Vec<LoweringProvenance>), BridgeError> {
     let mut body = Vec::new();
+    let mut imports = Vec::new();
     let mut exports = Vec::new();
+    let mut requests = Vec::new();
     let mut provenance = Vec::new();
     for declaration in &module.declarations {
         match declaration {
@@ -335,10 +463,43 @@ fn lower_module(module: &Module) -> Result<(bluejs::Module, Vec<LoweringProvenan
             }
             Declaration::Import(import) if import.type_only => {}
             Declaration::Import(import) => {
-                return Err(unsupported(
-                    import.span.clone(),
-                    "runtime imports require the direct module-graph bridge",
-                ));
+                let Some(project) = project else {
+                    return Err(unsupported(
+                        import.span.clone(),
+                        "runtime imports require the direct module-graph bridge",
+                    ));
+                };
+                let request = project
+                    .resolved_module(&module.id, &import.specifier)
+                    .map(str::to_owned)
+                    .ok_or_else(|| {
+                        unsupported(
+                            import.specifier_span.clone(),
+                            "BlueTS did not retain a canonical target for this runtime import",
+                        )
+                    })?;
+                if !requests.contains(&request) {
+                    requests.push(request.clone());
+                }
+                if import.bindings.is_empty() {
+                    imports.push(bluejs::ImportEntry {
+                        module_request: request,
+                        import_name: bluejs::ImportName::Named("default".to_string()),
+                        local_name: None,
+                        json: false,
+                    });
+                } else {
+                    imports.extend(import.bindings.iter().map(|binding| bluejs::ImportEntry {
+                        module_request: request.clone(),
+                        import_name: if binding.imported == "*" {
+                            bluejs::ImportName::Namespace
+                        } else {
+                            bluejs::ImportName::Named(binding.imported.clone())
+                        },
+                        local_name: Some(binding.local.clone()),
+                        json: false,
+                    }));
+                }
             }
             Declaration::Variable(variable) => {
                 return Err(unsupported(
@@ -357,9 +518,9 @@ fn lower_module(module: &Module) -> Result<(bluejs::Module, Vec<LoweringProvenan
     Ok((
         bluejs::Module {
             body,
-            imports: Vec::new(),
+            imports,
             exports,
-            requests: Vec::new(),
+            requests,
         },
         provenance,
     ))
@@ -646,6 +807,25 @@ impl DirectScript {
     }
 }
 
+impl DirectModule {
+    /// The BlueJS-owned AST ABI used by this direct compilation.
+    pub fn program_abi(&self) -> &'static str {
+        bluejs::BlueJsProgramV1::ABI
+    }
+}
+
+impl DirectModuleGraph {
+    /// Clones graph bytecode into the map accepted by
+    /// [`bluejs::Vm::execute_module_graph`]. Module IDs are the exact
+    /// canonical identities selected by the caller-authorized BlueTS loader.
+    pub fn bytecode_map(&self) -> HashMap<String, bluejs::Bytecode> {
+        self.modules
+            .iter()
+            .map(|(id, module)| (id.clone(), module.bytecode.clone()))
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -653,6 +833,33 @@ mod tests {
 
     const ENTRY: &str = "memory:///direct.ts";
     const MODULE_ENTRY: &str = "memory:///direct-module.ts";
+    const GRAPH_ENTRY: &str = "graph/main.ts";
+
+    struct AliasedGraphLoader;
+
+    impl ModuleLoader for AliasedGraphLoader {
+        fn load(&self, module_id: &str) -> Result<ModuleSource, String> {
+            match module_id {
+                "virtual/main.ts" => Ok(ModuleSource::new(
+                    module_id,
+                    "import { value } from '@runtime'; \
+                     export const answer: number = value + 1; answer;",
+                )),
+                "canonical/runtime.ts" => Ok(ModuleSource::new(
+                    module_id,
+                    "export const value: number = 41;",
+                )),
+                _ => Err(format!("unexpected module request `{module_id}`")),
+            }
+        }
+
+        fn resolve(&self, _from_module: &str, specifier: &str) -> Result<String, String> {
+            match specifier {
+                "@runtime" => Ok("canonical/runtime.ts".to_string()),
+                _ => Err(format!("unexpected import specifier `{specifier}`")),
+            }
+        }
+    }
 
     #[test]
     fn lowers_typed_source_directly_to_bluejs_ast_and_bytecode() {
@@ -792,6 +999,71 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default()
                 .execute_module(&artifact.bytecode)
+                .unwrap(),
+            bluejs::Value::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn preserves_bluets_resolved_targets_in_a_direct_module_graph() {
+        let graph = compile_direct_module_graph(
+            GRAPH_ENTRY,
+            &MapLoader::from([
+                ModuleSource::new(
+                    GRAPH_ENTRY,
+                    "import type { Shape } from './types.d.ts'; \
+                     import { value } from './dep.ts'; \
+                     export const answer: number = value + 1; answer;",
+                ),
+                ModuleSource::new("graph/dep.ts", "export const value: number = 41;"),
+                ModuleSource::new(
+                    "graph/types.d.ts",
+                    "export interface Shape { label: string; }",
+                ),
+            ]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(graph.entry, GRAPH_ENTRY);
+        assert_eq!(graph.modules.len(), 2);
+        assert!(!graph.modules.contains_key("graph/types.d.ts"));
+        let bluejs::BlueJsProgramV1::Module(main) = &graph.modules[GRAPH_ENTRY].program else {
+            panic!("the direct graph entry must produce a BlueJS module AST");
+        };
+        assert_eq!(
+            main.imports,
+            vec![bluejs::ImportEntry {
+                module_request: "graph/dep.ts".to_string(),
+                import_name: bluejs::ImportName::Named("value".to_string()),
+                local_name: Some("value".to_string()),
+                json: false,
+            }]
+        );
+        assert_eq!(main.requests, vec!["graph/dep.ts".to_string()]);
+        assert_eq!(
+            bluejs::Vm::default()
+                .execute_module_graph(&graph.entry, &graph.bytecode_map())
+                .unwrap(),
+            bluejs::Value::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn preserves_a_non_relative_caller_authorized_module_alias() {
+        let graph = compile_direct_module_graph(
+            "virtual/main.ts",
+            &AliasedGraphLoader,
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let bluejs::BlueJsProgramV1::Module(main) = &graph.modules["virtual/main.ts"].program
+        else {
+            panic!("the direct graph entry must produce a BlueJS module AST");
+        };
+        assert_eq!(main.requests, vec!["canonical/runtime.ts".to_string()]);
+        assert_eq!(
+            bluejs::Vm::default()
+                .execute_module_graph(&graph.entry, &graph.bytecode_map())
                 .unwrap(),
             bluejs::Value::Number(42.0)
         );
