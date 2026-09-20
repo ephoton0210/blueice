@@ -622,3 +622,9 @@ fn new_array_encoding_and_runtime_error_boundaries_are_observable() {
         Value::Number(7.0)
     );
 }
+
+#[test]
+fn array_slice_with_an_end_before_the_start_returns_an_empty_array() {
+    let source = "let a=[1,2,3,4];let r=a.slice(3,1);let s=a.slice(9007199254740992,0);let t=a.slice(-1,-3);let u=a.slice(Infinity,-Infinity);r.length===0&&s.length===0&&t.length===0&&u.length===0&&a.slice(1,3).join()===\"2,3\"";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}

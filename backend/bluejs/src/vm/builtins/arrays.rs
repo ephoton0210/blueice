@@ -1280,7 +1280,9 @@ impl Vm {
             } else {
                 length
             };
-            let count = end.saturating_sub(start) as usize;
+            // count = max(final - k, 0): an end before the start yields an
+            // empty result, never a wrapped-around length.
+            let count = end.saturating_sub(start).max(0) as usize;
             let target = self.array_species_create(object, count)?;
             self.stack.push(Value::Object(target));
             for (result_index, index) in (start..end.max(start)).enumerate() {
