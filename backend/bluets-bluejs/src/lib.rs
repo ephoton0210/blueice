@@ -117,8 +117,8 @@ impl std::error::Error for BridgeError {}
 /// The expression subset includes `!`, `+`, `-`, `~`, `typeof`, and `void`
 /// unary expressions; arithmetic, relational, equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
-/// identifier-only prefix/postfix updates, and identifier-only simple or
-/// compound-assignment operators. Static-only
+/// comma sequences, identifier-only prefix/postfix updates, and
+/// identifier-only simple or compound-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -614,7 +614,7 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     fn parse(mut self) -> Result<bluejs::Expr, BridgeError> {
-        let expression = self.parse_assignment()?;
+        let expression = self.parse_sequence()?;
         if let Some(token) = self.tokens.get(self.index) {
             return Err(unsupported(
                 self.token_span(token),
@@ -622,6 +622,27 @@ impl<'a> ExpressionLowerer<'a> {
             ));
         }
         Ok(expression)
+    }
+
+    fn parse_sequence(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let first = self.parse_assignment()?;
+        if self
+            .tokens
+            .get(self.index)
+            .is_none_or(|token| token.text != ",")
+        {
+            return Ok(first);
+        }
+        let mut expressions = vec![first];
+        while self
+            .tokens
+            .get(self.index)
+            .is_some_and(|token| token.text == ",")
+        {
+            self.index += 1;
+            expressions.push(self.parse_assignment()?);
+        }
+        Ok(bluejs::Expr::Sequence(expressions))
     }
 
     fn parse_assignment(&mut self) -> Result<bluejs::Expr, BridgeError> {
@@ -1072,7 +1093,7 @@ impl<'a> ExpressionLowerer<'a> {
                 )),
             },
             TokenKind::Punct if token.text == "(" => {
-                let expression = self.parse_assignment()?;
+                let expression = self.parse_sequence()?;
                 let Some(closing) = self.tokens.get(self.index) else {
                     return Err(unsupported(
                         self.token_span(token),
@@ -1604,6 +1625,23 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn lowers_left_to_right_comma_sequences() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "let value: number = 0; (value += 1, value += 2, value);",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(3.0)
         );
     }
 
