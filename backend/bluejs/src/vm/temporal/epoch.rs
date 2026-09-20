@@ -36,14 +36,17 @@ pub(crate) fn nanoseconds_since_epoch(
     let day_of_year = (153 * march_month + 2) / 5 + i64::from(day) - 1;
     let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
     let days = era * 146_097 + day_of_era - 719_468;
-    let milliseconds = days * 86_400_000
-        + i64::from(hour) * 3_600_000
-        + i64::from(minute) * 60_000
-        + i64::from(second) * 1_000
-        + i64::from(millisecond);
-    BigInt::from(milliseconds) * 1_000_000_u32
-        + BigInt::from(microsecond) * 1_000_u32
-        + BigInt::from(nanosecond)
+    // A [`CivilDate`] holds an `i32` year, while Temporal itself later
+    // restricts results to a much narrower ±10^8-day range. Keep this
+    // intermediate in `BigInt`, too: range checks must turn an out-of-range
+    // calendar calculation into a JavaScript `RangeError`, rather than
+    // overflowing an `i64` before the caller can perform that check.
+    let milliseconds = BigInt::from(days) * 86_400_000_i64
+        + BigInt::from(hour) * 3_600_000_u32
+        + BigInt::from(minute) * 60_000_u32
+        + BigInt::from(second) * 1_000_u32
+        + BigInt::from(millisecond);
+    milliseconds * 1_000_000_u32 + BigInt::from(microsecond) * 1_000_u32 + BigInt::from(nanosecond)
         - BigInt::from(offset_seconds) * 1_000_000_000_u32
 }
 

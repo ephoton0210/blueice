@@ -337,6 +337,20 @@ fn round_rejects_calendar_units_and_invalid_options() {
     }
 }
 
+/// Regression for a duration whose calendar-month field is valid by itself
+/// but carries the `relativeTo` date outside Temporal's supported range while
+/// `round` resolves the calendar arithmetic. This must be an ordinary
+/// `RangeError`, never an overflowing host-integer panic.
+#[test]
+fn round_reports_out_of_range_calendar_arithmetic_as_a_range_error() {
+    assert!(matches!(
+        evaluate(
+            r#"new Temporal.Duration(0, 4294967295).round({ smallestUnit: "day", relativeTo: "2024-01-01" })"#
+        ),
+        Err(RuntimeError::RangeError(_))
+    ));
+}
+
 /// `.../prototype/round/string-shorthand-no-object-prototype-pollution.js`: the
 /// string form must not look up any other option on `Object.prototype`.
 #[test]

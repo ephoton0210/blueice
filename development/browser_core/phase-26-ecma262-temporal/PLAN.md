@@ -1410,6 +1410,20 @@ Every new function/change is covered by real Rust integration tests through the 
 
 ### Stage 3 — Test262-evidence closure and coverage
 
+- **Out-of-range duration rounding is now a `RangeError`, not a host panic —
+  2026-09-20.** `new Temporal.Duration(0, 4294967295).round({
+  smallestUnit: "day", relativeTo: "2024-01-01" })` first resolves a valid
+  `i32` calendar year well beyond Temporal's ±10^8-day range. The eventual
+  `epoch::is_date_within_limits` check was correct in principle, but its
+  `nanoseconds_since_epoch` helper multiplied the derived day count by the
+  number of milliseconds per day in an `i64` first, overflowing before the
+  range predicate could return `false`. That intermediate now uses the
+  helper's existing `BigInt` representation, so the ordinary caller-side
+  range check produces `RangeError`. The public regression is
+  `tests/temporal_duration.rs`'s
+  `round_reports_out_of_range_calendar_arithmetic_as_a_range_error`; it
+  failed with the original `epoch.rs:39` overflow before the change.
+
 - [x] Re-run both `intl402/Temporal/` and `built-ins/Temporal/` after each stage lands, tracked per-type against the corrected 2026-09-17 combined baseline in the table near the top of this document (`ZonedDateTime` 186/2,968, `PlainDate` 332/2,290, `PlainDateTime` 302/2,512, `PlainYearMonth` 186/1,672, `PlainMonthDay` 158/578, `Duration` 232/1,122, `PlainTime` 102/1,010, `Instant` 86/968, `Now` 0/138).
 
       Each track below was measured independently, starting from Track C's
