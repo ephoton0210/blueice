@@ -166,8 +166,13 @@ fn invalid_strings_and_era_aware_with() {
       same(() => min.until(max, { largestUnit: "years" }).toString(), "P547581Y4M24D");
       same(() => min.until(max, { largestUnit: "months" }).toString(), "P6570976M24D");
       same(() => max.until(min, { largestUnit: "years" }).toString(), "-P547581Y4M23D");
-      same(() => min.until(max, { largestUnit: "years", smallestUnit: "years" }).toString(), "P547581Y");
-      same(() => max.until(min, { largestUnit: "years", smallestUnit: "years" }).toString(), "-P547581Y");
+      // Rounding to years measures the fraction inside the window whose far end is
+      // `547582` years from the receiver -- year 275761, past the last
+      // representable date -- and `NudgeToCalendarUnit` requires that ending
+      // bound itself to be representable, exactly as
+      // `roundingincrement-addition-out-of-range.js` pins for a days window.
+      range(() => min.until(max, { largestUnit: "years", smallestUnit: "years" }));
+      range(() => max.until(min, { largestUnit: "years", smallestUnit: "years" }));
       same(() => min.until(max, { largestUnit: "hours" }).hours, 4800000000);
     "#);
 }

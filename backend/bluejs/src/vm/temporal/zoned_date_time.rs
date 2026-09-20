@@ -20,8 +20,7 @@
 use super::duration_math;
 use super::epoch::{self, CivilDate, CivilTime};
 use super::plain_date::{self, DateUnit};
-use super::rounding;
-use super::time_zone::{AmbiguousLocalTime, Disambiguation, TimeZone};
+use super::time_zone::{Disambiguation, TimeZone};
 use icu_calendar::AnyCalendarKind;
 use num_bigint::BigInt;
 
@@ -171,6 +170,10 @@ pub(crate) fn difference_zoned_date_time(
 /// definition of a day's boundary, not a fixed UTC-day assumption —
 /// `ZonedDateTime`'s entire reason to have its own rounding/`hoursInDay`
 /// behaviour distinct from `Instant`'s.
+///
+/// Unchecked: for a date at the very edge of Temporal's range the next day's
+/// start is not a representable instant, which `GetStartOfDay` turns into a
+/// `RangeError` -- use [`checked_day_bounds`] wherever the specification does.
 pub(crate) fn day_length_nanoseconds(zone: &TimeZone, date: CivilDate) -> i128 {
     let start = zone.start_of_day(date);
     let next = plain_date::add_iso_date(date, 0, 0, 0, 1, false)
@@ -179,273 +182,20 @@ pub(crate) fn day_length_nanoseconds(zone: &TimeZone, date: CivilDate) -> i128 {
     i128::try_from(&end - &start).expect("one day's length fits in i128 many times over")
 }
 
-/// The rounded date-only outcome of [`nudge_to_calendar_unit`]: the picked
-/// `years`/`months`/`weeks`/`days` candidate, the epoch instant it actually
-/// resolves to (needed by [`bubble_relative_duration`]'s own boundary
-/// probes), and whether rounding picked the larger of its two bracketing
-/// candidates (`didExpandCalendarUnit` — whether bubbling can apply at all).
-pub(crate) struct CalendarUnitNudge {
-    pub(crate) years: i64,
-    pub(crate) months: i64,
-    pub(crate) weeks: i64,
-    pub(crate) days: i64,
-    pub(crate) epoch_nanoseconds: BigInt,
-    pub(crate) expanded: bool,
-}
-
-/// `NudgeToCalendarUnit`: rounds an unrounded calendar-date duration
-/// (`duration`, already decomposed at some `largest_unit` granularity by
-/// [`plain_date::calendar_difference_date`]) to the nearest multiple of
-/// `increment` `unit`s, per `mode`.
+/// `GetStartOfDay(timeZone, date)` and `GetStartOfDay` of the following day:
+/// the instants one wall-clock day spans, `[start, end)`.
 ///
-/// This is [`plain_date::round_month_or_year`]'s own anchor-relative
-/// fractional-position algorithm, but measuring the fraction in **exact
-/// nanoseconds through the zone** between the two bracketing calendar-date
-/// candidates, rather than in epoch days — the day-length-aware version
-/// `ZonedDateTime` needs and a plain (unzoned) date pair does not: since a
-/// zoned day can be 23, 24 or 25 real hours, "halfway between these two
-/// candidate months" is only well-defined once measured in real elapsed
-/// time, not in a calendar-day count. Directly ported from Gecko's
-/// `NudgeToCalendarUnit` (`Duration.cpp`); reuses
-/// [`plain_date::calendar_add_date`]/[`plain_date::calendar_difference_date`]
-/// exactly as already shipped — no changes to either.
-///
-/// `None` only on a genuine representable-range overflow while resolving one
-/// of the two candidate instants (`argument-at-limits.js`-style fixtures
-/// near the ends of the `Instant` range) — the caller maps it to the spec's
-/// own `RangeError`.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn nudge_to_calendar_unit(
-    zone: &TimeZone,
-    calendar: AnyCalendarKind,
-    date1: CivilDate,
-    time1: CivilTime,
-    dest_epoch_ns: &BigInt,
-    duration: (i64, i64, i64, i64),
-    unit: DateUnit,
-    increment: i128,
-    sign: i64,
-    mode: blueice_ecma402::NumberRoundingMode,
-) -> Option<CalendarUnitNudge> {
-    let (years, months, weeks, days) = duration;
-    let trunc = |value: i64| -> i64 {
-        rounding::round_to_increment(
-            i128::from(value),
-            increment,
-            blueice_ecma402::NumberRoundingMode::Trunc,
-        ) as i64
-    };
-    let step = increment as i64 * sign;
-
-    let (start_tuple, end_tuple, r1) = match unit {
-        DateUnit::Year => {
-            let r1 = trunc(years);
-            ((r1, 0, 0, 0), (r1 + step, 0, 0, 0), r1)
-        }
-        DateUnit::Month => {
-            let r1 = trunc(months);
-            ((years, r1, 0, 0), (years, r1 + step, 0, 0), r1)
-        }
-        DateUnit::Week => {
-            // Steps 3.b-3.e: brackets `duration`'s own `weeks`/`days` split
-            // (from whatever `largest_unit` decomposed it at) back into a
-            // single "how many whole weeks from `date1`" count, by measuring
-            // the years+months-only landing date's plain ISO-day distance to
-            // the full years+months+weeks+days landing date.
-            let weeks_start =
-                plain_date::calendar_add_date(calendar, date1, years, months, 0, 0, false)?;
-            let weeks_end = plain_date::add_iso_date(weeks_start, 0, 0, 0, days, false)?;
-            let (_, _, extra_weeks, _) = plain_date::calendar_difference_date(
-                calendar,
-                weeks_start,
-                weeks_end,
-                DateUnit::Week,
-            );
-            let r1 = trunc(weeks + extra_weeks);
-            ((years, months, r1, 0), (years, months, r1 + step, 0), r1)
-        }
-        DateUnit::Day => {
-            let r1 = trunc(days);
-            (
-                (years, months, weeks, r1),
-                (years, months, weeks, r1 + step),
-                r1,
-            )
-        }
-    };
-
-    let resolve = |(y, mo, w, d): (i64, i64, i64, i64)| -> Option<BigInt> {
-        let date = plain_date::calendar_add_date(calendar, date1, y, mo, w, d, false)?;
-        zone.epoch_nanoseconds_for(date, time1, Disambiguation::Compatible)
-            .ok()
-    };
-    let start_ns = resolve(start_tuple)?;
-    let end_ns = resolve(end_tuple)?;
-
-    let mut numerator = i128::try_from(dest_epoch_ns - &start_ns)
-        .expect("a same-bracket remainder around an Instant-range value fits in i128");
-    let mut denominator = i128::try_from(&end_ns - &start_ns)
-        .expect("a same-bracket span around an Instant-range value fits in i128");
-    if denominator < 0 {
-        numerator = -numerator;
-        denominator = -denominator;
-    }
-
-    let expanded = nudge_expand_decision(numerator, denominator, r1, increment, sign, mode);
-    let (final_tuple, final_ns) = if expanded {
-        (end_tuple, end_ns)
-    } else {
-        (start_tuple, start_ns)
-    };
-    Some(CalendarUnitNudge {
-        years: final_tuple.0,
-        months: final_tuple.1,
-        weeks: final_tuple.2,
-        days: final_tuple.3,
-        epoch_nanoseconds: final_ns,
-        expanded,
-    })
-}
-
-/// `ApplyUnsignedRoundingMode`, specialized to the exact
-/// numerator/denominator fraction [`nudge_to_calendar_unit`] measures —
-/// identical decision tree to [`plain_date::round_month_or_year`]'s own
-/// (already Test262-verified) `round_up` match, just renamed to this
-/// function's own `r1`/`increment` naming.
-fn nudge_expand_decision(
-    numerator: i128,
-    denominator: i128,
-    r1: i64,
-    increment: i128,
-    sign: i64,
-    mode: blueice_ecma402::NumberRoundingMode,
-) -> bool {
-    use blueice_ecma402::NumberRoundingMode as Mode;
-    if denominator == 0 || numerator == 0 {
-        return false;
-    }
-    match mode {
-        Mode::Ceil => sign > 0,
-        Mode::Floor => sign < 0,
-        Mode::Expand => true,
-        Mode::Trunc => false,
-        Mode::HalfCeil => {
-            if sign > 0 {
-                2 * numerator >= denominator
-            } else {
-                2 * numerator > denominator
-            }
-        }
-        Mode::HalfFloor => {
-            if sign < 0 {
-                2 * numerator >= denominator
-            } else {
-                2 * numerator > denominator
-            }
-        }
-        Mode::HalfExpand => 2 * numerator >= denominator,
-        Mode::HalfTrunc => 2 * numerator > denominator,
-        Mode::HalfEven => {
-            if 2 * numerator == denominator {
-                (i128::from(r1.unsigned_abs()) / increment.max(1)) % 2 != 0
-            } else {
-                2 * numerator > denominator
-            }
-        }
-    }
-}
-
-/// `BubbleRelativeDuration`: after [`nudge_to_calendar_unit`] expands to its
-/// larger candidate, checks whether that expansion should keep bubbling up
-/// into successively coarser units, up to (and including) `largest_unit` —
-/// e.g. rounding 11 months up to 12 becomes 1 year, 0 months when
-/// `largest_unit` is `"years"` (Test262's
-/// `round-cross-unit-boundary.js`). A `"weeks"` count is only ever a
-/// bubbling target when `largest_unit` itself is `"weeks"` — matching
-/// Gecko's own `unit != Week || largestUnit == Week` guard, since a
-/// standalone "weeks" component is never introduced unless the caller
-/// actually asked for one.
-///
-/// `None` only on the same genuine representable-range overflow
-/// [`nudge_to_calendar_unit`] can hit.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn bubble_relative_duration(
-    zone: &TimeZone,
-    calendar: AnyCalendarKind,
-    date1: CivilDate,
-    time1: CivilTime,
-    nudge: &CalendarUnitNudge,
-    largest_unit: DateUnit,
-    smallest_unit: DateUnit,
-    sign: i64,
-) -> Option<(i64, i64, i64, i64)> {
-    let (mut years, mut months, mut weeks, mut days) =
-        (nudge.years, nudge.months, nudge.weeks, nudge.days);
-    if smallest_unit == largest_unit {
-        return Some((years, months, weeks, days));
-    }
-    let mut unit = smallest_unit;
-    while date_unit_rank(unit) > date_unit_rank(largest_unit) {
-        unit = one_coarser_date_unit(unit);
-        if unit == DateUnit::Week && largest_unit != DateUnit::Week {
-            continue;
-        }
-        let end_tuple = match unit {
-            DateUnit::Year => (years + sign, 0, 0, 0),
-            DateUnit::Month => (years, months + sign, 0, 0),
-            DateUnit::Week => (years, months, weeks + sign, 0),
-            DateUnit::Day => unreachable!("Day is never a bubbling target"),
-        };
-        let end = plain_date::calendar_add_date(
-            calendar,
-            date1,
-            end_tuple.0,
-            end_tuple.1,
-            end_tuple.2,
-            end_tuple.3,
-            false,
-        )?;
-        let end_ns: Result<BigInt, AmbiguousLocalTime> =
-            zone.epoch_nanoseconds_for(end, time1, Disambiguation::Compatible);
-        let end_ns = end_ns.ok()?;
-        let beyond_end = &nudge.epoch_nanoseconds - &end_ns;
-        let beyond_end_sign = match beyond_end.sign() {
-            num_bigint::Sign::Minus => -1_i64,
-            num_bigint::Sign::NoSign => 0,
-            num_bigint::Sign::Plus => 1,
-        };
-        if beyond_end_sign != -sign {
-            years = end_tuple.0;
-            months = end_tuple.1;
-            weeks = end_tuple.2;
-            days = 0;
-        } else {
-            break;
-        }
-    }
-    Some((years, months, weeks, days))
-}
-
-/// Coarseness rank for bubbling purposes only (lower = coarser) — `DateUnit`
-/// itself derives no `Ord` since [`plain_date::calendar_difference_date`]'s
-/// own callers never need to compare it, but bubbling needs to walk from
-/// `smallest_unit` up toward `largest_unit` one step at a time.
-fn date_unit_rank(unit: DateUnit) -> u8 {
-    match unit {
-        DateUnit::Year => 0,
-        DateUnit::Month => 1,
-        DateUnit::Week => 2,
-        DateUnit::Day => 3,
-    }
-}
-
-fn one_coarser_date_unit(unit: DateUnit) -> DateUnit {
-    match unit {
-        DateUnit::Day => DateUnit::Week,
-        DateUnit::Week => DateUnit::Month,
-        DateUnit::Month => DateUnit::Year,
-        DateUnit::Year => unreachable!("Year is the coarsest DateUnit"),
-    }
+/// `None` when the next date, or either start instant, is not representable --
+/// the specification's `RangeError` for `ZonedDateTime.prototype.hoursInDay`,
+/// `round` to a day, `startOfDay` and `withPlainTime()` on a value at the edge
+/// of the range (`hoursInDay/next-day-out-of-range.js`,
+/// `round/get-start-of-day-throws.js`).
+pub(crate) fn checked_day_bounds(zone: &TimeZone, date: CivilDate) -> Option<(BigInt, BigInt)> {
+    let next = plain_date::add_iso_date(date, 0, 0, 0, 1, false)
+        .filter(|next| epoch::is_date_within_limits(*next))?;
+    let start = zone.start_of_day(date);
+    let end = zone.start_of_day(next);
+    (epoch::is_in_instant_range(&start) && epoch::is_in_instant_range(&end)).then_some((start, end))
 }
 
 #[cfg(test)]
@@ -635,5 +385,27 @@ mod tests {
             day_length_nanoseconds(&TimeZone::Offset(-300), (2024, 6, 1)),
             24 * 3_600_000_000_000
         );
+    }
+
+    #[test]
+    fn checked_day_bounds_span_the_real_day_and_refuse_the_edges_of_the_range() {
+        let vancouver = TimeZone::Iana("America/Vancouver");
+        let (start, end) = checked_day_bounds(&vancouver, (2000, 4, 2)).unwrap();
+        assert_eq!(&end - &start, BigInt::from(23 * 3_600_000_000_000_i64));
+        let (start, end) = checked_day_bounds(&utc(), (1970, 1, 1)).unwrap();
+        assert_eq!(start, BigInt::from(0));
+        assert_eq!(end, BigInt::from(86_400_000_000_000_i64));
+        // The last representable date has no representable following day...
+        assert!(checked_day_bounds(&utc(), (275_760, 9, 13)).is_none());
+        // ...and the first has a start of day one day before the first instant.
+        assert!(checked_day_bounds(&utc(), (-271_821, 4, 19)).is_none());
+        assert!(checked_day_bounds(&utc(), (-271_821, 4, 20)).is_some());
+        // The zone shifts which side runs out first: west of UTC the next start of
+        // day for the second-to-last date is past the last instant, east of UTC the
+        // first date's own start of day is before the first instant.
+        assert!(checked_day_bounds(&TimeZone::Offset(60), (275_760, 9, 12)).is_some());
+        assert!(checked_day_bounds(&TimeZone::Offset(-60), (275_760, 9, 12)).is_none());
+        assert!(checked_day_bounds(&TimeZone::Offset(-60), (-271_821, 4, 20)).is_some());
+        assert!(checked_day_bounds(&TimeZone::Offset(60), (-271_821, 4, 20)).is_none());
     }
 }

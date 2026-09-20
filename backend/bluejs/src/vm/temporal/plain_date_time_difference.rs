@@ -242,6 +242,55 @@ fn difference_between_midnights(
     Some(duration_from_internal(rounded, largest))
 }
 
+/// `DifferencePlainDateTimeWithTotal`: the exact, unrounded count of `unit`s
+/// from `(date1, time1)` to `(date2, time2)` as a `(numerator, denominator)`
+/// fraction with `denominator > 0`, so the caller converts to a Number once
+/// (`rounding::exact_ratio_to_f64`).
+///
+/// A time `unit` is the plain nanosecond difference and `day` adds the whole
+/// days at 24 hours each; `week`, `month` and `year` measure the argument's
+/// position inside the bracketing calendar-unit window, exactly as
+/// `NudgeToCalendarUnit` does for rounding (`TotalRelativeDuration`).
+///
+/// `None` only when a bracket leaves the representable range; the caller maps
+/// that to the specification's `RangeError`.
+pub(crate) fn difference_plain_date_time_total(
+    calendar: AnyCalendarKind,
+    (date1, time1): (CivilDate, CivilTime),
+    (date2, time2): (CivilDate, CivilTime),
+    unit: TemporalUnit,
+) -> Option<(i128, i128)> {
+    if date1 == date2 && time1 == time2 {
+        return Some((0, 1));
+    }
+    let diff = difference_iso_date_time(calendar, date1, time1, date2, time2, unit)?;
+    if !unit.is_calendar() {
+        // `unit` is a day or a time unit: `diff` has no year, month or week.
+        let nanoseconds = diff.time + i128::from(diff.days) * NANOSECONDS_PER_DAY;
+        let length = unit.nanoseconds()?;
+        return Some((nanoseconds, length));
+    }
+    let origin = Point {
+        calendar,
+        date: date1,
+        time: time1,
+    };
+    let NudgePosition {
+        window,
+        numerator,
+        denominator,
+        ..
+    } = nudge_position(origin, epoch_nanoseconds(date2, time2), diff, 1, unit)?;
+    // total = r1 + progress * sign, with progress = numerator / denominator.
+    let count = i128::from(window.r1);
+    Some((
+        count
+            .checked_mul(denominator)?
+            .checked_add(numerator.checked_mul(i128::from(diff.sign()))?)?,
+        denominator,
+    ))
+}
+
 fn time_nanoseconds(time: CivilTime) -> i128 {
     duration_math::time_fields_to_nanoseconds(time.0, time.1, time.2, time.3, time.4, time.5)
 }
@@ -436,6 +485,54 @@ fn compute_nudge_window(
     })
 }
 
+/// Where the argument sits inside its [`NudgeWindow`]: the window itself,
+/// whether it had to be shifted one increment outward to contain the
+/// argument, and the argument's exact offset from the window's start
+/// (`numerator`) against the window's length (`denominator`), both
+/// non-negative.
+struct NudgePosition {
+    window: NudgeWindow,
+    shifted: bool,
+    numerator: i128,
+    denominator: i128,
+}
+
+/// `NudgeToCalendarUnit` steps 1-14: brackets the argument between two
+/// calendar-unit candidates and measures where it falls between them.
+fn nudge_position(
+    origin: Point,
+    dest_epoch_ns: i128,
+    duration: InternalDuration,
+    increment: i128,
+    unit: TemporalUnit,
+) -> Option<NudgePosition> {
+    let sign = duration.sign();
+    let origin_ns = epoch_nanoseconds(origin.date, origin.time);
+    let mut window = compute_nudge_window(origin, origin_ns, duration, increment, unit, false)?;
+    let mut shifted = false;
+    let (near, far) = if sign > 0 {
+        (window.start_ns, window.end_ns)
+    } else {
+        (window.end_ns, window.start_ns)
+    };
+    if !(near <= dest_epoch_ns && dest_epoch_ns <= far) {
+        window = compute_nudge_window(origin, origin_ns, duration, increment, unit, true)?;
+        shifted = true;
+    }
+    let mut numerator = dest_epoch_ns - window.start_ns;
+    let mut denominator = window.end_ns - window.start_ns;
+    if denominator < 0 {
+        numerator = -numerator;
+        denominator = -denominator;
+    }
+    Some(NudgePosition {
+        window,
+        shifted,
+        numerator,
+        denominator,
+    })
+}
+
 /// `NudgeToCalendarUnit`: rounds to the nearer of two calendar-unit
 /// brackets, deciding by where the argument's exact position falls between
 /// them. Returns the rounded duration (its time part is always zero), the
@@ -449,24 +546,12 @@ fn nudge_to_calendar_unit(
     mode: blueice_ecma402::NumberRoundingMode,
 ) -> Option<(InternalDuration, i128, bool)> {
     let sign = duration.sign();
-    let origin_ns = epoch_nanoseconds(origin.date, origin.time);
-    let mut window = compute_nudge_window(origin, origin_ns, duration, increment, unit, false)?;
-    let mut expanded = false;
-    let (near, far) = if sign > 0 {
-        (window.start_ns, window.end_ns)
-    } else {
-        (window.end_ns, window.start_ns)
-    };
-    if !(near <= dest_epoch_ns && dest_epoch_ns <= far) {
-        window = compute_nudge_window(origin, origin_ns, duration, increment, unit, true)?;
-        expanded = true;
-    }
-    let mut numerator = dest_epoch_ns - window.start_ns;
-    let mut denominator = window.end_ns - window.start_ns;
-    if denominator < 0 {
-        numerator = -numerator;
-        denominator = -denominator;
-    }
+    let NudgePosition {
+        window,
+        shifted,
+        numerator,
+        denominator,
+    } = nudge_position(origin, dest_epoch_ns, duration, increment, unit)?;
     let rounded_up = rounds_up(numerator, denominator, window.r1, increment, sign, mode);
     let (date, position) = if rounded_up {
         (window.end, window.end_ns)
@@ -476,7 +561,7 @@ fn nudge_to_calendar_unit(
     Some((
         InternalDuration::new(date, 0),
         position,
-        expanded || rounded_up,
+        shifted || rounded_up,
     ))
 }
 
@@ -484,7 +569,7 @@ fn nudge_to_calendar_unit(
 /// (`ApplyUnsignedRoundingMode` over the exact `numerator / denominator`
 /// position between the two brackets; `sign` orients `ceil`/`floor` and the
 /// half-`ceil`/`floor` modes).
-fn rounds_up(
+pub(crate) fn rounds_up(
     numerator: i128,
     denominator: i128,
     r1: i64,
@@ -1249,5 +1334,62 @@ mod tests {
             ),
             [0, 0, 0, 14, 0, 0, 0, 0, 0, 0]
         );
+    }
+
+    fn total(from: (CivilDate, CivilTime), to: (CivilDate, CivilTime), unit: TemporalUnit) -> f64 {
+        let (numerator, denominator) =
+            difference_plain_date_time_total(AnyCalendarKind::Iso, from, to, unit)
+                .expect("in-range inputs");
+        rounding::exact_ratio_to_f64(numerator, denominator)
+    }
+
+    #[test]
+    fn a_total_in_an_exact_unit_is_the_plain_ratio_of_nanoseconds() {
+        let from = ((2020, 1, 1), MIDNIGHT);
+        let to = ((2020, 1, 2), (12, 0, 0, 0, 0, 0));
+        assert_eq!(total(from, from, TemporalUnit::Hour), 0.0);
+        assert_eq!(total(from, to, TemporalUnit::Day), 1.5);
+        assert_eq!(total(from, to, TemporalUnit::Hour), 36.0);
+        assert_eq!(total(to, from, TemporalUnit::Day), -1.5);
+        assert_eq!(
+            total(from, to, TemporalUnit::Nanosecond),
+            129_600_000_000_000.0
+        );
+    }
+
+    #[test]
+    fn a_calendar_total_measures_the_position_inside_its_bracket() {
+        // 2020-01-31 + 1 month is 2020-02-29; the window to 2020-03-31 is 31
+        // days, and 10 hours into it is 10/744 of a month.
+        let from = ((2020, 1, 31), MIDNIGHT);
+        let to = ((2020, 2, 29), (10, 0, 0, 0, 0, 0));
+        assert_eq!(total(from, to, TemporalUnit::Month), 1.0134408602150538);
+        // Two whole years is exactly 2, with no drift.
+        assert_eq!(
+            total(
+                ((2020, 2, 29), MIDNIGHT),
+                ((2022, 2, 28), MIDNIGHT),
+                TemporalUnit::Year
+            ),
+            2.0
+        );
+        // Backwards from 2020-03-01 to 2020-02-15: the window runs back to
+        // 2020-02-01 (29 days), and 15 of them are covered, counted toward zero.
+        assert_eq!(
+            total(
+                ((2020, 3, 1), MIDNIGHT),
+                ((2020, 2, 15), MIDNIGHT),
+                TemporalUnit::Month
+            ),
+            -15.0 / 29.0
+        );
+    }
+
+    #[test]
+    fn a_week_total_counts_seven_day_windows() {
+        let from = ((2021, 3, 1), MIDNIGHT);
+        let to = ((2021, 3, 11), (12, 0, 0, 0, 0, 0));
+        // 1 week + 3.5 days.
+        assert_eq!(total(from, to, TemporalUnit::Week), 1.5);
     }
 }
