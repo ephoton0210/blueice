@@ -1190,13 +1190,28 @@ impl<'a> ExpressionLowerer<'a> {
                     "computed object property keys are not in the v1 direct bridge subset",
                 ));
             }
-            if token.kind != TokenKind::Identifier {
-                return Err(unsupported(
-                    self.token_span(token),
-                    "only identifier object property keys are in the v1 direct bridge subset",
-                ));
-            }
-            let name = token.text.clone();
+            let (key, shorthand_name) = match token.kind {
+                TokenKind::Identifier => (
+                    bluejs::PropertyKey::Identifier(token.text.clone()),
+                    Some(token.text.clone()),
+                ),
+                TokenKind::String => match lower_string(self.module, token)? {
+                    bluejs::Expr::String(value) => (bluejs::PropertyKey::String(value), None),
+                    _ => unreachable!("string lowering always constructs a string expression"),
+                },
+                TokenKind::Number => (
+                    bluejs::PropertyKey::Number(token.text.replace('_', "").parse().map_err(
+                        |_| unsupported(self.token_span(token), "unsupported numeric object key"),
+                    )?),
+                    None,
+                ),
+                _ => {
+                    return Err(unsupported(
+                        self.token_span(token),
+                        "only identifier, string, and numeric object property keys are in the v1 direct bridge subset",
+                    ));
+                }
+            };
             self.index += 1;
             let Some(colon) = self.tokens.get(self.index) else {
                 return Err(unsupported(opening_span, "unterminated object literal"));
@@ -1204,16 +1219,16 @@ impl<'a> ExpressionLowerer<'a> {
             let (value, shorthand) = if colon.text == ":" {
                 self.index += 1;
                 (self.parse_assignment()?, false)
-            } else if matches!(colon.text.as_str(), "," | "}") {
-                (bluejs::Expr::Identifier(name.clone()), true)
+            } else if matches!(colon.text.as_str(), "," | "}") && shorthand_name.is_some() {
+                (bluejs::Expr::Identifier(shorthand_name.unwrap()), true)
             } else {
                 return Err(unsupported(
                     self.token_span(colon),
-                    "object methods are not in the v1 direct bridge subset",
+                    "only identifier object keys may use shorthand; methods are not in the v1 direct bridge subset",
                 ));
             };
             properties.push(bluejs::ObjectProp::KeyValue {
-                key: bluejs::PropertyKey::Identifier(name),
+                key,
                 value,
                 shorthand,
             });
@@ -2006,6 +2021,23 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::String("Ada".into())
+        );
+    }
+
+    #[test]
+    fn lowers_checked_string_and_numeric_object_keys() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const value = { 'display-name': 'Ada', 42: 'answer' }; value['display-name'] + ':' + value[42];",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("Ada:answer".into())
         );
     }
 

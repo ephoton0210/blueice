@@ -35,6 +35,8 @@ An incompatible major ABI, an unknown required field, a source hash mismatch, or
 
 ## AST/IR hand-off
 
+Object literal keys may be identifiers, quoted strings, or numbers. Only identifier keys may use shorthand; computed keys, spread, methods, and accessors remain excluded.
+
 The bridge directly splits a template interpolation only when its content is one identifier reference; nested operators, calls, member reads, and other embedded expression syntax remain unsupported.
 
 Non-substituted template literals share the bridge's ordinary escape decoder and are never reparsed as generated JavaScript.
