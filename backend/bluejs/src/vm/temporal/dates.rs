@@ -618,13 +618,25 @@ impl Vm {
             ));
         }
         let increment = Self::temporal_validated_rounding_increment(increment_raw)?;
+        // `ValidateTemporalRoundingIncrement(increment, maximum, false)`: a
+        // time-unit increment must be strictly smaller than, and divide
+        // evenly into, the count of that unit in the next larger one
+        // (`PlainDateTime` is the only receiver whose `smallestUnit` can be
+        // a time unit; the date units have no such maximum).
+        if let Some(maximum) = smallest_unit.maximum_rounding_increment() {
+            if increment >= maximum || maximum % increment != 0 {
+                return Err(RuntimeError::RangeError(
+                    "roundingIncrement does not divide evenly into the next larger unit".into(),
+                ));
+            }
+        }
         let mode = Self::temporal_validated_rounding_mode(
             mode_raw.as_deref(),
             blueice_ecma402::NumberRoundingMode::Trunc,
         )?;
-        // Both rounding steps below (`round_calendar_duration` for
-        // day/week/month/year granularity, `TimeDuration::round` for
-        // sub-day granularity) round a *real*, direction-aware signed
+        // Both rounding paths below (`round_calendar_duration` for a
+        // `PlainDate`, `difference_plain_date_time` for a `PlainDateTime`)
+        // round a *real*, direction-aware signed
         // quantity computed in the fixed receiver-to-argument direction —
         // `Ceil`/`Floor` round toward a fixed end of the real number line
         // (`ceil(-x) == -floor(x)`, not `-ceil(x)`), and `HalfCeil`/
@@ -654,12 +666,11 @@ impl Vm {
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         // `DifferenceTemporalPlainDate`/`DifferenceTemporalPlainDateTime`
-        // always compute `CalendarDateUntil(calendar, temporalDate, other,
-        // largestUnit)` — i.e. always in the fixed receiver-to-argument
-        // direction, exactly like `until` — and only negate the *resulting*
+        // always compute the difference in the fixed receiver-to-argument
+        // direction, exactly like `until`, and only negate the *resulting*
         // Duration afterward for `since` (step 10). This must not be
-        // implemented by swapping which date is `from`/`to` and skipping the
-        // negation: `CalendarDateUntil`'s own algorithm anchors on `from`'s
+        // implemented by swapping which date is `from`/`to`:
+        // `CalendarDateUntil`'s own algorithm anchors on `from`'s
         // day-of-month while walking years/months, so it is not
         // anti-symmetric (`f(other, existing) != -f(existing, other)` in
         // general — verified against Test262's
@@ -670,182 +681,71 @@ impl Vm {
         // the whole result is negated below when `since` is true.
         let from = (existing.year, existing.month, existing.day);
         let to = (other.year, other.month, other.day);
-        let from_time = (
-            existing.hour,
-            existing.minute,
-            existing.second,
-            existing.millisecond,
-            existing.microsecond,
-            existing.nanosecond,
-        );
-        let to_time = (
-            other.hour,
-            other.minute,
-            other.second,
-            other.millisecond,
-            other.microsecond,
-            other.nanosecond,
-        );
-
-        const DAY_NS: i128 = 86_400_000_000_000;
-        let from_ns = duration_math::time_fields_to_nanoseconds(
-            from_time.0,
-            from_time.1,
-            from_time.2,
-            from_time.3,
-            from_time.4,
-            from_time.5,
-        );
-        let to_ns = duration_math::time_fields_to_nanoseconds(
-            to_time.0, to_time.1, to_time.2, to_time.3, to_time.4, to_time.5,
-        );
-        let mut time_diff = to_ns - from_ns;
-        let date_sign = match plain_date::compare_iso_date(from, to) {
-            std::cmp::Ordering::Less => 1_i64,
-            std::cmp::Ordering::Greater => -1,
-            std::cmp::Ordering::Equal => 0,
-        };
-        let mut adjusted_to = to;
-        if time_diff != 0 && date_sign != 0 && time_diff.signum() != i128::from(date_sign) {
-            adjusted_to = plain_date::add_iso_date(to, 0, 0, 0, -date_sign, false)
-                .expect("shifting by one day never overflows a representable date");
-            time_diff += i128::from(date_sign) * DAY_NS;
-        }
-
-        let (years, months, weeks, days, time_fields) = if smallest_unit
-            >= rounding::TemporalUnit::Day
-        {
+        let mut fields: [i128; 10] = if existing.kind == TemporalKind::PlainDateTime {
+            // The time-of-day borrow, the `largestUnit` folding of whole days
+            // into time fields and every rounding step live in the host-neutral
+            // `DifferencePlainDateTimeWithRounding` port.
+            plain_date_time_difference::difference_plain_date_time(
+                calendar_kind,
+                (
+                    from,
+                    (
+                        existing.hour,
+                        existing.minute,
+                        existing.second,
+                        existing.millisecond,
+                        existing.microsecond,
+                        existing.nanosecond,
+                    ),
+                ),
+                (
+                    to,
+                    (
+                        other.hour,
+                        other.minute,
+                        other.second,
+                        other.millisecond,
+                        other.microsecond,
+                        other.nanosecond,
+                    ),
+                ),
+                largest_unit,
+                increment,
+                smallest_unit,
+                effective_mode,
+            )
+            .ok_or_else(|| {
+                RuntimeError::RangeError("Temporal date arithmetic is out of range".into())
+            })?
+        } else {
             let (years, months, weeks, days) = plain_date::round_calendar_duration(
                 calendar_kind,
                 from,
-                adjusted_to,
+                to,
                 Self::temporal_unit_to_date_unit(largest_unit),
                 Self::temporal_unit_to_date_unit(smallest_unit),
                 increment,
                 effective_mode,
             );
-            (years, months, weeks, days, None)
-        } else {
-            let time_unit = match smallest_unit {
-                rounding::TemporalUnit::Hour => rounding::TimeUnit::Hour,
-                rounding::TemporalUnit::Minute => rounding::TimeUnit::Minute,
-                rounding::TemporalUnit::Second => rounding::TimeUnit::Second,
-                rounding::TemporalUnit::Millisecond => rounding::TimeUnit::Millisecond,
-                rounding::TemporalUnit::Microsecond => rounding::TimeUnit::Microsecond,
-                _ => rounding::TimeUnit::Nanosecond,
-            };
-            let rounded = duration_math::TimeDuration::from_nanoseconds(time_diff).round(
-                time_unit,
-                increment,
-                effective_mode,
-            );
-            // This is a *duration* (signed magnitude), not a wall-clock time
-            // of day, so the day/time split must be sign-consistent
-            // (truncating toward zero) rather than the `div_euclid`/
-            // `rem_euclid` wraparound `temporal_date_add`/`toString`/`round`
-            // use elsewhere for an actual date+time point — otherwise a
-            // negative difference's `days` field could end up negative while
-            // its time fields stayed non-negative, which
-            // `DurationRecord::try_new`'s common-sign rule rejects.
-            let total = rounded.total_nanoseconds();
-            let day_carry = total / DAY_NS;
-            let ns_of_day = total % DAY_NS;
-            let time_largest = if largest_unit >= rounding::TemporalUnit::Day {
-                rounding::TimeUnit::Hour
-            } else {
-                match largest_unit {
-                    rounding::TemporalUnit::Hour => rounding::TimeUnit::Hour,
-                    rounding::TemporalUnit::Minute => rounding::TimeUnit::Minute,
-                    rounding::TemporalUnit::Second => rounding::TimeUnit::Second,
-                    rounding::TemporalUnit::Millisecond => rounding::TimeUnit::Millisecond,
-                    rounding::TemporalUnit::Microsecond => rounding::TimeUnit::Microsecond,
-                    _ => rounding::TimeUnit::Nanosecond,
-                }
-            };
-            let balanced =
-                duration_math::TimeDuration::from_nanoseconds(ns_of_day).balance_to(time_largest);
-            let (_, _, _, whole_days) = plain_date::calendar_difference_date(
-                calendar_kind,
-                from,
-                adjusted_to,
-                plain_date::DateUnit::Day,
-            );
-            let total_days = whole_days + day_carry as i64;
-            let day_target =
-                plain_date::calendar_add_date(calendar_kind, from, 0, 0, 0, total_days, false)
-                    .expect("a rounded day-count from a representable date stays representable");
-            let (y, m, w, d) = plain_date::calendar_difference_date(
-                calendar_kind,
-                from,
-                day_target,
-                Self::temporal_unit_to_date_unit(largest_unit),
-            );
-            (y, m, w, d, Some(balanced))
+            [
+                i128::from(years),
+                i128::from(months),
+                i128::from(weeks),
+                i128::from(days),
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ]
         };
-
-        let (hours, minutes, seconds, milliseconds, microseconds, nanoseconds) = time_fields
-            .map_or((0, 0, 0, 0, 0, 0), |fields: [i64; 6]| {
-                (
-                    fields[0], fields[1], fields[2], fields[3], fields[4], fields[5],
-                )
-            });
         // Step 10 of `DifferenceTemporalPlainDate`/`DifferenceTemporalPlainDateTime`:
-        // the whole `years`..`nanoseconds` computation above is always in the
-        // fixed `existing` (receiver) -> `other` (argument) direction — see
-        // the comment on `from`/`to` above — so `since` negates every field
-        // of the finished result rather than the inputs to the computation.
-        let (
-            years,
-            months,
-            weeks,
-            days,
-            hours,
-            minutes,
-            seconds,
-            milliseconds,
-            microseconds,
-            nanoseconds,
-        ) = if since {
-            (
-                -years,
-                -months,
-                -weeks,
-                -days,
-                -hours,
-                -minutes,
-                -seconds,
-                -milliseconds,
-                -microseconds,
-                -nanoseconds,
-            )
-        } else {
-            (
-                years,
-                months,
-                weeks,
-                days,
-                hours,
-                minutes,
-                seconds,
-                milliseconds,
-                microseconds,
-                nanoseconds,
-            )
-        };
-        let record = blueice_ecma402::DurationRecord::try_new(
-            i128::from(years),
-            i128::from(months),
-            i128::from(weeks),
-            i128::from(days),
-            i128::from(hours),
-            i128::from(minutes),
-            i128::from(seconds),
-            i128::from(milliseconds),
-            i128::from(microseconds),
-            i128::from(nanoseconds),
-        )
-        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
-        self.alloc_temporal_value(Self::temporal_duration_value(record), false)
+        // `since` negates every field of the finished result.
+        if since {
+            fields = fields.map(|field| -field);
+        }
+        self.temporal_duration_create(fields)
     }
 
     pub(in super::super) fn temporal_date_equals(

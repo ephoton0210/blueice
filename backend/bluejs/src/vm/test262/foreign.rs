@@ -571,23 +571,25 @@ impl Vm {
             );
             Ok(Value::Object(target))
         })();
-        if result.is_err() {
-            self.heap.unroot(source_root)?;
-        } else if ordinary_buffer {
-            let target = result
-                .as_ref()
-                .expect("successful transport returns a child object")
-                .object_id()
-                .expect("successful transport returns a child object");
-            self.test262_foreign_buffer_mirrors.insert(
-                (source, realm_id),
-                Test262ForeignBufferMirror {
-                    realm: realm_id,
-                    target,
-                    facade: None,
-                    _buffer_root: None,
-                },
-            );
+        match result.as_ref() {
+            Err(_) => {
+                self.heap.unroot(source_root)?;
+            }
+            Ok(value) if ordinary_buffer => {
+                let target = value
+                    .object_id()
+                    .expect("successful transport returns a child object");
+                self.test262_foreign_buffer_mirrors.insert(
+                    (source, realm_id),
+                    Test262ForeignBufferMirror {
+                        realm: realm_id,
+                        target,
+                        facade: None,
+                        _buffer_root: None,
+                    },
+                );
+            }
+            Ok(_) => {}
         }
         result
     }
