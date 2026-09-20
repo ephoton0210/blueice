@@ -112,8 +112,8 @@ impl std::error::Error for BridgeError {}
 /// The v1 direct subset has exactly one non-declaration module and no runtime
 /// import/export entries. It accepts `var`/`let`/`const` declarations with an
 /// optional literal/identifier/arithmetic initializer, named local functions
-/// with required identifier parameters and one final identifier rest parameter
-/// plus structured local/return bodies,
+/// with required identifier parameters, bounded direct-expression defaults,
+/// and one final identifier rest parameter plus structured local/return bodies,
 /// and standalone expressions made from those same forms or direct calls.
 /// The expression subset includes `!`, `+`, `-`, `~`, `typeof`, `void`, and
 /// `delete` with a property target; arithmetic, relational (including `in` and
@@ -543,10 +543,10 @@ fn lower_function(
 ) -> Result<bluejs::Stmt, BridgeError> {
     let mut params = Vec::with_capacity(function.parameters.len());
     for (index, parameter) in function.parameters.iter().enumerate() {
-        if parameter.optional {
+        if parameter.optional && parameter.default.is_none() {
             return Err(unsupported(
                 parameter.span.clone(),
-                "optional and default parameters are not yet in the v1 direct bridge subset",
+                "optional parameters without defaults are not yet in the v1 direct bridge subset",
             ));
         }
         if parameter.rest && index + 1 != function.parameters.len() {
@@ -557,7 +557,11 @@ fn lower_function(
         }
         params.push(bluejs::Param {
             pattern: bluejs::Pattern::Identifier(parameter.name.clone()),
-            default: None,
+            default: parameter
+                .default
+                .as_deref()
+                .map(|tokens| ExpressionLowerer::new(&module.id, tokens).parse())
+                .transpose()?,
             rest: parameter.rest,
         });
     }
@@ -2394,6 +2398,27 @@ mod tests {
                     "function sum(base: number, ...values: number[]): number { return base + values[0]; }",
                     "const pair: [number] = [2];",
                     "sum(40, ...pair);"
+                ),
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn lowers_checked_default_parameter_expressions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                concat!(
+                    "function add(left: number, right: number): number { return left + right; }",
+                    "function scale(value: number = add(20, 1), multiplier: number = 2): number { return value * multiplier; }",
+                    "scale(undefined);"
                 ),
             )]),
             CompilerOptions::default(),

@@ -271,6 +271,54 @@ fn rejects_rest_parameters_that_are_not_final_array_parameters() {
 }
 
 #[test]
+fn checks_default_parameter_initializers_and_omitted_calls() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "function add(left: number, right: number): number { return left + right; }\n\
+             function scale(value: number = add(20, 1), multiplier: number = 2): number { return value * multiplier; }\n\
+             const omitted: number = scale();\n\
+             const explicitUndefined: number = scale(undefined);\n\
+             const invalid: number = scale('wrong');",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn rejects_a_default_parameter_initializer_with_the_wrong_type() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "function invalid(value: number = 'wrong'): number { return value; }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn infers_nullish_coalescing_after_excluding_null_and_undefined() {
     let result = crate::compile(
         "memory:///main.ts",

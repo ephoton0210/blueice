@@ -994,6 +994,29 @@ impl<'a> ModuleChecker<'a> {
                     DiagnosticCode::TypeMismatch,
                 );
             }
+            if let Some(default) = &parameter.default {
+                self.check_function_call(default, &scope, &parameter.span);
+                self.check_direct_property_access(default, &scope, &parameter.span);
+                self.check_arithmetic_operators(default, &scope, &parameter.span);
+                let actual = self.infer_expression(default, &scope);
+                let expected = parameter
+                    .annotation
+                    .as_ref()
+                    .cloned()
+                    .unwrap_or(Type::Unknown);
+                if !self.is_assignable_bounded(&actual, &expected, &parameter.span) {
+                    self.type_error(
+                        &parameter.span,
+                        format!(
+                            "default initializer has type `{}`, which is not assignable to parameter `{}` of type `{}`",
+                            type_label(&actual),
+                            parameter.name,
+                            type_label(&expected)
+                        ),
+                        DiagnosticCode::TypeMismatch,
+                    );
+                }
+            }
             if let Some(annotation) = &parameter.annotation {
                 self.check_type(annotation, &parameter.span);
                 scope.insert(parameter.name.clone(), annotation.clone());

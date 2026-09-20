@@ -220,6 +220,10 @@ pub struct Parameter {
     pub rest: bool,
     pub optional: bool,
     pub annotation: Option<Type>,
+    /// Original runtime tokens for an initializer on a default parameter.
+    /// They are retained so the direct BlueTS-to-BlueJS bridge can construct a
+    /// structured BlueJS parameter expression without reparsing emitted text.
+    pub default: Option<Vec<Token>>,
     pub span: SourceSpan,
 }
 
@@ -945,18 +949,33 @@ impl Parser {
             } else {
                 None
             };
-            if self.consume("=") {
+            let default = if self.consume("=") {
                 // A default initializer makes a parameter omittable at a call
-                // site just like `?`; the emitter preserves the initializer.
+                // site just like `?`. Retain the original runtime tokens for
+                // direct BlueJS lowering while the emitter preserves source.
                 optional = true;
-                self.skip_until(&[",", ")"]);
-            }
+                let end = find_balanced_delimiter(
+                    &self.tokens,
+                    self.index,
+                    self.tokens.len() - 1,
+                    &[",", ")"],
+                );
+                let value = self.tokens[self.index..end].to_vec();
+                self.index = end;
+                if value.is_empty() {
+                    self.error_here(DiagnosticCode::ParseError, "expected a default initializer");
+                }
+                Some(value)
+            } else {
+                None
+            };
             let parameter_end = self.previous().end;
             parameters.push(Parameter {
                 name: parameter_name,
                 rest,
                 optional,
                 annotation,
+                default,
                 span: SourceSpan::new(&self.id, parameter_start, parameter_end),
             });
             if !self.consume(",") {
