@@ -112,7 +112,8 @@ impl std::error::Error for BridgeError {}
 /// The v1 direct subset has exactly one non-declaration module and no runtime
 /// import/export entries. It accepts `var`/`let`/`const` declarations with an
 /// optional literal/identifier/arithmetic initializer, named local functions
-/// with required identifier parameters plus structured local/return bodies,
+/// with required identifier parameters and one final identifier rest parameter
+/// plus structured local/return bodies,
 /// and standalone expressions made from those same forms or direct calls.
 /// The expression subset includes `!`, `+`, `-`, `~`, `typeof`, `void`, and
 /// `delete` with a property target; arithmetic, relational (including `in` and
@@ -541,17 +542,23 @@ fn lower_function(
     function: &FunctionDeclaration,
 ) -> Result<bluejs::Stmt, BridgeError> {
     let mut params = Vec::with_capacity(function.parameters.len());
-    for parameter in &function.parameters {
-        if parameter.rest || parameter.optional {
+    for (index, parameter) in function.parameters.iter().enumerate() {
+        if parameter.optional {
             return Err(unsupported(
                 parameter.span.clone(),
-                "optional, default, and rest parameters are not yet in the v1 direct bridge subset",
+                "optional and default parameters are not yet in the v1 direct bridge subset",
+            ));
+        }
+        if parameter.rest && index + 1 != function.parameters.len() {
+            return Err(unsupported(
+                parameter.span.clone(),
+                "a rest parameter must be the final direct function parameter",
             ));
         }
         params.push(bluejs::Param {
             pattern: bluejs::Pattern::Identifier(parameter.name.clone()),
             default: None,
-            rest: false,
+            rest: parameter.rest,
         });
     }
 
@@ -2374,6 +2381,27 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::String("42:object".into())
+        );
+    }
+
+    #[test]
+    fn lowers_checked_array_typed_rest_parameters() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                concat!(
+                    "function sum(base: number, ...values: number[]): number { return base + values[0]; }",
+                    "const pair: [number] = [2];",
+                    "sum(40, ...pair);"
+                ),
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(42.0)
         );
     }
 

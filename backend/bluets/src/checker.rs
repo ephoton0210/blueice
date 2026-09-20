@@ -967,7 +967,33 @@ impl<'a> ModuleChecker<'a> {
         let mut scope = self.values.clone();
         let previous_parameters = self.type_parameters.clone();
         self.check_type_parameters(&function.type_parameters);
-        for parameter in &function.parameters {
+        for (index, parameter) in function.parameters.iter().enumerate() {
+            if parameter.rest && index + 1 != function.parameters.len() {
+                self.type_error(
+                    &parameter.span,
+                    "a rest parameter must be last".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+            if parameter.rest && parameter.optional {
+                self.type_error(
+                    &parameter.span,
+                    "a rest parameter cannot be optional or have a default initializer".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
+            if parameter.rest
+                && parameter
+                    .annotation
+                    .as_ref()
+                    .is_some_and(|annotation| !matches!(annotation, Type::Array(_)))
+            {
+                self.type_error(
+                    &parameter.span,
+                    "the bounded rest-parameter rule requires an array annotation".to_string(),
+                    DiagnosticCode::TypeMismatch,
+                );
+            }
             if let Some(annotation) = &parameter.annotation {
                 self.check_type(annotation, &parameter.span);
                 scope.insert(parameter.name.clone(), annotation.clone());
@@ -1412,19 +1438,23 @@ impl<'a> ModuleChecker<'a> {
         let Some(signature) = selected.or_else(|| signatures.first().cloned()) else {
             return;
         };
-        let required = signature
-            .parameters
-            .iter()
-            .filter(|parameter| !parameter.optional)
-            .count();
-        if actuals.len() < required || actuals.len() > signature.parameters.len() {
+        let required = function_signature_required_arguments(&signature);
+        if !function_signature_accepts_argument_count(&signature, actuals.len()) {
+            let expected = if signature
+                .parameters
+                .last()
+                .is_some_and(|parameter| parameter.rest)
+            {
+                format!("at least {required}")
+            } else {
+                format!("{required} to {}", signature.parameters.len())
+            };
             self.type_error(
                 span,
                 format!(
-                    "function {} expects {} to {} argument(s), got {}",
+                    "function {} expects {} argument(s), got {}",
                     call.callee.text,
-                    required,
-                    signature.parameters.len(),
+                    expected,
                     actuals.len()
                 ),
                 DiagnosticCode::TypeMismatch,
@@ -1448,15 +1478,17 @@ impl<'a> ModuleChecker<'a> {
             );
             substitutions
         };
-        for (index, (parameter, actual)) in signature.parameters.iter().zip(actuals).enumerate() {
-            let expected = parameter_expected_type(parameter, &substitutions);
-            if !self.is_assignable_bounded(&actual, &expected, span) {
+        for (index, actual) in actuals.iter().enumerate() {
+            let parameter = function_parameter_for_argument(&signature, index)
+                .expect("an accepted function call has a parameter for every argument");
+            let expected = call_parameter_expected_type(parameter, &substitutions);
+            if !self.is_assignable_bounded(actual, &expected, span) {
                 self.type_error(
                     span,
                     format!(
                         "argument {} has type `{}`, which is not assignable to parameter `{}` of type `{}`",
                         index + 1,
-                        type_label(&actual),
+                        type_label(actual),
                         parameter.name,
                         type_label(&expected)
                     ),
@@ -1859,8 +1891,16 @@ fn infer_call_substitutions(
         .iter()
         .map(|parameter| parameter.name.clone())
         .collect::<BTreeSet<_>>();
-    for (parameter, actual) in signature.parameters.iter().zip(actuals) {
-        let Some(annotation) = &parameter.annotation else {
+    for (index, actual) in actuals.iter().enumerate() {
+        let Some(parameter) = function_parameter_for_argument(signature, index) else {
+            break;
+        };
+        let annotation = if parameter.rest {
+            rest_parameter_element_annotation(parameter)
+        } else {
+            parameter.annotation.as_ref()
+        };
+        let Some(annotation) = annotation else {
             continue;
         };
         infer_type_arguments(annotation, actual, &type_parameters, &mut substitutions);
@@ -1897,12 +1937,7 @@ fn function_signature_matches(
     aliases: &BTreeMap<String, TypeDefinition>,
     max_type_expansions: usize,
 ) -> Result<bool, ()> {
-    let required = signature
-        .parameters
-        .iter()
-        .filter(|parameter| !parameter.optional)
-        .count();
-    if actuals.len() < required || actuals.len() > signature.parameters.len() {
+    if !function_signature_accepts_argument_count(signature, actuals.len()) {
         return Ok(false);
     }
     let Some(substitutions) =
@@ -1926,8 +1961,10 @@ fn function_signature_matches(
             return Err(());
         }
     }
-    for (parameter, actual) in signature.parameters.iter().zip(actuals) {
-        let expected = parameter_expected_type(parameter, &substitutions);
+    for (index, actual) in actuals.iter().enumerate() {
+        let parameter = function_parameter_for_argument(signature, index)
+            .expect("a matching function signature has a parameter for every argument");
+        let expected = call_parameter_expected_type(parameter, &substitutions);
         if !is_assignable(actual, &expected, aliases, &mut HashSet::new(), &mut budget) {
             return if budget.exhausted { Err(()) } else { Ok(false) };
         }
@@ -2017,6 +2054,60 @@ fn parameter_expected_type(parameter: &Parameter, substitutions: &BTreeMap<Strin
     } else {
         value
     }
+}
+
+fn call_parameter_expected_type(
+    parameter: &Parameter,
+    substitutions: &BTreeMap<String, Type>,
+) -> Type {
+    let value = parameter_expected_type(parameter, substitutions);
+    if parameter.rest {
+        match value {
+            Type::Array(element) => *element,
+            _ => Type::Unknown,
+        }
+    } else {
+        value
+    }
+}
+
+fn rest_parameter_element_annotation(parameter: &Parameter) -> Option<&Type> {
+    match parameter.annotation.as_ref()? {
+        Type::Array(element) => Some(element),
+        _ => None,
+    }
+}
+
+fn function_signature_required_arguments(signature: &FunctionSignature) -> usize {
+    signature
+        .parameters
+        .iter()
+        .filter(|parameter| !parameter.rest && !parameter.optional)
+        .count()
+}
+
+fn function_signature_accepts_argument_count(
+    signature: &FunctionSignature,
+    actual_count: usize,
+) -> bool {
+    actual_count >= function_signature_required_arguments(signature)
+        && (signature
+            .parameters
+            .last()
+            .is_some_and(|parameter| parameter.rest)
+            || actual_count <= signature.parameters.len())
+}
+
+fn function_parameter_for_argument(
+    signature: &FunctionSignature,
+    argument_index: usize,
+) -> Option<&Parameter> {
+    signature.parameters.get(argument_index).or_else(|| {
+        signature
+            .parameters
+            .last()
+            .filter(|parameter| parameter.rest)
+    })
 }
 
 fn type_parameter_constraint_substitutions(parameters: &[TypeParameter]) -> BTreeMap<String, Type> {

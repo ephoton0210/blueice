@@ -198,6 +198,79 @@ fn expands_tuple_spread_arguments_for_direct_function_calls() {
 }
 
 #[test]
+fn checks_array_typed_rest_parameters_for_normal_and_tuple_spread_calls() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "function sum(base: number, ...values: number[]): number { return base + values[0]; }\n\
+             const pair: [number] = [2];\n\
+             const fromSpread: number = sum(40, ...pair);\n\
+             const fromArguments: number = sum(20, 22);\n\
+             const invalid: number = sum(40, 'two');",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn infers_generic_returns_from_array_typed_rest_parameters() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "function first<T>(...values: T[]): T { return values[0]; }\n\
+             const value: number = first(42, 7);\n\
+             const invalid: string = first(42, 7);",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn rejects_rest_parameters_that_are_not_final_array_parameters() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "function misplaced(...values: number[], tail: number): number { return tail; }\n\
+             function scalar(...value: number): number { return value; }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        2,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn infers_nullish_coalescing_after_excluding_null_and_undefined() {
     let result = crate::compile(
         "memory:///main.ts",
