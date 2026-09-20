@@ -855,6 +855,18 @@ impl Vm {
         };
         let anchor = plain_year_month::year_month_from_fields(calendar_kind, &anchor_fields, false)
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
+        // `AddDurationToYearMonth` resolves the month's *first day* as a date
+        // (`CalendarDateFromFields`) before doing anything else, so a
+        // year-month whose first day precedes the earliest representable date
+        // (`-271821-04` starts on the 1st, the range on the 19th) has no date
+        // to add to -- even for a blank duration. `options` was already read
+        // above, ahead of this validation (`add/options-read-before-
+        // algorithmic-validation.js`).
+        if !epoch::is_date_within_limits(anchor) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainYearMonth arithmetic is out of range".into(),
+            ));
+        }
         let result_date = plain_date::calendar_add_date(
             calendar_kind,
             anchor,
@@ -939,6 +951,16 @@ impl Vm {
             blueice_ecma402::NumberRoundingMode::Trunc,
         )?;
 
+        // Two identical year-months differ by nothing, and `DifferenceTemporal
+        // PlainYearMonth` says so before it resolves either one to a date --
+        // which is why `minYearMonth.since(minYearMonth)` is a blank duration
+        // even though `-271821-04`'s first day is not a valid date
+        // (`since/throws-if-year-outside-valid-iso-range.js`).
+        if (existing.year, existing.month, existing.day) == (other.year, other.month, other.day) {
+            let blank = blueice_ecma402::DurationRecord::try_new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+            return self.alloc_temporal_value(Self::temporal_duration_value(blank), false);
+        }
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         // Always `from = existing, to = other` and negate the *result* for
@@ -972,6 +994,16 @@ impl Vm {
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
         let to_date = resolve(&to_fields)
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
+        // The difference is taken between the two months' *first days*, so
+        // both must be valid dates: a wider range than a `PlainYearMonth`
+        // itself may hold (`-271821-04` is one, but starts before the earliest
+        // date), which is why `"-271821-04"` is an invalid argument here yet a
+        // valid `PlainYearMonth.from` string (`since/argument-string-limits.js`).
+        if !epoch::is_date_within_limits(from_date) || !epoch::is_date_within_limits(to_date) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainYearMonth difference is out of range".into(),
+            ));
+        }
 
         // `round_calendar_duration`'s own `roundingMode` is direction-
         // sensitive (`Ceil`/`Floor`/`HalfCeil`/`HalfFloor` round toward a
@@ -1244,6 +1276,16 @@ impl Vm {
             existing.calendar,
             date,
         );
+        // A month at the edge of the range holds days that are not valid
+        // dates: `-271821-04` starts on the 1st but the earliest date is the
+        // 19th, and `+275760-09` ends on the 30th but the latest is the 13th
+        // (`toPlainDate/limits.js`).
+        if !epoch::is_date_within_limits((value.year, value.month, value.day)) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainYearMonth.prototype.toPlainDate is outside the supported range"
+                    .into(),
+            ));
+        }
         self.alloc_temporal_value(value, false)
     }
 
