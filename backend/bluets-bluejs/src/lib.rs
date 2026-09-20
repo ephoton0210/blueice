@@ -114,10 +114,10 @@ impl std::error::Error for BridgeError {}
 /// optional literal/identifier/arithmetic initializer, named local functions
 /// with required identifier parameters plus structured local/return bodies,
 /// and standalone expressions made from those same forms or direct calls.
-/// The expression subset includes unary, arithmetic, relational, equality,
-/// logical, nullish-coalescing, arithmetic exponentiation, bitwise/shift,
-/// conditional, and identifier-only simple or compound-assignment operators.
-/// Static-only
+/// The expression subset includes `!`, `+`, `-`, `~`, `typeof`, and `void`
+/// unary expressions; arithmetic, relational, equality, logical,
+/// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
+/// and identifier-only simple or compound-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -950,9 +950,12 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     fn starts_unary_expression(&self) -> bool {
-        self.tokens
-            .get(self.index)
-            .is_some_and(|token| matches!(token.text.as_str(), "!" | "+" | "-" | "~"))
+        self.tokens.get(self.index).is_some_and(|token| {
+            matches!(
+                token.text.as_str(),
+                "!" | "+" | "-" | "~" | "typeof" | "void"
+            )
+        })
     }
 
     fn parse_unary(&mut self) -> Result<bluejs::Expr, BridgeError> {
@@ -964,6 +967,8 @@ impl<'a> ExpressionLowerer<'a> {
                 "+" => Some(bluejs::UnaryOp::Plus),
                 "-" => Some(bluejs::UnaryOp::Neg),
                 "~" => Some(bluejs::UnaryOp::BitNot),
+                "typeof" => Some(bluejs::UnaryOp::Typeof),
+                "void" => Some(bluejs::UnaryOp::Void),
                 _ => None,
             });
         if let Some(op) = op {
@@ -1310,6 +1315,23 @@ mod tests {
                 ENTRY,
                 "function matches(value: number) { \
                  return !(value < 42) && ~0 === -1 && +value === 42; } matches(42);",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn lowers_typeof_and_void_expressions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const absent: undefined = void 0; typeof 1 === 'number' && typeof absent === 'undefined';",
             )]),
             CompilerOptions::default(),
         )
