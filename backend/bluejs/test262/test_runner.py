@@ -11,6 +11,9 @@ import run
 from run import (
     ITERATOR_ZIP_BASIC_MATRIX_FIXTURES,
     ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET,
+    FINITE_STRESS_FIXTURES,
+    FINITE_STRESS_INSTRUCTION_BUDGET,
+    FINITE_STRESS_TIMEOUT,
     ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT,
     TEMPORAL_CALENDAR_TABLE_FIXTURES,
     TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET,
@@ -256,6 +259,21 @@ class RunnerTests(unittest.TestCase):
             ),
             2,
         )
+
+    def test_the_all_pairs_time_zone_comparison_is_a_finite_stress_fixture(self):
+        # canonical-not-equal.js compares every pair of the ~446 primary time
+        # zone identifiers (about 99,000 pairs): finite, but well past the
+        # ordinary budget and wall deadline. Its neighbours keep the defaults.
+        relative = "intl402/Temporal/ZonedDateTime/prototype/equals/canonical-not-equal.js"
+        self.assertIn(relative, FINITE_STRESS_FIXTURES)
+        self.assertEqual(
+            instruction_budget({}, 100_000, relative),
+            FINITE_STRESS_INSTRUCTION_BUDGET,
+        )
+        self.assertEqual(case_timeout({}, 2, relative), FINITE_STRESS_TIMEOUT)
+        neighbour = "intl402/Temporal/ZonedDateTime/prototype/equals/argument-valid.js"
+        self.assertNotIn(neighbour, FINITE_STRESS_FIXTURES)
+        self.assertEqual(instruction_budget({}, 100_000, neighbour), 100_000)
 
     def test_finite_temporal_fixtures_get_a_named_bounded_allowance_and_nothing_else(self):
         # Test262 defines no instruction budget: it is this host's own resource

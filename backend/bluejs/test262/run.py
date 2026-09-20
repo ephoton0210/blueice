@@ -346,6 +346,11 @@ FINITE_STRESS_FIXTURES = frozenset(
         "intl402/Segmenter/prototype/segment/segment-grapheme-iterable.js",
         "intl402/supportedLocalesOf-consistent-with-resolvedOptions.js",
         "intl402/supportedLocalesOf-unicode-extensions-ignored.js",
+        # Compares every pair of the ~446 primary time zone identifiers
+        # (about 99,000 pairs of two constructions, `withTimeZone` and
+        # `equals`). Finite, and each pair is cheap, but the pair count is far
+        # past the ordinary fuel budget and wall deadline.
+        "intl402/Temporal/ZonedDateTime/prototype/equals/canonical-not-equal.js",
     }
 )
 FINITE_STRESS_INSTRUCTION_BUDGET = 10_000_000
