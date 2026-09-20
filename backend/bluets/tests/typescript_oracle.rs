@@ -188,6 +188,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "generic-arithmetic-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/generic-arithmetic-expression/main.ts"),
+        )],
+        expected_stdout: Some("42:40:84:20.5:1:Ada Lovelace\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",

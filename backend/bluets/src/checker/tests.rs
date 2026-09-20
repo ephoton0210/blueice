@@ -59,7 +59,7 @@ fn keeps_bounded_expression_inference_structural() {
 
     let logical = crate::syntax::lex("memory:///tokens.ts", "left && (right || tail)").unwrap();
     let logical = &logical[..logical.len() - 1];
-    let (left, right) = top_level_binary_parts(logical, &["&&"], |_| false).unwrap();
+    let (left, _, right) = top_level_binary_parts(logical, &["&&"], |_| false).unwrap();
     assert_eq!(left[0].text, "left");
     assert_eq!(right[0].text, "(");
 
@@ -78,6 +78,36 @@ fn keeps_bounded_expression_inference_structural() {
     assert_eq!(
         merge_conditional_branch_types(Type::Number, Type::String),
         Type::Union(vec![Type::Number, Type::String])
+    );
+}
+
+#[test]
+fn infers_generic_direct_calls_inside_arithmetic_expressions() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "function identity<T>(value: T): T { return value; }\n\
+             const sum: number = identity<number>(41) + 1;\n\
+             const difference: number = identity<number>(41) - 1;\n\
+             const product: number = identity<number>(41) * 2;\n\
+             const quotient: number = identity<number>(41) / 2;\n\
+             const remainder: number = identity<number>(41) % 2;\n\
+             const label: string = identity<string>('Ada') + ' Lovelace';\n\
+             const invalid: string = identity<number>(41) + 1;",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(result.has_errors(), "{:#?}", result.diagnostics);
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
     );
 }
 

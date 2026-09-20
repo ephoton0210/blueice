@@ -1142,7 +1142,9 @@ impl<'a> ModuleChecker<'a> {
 
     fn infer_expression(&self, tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
         let tokens = strip_outer_parentheses(tokens);
-        if let Some(call) = direct_call_parts(tokens) {
+        if let Some(call) =
+            direct_call_parts(tokens).filter(|call| split_call_arguments(call.arguments).is_some())
+        {
             if let Some(signatures) = self.functions.get(&call.callee.text) {
                 let explicit = call.generic.then(|| {
                     self.module
@@ -1164,7 +1166,7 @@ impl<'a> ModuleChecker<'a> {
                 self.infer_expression(alternate, scope),
             );
         }
-        if let Some((left, right)) = top_level_binary_parts(tokens, &["||"], |start| {
+        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["||"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
             return infer_boolean_logical_expression(
@@ -1172,7 +1174,7 @@ impl<'a> ModuleChecker<'a> {
                 self.infer_expression(right, scope),
             );
         }
-        if let Some((left, right)) = top_level_binary_parts(tokens, &["&&"], |start| {
+        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["&&"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
             return infer_boolean_logical_expression(
@@ -1188,6 +1190,25 @@ impl<'a> ModuleChecker<'a> {
         .is_some()
         {
             return Type::Boolean;
+        }
+        if let Some((left, operator, right)) =
+            top_level_binary_parts(tokens, &["+", "-"], |start| {
+                self.module.generic_call_type_arguments.contains_key(&start)
+            })
+        {
+            return infer_additive_expression(
+                operator,
+                self.infer_expression(left, scope),
+                self.infer_expression(right, scope),
+            );
+        }
+        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["*", "/", "%"], |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            return infer_numeric_binary_expression(
+                self.infer_expression(left, scope),
+                self.infer_expression(right, scope),
+            );
         }
         let Some(first) = tokens.first() else {
             return Type::Undefined;
@@ -2021,14 +2042,14 @@ fn strip_outer_parentheses(mut tokens: &[Token]) -> &[Token] {
     tokens
 }
 
-/// Returns the left and right operands of the final top-level operator from
-/// `operators`. Selecting the final occurrence preserves left associativity
-/// for the boolean operators this checker supports.
+/// Returns the operands and final top-level operator from `operators`.
+/// Selecting the final occurrence preserves left associativity for the
+/// bounded expression operators this checker supports.
 fn top_level_binary_parts<'a>(
     tokens: &'a [Token],
     operators: &[&str],
     is_explicit_generic_call: impl Fn(usize) -> bool,
-) -> Option<(&'a [Token], &'a [Token])> {
+) -> Option<(&'a [Token], &'a Token, &'a [Token])> {
     let mut depth = 0usize;
     let mut operator_index = None;
     let mut index = 0usize;
@@ -2043,7 +2064,10 @@ fn top_level_binary_parts<'a>(
         match token.text.as_str() {
             "(" | "[" | "{" => depth += 1,
             ")" | "]" | "}" if depth > 0 => depth -= 1,
-            _ if depth == 0 && operators.contains(&token.text.as_str()) => {
+            _ if depth == 0
+                && operators.contains(&token.text.as_str())
+                && !is_prefix_arithmetic_operator(tokens, index) =>
+            {
                 operator_index = Some(index);
             }
             _ => {}
@@ -2051,7 +2075,27 @@ fn top_level_binary_parts<'a>(
         index += 1;
     }
     let index = operator_index?;
-    (index > 0 && index + 1 < tokens.len()).then_some((&tokens[..index], &tokens[index + 1..]))
+    (index > 0 && index + 1 < tokens.len()).then_some((
+        &tokens[..index],
+        &tokens[index],
+        &tokens[index + 1..],
+    ))
+}
+
+fn is_prefix_arithmetic_operator(tokens: &[Token], index: usize) -> bool {
+    if !tokens
+        .get(index)
+        .is_some_and(|token| matches!(token.text.as_str(), "+" | "-"))
+    {
+        return false;
+    }
+    index == 0
+        || tokens.get(index - 1).is_some_and(|previous| {
+            matches!(
+                previous.text.as_str(),
+                "(" | "[" | "{" | "?" | ":" | "," | "=" | "+" | "-" | "*" | "/" | "%"
+            )
+        })
 }
 
 /// Finds the closing angle bracket for a parser-confirmed explicit generic
@@ -2124,6 +2168,22 @@ fn conditional_expression_parts(tokens: &[Token]) -> Option<(&[Token], &[Token],
 fn infer_boolean_logical_expression(left: Type, right: Type) -> Type {
     if left == Type::Boolean && right == Type::Boolean {
         Type::Boolean
+    } else {
+        Type::Unknown
+    }
+}
+
+fn infer_additive_expression(operator: &Token, left: Type, right: Type) -> Type {
+    if operator.is("+") && (left == Type::String || right == Type::String) {
+        Type::String
+    } else {
+        infer_numeric_binary_expression(left, right)
+    }
+}
+
+fn infer_numeric_binary_expression(left: Type, right: Type) -> Type {
+    if left == Type::Number && right == Type::Number {
+        Type::Number
     } else {
         Type::Unknown
     }
