@@ -102,13 +102,12 @@ fn round_offset_nanoseconds_to_minutes(offset_nanoseconds: i64) -> i64 {
 /// - `offset_nanoseconds: None` (`"wall"` behaviour -- no offset spelled at
 ///   all): resolved purely through the zone and `disambiguation`.
 /// - `offset_nanoseconds: Some(_)` (`"option"` behaviour -- a property-bag
-///   `offset` field or a string's own numeric offset): used directly
-///   whenever it matches one of the zone's real possible instants for that
-///   local date/time; otherwise `offset_option` decides -- `"use"` trusts it
-///   regardless, `"reject"` throws, and `"ignore"`/`"prefer"` both fall back
-///   to zone/disambiguation resolution (the spec's own `InterpretISODateTimeOffset`
-///   already collapses those last two into the same branch once no
-///   candidate matches, so there is no separate `"prefer"` case to add).
+///   `offset` field or a string's own numeric offset): under `"prefer"` and
+///   `"reject"` it is used directly whenever it matches one of the zone's real
+///   possible instants for that local date/time, otherwise `"reject"` throws
+///   and `"prefer"` falls back to zone/disambiguation resolution. `"use"`
+///   trusts the offset outright (`local - offset`), and `"ignore"` discards it
+///   and resolves through the zone alone.
 ///
 /// `match_minutes` (`MatchBehaviour::MatchMinutes` vs. `MatchExactly`):
 /// besides an exact match against a real candidate's own offset, also accept
@@ -144,9 +143,23 @@ pub(in super::super) fn temporal_interpret_offset(
             .epoch_nanoseconds_for(date, time, disambiguation)
             .map_err(temporal_resolution_error);
     };
-    // `InterpretISODateTimeOffset` step 7 (`prefer`/`reject`): unlike `use`
-    // and `ignore`, matching the offset against the zone's possible instants
-    // starts from the *wall-clock* date itself, which must be within
+    // `InterpretISODateTimeOffset` steps 3-4: `ignore` discards the offset and
+    // resolves the wall clock through the zone alone (a repeated time picks
+    // `disambiguation`'s occurrence, not the one the offset names), while `use`
+    // trusts the offset outright -- even a minute-rounded one that no real
+    // candidate has exactly (`zoneddatetime-sub-minute-offset.js`,
+    // `with/dst-option-offset.js`). Neither consults the possible instants.
+    match offset_option {
+        "ignore" => {
+            return zone
+                .epoch_nanoseconds_for(date, time, disambiguation)
+                .map_err(temporal_resolution_error);
+        }
+        "use" => return Ok(&local - BigInt::from(offset_ns)),
+        _ => {}
+    }
+    // Step 7 (`prefer`/`reject`): matching the offset against the zone's
+    // possible instants starts from the *wall-clock* date itself, which must be within
     // `CheckISODaysRange`'s +/-10^8 days of the epoch -- a day narrower at
     // the start of the range than `PlainDateTime`'s own limits, so
     // `-271821-04-19T23:00-01:00[-01:00]` (an in-range instant) is still
@@ -167,13 +180,12 @@ pub(in super::super) fn temporal_interpret_offset(
             return Ok(candidate.clone());
         }
     }
-    match offset_option {
-        "use" => Ok(&local - BigInt::from(offset_ns)),
-        "reject" => Err(RuntimeError::RangeError(
+    if offset_option == "reject" {
+        return Err(RuntimeError::RangeError(
             "the given offset does not match the time zone".into(),
-        )),
-        _ => zone
-            .epoch_nanoseconds_for(date, time, disambiguation)
-            .map_err(temporal_resolution_error),
+        ));
     }
+    // `prefer`, with no candidate matching: fall back to the zone.
+    zone.epoch_nanoseconds_for(date, time, disambiguation)
+        .map_err(temporal_resolution_error)
 }

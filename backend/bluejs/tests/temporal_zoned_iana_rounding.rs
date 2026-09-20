@@ -468,6 +468,61 @@ fn round_to_days_lands_on_a_start_of_day_even_when_midnight_occurs_twice() {
     );
 }
 
+/// `intl402/Temporal/ZonedDateTime/from/dst-skipped-cross-midnight.js`: a
+/// date-only string is the day's start; a property bag without time fields is
+/// midnight resolved through `disambiguation`.
+#[test]
+fn from_a_date_only_string_is_the_start_of_the_day() {
+    check(
+        r#"
+        const startOfDay = Temporal.ZonedDateTime.from("1919-03-31[America/Toronto]");
+        const midnightDisambiguated = Temporal.ZonedDateTime.from("1919-03-31T00[America/Toronto]");
+        assertDuration(startOfDay.until(midnightDisambiguated), 0, 0, 0, 0, 0, 30, 0, 0, 0, 0,
+          "start of day is 30 minutes earlier than the disambiguated midnight");
+        assertSame(midnightDisambiguated.epochNanoseconds,
+          Temporal.ZonedDateTime.from({ year: 1919, month: 3, day: 31, timeZone: "America/Toronto" }).epochNanoseconds,
+          "a property bag's missing time fields are zero");
+        assertSame(startOfDay.epochNanoseconds, startOfDay.startOfDay().epochNanoseconds, "startOfDay agrees");
+    "#,
+    );
+}
+
+/// `intl402/Temporal/ZonedDateTime/{from/zoneddatetime-sub-minute-offset,
+/// prototype/with/{dst-option-offset,dst-option-offset-disambiguation-combinations,
+/// disambiguation-undefined}}.js`: `InterpretISODateTimeOffset` steps 3-4.
+/// `ignore` never consults the offset and `use` never consults the zone's
+/// possible instants.
+#[test]
+fn offset_use_and_ignore_do_not_match_the_offset_against_the_zones_instants() {
+    check(
+        r#"
+        // `use` trusts a minute-rounded offset even where Monrovia's real offset is -00:44:30.
+        const str = "1970-01-01T12:00-00:45[Africa/Monrovia]";
+        assertSame(Temporal.ZonedDateTime.from(str, { offset: "use" }).epochNanoseconds, 45900_000_000_000n, "use");
+        for (const offset of ["ignore", "prefer", "reject"]) {
+          const result = Temporal.ZonedDateTime.from(str, { offset });
+          assertSame(result.epochNanoseconds, 45870_000_000_000n, "rounded to minutes, " + offset);
+          assertSame(result.offset, "-00:44:30", "offset is still full precision, " + offset);
+        }
+        // A repeated wall-clock time: `ignore` follows `disambiguation`, the others the offset.
+        const doubleTime = new Temporal.ZonedDateTime(972811801_000_000_000n, "America/Vancouver"); // 01:30:01-08:00
+        assertSame(doubleTime.with({ minute: 31 }, { offset: "use" }).offset, "-08:00", "use keeps the receiver's offset");
+        assertSame(doubleTime.with({ minute: 31 }, { offset: "ignore" }).offset, "-07:00", "ignore -> earlier (compatible)");
+        assertSame(doubleTime.with({ minute: 31 }, { offset: "prefer" }).offset, "-08:00", "prefer");
+        assertSame(doubleTime.with({ minute: 31 }, { offset: "reject" }).offset, "-08:00", "reject");
+        assertSame(doubleTime.with({ offset: "-07:00" }, { offset: "use" }).offset, "-07:00", "use, explicit offset");
+        // `disambiguation` defaults to `compatible` alongside `offset: "ignore"`.
+        const springForward = new Temporal.ZonedDateTime(954702001_000_000_000n, "America/Vancouver");
+        const fallBack = new Temporal.ZonedDateTime(972849601_000_000_000n, "America/Vancouver");
+        for (const [datetime, fields, expected] of [[springForward, { hour: 2, minute: 30 }, 954671401_000_000_000n],
+                                                    [fallBack, { hour: 1, minute: 30 }, 972808201_000_000_000n]]) {
+          assertSame(datetime.with(fields, { offset: "ignore", disambiguation: undefined }).epochNanoseconds, expected, "explicit");
+          assertSame(datetime.with(fields, { offset: "ignore" }).epochNanoseconds, expected, "implicit");
+        }
+    "#,
+    );
+}
+
 /// `built-ins/Temporal/ZonedDateTime/prototype/{startOfDay,withPlainTime}/
 /// {throws-if-epoch-nanoseconds-outside-valid-limits,get-start-of-day-throws}.js`
 /// and `intl402/.../withPlainTime/dst-skipped-cross-midnight.js`.

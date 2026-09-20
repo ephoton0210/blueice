@@ -7,7 +7,9 @@
 //! ISO string.
 
 use super::super::*;
-use super::resolution::{temporal_interpret_offset, temporal_set_local_fields};
+use super::resolution::{
+    temporal_checked_start_of_day, temporal_interpret_offset, temporal_set_local_fields,
+};
 
 impl Vm {
     /// Brand check shared by every `Temporal.ZonedDateTime.prototype` method.
@@ -234,19 +236,29 @@ impl Vm {
         };
         let (year, month, day) = (parsed.year, parsed.month, parsed.day);
         let time = parsed.time.unwrap_or((0, 0, 0, 0, 0, 0));
-        let epoch_nanoseconds = temporal_interpret_offset(
-            &zone,
-            (year, month, day),
-            time,
-            parsed.offset_nanoseconds,
-            parsed.utc_designator,
-            disambiguation,
-            offset_option,
-            // `MatchMinutes` unless the leading offset itself was spelled
-            // with sub-minute (seconds/fraction) precision -- see
-            // `temporal_interpret_offset`'s own doc comment.
-            !parsed.offset_sub_minute_precision,
-        )?;
+        let epoch_nanoseconds = if parsed.time.is_none() {
+            // A date-only string has no time at all, so the result is the
+            // day's `GetStartOfDay` -- which is *not* local midnight resolved
+            // through `disambiguation` when midnight is skipped (Toronto's
+            // 1919-03-31 gap started at 00:30). A property bag with no time
+            // fields, by contrast, really does mean midnight
+            // (`from/dst-skipped-cross-midnight.js`).
+            temporal_checked_start_of_day(&zone, (year, month, day))?
+        } else {
+            temporal_interpret_offset(
+                &zone,
+                (year, month, day),
+                time,
+                parsed.offset_nanoseconds,
+                parsed.utc_designator,
+                disambiguation,
+                offset_option,
+                // `MatchMinutes` unless the leading offset itself was spelled
+                // with sub-minute (seconds/fraction) precision -- see
+                // `temporal_interpret_offset`'s own doc comment.
+                !parsed.offset_sub_minute_precision,
+            )?
+        };
         if !epoch::is_in_instant_range(&epoch_nanoseconds) {
             return Err(RuntimeError::RangeError(
                 "Temporal.ZonedDateTime string is outside the supported range".into(),

@@ -132,10 +132,7 @@ impl ZonedOrigin<'_> {
 }
 
 /// `GetISODateTimeFor(timeZone, epochNanoseconds)`.
-fn local_date_time(
-    zone: &TimeZone,
-    epoch_nanoseconds: &BigInt,
-) -> (CivilDate, CivilTime) {
+fn local_date_time(zone: &TimeZone, epoch_nanoseconds: &BigInt) -> (CivilDate, CivilTime) {
     let offset = zone.offset_nanoseconds_for(epoch_nanoseconds);
     epoch::instant_fields(&(epoch_nanoseconds + BigInt::from(offset)))
 }
