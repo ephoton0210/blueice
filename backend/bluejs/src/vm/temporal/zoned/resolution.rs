@@ -77,19 +77,6 @@ pub(in super::super) fn temporal_zoned_date_time_zone(
         .expect("a ZonedDateTime value's own stored time zone is always a valid identifier")
 }
 
-/// `CheckISODaysRange`: the date is within 10^8 days of the epoch.
-fn check_iso_days_range(date: epoch::CivilDate) -> Result<(), RuntimeError> {
-    let days = epoch::nanoseconds_since_epoch(date, (0, 0, 0, 0, 0, 0), 0)
-        / BigInt::from(86_400_000_000_000_i64);
-    let limit = BigInt::from(100_000_000);
-    if days > limit || days < -limit {
-        return Err(RuntimeError::RangeError(
-            "the date is outside the supported range".into(),
-        ));
-    }
-    Ok(())
-}
-
 /// `RoundNumberToIncrement(offsetNanoseconds, 60e9, "halfExpand")`: rounds a
 /// real UTC offset to the nearest whole minute, ties rounding away from
 /// zero. Only meaningful for [`temporal_interpret_offset`]'s `match_minutes`
@@ -183,16 +170,6 @@ pub(in super::super) fn temporal_interpret_offset(
         return Err(RuntimeError::RangeError(
             "the wall-clock date is outside the representable range of ZonedDateTime".into(),
         ));
-    }
-    // `InterpretISODateTimeOffset` step 6: only the `prefer`/`reject` paths
-    // (those that look the wall-clock reading up in the zone) need the
-    // wall-clock *date* itself to be within +/-10^8 days of the epoch --
-    // `use` and `ignore` only need the resulting instant to be in range, which
-    // the callers check. So `-271821-04-19T23:00-01:00[-01:00]` names the
-    // minimum instant but is still a `RangeError` under `prefer`/`reject`
-    // (`from/argument-string-limits.js`).
-    if matches!(offset_option, "prefer" | "reject") {
-        check_iso_days_range(date)?;
     }
     let possible = zone.possible_epoch_nanoseconds(date, time);
     for candidate in &possible {

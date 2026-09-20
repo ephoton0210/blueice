@@ -21,7 +21,7 @@
 //! - `options` is read only after the item has been parsed/read, and a primitive `options`
 //!   throws `TypeError` only after that.
 
-use blueice_bluejs::{compile, parse, Value, Vm};
+use blueice_bluejs::{compile, parse, HeapConfig, RuntimeError, Value, Vm, VmConfig};
 
 const PRELUDE: &str = r#"
 const fails = [];
@@ -82,6 +82,31 @@ fn run(body: &str) {
     match Vm::default().execute(&program) {
         Ok(Value::Bool(true)) => {}
         Ok(Value::String(text)) => panic!("failing cases:\n{}", text.to_utf8().unwrap()),
+        other => panic!("unexpected result: {other:?}"),
+    }
+}
+
+/// Like [`run`], but every allocation may collect, so an object-valued property read that is not
+/// rooted across a later allocation cannot survive by luck (see
+/// `temporal_property_bag_gc_rooting.rs`).
+fn run_gc_stress(body: &str) {
+    let source = format!(
+        "(function() {{\n{PRELUDE}\n{body}\nreturn fails.length === 0 ? true : fails.join(\"\\n\");\n}})()"
+    );
+    let program =
+        compile(&parse(&source).expect("test script parses")).expect("test script compiles");
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            ..HeapConfig::default()
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    match vm.execute(&program) {
+        Ok(Value::Bool(true)) => {}
+        Ok(Value::String(text)) => panic!("failing cases:\n{}", text.to_utf8().unwrap()),
+        Err(RuntimeError::Heap(error)) => panic!("GC rooting bug: {error}"),
         other => panic!("unexpected result: {other:?}"),
     }
 }
@@ -268,7 +293,7 @@ fn plain_date_from_a_date_time_string_discards_the_time() {
 #[test]
 fn converting_between_temporal_types_reads_slots_not_getters() {
     run(r#"
-            const trapped = ["year", "month", "monthCode", "day", "hour", "minute", "second", "millisecond",
+      const trapped = ["year", "month", "monthCode", "day", "hour", "minute", "second", "millisecond",
                        "microsecond", "nanosecond", "calendar", "calendarId", "era", "eraYear", "timeZone"];
       const log = [];
       const saved = [];
@@ -437,4 +462,98 @@ fn with_calendar_requires_its_argument() {
         same(name + ".withCalendar('iso8601')", value.withCalendar("iso8601").calendarId, "iso8601");
       }
     "#);
+}
+
+/// The field readers themselves, one edge at a time: `month`/`day` are positive integers with
+/// truncation (`1.9` is `1`; `0.5`, `-0` and `NaN` are rejected), a numeric String converts, and
+/// the time-of-day fields truncate toward zero without a range.
+#[test]
+fn field_readers_truncate_and_reject_at_their_edges() {
+    run(r#"
+      same("month '5'", T.PlainDate.from({ year: 2021, month: "5", day: 1 }).month, 5);
+      same("day 1.9", T.PlainDate.from({ year: 2021, month: 1, day: 1.9 }).day, 1);
+      same("month 12.9", T.PlainDate.from({ year: 2021, month: 12.9, day: 1 }).month, 12);
+      for (const bad of [0.5, -0, -0.5, NaN, Infinity, -Infinity, 0, -1]) {
+        expect("RangeError", "month " + bad, () => T.PlainDate.from({ year: 2021, month: bad, day: 1 }));
+        expect("RangeError", "day " + bad, () => T.PlainDate.from({ year: 2021, month: 1, day: bad }));
+      }
+      expect("TypeError", "month Symbol", () => T.PlainDate.from({ year: 2021, month: Symbol(), day: 1 }));
+      expect("TypeError", "day 1n", () => T.PlainDate.from({ year: 2021, month: 1, day: 1n }));
+      same("hour 5.9", T.PlainDateTime.from({ year: 2021, month: 1, day: 1, hour: 5.9 }).hour, 5);
+      same("hour '7'", T.PlainDateTime.from({ year: 2021, month: 1, day: 1, hour: "7" }).hour, 7);
+      same("hour -0.5 truncates to 0", T.PlainDateTime.from({ year: 2021, month: 1, day: 1, hour: -0.5 }).hour, 0);
+      for (const bad of [NaN, Infinity, -Infinity]) {
+        expect("RangeError", "hour " + bad, () => T.PlainDateTime.from({ year: 2021, month: 1, day: 1, hour: bad }));
+      }
+      expect("TypeError", "hour Symbol", () => T.PlainDateTime.from({ year: 2021, month: 1, day: 1, hour: Symbol() }));
+      // Text that is not valid UTF-16 cannot be a well-formed month code or time zone either.
+      expect("RangeError", "lone surrogate monthCode", () => T.PlainDate.from({ year: 2021, monthCode: "M0\ud800", day: 1 }));
+      expect("RangeError", "constructor time zone with a lone surrogate", () => new T.ZonedDateTime(0n, "UTC\ud800"));
+      // `PlainMonthDay` has no year to fail on, unless one is given.
+      expect("RangeError", "PlainMonthDay syntax before year", () => T.PlainMonthDay.from({ monthCode: "L99M", day: 1, year: Symbol() }));
+      expect("TypeError", "PlainMonthDay suitability after year", () => T.PlainMonthDay.from({ monthCode: "M99L", day: 1, year: Symbol() }));
+    "#);
+}
+
+/// Every `from` still returns the right value for the shapes the tests above only reject:
+/// `Instant`, `Duration` and `PlainTime` dispatch through the same function, and a
+/// `ZonedDateTime` string is also reachable through `relativeTo`, which uses the parse-then-
+/// interpret halves as a single call.
+#[test]
+fn from_returns_the_right_value_for_every_type() {
+    run(r#"
+      same("Instant", T.Instant.from("2001-05-02T06:54:32.987654321Z").epochNanoseconds, 988786472987654321n);
+      expect("TypeError", "Instant.from(1)", () => T.Instant.from(1));
+      same("Duration", T.Duration.from("P1Y2M").toString(), "P1Y2M");
+      same("Duration bag", T.Duration.from({ hours: 3 }).hours, 3);
+      same("PlainTime", T.PlainTime.from("12:34").minute, 34);
+      same("PlainTime bag", T.PlainTime.from({ hour: 5, second: 9 }).second, 9);
+      same("PlainDate", T.PlainDate.from("2021-05-17").toString(), "2021-05-17");
+      same("PlainDateTime", T.PlainDateTime.from("2021-05-17T12:30").toString(), "2021-05-17T12:30:00");
+      same("PlainYearMonth", T.PlainYearMonth.from("2021-05").toString(), "2021-05");
+      same("PlainMonthDay", T.PlainMonthDay.from("05-17").toString(), "05-17");
+      same("ZonedDateTime", T.ZonedDateTime.from("2021-05-17T12:30+00:00[UTC]").toString(), "2021-05-17T12:30:00+00:00[UTC]");
+      // `relativeTo` resolves a zoned string in one call.
+      same("relativeTo string", new T.Duration(0, 0, 0, 1).total({ unit: "hours", relativeTo: "2020-01-01T00:00+00:00[UTC]" }), 24);
+      // A bag whose wall clock reads an instant past the end of the range only through
+      // `offset: "use"` still resolves to an out-of-range instant, and is rejected.
+      expect("RangeError", "bag out of range through offset use",
+        () => T.ZonedDateTime.from({ year: 275760, month: 9, day: 13, hour: 1, timeZone: "UTC", offset: "+00:00" }, { offset: "use" }));
+      same("bag at the edge through offset use",
+        T.ZonedDateTime.from({ year: 275760, month: 9, day: 13, timeZone: "UTC", offset: "+00:00" }, { offset: "use" }).epochNanoseconds,
+        8640000000000000000000n);
+    "#);
+}
+
+/// Every property-bag reader keeps an object-valued read alive across the allocations of the
+/// reads that follow it: with a one-object nursery each of these bags returns a *fresh* converting
+/// object per property, referenced only by the native reading it.
+#[test]
+fn property_bag_readers_survive_a_collection_on_every_allocation() {
+    run_gc_stress(
+        r#"
+      const log = [];
+      const item = new Proxy({ year: 2021, month: 5, monthCode: "M05", day: 17, hour: 6, minute: 54, second: 32, millisecond: 987, microsecond: 654, nanosecond: 321 }, {
+        get(target, key) {
+          if (typeof key === "symbol") return undefined;
+          const value = target[key];
+          if (value === undefined) return value;
+          return {
+            toString() { log.push(key); return String(value); },
+            valueOf() { log.push(key); return value; },
+          };
+        },
+        has() { return true; },
+      });
+      same("PlainDate", T.PlainDate.from(item).toString(), "2021-05-17");
+      same("PlainDateTime", T.PlainDateTime.from(item).toString(), "2021-05-17T06:54:32.987654321");
+      same("PlainYearMonth", T.PlainYearMonth.from(item).toString(), "2021-05");
+      same("PlainMonthDay", T.PlainMonthDay.from(item).toString(), "05-17");
+      same("PlainDate.with", new T.PlainDate(2000, 1, 1).with(item).toString(), "2021-05-17");
+      same("PlainDateTime.with", new T.PlainDateTime(2000, 1, 1).with(item).toString(), "2021-05-17T06:54:32.987654321");
+      same("ZonedDateTime.with", new T.ZonedDateTime(0n, "UTC").with(item).toString(), "2021-05-17T06:54:32.987654321+00:00[UTC]");
+      const converted = log.filter((key) => key === "monthCode").length;
+      if (converted !== 7) fails.push("monthCode was converted " + converted + " times, expected 7");
+    "#,
+    );
 }
