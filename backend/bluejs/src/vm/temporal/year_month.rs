@@ -828,6 +828,12 @@ impl Vm {
             duration.microseconds = -duration.microseconds;
             duration.nanoseconds = -duration.nanoseconds;
         }
+        // `options` is read in full before either validation below: a
+        // duration with a week/day/time part is rejected *after* `overflow` was
+        // read, exactly like the first-day range check further down
+        // (`add/options-read-before-algorithmic-validation.js`).
+        let resolved_options = self.temporal_options(options)?;
+        let reject = self.temporal_overflow_option(&resolved_options)?;
         if duration.weeks != 0
             || duration.days != 0
             || duration.hours != 0
@@ -841,8 +847,6 @@ impl Vm {
                 "Temporal.PlainYearMonth arithmetic only accepts a years/months duration".into(),
             ));
         }
-        let resolved_options = self.temporal_options(options)?;
-        let reject = self.temporal_overflow_option(&resolved_options)?;
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
             .expect("Temporal values retain a validated calendar identifier");
         let fields = self.temporal_calendar_fields(&existing)?;

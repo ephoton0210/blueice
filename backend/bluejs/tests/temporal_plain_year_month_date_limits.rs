@@ -86,6 +86,33 @@ fn add_and_subtract_need_a_valid_first_day_and_read_options_first() {
     "#);
 }
 
+/// `add/options-read-before-algorithmic-validation.js`: a duration with a week, day or time
+/// part is a `RangeError` too, but `options` is read in full first -- the unit check is
+/// "algorithmic validation" like the range check above.
+#[test]
+fn add_and_subtract_read_options_before_rejecting_a_too_small_unit() {
+    run(r#"
+      const instance = new T.PlainYearMonth(1999, 12);
+      for (const method of ["add", "subtract"]) {
+        for (const duration of [new T.Duration(0, 0, 1), new T.Duration(0, 0, 0, 1), new T.Duration(0, 0, 0, 0, 1),
+                                new T.Duration(0, 0, 0, 0, 0, 1), new T.Duration(0, 0, 0, 0, 0, 0, 1),
+                                new T.Duration(0, 0, 0, 0, 0, 0, 0, 1), new T.Duration(0, 0, 0, 0, 0, 0, 0, 0, 1),
+                                new T.Duration(0, 0, 0, 0, 0, 0, 0, 0, 0, 1)]) {
+          const log = [];
+          const options = new Proxy({ overflow: "constrain" }, {
+            get(target, key) { if (typeof key !== "symbol") log.push("get " + key); return target[key]; },
+          });
+          expect("RangeError", method + " " + duration.toString(), () => instance[method](duration, options));
+          if (log.join() !== "get overflow") fails.push(method + " " + duration.toString() + " read [" + log.join() + "]");
+        }
+        // A years/months duration is accepted; an invalid `overflow` value still throws.
+        same(method + " months", instance[method]({ months: 1 }).toString(), method === "add" ? "2000-01" : "1999-11");
+        expect("RangeError", method + " bad overflow", () => instance[method]({ months: 1 }, { overflow: "sometimes" }));
+        expect("TypeError", method + " primitive options", () => instance[method]({ months: 1 }, 5));
+      }
+    "#);
+}
+
 /// `since`/`until` `throws-if-year-outside-valid-iso-range.js` and `argument-string-limits.js`.
 #[test]
 fn since_and_until_difference_valid_first_days_only() {
