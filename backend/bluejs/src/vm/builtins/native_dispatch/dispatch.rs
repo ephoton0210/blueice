@@ -1127,13 +1127,12 @@ impl Vm {
                         "Function.toString requires a callable".into(),
                     ));
                 }
-                let name = self
+                let initial_name = self
                     .heap
                     .function_initial_name(receiver.object_id().unwrap())?;
-                let mut result = JsString::from("function ");
-                result.push_str(&name);
-                result.push_str(&"() { [native code] }".into());
-                Ok(Value::String(result))
+                Ok(Value::String(JsString::native_function_source(
+                    initial_name,
+                )))
             }
             NativeFunction::PrimitiveConstructor(boolean) => {
                 let value = if boolean {

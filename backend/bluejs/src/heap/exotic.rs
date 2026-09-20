@@ -119,12 +119,15 @@ impl Heap {
         })
     }
 
-    pub(crate) fn function_initial_name(&self, object: ObjectId) -> Result<JsString, HeapError> {
+    pub(crate) fn function_initial_name(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<&JsString>, HeapError> {
         Ok(match &self.object(object)?.kind {
-            ObjectKind::NativeFunction { initial_name, .. } => initial_name.clone(),
+            ObjectKind::NativeFunction { initial_name, .. } => Some(initial_name),
             // HostHasSourceTextAvailable is false for compiled functions.
             // Anonymous NativeFunction syntax is valid for every callable.
-            _ => JsString::default(),
+            _ => None,
         })
     }
 

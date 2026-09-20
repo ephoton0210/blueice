@@ -45,6 +45,12 @@ fn typed_array_set_validates_a_detached_source_before_target_bounds() {
 }
 
 #[test]
+fn native_getter_to_string_uses_its_immutable_accessor_initial_name() {
+    let source = "let getter=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength').get;getter.name==='get byteLength'&&Function.prototype.toString.call(getter)==='function get byteLength() { [native code] }'";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn typed_array_from_constructs_an_array_like_target_before_reading_elements() {
     let source = "let log='';let marker={};function C(length){log+='C';return new Uint8Array(length)}let source={get length(){log+='l';return 1},get 0(){log+='0';return 7}};try{Uint8Array.from.call(C,source,function(){throw marker})}catch(error){}log==='lC0'";
     assert_eq!(evaluate(source).unwrap(), Value::Bool(true));

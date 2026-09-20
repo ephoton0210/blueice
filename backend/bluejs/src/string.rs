@@ -53,6 +53,30 @@ impl JsString {
         self.0.extend_from_slice(&other.0);
     }
 
+    /// The implementation-defined NativeFunction representation used when a
+    /// callable's source text is unavailable.  Construct it in one allocated
+    /// UTF-16 buffer: `Function.prototype.toString` is frequently used by
+    /// framework feature detection, and neither the fixed fragments nor the
+    /// immutable initial name need intermediate `JsString` allocations.
+    pub(crate) fn native_function_source(initial_name: Option<&Self>) -> Self {
+        const PREFIX: &[u16] = &[
+            0x0066, 0x0075, 0x006e, 0x0063, 0x0074, 0x0069, 0x006f, 0x006e, 0x0020,
+        ];
+        const SUFFIX: &[u16] = &[
+            0x0028, 0x0029, 0x0020, 0x007b, 0x0020, 0x005b, 0x006e, 0x0061, 0x0074, 0x0069, 0x0076,
+            0x0065, 0x0020, 0x0063, 0x006f, 0x0064, 0x0065, 0x005d, 0x0020, 0x007d,
+        ];
+
+        let mut units =
+            Vec::with_capacity(PREFIX.len() + initial_name.map_or(0, Self::len) + SUFFIX.len());
+        units.extend_from_slice(PREFIX);
+        if let Some(initial_name) = initial_name {
+            units.extend_from_slice(initial_name.as_code_units());
+        }
+        units.extend_from_slice(SUFFIX);
+        Self(units)
+    }
+
     pub(crate) fn index(&self) -> Option<usize> {
         if self.is_empty() || (self.len() > 1 && self.0[0] == u16::from(b'0')) {
             return None;

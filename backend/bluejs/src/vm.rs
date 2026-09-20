@@ -1693,15 +1693,16 @@ impl Vm {
         name: &str,
         function: NativeFunction,
     ) -> Result<(), RuntimeError> {
+        let getter_name = format!("get {name}");
         let getter =
-            self.with_roots(|heap| heap.alloc_native_function(function, name, prototype))?;
+            self.with_roots(|heap| heap.alloc_native_function(function, &getter_name, prototype))?;
         self.stack.push(Value::Object(getter));
         let result = (|| {
             self.define_data(getter, "length", Value::Number(0.0), false, false, true)?;
             self.define_data(
                 getter,
                 "name",
-                Value::String(format!("get {name}").into()),
+                Value::String(getter_name.into()),
                 false,
                 false,
                 true,
