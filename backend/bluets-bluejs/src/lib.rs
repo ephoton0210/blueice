@@ -115,8 +115,9 @@ impl std::error::Error for BridgeError {}
 /// with required identifier parameters plus structured local/return bodies,
 /// and standalone expressions made from those same forms or direct calls.
 /// The expression subset includes unary, arithmetic, relational, equality,
-/// `&&`, and `||` operators. Static-only declarations disappear before
-/// lowering. A broader accepted BlueTS program returns
+/// logical, conditional, and identifier-assignment operators. Static-only
+/// declarations disappear before lowering. A broader accepted BlueTS program
+/// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
 /// JavaScript text round trip.
 pub fn compile_direct_script(
@@ -610,7 +611,7 @@ impl<'a> ExpressionLowerer<'a> {
     }
 
     fn parse(mut self) -> Result<bluejs::Expr, BridgeError> {
-        let expression = self.parse_logical_or()?;
+        let expression = self.parse_assignment()?;
         if let Some(token) = self.tokens.get(self.index) {
             return Err(unsupported(
                 self.token_span(token),
@@ -618,6 +619,73 @@ impl<'a> ExpressionLowerer<'a> {
             ));
         }
         Ok(expression)
+    }
+
+    fn parse_assignment(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let target = self.parse_conditional()?;
+        let op = self
+            .tokens
+            .get(self.index)
+            .and_then(|token| match token.text.as_str() {
+                "=" => Some(bluejs::AssignOp::Assign),
+                "+=" => Some(bluejs::AssignOp::AddAssign),
+                "-=" => Some(bluejs::AssignOp::SubAssign),
+                "*=" => Some(bluejs::AssignOp::MulAssign),
+                "/=" => Some(bluejs::AssignOp::DivAssign),
+                "%=" => Some(bluejs::AssignOp::ModAssign),
+                _ => None,
+            });
+        let Some(op) = op else {
+            return Ok(target);
+        };
+        let span = self
+            .tokens
+            .get(self.index)
+            .map(|token| self.token_span(token))
+            .expect("an assignment operator was just inspected");
+        self.index += 1;
+        if !matches!(&target, bluejs::Expr::Identifier(_)) {
+            return Err(unsupported(
+                span,
+                "only identifier assignment targets are in the v1 direct bridge subset",
+            ));
+        }
+        Ok(bluejs::Expr::Assign {
+            op,
+            target: Box::new(target),
+            value: Box::new(self.parse_assignment()?),
+        })
+    }
+
+    fn parse_conditional(&mut self) -> Result<bluejs::Expr, BridgeError> {
+        let test = self.parse_logical_or()?;
+        if self
+            .tokens
+            .get(self.index)
+            .is_none_or(|token| token.text != "?")
+        {
+            return Ok(test);
+        }
+        self.index += 1;
+        let consequent = self.parse_assignment()?;
+        let Some(colon) = self.tokens.get(self.index) else {
+            return Err(unsupported(
+                SourceSpan::new(self.module, 0, 0),
+                "unterminated conditional expression",
+            ));
+        };
+        if colon.text != ":" {
+            return Err(unsupported(
+                self.token_span(colon),
+                "expected `:` in conditional expression",
+            ));
+        }
+        self.index += 1;
+        Ok(bluejs::Expr::Conditional {
+            test: Box::new(test),
+            consequent: Box::new(consequent),
+            alternate: Box::new(self.parse_assignment()?),
+        })
     }
 
     fn parse_logical_or(&mut self) -> Result<bluejs::Expr, BridgeError> {
@@ -788,7 +856,7 @@ impl<'a> ExpressionLowerer<'a> {
                 )),
             },
             TokenKind::Punct if token.text == "(" => {
-                let expression = self.parse_logical_or()?;
+                let expression = self.parse_assignment()?;
                 let Some(closing) = self.tokens.get(self.index) else {
                     return Err(unsupported(
                         self.token_span(token),
@@ -830,7 +898,7 @@ impl<'a> ExpressionLowerer<'a> {
                 self.index += 1;
             } else {
                 loop {
-                    args.push(bluejs::Argument::Normal(self.parse_logical_or()?));
+                    args.push(bluejs::Argument::Normal(self.parse_assignment()?));
                     let Some(separator) = self.tokens.get(self.index) else {
                         return Err(unsupported(
                             SourceSpan::new(self.module, 0, 0),
@@ -1072,6 +1140,41 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn lowers_identifier_assignments_and_compound_assignments() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "let total: number = 40; total += 2; total;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn lowers_conditional_expressions_with_assignment_precedence() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "function choose(value: number) { \
+                 return value === 42 ? value + 1 : value - 1; } choose(42);",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(43.0)
         );
     }
 
