@@ -132,6 +132,9 @@ pub(crate) enum DateMethod {
     ToLocaleString,
     ToLocaleTimeString,
     ToPrimitive,
+    /// `Date.prototype.toTemporalInstant`: ECMA-262's one Temporal member
+    /// that lives on a non-Temporal prototype.
+    ToTemporalInstant,
     ToUtcString,
     ValueOf,
 }
@@ -176,10 +179,14 @@ pub(crate) enum NativeFunction {
     DateMethod(DateMethod),
     TemporalConstructor(TemporalKind),
     TemporalFrom(TemporalKind),
-    TemporalWithCalendar,
-    TemporalPlainToZonedDateTime,
+    /// Shared by `PlainDate`, `PlainDateTime` and `ZonedDateTime`. Like every
+    /// Temporal native that several prototypes share, it carries the type of
+    /// the prototype it was installed on, which is the type its receiver must
+    /// be (`NativeFunction::temporal_receiver_kind`).
+    TemporalWithCalendar(TemporalKind),
+    TemporalPlainToZonedDateTime(TemporalKind),
     TemporalInstantToZonedDateTimeIso,
-    TemporalGetter(TemporalGetter),
+    TemporalGetter(TemporalKind, TemporalGetter),
     TemporalZonedDateTimeToLocaleString,
     TemporalInstantAdd,
     TemporalInstantSubtract,
@@ -225,17 +232,20 @@ pub(crate) enum NativeFunction {
     TemporalDurationToLocaleString,
     TemporalDurationValueOf,
     /// `Temporal.PlainDate.prototype.with`/`Temporal.PlainDateTime.prototype.with`,
-    /// dispatched on the receiver's own `TemporalKind`.
-    TemporalDateWith,
-    TemporalDateAdd,
-    TemporalDateSubtract,
-    TemporalDateUntil,
-    TemporalDateSince,
-    TemporalDateEquals,
+    /// dispatched on the receiver's own `TemporalKind`. The payload is the
+    /// type of the prototype the function is installed on, so a
+    /// `PlainDateTime` receiver of `PlainDate.prototype.with` is still a
+    /// brand-check failure.
+    TemporalDateWith(TemporalKind),
+    TemporalDateAdd(TemporalKind),
+    TemporalDateSubtract(TemporalKind),
+    TemporalDateUntil(TemporalKind),
+    TemporalDateSince(TemporalKind),
+    TemporalDateEquals(TemporalKind),
     TemporalDateCompare(TemporalKind),
-    TemporalDateToString,
-    TemporalDateToJson,
-    TemporalDateToLocaleString,
+    TemporalDateToString(TemporalKind),
+    TemporalDateToJson(TemporalKind),
+    TemporalDateToLocaleString(TemporalKind),
     TemporalDateValueOf,
     TemporalPlainDateToPlainDateTime,
     TemporalPlainDateToPlainYearMonth,
