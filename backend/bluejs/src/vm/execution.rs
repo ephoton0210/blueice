@@ -6,6 +6,15 @@
 
 use super::*;
 
+/// Appends the object ids among `values`, skipping every primitive.
+fn push_object_roots<'a>(roots: &mut Vec<ObjectId>, values: impl IntoIterator<Item = &'a Value>) {
+    for value in values {
+        if let Value::Object(id) = value {
+            roots.push(*id);
+        }
+    }
+}
+
 impl Vm {
     pub(super) fn execute_with_global_bindings(
         &mut self,
@@ -883,43 +892,40 @@ impl Vm {
         &mut self,
         operation: impl FnOnce(&mut Heap) -> Result<T, HeapError>,
     ) -> Result<T, RuntimeError> {
-        let mut roots = Vec::new();
-        let registration = (|| {
-            for value in self
-                .stack
-                .iter()
-                .chain(self.bindings.iter().flatten())
-                .chain(std::iter::once(&self.completion))
-                .chain(std::iter::once(&self.this))
-                .chain(self.arguments.iter())
-                .chain(std::iter::once(&self.callee))
-                .chain(std::iter::once(&self.new_target))
-                .chain(self.pending_completions.iter().flat_map(|completion| {
-                    let values: &[Value] = match completion {
-                        Completion::Return(value)
-                        | Completion::Yield(value)
-                        | Completion::Throw(RuntimeError::Thrown(value)) => {
-                            std::slice::from_ref(value)
-                        }
-                        Completion::TailRecur(args) => args,
-                        Completion::Throw(_)
-                        | Completion::Jump { .. }
-                        | Completion::Resume(_)
-                        | Completion::Halt(_) => &[],
-                    };
-                    values.iter()
-                }))
-                .chain(self.completion_saves.iter().map(|(value, _)| value))
-                .chain(self.with_objects.iter())
-            {
-                if let Value::Object(id) = value {
-                    // Rooting cannot GC, but can exhaust the root-ID
-                    // counter. Partial registrations must be released too.
-                    roots.push(self.heap.root(*id)?);
-                }
+        // Every object the VM holds outside the heap is gathered into one
+        // plain batch and handed to the heap for the duration of `operation`.
+        // Registering each one individually in the heap's root table cost a
+        // hash insert and removal per root on every allocating native call,
+        // which dominated the run time of array-heavy scripts.
+        let mut roots = Vec::with_capacity(self.stack.len() + self.cells.len() + 32);
+        {
+            push_object_roots(&mut roots, &self.stack);
+            push_object_roots(&mut roots, self.bindings.iter().flatten());
+            push_object_roots(
+                &mut roots,
+                [&self.completion, &self.this, &self.callee, &self.new_target],
+            );
+            push_object_roots(&mut roots, &self.arguments);
+            for completion in &self.pending_completions {
+                let values: &[Value] = match completion {
+                    Completion::Return(value)
+                    | Completion::Yield(value)
+                    | Completion::Throw(RuntimeError::Thrown(value)) => std::slice::from_ref(value),
+                    Completion::TailRecur(args) => args,
+                    Completion::Throw(_)
+                    | Completion::Jump { .. }
+                    | Completion::Resume(_)
+                    | Completion::Halt(_) => &[],
+                };
+                push_object_roots(&mut roots, values);
             }
+            push_object_roots(
+                &mut roots,
+                self.completion_saves.iter().map(|(value, _)| value),
+            );
+            push_object_roots(&mut roots, &self.with_objects);
             for object in &self.kept_weak_objects {
-                roots.push(self.heap.root(*object)?);
+                roots.push(*object);
             }
             for object in self
                 .home_object
@@ -928,17 +934,17 @@ impl Vm {
                 .chain(self.templates.values())
                 .chain(self.joining.iter())
             {
-                roots.push(self.heap.root(*object)?);
+                roots.push(*object);
             }
             for id in self.cells.values() {
-                roots.push(self.heap.root(*id)?);
+                roots.push(*id);
             }
             for binding in self.dynamic_eval_bindings.values() {
-                roots.push(self.heap.root(binding.cell)?);
+                roots.push(binding.cell);
             }
             for bindings in &self.dynamic_eval_outer_bindings {
                 for binding in bindings.values() {
-                    roots.push(self.heap.root(binding.cell)?);
+                    roots.push(binding.cell);
                 }
             }
             // A continuation lives in a Rust map while it waits for a Promise
@@ -946,10 +952,10 @@ impl Vm {
             // before any allocation is allowed to trigger collection.
             let continuation_references = self.continuation_references();
             for id in continuation_references {
-                roots.push(self.heap.root(id)?);
+                roots.push(id);
             }
             for (&promise, record) in &self.promises {
-                roots.push(self.heap.root(promise)?);
+                roots.push(promise);
                 if matches!(record.status, PromiseStatus::Pending) {
                     for reaction in &record.reactions {
                         if let PromiseReaction::AsyncGeneratorYield {
@@ -958,16 +964,16 @@ impl Vm {
                             result,
                         } = reaction
                         {
-                            roots.push(self.heap.root(*generator)?);
-                            roots.push(self.heap.root(*target)?);
-                            roots.push(self.heap.root(*result)?);
+                            roots.push(*generator);
+                            roots.push(*target);
+                            roots.push(*result);
                         }
                         if let PromiseReaction::AsyncGeneratorDelegate {
                             generator, target, ..
                         } = reaction
                         {
-                            roots.push(self.heap.root(*generator)?);
-                            roots.push(self.heap.root(*target)?);
+                            roots.push(*generator);
+                            roots.push(*target);
                         }
                     }
                 }
@@ -992,28 +998,28 @@ impl Vm {
                 };
                 for value in values {
                     if let Value::Object(id) = value {
-                        roots.push(self.heap.root(*id)?);
+                        roots.push(*id);
                     }
                 }
             }
             for state in self.promise_all.values() {
                 for value in state.values.iter().flatten() {
                     if let Value::Object(id) = value {
-                        roots.push(self.heap.root(*id)?);
+                        roots.push(*id);
                     }
                 }
             }
             for state in self.promise_any.values() {
                 for value in state.errors.iter().flatten() {
                     if let Value::Object(id) = value {
-                        roots.push(self.heap.root(*id)?);
+                        roots.push(*id);
                     }
                 }
             }
             for state in self.promise_all_settled.values() {
                 for (value, _) in state.results.iter().flatten() {
                     if let Value::Object(id) = value {
-                        roots.push(self.heap.root(*id)?);
+                        roots.push(*id);
                     }
                 }
             }
@@ -1025,17 +1031,17 @@ impl Vm {
                 .chain(self.disposables.iter())
             {
                 if let Value::Object(id) = &resource.receiver {
-                    roots.push(self.heap.root(*id)?);
+                    roots.push(*id);
                 }
                 if let Some(Value::Object(id)) = &resource.argument {
-                    roots.push(self.heap.root(*id)?);
+                    roots.push(*id);
                 }
                 if let Some(Value::Object(id)) = &resource.method {
-                    roots.push(self.heap.root(*id)?);
+                    roots.push(*id);
                 }
             }
             if let Some(Value::Object(id)) = &self.async_dispose_helper {
-                roots.push(self.heap.root(*id)?);
+                roots.push(*id);
             }
             for job in &self.promise_jobs {
                 match job {
@@ -1045,10 +1051,10 @@ impl Vm {
                         value,
                         ..
                     } => {
-                        roots.push(self.heap.root(*target)?);
+                        roots.push(*target);
                         for value in [handler, value] {
                             if let Value::Object(id) = value {
-                                roots.push(self.heap.root(*id)?);
+                                roots.push(*id);
                             }
                         }
                     }
@@ -1057,20 +1063,18 @@ impl Vm {
                         thenable,
                         then,
                     } => {
-                        roots.push(self.heap.root(*target)?);
+                        roots.push(*target);
                         for value in [thenable, then] {
                             if let Value::Object(id) = value {
-                                roots.push(self.heap.root(*id)?);
+                                roots.push(*id);
                             }
                         }
                     }
-                    PromiseJob::DynamicImport { target, .. } => {
-                        roots.push(self.heap.root(*target)?)
-                    }
+                    PromiseJob::DynamicImport { target, .. } => roots.push(*target),
                     PromiseJob::ModuleAwait { value, .. }
                     | PromiseJob::AsyncAwait { value, .. } => {
                         if let Value::Object(id) = value {
-                            roots.push(self.heap.root(*id)?);
+                            roots.push(*id);
                         }
                     }
                     PromiseJob::AsyncGeneratorYield {
@@ -1080,11 +1084,11 @@ impl Vm {
                         value,
                         ..
                     } => {
-                        roots.push(self.heap.root(*generator)?);
-                        roots.push(self.heap.root(*target)?);
-                        roots.push(self.heap.root(*result)?);
+                        roots.push(*generator);
+                        roots.push(*target);
+                        roots.push(*result);
                         if let Value::Object(id) = value {
-                            roots.push(self.heap.root(*id)?);
+                            roots.push(*id);
                         }
                     }
                     PromiseJob::AsyncGeneratorDelegate {
@@ -1093,32 +1097,28 @@ impl Vm {
                         value,
                         ..
                     } => {
-                        roots.push(self.heap.root(*generator)?);
-                        roots.push(self.heap.root(*target)?);
+                        roots.push(*generator);
+                        roots.push(*target);
                         if let Value::Object(id) = value {
-                            roots.push(self.heap.root(*id)?);
+                            roots.push(*id);
                         }
                     }
                     PromiseJob::FinalizationCleanup { callback, holdings } => {
                         for value in [callback, holdings] {
                             if let Value::Object(id) = value {
-                                roots.push(self.heap.root(*id)?);
+                                roots.push(*id);
                             }
                         }
                     }
                 }
             }
             if let Some(Err(Value::Object(id))) = &self.test262_done {
-                roots.push(self.heap.root(*id)?);
+                roots.push(*id);
             }
-            Ok(())
-        })();
-        let result = registration.and_then(|()| operation(&mut self.heap));
-        for root in roots {
-            self.heap
-                .unroot(root)
-                .expect("temporary root belongs to this safepoint");
         }
+        self.heap.push_scoped_roots(roots);
+        let result = operation(&mut self.heap);
+        self.heap.pop_scoped_roots();
         result.map_err(RuntimeError::from)
     }
 

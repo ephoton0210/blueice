@@ -57,6 +57,7 @@ impl Heap {
             next_major_bytes: self.next_major_bytes,
             minor_collections: self.minor_collections,
             major_collections: self.major_collections,
+            root_registrations: self.root_registrations,
         }
     }
 
@@ -83,6 +84,18 @@ impl Heap {
                 self.remembered.insert(owner);
             }
         }
+    }
+
+    /// Registers a whole safepoint's temporary roots as one batch, which the
+    /// next `pop_scoped_roots` releases. Unlike `root`, this does no per-object
+    /// table work; an id that is not (or no longer) in this heap is ignored
+    /// when marking, and is still reported by whichever operation uses it.
+    pub(crate) fn push_scoped_roots(&mut self, roots: Vec<ObjectId>) {
+        self.scoped_roots.push(roots);
+    }
+
+    pub(crate) fn pop_scoped_roots(&mut self) {
+        self.scoped_roots.pop();
     }
 
     pub(super) fn ensure_room(
@@ -116,6 +129,13 @@ impl Heap {
             .roots
             .values()
             .copied()
+            .chain(
+                self.scoped_roots
+                    .iter()
+                    .flatten()
+                    .copied()
+                    .filter(|id| self.objects.contains_key(id)),
+            )
             .chain(protected.iter().copied())
             .collect();
         if young_only {
