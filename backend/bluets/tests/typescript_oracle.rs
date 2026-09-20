@@ -179,6 +179,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "boolean-conditional-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/boolean-conditional-expression/main.ts"),
+        )],
+        expected_stdout: Some("true:true:42:false:-41:-42:41:41\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",

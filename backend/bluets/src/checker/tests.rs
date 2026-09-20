@@ -20,6 +20,68 @@ fn rejects_a_primitive_initializer_with_the_wrong_annotation() {
 }
 
 #[test]
+fn infers_boolean_comparisons_and_conditional_branch_types() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const count: number = 41;\n\
+             const exact: boolean = count + 1 === 42;\n\
+             const bounded: boolean = (exact || false) && count < 42 && !false;\n\
+             const positive: number = +count;\n\
+             const signed: number = -count;\n\
+             const inverted: number = ~count;\n\
+             const selected: number = bounded ? count + 1 : count - 1;\n\
+             const nested: number = false ? true ? count + 1 : count - 1 : count;\n\
+             function enabled(value: number): boolean { return value >= 0 ? !false : false; }\n\
+             const invalid: boolean = selected ? count : 'no';",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(result.has_errors());
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn keeps_bounded_expression_inference_structural() {
+    let grouped = crate::syntax::lex("memory:///tokens.ts", "((flag))").unwrap();
+    let grouped = &grouped[..grouped.len() - 1];
+    assert_eq!(strip_outer_parentheses(grouped)[0].text, "flag");
+
+    let logical = crate::syntax::lex("memory:///tokens.ts", "left && (right || tail)").unwrap();
+    let logical = &logical[..logical.len() - 1];
+    let (left, right) = top_level_binary_parts(logical, &["&&"], |_| false).unwrap();
+    assert_eq!(left[0].text, "left");
+    assert_eq!(right[0].text, "(");
+
+    let conditional =
+        crate::syntax::lex("memory:///tokens.ts", "condition ? inner ? 1 : 2 : 3").unwrap();
+    let conditional = &conditional[..conditional.len() - 1];
+    let (condition, consequent, alternate) = conditional_expression_parts(conditional).unwrap();
+    assert_eq!(condition[0].text, "condition");
+    assert_eq!(consequent[0].text, "inner");
+    assert_eq!(alternate[0].text, "3");
+
+    assert_eq!(
+        infer_boolean_logical_expression(Type::Number, Type::Boolean),
+        Type::Unknown
+    );
+    assert_eq!(
+        merge_conditional_branch_types(Type::Number, Type::String),
+        Type::Union(vec![Type::Number, Type::String])
+    );
+}
+
+#[test]
 fn accepts_a_structurally_compatible_record() {
     let loader = MapLoader::from([ModuleSource::new(
         "memory:///app.ts",
@@ -342,6 +404,7 @@ fn checks_explicit_direct_function_type_arguments() {
             "memory:///main.ts",
             "function identity<T extends string = string>(value: T): T { return value; }\n\
                  const accepted: string = identity<string>('Ada');\n\
+                 const composed: string = identity<string>('Ada') + ' Lovelace';\n\
                  const invalid_argument: string = identity<string>(1);\n\
                  const invalid_constraint: unknown = identity<number>(1);\n\
                  const too_many: unknown = identity<string, number>('Ada');",

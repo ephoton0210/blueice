@@ -1141,9 +1141,63 @@ impl<'a> ModuleChecker<'a> {
     }
 
     fn infer_expression(&self, tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
+        let tokens = strip_outer_parentheses(tokens);
+        if let Some(call) = direct_call_parts(tokens) {
+            if let Some(signatures) = self.functions.get(&call.callee.text) {
+                let explicit = call.generic.then(|| {
+                    self.module
+                        .generic_call_type_arguments
+                        .get(&call.callee.start)
+                        .expect("parsed generic call has recorded type arguments")
+                        .as_slice()
+                });
+                return self.infer_function_call(signatures, call.arguments, scope, explicit);
+            }
+            return scope
+                .get(&call.callee.text)
+                .cloned()
+                .unwrap_or(Type::Unknown);
+        }
+        if let Some((_, consequent, alternate)) = conditional_expression_parts(tokens) {
+            return merge_conditional_branch_types(
+                self.infer_expression(consequent, scope),
+                self.infer_expression(alternate, scope),
+            );
+        }
+        if let Some((left, right)) = top_level_binary_parts(tokens, &["||"], |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            return infer_boolean_logical_expression(
+                self.infer_expression(left, scope),
+                self.infer_expression(right, scope),
+            );
+        }
+        if let Some((left, right)) = top_level_binary_parts(tokens, &["&&"], |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            return infer_boolean_logical_expression(
+                self.infer_expression(left, scope),
+                self.infer_expression(right, scope),
+            );
+        }
+        if top_level_binary_parts(
+            tokens,
+            &["===", "!==", "==", "!=", "<", ">", "<=", ">="],
+            |start| self.module.generic_call_type_arguments.contains_key(&start),
+        )
+        .is_some()
+        {
+            return Type::Boolean;
+        }
         let Some(first) = tokens.first() else {
             return Type::Undefined;
         };
+        if matches!(first.text.as_str(), "!") {
+            return Type::Boolean;
+        }
+        if matches!(first.text.as_str(), "+" | "-" | "~") {
+            return Type::Number;
+        }
         if first.kind == TokenKind::String || first.kind == TokenKind::Template {
             return Type::String;
         }
@@ -1176,24 +1230,6 @@ impl<'a> ModuleChecker<'a> {
                         | PropertyType::Indeterminate
                         | PropertyType::Exhausted => Type::Unknown,
                     };
-                }
-                if let Some(call) = direct_call_parts(tokens) {
-                    if let Some(signatures) = self.functions.get(&call.callee.text) {
-                        let explicit = call.generic.then(|| {
-                            self.module
-                                .generic_call_type_arguments
-                                .get(&call.callee.start)
-                                .expect("parsed generic call has recorded type arguments")
-                                .as_slice()
-                        });
-                        return self.infer_function_call(
-                            signatures,
-                            call.arguments,
-                            scope,
-                            explicit,
-                        );
-                    }
-                    return scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
                 }
                 scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
             }
@@ -1954,6 +1990,150 @@ fn infer_simple(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
         scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
     } else {
         Type::Unknown
+    }
+}
+
+/// Removes matching parentheses that wrap an entire expression. This does not
+/// parse JavaScript generally; it only exposes a nested expression to the
+/// bounded inference rules below.
+fn strip_outer_parentheses(mut tokens: &[Token]) -> &[Token] {
+    while tokens.len() >= 2 && tokens.first().is_some_and(|token| token.is("(")) {
+        let mut depth = 0usize;
+        let mut closes_at_end = false;
+        for (index, token) in tokens.iter().enumerate() {
+            match token.text.as_str() {
+                "(" => depth += 1,
+                ")" if depth > 0 => {
+                    depth -= 1;
+                    if depth == 0 {
+                        closes_at_end = index + 1 == tokens.len();
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !closes_at_end {
+            break;
+        }
+        tokens = &tokens[1..tokens.len() - 1];
+    }
+    tokens
+}
+
+/// Returns the left and right operands of the final top-level operator from
+/// `operators`. Selecting the final occurrence preserves left associativity
+/// for the boolean operators this checker supports.
+fn top_level_binary_parts<'a>(
+    tokens: &'a [Token],
+    operators: &[&str],
+    is_explicit_generic_call: impl Fn(usize) -> bool,
+) -> Option<(&'a [Token], &'a [Token])> {
+    let mut depth = 0usize;
+    let mut operator_index = None;
+    let mut index = 0usize;
+    while index < tokens.len() {
+        let token = &tokens[index];
+        if token.kind == TokenKind::Identifier && is_explicit_generic_call(token.start) {
+            if let Some(close) = explicit_generic_call_close(tokens, index) {
+                index = close + 1;
+                continue;
+            }
+        }
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            _ if depth == 0 && operators.contains(&token.text.as_str()) => {
+                operator_index = Some(index);
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    let index = operator_index?;
+    (index > 0 && index + 1 < tokens.len()).then_some((&tokens[..index], &tokens[index + 1..]))
+}
+
+/// Finds the closing angle bracket for a parser-confirmed explicit generic
+/// call. The parser's source-offset table disambiguates these brackets from
+/// ordinary relational operators before this bounded expression scan runs.
+fn explicit_generic_call_close(tokens: &[Token], callee_index: usize) -> Option<usize> {
+    if !tokens
+        .get(callee_index + 1)
+        .is_some_and(|token| token.is("<"))
+    {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate().skip(callee_index + 1) {
+        match token.text.as_str() {
+            "<" => depth += 1,
+            ">" if depth > 0 => {
+                depth -= 1;
+                if depth == 0 {
+                    return tokens
+                        .get(index + 1)
+                        .is_some_and(|token| token.is("("))
+                        .then_some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Splits one top-level conditional expression into its condition and branch
+/// expressions. Nested conditionals are accounted for before accepting their
+/// matching colon, so `a ? b : c ? d : e` remains well formed.
+fn conditional_expression_parts(tokens: &[Token]) -> Option<(&[Token], &[Token], &[Token])> {
+    let mut depth = 0usize;
+    let mut question_index = None;
+    let mut nested_conditionals = 0usize;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            "?" if depth == 0 => {
+                if question_index.is_none() {
+                    question_index = Some(index);
+                } else {
+                    nested_conditionals += 1;
+                }
+            }
+            ":" if depth == 0 && question_index.is_some() => {
+                if nested_conditionals == 0 {
+                    let question_index = question_index.expect("conditional question index exists");
+                    return (question_index > 0
+                        && index > question_index + 1
+                        && index + 1 < tokens.len())
+                    .then_some((
+                        &tokens[..question_index],
+                        &tokens[question_index + 1..index],
+                        &tokens[index + 1..],
+                    ));
+                }
+                nested_conditionals -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn infer_boolean_logical_expression(left: Type, right: Type) -> Type {
+    if left == Type::Boolean && right == Type::Boolean {
+        Type::Boolean
+    } else {
+        Type::Unknown
+    }
+}
+
+fn merge_conditional_branch_types(consequent: Type, alternate: Type) -> Type {
+    if consequent == alternate {
+        consequent
+    } else {
+        Type::Union(vec![consequent, alternate])
     }
 }
 
