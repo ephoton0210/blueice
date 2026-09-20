@@ -1569,17 +1569,33 @@ impl<'a> ModuleChecker<'a> {
             self.check_arithmetic_operators(alternate, scope, span);
             return;
         }
-        for operators in [
-            &["||"][..],
-            &["&&"][..],
-            &["===", "!==", "==", "!=", "<", ">", "<=", ">="][..],
-        ] {
+        for operators in [&["||"][..], &["&&"][..]] {
             if let Some((left, _, right)) = top_level_binary_parts(tokens, operators, generic_call)
             {
                 self.check_arithmetic_operators(left, scope, span);
                 self.check_arithmetic_operators(right, scope, span);
                 return;
             }
+        }
+        if let Some((left, operator, right)) =
+            top_level_binary_parts(tokens, &["===", "!=="], generic_call)
+        {
+            self.check_arithmetic_operators(left, scope, span);
+            self.check_arithmetic_operators(right, scope, span);
+            self.check_known_disjoint_strict_equality(
+                operator,
+                &self.infer_expression(left, scope),
+                &self.infer_expression(right, scope),
+                span,
+            );
+            return;
+        }
+        if let Some((left, _, right)) =
+            top_level_binary_parts(tokens, &["==", "!=", "<", ">", "<=", ">="], generic_call)
+        {
+            self.check_arithmetic_operators(left, scope, span);
+            self.check_arithmetic_operators(right, scope, span);
+            return;
         }
         if let Some((left, operator, right)) =
             top_level_binary_parts(tokens, &["+", "-"], generic_call)
@@ -1625,6 +1641,30 @@ impl<'a> ModuleChecker<'a> {
                 span,
                 format!(
                     "operator `{}` cannot be applied to types `{}` and `{}`",
+                    operator.text,
+                    type_label(left),
+                    type_label(right),
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
+        }
+    }
+
+    fn check_known_disjoint_strict_equality(
+        &mut self,
+        operator: &Token,
+        left: &Type,
+        right: &Type,
+        span: &SourceSpan,
+    ) {
+        if is_strict_equality_primitive_type(left)
+            && is_strict_equality_primitive_type(right)
+            && left != right
+        {
+            self.type_error(
+                span,
+                format!(
+                    "operator `{}` compares disjoint types `{}` and `{}`",
                     operator.text,
                     type_label(left),
                     type_label(right),
@@ -2278,6 +2318,10 @@ fn is_known_primitive_type(value: &Type) -> bool {
         value,
         Type::Boolean | Type::Number | Type::String | Type::Null | Type::Undefined
     )
+}
+
+fn is_strict_equality_primitive_type(value: &Type) -> bool {
+    matches!(value, Type::Boolean | Type::Number | Type::String)
 }
 
 fn merge_conditional_branch_types(consequent: Type, alternate: Type) -> Type {

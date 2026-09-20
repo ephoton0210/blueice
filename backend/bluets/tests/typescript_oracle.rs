@@ -209,6 +209,20 @@ const CASES: &[OracleCase] = &[
         }],
     },
     OracleCase {
+        name: "strict-equality-disjoint-primitive-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/strict-equality-disjoint-primitive-error/main.ts"
+            ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 5,
+        }],
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",

@@ -141,6 +141,34 @@ fn rejects_known_invalid_arithmetic_operands_in_initializers_and_returns() {
 }
 
 #[test]
+fn rejects_strict_equality_between_disjoint_known_primitives() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const invalid: boolean = 1 === 'one';\n\
+             function invalid_return(): boolean { return false !== 0; }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        2,
+        "{:#?}",
+        result.diagnostics
+    );
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("operator `===` compares disjoint types `number` and `string`")
+    }));
+}
+
+#[test]
 fn accepts_a_structurally_compatible_record() {
     let loader = MapLoader::from([ModuleSource::new(
         "memory:///app.ts",
