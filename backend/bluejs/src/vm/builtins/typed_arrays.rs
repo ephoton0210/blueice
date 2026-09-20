@@ -39,24 +39,33 @@ impl Vm {
         fallback_kind: TypedArrayKind,
     ) -> Result<(ObjectId, TypedArrayKind), RuntimeError> {
         let fallback = self.global(fallback_kind.name())?;
+        let constructor = self.typed_array_species_constructor(receiver, fallback)?;
+        self.typed_array_create(constructor, length)
+    }
+
+    /// SpeciesConstructor(exemplar, defaultConstructor), shared by
+    /// TypedArraySpeciesCreate's length-based users and `subarray`, whose
+    /// constructor argument list is instead a buffer/byte-offset view tuple.
+    pub(super) fn typed_array_species_constructor(
+        &mut self,
+        receiver: &Value,
+        fallback: Value,
+    ) -> Result<Value, RuntimeError> {
         let constructor = self.get_property(receiver, &"constructor".into())?;
-        let constructor = if constructor == Value::Undefined {
+        if constructor == Value::Undefined {
+            return Ok(fallback);
+        }
+        if !matches!(constructor, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "TypedArray constructor must be an object".into(),
+            ));
+        }
+        let species = self.get_property(&constructor, &JsSymbol::well_known("species").into())?;
+        Ok(if matches!(species, Value::Undefined | Value::Null) {
             fallback
         } else {
-            if !matches!(constructor, Value::Object(_)) {
-                return Err(RuntimeError::TypeError(
-                    "TypedArray constructor must be an object".into(),
-                ));
-            }
-            let species =
-                self.get_property(&constructor, &JsSymbol::well_known("species").into())?;
-            if matches!(species, Value::Undefined | Value::Null) {
-                fallback
-            } else {
-                species
-            }
-        };
-        self.typed_array_create(constructor, length)
+            species
+        })
     }
 
     /// TypedArrayCreate(constructor, argumentList) for the single-length-
@@ -93,7 +102,42 @@ impl Vm {
         ))
     }
 
-    fn typed_array_read_values(
+    /// Builds a concrete TypedArray in a foreign Test262 Realm. Generic
+    /// `%TypedArray%.from`/`.of` collect and map caller-owned values in the
+    /// caller Realm, then write them into this facade one at a time; an
+    /// ordinary membrane transport deliberately exposes no source-array
+    /// properties to a child VM.
+    pub(super) fn typed_array_create_foreign_target(
+        &mut self,
+        constructor: &Value,
+        length: usize,
+    ) -> Result<Option<Value>, RuntimeError> {
+        let Some(constructor_id) = constructor.object_id() else {
+            return Ok(None);
+        };
+        let Some(NativeFunction::TypedArray(_)) =
+            self.test262_foreign_native_function(constructor_id)?
+        else {
+            return Ok(None);
+        };
+        let target = self.call_with_target(
+            constructor.clone(),
+            Value::Undefined,
+            vec![Value::Number(length as f64)],
+            true,
+            constructor.clone(),
+        )?;
+        let actual = self.get_property(&target, &"length".into())?;
+        let actual = self.coerce_length(&actual)? as usize;
+        if actual < length {
+            return Err(RuntimeError::TypeError(
+                "TypedArray species result is too small".into(),
+            ));
+        }
+        Ok(Some(target))
+    }
+
+    pub(super) fn typed_array_read_values(
         &self,
         object: ObjectId,
         start: usize,
@@ -112,9 +156,14 @@ impl Vm {
     }
 
     fn typed_array_element(&self, object: ObjectId, index: usize) -> Result<Value, RuntimeError> {
-        self.heap
+        // Indexed TypedArray iteration methods capture their iteration range
+        // before invoking user callbacks. If a resizable backing buffer then
+        // shrinks, each later missing integer-indexed element is observed as
+        // `undefined`, rather than terminating that already-started loop.
+        Ok(self
+            .heap
             .typed_array_index_value(object, index)?
-            .ok_or_else(|| RuntimeError::TypeError("TypedArray is out of bounds".into()))
+            .unwrap_or(Value::Undefined))
     }
 
     pub(super) fn typed_array_write_values(
@@ -166,12 +215,7 @@ impl Vm {
         let result = (|| match method {
             TypedArrayMethod::Every => {
                 for index in 0..length {
-                    let value = self
-                        .heap
-                        .typed_array_index_value(object, index)?
-                        .ok_or_else(|| {
-                            RuntimeError::TypeError("TypedArray is out of bounds".into())
-                        })?;
+                    let value = self.typed_array_element(object, index)?;
                     let result =
                         self.typed_array_callback(callback, &this_arg, value, index, object)?;
                     if !self.to_boolean(&result)? {
@@ -189,12 +233,7 @@ impl Vm {
             }
             TypedArrayMethod::Some => {
                 for index in 0..length {
-                    let value = self
-                        .heap
-                        .typed_array_index_value(object, index)?
-                        .ok_or_else(|| {
-                            RuntimeError::TypeError("TypedArray is out of bounds".into())
-                        })?;
+                    let value = self.typed_array_element(object, index)?;
                     let result =
                         self.typed_array_callback(callback, &this_arg, value, index, object)?;
                     if self.to_boolean(&result)? {
@@ -205,12 +244,7 @@ impl Vm {
             }
             TypedArrayMethod::Find | TypedArrayMethod::FindIndex => {
                 for index in 0..length {
-                    let value = self
-                        .heap
-                        .typed_array_index_value(object, index)?
-                        .ok_or_else(|| {
-                            RuntimeError::TypeError("TypedArray is out of bounds".into())
-                        })?;
+                    let value = self.typed_array_element(object, index)?;
                     let result = self.typed_array_callback(
                         callback,
                         &this_arg,
@@ -234,12 +268,7 @@ impl Vm {
             }
             TypedArrayMethod::FindLast | TypedArrayMethod::FindLastIndex => {
                 for index in (0..length).rev() {
-                    let value = self
-                        .heap
-                        .typed_array_index_value(object, index)?
-                        .ok_or_else(|| {
-                            RuntimeError::TypeError("TypedArray is out of bounds".into())
-                        })?;
+                    let value = self.typed_array_element(object, index)?;
                     let result = self.typed_array_callback(
                         callback,
                         &this_arg,
@@ -266,12 +295,7 @@ impl Vm {
                     self.typed_array_species_create(receiver, length, kind)?;
                 self.stack.push(Value::Object(target));
                 for index in 0..length {
-                    let value = self
-                        .heap
-                        .typed_array_index_value(object, index)?
-                        .ok_or_else(|| {
-                            RuntimeError::TypeError("TypedArray is out of bounds".into())
-                        })?;
+                    let value = self.typed_array_element(object, index)?;
                     let value =
                         self.typed_array_callback(callback, &this_arg, value, index, object)?;
                     self.typed_array_write_values(target, target_kind, index, &[value])?;
@@ -281,12 +305,7 @@ impl Vm {
             TypedArrayMethod::Filter => {
                 let mut selected = Vec::new();
                 for index in 0..length {
-                    let value = self
-                        .heap
-                        .typed_array_index_value(object, index)?
-                        .ok_or_else(|| {
-                            RuntimeError::TypeError("TypedArray is out of bounds".into())
-                        })?;
+                    let value = self.typed_array_element(object, index)?;
                     let result = self.typed_array_callback(
                         callback,
                         &this_arg,
@@ -320,7 +339,7 @@ impl Vm {
             return Ok(Value::Number(-1.0));
         }
         let search = native::argument(args, 0);
-        let from = if args.len() < 2 || args[1] == Value::Undefined {
+        let from = if args.len() < 2 {
             length as f64 - 1.0
         } else {
             self.coerce_number(native::argument(args, 1))?
@@ -331,7 +350,7 @@ impl Vm {
         let mut index = if from == f64::INFINITY {
             length - 1
         } else {
-            let integer = from.trunc();
+            let integer = if from.is_nan() { 0.0 } else { from.trunc() };
             if integer >= 0.0 {
                 (integer as usize).min(length - 1)
             } else {
@@ -344,7 +363,7 @@ impl Vm {
         };
         loop {
             self.charge_step()?;
-            if self.typed_array_element(object, index)? == *search {
+            if self.heap.typed_array_index_value(object, index)? == Some(search.clone()) {
                 return Ok(Value::Number(index as f64));
             }
             if index == 0 {
@@ -361,6 +380,9 @@ impl Vm {
         equality: fn(&Value, &Value) -> bool,
     ) -> Result<Value, RuntimeError> {
         let (object, length, _) = self.typed_array_method_receiver(receiver)?;
+        if length == 0 {
+            return Ok(Value::Bool(false));
+        }
         let search = native::argument(args, 0);
         let from = if args.len() < 2 || args[1] == Value::Undefined {
             0.0
@@ -373,7 +395,7 @@ impl Vm {
         let start = if from == f64::NEG_INFINITY {
             0
         } else {
-            let integer = from.trunc();
+            let integer = if from.is_nan() { 0.0 } else { from.trunc() };
             if integer >= 0.0 {
                 (integer as usize).min(length)
             } else {
@@ -395,6 +417,9 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let (object, length, _) = self.typed_array_method_receiver(receiver)?;
+        if length == 0 {
+            return Ok(Value::Number(-1.0));
+        }
         let search = native::argument(args, 0);
         let from = if args.len() < 2 || args[1] == Value::Undefined {
             0.0
@@ -407,7 +432,7 @@ impl Vm {
         let start = if from == f64::NEG_INFINITY {
             0
         } else {
-            let integer = from.trunc();
+            let integer = if from.is_nan() { 0.0 } else { from.trunc() };
             if integer >= 0.0 {
                 (integer as usize).min(length)
             } else {
@@ -416,7 +441,7 @@ impl Vm {
         };
         for index in start..length {
             self.charge_step()?;
-            if self.typed_array_element(object, index)? == *search {
+            if self.heap.typed_array_index_value(object, index)? == Some(search.clone()) {
                 return Ok(Value::Number(index as f64));
             }
         }
@@ -441,8 +466,10 @@ impl Vm {
                 native::append(&mut result, &separator, self.config.max_string_bytes)?;
             }
             let value = self.typed_array_element(object, index)?;
-            let value = self.coerce_string(&value)?;
-            native::append(&mut result, &value, self.config.max_string_bytes)?;
+            if !matches!(value, Value::Undefined | Value::Null) {
+                let value = self.coerce_string(&value)?;
+                native::append(&mut result, &value, self.config.max_string_bytes)?;
+            }
         }
         Ok(Value::String(result))
     }
@@ -502,9 +529,95 @@ impl Vm {
             length
         };
         let count = end.saturating_sub(start);
-        let (target, target_kind) = self.typed_array_species_create(receiver, count, kind)?;
-        let values = self.typed_array_read_values(object, start, count)?;
-        self.typed_array_write_values(target, target_kind, 0, &values)?;
+        let fallback = self.global(kind.name())?;
+        let constructor = self.typed_array_species_constructor(receiver, fallback)?;
+        let foreign_target = self.typed_array_create_foreign_target(&constructor, count)?;
+        let (target, target_kind) = if let Some(target) = &foreign_target {
+            let target = target
+                .object_id()
+                .expect("foreign TypedArray construction returns an object");
+            let (_, target_kind) = self
+                .test262_foreign_typed_array_info(target)?
+                .expect("foreign TypedArray construction returns a TypedArray");
+            (None, target_kind)
+        } else {
+            let (target, target_kind) = self.typed_array_create(constructor, count)?;
+            (Some(target), target_kind)
+        };
+        // Species construction can resize the source. Revalidate fixed views
+        // before copying; a length-tracking source instead copies its
+        // currently available prefix and leaves the already-created target's
+        // remaining elements at their initialized zero values.
+        let copy_count = if count == 0 {
+            0
+        } else {
+            let (_, current_length, _) = self.typed_array_method_receiver(receiver)?;
+            count.min(current_length.saturating_sub(start))
+        };
+        if copy_count == 0 {
+            return Ok(foreign_target.unwrap_or_else(|| {
+                Value::Object(target.expect("local TypedArray construction returns an object"))
+            }));
+        }
+        let (source_buffer, source_offset, _, _) = self.heap.typed_array_info(object)?;
+        if let Some(foreign_target) = foreign_target {
+            if kind == target_kind {
+                let target_buffer = self
+                    .get_property(&foreign_target, &"buffer".into())?
+                    .object_id()
+                    .ok_or_else(|| {
+                        RuntimeError::TypeError(
+                            "foreign TypedArray buffer must be an object".into(),
+                        )
+                    })?;
+                let target_buffer = self
+                    .test262_foreign_buffer_clone(target_buffer)?
+                    .expect("foreign TypedArray buffer has a foreign backing store");
+                let byte_start = source_offset + start * kind.byte_width();
+                let byte_length = copy_count * kind.byte_width();
+                let bytes = self
+                    .heap
+                    .array_buffer_copy(source_buffer, byte_start, byte_length)?;
+                self.with_roots(|heap| heap.array_buffer_write(target_buffer, 0, &bytes))?;
+                let (realm_id, _, _, _) = self
+                    .test262_foreign_reference(
+                        foreign_target
+                            .object_id()
+                            .expect("foreign TypedArray construction returns an object"),
+                    )
+                    .expect("foreign TypedArray construction retains its realm");
+                self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+            } else {
+                let values = self.typed_array_read_values(object, start, copy_count)?;
+                let source = self.array_from(values)?;
+                let set = self.get_property(&foreign_target, &"set".into())?;
+                self.call_native(set, foreign_target.clone(), vec![source], false)?;
+            }
+            return Ok(foreign_target);
+        }
+        let target = target.expect("local TypedArray construction returns an object");
+        let (target_buffer, target_offset, _, _) = self.heap.typed_array_info(target)?;
+        if kind == target_kind && source_buffer != target_buffer {
+            // §23.2.3.29 performs a raw byte copy for a same-element-type
+            // destination. Going through Number would canonicalize NaN and
+            // lose its sign/payload, which is observable through another
+            // typed view. A shared backing buffer retains the required
+            // forward element-by-element behavior below.
+            let byte_start = source_offset + start * kind.byte_width();
+            let byte_length = copy_count * kind.byte_width();
+            let bytes = self
+                .heap
+                .array_buffer_copy(source_buffer, byte_start, byte_length)?;
+            self.with_roots(|heap| heap.array_buffer_write(target_buffer, target_offset, &bytes))?;
+            return Ok(Value::Object(target));
+        }
+        // Read and write one element at a time. This preserves slice's
+        // observable forward byte-copy behavior when a species result shares
+        // the source buffer at a different byte offset.
+        for index in 0..copy_count {
+            let value = self.typed_array_element(object, start + index)?;
+            self.typed_array_write_values(target, target_kind, index, &[value])?;
+        }
         Ok(Value::Object(target))
     }
 
@@ -548,7 +661,8 @@ impl Vm {
         values: &mut [Value],
         compare: &Value,
         kind: TypedArrayKind,
-    ) -> Result<(), RuntimeError> {
+        source: Option<ObjectId>,
+    ) -> Result<bool, RuntimeError> {
         if *compare != Value::Undefined && !self.is_callable(compare)? {
             return Err(RuntimeError::TypeError(
                 "TypedArray sort comparator must be callable".into(),
@@ -556,7 +670,7 @@ impl Vm {
         }
         if *compare == Value::Undefined {
             values.sort_by(|left, right| Self::typed_array_default_compare(left, right, kind));
-            return Ok(());
+            return Ok(true);
         }
 
         // The values are snapshotted before sorting. A comparator may mutate
@@ -571,13 +685,27 @@ impl Vm {
         while start < values.len() {
             let mut end = start + 1;
             if end < values.len() {
-                let descending =
-                    self.typed_array_compare_values(compare, &values[end], &values[end - 1])?
-                        == std::cmp::Ordering::Less;
+                let Some(first_order) = self.typed_array_compare_values(
+                    compare,
+                    &values[end],
+                    &values[end - 1],
+                    source,
+                )?
+                else {
+                    return Ok(false);
+                };
+                let descending = first_order == std::cmp::Ordering::Less;
                 end += 1;
                 while end < values.len() {
-                    let order =
-                        self.typed_array_compare_values(compare, &values[end], &values[end - 1])?;
+                    let Some(order) = self.typed_array_compare_values(
+                        compare,
+                        &values[end],
+                        &values[end - 1],
+                        source,
+                    )?
+                    else {
+                        return Ok(false);
+                    };
                     if (descending && order != std::cmp::Ordering::Less)
                         || (!descending && order == std::cmp::Ordering::Less)
                     {
@@ -606,9 +734,16 @@ impl Vm {
                 debug_assert_eq!(middle, right_start);
                 let (mut left, mut right, mut target) = (start, middle, start);
                 while left < middle && right < end {
-                    if self.typed_array_compare_values(compare, &values[right], &values[left])?
-                        == std::cmp::Ordering::Less
-                    {
+                    let Some(order) = self.typed_array_compare_values(
+                        compare,
+                        &values[right],
+                        &values[left],
+                        source,
+                    )?
+                    else {
+                        return Ok(false);
+                    };
+                    if order == std::cmp::Ordering::Less {
                         scratch[target] = values[right].clone();
                         right += 1;
                     } else {
@@ -633,7 +768,7 @@ impl Vm {
             }
             runs = next_runs;
         }
-        Ok(())
+        Ok(true)
     }
 
     fn typed_array_compare_values(
@@ -641,7 +776,8 @@ impl Vm {
         compare: &Value,
         left: &Value,
         right: &Value,
-    ) -> Result<std::cmp::Ordering, RuntimeError> {
+        source: Option<ObjectId>,
+    ) -> Result<Option<std::cmp::Ordering>, RuntimeError> {
         let result = self.call_native(
             compare.clone(),
             Value::Undefined,
@@ -649,13 +785,19 @@ impl Vm {
             false,
         )?;
         let result = self.coerce_number(&result)?;
-        Ok(if result.is_nan() || result == 0.0 {
+        if let Some(source) = source {
+            let (buffer, _, _, _) = self.heap.typed_array_info(source)?;
+            if self.heap.buffer_is_detached(buffer)? {
+                return Ok(None);
+            }
+        }
+        Ok(Some(if result.is_nan() || result == 0.0 {
             std::cmp::Ordering::Equal
         } else if result < 0.0 {
             std::cmp::Ordering::Less
         } else {
             std::cmp::Ordering::Greater
-        })
+        }))
     }
 
     fn typed_array_to_reversed(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
@@ -675,7 +817,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
         let mut values = self.typed_array_read_values(object, 0, length)?;
-        self.typed_array_sort_values(&mut values, compare, kind)?;
+        self.typed_array_sort_values(&mut values, compare, kind, None)?;
         let target = self.typed_array_new_same_kind(length, kind)?;
         self.typed_array_write_values(target, kind, 0, &values)?;
         Ok(Value::Object(target))
@@ -688,33 +830,37 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
         let index = self.coerce_number(native::argument(args, 0))?;
-        if !index.is_finite() {
-            return Err(RuntimeError::RangeError(
-                "TypedArray index is outside its bounds".into(),
-            ));
-        }
-        let index = index.trunc();
-        let index = if index < 0.0 {
-            let magnitude = (-index) as usize;
-            if magnitude > length {
-                return Err(RuntimeError::RangeError(
-                    "TypedArray index is outside its bounds".into(),
-                ));
-            }
-            length - magnitude
+        // ToIntegerOrInfinity happens before converting `value`; a NaN index
+        // is therefore +0, and negative indices remain relative to this
+        // operation's initially captured length even if conversion resizes
+        // the backing buffer.
+        let relative = if index.is_nan() { 0.0 } else { index.trunc() };
+        let index = if relative < 0.0 {
+            length as f64 + relative
         } else {
-            index as usize
+            relative
         };
-        if index >= length {
+        // TypedArraySetElement performs ToNumber/ToBigInt before its final
+        // IsValidIntegerIndex check. A value conversion can grow a resizable
+        // buffer and make a formerly out-of-range positive index valid (or
+        // shrink one that was initially valid).
+        let replacement = self.typed_array_element_value(kind, native::argument(args, 1))?;
+        if !index.is_finite()
+            || index < 0.0
+            || index > usize::MAX as f64
+            || self
+                .heap
+                .typed_array_index_value(object, index as usize)?
+                .is_none()
+        {
             return Err(RuntimeError::RangeError(
                 "TypedArray index is outside its bounds".into(),
             ));
         }
-        let replacement = self.typed_array_element_value(kind, native::argument(args, 1))?;
         let values = self.typed_array_read_values(object, 0, length)?;
         let target = self.typed_array_new_same_kind(length, kind)?;
         self.typed_array_write_values(target, kind, 0, &values)?;
-        self.typed_array_write_values(target, kind, index, &[replacement])?;
+        self.typed_array_write_values(target, kind, index as usize, &[replacement])?;
         Ok(Value::Object(target))
     }
 
@@ -737,19 +883,23 @@ impl Vm {
             TypedArrayMethod::At => {
                 let (object, length, _) = self.typed_array_method_receiver(receiver)?;
                 let index = self.coerce_number(native::argument(args, 0))?;
-                let index = if !index.is_finite() {
+                let index = if index.is_nan() {
+                    0
+                } else if !index.is_finite() {
                     return Ok(Value::Undefined);
                 } else if index < 0.0 {
-                    length.saturating_sub((-index.trunc()) as usize)
+                    let index = length as f64 + index.trunc();
+                    if index < 0.0 {
+                        return Ok(Value::Undefined);
+                    }
+                    index as usize
                 } else {
                     index.trunc() as usize
                 };
                 if index >= length {
                     return Ok(Value::Undefined);
                 }
-                self.heap
-                    .typed_array_index_value(object, index)?
-                    .ok_or_else(|| RuntimeError::TypeError("TypedArray is out of bounds".into()))
+                self.typed_array_element(object, index)
             }
             TypedArrayMethod::LastIndexOf => self.typed_array_last_index_of(receiver, args),
             TypedArrayMethod::CopyWithin => {
@@ -761,7 +911,15 @@ impl Vm {
                 } else {
                     length
                 };
-                let count = end.saturating_sub(start).min(length.saturating_sub(target));
+                // Coercion can resize the receiver. Fixed views reject an
+                // out-of-bounds state here; auto-length views continue with
+                // the currently readable/writeable overlap.
+                let (_, current_length, _) = self.typed_array_method_receiver(receiver)?;
+                let count = end
+                    .saturating_sub(start)
+                    .min(length.saturating_sub(target))
+                    .min(current_length.saturating_sub(target))
+                    .min(current_length.saturating_sub(start));
                 let values = self.typed_array_read_values(object, start, count)?;
                 self.typed_array_write_values(object, kind, target, &values)?;
                 Ok(receiver.clone())
@@ -791,21 +949,21 @@ impl Vm {
             TypedArrayMethod::IndexOf => self.typed_array_index_of(receiver, args),
             TypedArrayMethod::Join => self.typed_array_join(receiver, native::argument(args, 0)),
             TypedArrayMethod::Reduce => self.typed_array_reduce(receiver, args),
-            TypedArrayMethod::ToString => {
-                self.typed_array_method_receiver(receiver)?;
-                let join = self.get_property(receiver, &"join".into())?;
-                if self.is_callable(&join)? {
-                    self.call_native(join, receiver.clone(), vec![], false)
-                } else {
-                    self.native_call(NativeFunction::ObjectToString, receiver.clone(), vec![], false)
-                }
-            }
             TypedArrayMethod::ToLocaleString => {
                 // ValidateTypedArray precedes any observable element lookup.
                 // The shared array algorithm then forwards both locale
                 // arguments to each Number/BigInt element exactly as the
                 // TypedArray specification requires.
-                self.typed_array_method_receiver(receiver)?;
+                let object = receiver.object_id().ok_or_else(|| {
+                    RuntimeError::TypeError("TypedArray method requires a TypedArray receiver".into())
+                })?;
+                if !self.heap.is_typed_array(object)?
+                    && self.test262_foreign_typed_array_values(object)?.is_none()
+                {
+                    return Err(RuntimeError::TypeError(
+                        "TypedArray method requires a TypedArray receiver".into(),
+                    ));
+                }
                 self.array_to_locale_string(receiver, args)
             }
             TypedArrayMethod::ReduceRight => {
@@ -856,8 +1014,14 @@ impl Vm {
             TypedArrayMethod::Sort => {
                 let (object, length, kind) = self.typed_array_method_receiver(receiver)?;
                 let mut values = self.typed_array_read_values(object, 0, length)?;
-                self.typed_array_sort_values(&mut values, native::argument(args, 0), kind)?;
-                self.typed_array_write_values(object, kind, 0, &values)?;
+                if self.typed_array_sort_values(
+                    &mut values,
+                    native::argument(args, 0),
+                    kind,
+                    Some(object),
+                )? {
+                    self.typed_array_write_values(object, kind, 0, &values)?;
+                }
                 Ok(receiver.clone())
             }
             TypedArrayMethod::ToReversed => self.typed_array_to_reversed(receiver),

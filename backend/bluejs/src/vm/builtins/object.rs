@@ -279,14 +279,12 @@ impl Vm {
                 // convert an invalid key's value.
                 let (_, _, _, kind) = self.heap.typed_array_info(target)?;
                 let value = self.typed_array_element_value(kind, value)?;
-                if valid {
-                    let TypedArrayNumericKey::Index(index) = numeric else {
-                        unreachable!("valid TypedArray index has an integer index")
-                    };
-                    // Conversion can detach the buffer, in which case this
-                    // successful [[Set]] performs no byte write.
-                    let (buffer, _, _, _) = self.heap.typed_array_info(target)?;
-                    if !self.heap.buffer_is_detached(buffer)? {
+                if let TypedArrayNumericKey::Index(index) = numeric {
+                    // IsValidIntegerIndex follows ToNumber. In particular,
+                    // converting the right-hand side can grow a resizable
+                    // backing buffer and turn a previously out-of-bounds
+                    // index into a valid element.
+                    if self.heap.typed_array_index_value(target, index)?.is_some() {
                         self.with_roots(|heap| heap.typed_array_set_index(target, index, &value))?;
                     }
                 }
@@ -319,12 +317,11 @@ impl Vm {
                         // tested.
                         let (_, _, _, kind) = self.heap.typed_array_info(object)?;
                         let value = self.typed_array_element_value(kind, value)?;
-                        if valid {
-                            let TypedArrayNumericKey::Index(index) = numeric else {
-                                unreachable!("valid TypedArray index has an integer index")
-                            };
-                            let (buffer, _, _, _) = self.heap.typed_array_info(object)?;
-                            if !self.heap.buffer_is_detached(buffer)? {
+                        if let TypedArrayNumericKey::Index(index) = numeric {
+                            // The prototype exotic's index is likewise
+                            // checked after value conversion, because a
+                            // resizable buffer may have grown in that step.
+                            if self.heap.typed_array_index_value(object, index)?.is_some() {
                                 self.with_roots(|heap| {
                                     heap.typed_array_set_index(object, index, &value)
                                 })?;
@@ -503,6 +500,26 @@ impl Vm {
                 .get("%Intl.Segmenter%")
                 .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
                 .and_then(|value| value.object_id());
+            let mut typed_array_intrinsic = None;
+            for kind in [
+                TypedArrayKind::Int8,
+                TypedArrayKind::Uint8,
+                TypedArrayKind::Uint8Clamped,
+                TypedArrayKind::Int16,
+                TypedArrayKind::Uint16,
+                TypedArrayKind::Int32,
+                TypedArrayKind::Uint32,
+                TypedArrayKind::Float16,
+                TypedArrayKind::Float32,
+                TypedArrayKind::Float64,
+                TypedArrayKind::BigInt64,
+                TypedArrayKind::BigUint64,
+            ] {
+                if default == self.buffer_prototype(kind.name())? {
+                    typed_array_intrinsic = Some(kind.name());
+                    break;
+                }
+            }
             let intrinsic = if default == self.object_prototype {
                 Some("Object")
             } else if default == self.function_prototype()? {
@@ -533,6 +550,8 @@ impl Vm {
                 Some("Intl.RelativeTimeFormat")
             } else if intl_segmenter_prototype == Some(default) {
                 Some("Intl.Segmenter")
+            } else if typed_array_intrinsic.is_some() {
+                typed_array_intrinsic
             } else if default == self.buffer_prototype("ArrayBuffer")? {
                 Some("ArrayBuffer")
             } else if default == self.buffer_prototype("SharedArrayBuffer")? {
@@ -629,6 +648,10 @@ impl Vm {
                     | NativeFunction::SharedArrayBuffer
                     | NativeFunction::DataView
                     | NativeFunction::TypedArray(_)
+                    // `%TypedArray%` has [[Construct]] so concrete and host
+                    // subclasses may extend it, even though a direct
+                    // construction attempt deliberately throws.
+                    | NativeFunction::TypedArrayIntrinsic
                     | NativeFunction::Proxy
                     | NativeFunction::Map
                     | NativeFunction::Set

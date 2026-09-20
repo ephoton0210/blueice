@@ -24,6 +24,28 @@ impl Vm {
         {
             return self.test262_foreign_next(&receiver, &args);
         }
+        if receiver
+            .object_id()
+            .is_some_and(|id| self.test262_foreign_reference(id).is_some())
+            && (matches!(
+                function,
+                NativeFunction::TypedArrayBuffer
+                    | NativeFunction::TypedArrayByteLength
+                    | NativeFunction::TypedArrayByteOffset
+                    | NativeFunction::TypedArrayLength
+                    | NativeFunction::TypedArraySet
+                    | NativeFunction::TypedArraySubarray
+                    | NativeFunction::TypedArraySpecies
+                    | NativeFunction::TypedArrayToStringTag
+                    | NativeFunction::TypedArrayIterator(_)
+            ) || matches!(
+                function,
+                NativeFunction::TypedArrayMethod(method) if method != TypedArrayMethod::ToLocaleString
+            ))
+        {
+            return self
+                .test262_foreign_typed_array_native_call(function, receiver, args, construct);
+        }
         let first = native::argument(&args, 0);
         match function {
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
@@ -713,7 +735,28 @@ impl Vm {
                 "%TypedArray% is not directly constructible".into(),
             )),
             NativeFunction::TypedArrayBuffer => {
-                let (buffer, _, _, _) = self.typed_array_receiver(&receiver)?;
+                let object = receiver.object_id().ok_or_else(|| {
+                    RuntimeError::TypeError(
+                        "TypedArray method requires a TypedArray receiver".into(),
+                    )
+                })?;
+                // Like DataView.prototype.buffer, this accessor exposes the
+                // stored [[ViewedArrayBuffer]] without validating its current
+                // detached or out-of-bounds state.
+                let (buffer, _, _, _) =
+                    self.heap
+                        .typed_array_info(object)
+                        .map_err(|error| match error {
+                            HeapError::InvalidInternalSlot(_) | HeapError::InvalidObject(_) => {
+                                RuntimeError::TypeError(
+                                    "TypedArray method requires a TypedArray receiver".into(),
+                                )
+                            }
+                            error => error.into(),
+                        })?;
+                if let Some(facade) = self.test262_foreign_buffer_facade(buffer) {
+                    return Ok(facade);
+                }
                 Ok(Value::Object(buffer))
             }
             NativeFunction::TypedArrayByteLength => {
@@ -776,6 +819,11 @@ impl Vm {
             }),
             NativeFunction::TypedArrayFrom => self.typed_array_from(&receiver, &args),
             NativeFunction::TypedArrayOf => self.typed_array_of(&receiver, &args),
+            NativeFunction::Uint8ArrayFromBase64 => self.uint8_array_from_base64(&args, construct),
+            NativeFunction::Uint8ArrayFromHex => self.uint8_array_from_hex(&args, construct),
+            NativeFunction::Uint8ArrayMethod(method) => {
+                self.uint8_array_method(&receiver, &args, construct, method)
+            }
             NativeFunction::TypedArrayIterator(kind) => {
                 self.typed_array_receiver(&receiver)?;
                 let object = receiver
@@ -995,8 +1043,13 @@ impl Vm {
                 if done {
                     return self.iterator_result(Value::Undefined, true);
                 }
-                let length = self.get_property(&Value::Object(object), &"length".into())?;
-                let length = self.coerce_length(&length)?;
+                let length = if self.heap.is_typed_array(object)? {
+                    let (_, _, length, _) = self.typed_array_receiver(&Value::Object(object))?;
+                    length as f64
+                } else {
+                    let length = self.get_property(&Value::Object(object), &"length".into())?;
+                    self.coerce_length(&length)?
+                };
                 let done = index as f64 >= length;
                 self.heap.advance_array_iterator(id, done);
                 let value = if done {

@@ -21,6 +21,96 @@ fn detaching_a_buffer_invalidates_its_views_through_the_test262_host_hook() {
 }
 
 #[test]
+fn typed_array_set_converts_its_offset_before_validating_a_detached_target() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "let buffer=new ArrayBuffer(4);let typed=new Int32Array(buffer);let marker={};$262.detachArrayBuffer(buffer);let caught=false;try{typed.set(null,{valueOf:function(){throw marker}})}catch(error){caught=error===marker}caught";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn typed_array_set_validates_a_detached_source_before_target_bounds() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "let target=new Int32Array(1);let source=new Int32Array(1);let buffer=source.buffer;let caught=false;try{target.set(source,{valueOf:function(){$262.detachArrayBuffer(buffer);return 1000000}})}catch(error){caught=error instanceof TypeError}caught";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn typed_array_from_constructs_an_array_like_target_before_reading_elements() {
+    let source = "let log='';let marker={};function C(length){log+='C';return new Uint8Array(length)}let source={get length(){log+='l';return 1},get 0(){log+='0';return 7}};try{Uint8Array.from.call(C,source,function(){throw marker})}catch(error){}log==='lC0'";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn typed_array_from_foreign_callback_writes_through_an_imported_parent_global() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "let g=$262.createRealm().global;let h=$262.createRealm().global;h.mainGlobal=this;h.eval(\"function f(){mainGlobal.result=this}\");g.Uint8Array.from.call(Uint8Array,[5],h.f);this.globalName='main';h.globalName='h';result.globalName==='h'";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test262_host_hook_detaches_array_buffers_owned_by_another_realm() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "let other=$262.createRealm().global;let typed=new other.Uint8Array(1);let buffer=typed.buffer;$262.detachArrayBuffer(buffer);typed[0]===undefined&&buffer.byteLength===0&&typed.length===0";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn typed_array_generic_methods_route_to_the_receivers_test262_realm() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "let other=$262.createRealm().global;let local=new Uint8Array([1,2]);let remote=new other.Uint8Array(2);remote[0]=3;Object.defineProperty(remote,'length',{get:function(){throw new Error('foreign length should not be read')}});let copied=new Uint8Array(2);copied.set(remote);let foreignBuffer=new other.ArrayBuffer(2);let mirrored=new Uint8Array(foreignBuffer);let exposedBuffer=mirrored.buffer;other.$262.detachArrayBuffer(exposedBuffer);let detached=false;try{mirrored.set([1])}catch(error){detached=error instanceof TypeError}let localEntries=other.Uint8Array.prototype.entries.call(local);let remoteEntries=Uint8Array.prototype.entries.call(remote);let iterator=new Uint8Array([9])[Symbol.iterator]();iterator.next=other.Array.prototype[Symbol.iterator]().next;let fromRemote=Uint8Array.from.call(other.Uint8Array,[5,6]);let C=new other.Function();C.prototype=null;let constructed=Reflect.construct(Int8Array,[0],C);localEntries.next().value.join()==='0,1'&&remoteEntries.next().value.join()==='0,3'&&iterator.next().value===9&&iterator.next().done&&copied[0]===3&&copied[1]===0&&mirrored.length===0&&exposedBuffer===foreignBuffer&&detached&&fromRemote instanceof other.Uint8Array&&fromRemote[1]===6&&Object.getPrototypeOf(constructed)===other.Int8Array.prototype";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn parent_array_buffers_remain_live_when_constructing_foreign_typed_arrays() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "let other=$262.createRealm().global;let buffer=new ArrayBuffer(2);let remote=new other.Uint8Array(buffer);remote[0]=7;let local=new Uint8Array(buffer);let visible=remote[0]===7&&local[0]===7;other.$262.detachArrayBuffer(buffer);visible&&buffer.byteLength===0&&local.length===0&&remote.length===0";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn typed_array_sort_ends_cleanly_when_a_comparator_detaches_the_buffer() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = "let typed=new Int8Array(4);let buffer=typed.buffer;let called=false;typed.sort(function(){$262.detachArrayBuffer(buffer);return {[Symbol.toPrimitive]:function(){called=true}}});called";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
     for (source, expected) in [
         (
@@ -41,6 +131,18 @@ fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
         ),
         (
             "let bytes=new Uint8Array([257,2]);let copied=new Int16Array(bytes);bytes.length===2&&bytes[0]===1&&copied.length===2&&copied[0]===1&&Uint8Array.BYTES_PER_ELEMENT===1&&Int16Array.BYTES_PER_ELEMENT===2",
+            Value::Bool(true),
+        ),
+        (
+            "Int8Array.length===3&&Uint8Array.length===3&&Float64Array.length===3&&BigInt64Array.length===3",
+            Value::Bool(true),
+        ),
+        (
+            "let typed=new Uint8Array([1,2]);Object.defineProperty(typed,'length',{get:function(){throw new Error('unexpected length get')}});typed.toLocaleString()==='1,2'&&Object.getPrototypeOf(Int8Array).prototype.toString===Array.prototype.toString",
+            Value::Bool(true),
+        ),
+        (
+            "let buffer=new ArrayBuffer(4,{maxByteLength:4});let fixed=new Uint8Array(buffer,0,4);let keys=fixed.keys();let values=fixed.values();keys.next();values.next();buffer.resize(3);let keyThrows=false;let valueThrows=false;try{keys.next()}catch(error){keyThrows=error instanceof TypeError}try{values.next()}catch(error){valueThrows=error instanceof TypeError}keyThrows&&valueThrows",
             Value::Bool(true),
         ),
         (
@@ -85,6 +187,10 @@ fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
         ),
         (
             "let TypedArray=Object.getPrototypeOf(Int8Array);TypedArray.name==='TypedArray'&&TypedArray.prototype===Object.getPrototypeOf(Int8Array.prototype)&&TypedArray.prototype.set===Int8Array.prototype.set",
+            Value::Bool(true),
+        ),
+        (
+            "let TypedArray=Object.getPrototypeOf(Int8Array);class Derived extends TypedArray{constructor(...args){return Reflect.construct(Int8Array,args,new.target)}}let typed=new Derived([7,8]);Object.getPrototypeOf(Derived)===TypedArray&&typed instanceof Derived&&typed.length===2&&typed[0]===7&&typed[1]===8",
             Value::Bool(true),
         ),
         (
@@ -136,7 +242,51 @@ fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
             Value::Bool(true),
         ),
         (
+            "let typed=new BigInt64Array(4);let conversions=0;let value={valueOf:function(){conversions++;return '3'}};typed.set([false,true],0);typed[2]='2';typed[3]=value;typed[0]===0n&&typed[1]===1n&&typed[2]===2n&&typed[3]===3n&&conversions===1",
+            Value::Bool(true),
+        ),
+        (
+            "let target=new BigInt64Array(4);let source={length:3};let events=[];Object.defineProperty(source,'0',{get:function(){events.push(target.join());return 4n}});Object.defineProperty(source,'1',{get:function(){events.push(target.join());return 5n}});Object.defineProperty(source,'2',{get:function(){events.push(target.join());return 6n}});target.set(source,1);let typedSource=new BigInt64Array([7n,8n]);let lengthGets=0;Object.defineProperty(typedSource,'length',{get:function(){lengthGets++;return 99}});let typedTarget=new BigInt64Array(2);typedTarget.set(typedSource);target.join()==='0,4,5,6'&&events.join('|')==='0,0,0,0|0,4,0,0|0,4,5,0'&&typedTarget.join()==='7,8'&&lengthGets===0",
+            Value::Bool(true),
+        ),
+        (
+            "let source=new Int16Array([4,5,6]);let calls=0;source.constructor={};source.constructor[Symbol.species]=function(buffer,offset,length){calls++;return new Uint8Array(buffer,offset,length)};let result=source.subarray(1);calls===1&&result instanceof Uint8Array&&result.length===2",
+            Value::Bool(true),
+        ),
+        (
+            "let typed=new Uint8Array([10,20,30,40,50,60]);typed.constructor={};typed.constructor[Symbol.species]=function(){return new Uint8Array(typed.buffer,2)};typed.slice(1,4).join()==='20,20,20,60'",
+            Value::Bool(true),
+        ),
+        (
+            "let buffer=new ArrayBuffer(10,{maxByteLength:20});let typed=new Float64Array(buffer);let initial=typed.length===1&&typed.byteLength===8&&typed[0]===0;buffer.resize(16);initial&&typed.length===2&&typed[1]===0",
+            Value::Bool(true),
+        ),
+        (
+            "let buffer=new ArrayBuffer(4,{maxByteLength:4});let typed=new Uint8Array(buffer);typed.set([1,2,3,4]);let seen=[];typed.forEach(function(value,index){seen.push(value);if(index===1)buffer.resize(2)});seen.join()==='1,2,,'",
+            Value::Bool(true),
+        ),
+        (
+            "let typed=new Uint8Array([42,43]);typed.at(NaN)===42&&typed.at(-3)===undefined&&typed.includes(42,NaN)&&typed.indexOf(42,NaN)===0&&typed.lastIndexOf(42,NaN)===0&&typed.lastIndexOf(43,undefined)===-1",
+            Value::Bool(true),
+        ),
+        (
             "let buffer=new ArrayBuffer(4,{maxByteLength:8});let tracking=new Uint8Array(buffer);let fixed=new Uint8Array(buffer,0,4);let view=new DataView(buffer);tracking[3]=7;buffer.resize(6);let grown=buffer.resizable&&buffer.maxByteLength===8&&buffer.byteLength===6&&tracking.length===6&&tracking[3]===7&&tracking[5]===0&&fixed.length===4&&view.byteLength===6;buffer.resize(2);let rejected=false;try{fixed.set([1])}catch(error){rejected=error instanceof TypeError}grown&&buffer.byteLength===2&&tracking.length===2&&view.byteLength===2&&fixed.length===0&&fixed.byteLength===0&&fixed.byteOffset===0&&fixed[0]===undefined&&rejected",
+            Value::Bool(true),
+        ),
+        (
+            "let buffer=new ArrayBuffer(0,{maxByteLength:1});let typed=new Int8Array(buffer);typed[0]={valueOf:function(){buffer.resize(1);return 100}};typed.length===1&&typed[0]===100",
+            Value::Bool(true),
+        ),
+        (
+            "let buffer=new ArrayBuffer(2,{maxByteLength:5});let typed=new Int8Array(buffer);typed[0]=11;typed[1]=22;let replacement={valueOf:function(){buffer.resize(5);return 123}};let result=typed.with(4,replacement);let marker={};let thrown=false;try{typed.with(100,{valueOf:function(){throw marker}})}catch(error){thrown=error===marker}result.length===2&&result[0]===11&&result[1]===22&&typed.length===5&&thrown&&typed.with(NaN,7)[0]===7",
+            Value::Bool(true),
+        ),
+        (
+            "let values=[0,{valueOf:function(){values.length=0;return 100}},2];let typed=new Uint8Array(values);typed.length===3&&typed[0]===0&&typed[1]===100&&typed[2]===2",
+            Value::Bool(true),
+        ),
+        (
+            "let buffer=new ArrayBuffer(4,{maxByteLength:4});let fixed=new Uint8Array(buffer,0,4);buffer.resize(3);let rejected=false;try{new Uint8Array(fixed)}catch(error){rejected=error instanceof TypeError}rejected",
             Value::Bool(true),
         ),
         (
@@ -201,7 +351,7 @@ fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
 fn typed_array_prototype_tostringtag_getter_reports_the_kind_of_a_detached_view() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();
-    let source = "let typed=new Uint8Array(new ArrayBuffer(2));let before=typed[Symbol.toStringTag];$262.detachArrayBuffer(typed.buffer);before==='Uint8Array'&&typed[Symbol.toStringTag]==='Uint8Array'&&typed.length===0";
+    let source = "let typed=new Uint8Array(new ArrayBuffer(2));let buffer=typed.buffer;let before=typed[Symbol.toStringTag];$262.detachArrayBuffer(buffer);before==='Uint8Array'&&typed[Symbol.toStringTag]==='Uint8Array'&&typed.buffer===buffer&&typed.length===0";
     assert_eq!(
         vm.execute(&compile(&parse(source).unwrap()).unwrap())
             .unwrap(),

@@ -5,7 +5,10 @@
 use super::*;
 
 impl Vm {
-    pub(super) fn buffer_prototype(&mut self, constructor: &str) -> Result<ObjectId, RuntimeError> {
+    pub(in super::super) fn buffer_prototype(
+        &mut self,
+        constructor: &str,
+    ) -> Result<ObjectId, RuntimeError> {
         let constructor = self.global(constructor)?;
         self.get_property(&constructor, &"prototype".into())?
             .object_id()
@@ -130,7 +133,6 @@ impl Vm {
                 ("indexOf", 1, TypedArrayMethod::IndexOf),
                 ("join", 1, TypedArrayMethod::Join),
                 ("reduce", 1, TypedArrayMethod::Reduce),
-                ("toString", 0, TypedArrayMethod::ToString),
                 ("toLocaleString", 0, TypedArrayMethod::ToLocaleString),
                 ("reduceRight", 1, TypedArrayMethod::ReduceRight),
                 ("reverse", 0, TypedArrayMethod::Reverse),
@@ -149,6 +151,17 @@ impl Vm {
                     NativeFunction::TypedArrayMethod(method),
                 )?;
             }
+            // The specified initial value is the exact same function object
+            // as Array.prototype.toString, not a TypedArray-specific wrapper.
+            let array_to_string = self.heap.get(self.array_prototype, "toString")?;
+            self.define_data(
+                typed_prototype,
+                "toString",
+                array_to_string,
+                true,
+                false,
+                true,
+            )?;
             self.install_getter(
                 constructor,
                 function_prototype,
@@ -225,23 +238,20 @@ impl Vm {
     }
 
     /// Integer-indexed writes use ToNumber for numeric typed arrays and
-    /// ToBigInt for the two BigInt element kinds. Both start with the same
-    /// observable ToPrimitive(value, number) step.
+    /// ToBigInt for the two BigInt element kinds.  `coerce_bigint` owns the
+    /// latter operation so Boolean and String inputs receive its prescribed
+    /// conversion after the one observable ToPrimitive(value, number) step.
     pub(super) fn typed_array_element_value(
         &mut self,
         kind: TypedArrayKind,
         value: &Value,
     ) -> Result<Value, RuntimeError> {
-        let value = self.coerce_primitive(value, "number")?;
         if kind.bigint() {
-            return match value {
-                Value::BigInt(_) => Ok(value),
-                _ => Err(RuntimeError::TypeError(
-                    "BigInt typed arrays require a BigInt element value".into(),
-                )),
-            };
+            return Ok(Value::BigInt(self.coerce_bigint(value)?));
         }
-        Ok(Value::Number(primitive::number(&value)?))
+        Ok(Value::Number(primitive::number(
+            &self.coerce_primitive(value, "number")?,
+        )?))
     }
 
     pub(super) fn array_buffer_constructor(
@@ -1051,46 +1061,76 @@ impl Vm {
                 "TypedArray constructor requires 'new'".into(),
             ));
         }
+        // AllocateTypedArray obtains the result prototype before it observes
+        // the constructor input. In particular, a throwing `newTarget`
+        // `prototype` getter wins over detached-buffer checks and all
+        // byteOffset/length conversions.
+        let prototype = self.constructed_buffer_prototype(kind.name())?;
         let input = native::argument(args, 0);
         let (buffer, byte_offset, length, length_tracking, initial_values) =
             if let Value::Object(buffer) = input {
-                if self.heap.is_buffer(*buffer)? {
-                    if self.heap.buffer_is_detached(*buffer)? {
-                        return Err(RuntimeError::TypeError(
-                            "TypedArray buffer is detached".into(),
-                        ));
-                    }
-                    let bytes = self.heap.buffer_byte_length(*buffer)?;
+                let source_buffer = if self.heap.is_buffer(*buffer)? {
+                    Some(*buffer)
+                } else {
+                    self.test262_foreign_buffer_clone(*buffer)?
+                };
+                if let Some(source_buffer) = source_buffer {
+                    let bytes = self.heap.buffer_byte_length(source_buffer)?;
                     let offset = if args.len() > 1 {
                         self.buffer_index(native::argument(args, 1))?
                     } else {
                         0
                     };
-                    if offset % kind.byte_width() != 0 || offset > bytes {
+                    // An unaligned byteOffset is rejected before the later
+                    // IsDetachedBuffer check. All range checks that require
+                    // the current byte length wait until after that check.
+                    if offset % kind.byte_width() != 0 {
                         return Err(RuntimeError::RangeError(
                             "invalid TypedArray byte offset".into(),
                         ));
                     }
                     let length_tracking =
                         args.len() <= 2 || native::argument(args, 2) == &Value::Undefined;
-                    let length = if !length_tracking {
-                        self.buffer_index(native::argument(args, 2))?
+                    let requested_length = (!length_tracking)
+                        .then(|| self.buffer_index(native::argument(args, 2)))
+                        .transpose()?;
+                    if self.heap.buffer_is_detached(source_buffer)? {
+                        return Err(RuntimeError::TypeError(
+                            "TypedArray buffer is detached".into(),
+                        ));
+                    }
+                    if offset > bytes {
+                        return Err(RuntimeError::RangeError(
+                            "invalid TypedArray byte offset".into(),
+                        ));
+                    }
+                    let length = if let Some(length) = requested_length {
+                        length
                     } else {
                         let remaining = bytes - offset;
-                        if remaining % kind.byte_width() != 0 {
+                        // Auto-length views over resizable or growable
+                        // buffers use floor(available / elementSize), so a
+                        // partial trailing element is permitted and may
+                        // become complete after a later grow. Ordinary fixed
+                        // buffers retain the alignment requirement.
+                        let auto_length = self.heap.buffer_resizable(source_buffer)?
+                            || self.heap.buffer_growable(source_buffer)?;
+                        if remaining % kind.byte_width() != 0 && !auto_length {
                             return Err(RuntimeError::RangeError(
                                 "invalid TypedArray buffer length".into(),
                             ));
                         }
                         remaining / kind.byte_width()
                     };
-                    (*buffer, offset, length, length_tracking, None)
+                    (source_buffer, offset, length, length_tracking, None)
                 } else if self.heap.is_typed_array(*buffer)? {
                     let (source_buffer, _, source_length, _) =
                         self.heap.typed_array_info(*buffer)?;
-                    if self.heap.buffer_is_detached(source_buffer)? {
+                    if self.heap.buffer_is_detached(source_buffer)?
+                        || self.heap.typed_array_is_out_of_bounds(*buffer)?
+                    {
                         return Err(RuntimeError::TypeError(
-                            "TypedArray source is detached".into(),
+                            "TypedArray source is detached or out of bounds".into(),
                         ));
                     }
                     let values = self.typed_array_values(*buffer, source_length)?;
@@ -1104,9 +1144,9 @@ impl Vm {
                         let iterator =
                             self.get_method(&source, &JsSymbol::well_known("iterator").into())?;
                         if iterator == Value::Undefined {
-                            self.array_like_numbers(*buffer, kind)
+                            self.typed_array_array_like_values(*buffer, kind)
                         } else {
-                            self.iterable_numbers(&source, iterator, kind)
+                            self.iterable_values(&source, iterator, kind)
                         }
                     })();
                     self.stack.truncate(base);
@@ -1127,7 +1167,6 @@ impl Vm {
         let base = self.stack.len();
         self.stack.push(Value::Object(buffer));
         let result = (|| {
-            let prototype = self.constructed_buffer_prototype(kind.name())?;
             let object = self.with_roots(|heap| {
                 heap.alloc_typed_array(
                     buffer,
@@ -1192,7 +1231,7 @@ impl Vm {
         result
     }
 
-    pub(super) fn array_like_numbers(
+    pub(super) fn typed_array_array_like_values(
         &mut self,
         source: ObjectId,
         kind: TypedArrayKind,
@@ -1209,7 +1248,7 @@ impl Vm {
             let mut values = Vec::with_capacity(length as usize);
             for index in 0..length as usize {
                 let value = self.get_property(&Value::Object(source), &index.to_string().into())?;
-                values.push(self.typed_array_element_value(kind, &value)?);
+                values.push(value);
             }
             Ok(values)
         })();
@@ -1221,7 +1260,7 @@ impl Vm {
     /// The source and iterator record stay on the VM stack for every user-code
     /// call, so a collection triggered by a getter, `next`, or number coercion
     /// cannot reclaim either internal object.
-    pub(super) fn iterable_numbers(
+    pub(super) fn iterable_values(
         &mut self,
         source: &Value,
         iterator_method: Value,
@@ -1240,7 +1279,7 @@ impl Vm {
                         "TypedArray length is too large".into(),
                     ));
                 }
-                values.push(self.typed_array_element_value(kind, &value)?);
+                values.push(value);
             }
             Ok(values)
         })();
@@ -1281,47 +1320,98 @@ impl Vm {
         let result = (|| {
             let iterator_method =
                 self.get_method(&source, &JsSymbol::well_known("iterator").into())?;
-            let values = if iterator_method != Value::Undefined {
+            let (values, array_like) = if iterator_method != Value::Undefined {
                 let record = self.get_iterator_from_method(&source, iterator_method)?;
                 self.stack.push(record.clone());
                 let mut values = Vec::new();
                 while let Some(value) = self.iterator_step(&record, true)? {
                     values.push(value);
                 }
-                values
+                (Some(values), None)
             } else {
                 let object = self.coerce_object(&source)?;
                 self.stack.push(Value::Object(object));
                 let length_value = self.get_property(&Value::Object(object), &"length".into())?;
                 let length = self.coerce_length(&length_value)? as usize;
-                let mut values = Vec::with_capacity(length);
-                for index in 0..length {
-                    values.push(
-                        self.get_property(&Value::Object(object), &index.to_string().into())?,
-                    );
-                }
-                values
+                // The array-like path creates the target immediately after
+                // reading `length`; individual indexed Gets occur later,
+                // interleaved with mapping and element writes. In particular
+                // a getter must observe that constructor call first.
+                (None, Some((object, length)))
             };
-            let length = values.len();
+            let length = values.as_ref().map_or_else(
+                || array_like.expect("array-like source has a length").1,
+                Vec::len,
+            );
+            if let Some(target) = self.typed_array_create_foreign_target(this, length)? {
+                self.stack.push(target.clone());
+                let writes = if let Some(values) = values {
+                    values
+                        .into_iter()
+                        .enumerate()
+                        .try_for_each(|(index, value)| {
+                            let mapped = self.typed_array_from_mapped_value(
+                                mapping, &mapfn, &this_arg, value, index,
+                            )?;
+                            self.set_property(&target, &index.to_string().into(), &mapped)
+                        })
+                } else {
+                    let (object, length) = array_like.expect("array-like source is available");
+                    (0..length).try_for_each(|index| {
+                        let value =
+                            self.get_property(&Value::Object(object), &index.to_string().into())?;
+                        let mapped = self.typed_array_from_mapped_value(
+                            mapping, &mapfn, &this_arg, value, index,
+                        )?;
+                        self.set_property(&target, &index.to_string().into(), &mapped)
+                    })
+                };
+                self.stack.pop();
+                writes?;
+                return Ok(target);
+            }
             let (target, target_kind) = self.typed_array_create(this.clone(), length)?;
             self.stack.push(Value::Object(target));
-            for (index, value) in values.into_iter().enumerate() {
-                let mapped = if mapping {
-                    self.call_native(
-                        mapfn.clone(),
-                        this_arg.clone(),
-                        vec![value, Value::Number(index as f64)],
-                        false,
-                    )?
-                } else {
-                    value
-                };
-                self.typed_array_write_values(target, target_kind, index, &[mapped])?;
+            if let Some(values) = values {
+                for (index, value) in values.into_iter().enumerate() {
+                    let mapped = self
+                        .typed_array_from_mapped_value(mapping, &mapfn, &this_arg, value, index)?;
+                    self.typed_array_write_values(target, target_kind, index, &[mapped])?;
+                }
+            } else {
+                let (object, length) = array_like.expect("array-like source is available");
+                for index in 0..length {
+                    let value =
+                        self.get_property(&Value::Object(object), &index.to_string().into())?;
+                    let mapped = self
+                        .typed_array_from_mapped_value(mapping, &mapfn, &this_arg, value, index)?;
+                    self.typed_array_write_values(target, target_kind, index, &[mapped])?;
+                }
             }
             Ok(Value::Object(target))
         })();
         self.stack.truncate(base);
         result
+    }
+
+    fn typed_array_from_mapped_value(
+        &mut self,
+        mapping: bool,
+        mapfn: &Value,
+        this_arg: &Value,
+        value: Value,
+        index: usize,
+    ) -> Result<Value, RuntimeError> {
+        if mapping {
+            self.call_native(
+                mapfn.clone(),
+                this_arg.clone(),
+                vec![value, Value::Number(index as f64)],
+                false,
+            )
+        } else {
+            Ok(value)
+        }
     }
 
     /// `%TypedArray%.of ( ...items )`. Unlike `from`, every argument is
@@ -1340,6 +1430,15 @@ impl Vm {
         let base = self.stack.len();
         self.stack.push(this.clone());
         let result = (|| {
+            if let Some(target) = self.typed_array_create_foreign_target(this, args.len())? {
+                self.stack.push(target.clone());
+                let writes = args.iter().enumerate().try_for_each(|(index, value)| {
+                    self.set_property(&target, &index.to_string().into(), value)
+                });
+                self.stack.pop();
+                writes?;
+                return Ok(target);
+            }
             let (target, target_kind) = self.typed_array_create(this.clone(), args.len())?;
             self.stack.push(Value::Object(target));
             for (index, value) in args.iter().enumerate() {
@@ -1383,37 +1482,77 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let (_, _, length, kind) = self.typed_array_receiver(receiver)?;
-        let source = native::argument(args, 0);
-        let target_offset = self.buffer_index(native::argument(args, 1))?;
-        if target_offset > length {
-            return Err(RuntimeError::RangeError(
-                "target offset is outside TypedArray".into(),
+        let target = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("TypedArray method requires a TypedArray receiver".into())
+        })?;
+        // `set` checks that its receiver has TypedArray internal slots before
+        // it starts, but its detached/out-of-bounds validation occurs only
+        // after ToIntegerOrInfinity(offset). That conversion is observable
+        // and may therefore throw even for an already-detached receiver.
+        if !self.heap.is_typed_array(target)? {
+            return Err(RuntimeError::TypeError(
+                "TypedArray method requires a TypedArray receiver".into(),
             ));
         }
+        let source = native::argument(args, 0);
+        let target_offset = self.buffer_index(native::argument(args, 1))?;
+        // ToIntegerOrInfinity(offset) is observable.  Revalidate after it:
+        // conversion can detach the target buffer or make a fixed-length
+        // resizable view out of bounds.
+        let (_, _, length, kind) = self.typed_array_receiver(receiver)?;
+
+        // A genuine integer-indexed exotic source follows the dedicated
+        // TypedArray path.  In particular its internal [[ArrayLength]] is
+        // used rather than an observable `length` property, and source values
+        // are snapshotted before any overlapping copy writes begin.
+        if let Some(source_object) = source.object_id() {
+            if self.heap.typed_array_info(source_object).is_ok() {
+                let (_, _, source_length, _) = self.typed_array_receiver(source)?;
+                // Validate the source before checking target bounds.  A
+                // detached source takes precedence over a too-large offset;
+                // both validations occur after the observable offset
+                // conversion above.
+                if target_offset > length || source_length > length - target_offset {
+                    return Err(RuntimeError::RangeError(
+                        "source does not fit in TypedArray".into(),
+                    ));
+                }
+                let values = self.typed_array_read_values(source_object, 0, source_length)?;
+                self.typed_array_write_values(target, kind, target_offset, &values)?;
+                return Ok(Value::Undefined);
+            }
+            if let Some(values) = self.test262_foreign_typed_array_values(source_object)? {
+                if target_offset > length || values.len() > length - target_offset {
+                    return Err(RuntimeError::RangeError(
+                        "source does not fit in TypedArray".into(),
+                    ));
+                }
+                self.typed_array_write_values(target, kind, target_offset, &values)?;
+                return Ok(Value::Undefined);
+            }
+        }
+
         let source = self.coerce_object(source)?;
         self.stack.push(Value::Object(source));
         let result = (|| {
             let source_length_value =
                 self.get_property(&Value::Object(source), &"length".into())?;
             let source_length = self.coerce_length(&source_length_value)? as usize;
-            if source_length > length - target_offset {
+            if target_offset > length || source_length > length - target_offset {
                 return Err(RuntimeError::RangeError(
                     "source does not fit in TypedArray".into(),
                 ));
             }
-            let mut values = Vec::with_capacity(source_length);
             for index in 0..source_length {
                 let value = self.get_property(&Value::Object(source), &index.to_string().into())?;
-                values.push(self.typed_array_element_value(kind, &value)?);
-            }
-            for (index, value) in values.into_iter().enumerate() {
+                let value = self.typed_array_element_value(kind, &value)?;
+                // Each Get/ToNumber or Get/ToBigInt can run user code. A
+                // later detachment or resize of the target does not abort the
+                // generic-source loop: IntegerIndexedElementSet simply skips
+                // a now-invalid indexed write, while later source Gets remain
+                // observable.
                 self.with_roots(|heap| {
-                    heap.typed_array_set_index(
-                        receiver.object_id().expect("validated TypedArray receiver"),
-                        target_offset + index,
-                        &value,
-                    )
+                    heap.typed_array_set_index(target, target_offset + index, &value)
                 })?;
             }
             Ok(Value::Undefined)
@@ -1427,7 +1566,17 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let (buffer, byte_offset, length, kind) = self.typed_array_receiver(receiver)?;
+        let source = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("TypedArray method requires a TypedArray receiver".into())
+        })?;
+        let (buffer, byte_offset, length, kind) =
+            self.heap.typed_array_info(source).map_err(|_| {
+                RuntimeError::TypeError("TypedArray method requires a TypedArray receiver".into())
+            })?;
+        // Unlike most TypedArray methods, subarray observes begin and end
+        // conversion even when the backing buffer is already detached. The
+        // eventual constructor call receives that buffer and supplies the
+        // required TypeError afterwards.
         let start = self.relative_buffer_index(native::argument(args, 0), length)?;
         let end = if args.get(1).is_some_and(|value| *value != Value::Undefined) {
             self.relative_buffer_index(native::argument(args, 1), length)?
@@ -1435,24 +1584,31 @@ impl Vm {
             length
         };
         let length_tracking = args.get(1).is_none_or(|value| *value == Value::Undefined)
-            && self.heap.typed_array_is_length_tracking(
-                receiver.object_id().expect("validated TypedArray"),
-            )?;
+            && self.heap.typed_array_is_length_tracking(source)?
+            && (self.heap.buffer_resizable(buffer)? || self.heap.buffer_growable(buffer)?);
         let view_length = end.saturating_sub(start);
         let view_offset = byte_offset
             .checked_add(start * kind.byte_width())
             .ok_or_else(|| RuntimeError::RangeError("TypedArray offset is too large".into()))?;
-        let prototype = self.buffer_prototype(kind.name())?;
-        let object = self.with_roots(|heap| {
-            heap.alloc_typed_array(
-                buffer,
-                view_offset,
-                view_length,
-                length_tracking,
-                kind,
-                Some(prototype),
-            )
-        })?;
-        Ok(Value::Object(object))
+        let fallback = self.global(kind.name())?;
+        let constructor = self.typed_array_species_constructor(receiver, fallback)?;
+        if !self.is_constructor(&constructor)? {
+            return Err(RuntimeError::TypeError(
+                "TypedArray constructor must be a constructor".into(),
+            ));
+        }
+        let mut arguments = vec![Value::Object(buffer), Value::Number(view_offset as f64)];
+        if !length_tracking {
+            arguments.push(Value::Number(view_length as f64));
+        }
+        let result = self.call_with_target(
+            constructor.clone(),
+            Value::Undefined,
+            arguments,
+            true,
+            constructor,
+        )?;
+        self.typed_array_receiver(&result)?;
+        Ok(result)
     }
 }

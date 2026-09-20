@@ -880,6 +880,7 @@ impl Parser {
                 Ok(Expr::BigInt(n))
             }
             Token::String(s) => {
+                self.reject_legacy_octal_escape()?;
                 self.advance();
                 Ok(Expr::String(s))
             }

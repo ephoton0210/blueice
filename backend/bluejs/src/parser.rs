@@ -133,12 +133,14 @@ fn tokenize_all(tokenizer: &mut Tokenizer) -> (Vec<SpannedToken>, Vec<usize>) {
                     token: Token::Invalid(error.message),
                     newline_before: false,
                     identifier_escaped: false,
+                    legacy_octal_escape: false,
                 });
                 positions.push(tokenizer.position());
                 tokens.push(SpannedToken {
                     token: Token::Eof,
                     newline_before: false,
                     identifier_escaped: false,
+                    legacy_octal_escape: false,
                 });
                 return (tokens, positions);
             }
@@ -494,6 +496,18 @@ impl Parser {
         }
     }
 
+    /// Legacy octal and non-octal decimal escapes are Annex B extensions.
+    /// The tokenizer records their use because the surrounding syntactic goal
+    /// determines whether they are permitted.
+    fn reject_legacy_octal_escape(&self) -> Result<(), ParseError> {
+        if self.strict && self.tokens[self.pos].legacy_octal_escape {
+            return Err(self.syntax_error(
+                "legacy octal and non-octal decimal escapes are not valid in strict mode",
+            ));
+        }
+        Ok(())
+    }
+
     fn syntax_error(&self, message: impl Into<String>) -> ParseError {
         ParseError {
             message: format!("{} (found {:?})", message.into(), self.peek()),
@@ -535,6 +549,7 @@ impl Parser {
     }
 
     fn expect_module_name(&mut self) -> Result<String, ParseError> {
+        self.reject_legacy_octal_escape()?;
         match self.advance() {
             Token::String(name) => name
                 .to_utf8()
@@ -544,6 +559,7 @@ impl Parser {
     }
 
     fn expect_module_export_name(&mut self) -> Result<String, ParseError> {
+        self.reject_legacy_octal_escape()?;
         match self.peek().clone() {
             Token::String(name) => {
                 self.advance();

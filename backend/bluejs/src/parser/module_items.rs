@@ -26,6 +26,7 @@ impl Parser {
                 return Err(self.syntax_error("duplicate import attribute key"));
             }
             self.expect_punct(Punct::Colon)?;
+            self.reject_legacy_octal_escape()?;
             match self.advance() {
                 Token::String(value) => {
                     if key == "type" {

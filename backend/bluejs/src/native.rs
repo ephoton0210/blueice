@@ -43,7 +43,6 @@ pub(crate) enum TypedArrayMethod {
     IndexOf,
     Join,
     Reduce,
-    ToString,
     ToLocaleString,
     ReduceRight,
     Reverse,
@@ -53,6 +52,14 @@ pub(crate) enum TypedArrayMethod {
     ToReversed,
     ToSorted,
     With,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Uint8ArrayMethod {
+    SetFromBase64,
+    SetFromHex,
+    ToBase64,
+    ToHex,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -342,6 +349,9 @@ pub(crate) enum NativeFunction {
     TypedArrayMethod(TypedArrayMethod),
     TypedArrayFrom,
     TypedArrayOf,
+    Uint8ArrayFromBase64,
+    Uint8ArrayFromHex,
+    Uint8ArrayMethod(Uint8ArrayMethod),
     Proxy,
     ProxyRevocable,
     ProxyRevoker(ObjectId),
@@ -721,6 +731,7 @@ pub(crate) enum MathMethod {
     Cosh,
     Exp,
     Expm1,
+    F16round,
     Floor,
     Fround,
     Hypot,

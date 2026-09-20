@@ -15,6 +15,7 @@ mod object;
 mod promises;
 mod resource_management;
 mod typed_arrays;
+mod uint8array;
 use crate::heap::{
     f16_bits_to_f64, f64_to_f16_bits, same_value, ArrayIteratorKind, AsyncGeneratorCompletion,
     AsyncGeneratorDelegate, AsyncGeneratorRequest, AsyncGeneratorStatus, GeneratorState,
@@ -22,7 +23,7 @@ use crate::heap::{
 };
 use crate::native::{
     AtomicOp, MapMethod, MathMethod, NumberMethod, ObjectMethod, PatternMethod, SetMethod,
-    StringMethod, TypedArrayMethod, WeakCollectionMethod,
+    StringMethod, TypedArrayMethod, Uint8ArrayMethod, WeakCollectionMethod,
 };
 use num_bigint::BigUint;
 use num_traits::One;

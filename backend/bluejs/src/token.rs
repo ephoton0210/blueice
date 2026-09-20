@@ -6,9 +6,9 @@
 //! `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope (decided)" -- not the
 //! full ECMAScript lexical grammar. The edition 17 implementation track
 //! now extends that original subset: Number/BigInt radix literals and
-//! separators, ECMAScript whitespace/line terminators and string
-//! continuations are implemented. Regex literals, `**`, tagged templates
-//! and legacy octal escapes remain to be implemented.
+//! separators, ECMAScript whitespace/line terminators, string
+//! continuations, and Annex B legacy octal escapes are implemented. Regex
+//! literals, `**`, and tagged templates remain to be implemented.
 //! [`Keyword`] mirrors this: `undefined` is deliberately NOT a keyword
 //! here (unlike `null`/`true`/`false`) because it isn't one in real
 //! ECMAScript either -- it's an ordinary identifier bound to a global
@@ -230,6 +230,10 @@ pub struct SpannedToken {
     /// keywords such as `await` cannot be escaped when the grammar requires
     /// the keyword spelling, so the parser must retain this lexical fact.
     pub identifier_escaped: bool,
+    /// Whether this token's string literal used a legacy decimal or octal
+    /// escape. These escapes are accepted only by non-strict script code;
+    /// retain the lexical fact so the parser can enforce that early error.
+    pub legacy_octal_escape: bool,
 }
 
 pub(crate) type TaggedTemplateData = (Vec<JsString>, Vec<Option<JsString>>, Vec<String>);
@@ -242,6 +246,7 @@ pub struct Tokenizer {
     /// trivia does not need to rescan prior source text.
     line_start: bool,
     identifier_escaped: bool,
+    legacy_octal_escape: bool,
     html_comments_enabled: bool,
 }
 
@@ -382,6 +387,7 @@ impl Tokenizer {
             pos: 0,
             line_start: true,
             identifier_escaped: false,
+            legacy_octal_escape: false,
             html_comments_enabled: true,
         }
     }
@@ -518,11 +524,13 @@ impl Tokenizer {
     pub fn next_spanned(&mut self) -> Result<SpannedToken, LexError> {
         let newline_before = self.skip_trivia()?;
         self.identifier_escaped = false;
+        self.legacy_octal_escape = false;
         let token = self.next_token()?;
         Ok(SpannedToken {
             token,
             newline_before,
             identifier_escaped: self.identifier_escaped,
+            legacy_octal_escape: self.legacy_octal_escape,
         })
     }
 
@@ -671,7 +679,34 @@ impl Tokenizer {
             'b' => 0x08,
             'f' => 0x0c,
             'v' => 0x0b,
-            '0' => 0,
+            // Annex B.1.2's LegacyOctalEscapeSequence. A leading 0 may
+            // consume two following octal digits; a leading 1-3 can consume
+            // two; and 4-7 can consume one. `\\000`, for example, is one
+            // NUL code unit, not `\\0` followed by two literal zeroes.
+            '0'..='7' => {
+                let first = c.to_digit(8).expect("octal range is valid");
+                let mut value = first;
+                let mut consumed_extra = 0;
+                let limit = if first <= 3 { 2 } else { 1 };
+                while consumed_extra < limit {
+                    let Some(next) = self.peek().filter(|next| ('0'..='7').contains(next)) else {
+                        break;
+                    };
+                    self.advance();
+                    value = value * 8 + next.to_digit(8).expect("octal range is valid");
+                    consumed_extra += 1;
+                }
+                // A bare `\\0` is the ordinary NullEscape. Every other
+                // form here is legacy-only and invalid in strict code.
+                self.legacy_octal_escape = first != 0 || consumed_extra != 0;
+                value
+            }
+            // NonOctalDecimalEscapeSequence is likewise prohibited in
+            // strict code, while preserving Annex B's sloppy-mode cooking.
+            '8' | '9' => {
+                self.legacy_octal_escape = true;
+                c as u32
+            }
             c if is_line_terminator(c) => {
                 if c == '\r' && self.peek() == Some('\n') {
                     self.advance();
@@ -1228,6 +1263,21 @@ mod tests {
         );
         assert_eq!(tokens(r"'\q'"), vec![Token::String("q".into()), Token::Eof]);
         // unrecognized escape: falls back to the escaped character itself
+    }
+
+    #[test]
+    fn scans_legacy_octal_escapes_as_one_escape_sequence() {
+        assert_eq!(
+            tokens(r"'\000\007\010\377\400'"),
+            vec![Token::String("\0\u{7}\u{8}\u{ff} 0".into()), Token::Eof,]
+        );
+
+        let mut tokenizer = Tokenizer::new(r"'\000'");
+        assert!(tokenizer.next_spanned().unwrap().legacy_octal_escape);
+        let mut tokenizer = Tokenizer::new(r"'\0'");
+        assert!(!tokenizer.next_spanned().unwrap().legacy_octal_escape);
+        let mut tokenizer = Tokenizer::new(r"'\8'");
+        assert!(tokenizer.next_spanned().unwrap().legacy_octal_escape);
     }
 
     #[test]

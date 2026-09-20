@@ -127,6 +127,7 @@ impl Vm {
                         "FinalizationRegistry" => 1.0,
                         "DisposableStack" | "AsyncDisposableStack" => 0.0,
                         "ShadowRealm" => 0.0,
+                        _ if matches!(native, NativeFunction::TypedArray(_)) => 3.0,
                         _ => 1.0,
                     }),
                     false,
@@ -676,6 +677,36 @@ impl Vm {
                     false,
                     false,
                 )?;
+                if kind == TypedArrayKind::Uint8 {
+                    self.install_native(
+                        id,
+                        prototype,
+                        "fromBase64",
+                        1,
+                        NativeFunction::Uint8ArrayFromBase64,
+                    )?;
+                    self.install_native(
+                        id,
+                        prototype,
+                        "fromHex",
+                        1,
+                        NativeFunction::Uint8ArrayFromHex,
+                    )?;
+                    for (method, length, native) in [
+                        ("setFromBase64", 1, Uint8ArrayMethod::SetFromBase64),
+                        ("setFromHex", 1, Uint8ArrayMethod::SetFromHex),
+                        ("toBase64", 0, Uint8ArrayMethod::ToBase64),
+                        ("toHex", 0, Uint8ArrayMethod::ToHex),
+                    ] {
+                        self.install_native(
+                            typed_prototype,
+                            prototype,
+                            method,
+                            length,
+                            NativeFunction::Uint8ArrayMethod(native),
+                        )?;
+                    }
+                }
             } else if name == "Proxy" {
                 self.install_native(
                     id,

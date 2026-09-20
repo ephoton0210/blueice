@@ -579,11 +579,13 @@ struct Test262Realm {
 }
 
 /// The two roots keep an opaque membrane transport value alive in each heap.
-/// Such a value preserves identity across a call boundary. Property forwarding
-/// remains a separate membrane operation; no parent-heap handle is exposed to
-/// child heap storage.
+/// Such a value preserves identity across a call boundary. Ordinary-object
+/// stand-ins additionally record child-created data properties at the call
+/// boundary, then write them back through the parent VM's [[Set]] operation;
+/// no parent-heap handle is exposed to child heap storage.
 struct Test262ImportedValue {
     value: Value,
+    property_forwarding: bool,
     _source_root: RootId,
     _target_root: RootId,
 }
@@ -644,6 +646,18 @@ struct Test262ForeignValue {
     prototype_override: Option<ObjectId>,
     _wrapper_root: RootId,
     _target_root: RootId,
+}
+
+/// A local ArrayBuffer and its equivalent backing buffer in a Test262 child
+/// Realm. The two heaps cannot store one another's object identities, so the
+/// bridge copies ordinary-buffer bytes at the boundary and synchronizes them
+/// before and after an operation crosses it. Either side may own the local
+/// buffer, hence `facade` is present only for child-to-parent imports.
+struct Test262ForeignBufferMirror {
+    realm: ObjectId,
+    target: ObjectId,
+    facade: Option<ObjectId>,
+    _buffer_root: Option<RootId>,
 }
 
 /// Runtime state displaced while a pending top-level await drives jobs. The
@@ -899,6 +913,7 @@ pub struct Vm {
     test262_async_waits: std::sync::Arc<test262_agents::Test262AsyncWaits>,
     test262_realms: HashMap<ObjectId, Test262Realm>,
     test262_foreign_values: HashMap<ObjectId, Test262ForeignValue>,
+    test262_foreign_buffer_mirrors: HashMap<(ObjectId, ObjectId), Test262ForeignBufferMirror>,
     /// Object identities in this realm that stand in for a callable value
     /// owned by the parent Test262 realm.  The ordinary imported-value
     /// record remains owned by that parent (so it can keep both heaps alive),
@@ -1038,6 +1053,7 @@ impl Vm {
             test262_async_waits: std::sync::Arc::new(test262_agents::Test262AsyncWaits::new()),
             test262_realms: HashMap::new(),
             test262_foreign_values: HashMap::new(),
+            test262_foreign_buffer_mirrors: HashMap::new(),
             test262_imported_callables: HashSet::new(),
             shadow_realm_prototype: None,
             shadow_realms: HashMap::new(),

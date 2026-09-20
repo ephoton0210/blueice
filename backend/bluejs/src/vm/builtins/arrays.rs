@@ -931,15 +931,35 @@ impl Vm {
         let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as u64;
+            // `%TypedArray%.prototype.toLocaleString` uses the receiver's
+            // internal [[ArrayLength]], unlike Array.prototype's generic
+            // `Get("length")` algorithm. Retain the ordinary path for
+            // Array and arbitrary array-like receivers.
+            let foreign_typed_values = if self.heap.is_typed_array(object)? {
+                None
+            } else {
+                self.test262_foreign_typed_array_values(object)?
+            };
+            let length = if self.heap.is_typed_array(object)? {
+                let (_, _, length, _) = self.typed_array_receiver(&Value::Object(object))?;
+                length as u64
+            } else if let Some(values) = &foreign_typed_values {
+                values.len() as u64
+            } else {
+                let length = self.get_property(&Value::Object(object), &"length".into())?;
+                self.coerce_length(&length)? as u64
+            };
             let mut output = JsString::default();
             for index in 0..length {
                 self.charge_step()?;
                 if index != 0 {
                     native::append(&mut output, &",".into(), self.config.max_string_bytes)?;
                 }
-                let value = self.get_property(&Value::Object(object), &index.to_string().into())?;
+                let value = if let Some(values) = &foreign_typed_values {
+                    values[index as usize].clone()
+                } else {
+                    self.get_property(&Value::Object(object), &index.to_string().into())?
+                };
                 if matches!(value, Value::Null | Value::Undefined) {
                     continue;
                 }

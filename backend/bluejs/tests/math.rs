@@ -15,6 +15,7 @@ fn constants_descriptors_and_unary_functions_match_ecmascript_numbers() {
         "Math.E > 2 && Math.LN10 > 2 && Math.LN2 < 1 && Math.LOG10E < 1 && Math.LOG2E > 1 && Math.PI > 3 && Math.SQRT1_2 < 1 && Math.SQRT2 > 1",
         "Math.abs(-3) === 3 && Math.acos(1) === 0 && Math.acosh(1) === 0 && Math.asin(0) === 0 && Math.asinh(0) === 0 && Math.atan(0) === 0 && Math.atanh(0) === 0",
         "Math.ceil(0.1) === 1 && Math.cbrt(27) === 3 && Math.cos(0) === 1 && Math.cosh(0) === 1 && Math.exp(0) === 1 && Math.expm1(0) === 0",
+        "typeof Math.f16round === 'function' && Math.f16round.length === 1 && Math.f16round(0.2) !== 0.2 && Math.f16round(1) === 1 && 1 / Math.f16round(-0) === -Infinity && Math.f16round(NaN) !== Math.f16round(NaN)",
         "Math.floor(0.9) === 0 && Math.fround(1.1) !== 1.1 && Math.log(1) === 0 && Math.log1p(0) === 0 && Math.log2(8) === 3 && Math.log10(100) === 2",
         "Math.sin(0) === 0 && Math.sinh(0) === 0 && Math.sqrt(9) === 3 && Math.tan(0) === 0 && Math.tanh(0) === 0 && Math.trunc(-1.9) === -1",
         "typeof Math === 'object' && Math.abs.length === 1 && Math.max.length === 2 && Math.random.length === 0 && Object.getPrototypeOf(Math) === Object.prototype",

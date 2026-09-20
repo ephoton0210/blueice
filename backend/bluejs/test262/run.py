@@ -61,15 +61,18 @@ SOURCE_PHASE_IMPORT_REQUEST = re.compile(
     re.DOTALL,
 )
 NATIVE_INCLUDES = frozenset({"sta.js", "assert.js", "propertyHelper.js", "isConstructor.js"})
-# Test262's general deepEqual harness is preserved by default. These two
+# Test262's general deepEqual harness is preserved by default. The two
 # DateTimeFormat fixtures compare wide arrays of two-/three-field part data
-# records; its recursive JavaScript helper chain exceeds the VM's deliberately
-# finite call-depth resource before observing the values under test. The
-# adapter's bounded iterative comparison covers precisely this
-# array/plain-record shape.
+# records, and this TypedArray fixture compares 39 view/species pairs; their
+# recursive JavaScript helper chain exhausts the VM's deliberately finite
+# resource before observing the values under test. The adapter's bounded
+# iterative comparison has been verified against these exact array/plain-record
+# and TypedArray shapes.
 NATIVE_DEEP_EQUAL_FIXTURES = frozenset({
     "intl402/DateTimeFormat/prototype/formatToParts/temporal-objects-resolved-time-zone.js",
     "intl402/DateTimeFormat/prototype/formatRangeToParts/temporal-objects-resolved-time-zone.js",
+    "staging/sm/TypedArray/fill.js",
+    "staging/sm/TypedArray/subarray-species.js",
 })
 # Running more VM subprocesses than the host has schedulable CPUs turns the
 # ordinary per-case deadline into a scheduler-delay detector on slower hosts.
@@ -119,6 +122,22 @@ UNICODE_IDENTIFIER_TIMEOUT = 30
 # per-case wall allowance instead of weakening the deadline for all tests.
 TYPED_ARRAY_HARNESS_TIMEOUT = 60
 TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET = 10_000_000
+# SpiderMonkey's staging TypedArray shell runs each assertion across every
+# numeric and BigInt constructor, and a few finite sort matrices additionally
+# visit 4,096 elements. It needs a distinct bounded envelope rather than
+# weakening the default for unrelated Test262 scripts.
+SM_TYPED_ARRAY_HARNESS = "sm/non262-TypedArray-shell.js"
+SM_TYPED_ARRAY_HARNESS_TIMEOUT = 60
+SM_TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET = 100_000_000
+# This upstream regression deliberately performs 480,000 observable numeric
+# conversions (including object ToNumber calls) across every TypedArray kind.
+# On Ubuntu's debug adapter both modes take about 58 seconds serially, so a
+# 90-second case envelope tolerates parallel-run scheduler contention without
+# weakening the ordinary SM TypedArray harness deadline.
+SM_TYPED_ARRAY_LONG_FIXTURES = frozenset(
+    {"staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"}
+)
+SM_TYPED_ARRAY_LONG_TIMEOUT = 90
 # `testIntl.js` runs every asserted result through a finite locale and
 # numbering-system matrix. Debug interpreter dispatch exceeds the ordinary
 # two-second process deadline, so grant that upstream harness a bounded wall
@@ -742,6 +761,8 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, RESIZABLE_ARRAY_BUFFER_INSTRUCTION_BUDGET)
     if "tail-call-optimization" in data.get("features", []):
         return max(default, TAIL_CALL_INSTRUCTION_BUDGET)
+    if SM_TYPED_ARRAY_HARNESS in data.get("includes", []):
+        return max(default, SM_TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET)
     if "testTypedArray.js" in data.get("includes", []):
         return max(default, TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET)
     if "stable-array-sort" in data.get("features", []):
@@ -753,6 +774,8 @@ def instruction_budget(data, default, relative=None, source=""):
 
 def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
+    if relative in SM_TYPED_ARRAY_LONG_FIXTURES:
+        return max(default, SM_TYPED_ARRAY_LONG_TIMEOUT)
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_TIMEOUT)
     if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
@@ -790,6 +813,8 @@ def case_timeout(data, default, relative=None, source=""):
         return max(default, REGEXP_PROPERTY_ESCAPES_TIMEOUT)
     if RESIZABLE_ARRAY_BUFFER_FEATURE in data.get("features", []):
         return max(default, RESIZABLE_ARRAY_BUFFER_TIMEOUT)
+    if SM_TYPED_ARRAY_HARNESS in data.get("includes", []):
+        return max(default, SM_TYPED_ARRAY_HARNESS_TIMEOUT)
     if "testTypedArray.js" in data.get("includes", []):
         return max(default, TYPED_ARRAY_HARNESS_TIMEOUT)
     if "stable-array-sort" in data.get("features", []):
@@ -1169,6 +1194,8 @@ def main():
         "timeout_seconds": args.timeout,
         "typed_array_harness_timeout_seconds": TYPED_ARRAY_HARNESS_TIMEOUT,
         "typed_array_harness_instruction_budget": TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET,
+        "sm_typed_array_harness_timeout_seconds": SM_TYPED_ARRAY_HARNESS_TIMEOUT,
+        "sm_typed_array_harness_instruction_budget": SM_TYPED_ARRAY_HARNESS_INSTRUCTION_BUDGET,
         "instruction_budget": args.instruction_budget,
         "tail_call_instruction_budget": TAIL_CALL_INSTRUCTION_BUDGET,
         "tail_call_timeout_seconds": TAIL_CALL_TIMEOUT,

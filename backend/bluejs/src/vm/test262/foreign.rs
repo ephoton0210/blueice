@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::heap::TypedArrayKind;
 
 impl Vm {
     pub(in super::super) fn test262_foreign_reference(
@@ -392,10 +393,16 @@ impl Vm {
     }
 
     /// Creates an identity-preserving, child-heap stand-in for a parent value.
-    /// The stand-in is deliberately an ordinary object: property forwarding
-    /// needs a resumable cross-VM operation and is not implied by passing an
-    /// otherwise opaque argument through a foreign call. Returning the
-    /// stand-in restores the exact original parent value.
+    ///
+    /// Arrays, TypedArrays, and ArrayBuffers are the exceptions: when either
+    /// crosses into a foreign built-in as an argument, its indexed values or
+    /// backing bytes must remain available to that built-in. For example,
+    /// `new foreign.Int8Array([1, 2])` performs the ordinary Array-like read,
+    /// while `new foreign.Int8Array(localTypedArray)` reads the latter's
+    /// TypedArray internal slots. Child-heap snapshots preserve these input
+    /// contracts without pretending that the two VMs have a general,
+    /// resumable property-forwarding membrane. Returning the stand-in still
+    /// restores the exact original parent value.
     pub(in super::super) fn test262_transport_value(
         &mut self,
         realm_id: ObjectId,
@@ -411,6 +418,66 @@ impl Vm {
         {
             return Ok(Value::Object(*target));
         }
+        let array_values = if self.heap.is_array(source)? {
+            self.array_like_values(&value)?
+                .iter()
+                .map(|value| self.test262_export_foreign_value(realm_id, value))
+                .collect::<Result<Vec<_>, _>>()
+                .map(Some)?
+        } else {
+            None
+        };
+        let typed_array_values = if self.heap.is_typed_array(source)? {
+            let (buffer, _, length, kind) = self.heap.typed_array_info(source)?;
+            if self.heap.buffer_is_detached(buffer)?
+                || self.heap.typed_array_is_out_of_bounds(source)?
+            {
+                return Err(RuntimeError::TypeError(
+                    "TypedArray source is detached or out of bounds".into(),
+                ));
+            }
+            let values = (0..length)
+                .map(|index| {
+                    self.heap
+                        .typed_array_index_value(source, index)?
+                        .ok_or_else(|| {
+                            RuntimeError::TypeError("TypedArray source is out of bounds".into())
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Some((kind, values))
+        } else {
+            None
+        };
+        // A child heap cannot retain a parent ArrayBuffer object identity.
+        // Allocate an equivalent child buffer and remember the pair so
+        // direct indexed writes and host detachment remain observable in
+        // both realms. Shared buffers may retain their Arc backing directly;
+        // ordinary buffers use a synchronized byte mirror.
+        let buffer_transport = if self.heap.is_buffer(source)? {
+            let shared = self.heap.buffer_is_shared(source)?;
+            let detached = self.heap.buffer_is_detached(source)?;
+            let byte_length = self.heap.buffer_byte_length(source)?;
+            let maximum = self.heap.buffer_max_byte_length(source)?;
+            let bytes = (!shared && !detached)
+                .then(|| self.heap.array_buffer_copy(source, 0, byte_length))
+                .transpose()?;
+            let backing = shared
+                .then(|| self.heap.shared_buffer_backing(source))
+                .transpose()?;
+            Some((shared, detached, byte_length, maximum, bytes, backing))
+        } else {
+            None
+        };
+        let ordinary_buffer = buffer_transport
+            .as_ref()
+            .is_some_and(|(shared, ..)| !shared);
+        // Only opaque ordinary objects receive write-back support. Arrays,
+        // TypedArrays, and buffers have purpose-built transport snapshots or
+        // backing-store mirrors, whose indexed state must not be mistaken for
+        // ordinary own data properties at a later call boundary.
+        let property_forwarding =
+            array_values.is_none() && typed_array_values.is_none() && buffer_transport.is_none();
         // A ShadowRealm boundary is permitted to receive a callable object,
         // and must manufacture a WrappedFunction with the target realm's
         // %Function.prototype%.  The Test262 membrane keeps the object
@@ -423,10 +490,71 @@ impl Vm {
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            let prototype = realm.vm.object_prototype;
-            let target = realm
-                .vm
-                .with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+            let target = if let Some((shared, detached, byte_length, maximum, bytes, backing)) =
+                &buffer_transport
+            {
+                let prototype = if *shared {
+                    realm.vm.buffer_prototype("SharedArrayBuffer")?
+                } else {
+                    realm.vm.buffer_prototype("ArrayBuffer")?
+                };
+                let buffer = if let Some(backing) = backing.clone() {
+                    realm.vm.with_roots(|heap| {
+                        heap.alloc_shared_array_buffer_backing(
+                            backing,
+                            (*maximum != *byte_length).then_some(*maximum),
+                            Some(prototype),
+                        )
+                    })?
+                } else if *maximum != *byte_length {
+                    realm.vm.with_roots(|heap| {
+                        heap.alloc_resizable_array_buffer(*byte_length, *maximum, Some(prototype))
+                    })?
+                } else {
+                    realm
+                        .vm
+                        .with_roots(|heap| heap.alloc_array_buffer(*byte_length, Some(prototype)))?
+                };
+                if *detached {
+                    realm
+                        .vm
+                        .with_roots(|heap| heap.detach_array_buffer(buffer))?;
+                } else if let Some(bytes) = bytes {
+                    realm
+                        .vm
+                        .with_roots(|heap| heap.array_buffer_write(buffer, 0, bytes))?;
+                }
+                buffer
+            } else if let Some(values) = array_values {
+                realm
+                    .vm
+                    .array_from(values)?
+                    .object_id()
+                    .expect("array construction returns an object")
+            } else if let Some((kind, values)) = typed_array_values {
+                let constructor = realm.vm.global(kind.name())?;
+                let target = realm
+                    .vm
+                    .call_native(
+                        constructor,
+                        Value::Undefined,
+                        vec![Value::Number(values.len() as f64)],
+                        true,
+                    )?
+                    .object_id()
+                    .expect("TypedArray construction returns an object");
+                for (index, value) in values.iter().enumerate() {
+                    realm
+                        .vm
+                        .with_roots(|heap| heap.typed_array_set_index(target, index, value))?;
+                }
+                target
+            } else {
+                let prototype = realm.vm.object_prototype;
+                realm
+                    .vm
+                    .with_roots(|heap| heap.alloc_object(Some(prototype)))?
+            };
             let target_root = realm.vm.heap.root(target)?;
             if callable {
                 realm.vm.test262_imported_callables.insert(target);
@@ -436,6 +564,7 @@ impl Vm {
                 target,
                 Test262ImportedValue {
                     value,
+                    property_forwarding,
                     _source_root: source_root,
                     _target_root: target_root,
                 },
@@ -444,6 +573,21 @@ impl Vm {
         })();
         if result.is_err() {
             self.heap.unroot(source_root)?;
+        } else if ordinary_buffer {
+            let target = result
+                .as_ref()
+                .expect("successful transport returns a child object")
+                .object_id()
+                .expect("successful transport returns a child object");
+            self.test262_foreign_buffer_mirrors.insert(
+                (source, realm_id),
+                Test262ForeignBufferMirror {
+                    realm: realm_id,
+                    target,
+                    facade: None,
+                    _buffer_root: None,
+                },
+            );
         }
         result
     }
@@ -520,6 +664,14 @@ impl Vm {
         let (realm_id, target, _, _) = self
             .test262_foreign_reference(wrapper)
             .expect("foreign set has a membrane record");
+        let typed_buffer = self
+            .test262_realms
+            .get(&realm_id)
+            .and_then(|realm| realm.vm.heap.typed_array_info(target).ok())
+            .map(|(buffer, _, _, _)| buffer);
+        if typed_buffer.is_some() {
+            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        }
         // Test262 harness helpers are installed independently in every
         // Realm. A fixture may explicitly copy (for example)
         // `assert.sameValue` into a child Realm; preserving that child's
@@ -553,12 +705,388 @@ impl Vm {
             Some(value) => value,
             None => self.test262_export_foreign_value(realm_id, value)?,
         };
+        let result = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            realm.vm.set_property(&Value::Object(target), key, &value)
+        };
+        if let Some(buffer) = typed_buffer {
+            self.test262_refresh_foreign_buffer_mirrors(realm_id, buffer)?;
+        }
+        result
+    }
+
+    /// Runs one of `%TypedArray%`'s generic native methods against a facade
+    /// that denotes a TypedArray in another Test262 Realm. The function
+    /// object may belong to this Realm (for example,
+    /// `Uint8Array.prototype.entries.call(foreignArray)`), but the receiver's
+    /// internal slots belong to the child VM and must never be inspected in
+    /// the facade's ordinary-object heap record.
+    pub(in super::super) fn test262_foreign_typed_array_native_call(
+        &mut self,
+        function: NativeFunction,
+        receiver: Value,
+        args: Vec<Value>,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        let wrapper = receiver
+            .object_id()
+            .expect("foreign TypedArray receiver has an object identity");
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign TypedArray receiver has a membrane record");
+        let source_buffer = self
+            .test262_realms
+            .get(&realm_id)
+            .expect("foreign realm remains live")
+            .vm
+            .heap
+            .typed_array_info(target)?
+            .0;
+        self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        let args = args
+            .iter()
+            .map(|value| self.test262_export_foreign_value(realm_id, value))
+            .collect::<Result<Vec<_>, _>>()?;
+        let result = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            let result = realm
+                .vm
+                .native_call(function, Value::Object(target), args, construct);
+            match result {
+                Ok(value) => Ok(value),
+                Err(error) => realm
+                    .vm
+                    .error_value(error)
+                    .and_then(|error| Err(RuntimeError::Thrown(error))),
+            }
+        };
+        self.test262_refresh_foreign_buffer_mirrors(realm_id, source_buffer)?;
+        self.test262_import_foreign_result(realm_id, result)
+    }
+
+    /// Snapshots the elements of a foreign TypedArray through its internal
+    /// slots. Algorithms such as `%TypedArray%.prototype.set` must not read
+    /// an observable own `length` property from a cross-Realm source; they
+    /// use its [[ArrayLength]] and validate detached/out-of-bounds state.
+    pub(in super::super) fn test262_foreign_typed_array_values(
+        &mut self,
+        wrapper: ObjectId,
+    ) -> Result<Option<Vec<Value>>, RuntimeError> {
+        let Some((realm_id, target, _, _)) = self.test262_foreign_reference(wrapper) else {
+            return Ok(None);
+        };
         let realm = self
             .test262_realms
             .get_mut(&realm_id)
             .expect("foreign realm remains live");
+        if !realm.vm.heap.is_typed_array(target)? {
+            return Ok(None);
+        }
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        realm.vm.set_property(&Value::Object(target), key, &value)
+        if realm.vm.heap.typed_array_is_out_of_bounds(target)? {
+            return Err(RuntimeError::TypeError(
+                "foreign TypedArray is detached or out of bounds".into(),
+            ));
+        }
+        let (_, _, length, _) = realm.vm.heap.typed_array_info(target)?;
+        (0..length)
+            .map(|index| {
+                realm
+                    .vm
+                    .heap
+                    .typed_array_index_value(target, index)?
+                    .ok_or_else(|| {
+                        RuntimeError::TypeError("foreign TypedArray is out of bounds".into())
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Some)
+    }
+
+    /// Creates a local backing buffer for a foreign ArrayBuffer supplied to a
+    /// local TypedArray constructor. A child heap cannot be stored directly
+    /// in a parent TypedArray's [[ViewedArrayBuffer]], so ordinary buffers
+    /// take a byte snapshot and retain a detachment mirror. Shared buffers
+    /// already have an agent-safe shared backing and use that directly.
+    pub(in super::super) fn test262_foreign_buffer_clone(
+        &mut self,
+        wrapper: ObjectId,
+    ) -> Result<Option<ObjectId>, RuntimeError> {
+        let Some((realm_id, target, _, _)) = self.test262_foreign_reference(wrapper) else {
+            return Ok(None);
+        };
+        let (shared, detached, byte_length, maximum, bytes, backing) = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            if !realm.vm.heap.is_buffer(target)? {
+                return Ok(None);
+            }
+            let shared = realm.vm.heap.buffer_is_shared(target)?;
+            let detached = realm.vm.heap.buffer_is_detached(target)?;
+            let byte_length = realm.vm.heap.buffer_byte_length(target)?;
+            let maximum = realm.vm.heap.buffer_max_byte_length(target)?;
+            let bytes = (!shared && !detached)
+                .then(|| realm.vm.heap.array_buffer_copy(target, 0, byte_length))
+                .transpose()?;
+            let backing = shared
+                .then(|| realm.vm.heap.shared_buffer_backing(target))
+                .transpose()?;
+            (shared, detached, byte_length, maximum, bytes, backing)
+        };
+        let prototype = if shared {
+            self.buffer_prototype("SharedArrayBuffer")?
+        } else {
+            self.buffer_prototype("ArrayBuffer")?
+        };
+        let buffer = if let Some(backing) = backing {
+            self.with_roots(|heap| {
+                heap.alloc_shared_array_buffer_backing(
+                    backing,
+                    (maximum != byte_length).then_some(maximum),
+                    Some(prototype),
+                )
+            })?
+        } else if maximum != byte_length {
+            self.with_roots(|heap| {
+                heap.alloc_resizable_array_buffer(byte_length, maximum, Some(prototype))
+            })?
+        } else {
+            self.with_roots(|heap| heap.alloc_array_buffer(byte_length, Some(prototype)))?
+        };
+        if detached {
+            self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
+        }
+        if let Some(bytes) = bytes {
+            self.with_roots(|heap| heap.array_buffer_write(buffer, 0, &bytes))?;
+            let buffer_root = self.heap.root(buffer)?;
+            self.test262_foreign_buffer_mirrors.insert(
+                (buffer, realm_id),
+                Test262ForeignBufferMirror {
+                    realm: realm_id,
+                    target,
+                    facade: Some(wrapper),
+                    _buffer_root: Some(buffer_root),
+                },
+            );
+        }
+        Ok(Some(buffer))
+    }
+
+    /// A TypedArray view backed by an ordinary foreign ArrayBuffer exposes
+    /// that source's facade from `.buffer`, rather than leaking the bridge's
+    /// local mirror object.
+    pub(in super::super) fn test262_foreign_buffer_facade(
+        &self,
+        buffer: ObjectId,
+    ) -> Option<Value> {
+        self.test262_foreign_buffer_mirrors
+            .iter()
+            .find_map(|((local, _), mirror)| {
+                (*local == buffer)
+                    .then_some(mirror.facade)
+                    .flatten()
+                    .map(Value::Object)
+            })
+    }
+
+    /// Flush byte changes made through a local mirror before a native
+    /// TypedArray operation re-enters the owner Realm. This keeps direct
+    /// indexed writes through a locally-created cross-Realm view observable
+    /// to the next operation on the foreign TypedArray.
+    pub(in super::super) fn test262_sync_foreign_buffer_mirrors(
+        &mut self,
+        realm_id: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        let mirrors = self
+            .test262_foreign_buffer_mirrors
+            .iter()
+            .filter_map(|((buffer, _), mirror)| {
+                (mirror.realm == realm_id).then_some((*buffer, mirror.target))
+            })
+            .collect::<Vec<_>>();
+        for (buffer, target) in mirrors {
+            if !self.heap.is_buffer(buffer)? || self.heap.buffer_is_detached(buffer)? {
+                continue;
+            }
+            let byte_length = self.heap.buffer_byte_length(buffer)?;
+            let bytes = self.heap.array_buffer_copy(buffer, 0, byte_length)?;
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            if !realm.vm.heap.buffer_is_detached(target)?
+                && realm.vm.heap.buffer_byte_length(target)? == byte_length
+            {
+                realm.vm.heap.array_buffer_write(target, 0, &bytes)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Reads a foreign TypedArray's unobservable shape from its owning heap.
+    /// Cross-Realm algorithms must not substitute an own `length` property
+    /// for these internal slots.
+    pub(in super::super) fn test262_foreign_typed_array_info(
+        &mut self,
+        wrapper: ObjectId,
+    ) -> Result<Option<(usize, TypedArrayKind)>, RuntimeError> {
+        let Some((realm_id, target, _, _)) = self.test262_foreign_reference(wrapper) else {
+            return Ok(None);
+        };
+        let realm = self
+            .test262_realms
+            .get_mut(&realm_id)
+            .expect("foreign realm remains live");
+        if !realm.vm.heap.is_typed_array(target)? {
+            return Ok(None);
+        }
+        realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+        if realm.vm.heap.typed_array_is_out_of_bounds(target)? {
+            return Err(RuntimeError::TypeError(
+                "foreign TypedArray is detached or out of bounds".into(),
+            ));
+        }
+        let (_, _, length, kind) = realm.vm.heap.typed_array_info(target)?;
+        Ok(Some((length, kind)))
+    }
+
+    pub(in super::super) fn test262_detach_foreign_buffer_mirrors(
+        &mut self,
+        realm_id: ObjectId,
+        target: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        let mirrors = self
+            .test262_foreign_buffer_mirrors
+            .iter()
+            .filter_map(|((buffer, _), mirror)| {
+                (mirror.realm == realm_id && mirror.target == target).then_some(*buffer)
+            })
+            .collect::<Vec<_>>();
+        for buffer in mirrors {
+            match self.heap.is_buffer(buffer) {
+                Ok(true) if !self.heap.buffer_is_detached(buffer)? => {
+                    self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
+                }
+                Ok(_) | Err(HeapError::InvalidObject(_)) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(())
+    }
+
+    /// Propagates a parent-side host detach to all child buffers that mirror
+    /// this local ordinary ArrayBuffer. A single parent buffer may have been
+    /// imported into more than one Test262 Realm, so every dependency is
+    /// detached rather than only the most recently created view.
+    pub(in super::super) fn test262_detach_local_buffer_mirrors(
+        &mut self,
+        buffer: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        let dependencies = self
+            .test262_foreign_buffer_mirrors
+            .iter()
+            .filter_map(|((local, realm), mirror)| {
+                (*local == buffer).then_some((*realm, mirror.target))
+            })
+            .collect::<Vec<_>>();
+        for (realm_id, target) in dependencies {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            if realm.vm.heap.is_buffer(target)? && !realm.vm.heap.buffer_is_detached(target)? {
+                realm.vm.heap.detach_array_buffer(target)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Pull bytes back after an operation performed through a foreign
+    /// TypedArray facade. A later local-mirror flush must not overwrite that
+    /// just-completed foreign indexed write with stale bytes.
+    fn test262_refresh_foreign_buffer_mirrors(
+        &mut self,
+        realm_id: ObjectId,
+        target: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        let (byte_length, bytes) = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            if realm.vm.heap.buffer_is_detached(target)? {
+                return Ok(());
+            }
+            let byte_length = realm.vm.heap.buffer_byte_length(target)?;
+            let bytes = realm.vm.heap.array_buffer_copy(target, 0, byte_length)?;
+            (byte_length, bytes)
+        };
+        let mirrors = self
+            .test262_foreign_buffer_mirrors
+            .iter()
+            .filter_map(|((buffer, _), mirror)| {
+                (mirror.realm == realm_id && mirror.target == target).then_some(*buffer)
+            })
+            .collect::<Vec<_>>();
+        for buffer in mirrors {
+            if self.heap.is_buffer(buffer)?
+                && !self.heap.buffer_is_detached(buffer)?
+                && self.heap.buffer_byte_length(buffer)? == byte_length
+            {
+                self.with_roots(|heap| heap.array_buffer_write(buffer, 0, &bytes))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Synchronizes data properties created on opaque ordinary-object
+    /// transports while executing a foreign call. The child heap never holds
+    /// a parent object ID; this explicit boundary operation re-imports every
+    /// value before using the parent's ordinary [[Set]] semantics.
+    fn test262_sync_imported_data_properties(
+        &mut self,
+        realm_id: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        let writes = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            let imports = realm
+                .imported_values
+                .iter()
+                .filter(|(_, imported)| imported.property_forwarding)
+                .map(|(target, imported)| (*target, imported.value.clone()))
+                .collect::<Vec<_>>();
+            let mut writes = Vec::new();
+            for (target, parent) in imports {
+                for key in realm.vm.object_own_property_keys(target)? {
+                    let Some(PropertyDescriptor {
+                        value: Some(value), ..
+                    }) = realm.vm.object_get_own_property(target, &key)?
+                    else {
+                        continue;
+                    };
+                    writes.push((parent.clone(), key, value));
+                }
+            }
+            writes
+        };
+        for (parent, key, value) in writes {
+            let value = self.test262_import_foreign_value(realm_id, value)?;
+            self.set_property(&parent, &key, &value)?;
+        }
+        Ok(())
     }
 
     pub(in super::super) fn test262_foreign_call(
@@ -584,6 +1112,171 @@ impl Vm {
             .vm
             .heap
             .native_function(target)?;
+        if matches!(
+            foreign_native,
+            Some(
+                NativeFunction::TypedArrayBuffer
+                    | NativeFunction::TypedArrayByteLength
+                    | NativeFunction::TypedArrayByteOffset
+                    | NativeFunction::TypedArrayLength
+                    | NativeFunction::TypedArraySet
+                    | NativeFunction::TypedArraySubarray
+                    | NativeFunction::TypedArraySpecies
+                    | NativeFunction::TypedArrayToStringTag
+                    | NativeFunction::TypedArrayIterator(_)
+                    | NativeFunction::TypedArrayMethod(_)
+            )
+        ) {
+            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        }
+        // `%ArrayIteratorPrototype%.next` is generic across Realms: the
+        // function's Realm must not decide where the receiver's
+        // [[IteratedObject]] internal slot lives. Transporting a local
+        // iterator as an ordinary child object would erase that slot, so run
+        // the same native algorithm against the local iterator directly.
+        if !construct
+            && foreign_native == Some(NativeFunction::ArrayIteratorNext)
+            && receiver
+                .object_id()
+                .is_some_and(|object| self.heap.array_iterator(object).ok().flatten().is_some())
+        {
+            return self.native_call(NativeFunction::ArrayIteratorNext, receiver, args, false);
+        }
+        // A local TypedArray may have been constructed over a foreign
+        // ArrayBuffer through a mirror backing store. Keep the host detach
+        // operation coherent on both sides before the ordinary membrane
+        // transport would turn the local view's `.buffer` facade into an
+        // opaque child object.
+        if !construct && foreign_native == Some(NativeFunction::Test262("detachArrayBuffer")) {
+            if let Some((buffer_realm, buffer_target, _, _)) = args
+                .first()
+                .and_then(Value::object_id)
+                .and_then(|buffer| self.test262_foreign_reference(buffer))
+            {
+                if buffer_realm == realm_id {
+                    let realm = self
+                        .test262_realms
+                        .get_mut(&realm_id)
+                        .expect("foreign realm remains live");
+                    realm.vm.heap.detach_array_buffer(buffer_target)?;
+                    self.test262_detach_foreign_buffer_mirrors(realm_id, buffer_target)?;
+                    return Ok(Value::Undefined);
+                }
+            }
+            if let Some(buffer) = args.first().and_then(Value::object_id).filter(|buffer| {
+                self.test262_foreign_buffer_mirrors
+                    .contains_key(&(*buffer, realm_id))
+            }) {
+                // The foreign host hook received a parent-owned buffer which
+                // was transported into this Realm. Detach its child mirror
+                // and its parent identity together, exactly as a shared
+                // cross-Realm ArrayBuffer reference would behave.
+                self.test262_detach_local_buffer_mirrors(buffer)?;
+                self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
+                return Ok(Value::Undefined);
+            }
+        }
+        // A foreign facade obtains `Function.prototype.call` from its own
+        // Realm, so `foreignTypedArrayMethod.call(localTypedArray, ...)`
+        // first reaches this branch as a foreign `Call`, not as the method
+        // itself. Unwrap that one level before transport: TypedArray methods
+        // are generic and their local receiver (and callbacks) must stay in
+        // this VM.
+        let call_target_native = receiver
+            .object_id()
+            .and_then(|receiver| self.test262_foreign_reference(receiver))
+            .filter(|(receiver_realm, _, _, _)| *receiver_realm == realm_id)
+            .and_then(|(_, receiver, _, _)| {
+                self.test262_realms
+                    .get(&realm_id)
+                    .expect("foreign realm remains live")
+                    .vm
+                    .heap
+                    .native_function(receiver)
+                    .ok()
+                    .flatten()
+            });
+        if !construct
+            && foreign_native == Some(NativeFunction::Call)
+            && args
+                .first()
+                .and_then(Value::object_id)
+                .is_none_or(|receiver| self.test262_foreign_reference(receiver).is_none())
+            && matches!(
+                call_target_native,
+                Some(
+                    NativeFunction::TypedArrayBuffer
+                        | NativeFunction::TypedArrayByteLength
+                        | NativeFunction::TypedArrayByteOffset
+                        | NativeFunction::TypedArrayLength
+                        | NativeFunction::TypedArraySet
+                        | NativeFunction::TypedArraySubarray
+                        | NativeFunction::TypedArraySpecies
+                        | NativeFunction::TypedArrayToStringTag
+                        | NativeFunction::TypedArrayIterator(_)
+                        | NativeFunction::TypedArrayMethod(_)
+                        | NativeFunction::TypedArrayFrom
+                        | NativeFunction::TypedArrayOf
+                )
+            )
+        {
+            return self.native_call(
+                call_target_native.expect("matched TypedArray native function"),
+                args.first().cloned().unwrap_or(Value::Undefined),
+                args.get(1..).unwrap_or_default().to_vec(),
+                false,
+            );
+        }
+        // `%TypedArray%.from` and `.of` collect source values and invoke a
+        // possible mapping callback in the caller's execution context. Keep
+        // those algorithms in this VM even when their constructor receiver
+        // is foreign; `typed_array_from`/`typed_array_of` create and fill the
+        // resulting foreign TypedArray through the membrane.
+        if !construct
+            && matches!(
+                foreign_native,
+                Some(NativeFunction::TypedArrayFrom | NativeFunction::TypedArrayOf)
+            )
+        {
+            return self.native_call(
+                foreign_native.expect("matched TypedArray static native function"),
+                receiver,
+                args,
+                false,
+            );
+        }
+        // TypedArray methods are intentionally generic. When a method object
+        // from another Realm is called with a local receiver, execute its
+        // shared native algorithm locally: its receiver and any callback
+        // arguments then retain their actual local internal slots and
+        // callability instead of becoming opaque child-VM transports.
+        if !construct
+            && receiver
+                .object_id()
+                .is_none_or(|receiver| self.test262_foreign_reference(receiver).is_none())
+            && matches!(
+                foreign_native,
+                Some(
+                    NativeFunction::TypedArrayBuffer
+                        | NativeFunction::TypedArrayByteLength
+                        | NativeFunction::TypedArrayByteOffset
+                        | NativeFunction::TypedArrayLength
+                        | NativeFunction::TypedArraySet
+                        | NativeFunction::TypedArraySubarray
+                        | NativeFunction::TypedArraySpecies
+                        | NativeFunction::TypedArrayToStringTag
+                        | NativeFunction::TypedArrayIterator(_)
+                        | NativeFunction::TypedArrayMethod(_)
+                )
+            )
+        {
+            return self.native_call(
+                foreign_native.expect("matched TypedArray native function"),
+                receiver,
+                args,
+                false,
+            );
+        }
         // `%Object%` has no child-heap internal slots beyond the ordinary
         // result it creates. Running its construct path in the parent keeps
         // the caller's real `newTarget`, including a bound function whose
@@ -709,6 +1402,7 @@ impl Vm {
                 Err(error) => Err(error),
             },
         };
+        self.test262_sync_imported_data_properties(realm_id)?;
         let result = self.test262_import_foreign_result(realm_id, result)?;
         if construct && foreign_native == Some(NativeFunction::Function) {
             // CreateDynamicFunction uses `newTarget` only to select the

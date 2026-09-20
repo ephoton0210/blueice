@@ -162,6 +162,7 @@ impl Parser {
                 Ok(PropertyKey::Identifier(keyword_as_str(k).to_string()))
             }
             Token::String(s) => {
+                self.reject_legacy_octal_escape()?;
                 self.advance();
                 Ok(PropertyKey::String(s))
             }

@@ -18,6 +18,13 @@ fn regexp_lexical_goals_are_visible_in_the_public_ast() {
 }
 
 #[test]
+fn legacy_octal_escapes_are_rejected_after_a_strict_directive() {
+    assert!(parse("'\\000'").is_ok());
+    assert!(parse("'use strict'; '\\000'").is_err());
+    assert!(parse("'use strict'; '\\8'").is_err());
+}
+
+#[test]
 fn advance_stops_at_the_terminal_token() {
     let mut parser = Parser::new("value");
     assert_eq!(parser.advance(), Token::Identifier("value".into()));

@@ -22,6 +22,22 @@ impl Vm {
             let buffer = first.object_id().ok_or_else(|| {
                 RuntimeError::TypeError("detachArrayBuffer requires an ArrayBuffer".into())
             })?;
+            // A cross-Realm ArrayBuffer is a facade in this VM, while its
+            // [[ArrayBufferData]] slot remains in the owning Test262 Realm.
+            // The host hook is specified to detach that underlying buffer,
+            // not the facade's ordinary-object storage.
+            if let Some((realm_id, target, _, _)) = self.test262_foreign_reference(buffer) {
+                {
+                    let realm = self
+                        .test262_realms
+                        .get_mut(&realm_id)
+                        .expect("foreign realm remains live");
+                    realm.vm.heap.detach_array_buffer(target)?;
+                }
+                self.test262_detach_foreign_buffer_mirrors(realm_id, target)?;
+                return Ok(Value::Undefined);
+            }
+            self.test262_detach_local_buffer_mirrors(buffer)?;
             self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
             return Ok(Value::Undefined);
         }
