@@ -411,6 +411,17 @@ TEMPORAL_CALENDAR_TABLE_FIXTURES = frozenset(
     }
 )
 TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET = 2_000_000
+# ZonedDateTime/links.js walks a fixed table of about 120 IANA link names,
+# building two ZonedDateTimes per row and comparing `offsetNanoseconds` at ten
+# epochs for each. It is finite, and its per-row cost is one ordinary call
+# chain; only the row count exceeds the default. Measured minimum is between
+# 110,000 and 125,000; the allowance is 4x the upper bound.
+TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES = frozenset(
+    {
+        "intl402/Temporal/ZonedDateTime/links.js",
+    }
+)
+TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET = 500_000
 TEMPORAL_CALENDAR_MATRIX_TIMEOUT = 360
 # The six upstream Iterator.zip/zipKeyed basic fixtures enumerate every prefix
 # combination through three inputs, then verify descriptor details for every
@@ -745,6 +756,8 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET)
     if relative in TEMPORAL_CALENDAR_TABLE_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET)
+    if relative in TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES:
+        return max(default, TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET)
     if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
         return max(default, ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET)
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:

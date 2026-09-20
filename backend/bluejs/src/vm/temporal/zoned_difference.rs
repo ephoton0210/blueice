@@ -25,6 +25,7 @@
 use super::duration_math::TimeDuration;
 use super::epoch::{self, CivilDate, CivilTime};
 use super::plain_date::{self, DateUnit};
+use super::plain_date_time_difference;
 use super::rounding::{self, TemporalUnit, TimeUnit};
 use super::time_zone::{Disambiguation, TimeZone};
 use super::zoned_date_time;
@@ -456,8 +457,16 @@ fn nudge_to_calendar_unit(
             .checked_add(numerator.checked_mul(i128::from(sign))?)?,
         denominator,
     );
-    let rounded_up = numerator == denominator
-        || nudge_expand_decision(numerator, denominator, window.r1, increment, sign, mode);
+    // `ApplyUnsignedRoundingMode` over the exact position inside the window --
+    // the same decision `PlainDateTime` rounding makes (`plain_date_time_difference`).
+    let rounded_up = plain_date_time_difference::rounds_up(
+        numerator,
+        denominator,
+        window.r1,
+        increment,
+        sign,
+        mode,
+    );
     let (duration, epoch_nanoseconds) = if rounded_up {
         (window.end_duration, window.end_nanoseconds)
     } else {
@@ -469,55 +478,6 @@ fn nudge_to_calendar_unit(
         expanded: expanded || rounded_up,
         total,
     })
-}
-
-/// `ApplyUnsignedRoundingMode` over the exact `numerator / denominator`
-/// position (`0 <= numerator <= denominator`, both non-negative) inside a
-/// window whose lower candidate is `r1`: whether the value rounds to the
-/// window's far end. `sign` is the duration's direction; `r1 / increment`
-/// supplies `halfEven`'s cardinality (whether the lower candidate's own
-/// multiple is even).
-fn nudge_expand_decision(
-    numerator: i128,
-    denominator: i128,
-    r1: i64,
-    increment: i128,
-    sign: i64,
-    mode: blueice_ecma402::NumberRoundingMode,
-) -> bool {
-    use blueice_ecma402::NumberRoundingMode as Mode;
-    if denominator == 0 || numerator == 0 {
-        return false;
-    }
-    match mode {
-        Mode::Ceil => sign > 0,
-        Mode::Floor => sign < 0,
-        Mode::Expand => true,
-        Mode::Trunc => false,
-        Mode::HalfCeil => {
-            if sign > 0 {
-                2 * numerator >= denominator
-            } else {
-                2 * numerator > denominator
-            }
-        }
-        Mode::HalfFloor => {
-            if sign < 0 {
-                2 * numerator >= denominator
-            } else {
-                2 * numerator > denominator
-            }
-        }
-        Mode::HalfExpand => 2 * numerator >= denominator,
-        Mode::HalfTrunc => 2 * numerator > denominator,
-        Mode::HalfEven => {
-            if 2 * numerator == denominator {
-                (i128::from(r1) / increment) % 2 != 0
-            } else {
-                2 * numerator > denominator
-            }
-        }
-    }
 }
 
 /// `NudgeToZonedTime(sign, duration, isoDateTime, timeZone, calendar,
@@ -1155,44 +1115,5 @@ mod tests {
                 26 * 3_600_000_000_000 + 3 * 60_000_000_000 + 4_005_006_007
             ]
         );
-    }
-
-    #[test]
-    fn expansion_decisions_follow_every_rounding_mode() {
-        // (numerator, denominator) positions inside a window whose lower
-        // candidate is `r1`: below half, exactly half, above half.
-        let (below, half, above) = ((1, 4), (2, 4), (3, 4));
-        let decide = |position: (i128, i128), r1: i64, sign: i64, mode: Mode| {
-            nudge_expand_decision(position.0, position.1, r1, 1, sign, mode)
-        };
-        // Directed modes ignore the position (once it is not exactly zero).
-        assert!(decide(below, 0, 1, Mode::Ceil) && !decide(below, 0, -1, Mode::Ceil));
-        assert!(!decide(below, 0, 1, Mode::Floor) && decide(below, 0, -1, Mode::Floor));
-        assert!(decide(below, 0, 1, Mode::Expand) && decide(below, 0, -1, Mode::Expand));
-        assert!(!decide(above, 0, 1, Mode::Trunc) && !decide(above, 0, -1, Mode::Trunc));
-        // Half modes agree off the exact half...
-        for mode in [
-            Mode::HalfCeil,
-            Mode::HalfFloor,
-            Mode::HalfExpand,
-            Mode::HalfTrunc,
-            Mode::HalfEven,
-        ] {
-            assert!(
-                !decide(below, 0, 1, mode) && decide(above, 0, 1, mode),
-                "{mode:?}"
-            );
-        }
-        // ...and differ exactly on it, depending on direction.
-        assert!(decide(half, 0, 1, Mode::HalfCeil) && !decide(half, 0, -1, Mode::HalfCeil));
-        assert!(!decide(half, 0, 1, Mode::HalfFloor) && decide(half, 0, -1, Mode::HalfFloor));
-        assert!(decide(half, 0, 1, Mode::HalfExpand) && decide(half, 0, -1, Mode::HalfExpand));
-        assert!(!decide(half, 0, 1, Mode::HalfTrunc) && !decide(half, 0, -1, Mode::HalfTrunc));
-        // `halfEven` rounds to an even multiple of the increment.
-        assert!(!decide(half, 2, 1, Mode::HalfEven) && decide(half, 3, 1, Mode::HalfEven));
-        assert!(!decide(half, -2, -1, Mode::HalfEven) && decide(half, -3, -1, Mode::HalfEven));
-        // A position at either end of the window never expands on its own.
-        assert!(!nudge_expand_decision(0, 4, 0, 1, 1, Mode::Expand));
-        assert!(!nudge_expand_decision(1, 0, 0, 1, 1, Mode::Expand));
     }
 }

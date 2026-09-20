@@ -138,7 +138,7 @@ fn canonical_calendar_id(value: &str) -> Option<String> {
 /// give identical results). `Zoned` covers a real `Temporal.ZonedDateTime` —
 /// object, string, or property bag with a `timeZone` — carrying everything
 /// `zoned_date_time::{add_zoned_date_time, difference_zoned_date_time,
-/// day_length_nanoseconds}` need: the zone itself (now, since Phase 26 Stage
+/// checked_day_bounds}` need: the zone itself (now, since Phase 26 Stage
 /// 2, real IANA transition data and not just `UTC`/a fixed offset), the
 /// exact epoch instant, and the resolved local date/time.
 #[derive(Clone)]

@@ -197,7 +197,9 @@ fn to_string_rounding_modes_and_instant_based_rounding() {
       same(() => fixed.toString({ timeZoneName: "critical" }), "2020-06-15T12:00:00+05:30[!+05:30]");
       same(() => fixed.toString({ offset: "never" }), "2020-06-15T12:00:00[+05:30]");
       same(() => fixed.offset, "+05:30");
-      same(() => Z.from("1970-01-01T00:00:00-00:44:30[Africa/Monrovia]").toString(), "1970-01-01T00:00:00-00:44:30[Africa/Monrovia]");
+      // `toString` prints `FormatDateTimeUTCOffsetRounded` (a minute-precision offset, halves away
+      // from zero); the `offset` getter below keeps the exact sub-minute value.
+      same(() => Z.from("1970-01-01T00:00:00-00:44:30[Africa/Monrovia]").toString(), "1970-01-01T00:00:00-00:45[Africa/Monrovia]");
       same(() => Z.from("1970-01-01T00:00:00-00:44:30[Africa/Monrovia]").offset, "-00:44:30");
       same(() => Z.from("1970-01-01T00:00:00-00:44:30[Africa/Monrovia]").offsetNanoseconds, -2670000000000);
       // extended years

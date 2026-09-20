@@ -256,7 +256,19 @@ impl TimeZone {
             (Self::Offset(a), Self::Offset(b)) => a == b,
             (Self::Iana(a), Self::Iana(b)) => {
                 fn etc_gmt_family(name: &str) -> bool {
-                    matches!(name, "Etc/GMT" | "Etc/GMT0" | "GMT" | "GMT0")
+                    matches!(
+                        name,
+                        "Etc/GMT"
+                            | "Etc/GMT+0"
+                            | "Etc/GMT-0"
+                            | "Etc/GMT0"
+                            | "Etc/Greenwich"
+                            | "GMT"
+                            | "GMT+0"
+                            | "GMT-0"
+                            | "GMT0"
+                            | "Greenwich"
+                    )
                 }
                 fn primary_utc(name: &str) -> bool {
                     name == "UTC" || etc_gmt_family(name)
@@ -399,13 +411,12 @@ impl TimeZone {
     /// specific lookup onto, unlike [`Self::offset_nanoseconds_for`]'s own
     /// periodic-cycle projection for a plain offset query).
     ///
-    /// Delegates to `jiff::tz::TimeZone::following`/`preceding`, which reads
+    /// Delegates to `jiff::tz::TimeZone::following`/`preceding`, which read
     /// real transition entries directly from the same pinned TZif data
-    /// `offset_nanoseconds_for` already resolves offsets from — so a
-    /// same-abbreviation/same-offset rule change that the underlying TZif
-    /// data itself never recorded as a transition (`rule-change-without-
-    /// offset-transition.js`'s own Europe/London/America/Anchorage cases)
-    /// is not reported here either, with no separate filtering needed.
+    /// `offset_nanoseconds_for` already resolves offsets from, keeping only the
+    /// entries that actually change the total UTC offset
+    /// (`rule-change-without-offset-transition.js`'s own Europe/London and
+    /// America/Anchorage cases).
     pub(crate) fn adjacent_transition(
         &self,
         epoch_nanoseconds: &BigInt,
@@ -419,20 +430,39 @@ impl TimeZone {
             .get(name)
             .expect("a named zone only ever comes from this same pinned database");
         let nanoseconds = i128::try_from(epoch_nanoseconds).ok()?;
-        // `Timestamp::from_nanosecond` trips a debug assertion rather than
-        // returning a clean `Err` for an out-of-range input (the same sharp
-        // edge `jiff_timestamp` above already works around for
-        // `from_second`), so the range is checked explicitly first.
-        if !(Timestamp::MIN.as_nanosecond()..=Timestamp::MAX.as_nanosecond()).contains(&nanoseconds)
-        {
-            return None;
-        }
-        let timestamp =
-            Timestamp::from_nanosecond(nanoseconds).expect("range was just checked above");
-        let transition = if forward {
-            zone.following(timestamp).next()
+        // Offsets only ever change on a whole-second boundary, and Jiff's
+        // `following`/`preceding` are unreliable for a pre-1970 instant with a
+        // sub-second part (its `Timestamp` stores the second rounded toward
+        // zero, the sharp edge `jiff_timestamp` documents), so ask about a
+        // whole second instead: the one at or just below `epoch_nanoseconds`
+        // when looking forward -- the next transition after 23:59:59.999999999
+        // is the same as after 23:59:59 -- and the one at or just above it when
+        // looking back, where a transition at the second *before* a fractional
+        // instant is already in the past.
+        let (seconds, fraction) = (
+            nanoseconds.div_euclid(1_000_000_000),
+            nanoseconds.rem_euclid(1_000_000_000),
+        );
+        let seconds = if forward || fraction == 0 {
+            seconds
         } else {
-            zone.preceding(timestamp).next()
+            seconds + 1
+        };
+        let timestamp = jiff_timestamp(i64::try_from(seconds).ok()?)?;
+        // The TZif data records every change of *rule*, including ones that
+        // leave the total UTC offset alone (Europe/London's 1968 switch from
+        // "BST as daylight time" to "British Standard Time", both +01:00).
+        // Those are not `GetNamedTimeZoneNextTransition`/`Previous
+        // Transition`s, so walk on to the first entry whose offset really
+        // differs from the one just before it.
+        let changes_offset = |transition: &jiff::tz::TimeZoneTransition<'_>| {
+            let at = BigInt::from(transition.timestamp().as_nanosecond());
+            self.offset_nanoseconds_for(&(&at - 1)) != self.offset_nanoseconds_for(&at)
+        };
+        let transition = if forward {
+            zone.following(timestamp).find(changes_offset)
+        } else {
+            zone.preceding(timestamp).find(changes_offset)
         }?;
         Some(BigInt::from(transition.timestamp().as_nanosecond()))
     }
