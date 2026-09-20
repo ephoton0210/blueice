@@ -634,4 +634,70 @@ impl Vm {
         }
         Ok((intermediate, ns_of_day))
     }
+
+    /// The two date-times a `Temporal.Duration` with a `Plain` `relativeTo`
+    /// is measured between (`Duration.prototype.round` step 28,
+    /// `total` step 13): the anchor at midnight, and where the whole duration
+    /// lands -- its years/months/weeks through the calendar, its days folded
+    /// with the time part at 24 hours each (`AddTime` floors, so a negative
+    /// remainder lands on the previous day's evening, and
+    /// `DifferenceISODateTime` borrows that day back).
+    ///
+    /// The range checks are the specification's own: `CalendarDateAdd` must
+    /// stay representable, and -- only when the two points differ, since
+    /// `DifferencePlainDateTimeWithRounding` returns a blank duration for equal
+    /// ones before looking at limits -- both must be within
+    /// `ISODateTimeWithinLimits`.
+    #[allow(clippy::type_complexity)]
+    pub(in super::super) fn temporal_duration_plain_endpoints(
+        calendar: AnyCalendarKind,
+        anchor: epoch::CivilDate,
+        record: &blueice_ecma402::DurationRecord,
+    ) -> Result<
+        (
+            (epoch::CivilDate, epoch::CivilTime),
+            (epoch::CivilDate, epoch::CivilTime),
+        ),
+        RuntimeError,
+    > {
+        const DAY_NS: i128 = 86_400_000_000_000;
+        const MIDNIGHT: epoch::CivilTime = (0, 0, 0, 0, 0, 0);
+        let out_of_range =
+            || RuntimeError::RangeError("Temporal date arithmetic is out of range".into());
+        // `ToInternalDurationRecordWith24HourDays`: the `days` field joins the
+        // time part; years, months and weeks stay calendar fields.
+        let time_total = duration_math::TimeDuration::from_fields(
+            record.hours,
+            record.minutes,
+            record.seconds,
+            record.milliseconds,
+            record.microseconds,
+            record.nanoseconds,
+        )
+        .total_nanoseconds()
+            + record.days * DAY_NS;
+        let target_days = i64::try_from(time_total.div_euclid(DAY_NS)).map_err(|_| out_of_range())?;
+        let target_time =
+            duration_math::time_fields_from_nanoseconds(time_total.rem_euclid(DAY_NS));
+        let target_date = plain_date::calendar_add_date(
+            calendar,
+            anchor,
+            record.years as i64,
+            record.months as i64,
+            record.weeks as i64,
+            target_days,
+            false,
+        )
+        .filter(|date| epoch::is_date_within_limits(*date))
+        .ok_or_else(out_of_range)?;
+        let origin = (anchor, MIDNIGHT);
+        let target = (target_date, target_time);
+        if origin != target {
+            Self::temporal_duration_anchor_datetime_in_range(anchor)?;
+            if !epoch::is_date_time_within_limits(target_date, target_time) {
+                return Err(out_of_range());
+            }
+        }
+        Ok((origin, target))
+    }
 }
