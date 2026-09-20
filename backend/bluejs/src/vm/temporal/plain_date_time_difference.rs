@@ -146,6 +146,34 @@ pub(crate) fn difference_plain_date(
     smallest: TemporalUnit,
     mode: blueice_ecma402::NumberRoundingMode,
 ) -> Option<DifferenceFields> {
+    difference_between_midnights(
+        calendar,
+        date1,
+        date2,
+        (largest, increment, smallest, mode),
+        TemporalUnit::Day,
+    )
+}
+
+/// The rounding settings shared by every entry point:
+/// `(largest, increment, smallest, mode)`.
+type RoundingSettings = (
+    TemporalUnit,
+    i128,
+    TemporalUnit,
+    blueice_ecma402::NumberRoundingMode,
+);
+
+/// A difference between two dates read as midnights. `unrounded_unit` is the
+/// `smallestUnit` for which an increment of 1 needs no rounding step: the
+/// calendar difference is already whole in that unit.
+fn difference_between_midnights(
+    calendar: AnyCalendarKind,
+    date1: CivilDate,
+    date2: CivilDate,
+    (largest, increment, smallest, mode): RoundingSettings,
+    unrounded_unit: TemporalUnit,
+) -> Option<DifferenceFields> {
     const MIDNIGHT: CivilTime = (0, 0, 0, 0, 0, 0);
     if date1 == date2 {
         return Some([0; 10]);
@@ -153,7 +181,7 @@ pub(crate) fn difference_plain_date(
     let (years, months, weeks, days) =
         plain_date::calendar_difference_date(calendar, date1, date2, date_unit(largest));
     let diff = InternalDuration::new((years, months, weeks, days), 0);
-    let rounded = if smallest == TemporalUnit::Day && increment == 1 {
+    let rounded = if smallest == unrounded_unit && increment == 1 {
         diff
     } else {
         let origin = Point {

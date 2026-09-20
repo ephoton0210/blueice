@@ -129,6 +129,17 @@ impl Vm {
         })?;
         let (hour, minute, second, millisecond, microsecond, nanosecond) =
             duration_math::time_fields_from_nanoseconds(ns_of_day);
+        // `RoundISODateTime`'s result must itself be representable: rounding
+        // the earliest date-time down, or the latest one up, leaves the range
+        // (`toString/rounding-edge-of-range.js`).
+        if !epoch::is_date_time_within_limits(
+            date,
+            (hour, minute, second, millisecond, microsecond, nanosecond),
+        ) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainDateTime.toString is out of range".into(),
+            ));
+        }
         let mut result = plain_date::format_iso_date(date);
         result.push_str(&format!("T{hour:02}:{minute:02}"));
         if precision != SecondsPrecision::Minute {

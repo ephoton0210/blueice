@@ -692,3 +692,101 @@ fn out_of_range_date_arithmetic_is_a_range_error_not_an_overflow() {
         assert_range_error(source);
     }
 }
+
+// The next four tests check, through `PlainDate.prototype.until` (which runs on
+// `plain_date_time_difference`), the same spec-derived values the `plain_date`
+// unit tests pin for `round_calendar_duration` -- the rounding
+// `PlainYearMonth` still uses -- so the two implementations stay in agreement.
+
+/// Test262 `PlainDate/prototype/until/roundingmode-ceil.js`: 2019-01-08 until
+/// 2021-09-07 rounded up to each unit in turn (and the reverse direction).
+#[test]
+fn ceil_rounding_to_each_calendar_unit_matches_a_real_fixture() {
+    let earlier = "new Temporal.PlainDate(2019, 1, 8)";
+    let later = "new Temporal.PlainDate(2021, 9, 7)";
+    for (unit, forward, backward) in [
+        ("years", [3, 0, 0, 0], [-2, 0, 0, 0]),
+        ("months", [0, 32, 0, 0], [0, -31, 0, 0]),
+        ("weeks", [0, 0, 139, 0], [0, 0, -139, 0]),
+        ("days", [0, 0, 0, 973], [0, 0, 0, -973]),
+    ] {
+        let options =
+            format!(r#"{{ largestUnit: "{unit}", smallestUnit: "{unit}", roundingMode: "ceil" }}"#);
+        let fields =
+            |[years, months, weeks, days]: [i64; 4]| [years, months, weeks, days, 0, 0, 0, 0, 0, 0];
+        assert_fields(
+            &format!("{earlier}.until({later}, {options})"),
+            fields(forward),
+        );
+        assert_fields(
+            &format!("{later}.until({earlier}, {options})"),
+            fields(backward),
+        );
+    }
+}
+
+/// Test262 `PlainDate/prototype/since/exact-multiple-of-larger-unit.js`: a
+/// difference that is already an exact whole `largestUnit` reports exactly
+/// that in every rounding mode, not a `smallestUnit`-sized wobble.
+#[test]
+fn rounding_an_exact_multiple_of_the_larger_unit_adds_no_remainder() {
+    for mode in ["ceil", "floor", "expand", "trunc", "halfExpand", "halfEven"] {
+        assert_fields(
+            &format!(
+                r#"new Temporal.PlainDate(2012, 1, 1).until(new Temporal.PlainDate(2012, 2, 1),
+                     {{ largestUnit: "months", smallestUnit: "weeks", roundingMode: "{mode}" }})"#
+            ),
+            [0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+        assert_fields(
+            &format!(
+                r#"new Temporal.PlainDate(2012, 1, 1).until(new Temporal.PlainDate(2013, 1, 1),
+                     {{ largestUnit: "years", smallestUnit: "months", roundingMode: "{mode}" }})"#
+            ),
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+    }
+}
+
+/// A lunisolar calendar's "year" can span 13 months, so rounding the months
+/// remainder must keep `years` fixed instead of flattening `years * 12 +
+/// months`: Chinese `2001-M04L` until `2002-M04` (`largestUnit: "years",
+/// smallestUnit: "months"` -- also `PlainYearMonth`'s default) stays 12
+/// months, not one year.
+#[test]
+fn a_leap_month_calendar_keeps_years_fixed_when_rounding_months() {
+    let chinese = |year: i32, code: &str, ty: &str| {
+        format!(
+            r#"Temporal.{ty}.from({{ year: {year}, monthCode: "{code}", {} calendar: "chinese" }})"#,
+            if ty == "PlainDate" { "day: 1," } else { "" }
+        )
+    };
+    for ty in ["PlainDate", "PlainYearMonth"] {
+        assert_true(&format!(
+            r#"(function() {{
+              const d = {}.until({}, {{ largestUnit: "years", smallestUnit: "months" }});
+              return d.years === 0 && d.months === 12 ? true : d.years + "y" + d.months + "m";
+            }})()"#,
+            chinese(2001, "M04L", ty),
+            chinese(2002, "M04", ty)
+        ));
+    }
+}
+
+/// A 13-month-per-year calendar carries month rounding across its intercalary
+/// month: Ethiopic `2014-M01-01` until `2015-M13-03` is 1 year 12 months 2 days
+/// (two of M13's five days is under half a month), and rounding up carries out
+/// of the 13th month into a whole second year.
+#[test]
+fn month_rounding_carries_at_thirteen_months_per_year() {
+    let start = r#"Temporal.PlainDate.from({ year: 2014, monthCode: "M01", day: 1, calendar: "ethiopic" })"#;
+    let end = r#"Temporal.PlainDate.from({ year: 2015, monthCode: "M13", day: 3, calendar: "ethiopic" })"#;
+    for (mode, years, months) in [("trunc", 1, 12), ("halfExpand", 1, 12), ("ceil", 2, 0)] {
+        assert_fields(
+            &format!(
+                r#"{start}.until({end}, {{ largestUnit: "years", smallestUnit: "months", roundingMode: "{mode}" }})"#
+            ),
+            [years, months, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+    }
+}

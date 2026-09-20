@@ -424,6 +424,9 @@ impl Vm {
         value: TemporalValue,
         use_new_target: bool,
     ) -> Result<Value, RuntimeError> {
+        // Range first: `CreateTemporalDate` (and the others) throw before
+        // `OrdinaryCreateFromConstructor` ever reads `newTarget.prototype`.
+        Self::temporal_check_creation_limits(&value)?;
         self.temporal_global()?;
         let constructor = self.globals[&format!("%Temporal.{}%", value.kind.name())];
         let default = self

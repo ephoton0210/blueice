@@ -59,8 +59,8 @@ pub(crate) use self::datetime::{
 pub(crate) use self::duration::parse_duration_record;
 #[allow(unused_imports)]
 pub(crate) use self::offset::{
-    parse_minute_precision_offset, parse_offset_identifier_nanoseconds,
-    parse_offset_string_nanoseconds, parse_utc_offset_prefix, resolve_time_zone_offset, UtcOffset,
+    parse_minute_precision_offset, parse_offset_string_nanoseconds, parse_utc_offset_prefix,
+    resolve_time_zone_offset, UtcOffset,
 };
 #[allow(unused_imports)]
 pub(crate) use self::scan::{parse_date, parse_iso_date_prefix, parse_iso_time_prefix};

@@ -1078,8 +1078,9 @@ impl Vm {
                 };
                 self.iterator_result(value, done)
             }
-            NativeFunction::CollectionIterator { map } => self.collection_iterator(map, &receiver),
-            NativeFunction::CollectionIteratorNext => self.iterator_result(Value::Undefined, true),
+            NativeFunction::CollectionIteratorNext { map } => {
+                self.collection_iterator_next(map, &receiver)
+            }
             NativeFunction::GeneratorNext => {
                 self.generator_next(&receiver, Some(first.clone()), None)
             }

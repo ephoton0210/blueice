@@ -606,8 +606,11 @@ fn equals_compare_and_conversions() {
         check("valueOf", "TypeError", () => a.valueOf());
         check("less than", "TypeError", () => a < a);
         check("plus", "TypeError", () => a + 1);
-        check("toLocaleString type", "string", () => typeof a.toLocaleString("en-US"));
-        check("toLocaleString mentions year", "true", () => a.toLocaleString("en-US", { timeZone: "UTC" }).includes("2020"));
+        // a PlainYearMonth is only formatted in its own calendar -- even ISO is a
+        // mismatch for a (Gregorian) English locale (`toLocaleString/calendar-mismatch.js`)
+        check("toLocaleString iso mismatch", "RangeError", () => a.toLocaleString("en-US"));
+        check("toLocaleString type", "string", () => typeof g.toLocaleString("en-US"));
+        check("toLocaleString mentions year", "true", () => g.toLocaleString("en-US", { timeZone: "UTC" }).includes("2020"));
         check("toLocaleString timeStyle", "TypeError", () => a.toLocaleString("en-US", { timeStyle: "short" }));
         check("toLocaleString bad locale", "RangeError", () => a.toLocaleString("not a locale"));
 

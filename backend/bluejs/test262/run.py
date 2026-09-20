@@ -417,6 +417,20 @@ TEMPORAL_CALENDAR_TABLE_FIXTURES = frozenset(
     }
 )
 TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET = 2_000_000
+# `ZonedDateTime.from/timezone-case-insensitive.js` builds
+# `[...new Set([...timeZoneIdentifiers, ...Intl.supportedValuesOf('timeZone')])]`
+# (about 600 identifiers) and calls `Temporal.ZonedDateTime.from` three times per
+# identifier (as spelled, lower- and upper-case): finite, one ordinary call chain
+# per row. Until `Set` iteration was implemented that spread was empty, the loop
+# never ran and the fixture passed vacuously; it now does real work. Measured
+# minimum: between 100,000 (the default, which is not enough) and 150,000
+# dispatches; the allowance is ~3x the upper bound.
+TEMPORAL_TIME_ZONE_ID_TABLE_FIXTURES = frozenset(
+    {
+        "intl402/Temporal/ZonedDateTime/from/timezone-case-insensitive.js",
+    }
+)
+TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET = 500_000
 # ZonedDateTime/links.js walks a fixed table of about 120 IANA link names,
 # building two ZonedDateTimes per row and comparing `offsetNanoseconds` at ten
 # epochs for each. It is finite, and its per-row cost is one ordinary call
@@ -762,6 +776,8 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET)
     if relative in TEMPORAL_CALENDAR_TABLE_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET)
+    if relative in TEMPORAL_TIME_ZONE_ID_TABLE_FIXTURES:
+        return max(default, TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET)
     if relative in TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES:
         return max(default, TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET)
     if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:

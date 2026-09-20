@@ -87,6 +87,53 @@ impl Vm {
         Ok(value)
     }
 
+    /// The representable-range check `CreateTemporalDate`,
+    /// `CreateTemporalDateTime` and `CreateTemporalYearMonth` all make before
+    /// building an object, on the value's stored ISO fields: a date's noon must
+    /// be representable (`ISODateWithinLimits`), a date-time itself
+    /// (`ISODateTimeWithinLimits`, one day narrower at the low end), a
+    /// year-month its own (`ISOYearMonthWithinLimits`). Every creation path --
+    /// the numeric constructors, `from`, `with`, `withPlainTime`,
+    /// `toPlainDateTime`, `toPlainDate`, `round`, arithmetic -- ends in
+    /// [`Vm::alloc_temporal_value`], so making the check there covers them all
+    /// instead of each caller remembering (the constructors and several
+    /// conversions did not).
+    ///
+    /// Only these three kinds are judged here: an `Instant`/`ZonedDateTime` is
+    /// bounded by its epoch nanoseconds, a `PlainTime` has no range, and a
+    /// `PlainMonthDay`'s reference year is chosen by its calendar.
+    pub(in super::super::super) fn temporal_check_creation_limits(
+        value: &TemporalValue,
+    ) -> Result<(), RuntimeError> {
+        let date = (value.year, value.month, value.day);
+        let within_limits = match value.kind {
+            TemporalKind::PlainDate => epoch::is_date_within_limits(date),
+            TemporalKind::PlainDateTime => epoch::is_date_time_within_limits(
+                date,
+                (
+                    value.hour,
+                    value.minute,
+                    value.second,
+                    value.millisecond,
+                    value.microsecond,
+                    value.nanosecond,
+                ),
+            ),
+            TemporalKind::PlainYearMonth => {
+                iso::is_year_month_within_limits(value.year, value.month)
+            }
+            _ => true,
+        };
+        if within_limits {
+            Ok(())
+        } else {
+            Err(RuntimeError::RangeError(format!(
+                "Temporal.{} is outside the supported range",
+                value.kind.name()
+            )))
+        }
+    }
+
     pub(in super::super::super) fn temporal_unit_to_date_unit(
         unit: rounding::TemporalUnit,
     ) -> plain_date::DateUnit {

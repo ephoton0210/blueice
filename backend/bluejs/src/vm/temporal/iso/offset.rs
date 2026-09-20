@@ -205,14 +205,6 @@ pub(crate) fn resolve_time_zone_offset(
     Ok(i128::from(zone.offset_nanoseconds_for(epoch_nanoseconds)))
 }
 
-/// A whole-string, minute-precision UTC offset, as a fixed-offset time-zone
-/// identifier is spelled. Returns nanoseconds east of UTC.
-pub(crate) fn parse_offset_identifier_nanoseconds(source: &str) -> Option<i64> {
-    let mut cursor = Cursor::new(source);
-    let (offset, _) = scan_offset(&mut cursor, false)?;
-    cursor.done().then_some(offset)
-}
-
 /// A whole-string UTC offset at full (sub-minute) precision -- the grammar a
 /// `Temporal.ZonedDateTime` property-bag `offset` field, or `.with()`'s own
 /// `offset` property, is validated against (`ParseDateTimeUTCOffset`).

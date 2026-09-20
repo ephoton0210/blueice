@@ -275,7 +275,13 @@ impl Vm {
         if let Some(object) = value.object_id() {
             if let Some(temporal) = self.heap.temporal_value(object)? {
                 let carried = match temporal.kind {
-                    TemporalKind::PlainTime | TemporalKind::PlainDateTime => Some((
+                    // A `ZonedDateTime`'s stored ISO fields are its local
+                    // wall-clock ones in any zone -- named (transition rules
+                    // already applied) or fixed-offset -- so its time of day is
+                    // read from its slots exactly like a `PlainDateTime`'s.
+                    TemporalKind::PlainTime
+                    | TemporalKind::PlainDateTime
+                    | TemporalKind::ZonedDateTime => Some((
                         temporal.hour,
                         temporal.minute,
                         temporal.second,
@@ -283,25 +289,6 @@ impl Vm {
                         temporal.microsecond,
                         temporal.nanosecond,
                     )),
-                    // A `ZonedDateTime`'s wall-clock time of day is its instant
-                    // shifted by the zone's offset. `UTC` and a fixed numeric
-                    // offset are resolvable here; a named IANA zone needs the
-                    // transition-rule lookup that is Phase 26 Track E's scope.
-                    TemporalKind::ZonedDateTime => {
-                        let offset = if temporal.time_zone == "UTC" {
-                            0
-                        } else {
-                            iso::parse_offset_identifier_nanoseconds(&temporal.time_zone)
-                                .ok_or_else(|| {
-                                    RuntimeError::RangeError(
-                                    "Temporal.PlainTime conversion supports UTC and fixed offsets"
-                                        .into(),
-                                )
-                                })?
-                        };
-                        let local = &temporal.epoch_nanoseconds + BigInt::from(offset);
-                        Some(epoch::instant_fields(&local).1)
-                    }
                     // Every other Temporal type lacks the singular time
                     // fields, so the property-bag path below throws for it
                     // exactly as the spec requires.

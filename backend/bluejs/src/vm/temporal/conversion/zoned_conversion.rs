@@ -174,8 +174,13 @@ impl Vm {
                 }
             }
             let locales = self.canonical_locales(native::argument(args, 0))?;
-            blueice_ecma402::DateTimeFormat::try_new(&locales, options)
-                .and_then(|format| format.format(milliseconds))
+            let format = blueice_ecma402::DateTimeFormat::try_new(&locales, options)
+                .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+            // Like the plain types: the value's calendar must be the ISO one
+            // or the formatter's own (`toLocaleString/calendar-mismatch.js`).
+            Self::temporal_check_format_calendar(&format, &value)?;
+            format
+                .format(milliseconds)
                 .map(|formatted| Value::String(formatted.into()))
                 .map_err(|error| RuntimeError::RangeError(error.to_string()))
         })();
