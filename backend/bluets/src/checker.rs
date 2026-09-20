@@ -1019,7 +1019,12 @@ impl<'a> ModuleChecker<'a> {
             }
             if let Some(annotation) = &parameter.annotation {
                 self.check_type(annotation, &parameter.span);
-                scope.insert(parameter.name.clone(), annotation.clone());
+                let parameter_type = if parameter.optional && parameter.default.is_none() {
+                    Type::Union(vec![annotation.clone(), Type::Undefined])
+                } else {
+                    annotation.clone()
+                };
+                scope.insert(parameter.name.clone(), parameter_type);
             } else {
                 scope.insert(parameter.name.clone(), Type::Unknown);
             }

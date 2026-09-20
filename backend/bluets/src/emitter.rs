@@ -824,18 +824,18 @@ mod tests {
         let loader = MapLoader::from([ModuleSource::new(
             "memory:///generic.ts",
             "export interface Box<T extends string = string> { value: T }\n\
-             export function echo<T extends string = string>(value?: T): T { return value; }",
+             export function echo<T extends string = string>(value?: T): string { return ''; }",
         )]);
-        let output = compile(
+        let result = compile(
             "memory:///generic.ts",
             &loader,
             CompilerOptions {
                 declaration: true,
                 ..CompilerOptions::default()
             },
-        )
-        .output
-        .unwrap();
+        );
+        assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+        let output = result.output.unwrap();
         let artifact = &output.artifacts["memory:///generic.ts"];
         assert!(
             artifact.javascript.contains("function echo(value)"),
@@ -847,7 +847,7 @@ mod tests {
             artifact.declaration.as_deref(),
             Some(
                 "export interface Box<T extends string = string> {\n  value: T;\n}\n\
-                 export declare function echo<T extends string = string>(value?: T): T;\n"
+                 export declare function echo<T extends string = string>(value?: T): string;\n"
             )
         );
     }

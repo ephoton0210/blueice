@@ -297,6 +297,42 @@ fn checks_default_parameter_initializers_and_omitted_calls() {
 }
 
 #[test]
+fn checks_optional_parameter_values_in_function_bodies() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "function label(value?: string): string { return value ?? 'guest'; }\n\
+             const omitted: string = label();\n\
+             const explicitUndefined: string = label(undefined);\n\
+             const invalidArgument: string = label(1);\n\
+             function invalidReturn(value?: number): number { return value; }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::ReturnTypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn rejects_a_default_parameter_initializer_with_the_wrong_type() {
     let result = crate::compile(
         "memory:///main.ts",
@@ -1124,7 +1160,7 @@ fn uses_defaulted_function_type_parameters_and_checks_inferred_constraints() {
         "memory:///main.ts",
         &MapLoader::from([ModuleSource::new(
             "memory:///main.ts",
-            "function echo<T extends string = string>(value?: T): T { return value; }\n\
+            "function echo<T extends string = string>(value?: T): string { return ''; }\n\
                  const defaulted: string = echo();\n\
                  const constrained: unknown = echo(1);",
         )]),

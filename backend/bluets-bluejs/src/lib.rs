@@ -112,8 +112,8 @@ impl std::error::Error for BridgeError {}
 /// The v1 direct subset has exactly one non-declaration module and no runtime
 /// import/export entries. It accepts `var`/`let`/`const` declarations with an
 /// optional literal/identifier/arithmetic initializer, named local functions
-/// with required identifier parameters, bounded direct-expression defaults,
-/// and one final identifier rest parameter plus structured local/return bodies,
+/// with required or optional identifier parameters, bounded direct-expression
+/// defaults, and one final identifier rest parameter plus structured local/return bodies,
 /// and standalone expressions made from those same forms or direct calls.
 /// The expression subset includes `!`, `+`, `-`, `~`, `typeof`, `void`, and
 /// `delete` with a property target; arithmetic, relational (including `in` and
@@ -543,12 +543,6 @@ fn lower_function(
 ) -> Result<bluejs::Stmt, BridgeError> {
     let mut params = Vec::with_capacity(function.parameters.len());
     for (index, parameter) in function.parameters.iter().enumerate() {
-        if parameter.optional && parameter.default.is_none() {
-            return Err(unsupported(
-                parameter.span.clone(),
-                "optional parameters without defaults are not yet in the v1 direct bridge subset",
-            ));
-        }
         if parameter.rest && index + 1 != function.parameters.len() {
             return Err(unsupported(
                 parameter.span.clone(),
@@ -2427,6 +2421,28 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::Number(42.0)
+        );
+    }
+
+    #[test]
+    fn lowers_checked_optional_parameters() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                concat!(
+                    "function label(value?: string): string { return value ?? 'guest'; }",
+                    "const omitted: string = label();",
+                    "const explicitUndefined: string = label(undefined);",
+                    "omitted + ':' + explicitUndefined;"
+                ),
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("guest:guest".into())
         );
     }
 
