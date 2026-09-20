@@ -109,7 +109,11 @@ impl Vm {
             .is_some()
             .then(|| self.temporal_integer(&era_year_v, i32::MIN, i32::MAX, "era year"))
             .transpose()?;
-        let requested_month = self.temporal_read_optional_integer(bag, "month", 1, 99)?;
+        // `ToPositiveIntegerWithTruncation`: no upper bound. An ordinal `month`
+        // past the year's last is constrained (or rejected) by the calendar,
+        // not by this read, and the cast to `u8` saturates rather than wraps
+        // (`from/overflow-constrain.js`'s `month: 99999`).
+        let requested_month = self.temporal_read_optional_integer(bag, "month", 1, i32::MAX)?;
         let month_code_s =
             self.temporal_read_optional_string(bag, "monthCode", "invalid Temporal month code")?;
         // Unbounded at the field-reading stage (`ToIntegerWithTruncation`),
@@ -154,7 +158,7 @@ impl Vm {
             era_year: era_year_num,
             extended_year: requested_year,
             month_code: month_code_s.as_deref(),
-            ordinal_month: requested_month.map(|value| value as u8),
+            ordinal_month: requested_month.map(|value| value.min(i32::from(u8::MAX)) as u8),
         };
         let date = plain_year_month::year_month_from_fields(calendar_kind, &fields, reject)
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
@@ -521,7 +525,7 @@ impl Vm {
         } else {
             (None, None)
         };
-        let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
+        let requested_month = self.temporal_read_optional_integer(like, "month", 1, i32::MAX)?;
         let month_code_s =
             self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
         // `ToIntegerWithTruncation`: unbounded at the field-reading stage
@@ -599,7 +603,7 @@ impl Vm {
             era_year: era_year_field,
             extended_year: extended_year_field,
             month_code: month_code.as_deref(),
-            ordinal_month: requested_month.map(|value| value as u8),
+            ordinal_month: requested_month.map(|value| value.min(i32::from(u8::MAX)) as u8),
         };
         let date = plain_year_month::year_month_from_fields(calendar_kind, &fields, reject)
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
@@ -651,7 +655,7 @@ impl Vm {
         // saturated rather than truncated so a huge value still clamps
         // sensibly.
         let requested_day = self.temporal_read_optional_integer(like, "day", 1, i32::MAX)?;
-        let requested_month = self.temporal_read_optional_integer(like, "month", 1, 99)?;
+        let requested_month = self.temporal_read_optional_integer(like, "month", 1, i32::MAX)?;
         let month_code_s =
             self.temporal_read_optional_string(like, "monthCode", "invalid Temporal month code")?;
         // `ToIntegerWithTruncation`, unbounded at the field-reading stage,
@@ -720,7 +724,7 @@ impl Vm {
         // they agree.
         let ordinal_month_for_fields = month_code
             .is_none()
-            .then(|| requested_month.map(|value| value as u8))
+            .then(|| requested_month.map(|value| value.min(i32::from(u8::MAX)) as u8))
             .flatten();
         let day_for_fields = requested_day
             .map(|value| value.min(i32::from(u8::MAX)) as u8)
@@ -752,7 +756,7 @@ impl Vm {
                 }
             }
             let month = requested_month
-                .map(|value| value as u8)
+                .map(|value| value.min(i32::from(u8::MAX)) as u8)
                 .or_else(|| {
                     month_code
                         .as_deref()

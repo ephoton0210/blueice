@@ -253,3 +253,37 @@ return done();
 "#
     ));
 }
+
+/// `PlainYearMonth/from/overflow-constrain.js`: an ordinal `month` has no upper
+/// bound of its own; the calendar constrains it (or `reject` refuses it), and
+/// `with` reads it the same way. The cast must saturate, never wrap: 256 and
+/// 268 would otherwise land on months 0 and 12.
+#[test]
+fn an_ordinal_month_past_the_end_of_the_year_is_constrained_or_rejected() {
+    assert_ok(&format!(
+        r#"
+(function() {{
+{PRELUDE}
+for (const [calendar, last] of [["iso8601", "M12"], ["gregory", "M12"], ["coptic", "M13"], ["hebrew", "M12"]]) {{
+  for (const month of [13, 14, 99, 100, 256, 268, 99999, 2147483647]) {{
+    const label = calendar + " month " + month;
+    const constrained = YM.from({{ year: 5784, month, calendar }});
+    // Hebrew 5784 is a leap year (13 months): its last month code is M12 (Elul) either way.
+    check(label + " constrained", constrained.monthCode, calendar === "hebrew" ? "M12" : last);
+    // Month 13 exists in Coptic and in the Hebrew leap year 5784.
+    if (month === 13 && (calendar === "coptic" || calendar === "hebrew")) continue;
+    expect(label + " rejected", RangeError, () => YM.from({{ year: 5784, month, calendar }}, {{ overflow: "reject" }}));
+  }}
+}}
+// `with` reads the same unbounded month.
+check("with month 99999", new YM(2000, 1).with({{ month: 99999 }}).monthCode, "M12");
+check("with month 256", new YM(2000, 1).with({{ month: 256 }}).monthCode, "M12");
+expect("with month 99999 rejected", RangeError, () => new YM(2000, 1).with({{ month: 99999 }}, {{ overflow: "reject" }}));
+const md = Temporal.PlainMonthDay.from({{ monthCode: "M05", day: 3 }});
+check("month-day with month 99999", md.with({{ month: 99999 }}).monthCode, "M12");
+check("month-day with month 256", md.with({{ month: 256 }}).monthCode, "M12");
+return done();
+}})()
+"#
+    ));
+}
