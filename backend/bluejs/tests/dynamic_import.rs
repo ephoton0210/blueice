@@ -9,13 +9,21 @@
 //! cycle's recorded evaluation error. An `import()` that starts while the
 //! entry module is still evaluating shares that module graph.
 
-use blueice_bluejs::{compile, compile_module, parse, parse_module, Value, Vm};
+use blueice_bluejs::{compile, compile_module, parse, parse_module, Value, Vm, VmConfig};
 use std::collections::HashMap;
 
 /// Runs `script` as the classic-script entry `dir/main.js` with `modules`
 /// (keyed by their `dir/`-relative canonical names) as the host registry and
 /// returns what the script reported through `$DONE`.
 fn run_script(modules: &[(&str, &str)], script: &str) -> Option<Result<(), String>> {
+    run_script_with(VmConfig::default(), modules, script)
+}
+
+fn run_script_with(
+    config: VmConfig,
+    modules: &[(&str, &str)],
+    script: &str,
+) -> Option<Result<(), String>> {
     let registry: HashMap<_, _> = modules
         .iter()
         .map(|(name, source)| {
@@ -26,7 +34,7 @@ fn run_script(modules: &[(&str, &str)], script: &str) -> Option<Result<(), Strin
             )
         })
         .collect();
-    let mut vm = Vm::default();
+    let mut vm = Vm::new(config).unwrap();
     vm.install_test262_done().unwrap();
     vm.set_module_loader_context("dir/main.js", registry);
     vm.execute_script(&compile(&parse(script).unwrap()).unwrap())
@@ -257,5 +265,24 @@ fn a_module_that_threw_keeps_its_error_for_every_later_import() {
         &[("throws.js", "runs++; throw new Error('boom');")],
         &script,
     );
+    assert_eq!(done, Some(Ok(())));
+}
+
+#[test]
+fn import_operands_survive_collection_while_the_specifier_is_coerced() {
+    // A one-object nursery collects at nearly every allocation. The returned
+    // promise and both operands are only reachable from the import call itself
+    // while `toString` and the options getter run and allocate.
+    let mut config = VmConfig::default();
+    config.heap.nursery_capacity = 1;
+    let script = format!(
+        "{TRACE}
+        var specifier = {{ toString() {{ for (var i = 0; i < 20; i++) [{{}}, [], () => i]; return './a.js'; }} }};
+        var options = {{ get with() {{ for (var i = 0; i < 20; i++) [{{}}, [], () => i]; return {{}}; }} }};
+        import(specifier, options).then(
+            ns => finish(ns.x === 1),
+            e => (trace.push(String(e)), finish(false)));"
+    );
+    let done = run_script_with(config, &[("a.js", "export var x = 1;")], &script);
     assert_eq!(done, Some(Ok(())));
 }

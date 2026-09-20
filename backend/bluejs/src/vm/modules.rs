@@ -780,31 +780,41 @@ impl Vm {
         options: Value,
         phase: ImportPhase,
     ) -> Result<Value, RuntimeError> {
-        let promise = self.new_promise()?;
-        let outcome = self.evaluate_import_call_arguments(specifier, options);
-        match outcome {
-            Ok((specifier, _)) if phase == ImportPhase::Source => {
-                self.dynamic_import_source(promise, &specifier)?;
+        // The operands (already popped by the caller) and the promise are
+        // otherwise only in Rust locals while the promise is allocated and the
+        // arguments are coerced (user code that allocates): keep them on the
+        // operand stack, a GC root, until the import is queued or settled.
+        let base = self.stack.len();
+        self.stack.extend([specifier.clone(), options.clone()]);
+        let result = (|| {
+            let promise = self.new_promise()?;
+            self.stack.push(Value::Object(promise));
+            match self.evaluate_import_call_arguments(specifier, options) {
+                Ok((specifier, _)) if phase == ImportPhase::Source => {
+                    self.dynamic_import_source(promise, &specifier)?;
+                }
+                Ok((specifier, json)) => {
+                    let referrer = self
+                        .active_module_name
+                        .clone()
+                        .unwrap_or_else(|| "<script>".to_string());
+                    self.promise_jobs.push_back(PromiseJob::DynamicImport {
+                        target: promise,
+                        referrer,
+                        specifier,
+                        json,
+                        phase,
+                    });
+                }
+                Err(error) => {
+                    let error = self.error_value(error)?;
+                    self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+                }
             }
-            Ok((specifier, json)) => {
-                let referrer = self
-                    .active_module_name
-                    .clone()
-                    .unwrap_or_else(|| "<script>".to_string());
-                self.promise_jobs.push_back(PromiseJob::DynamicImport {
-                    target: promise,
-                    referrer,
-                    specifier,
-                    json,
-                    phase,
-                });
-            }
-            Err(error) => {
-                let error = self.error_value(error)?;
-                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
-            }
-        }
-        Ok(Value::Object(promise))
+            Ok(Value::Object(promise))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     /// The specifier-ToString and options-validation steps of
