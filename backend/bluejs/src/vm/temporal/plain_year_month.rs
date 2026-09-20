@@ -8,8 +8,9 @@
 //!
 //! `PlainYearMonth`'s date arithmetic (`add`/`subtract`/`until`/`since`)
 //! reuses [`super::plain_date`]'s calendar-agnostic date math directly --
-//! `calendar_add_date`/`calendar_difference_date`/`round_calendar_duration`
-//! all already operate on a plain ISO `(year, month, day)` triple with no
+//! `calendar_add_date`/`calendar_difference_date` (and
+//! `plain_date_time_difference`'s rounding on top of them) all already operate
+//! on a plain ISO `(year, month, day)` triple with no
 //! notion of which Temporal type stores it, so this module only adds what is
 //! genuinely new for this type: `CalendarYearMonthFromFields` (resolving a
 //! year+month calendar-field bag -- deliberately with no `day` field -- to

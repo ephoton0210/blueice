@@ -33,7 +33,11 @@
 //! - `calendar_add` — `CalendarDateAdd`, including the leap-month branch.
 //! - `calendar_difference` — `CalendarDateUntil`: ISO, fixed-months and
 //!   leap-month variants and their dispatcher.
-//! - `round_duration` — `RoundRelativeDuration` for a calendar date pair.
+//!
+//! Rounding a difference (`RoundRelativeDuration`) is not part of this tree:
+//! `plain_date_time_difference` (a sibling of this module) ports it for every
+//! plain difference -- `PlainDate`, `PlainDateTime` and `PlainYearMonth` --
+//! on top of `calendar_add_date`/`calendar_difference_date`.
 //!
 //! This file is only the facade: it keeps every `plain_date::*` path callers
 //! already use stable.
@@ -43,7 +47,6 @@ mod calendar_difference;
 mod format;
 mod iso_date;
 mod month_structure;
-mod round_duration;
 #[cfg(test)]
 mod tests;
 
@@ -66,9 +69,3 @@ pub(crate) use self::iso_date::{
     epoch_days_to_iso_date, is_iso_leap_year, iso_date_to_epoch_days, iso_day_of_week,
     iso_day_of_year, iso_days_in_month, iso_week_of_year, regulate_iso_date,
 };
-#[allow(unused_imports)]
-pub(crate) use self::round_duration::round_calendar_duration;
-// Not called outside this module tree, but sibling modules' docs link to it
-// (`zoned_date_time.rs`), so it stays reachable at its pre-split path.
-#[allow(unused_imports)]
-pub(super) use self::round_duration::round_month_or_year;

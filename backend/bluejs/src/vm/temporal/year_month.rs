@@ -829,19 +829,9 @@ impl Vm {
             duration.microseconds = -duration.microseconds;
             duration.nanoseconds = -duration.nanoseconds;
         }
-        if duration.weeks != 0
-            || duration.days != 0
-            || duration.hours != 0
-            || duration.minutes != 0
-            || duration.seconds != 0
-            || duration.milliseconds != 0
-            || duration.microseconds != 0
-            || duration.nanoseconds != 0
-        {
-            return Err(RuntimeError::RangeError(
-                "Temporal.PlainYearMonth arithmetic only accepts a years/months duration".into(),
-            ));
-        }
+        // `options` (its `overflow`) is read before any algorithmic validation:
+        // the first-day range check and the duration-unit check below both
+        // come after it (`options-read-before-algorithmic-validation.js`).
         let resolved_options = self.temporal_options(options)?;
         let reject = self.temporal_overflow_option(&resolved_options)?;
         let calendar_kind = calendar::calendar_kind(&existing.calendar)
@@ -856,6 +846,27 @@ impl Vm {
         };
         let anchor = plain_year_month::year_month_from_fields(calendar_kind, &anchor_fields, false)
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
+        // `CalendarDateFromFields(calendar, { year, month, day: 1 })` must be a
+        // valid `PlainDate`: the first day of the earliest representable
+        // year-month (`-271821-04-01`) is not (`throws-if-year-outside-valid-iso-range.js`).
+        if !epoch::is_date_within_limits(anchor) {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainYearMonth arithmetic is out of range".into(),
+            ));
+        }
+        if duration.weeks != 0
+            || duration.days != 0
+            || duration.hours != 0
+            || duration.minutes != 0
+            || duration.seconds != 0
+            || duration.milliseconds != 0
+            || duration.microseconds != 0
+            || duration.nanoseconds != 0
+        {
+            return Err(RuntimeError::RangeError(
+                "Temporal.PlainYearMonth arithmetic only accepts a years/months duration".into(),
+            ));
+        }
         let result_date = plain_date::calendar_add_date(
             calendar_kind,
             anchor,
@@ -974,7 +985,7 @@ impl Vm {
         let to_date = resolve(&to_fields)
             .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
 
-        // `round_calendar_duration`'s own `roundingMode` is direction-
+        // The difference's `roundingMode` is direction-
         // sensitive (`Ceil`/`Floor`/`HalfCeil`/`HalfFloor` round toward a
         // fixed end of the *real* number line, not toward a fixed end of
         // whichever internal `from`/`to` direction happened to be computed),
@@ -997,34 +1008,26 @@ impl Vm {
         } else {
             mode
         };
-        let (years, months, _, _) = plain_date::round_calendar_duration(
+        // `DifferenceTemporalPlainYearMonth` is `RoundRelativeDuration` between
+        // the two months' first days at midnight: the shared difference module
+        // rounds the months remainder to the increment, and rejects a first
+        // day (or a rounded bracket) outside the representable range.
+        let mut fields = plain_date_time_difference::difference_plain_year_month(
             calendar_kind,
             from_date,
             to_date,
-            Self::temporal_unit_to_date_unit(largest_unit),
-            Self::temporal_unit_to_date_unit(smallest_unit),
+            largest_unit,
             increment,
+            smallest_unit,
             effective_mode,
-        );
-        let (years, months) = if since {
-            (-years, -months)
-        } else {
-            (years, months)
-        };
-        let record = blueice_ecma402::DurationRecord::try_new(
-            i128::from(years),
-            i128::from(months),
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
         )
-        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
-        self.alloc_temporal_value(Self::temporal_duration_value(record), false)
+        .ok_or_else(|| {
+            RuntimeError::RangeError("Temporal.PlainYearMonth difference is out of range".into())
+        })?;
+        if since {
+            fields = fields.map(|field| -field);
+        }
+        self.temporal_duration_create(fields)
     }
 
     pub(in super::super) fn temporal_year_month_equals(
