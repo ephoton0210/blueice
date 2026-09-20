@@ -118,8 +118,9 @@ impl std::error::Error for BridgeError {}
 /// unary expressions; arithmetic, relational, equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
 /// non-spread, non-hole array literals, simple object literals with identifier
-/// keys, dot or bracket property reads, comma sequences, identifier-only prefix/postfix
-/// updates, and identifier-only simple or compound-assignment operators. Static-only
+/// keys, non-substituted template literals without escapes, dot or bracket
+/// property reads, comma sequences, identifier-only prefix/postfix updates, and
+/// identifier-only simple or compound-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
 /// [`BridgeError::UnsupportedRuntimeTarget`] instead of falling back to a
@@ -1079,6 +1080,7 @@ impl<'a> ExpressionLowerer<'a> {
                 .map(bluejs::Expr::Number)
                 .map_err(|_| unsupported(self.token_span(token), "unsupported numeric literal")),
             TokenKind::String => lower_string(self.module, token),
+            TokenKind::Template => lower_template(self.module, token),
             TokenKind::Identifier => Ok(bluejs::Expr::Identifier(token.text.clone())),
             TokenKind::Keyword => match token.text.as_str() {
                 "true" => Ok(bluejs::Expr::Bool(true)),
@@ -1372,6 +1374,30 @@ fn lower_string(module: &str, token: &Token) -> Result<bluejs::Expr, BridgeError
         ));
     }
     Ok(bluejs::Expr::String(body.into()))
+}
+
+fn lower_template(module: &str, token: &Token) -> Result<bluejs::Expr, BridgeError> {
+    let body = token
+        .text
+        .strip_prefix('`')
+        .and_then(|text| text.strip_suffix('`'))
+        .ok_or_else(|| unsupported(token_span(module, token), "invalid template token"))?;
+    if body.contains('\\') {
+        return Err(unsupported(
+            token_span(module, token),
+            "template escapes are not yet in the v1 direct bridge subset",
+        ));
+    }
+    if body.contains("${") {
+        return Err(unsupported(
+            token_span(module, token),
+            "template substitutions are not yet in the v1 direct bridge subset",
+        ));
+    }
+    Ok(bluejs::Expr::Template {
+        quasis: vec![body.into()],
+        expressions: Vec::new(),
+    })
 }
 
 fn token_span(module: &str, token: &Token) -> SourceSpan {
@@ -1920,6 +1946,39 @@ mod tests {
     }
 
     #[test]
+    fn lowers_checked_non_substituted_template_literals() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                r"const label: string = `BlueTS`; label + '!';",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            artifact.program,
+            bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+                if matches!(
+                    body.as_slice(),
+                    [bluejs::Stmt::VarDecl(_, declarations), bluejs::Stmt::Expr(_)]
+                        if matches!(
+                            declarations.as_slice(),
+                            [bluejs::VarDeclarator {
+                                init: Some(bluejs::Expr::Template { quasis, expressions }),
+                                ..
+                            }] if quasis.as_slice() == [bluejs::JsString::from("BlueTS")]
+                                && expressions.is_empty()
+                        )
+                )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::String("BlueTS!".into())
+        );
+    }
+
+    #[test]
     fn expression_lowerer_rejects_array_holes_and_spread() {
         for tokens in [
             expression_tokens(&[
@@ -1984,6 +2043,25 @@ mod tests {
                     || message.contains("object shorthand")
                     || message.contains("computed object")
                     || message.contains("direct identifier calls")
+            );
+        }
+    }
+
+    #[test]
+    fn expression_lowerer_rejects_template_substitutions_and_escapes() {
+        for text in [r"`value=${name}`", r"`line\n`"] {
+            let token = Token {
+                kind: TokenKind::Template,
+                text: text.to_string(),
+                start: 0,
+                end: text.len(),
+            };
+            let error = ExpressionLowerer::new(ENTRY, &[token]).parse().unwrap_err();
+            let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+                panic!("the direct bridge must reject an unimplemented template shape");
+            };
+            assert!(
+                message.contains("template substitutions") || message.contains("template escapes")
             );
         }
     }
