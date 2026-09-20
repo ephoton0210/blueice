@@ -28,8 +28,9 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
-/// One gatekeeper review request -- `core` sends exactly one of these
-/// per short-lived connection to `ai-gatekeeper`.
+/// One gatekeeper review request -- a caller (`core` for navigation, the
+/// downloads process for transfers) sends exactly one of these per
+/// short-lived connection to `ai-gatekeeper`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GatekeeperRequest {
     /// The URL stage, sent before any network fetch: catches known-bad
@@ -40,6 +41,16 @@ pub enum GatekeeperRequest {
     /// primary threat (hidden/adversarial content aimed at an AI
     /// reader), which URL blocklisting alone can't catch.
     CheckContent { url: String, html: String },
+    /// The download stage (`phase-10-download-manager/PLAN.md`'s
+    /// "Gatekeeper integration"): sent by the downloads process after
+    /// it has probed a URL that already passed [`Self::CheckUrl`] and
+    /// before a single byte is transferred. The probe is what makes the
+    /// file's name, type, and size known, so this is the stage that can
+    /// act on "downloading an executable or otherwise dangerous file
+    /// type" (`phase-7-local-ai/PLAN.md`'s risk taxonomy). Both hints
+    /// are optional because a server may not send them (a chunked
+    /// response with no `Content-Type`); the review still has to happen.
+    CheckDownload { url: String, file_name: String, content_type: Option<String>, total_bytes: Option<u64> },
 }
 
 /// `ai-gatekeeper`'s reply to one [`GatekeeperRequest`]. Either stage
@@ -115,6 +126,15 @@ mod tests {
         for req in [
             GatekeeperRequest::CheckUrl { url: "https://example.com".to_string() },
             GatekeeperRequest::CheckContent { url: "https://example.com".to_string(), html: "<p>hi</p>".to_string() },
+            GatekeeperRequest::CheckDownload {
+                url: "https://example.com/setup.exe".to_string(),
+                file_name: "setup.exe".to_string(),
+                content_type: Some("application/x-msdownload".to_string()),
+                total_bytes: Some(1_048_576),
+            },
+            // The probe may not learn a type or a size (a chunked response
+            // with no `Content-Type`), and the review still has to happen.
+            GatekeeperRequest::CheckDownload { url: "https://example.com/blob".to_string(), file_name: "blob".to_string(), content_type: None, total_bytes: None },
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_gatekeeper_request(&mut a, &req).unwrap();

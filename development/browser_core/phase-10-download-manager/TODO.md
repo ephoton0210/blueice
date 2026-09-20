@@ -2,7 +2,7 @@
 
 [← Back to Phase 10 plan](PLAN.md)
 
-> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. Implementation (M1 onward) has not started.**
+> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. M0 (design) and M1 (`blueice-ipc` contract) are done; M2 onward has not started.**
 > Branch: `feature/downloads-first-slice`.
 > Design inputs: [`PLAN.md`](PLAN.md) (this phase), [`../phase-7-local-ai/PLAN.md`](../phase-7-local-ai/PLAN.md), [`../phase-12-mcp-server/PLAN.md`](../phase-12-mcp-server/PLAN.md), [`../research/safe-browsing-enforcement.md`](../research/safe-browsing-enforcement.md), [`../research/multi-process-memory.md`](../research/multi-process-memory.md).
 
@@ -54,12 +54,12 @@ Every item is held to the Definition of Done: **write the failing test first (TD
 - [x] Decisions in §1 confirmed in review before M1 starts
 
 ### M1 — Contract: `blueice-ipc`
-- [ ] `GatekeeperRequest::CheckDownload { url, file_name, content_type, total_bytes }`: round-trip test; add a matching test to the `ai-gatekeeper` stub
-- [ ] New module `blueice_ipc::downloads`: `DownloadsRequest` (Hello/Start/List/Get/Pause/Resume/Cancel/Remove/Subscribe/Shutdown), `DownloadsReply` (including the pushed `Updated`), `TransferInfo`, `TransferState`, `SegmentInfo`, `TransferEvent`
-- [ ] Envelope carries `request_id` (so replies can be matched when pushes interleave); unknown variants fail soft (as `ClientMessage` does); `Hello` + `protocol_version` handshake
-- [ ] `default_downloads_socket_path()` (same convention as the gatekeeper, separate file name)
-- [ ] A generic blocking client helper over `Read + Write`, shared by the MCP server, `core`, and `frontend`
-- [ ] Tests: real `UnixStream` round trips, malformed JSON returns an error instead of panicking, unknown variants
+- [x] `GatekeeperRequest::CheckDownload { url, file_name, content_type, total_bytes }`: round-trip test; add a matching test to the `ai-gatekeeper` stub
+- [x] New module `blueice_ipc::downloads`: `DownloadsRequest` (Hello/Start/List/Get/Pause/Resume/Cancel/Remove/Subscribe/Shutdown), `DownloadsReply` (including the pushed `Updated`), `TransferInfo`, `TransferState`, `SegmentInfo`, `TransferEvent`
+- [x] Envelope carries `request_id` (so replies can be matched when pushes interleave); unknown variants fail soft (as `ClientMessage` does); `Hello` + `protocol_version` handshake
+- [x] `default_downloads_socket_path()` (same convention as the gatekeeper, separate file name)
+- [x] A generic blocking client helper over `Read + Write`, shared by the MCP server, `core`, and `frontend`
+- [x] Tests: real `UnixStream` round trips, malformed JSON returns an error instead of panicking, unknown variants
 
 ### M2 — Transfer engine: `blueice-net::download`
 New dependencies: `serde`, `serde_json`, `blueice-ipc` (all already in the workspace lock file).

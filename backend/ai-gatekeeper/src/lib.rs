@@ -64,6 +64,30 @@ mod tests {
     }
 
     #[test]
+    fn always_clears_a_check_download_request() {
+        // The download stage (`phase-10-download-manager/PLAN.md`): the stub
+        // clears it like every other stage. What matters is that the
+        // downloads process's new request variant is read and answered on
+        // the same one-shot connection shape as the other two stages.
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || handle_one_check(&mut server));
+
+        write_gatekeeper_request(
+            &mut client,
+            &GatekeeperRequest::CheckDownload {
+                url: "https://example.com/setup.exe".to_string(),
+                file_name: "setup.exe".to_string(),
+                content_type: Some("application/x-msdownload".to_string()),
+                total_bytes: Some(4096),
+            },
+        )
+        .unwrap();
+        assert_eq!(read_gatekeeper_reply(&mut client).unwrap(), GatekeeperReply::Cleared);
+
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
     fn a_malformed_request_is_an_io_error_not_a_panic() {
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let handle = thread::spawn(move || handle_one_check(&mut server));
