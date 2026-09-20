@@ -247,7 +247,10 @@ impl Vm {
                         TemporalKind::PlainMonthDay => 2,
                         TemporalKind::PlainTime => 0,
                         TemporalKind::PlainYearMonth => 2,
-                        TemporalKind::Instant | TemporalKind::ZonedDateTime => 1,
+                        TemporalKind::Instant => 1,
+                        // `ZonedDateTime(epochNanoseconds, timeZone [, calendar])`:
+                        // only the trailing `calendar` is optional.
+                        TemporalKind::ZonedDateTime => 2,
                     },
                     NativeFunction::TemporalConstructor(kind),
                 )?;
