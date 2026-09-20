@@ -236,6 +236,13 @@ pub struct Parameter {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FunctionBodyItem {
     Variable(VariableDeclaration),
+    /// A semicolon-terminated runtime expression statement. Its original
+    /// tokens preserve BlueTSC emission while allowing the BlueTS-to-BlueJS
+    /// bridge to lower the expression without parsing emitted JavaScript.
+    Expression {
+        tokens: Vec<Token>,
+        span: SourceSpan,
+    },
     Return {
         tokens: Vec<Token>,
         span: SourceSpan,
@@ -1046,6 +1053,8 @@ impl Parser {
         locals: &mut Vec<VariableDeclaration>,
     ) {
         let mut depth = 1usize;
+        let mut parentheses = 0usize;
+        let mut brackets = 0usize;
         while !self.at_eof() && depth > 0 {
             self.diagnose_unsupported_opaque_syntax(
                 self.index,
@@ -1096,6 +1105,21 @@ impl Parser {
                 body.push(FunctionBodyItem::Variable(variable));
                 continue;
             }
+            if parentheses == 0
+                && brackets == 0
+                && starts_runtime_expression_statement(self.current())
+            {
+                let start = self.current().start;
+                let expression_start = self.index;
+                let tokens = self.collect_until_function_statement_end();
+                self.collect_expression_type_edits(expression_start, self.index);
+                self.consume(";");
+                body.push(FunctionBodyItem::Expression {
+                    tokens,
+                    span: SourceSpan::new(&self.id, start, self.previous().end),
+                });
+                continue;
+            }
             if self.peek("as") || self.peek("satisfies") {
                 body.push(FunctionBodyItem::Opaque(self.current().span(&self.id)));
                 let end = find_balanced_delimiter(
@@ -1110,7 +1134,15 @@ impl Parser {
             if self.consume(";") {
                 continue;
             }
-            body.push(FunctionBodyItem::Opaque(self.current().span(&self.id)));
+            let token = self.current().clone();
+            body.push(FunctionBodyItem::Opaque(token.span(&self.id)));
+            match token.text.as_str() {
+                "(" => parentheses += 1,
+                ")" if parentheses > 0 => parentheses -= 1,
+                "[" => brackets += 1,
+                "]" if brackets > 0 => brackets -= 1,
+                _ => {}
+            }
             self.bump();
         }
         if depth != 0 {
@@ -1576,6 +1608,38 @@ impl Parser {
         values
     }
 
+    /// Collects one function-body expression statement. Unlike a top-level
+    /// declaration initializer, an expression at the end of a function may
+    /// rely on automatic semicolon insertion before the enclosing `}`, so a
+    /// top-level closing brace is also a statement boundary here.
+    fn collect_until_function_statement_end(&mut self) -> Vec<Token> {
+        let start = self.index;
+        let mut parentheses = 0usize;
+        let mut brackets = 0usize;
+        let mut braces = 0usize;
+        while !self.at_eof() {
+            let token = self.current();
+            let boundary = matches!(token.text.as_str(), ";" | "}")
+                && parentheses == 0
+                && brackets == 0
+                && braces == 0;
+            if boundary {
+                break;
+            }
+            match token.text.as_str() {
+                "(" => parentheses += 1,
+                ")" if parentheses > 0 => parentheses -= 1,
+                "[" => brackets += 1,
+                "]" if brackets > 0 => brackets -= 1,
+                "{" => braces += 1,
+                "}" if braces > 0 => braces -= 1,
+                _ => {}
+            }
+            self.bump();
+        }
+        self.tokens[start..self.index].to_vec()
+    }
+
     fn skip_statement(&mut self) {
         let end = find_balanced_delimiter(&self.tokens, self.index, self.tokens.len() - 1, &[";"]);
         self.index = if self.tokens[end].is(";") {
@@ -1900,6 +1964,33 @@ fn find_balanced_delimiter(
         index += 1;
     }
     limit
+}
+
+/// Identifies the first token of an expression statement that the bounded
+/// parser can retain structurally inside a function body. Control-flow and
+/// declaration keywords intentionally remain opaque until they gain their
+/// own body-item representation, so the direct bridge cannot reinterpret a
+/// statement grammar as an expression.
+fn starts_runtime_expression_statement(token: &Token) -> bool {
+    matches!(
+        token.kind,
+        TokenKind::Number | TokenKind::String | TokenKind::Template | TokenKind::Identifier
+    ) || matches!(
+        token.text.as_str(),
+        "(" | "["
+            | "+"
+            | "-"
+            | "!"
+            | "~"
+            | "true"
+            | "false"
+            | "null"
+            | "undefined"
+            | "new"
+            | "delete"
+            | "typeof"
+            | "void"
+    )
 }
 
 fn matching_angle_bracket(tokens: &[Token], start: usize, limit: usize) -> Option<usize> {

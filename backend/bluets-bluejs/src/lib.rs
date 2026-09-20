@@ -564,6 +564,9 @@ fn lower_function(
     for item in &function.body {
         match item {
             FunctionBodyItem::Variable(variable) => body.push(lower_variable(module, variable)?),
+            FunctionBodyItem::Expression { tokens, .. } => body.push(bluejs::Stmt::Expr(
+                ExpressionLowerer::new(&module.id, tokens).parse()?,
+            )),
             FunctionBodyItem::Return { tokens, .. } => {
                 let value = (!tokens.is_empty())
                     .then(|| ExpressionLowerer::new(&module.id, tokens).parse())
@@ -2940,12 +2943,45 @@ mod tests {
     }
 
     #[test]
+    fn lowers_ordered_expression_statements_in_direct_functions() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "let total: number = 0; function remember(value: number): number { total += value; return total; } remember(2); remember(3); total;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        let bluejs::BlueJsProgramV1::Script(program) = &artifact.program else {
+            panic!("the direct script bridge must produce a script program");
+        };
+        assert!(matches!(
+            program.body.as_slice(),
+            [
+                bluejs::Stmt::VarDecl(_, _),
+                bluejs::Stmt::FunctionDecl(bluejs::Function { body, .. }),
+                bluejs::Stmt::Expr(_),
+                bluejs::Stmt::Expr(_),
+                bluejs::Stmt::Expr(_),
+            ] if matches!(
+                body.as_slice(),
+                [bluejs::Stmt::Expr(bluejs::Expr::Assign { .. }), bluejs::Stmt::Return(Some(_))]
+            )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(5.0)
+        );
+    }
+
+    #[test]
     fn refuses_to_silently_drop_an_unstructured_function_body_statement() {
         let result = compile_direct_script(
             ENTRY,
             &MapLoader::from([ModuleSource::new(
                 ENTRY,
-                "function answer(): number { unknown; return 42; } answer();",
+                "function answer(): number { if (true) { return 42; } return 0; } answer();",
             )]),
             CompilerOptions::default(),
         );

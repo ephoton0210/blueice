@@ -7,8 +7,8 @@
 use crate::compiler::{is_declaration_module, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{
-    Declaration, FunctionDeclaration, InterfaceDeclaration, Module, Parameter, TypeField,
-    TypeParameter,
+    Declaration, FunctionBodyItem, FunctionDeclaration, InterfaceDeclaration, Module, Parameter,
+    TypeField, TypeParameter,
 };
 use crate::syntax::{Token, TokenKind};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -1035,6 +1035,14 @@ impl<'a> ModuleChecker<'a> {
                 local.name.clone(),
                 local.annotation.clone().unwrap_or(Type::Unknown),
             );
+        }
+        for item in &function.body {
+            let FunctionBodyItem::Expression { tokens, span } = item else {
+                continue;
+            };
+            self.check_function_call(tokens, &scope, span);
+            self.check_direct_property_access(tokens, &scope, span);
+            self.check_arithmetic_operators(tokens, &scope, span);
         }
         if let Some(return_type) = &function.return_type {
             self.check_type(return_type, &function.span);

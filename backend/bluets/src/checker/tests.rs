@@ -20,6 +20,29 @@ fn rejects_a_primitive_initializer_with_the_wrong_annotation() {
 }
 
 #[test]
+fn checks_direct_calls_in_function_expression_statements() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "function takes_number(value: number): number { return value; }\n\
+             function invalid(): void { takes_number('wrong'); }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        1,
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn infers_boolean_comparisons_and_conditional_branch_types() {
     let result = crate::compile(
         "memory:///main.ts",
