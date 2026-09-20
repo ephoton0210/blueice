@@ -6,6 +6,7 @@ use super::*;
 
 mod arrays;
 mod binary_data;
+mod collection_iteration;
 mod execution;
 mod generators;
 mod globals;

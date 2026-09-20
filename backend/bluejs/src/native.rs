@@ -84,17 +84,26 @@ pub(crate) enum WeakCollectionMethod {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MapMethod {
+    Clear,
     Delete,
+    Entries,
+    ForEach,
     Get,
     Has,
+    Keys,
     Set,
+    Values,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SetMethod {
     Add,
+    Clear,
     Delete,
+    Entries,
+    ForEach,
     Has,
+    Values,
 }
 
 /// The lazy iterator helpers share one native dispatcher. Keeping the method
@@ -531,10 +540,11 @@ pub(crate) enum NativeFunction {
     ArrayJoin,
     ArrayIterator(ArrayIteratorKind),
     ArrayIteratorNext,
-    CollectionIterator {
+    /// `%MapIteratorPrototype%.next` (`map`) or `%SetIteratorPrototype%.next`:
+    /// one function per kind, so each rejects the other kind's iterators.
+    CollectionIteratorNext {
         map: bool,
     },
-    CollectionIteratorNext,
     GeneratorNext,
     GeneratorReturn,
     GeneratorThrow,

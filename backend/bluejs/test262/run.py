@@ -411,6 +411,20 @@ TEMPORAL_CALENDAR_TABLE_FIXTURES = frozenset(
     }
 )
 TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET = 2_000_000
+# `ZonedDateTime.from/timezone-case-insensitive.js` builds
+# `[...new Set([...timeZoneIdentifiers, ...Intl.supportedValuesOf('timeZone')])]`
+# (about 600 identifiers) and calls `Temporal.ZonedDateTime.from` three times per
+# identifier (as spelled, lower- and upper-case): finite, one ordinary call chain
+# per row. Until `Set` iteration was implemented that spread was empty, the loop
+# never ran and the fixture passed vacuously; it now does real work. Measured
+# minimum: between 100,000 (the default, which is not enough) and 150,000
+# dispatches; the allowance is ~3x the upper bound.
+TEMPORAL_TIME_ZONE_ID_TABLE_FIXTURES = frozenset(
+    {
+        "intl402/Temporal/ZonedDateTime/from/timezone-case-insensitive.js",
+    }
+)
+TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET = 500_000
 TEMPORAL_CALENDAR_MATRIX_TIMEOUT = 360
 # The six upstream Iterator.zip/zipKeyed basic fixtures enumerate every prefix
 # combination through three inputs, then verify descriptor details for every
@@ -745,6 +759,8 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET)
     if relative in TEMPORAL_CALENDAR_TABLE_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET)
+    if relative in TEMPORAL_TIME_ZONE_ID_TABLE_FIXTURES:
+        return max(default, TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET)
     if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
         return max(default, ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET)
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:

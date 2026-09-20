@@ -40,6 +40,8 @@ use std::time::Duration;
 
 mod binary_data;
 pub(crate) use binary_data::{f16_bits_to_f64, f64_to_f16_bits};
+mod collection_iteration;
+pub(crate) use collection_iteration::CollectionEntry;
 mod core;
 mod exotic;
 mod lifecycle;
@@ -878,6 +880,19 @@ enum ObjectKind {
         done: bool,
         kind: ArrayIteratorKind,
     },
+    /// A Map or Set iterator (`%MapIteratorPrototype%` /
+    /// `%SetIteratorPrototype%`). `index` is a position in the collection's
+    /// insertion-ordered entry list -- deletions leave tombstones and `clear`
+    /// empties every slot without shortening the list, so an index stays valid
+    /// while the collection changes and the iterator observes those changes.
+    /// `collection` is `None` once the iterator has finished
+    /// (`[[IteratedMap]]`/`[[IteratedSet]]` set to undefined): it stays done.
+    CollectionIterator {
+        collection: Option<ObjectId>,
+        index: usize,
+        kind: ArrayIteratorKind,
+        map: bool,
+    },
     /// `Iterator.from` wraps a valid iterator which does not already inherit
     /// `%Iterator.prototype%`. The cached `next` method is an internal slot,
     /// rather than an observable property, and both references participate in
@@ -1276,6 +1291,9 @@ impl Object {
                 | ObjectKind::SegmentIterator { .. } => Vec::new(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
+                ObjectKind::CollectionIterator { collection, .. } => {
+                    collection.iter().copied().collect()
+                }
                 ObjectKind::IteratorWrapper { iterator, next } => {
                     std::iter::once(*iterator).chain(next.object_id()).collect()
                 }
@@ -1481,6 +1499,9 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             | ObjectKind::SegmentIterator { .. } => Vec::new(),
             ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
             ObjectKind::ArrayIterator { object, .. } => vec![*object],
+            ObjectKind::CollectionIterator { collection, .. } => {
+                collection.iter().copied().collect()
+            }
             ObjectKind::IteratorWrapper { iterator, next } => {
                 std::iter::once(*iterator).chain(next.object_id()).collect()
             }
