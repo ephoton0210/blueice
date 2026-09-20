@@ -2,7 +2,7 @@
 
 [← Phase 18 plan](PLAN.md)
 
-This document publishes the versioned boundary between BlueTS and BlueJS. `blueice-bluejs` now exposes a structured-program hand-off, and `backend/bluets-bluejs` uses it for a bounded, host-neutral classic-script subset. The boundary intentionally does **not** add a dependency from `blueice-bluets` to `blueice-bluejs`. A page host, module hand-off, bytecode safe-point map and debugger attachment do not exist yet; BlueTS and BlueTSC remain usable as standalone, host-neutral front ends.
+This document publishes the versioned boundary between BlueTS and BlueJS. `blueice-bluejs` now exposes a structured-program hand-off, and `backend/bluets-bluejs` uses it for bounded, host-neutral classic-script and local-export ESM-module subsets. The boundary intentionally does **not** add a dependency from `blueice-bluets` to `blueice-bluejs`. A page host, resolved multi-module graph, bytecode safe-point map and debugger attachment do not exist yet; BlueTS and BlueTSC remain usable as standalone, host-neutral front ends.
 
 The keywords **MUST**, **MUST NOT**, **SHOULD**, and **MAY** express the contract's requirements.
 
@@ -37,7 +37,7 @@ An incompatible major ABI, an unknown required field, a source hash mismatch, or
 
 The program boundary is structured data, not generated JavaScript text. BlueJS owns `BlueJsProgramV1`, whose current variants wrap its public `Program` (classic script) and `Module` ASTs; its `compile` method dispatches to BlueJS's compiler. BlueTS lowers supported TypeScript syntax once through the bridge to that BlueJS-owned AST. BlueJS remains the authority for ECMAScript semantics, bytecode generation, realm ownership, GC accounting, capability summary and execution.
 
-The shipped bridge first accepts exactly one non-declaration source module as a classic script. It erases type aliases, interfaces and type exports; it directly lowers non-exported initialized `var`, `let` and `const` declarations; named local functions with required identifier parameters; ordered local-declaration/`return` function bodies; and literal, identifier, parenthesized, direct-call and `+`, `-`, `*`, `/`, `%` expressions. The parser retains any unstructured function-body token as opaque data, and the bridge MUST reject it instead of silently dropping it. Imports, exports, member access, optional/default/rest parameters and every other runtime shape fail with `UnsupportedRuntimeTarget`. The bridge consumes BlueTS's checked, tokenized declarations and **MUST NOT** call a BlueJS source parser on BlueTSC's emitted JavaScript. Its integration tests execute the resulting BlueJS bytecode, not a reparsed generated text artifact.
+The shipped bridge first accepts exactly one non-declaration source module in either classic-script or ESM-module mode. It erases type aliases, interfaces and type exports; it directly lowers initialized `var`, `let` and `const` declarations; named local functions with required identifier parameters; ordered local-declaration/`return` function bodies; and literal, identifier, parenthesized, direct-call and `+`, `-`, `*`, `/`, `%` expressions. In ESM mode, local named and default exports become BlueJS module export entries. The parser retains any unstructured function-body token as opaque data, and the bridge MUST reject it instead of silently dropping it. Runtime imports fail with `UnsupportedRuntimeTarget`; re-exports remain outside BlueTS's accepted matrix; member access, optional/default/rest parameters and every other unlowered runtime shape likewise fail explicitly. The bridge consumes BlueTS's checked, tokenized declarations and **MUST NOT** call a BlueJS source parser on BlueTSC's emitted JavaScript. Its integration tests execute the resulting BlueJS bytecode, not a reparsed generated text artifact.
 
 The current wrapper does not assign stable AST node IDs, code-unit IDs or bytecode safe points. Those are required before direct-page source/debug attachment. The following logical envelope is therefore the target direct-page extension, not a representation currently transferred by the host-neutral classic-script bridge:
 
@@ -139,7 +139,7 @@ Adding a host API is additive only when it preserves existing binding IDs and de
 
 ## Remaining implementation gate
 
-The first structured classic-script bridge has landed. Direct-page activation remains gated on its owner providing:
+The first structured classic-script and local-export module bridge has landed. Direct-page activation remains gated on its owner providing:
 
 1. Public, tested BlueJS node IDs, code-unit IDs and safe-point validation APIs for the page/module AST surface.
 2. Bridge conformance fixtures extending the shipped no-emitted-JavaScript-reparse proof to exact origin/module preservation and deterministic bytecode-map ordering.

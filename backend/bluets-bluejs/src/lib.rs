@@ -13,9 +13,9 @@
 
 use blueice_bluejs as bluejs;
 use blueice_bluets::{
-    compile, CompilerOptions, Declaration, Diagnostic, FunctionBodyItem, FunctionDeclaration,
-    Module, ModuleLoader, SourceSpan, Token, TokenKind, VariableDeclaration, VariableKind,
-    LANGUAGE_VERSION,
+    compile, BlueTsDebugInfo, CompilerOptions, Declaration, Diagnostic, FunctionBodyItem,
+    FunctionDeclaration, Module, ModuleLoader, SourceSpan, Token, TokenKind, VariableDeclaration,
+    VariableKind, LANGUAGE_VERSION,
 };
 use std::fmt;
 
@@ -41,6 +41,18 @@ pub struct LoweringProvenance {
 /// A checked, direct BlueJS compilation of one classic TypeScript script.
 #[derive(Clone)]
 pub struct DirectScript {
+    pub bridge_abi: &'static str,
+    pub program: bluejs::BlueJsProgramV1,
+    pub bytecode: bluejs::Bytecode,
+    pub language_version: String,
+    pub compiler_options_fingerprint: String,
+    pub sources: Vec<BridgeSource>,
+    pub provenance: Vec<LoweringProvenance>,
+}
+
+/// A checked, direct BlueJS compilation of one TypeScript source module.
+#[derive(Clone)]
+pub struct DirectModule {
     pub bridge_abi: &'static str,
     pub program: bluejs::BlueJsProgramV1,
     pub bytecode: bluejs::Bytecode,
@@ -99,43 +111,12 @@ pub fn compile_direct_script(
     loader: &dyn ModuleLoader,
     options: CompilerOptions,
 ) -> Result<DirectScript, BridgeError> {
-    let compilation = compile(entry, loader, options);
-    if compilation.has_errors() {
-        return Err(BridgeError::BlueTs(compilation.diagnostics));
-    }
-    let debug_info = compilation
-        .debug_info
-        .expect("a successful BlueTS compilation always has debug information");
-    if compilation.project.modules.len() != 1 {
-        return Err(unsupported(
-            SourceSpan::new(entry, 0, 0),
-            "the v1 direct bridge supports exactly one runtime module",
-        ));
-    }
-    let module = compilation.project.modules.get(entry).ok_or_else(|| {
-        unsupported(
-            SourceSpan::new(entry, 0, 0),
-            "the requested entry was not retained in the checked source graph",
-        )
-    })?;
-    if module.id.ends_with(".d.ts") {
-        return Err(unsupported(
-            SourceSpan::new(entry, 0, 0),
-            "a declaration module cannot be executed as a direct script",
-        ));
-    }
+    let (module, debug_info) = checked_entry(entry, loader, options)?;
 
-    let (body, provenance) = lower_script(module)?;
+    let (body, provenance) = lower_script(&module)?;
     let program = bluejs::BlueJsProgramV1::Script(bluejs::Program { body });
     let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
-    let sources = debug_info
-        .sources
-        .into_iter()
-        .map(|source| BridgeSource {
-            module: source.module,
-            content_hash: source.content_hash,
-        })
-        .collect();
+    let sources = bridge_sources(&debug_info);
     Ok(DirectScript {
         bridge_abi: BLUE_TS_BLUEJS_BRIDGE_ABI_V1,
         program,
@@ -145,6 +126,83 @@ pub fn compile_direct_script(
         sources,
         provenance,
     })
+}
+
+/// Parses, resolves and checks one host-authorized TypeScript source graph,
+/// then directly constructs one BlueJS Module AST and bytecode unit.
+///
+/// The v1 direct module subset has one non-declaration module and local named
+/// or default ESM exports. Runtime imports and re-exports remain rejected
+/// until the bridge can carry BlueTS's host-authorized module resolution to a
+/// BlueJS module graph.
+pub fn compile_direct_module(
+    entry: &str,
+    loader: &dyn ModuleLoader,
+    options: CompilerOptions,
+) -> Result<DirectModule, BridgeError> {
+    let (module, debug_info) = checked_entry(entry, loader, options)?;
+    let (module, provenance) = lower_module(&module)?;
+    let program = bluejs::BlueJsProgramV1::Module(module);
+    let bytecode = program.compile().map_err(BridgeError::BlueJs)?;
+    let sources = bridge_sources(&debug_info);
+    Ok(DirectModule {
+        bridge_abi: BLUE_TS_BLUEJS_BRIDGE_ABI_V1,
+        program,
+        bytecode,
+        language_version: LANGUAGE_VERSION.to_string(),
+        compiler_options_fingerprint: debug_info.compiler_options_hash,
+        sources,
+        provenance,
+    })
+}
+
+fn checked_entry(
+    entry: &str,
+    loader: &dyn ModuleLoader,
+    options: CompilerOptions,
+) -> Result<(Module, BlueTsDebugInfo), BridgeError> {
+    let compilation = compile(entry, loader, options);
+    if compilation.has_errors() {
+        return Err(BridgeError::BlueTs(compilation.diagnostics));
+    }
+    if compilation.project.modules.len() != 1 {
+        return Err(unsupported(
+            SourceSpan::new(entry, 0, 0),
+            "the v1 direct bridge supports exactly one source module",
+        ));
+    }
+    let module = compilation
+        .project
+        .modules
+        .get(entry)
+        .cloned()
+        .ok_or_else(|| {
+            unsupported(
+                SourceSpan::new(entry, 0, 0),
+                "the requested entry was not retained in the checked source graph",
+            )
+        })?;
+    if module.id.ends_with(".d.ts") {
+        return Err(unsupported(
+            SourceSpan::new(entry, 0, 0),
+            "a declaration module cannot be executed directly",
+        ));
+    }
+    let debug_info = compilation
+        .debug_info
+        .expect("a successful BlueTS compilation always has debug information");
+    Ok((module, debug_info))
+}
+
+fn bridge_sources(debug_info: &BlueTsDebugInfo) -> Vec<BridgeSource> {
+    debug_info
+        .sources
+        .iter()
+        .map(|source| BridgeSource {
+            module: source.module.clone(),
+            content_hash: source.content_hash.clone(),
+        })
+        .collect()
 }
 
 fn lower_script(
@@ -214,6 +272,97 @@ fn lower_script(
         }
     }
     Ok((body, provenance))
+}
+
+fn lower_module(module: &Module) -> Result<(bluejs::Module, Vec<LoweringProvenance>), BridgeError> {
+    let mut body = Vec::new();
+    let mut exports = Vec::new();
+    let mut provenance = Vec::new();
+    for declaration in &module.declarations {
+        match declaration {
+            Declaration::TypeAlias(_) | Declaration::Interface(_) | Declaration::TypeExport(_) => {}
+            Declaration::Variable(variable) if !variable.declared => {
+                body.push(lower_variable(module, variable)?);
+                provenance.push(LoweringProvenance {
+                    source: variable.span.clone(),
+                });
+                if variable.exported {
+                    exports.push(bluejs::ExportEntry::Local {
+                        export_name: variable.name.clone(),
+                        local_name: variable.name.clone(),
+                    });
+                }
+            }
+            Declaration::Function(function) if !function.declared && !function.overload => {
+                body.push(lower_function(module, function)?);
+                provenance.push(LoweringProvenance {
+                    source: function.span.clone(),
+                });
+                if function.default_export {
+                    exports.push(bluejs::ExportEntry::Local {
+                        export_name: "default".to_string(),
+                        local_name: function.name.clone(),
+                    });
+                } else if function.exported {
+                    exports.push(bluejs::ExportEntry::Local {
+                        export_name: function.name.clone(),
+                        local_name: function.name.clone(),
+                    });
+                }
+            }
+            Declaration::Raw(raw) => {
+                body.push(bluejs::Stmt::Expr(
+                    ExpressionLowerer::new(&module.id, &raw.tokens).parse()?,
+                ));
+                provenance.push(LoweringProvenance {
+                    source: raw.span.clone(),
+                });
+            }
+            Declaration::DefaultExport(export) => exports.push(bluejs::ExportEntry::Local {
+                export_name: "default".to_string(),
+                local_name: export.name.clone(),
+            }),
+            Declaration::ValueExport(export) => {
+                exports.extend(
+                    export
+                        .bindings
+                        .iter()
+                        .map(|binding| bluejs::ExportEntry::Local {
+                            export_name: binding.exported.clone(),
+                            local_name: binding.local.clone(),
+                        }),
+                );
+            }
+            Declaration::Import(import) if import.type_only => {}
+            Declaration::Import(import) => {
+                return Err(unsupported(
+                    import.span.clone(),
+                    "runtime imports require the direct module-graph bridge",
+                ));
+            }
+            Declaration::Variable(variable) => {
+                return Err(unsupported(
+                    variable.span.clone(),
+                    "declared variables cannot be lowered to a direct module",
+                ));
+            }
+            Declaration::Function(function) => {
+                return Err(unsupported(
+                    function.span.clone(),
+                    "declared or overloaded functions cannot be lowered to a direct module",
+                ));
+            }
+        }
+    }
+    Ok((
+        bluejs::Module {
+            body,
+            imports: Vec::new(),
+            exports,
+            requests: Vec::new(),
+        },
+        provenance,
+    ))
 }
 
 fn lower_function(
@@ -503,6 +652,7 @@ mod tests {
     use blueice_bluets::{MapLoader, ModuleSource};
 
     const ENTRY: &str = "memory:///direct.ts";
+    const MODULE_ENTRY: &str = "memory:///direct-module.ts";
 
     #[test]
     fn lowers_typed_source_directly_to_bluejs_ast_and_bytecode() {
@@ -601,5 +751,49 @@ mod tests {
         };
         assert_eq!(span.module, ENTRY);
         assert!(message.contains("function body syntax"));
+    }
+
+    #[test]
+    fn lowers_local_named_and_default_exports_to_a_bluejs_module() {
+        let artifact = compile_direct_module(
+            MODULE_ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                MODULE_ENTRY,
+                "const answer: number = 40 + 2; \
+                 export { answer as publicAnswer }; export default answer; answer;",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(artifact.bridge_abi, BLUE_TS_BLUEJS_BRIDGE_ABI_V1);
+        let bluejs::BlueJsProgramV1::Module(module) = &artifact.program else {
+            panic!("the direct module bridge must produce a BlueJS module AST");
+        };
+        assert!(matches!(
+            module.body.as_slice(),
+            [bluejs::Stmt::VarDecl(_, _), bluejs::Stmt::Expr(bluejs::Expr::Identifier(name))]
+                if name == "answer"
+        ));
+        assert!(module.imports.is_empty());
+        assert!(module.requests.is_empty());
+        assert_eq!(
+            module.exports,
+            vec![
+                bluejs::ExportEntry::Local {
+                    export_name: "publicAnswer".to_string(),
+                    local_name: "answer".to_string(),
+                },
+                bluejs::ExportEntry::Local {
+                    export_name: "default".to_string(),
+                    local_name: "answer".to_string(),
+                },
+            ]
+        );
+        assert_eq!(
+            bluejs::Vm::default()
+                .execute_module(&artifact.bytecode)
+                .unwrap(),
+            bluejs::Value::Number(42.0)
+        );
     }
 }
