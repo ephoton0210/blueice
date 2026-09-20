@@ -1132,6 +1132,10 @@ impl Vm {
         self.alloc_temporal_value(value, false)
     }
 
+    /// Every Temporal prototype accessor. `native_call` has already checked the
+    /// receiver against the type of the prototype the getter was installed on
+    /// (`NativeFunction::temporal_receiver_kind`), so `value.kind` here is
+    /// always one this getter is defined for and no arm re-checks it.
     pub(in super::super) fn temporal_getter(
         &mut self,
         receiver: &Value,
@@ -1154,11 +1158,6 @@ impl Vm {
             | native::TemporalGetter::DurationMilliseconds
             | native::TemporalGetter::DurationMicroseconds
             | native::TemporalGetter::DurationNanoseconds => {
-                if value.kind != TemporalKind::Duration {
-                    return Err(RuntimeError::TypeError(
-                        "Temporal.Duration getter requires a duration receiver".into(),
-                    ));
-                }
                 let duration = value
                     .duration
                     .as_deref()
@@ -1179,11 +1178,6 @@ impl Vm {
                 Ok(Value::Number(field as f64))
             }
             native::TemporalGetter::DurationSign | native::TemporalGetter::DurationBlank => {
-                if value.kind != TemporalKind::Duration {
-                    return Err(RuntimeError::TypeError(
-                        "Temporal.Duration getter requires a duration receiver".into(),
-                    ));
-                }
                 let sign = value
                     .duration
                     .as_deref()
@@ -1196,12 +1190,7 @@ impl Vm {
                 })
             }
             native::TemporalGetter::CalendarId => Ok(Value::String(value.calendar.into())),
-            native::TemporalGetter::EpochMilliseconds
-                if matches!(
-                    value.kind,
-                    TemporalKind::ZonedDateTime | TemporalKind::Instant
-                ) =>
-            {
+            native::TemporalGetter::EpochMilliseconds => {
                 // `floor(epochNanoseconds / 10^6)`, not a truncation toward
                 // zero: a pre-epoch instant's milliseconds round *down*
                 // (Test262's `epochMilliseconds/basic.js`).
@@ -1217,71 +1206,27 @@ impl Vm {
                     .map(Value::Number)
                     .ok_or_else(|| RuntimeError::RangeError("invalid Temporal instant".into()))
             }
-            native::TemporalGetter::EpochMilliseconds => Err(RuntimeError::TypeError(
-                "Temporal epochMilliseconds requires an Instant or ZonedDateTime receiver".into(),
-            )),
-            native::TemporalGetter::EpochNanoseconds
-                if matches!(
-                    value.kind,
-                    TemporalKind::ZonedDateTime | TemporalKind::Instant
-                ) =>
-            {
-                Ok(Value::BigInt(value.epoch_nanoseconds))
-            }
-            native::TemporalGetter::EpochNanoseconds => Err(RuntimeError::TypeError(
-                "Temporal epochNanoseconds requires an Instant or ZonedDateTime receiver".into(),
-            )),
-            native::TemporalGetter::TimeZoneId if value.kind == TemporalKind::ZonedDateTime => {
-                Ok(Value::String(value.time_zone.into()))
-            }
-            native::TemporalGetter::TimeZoneId => Err(RuntimeError::TypeError(
-                "Temporal timeZoneId requires a ZonedDateTime receiver".into(),
-            )),
+            native::TemporalGetter::EpochNanoseconds => Ok(Value::BigInt(value.epoch_nanoseconds)),
+            native::TemporalGetter::TimeZoneId => Ok(Value::String(value.time_zone.into())),
             native::TemporalGetter::Hour
             | native::TemporalGetter::Minute
             | native::TemporalGetter::Second
             | native::TemporalGetter::Millisecond
             | native::TemporalGetter::Microsecond
-            | native::TemporalGetter::Nanosecond => {
-                if !matches!(
-                    value.kind,
-                    TemporalKind::PlainTime
-                        | TemporalKind::PlainDateTime
-                        | TemporalKind::ZonedDateTime
-                ) {
-                    return Err(RuntimeError::TypeError(
-                        "Temporal time-of-day getter requires a PlainTime, PlainDateTime or \
-                         ZonedDateTime receiver"
-                            .into(),
-                    ));
-                }
-                Ok(Value::Number(match getter {
-                    native::TemporalGetter::Hour => value.hour.into(),
-                    native::TemporalGetter::Minute => value.minute.into(),
-                    native::TemporalGetter::Second => value.second.into(),
-                    native::TemporalGetter::Millisecond => value.millisecond.into(),
-                    native::TemporalGetter::Microsecond => value.microsecond.into(),
-                    native::TemporalGetter::Nanosecond => value.nanosecond.into(),
-                    _ => unreachable!("all Temporal.PlainTime getters are listed above"),
-                }))
-            }
+            | native::TemporalGetter::Nanosecond => Ok(Value::Number(match getter {
+                native::TemporalGetter::Hour => value.hour.into(),
+                native::TemporalGetter::Minute => value.minute.into(),
+                native::TemporalGetter::Second => value.second.into(),
+                native::TemporalGetter::Millisecond => value.millisecond.into(),
+                native::TemporalGetter::Microsecond => value.microsecond.into(),
+                native::TemporalGetter::Nanosecond => value.nanosecond.into(),
+                _ => unreachable!("all Temporal.PlainTime getters are listed above"),
+            })),
             native::TemporalGetter::DayOfWeek
             | native::TemporalGetter::DayOfYear
             | native::TemporalGetter::WeekOfYear
             | native::TemporalGetter::YearOfWeek
             | native::TemporalGetter::DaysInWeek => {
-                if !matches!(
-                    value.kind,
-                    TemporalKind::PlainDate
-                        | TemporalKind::PlainDateTime
-                        | TemporalKind::ZonedDateTime
-                ) {
-                    return Err(RuntimeError::TypeError(
-                        "Temporal ISO week-date getter requires a PlainDate, PlainDateTime or \
-                         ZonedDateTime receiver"
-                            .into(),
-                    ));
-                }
                 // Calendar-invariant: Temporal's day-of-week/week-of-year
                 // getters operate on the ISO representation for every
                 // calendar, per the current spec revision.
@@ -1304,11 +1249,6 @@ impl Vm {
                 })
             }
             native::TemporalGetter::OffsetNanoseconds | native::TemporalGetter::Offset => {
-                if value.kind != TemporalKind::ZonedDateTime {
-                    return Err(RuntimeError::TypeError(
-                        "Temporal offset getter requires a ZonedDateTime receiver".into(),
-                    ));
-                }
                 let zone = temporal_zoned_date_time_zone(&value);
                 let offset = zone.offset_nanoseconds_for(&value.epoch_nanoseconds);
                 Ok(if getter == native::TemporalGetter::OffsetNanoseconds {
@@ -1318,132 +1258,37 @@ impl Vm {
                 })
             }
             native::TemporalGetter::HoursInDay => {
-                if value.kind != TemporalKind::ZonedDateTime {
-                    return Err(RuntimeError::TypeError(
-                        "Temporal hoursInDay getter requires a ZonedDateTime receiver".into(),
-                    ));
-                }
                 let zone = temporal_zoned_date_time_zone(&value);
                 let date = (value.year, value.month, value.day);
                 let length = zoned_date_time::day_length_nanoseconds(&zone, date);
                 Ok(Value::Number(length as f64 / 3_600_000_000_000.0))
             }
             getter => {
-                if !matches!(
-                    value.kind,
-                    TemporalKind::PlainDate
-                        | TemporalKind::PlainDateTime
-                        | TemporalKind::PlainMonthDay
-                        | TemporalKind::PlainYearMonth
-                        | TemporalKind::ZonedDateTime
-                ) {
-                    return Err(RuntimeError::TypeError(
-                        "Temporal calendar field requires a plain date receiver".into(),
-                    ));
-                }
                 let fields = self.temporal_calendar_fields(&value)?;
                 match getter {
-                    native::TemporalGetter::Year
-                        if matches!(
-                            value.kind,
-                            TemporalKind::PlainDate
-                                | TemporalKind::PlainDateTime
-                                | TemporalKind::PlainYearMonth
-                                | TemporalKind::ZonedDateTime
-                        ) =>
-                    {
-                        Ok(Value::Number(fields.year.into()))
-                    }
-                    native::TemporalGetter::Month if value.kind != TemporalKind::PlainTime => {
-                        Ok(Value::Number(fields.month.into()))
-                    }
-                    native::TemporalGetter::MonthCode if value.kind != TemporalKind::PlainTime => {
+                    native::TemporalGetter::Year => Ok(Value::Number(fields.year.into())),
+                    native::TemporalGetter::Month => Ok(Value::Number(fields.month.into())),
+                    native::TemporalGetter::MonthCode => {
                         Ok(Value::String(fields.month_code.into()))
                     }
-                    native::TemporalGetter::Day
-                        if matches!(
-                            value.kind,
-                            TemporalKind::PlainDate
-                                | TemporalKind::PlainDateTime
-                                | TemporalKind::PlainMonthDay
-                                | TemporalKind::ZonedDateTime
-                        ) =>
-                    {
-                        Ok(Value::Number(fields.day.into()))
-                    }
-                    native::TemporalGetter::Era
-                        if matches!(
-                            value.kind,
-                            TemporalKind::PlainDate
-                                | TemporalKind::PlainDateTime
-                                | TemporalKind::PlainYearMonth
-                                | TemporalKind::ZonedDateTime
-                        ) =>
-                    {
-                        Ok(fields
-                            .era
-                            .map_or(Value::Undefined, |era| Value::String(era.into())))
-                    }
-                    native::TemporalGetter::EraYear
-                        if matches!(
-                            value.kind,
-                            TemporalKind::PlainDate
-                                | TemporalKind::PlainDateTime
-                                | TemporalKind::PlainYearMonth
-                                | TemporalKind::ZonedDateTime
-                        ) =>
-                    {
-                        Ok(fields
-                            .era_year
-                            .map_or(Value::Undefined, |year| Value::Number(year.into())))
-                    }
-                    native::TemporalGetter::MonthsInYear
-                        if matches!(
-                            value.kind,
-                            TemporalKind::PlainDate
-                                | TemporalKind::PlainDateTime
-                                | TemporalKind::PlainYearMonth
-                                | TemporalKind::ZonedDateTime
-                        ) =>
-                    {
+                    native::TemporalGetter::Day => Ok(Value::Number(fields.day.into())),
+                    native::TemporalGetter::Era => Ok(fields
+                        .era
+                        .map_or(Value::Undefined, |era| Value::String(era.into()))),
+                    native::TemporalGetter::EraYear => Ok(fields
+                        .era_year
+                        .map_or(Value::Undefined, |year| Value::Number(year.into()))),
+                    native::TemporalGetter::MonthsInYear => {
                         Ok(Value::Number(fields.months_in_year.into()))
                     }
-                    native::TemporalGetter::DaysInMonth
-                        if matches!(
-                            value.kind,
-                            TemporalKind::PlainDate
-                                | TemporalKind::PlainDateTime
-                                | TemporalKind::PlainYearMonth
-                                | TemporalKind::ZonedDateTime
-                        ) =>
-                    {
+                    native::TemporalGetter::DaysInMonth => {
                         Ok(Value::Number(fields.days_in_month.into()))
                     }
-                    native::TemporalGetter::DaysInYear
-                        if matches!(
-                            value.kind,
-                            TemporalKind::PlainDate
-                                | TemporalKind::PlainDateTime
-                                | TemporalKind::PlainYearMonth
-                                | TemporalKind::ZonedDateTime
-                        ) =>
-                    {
+                    native::TemporalGetter::DaysInYear => {
                         Ok(Value::Number(fields.days_in_year.into()))
                     }
-                    native::TemporalGetter::InLeapYear
-                        if matches!(
-                            value.kind,
-                            TemporalKind::PlainDate
-                                | TemporalKind::PlainDateTime
-                                | TemporalKind::PlainYearMonth
-                                | TemporalKind::ZonedDateTime
-                        ) =>
-                    {
-                        Ok(Value::Bool(fields.in_leap_year))
-                    }
-                    _ => Err(RuntimeError::TypeError(
-                        "Temporal calendar field is unavailable on this receiver".into(),
-                    )),
+                    native::TemporalGetter::InLeapYear => Ok(Value::Bool(fields.in_leap_year)),
+                    _ => unreachable!("every other Temporal getter is handled above"),
                 }
             }
         }
