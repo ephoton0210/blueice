@@ -2,13 +2,13 @@
 
 [← Phase 18 plan](PLAN.md)
 
-This document publishes the versioned boundary BlueTS will use when the BlueJS page host exposes its AST/IR and bytecode interfaces. It intentionally does **not** add a dependency from `blueice-bluets` to `blueice-bluejs`, and it does not imply that a page host or bytecode hand-off exists today. BlueTS and BlueTSC remain usable as a standalone, host-neutral front end in the meantime.
+This document publishes the versioned boundary between BlueTS and BlueJS. `blueice-bluejs` now exposes a structured-program hand-off, and `backend/bluets-bluejs` uses it for a bounded, host-neutral classic-script subset. The boundary intentionally does **not** add a dependency from `blueice-bluets` to `blueice-bluejs`. A page host, module hand-off, bytecode safe-point map and debugger attachment do not exist yet; BlueTS and BlueTSC remain usable as standalone, host-neutral front ends.
 
 The keywords **MUST**, **MUST NOT**, **SHOULD**, and **MAY** express the contract's requirements.
 
 ## Versions and compatibility
 
-The bridge crate, to be introduced only after BlueJS owns the required public types, is the sole crate allowed to depend on both `blueice-bluets` and `blueice-bluejs`. Neither compiler may depend on the other. Its initial wire identity is `bluejs-program-v1`.
+`backend/bluets-bluejs` is the sole crate allowed to depend on both `blueice-bluets` and `blueice-bluejs`. Neither compiler may depend on the other. BlueJS owns the initial structured-program ABI identity, `bluejs-program-v1`.
 
 | Surface | Current wire version | Owner | Compatibility rule |
 | --- | --- | --- | --- |
@@ -35,7 +35,11 @@ An incompatible major ABI, an unknown required field, a source hash mismatch, or
 
 ## AST/IR hand-off
 
-The program boundary is structured data, not generated JavaScript text. BlueTS lowers supported TypeScript syntax once to the BlueJS-owned ECMAScript program ABI. The bridge then invokes a BlueJS builder/visitor or transfers its equivalent serializable IR. BlueJS remains the authority for ECMAScript semantics, bytecode generation, realm ownership, GC accounting, capability summary and execution.
+The program boundary is structured data, not generated JavaScript text. BlueJS owns `BlueJsProgramV1`, whose current variants wrap its public `Program` (classic script) and `Module` ASTs; its `compile` method dispatches to BlueJS's compiler. BlueTS lowers supported TypeScript syntax once through the bridge to that BlueJS-owned AST. BlueJS remains the authority for ECMAScript semantics, bytecode generation, realm ownership, GC accounting, capability summary and execution.
+
+The shipped bridge first accepts exactly one non-declaration source module as a classic script. It erases type aliases, interfaces and type exports; it directly lowers non-exported initialized `var`, `let` and `const` declarations plus literal, identifier, parenthesized and `+`, `-`, `*`, `/`, `%` expressions. It rejects imports, exports, functions, member access and every other runtime shape with `UnsupportedRuntimeTarget`. The bridge consumes BlueTS's checked, tokenized declarations and **MUST NOT** call a BlueJS source parser on BlueTSC's emitted JavaScript. Its integration tests execute the resulting BlueJS bytecode, not a reparsed generated text artifact.
+
+The current wrapper does not assign stable AST node IDs, code-unit IDs or bytecode safe points. Those are required before direct-page source/debug attachment. The following logical envelope is therefore the target direct-page extension, not a representation currently transferred by the host-neutral classic-script bridge:
 
 The v1 logical envelope is:
 
@@ -57,7 +61,7 @@ BlueJsProgramV1 {
 }
 ```
 
-`BlueJsAstV1` is defined and versioned by BlueJS; BlueTS must never duplicate or privately reinterpret it. `BlueTsLoweringProvenanceV1` associates an AST/IR node supplied to BlueJS with a half-open original TypeScript byte span:
+The future `BlueJsAstV1` is defined and versioned by BlueJS; BlueTS must never duplicate or privately reinterpret it. `BlueTsLoweringProvenanceV1` will associate an AST/IR node supplied to BlueJS with a half-open original TypeScript byte span:
 
 ```text
 BlueTsLoweringProvenanceV1 {
@@ -75,7 +79,7 @@ The v1 adapter accepts only BlueTS's documented subset. An unsupported lowering,
 
 ## TypeScript span to BlueJS safe-point map
 
-BlueTSC Source Map v3 is a portable JavaScript artifact. It is not a bytecode debugger map. After BlueJS compiles `BlueJsProgramV1`, the bridge combines BlueJS instruction safe points with `BlueTsLoweringProvenanceV1` and publishes the following generation-bound map:
+BlueTSC Source Map v3 is a portable JavaScript artifact. It is not a bytecode debugger map. Once BlueJS exposes instruction safe points and code-unit IDs, the bridge will combine them with `BlueTsLoweringProvenanceV1` and publish the following generation-bound map:
 
 ```text
 BlueTsSafePointMapV1 {
@@ -133,13 +137,13 @@ The manifest is emitted with a stable field order, normalized LF text and no tim
 
 Adding a host API is additive only when it preserves existing binding IDs and declaration meanings. Removing or changing a public declaration requires a new host API major version and a new compatible feature profile. A compiler may target a declared older profile only when the host explicitly supplies its matching generated manifest; it may never infer API availability from the installed BlueJS version.
 
-## Implementation gate
+## Remaining implementation gate
 
-Before landing the bridge, its owner must provide:
+The first structured classic-script bridge has landed. Direct-page activation remains gated on its owner providing:
 
-1. Public, tested BlueJS `BlueJsAstV1`, node IDs, code-unit IDs and safe-point validation APIs.
-2. A bridge conformance fixture proving no emitted-JavaScript reparse path, exact origin/module preservation and deterministic bytecode map ordering.
+1. Public, tested BlueJS node IDs, code-unit IDs and safe-point validation APIs for the page/module AST surface.
+2. Bridge conformance fixtures extending the shipped no-emitted-JavaScript-reparse proof to exact origin/module preservation and deterministic bytecode-map ordering.
 3. A host schema generator proving each generated `lib.blueice.d.ts` binding exists in the corresponding feature profile and that an absent binding is rejected by both checker and host.
 4. Debugger tests for breakpoint binding, step/exception locations, stale-map rejection and the distinction between a static TypeScript type and a runtime BlueJS value.
 
-Until those gates are satisfied, `BlueTsDebugInfo` remains VM-independent and contains static source/type/symbol data only. This document fixes the hand-off shape and rejection behavior without pretending the missing BlueJS APIs have already shipped.
+Until those gates are satisfied, `BlueTsDebugInfo` remains VM-independent and contains static source/type/symbol data only. This document records the shipped bounded hand-off and fixes the rejection behavior for the still-missing page APIs.

@@ -39,8 +39,10 @@ pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
 pub use emitter::{BuildArtifact, BuildOutput, SourceMap};
 pub use parser::{
     Declaration, FunctionDeclaration, ImportDeclaration, InterfaceDeclaration, Module, Parameter,
-    ParserLimits, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, VariableDeclaration,
+    ParserLimits, RawDeclaration, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter,
+    ValueExportBinding, ValueExportDeclaration, VariableDeclaration, VariableKind,
 };
+pub use syntax::{Token, TokenKind};
 
 /// The pinned BlueTS language matrix exposed in emitted fingerprints and
 /// diagnostics.  This is not a claim of complete `tsc` compatibility.

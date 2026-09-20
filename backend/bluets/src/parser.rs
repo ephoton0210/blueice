@@ -51,7 +51,7 @@ pub enum Declaration {
     Interface(InterfaceDeclaration),
     Variable(VariableDeclaration),
     Function(FunctionDeclaration),
-    Raw(SourceSpan),
+    Raw(RawDeclaration),
 }
 
 impl Declaration {
@@ -65,7 +65,7 @@ impl Declaration {
             Self::Interface(declaration) => &declaration.span,
             Self::Variable(declaration) => &declaration.span,
             Self::Function(declaration) => &declaration.span,
-            Self::Raw(span) => span,
+            Self::Raw(declaration) => &declaration.span,
         }
     }
 }
@@ -118,6 +118,16 @@ pub struct ValueExportDeclaration {
 pub struct ValueExportBinding {
     pub local: String,
     pub exported: String,
+    pub span: SourceSpan,
+}
+
+/// A JavaScript runtime statement that the bounded TypeScript parser does not
+/// otherwise classify. Its already-tokenized source is retained so an
+/// authorized runtime bridge can lower it structurally without reparsing
+/// BlueTSC-emitted JavaScript text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawDeclaration {
+    pub tokens: Vec<Token>,
     pub span: SourceSpan,
 }
 
@@ -1236,8 +1246,10 @@ impl Parser {
         } else {
             end_index
         };
-        self.declarations
-            .push(Declaration::Raw(SourceSpan::new(&self.id, start, end)));
+        self.declarations.push(Declaration::Raw(RawDeclaration {
+            tokens: self.tokens[raw_start..end_index].to_vec(),
+            span: SourceSpan::new(&self.id, start, end),
+        }));
     }
 
     fn parse_type_parameters(&mut self) -> Vec<TypeParameter> {
