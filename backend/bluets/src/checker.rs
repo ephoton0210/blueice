@@ -943,6 +943,7 @@ impl<'a> ModuleChecker<'a> {
         }
         self.check_function_call(&variable.initializer, scope, &variable.span);
         self.check_direct_property_access(&variable.initializer, scope, &variable.span);
+        self.check_arithmetic_operators(&variable.initializer, scope, &variable.span);
         let inferred = self.infer_expression(&variable.initializer, scope);
         if !self.is_assignable_bounded(&inferred, annotation, &variable.span) {
             self.type_error(
@@ -984,6 +985,7 @@ impl<'a> ModuleChecker<'a> {
                 }
                 self.check_function_call(returned, &scope, &function.span);
                 self.check_direct_property_access(returned, &scope, &function.span);
+                self.check_arithmetic_operators(returned, &scope, &function.span);
                 let actual = self.infer_expression(returned, &scope);
                 if !self.is_assignable_bounded(&actual, return_type, &function.span) {
                     self.type_error(
@@ -1547,6 +1549,88 @@ impl<'a> ModuleChecker<'a> {
                 ),
                 DiagnosticCode::ResourceLimit,
             ),
+        }
+    }
+
+    /// Checks only arithmetic forms whose operand types are already known
+    /// primitive values. Unknown, `any`, union and structural forms remain
+    /// outside this deliberately bounded compatibility rule.
+    fn check_arithmetic_operators(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+    ) {
+        let tokens = strip_outer_parentheses(tokens);
+        let generic_call = |start| self.module.generic_call_type_arguments.contains_key(&start);
+        if let Some((condition, consequent, alternate)) = conditional_expression_parts(tokens) {
+            self.check_arithmetic_operators(condition, scope, span);
+            self.check_arithmetic_operators(consequent, scope, span);
+            self.check_arithmetic_operators(alternate, scope, span);
+            return;
+        }
+        for operators in [
+            &["||"][..],
+            &["&&"][..],
+            &["===", "!==", "==", "!=", "<", ">", "<=", ">="][..],
+        ] {
+            if let Some((left, _, right)) = top_level_binary_parts(tokens, operators, generic_call)
+            {
+                self.check_arithmetic_operators(left, scope, span);
+                self.check_arithmetic_operators(right, scope, span);
+                return;
+            }
+        }
+        if let Some((left, operator, right)) =
+            top_level_binary_parts(tokens, &["+", "-"], generic_call)
+        {
+            self.check_arithmetic_operators(left, scope, span);
+            self.check_arithmetic_operators(right, scope, span);
+            self.check_known_arithmetic_operands(
+                operator,
+                &self.infer_expression(left, scope),
+                &self.infer_expression(right, scope),
+                span,
+            );
+            return;
+        }
+        if let Some((left, operator, right)) =
+            top_level_binary_parts(tokens, &["*", "/", "%"], generic_call)
+        {
+            self.check_arithmetic_operators(left, scope, span);
+            self.check_arithmetic_operators(right, scope, span);
+            self.check_known_arithmetic_operands(
+                operator,
+                &self.infer_expression(left, scope),
+                &self.infer_expression(right, scope),
+                span,
+            );
+        }
+    }
+
+    fn check_known_arithmetic_operands(
+        &mut self,
+        operator: &Token,
+        left: &Type,
+        right: &Type,
+        span: &SourceSpan,
+    ) {
+        if !is_known_primitive_type(left) || !is_known_primitive_type(right) {
+            return;
+        }
+        let accepted = (operator.is("+") && (left == &Type::String || right == &Type::String))
+            || (left == &Type::Number && right == &Type::Number);
+        if !accepted {
+            self.type_error(
+                span,
+                format!(
+                    "operator `{}` cannot be applied to types `{}` and `{}`",
+                    operator.text,
+                    type_label(left),
+                    type_label(right),
+                ),
+                DiagnosticCode::TypeMismatch,
+            );
         }
     }
 }
@@ -2187,6 +2271,13 @@ fn infer_numeric_binary_expression(left: Type, right: Type) -> Type {
     } else {
         Type::Unknown
     }
+}
+
+fn is_known_primitive_type(value: &Type) -> bool {
+    matches!(
+        value,
+        Type::Boolean | Type::Number | Type::String | Type::Null | Type::Undefined
+    )
 }
 
 fn merge_conditional_branch_types(consequent: Type, alternate: Type) -> Type {

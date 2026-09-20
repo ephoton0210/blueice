@@ -112,6 +112,35 @@ fn infers_generic_direct_calls_inside_arithmetic_expressions() {
 }
 
 #[test]
+fn rejects_known_invalid_arithmetic_operands_in_initializers_and_returns() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const label: string = 'Ada';\n\
+             const invalid: number = label - 1;\n\
+             function invalid_return(): number { return false * 2; }",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .count(),
+        2,
+        "{:#?}",
+        result.diagnostics
+    );
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("operator `-` cannot be applied to types `string` and `number`")
+    }));
+}
+
+#[test]
 fn accepts_a_structurally_compatible_record() {
     let loader = MapLoader::from([ModuleSource::new(
         "memory:///app.ts",
