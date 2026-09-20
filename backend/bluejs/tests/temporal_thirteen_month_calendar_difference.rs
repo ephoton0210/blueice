@@ -135,12 +135,12 @@ fn ethioaa_intercalary_month_differences() {
     assert_ok(&intercalary_source("ethioaa", 7514));
 }
 
-/// The three calendars' `PlainDateTime` and `PlainYearMonth` differences go
-/// through the same `calendar_difference_date`, so they must agree with
-/// `PlainDate` on the 13-month year: one whole year is 13 months, and
-/// `largestUnit: "months"` must not fold at 12.
+/// The other three types' differences (`PlainDateTime`, `PlainYearMonth`,
+/// `ZonedDateTime`) go through the same `calendar_difference_date`, so they
+/// must agree with `PlainDate` on the 13-month year: one whole year is 13
+/// months, and `largestUnit: "months"` must not fold at 12.
 #[test]
-fn plain_date_time_and_plain_year_month_use_thirteen_months_per_year() {
+fn every_difference_type_uses_thirteen_months_per_year() {
     assert_ok(
         r#"
 (function() {
@@ -159,6 +159,16 @@ fn plain_date_time_and_plain_year_month_use_thirteen_months_per_year() {
     if (ymMonths.months !== 26) failures.push(calendar + " yearmonth months: " + ymMonths.toString());
     const ymYears = ym(year, "M12").until(ym(year + 1, "M13"), { largestUnit: "years" });
     if (ymYears.years !== 1 || ymYears.months !== 1) failures.push(calendar + " yearmonth years: " + ymYears.toString());
+
+    const zdt = (y, m, d) =>
+      Temporal.ZonedDateTime.from({ year: y, monthCode: m, day: d, hour: 9, timeZone: "UTC", calendar });
+    const zMonths = zdt(year, "M01", 15).until(zdt(year + 1, "M01", 15), { largestUnit: "months" });
+    if (zMonths.months !== 13 || zMonths.years !== 0) failures.push(calendar + " zoned months: " + zMonths.toString());
+    // Month-and-time remainder: 1 year, 12 months (M01 -> M13), then the hours.
+    const zYears = zdt(year, "M01", 3).until(zdt(year + 1, "M13", 3).add({ hours: 5 }), { largestUnit: "years" });
+    if (zYears.years !== 1 || zYears.months !== 12 || zYears.hours !== 5) {
+      failures.push(calendar + " zoned years: " + zYears.toString());
+    }
   }
   return failures.length ? "\n" + failures.join("\n") : "ok";
 })()
@@ -260,6 +270,18 @@ fn month_rounding_carries_at_thirteen_months_per_year() {
         failures.push(calendar + " " + roundingMode + "/" + largestUnit + ": expected " + expected + " got " + actual);
       }
     }
+    // The same span backwards: `ceil`/`floor` swap roles (toward +/- infinity),
+    // and every field is negative.
+    const backwards = (roundingMode) => {
+      const d = end.until(start, { largestUnit: "years", smallestUnit: "months", roundingMode });
+      return [d.years, d.months, d.weeks, d.days].join();
+    };
+    for (const [roundingMode, expected] of [["ceil", "-1,-12,0,0"], ["floor", "-2,0,0,0"], ["trunc", "-1,-12,0,0"], ["expand", "-2,0,0,0"]]) {
+      const actual = backwards(roundingMode);
+      if (actual !== expected) {
+        failures.push(calendar + " backwards " + roundingMode + ": expected " + expected + " got " + actual);
+      }
+    }
   }
   return failures.length ? "\n" + failures.join("\n") : "ok";
 })()
@@ -295,6 +317,12 @@ fn duration_round_and_total_with_a_thirteen_month_relative_to() {
     check("26mo to years", fields(carry), "2,0,0,0");
     check("total months", String(new Temporal.Duration(1, 12).total({ unit: "months", relativeTo })), "25");
     check("total years", String(new Temporal.Duration(0, 26).total({ unit: "years", relativeTo })), "2");
+    // Negative durations split with the same 13, and keep a common sign.
+    const negative = new Temporal.Duration(0, -25).round({ smallestUnit: "months", largestUnit: "years", relativeTo });
+    check("-25mo to years", fields(negative), "-1,-12,0,0");
+    // 13 months is exactly one year in these calendars (not 1y + 1mo as with 12).
+    check("compare 13mo vs 1y", String(Temporal.Duration.compare(new Temporal.Duration(0, 13), new Temporal.Duration(1), { relativeTo })), "0");
+    check("compare 14mo vs 1y", String(Temporal.Duration.compare(new Temporal.Duration(0, 14), new Temporal.Duration(1), { relativeTo })), "1");
   }
   return failures.length ? "\n" + failures.join("\n") : "ok";
 })()
