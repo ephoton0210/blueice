@@ -556,6 +556,8 @@ impl Vm {
                 Some("ArrayBuffer")
             } else if default == self.buffer_prototype("SharedArrayBuffer")? {
                 Some("SharedArrayBuffer")
+            } else if default == self.buffer_prototype("DataView")? {
+                Some("DataView")
             } else if default == self.collection_prototype(true)? {
                 Some("Map")
             } else if default == self.collection_prototype(false)? {

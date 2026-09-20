@@ -46,6 +46,17 @@ impl Vm {
             return self
                 .test262_foreign_typed_array_native_call(function, receiver, args, construct);
         }
+        if matches!(
+            function,
+            NativeFunction::Atomics(_)
+                | NativeFunction::AtomicsNotify
+                | NativeFunction::AtomicsWait
+                | NativeFunction::AtomicsWaitAsync
+        ) {
+            if let Some(result) = self.test262_foreign_atomics_call(function, &args)? {
+                return Ok(result);
+            }
+        }
         let first = native::argument(&args, 0);
         match function {
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),

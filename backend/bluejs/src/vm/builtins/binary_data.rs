@@ -632,12 +632,44 @@ impl Vm {
             ));
         }
         let length_tracking = args.len() <= 2 || native::argument(args, 2) == &Value::Undefined;
-        let length = if !length_tracking {
-            self.buffer_index(native::argument(args, 2))?
+        let requested_length = if length_tracking {
+            None
         } else {
-            total - offset
+            let requested = self.buffer_index(native::argument(args, 2))?;
+            if offset.checked_add(requested).is_none_or(|end| end > total) {
+                return Err(RuntimeError::RangeError(
+                    "DataView length is outside its buffer".into(),
+                ));
+            }
+            Some(requested)
         };
+        // OrdinaryCreateFromConstructor reads `newTarget.prototype`, which can
+        // run user code that detaches or resizes the buffer. The spec therefore
+        // repeats the detached and range checks against the buffer's length as
+        // it stands afterwards, and a length-tracking view takes that length.
         let prototype = self.constructed_buffer_prototype("DataView")?;
+        if self.heap.buffer_is_detached(buffer)? {
+            return Err(RuntimeError::TypeError(
+                "DataView buffer is detached".into(),
+            ));
+        }
+        let total = self.heap.buffer_byte_length(buffer)?;
+        if offset > total {
+            return Err(RuntimeError::RangeError(
+                "DataView offset is outside its buffer".into(),
+            ));
+        }
+        let length = match requested_length {
+            Some(requested) => {
+                if offset + requested > total {
+                    return Err(RuntimeError::RangeError(
+                        "DataView length is outside its buffer".into(),
+                    ));
+                }
+                requested
+            }
+            None => total - offset,
+        };
         Ok(Value::Object(self.with_roots(|heap| {
             heap.alloc_data_view(buffer, offset, length, length_tracking, Some(prototype))
         })?))
@@ -1061,12 +1093,22 @@ impl Vm {
                 "TypedArray constructor requires 'new'".into(),
             ));
         }
-        // AllocateTypedArray obtains the result prototype before it observes
-        // the constructor input. In particular, a throwing `newTarget`
-        // `prototype` getter wins over detached-buffer checks and all
-        // byteOffset/length conversions.
-        let prototype = self.constructed_buffer_prototype(kind.name())?;
         let input = native::argument(args, 0);
+        // A non-object first argument is the element count: ToIndex(firstArgument)
+        // runs before AllocateTypedArray, so a Symbol, BigInt or out-of-range
+        // count is rejected without ever reading `newTarget.prototype`.
+        let element_length = match input {
+            Value::Object(_) => None,
+            Value::Undefined => Some(0),
+            primitive => Some(self.buffer_index(primitive)?),
+        };
+        // Every other form (no arguments, or an object first argument)
+        // allocates first: AllocateTypedArray obtains the result prototype
+        // before it observes the constructor input. In particular, a throwing
+        // `newTarget` `prototype` getter wins over detached-buffer checks and
+        // all byteOffset/length conversions. An element count's allocation
+        // failure likewise follows the prototype read.
+        let prototype = self.constructed_buffer_prototype(kind.name())?;
         let (buffer, byte_offset, length, length_tracking, initial_values) =
             if let Value::Object(buffer) = input {
                 let source_buffer = if self.heap.is_buffer(*buffer)? {
@@ -1156,11 +1198,7 @@ impl Vm {
                     (result, 0, length, false, Some(values))
                 }
             } else {
-                let length = if *input == Value::Undefined {
-                    0
-                } else {
-                    self.buffer_index(input)?
-                };
+                let length = element_length.expect("a non-object argument has an element count");
                 let buffer = self.new_typed_array_buffer(length, kind)?;
                 (buffer, 0, length, false, None)
             };
