@@ -1416,6 +1416,19 @@ impl Vm {
                 1,
                 NativeFunction::ArrayFill,
             )?;
+            for (name, length, function) in [
+                ("copyWithin", 2, NativeFunction::ArrayCopyWithin),
+                ("flat", 0, NativeFunction::ArrayFlat),
+                ("flatMap", 1, NativeFunction::ArrayFlatMap),
+            ] {
+                self.install_native(
+                    self.array_prototype,
+                    function_prototype,
+                    name,
+                    length,
+                    function,
+                )?;
+            }
             for (name, kind) in [
                 ("entries", ArrayIteratorKind::Entries),
                 ("keys", ArrayIteratorKind::Keys),
@@ -1611,6 +1624,9 @@ impl Vm {
                     (object_prototype, "hasOwnProperty".into()),
                     (self.array_prototype, "at".into()),
                     (self.array_prototype, "fill".into()),
+                    (self.array_prototype, "copyWithin".into()),
+                    (self.array_prototype, "flat".into()),
+                    (self.array_prototype, "flatMap".into()),
                     (self.array_prototype, "entries".into()),
                     (self.array_prototype, "keys".into()),
                     (self.array_prototype, "values".into()),
