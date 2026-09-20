@@ -263,6 +263,9 @@ dependencies = [
 name = "blueice-net"
 version = "0.1.0"
 dependencies = [
+ "blueice-ipc",
+ "serde",
+ "serde_json",
  "ureq",
 ]
 

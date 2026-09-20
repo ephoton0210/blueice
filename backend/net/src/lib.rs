@@ -22,6 +22,8 @@
 
 use std::fmt;
 
+pub mod download;
+
 #[derive(Debug)]
 pub enum FetchError {
     /// The URL string itself isn't well-formed enough to request (no

@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Design resolved (see "Wiring design (resolved 2026-09-20)" below); implementation is in progress. Done so far: the `blueice-ipc` contract — the `downloads` wire protocol with its shared client, and the gatekeeper's `CheckDownload` stage. The transfer engine, the `downloads` process, the MCP tools, and `about:downloads` are not started. The first slice's work items are tracked in [`TODO.md`](TODO.md).
+**Status**: Design resolved (see "Wiring design (resolved 2026-09-20)" below); implementation is in progress. Done so far: the `blueice-ipc` contract (the `downloads` wire protocol with its shared client, and the gatekeeper's `CheckDownload` stage) and the transfer engine in `blueice-net::download` (probe, segmentation with dynamic re-splitting, retries, stall watchdog, pause/resume/cancel, resume validation, atomic completion, and the gatekeeper clearance typestate). The `downloads` process, the MCP tools, and `about:downloads` are not started. The first slice's work items are tracked in [`TODO.md`](TODO.md).
 
 ## Objective
 
@@ -96,6 +96,15 @@ The compile-time guarantee holds only inside one process. Because `mcp-server` a
 
 **Testing approach.** The engine is tested against a hand-rolled local HTTP server (with/without Range support, changing validators, injected 5xx and mid-body disconnects, throttling, per-request logging of `Range` headers and concurrent connection counts, redirects), plus a fake gatekeeper listening on a real Unix socket. The process is tested end to end as a real subprocess, as `core_binary.rs` does for `blueice-core`. See [`TODO.md`](TODO.md) for the full list.
 
+**As built: the transfer engine** (`blueice-net::download`). The public sequence is `Reviewer::review_url` → `probe(&UrlCleared)` → `Reviewer::review_download(UrlCleared, &Probe, file_name)` → `Transfer::begin(DownloadSpec, Probe, DownloadClearance)`, then `snapshot` / `pause` / `cancel` / `wait`. Where building it settled details the design left open:
+
+- `probe` borrows the `UrlCleared` and makes a single attempt, so a caller can retry a transient failure (`DownloadError::is_retryable`) without spending a new review; `review_download` consumes the token.
+- The download stage reviews the probe's **final** URL (where a redirect actually led), and a `DownloadClearance` binds the requested URL, the file name, the content type, and the size. `Transfer::begin` refuses a clearance that does not match what it is asked to download, so a token for one file cannot be spent on another. A `Reviewer` gives every check a deadline (default 10 s) that also holds against a gatekeeper that sends half a frame and then stalls; every way a check can fail to say "yes" yields `Blocked` and never a token.
+- A URL that does not parse is `InvalidUrl`, not a (retryable) network error — a test caught `ureq` reporting an empty host through its `Http` error variant.
+- `Transfer::pause` blocks until the transfer has settled, and dropping a running `Transfer` pauses it, so there is still exactly one resume path: a new `begin` rebuilding from the sidecar. A transfer that fails keeps its partial data and sidecar when resume is safe (a later `begin` can continue it) and discards them when it is not.
+- Concurrent requests may overlap after a split — the original request still names its old end and its worker stops reading at the new one — so what the tests check is that the request ranges' *union* covers the file, and that the assembled file is byte-for-byte correct.
+- `DownloadOptions` also carries a connect timeout (10 s) and a first-response timeout (30 s), since `ureq` offers no idle-read timeout to cover the rest.
+
 ## Open questions
 
 - ~~Process placement~~ — **isolated process, confirmed**, consistent with `extension`'s isolation rationale (plan §1). [`research/multi-process-memory.md`](../research/multi-process-memory.md) additionally flags `downloads` as an idle-teardown candidate (no reason to stay resident with zero active/queued transfers) — the Phase 8 launcher is the proposed owner of that teardown authority once it exists. **Resolved 2026-09-20**: the engine is a `blueice-net` library and the process wraps it; see "Wiring design."
@@ -103,6 +112,9 @@ The compile-time guarantee holds only inside one process. Because `mcp-server` a
 - ~~**Relationship to Phase 11**~~ — **resolved 2026-09-20**: one shared subsystem with pluggable backends; the trait itself is deferred to Phase 11 (see "Wiring design").
 - **Private-network URLs** (localhost, RFC 1918, link-local) requested by an AI agent are **not blocked** by this slice — tests need localhost, and blocking them deserves its own design. A known gap, intended for the gatekeeper's rule base (`phase-7-local-ai/PLAN.md`).
 - **Real review content for downloads.** `ai-gatekeeper` still always clears; what its rule base and AI layer should say about executables, archives, and oversized files is Phase 7 work. This phase only provides the hook (`CheckDownload`).
+- **Redirects are contacted before the download stage sees them.** The probe follows redirects (`ureq` does it transparently), so a redirect's target receives a one-byte ranged request before the download stage reviews the final URL; no file bytes are transferred first. Navigation has the same shape today. Closing it means following redirects by hand with a review per hop.
+- **`Retry-After` is not honored**: a `429`/`503` is retried on the ordinary exponential backoff.
+- **Write failures are not exercised by a test.** A full disk or a failing `fsync` is reported as a fatal `Io` error, but there is no portable way to provoke one in a test.
 - **Navigation-triggered downloads.** A clicked link to a non-HTML resource, or a `Content-Disposition: attachment` response, should hand off to this subsystem. Today `core`'s navigation path fetches everything as text; this slice does not touch that path.
 - **Automatic idle teardown** of the downloads process is Phase 8 work (the launcher's registry slot exists after this slice, but no automatic spawn/teardown is wired).
 - **IPC-wire-level clearance enforcement** across process boundaries is the shared open item with Phase 7/Phase 9.
@@ -117,7 +129,7 @@ The compile-time guarantee holds only inside one process. Because `mcp-server` a
 - [x] Evaluate `reqwest` as the HTTP client base — decided against: keep `ureq` (synchronous + threads, matching the rest of the codebase)
 - [x] Define the file-management surface (where downloads land, in-progress/completed/failed state visible to `frontend`) — see "Destination policy" and "Visualization: `about:downloads`"
 - [x] Wire protocol and gatekeeper contract in `blueice-ipc` (`GatekeeperRequest::CheckDownload`, `blueice_ipc::downloads` with its shared `DownloadsClient`) — TODO.md M1
-- [ ] Transfer engine in `blueice-net::download`: probe, segmentation with dynamic re-splitting, retries, resume, single-stream fallback, and the `clearance` typestate — TODO.md M2
+- [x] Transfer engine in `blueice-net::download`: probe, segmentation with dynamic re-splitting, retries, resume, single-stream fallback, and the `clearance` typestate — TODO.md M2
 - [ ] `backend/downloads` process: manager, persistence, destination policy, socket server, launcher registry slot — TODO.md M3
 - [ ] MCP tools in `blueice-mcp-server`: `download_file`, `list_transfers`, `get_transfer`, `pause_transfer`, `resume_transfer`, `cancel_transfer`, `remove_transfer` (also ticks Phase 12's `download_file`/`list_transfers` item) — TODO.md M4
 - [ ] `about:downloads` visualization with live updates, plus `frontend-reference`'s `downloads`/`download <url>` commands — TODO.md M5

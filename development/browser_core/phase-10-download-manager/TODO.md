@@ -2,7 +2,7 @@
 
 [← Back to Phase 10 plan](PLAN.md)
 
-> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. M0 (design) and M1 (`blueice-ipc` contract) are done; M2 onward has not started.**
+> **Status: decisions confirmed in review; design recorded in [`PLAN.md`](PLAN.md)'s "Wiring design (resolved 2026-09-20)", which is the authoritative record if the two ever differ. M0 (design), M1 (`blueice-ipc` contract) and M2 (`blueice-net` transfer engine) are done; M3 onward has not started.**
 > Branch: `feature/downloads-first-slice`.
 > Design inputs: [`PLAN.md`](PLAN.md) (this phase), [`../phase-7-local-ai/PLAN.md`](../phase-7-local-ai/PLAN.md), [`../phase-12-mcp-server/PLAN.md`](../phase-12-mcp-server/PLAN.md), [`../research/safe-browsing-enforcement.md`](../research/safe-browsing-enforcement.md), [`../research/multi-process-memory.md`](../research/multi-process-memory.md).
 
@@ -65,25 +65,25 @@ Every item is held to the Definition of Done: **write the failing test first (TD
 New dependencies: `serde`, `serde_json`, `blueice-ipc` (all already in the workspace lock file).
 
 Pure functions (first, since they are the easiest to test):
-- [ ] Segment planning: initial split (`n = min(connections, ceil(total / min_split))`, remainder handling) and dynamic re-split (take the back half of the largest remaining segment)
-- [ ] Progress / speed / ETA: EMA smoothing, with time injectable (callers pass an `Instant`)
-- [ ] File names: `Content-Disposition` parsing (including `filename*=`), deriving a name from the URL path, and sanitizing (path separators, control characters, reserved names, excessive length)
-- [ ] Sidecar: serialization and load-time validation (version, total, validator, data-file length, segments contiguous and non-overlapping, `pos` within range)
+- [x] Segment planning: initial split (`n = min(connections, ceil(total / min_split))`, remainder handling) and dynamic re-split (take the back half of the largest remaining segment)
+- [x] Progress / speed / ETA: EMA smoothing, with time injectable (callers pass an `Instant`)
+- [x] File names: `Content-Disposition` parsing (including `filename*=`), deriving a name from the URL path, and sanitizing (path separators, control characters, reserved names, excessive length)
+- [x] Sidecar: serialization and load-time validation (version, total, validator, data-file length, segments contiguous and non-overlapping, `pos` within range)
 
 Network and files:
-- [ ] Probe: `Range: 0-0` → `206` + `Content-Range` gives the total; `200` means no Range support; the final URL after redirects (`ResponseExt::get_uri`); ETag / Last-Modified / Content-Type
-- [ ] `clearance` module: `Reviewer`, `UrlCleared`, `DownloadClearance` (privately constructed, not `Clone`). `probe()` requires `UrlCleared`; `Transfer::begin()` requires `DownloadClearance`. **Tests must prove** that a rejection, an unreachable gatekeeper, and a timeout each fail to produce a token (fail-closed)
-- [ ] Segment worker: Range requests, positioned writes, `If-Range`, checking for `206` and the `Content-Range` start offset, and failing on an ETag mismatch (never splice)
-- [ ] Coordinator thread: each tick samples speed, publishes a snapshot, checkpoints when due (`sync_data`, then an atomic sidecar write), tops up workers, and runs the stall watchdog
-- [ ] Dynamic re-split: a connection that finishes splits the largest remaining segment; the worker being split stops when it reads its new `end`
-- [ ] Retries: retryable (network errors, 408/429/5xx) vs. fatal (other 4xx, 416, resource changed); reset the consecutive-failure count on progress; exponential backoff
-- [ ] Pause/resume/cancel: per-segment owner tokens so a stale worker's writes are discarded; cancel removes `.blueice-part*`
-- [ ] Single-stream fallback (including unknown length); restart entirely on a truncated body; restart from 0 after a pause (D9)
-- [ ] Resume: restore from the sidecar; each invalidation case (server changed, length mismatch, missing validator, missing data file, corrupt sidecar) restarts from scratch and records an event
-- [ ] Completion: `fsync`, length check, rename, delete the sidecar; fail clearly if `dest` exists and overwriting is not allowed
-- [ ] Error types: disk full, permissions, DNS/connection, TLS, and status codes, each with a human-readable message
-- [ ] Local HTTP server for integration tests (`tests/common`, hand-rolled): with/without Range support, changing ETags, N × 5xx before success, a mid-transfer disconnect, throttling, recording each request's Range and the concurrent-connection count, redirects, and `Content-Disposition`
-- [ ] End-to-end tests: connections really run in parallel (concurrent connections > 1), dynamic re-splitting really happens (a slow segment gets split), large-file content is byte-for-byte correct, pause → resume, resume after a restart (drop the `Transfer` and rebuild it), and a server change mid-transfer is detected
+- [x] Probe: `Range: 0-0` → `206` + `Content-Range` gives the total; `200` means no Range support; the final URL after redirects (`ResponseExt::get_uri`); ETag / Last-Modified / Content-Type
+- [x] `clearance` module: `Reviewer`, `UrlCleared`, `DownloadClearance` (privately constructed, not `Clone`). `probe()` requires `UrlCleared`; `Transfer::begin()` requires `DownloadClearance`. **Tests must prove** that a rejection, an unreachable gatekeeper, and a timeout each fail to produce a token (fail-closed)
+- [x] Segment worker: Range requests, positioned writes, `If-Range`, checking for `206` and the `Content-Range` start offset, and failing on an ETag mismatch (never splice)
+- [x] Coordinator thread: each tick samples speed, publishes a snapshot, checkpoints when due (`sync_data`, then an atomic sidecar write), tops up workers, and runs the stall watchdog
+- [x] Dynamic re-split: a connection that finishes splits the largest remaining segment; the worker being split stops when it reads its new `end`
+- [x] Retries: retryable (network errors, 408/429/5xx) vs. fatal (other 4xx, 416, resource changed); reset the consecutive-failure count on progress; exponential backoff
+- [x] Pause/resume/cancel: per-segment owner tokens so a stale worker's writes are discarded; cancel removes `.blueice-part*`
+- [x] Single-stream fallback (including unknown length); restart entirely on a truncated body; restart from 0 after a pause (D9)
+- [x] Resume: restore from the sidecar; each invalidation case (server changed, length mismatch, missing validator, missing data file, corrupt sidecar) restarts from scratch and records an event
+- [x] Completion: `fsync`, length check, rename, delete the sidecar; fail clearly if `dest` exists and overwriting is not allowed
+- [x] Error types: disk full, permissions, DNS/connection, TLS, and status codes, each with a human-readable message
+- [x] Local HTTP server for integration tests (`tests/common`, hand-rolled): with/without Range support, changing ETags, N × 5xx before success, a mid-transfer disconnect, throttling, recording each request's Range and the concurrent-connection count, redirects, and `Content-Disposition`
+- [x] End-to-end tests: connections really run in parallel (concurrent connections > 1), dynamic re-splitting really happens (a slow segment gets split), large-file content is byte-for-byte correct, pause → resume, resume after a restart (drop the `Transfer` and rebuild it), and a server change mid-transfer is detected
 
 ### M3 — `backend/downloads` process
 - [ ] New crate `blueice-downloads` (lib + `blueice-downloads` bin), added to the workspace members

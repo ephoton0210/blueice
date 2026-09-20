@@ -211,6 +211,7 @@ mod tests {
                 let reply = match req {
                     GatekeeperRequest::CheckUrl { .. } => GatekeeperReply::Cleared,
                     GatekeeperRequest::CheckContent { .. } => GatekeeperReply::Rejected { reason: "hidden text".to_string(), category: "prompt-injection".to_string() },
+                    GatekeeperRequest::CheckDownload { .. } => unreachable!("navigation never sends a download check; that stage belongs to the downloads process"),
                 };
                 let _ = write_gatekeeper_reply(&mut stream, &reply);
             }

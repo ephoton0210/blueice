@@ -1567,6 +1567,9 @@ mod tests {
                     blueice_ipc::gatekeeper::GatekeeperRequest::CheckContent { .. } => {
                         blueice_ipc::gatekeeper::GatekeeperReply::Rejected { reason: "hidden instruction-shaped text".to_string(), category: "prompt-injection".to_string() }
                     }
+                    blueice_ipc::gatekeeper::GatekeeperRequest::CheckDownload { .. } => {
+                        unreachable!("navigation never sends a download check; that stage belongs to the downloads process")
+                    }
                 };
                 let _ = blueice_ipc::gatekeeper::write_gatekeeper_reply(&mut stream, &reply);
             }
