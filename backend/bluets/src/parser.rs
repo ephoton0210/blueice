@@ -309,6 +309,17 @@ impl Parser {
                 let async_start = self.consume("async");
                 if self.consume("function") {
                     self.parse_function(start, exported, declared, async_start);
+                } else if self.peek("const")
+                    && self
+                        .tokens
+                        .get(self.index + 1)
+                        .is_some_and(|token| token.is("enum"))
+                {
+                    self.unsupported(
+                        self.tokens[self.index + 1].span(&self.id),
+                        "`enum` is not in the initial BlueTS matrix",
+                    );
+                    self.skip_statement();
                 } else if self.peek("const") || self.peek("let") || self.peek("var") {
                     self.bump();
                     self.parse_variable(start, exported, declared);
@@ -811,19 +822,10 @@ impl Parser {
     ) {
         let mut depth = 1usize;
         while !self.at_eof() && depth > 0 {
-            if self.peek("abstract")
-                && self
-                    .tokens
-                    .get(self.index + 1)
-                    .is_some_and(|token| token.is("class"))
-            {
-                self.unsupported(
-                    self.current().span(&self.id),
-                    "`abstract` declarations are not in the initial BlueTS matrix",
-                );
-                self.bump();
-                continue;
-            }
+            self.diagnose_unsupported_opaque_syntax(
+                self.index,
+                self.index.saturating_add(2).min(self.tokens.len()),
+            );
             if self.consume("{") {
                 depth += 1;
                 continue;
@@ -868,6 +870,7 @@ impl Parser {
     }
 
     fn collect_expression_type_edits(&mut self, start: usize, end: usize) {
+        self.diagnose_unsupported_opaque_syntax(start, end);
         let mut index = start;
         while index < end {
             if self.tokens[index].kind == TokenKind::Identifier
@@ -919,6 +922,59 @@ impl Parser {
                 });
             }
             index += 1;
+        }
+    }
+
+    /// Opaque expression spans are otherwise preserved for JavaScript
+    /// emission. Known TypeScript-only declarations must still be rejected
+    /// there, rather than being emitted as invalid JavaScript merely because
+    /// they were nested in an arrow initializer, return expression, or raw
+    /// statement.
+    fn diagnose_unsupported_opaque_syntax(&mut self, start: usize, end: usize) {
+        for index in start..end.saturating_sub(1) {
+            let previous_is_abstract = self
+                .tokens
+                .get(index.saturating_sub(1))
+                .is_some_and(|token| token.is("abstract"));
+            let decorated_class = self
+                .tokens
+                .get(index.saturating_sub(2))
+                .is_some_and(|token| token.is("@"));
+            let next = self.tokens.get(index + 1);
+            let message = if self.tokens[index].is("@") {
+                Some("decorators and TSX/JSX are not in the initial BlueTS matrix")
+            } else if self.tokens[index].is("abstract")
+                && next.is_some_and(|token| token.is("class"))
+            {
+                Some("`abstract` declarations are not in the initial BlueTS matrix")
+            } else if self.tokens[index].is("class")
+                && !previous_is_abstract
+                && !decorated_class
+                && next.is_some_and(|token| {
+                    token.kind == TokenKind::Identifier || token.is("extends") || token.is("{")
+                })
+            {
+                Some("`class` is not in the initial BlueTS matrix")
+            } else if self.tokens[index].is("enum")
+                && next.is_some_and(|token| token.kind == TokenKind::Identifier)
+            {
+                Some("`enum` is not in the initial BlueTS matrix")
+            } else if self.tokens[index].is("namespace")
+                && next.is_some_and(|token| token.kind == TokenKind::Identifier)
+            {
+                Some("`namespace` is not in the initial BlueTS matrix")
+            } else if self.tokens[index].is("module")
+                && next.is_some_and(|token| {
+                    token.kind == TokenKind::Identifier || token.kind == TokenKind::String
+                })
+            {
+                Some("`module` is not in the initial BlueTS matrix")
+            } else {
+                None
+            };
+            if let Some(message) = message {
+                self.unsupported(self.tokens[index].span(&self.id), message);
+            }
         }
     }
 

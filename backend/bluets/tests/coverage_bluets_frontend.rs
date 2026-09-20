@@ -83,6 +83,38 @@ fn unsupported_and_misplaced_syntax_is_diagnosed_not_passed_through() {
             "function make() { abstract class A {} }",
             "`abstract` declarations are not in the initial BlueTS matrix",
         ),
+        (
+            "if (true) { abstract class A {} }",
+            "`abstract` declarations are not in the initial BlueTS matrix",
+        ),
+        (
+            "const make = () => { abstract class A {} };",
+            "`abstract` declarations are not in the initial BlueTS matrix",
+        ),
+        (
+            "function make() { class Local {} }",
+            "`class` is not in the initial BlueTS matrix",
+        ),
+        (
+            "if (true) { enum State { Ready } }",
+            "`enum` is not in the initial BlueTS matrix",
+        ),
+        (
+            "const make = () => { namespace Internal {} };",
+            "`namespace` is not in the initial BlueTS matrix",
+        ),
+        (
+            "const make = () => { module Internal {} };",
+            "`module` is not in the initial BlueTS matrix",
+        ),
+        (
+            "const decorated = () => { @sealed class A {} };",
+            "decorators and TSX/JSX are not in the initial BlueTS matrix",
+        ),
+        (
+            "const enum State { Ready }",
+            "`enum` is not in the initial BlueTS matrix",
+        ),
         ("enum E { A }", "`enum` is not in the initial BlueTS matrix"),
         (
             "namespace N {}",
@@ -384,6 +416,7 @@ fn supported_programs_are_accepted() {
         "function f<T>(a: T): T { return a; } const x = f<number,>(1);",
         "const x = y!;",
         "const x = y!.z;",
+        "const keywords = { class: 1, enum: 2, namespace: 3, module: 4 };",
         "interface Box<T> { value: T } const box: Box<Box<number>> = { value: { value: 1 } };",
         "let a = 1, b = 2;",
         "function f() { const x: number = 1; let y: string = 'a'; var z = 3; return x; }",
