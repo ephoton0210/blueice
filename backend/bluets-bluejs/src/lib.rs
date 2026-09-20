@@ -118,7 +118,7 @@ impl std::error::Error for BridgeError {}
 /// unary expressions; arithmetic, relational, equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
 /// non-spread, non-hole array literals, simple object literals with identifier
-/// keys, dot property reads, comma sequences, identifier-only prefix/postfix
+/// keys, dot or bracket property reads, comma sequences, identifier-only prefix/postfix
 /// updates, and identifier-only simple or compound-assignment operators. Static-only
 /// declarations disappear before lowering. A broader accepted BlueTS program
 /// returns
@@ -1256,6 +1256,30 @@ impl<'a> ExpressionLowerer<'a> {
                 };
                 continue;
             }
+            if token.text == "[" {
+                let opening_span = self.token_span(token);
+                self.index += 1;
+                let property = self.parse_sequence()?;
+                let Some(closing) = self.tokens.get(self.index) else {
+                    return Err(unsupported(
+                        opening_span,
+                        "unterminated computed property access",
+                    ));
+                };
+                if closing.text != "]" {
+                    return Err(unsupported(
+                        self.token_span(closing),
+                        "expected `]` in computed property access",
+                    ));
+                }
+                self.index += 1;
+                expression = bluejs::Expr::Member {
+                    object: Box::new(expression),
+                    property: Box::new(property),
+                    computed: true,
+                };
+                continue;
+            }
             if token.text != "(" {
                 return Ok(expression);
             }
@@ -1860,6 +1884,38 @@ mod tests {
         assert_eq!(
             bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
             bluejs::Value::String("Ada:42".into())
+        );
+    }
+
+    #[test]
+    fn lowers_checked_bracket_property_reads() {
+        let artifact = compile_direct_script(
+            ENTRY,
+            &MapLoader::from([ModuleSource::new(
+                ENTRY,
+                "const values: number[] = [1, 2, 3]; values[1];",
+            )]),
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            artifact.program,
+            bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+                if matches!(
+                    body.as_slice(),
+                    [
+                        bluejs::Stmt::VarDecl(_, _),
+                        bluejs::Stmt::Expr(bluejs::Expr::Member {
+                            property,
+                            computed: true,
+                            ..
+                        }),
+                    ] if matches!(property.as_ref(), bluejs::Expr::Number(index) if *index == 1.0)
+                )
+        ));
+        assert_eq!(
+            bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+            bluejs::Value::Number(2.0)
         );
     }
 
