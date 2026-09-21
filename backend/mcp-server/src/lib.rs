@@ -17,19 +17,17 @@
 //! `ServerMessage` round trip -- no browsing logic of its own**, per
 //! Phase 12's adapter-not-parallel-channel principle.
 //!
-//! **The pipelining trick that avoids a read-timeout hack**: several
+//! **The reply sequencing that avoids a read-timeout hack**: several
 //! `ClientMessage`s produce a *variable* number of replies (a
 //! coordinate/ID `Click` that doesn't land on a link produces none at
-//! all -- see `blueice_engine::session`'s own module docs). Rather
-//! than guessing how many replies to wait for, every state-changing
-//! tool immediately pipelines a `GetRepresentation` after its own
-//! message and reads in a loop until it sees the `Representation`
-//! reply -- which is *always* exactly one, deterministically, and
-//! always the last message on the wire for that pipelined pair, since
-//! nothing else produces one. This both resolves the ambiguity and
-//! gives every tool a fresh snapshot of the resulting state to return,
-//! with no timers and no risk of leaving an unread reply for the next
-//! call to misinterpret.
+//! all -- see `blueice_engine::session`'s own module docs). Those
+//! actions pipeline a `GetRepresentation` after their own message and
+//! read until its one deterministic `Representation` reply. `Navigate`
+//! is deliberately different: an HTTP(S) navigation completes in the
+//! background, so it first waits for that request's `Navigated`,
+//! `GatekeeperBlocked`, or `Error` reply (and its success frame) before
+//! asking for a representation. Both paths avoid timers and never
+//! leave a reply on the wire for the next call to misinterpret.
 
 use blueice_ipc::{AiSnapshot, ChromeCommand, ClientMessage, NodeAction, ServerMessage, TabSummary};
 use std::io::{self, Read, Write};
@@ -137,18 +135,15 @@ impl<S: Read + Write> CoreConnection<S> {
         self.next_request_id
     }
 
-    /// Sends `msg` addressed to `tab_id` (`None` for the default tab,
-    /// same as omitting `tab_id` on the wire -- `phase-16-multi-tab-
-    /// and-tab-groups/PLAN.md`), then pipelines a `GetRepresentation`
-    /// addressed to the *same* tab and drains until it arrives -- see
-    /// the module docs for why this avoids needing to know in advance
-    /// how many replies `msg` produces. Each of the two outgoing
-    /// messages gets its own request_id, and any incoming reply
-    /// carrying a *different* one is skipped rather than consumed --
-    /// closes `phase-8-live-core-hotswap/PLAN.md`'s flagged gap: sharing
-    /// a `core` connection via `blueice-launcher`'s broker means a reply
-    /// glimpsed here could belong to another client's concurrent action
-    /// instead of this call's own request.
+    /// Sends an action that has no asynchronous completion signal,
+    /// addressed to `tab_id` (`None` for the default tab), then pipelines
+    /// a `GetRepresentation` addressed to the same tab and drains until
+    /// it arrives. This is for `ActOn` and `Highlight`; [`Self::navigate`]
+    /// cannot use it because its HTTP(S) completion may arrive after an
+    /// immediately-pipelined representation of the old page. Each outgoing
+    /// message gets its own request_id, and replies for other ids are
+    /// skipped rather than consumed, as required on the launcher's shared
+    /// broadcast connection.
     fn send_and_drain(&mut self, tab_id: Option<u64>, msg: &ClientMessage) -> io::Result<ToolOutcome> {
         let action_id = self.next_request_id();
         let representation_id = self.next_request_id();
@@ -192,7 +187,48 @@ impl<S: Read + Write> CoreConnection<S> {
     }
 
     pub fn navigate(&mut self, url: &str, tab_id: Option<u64>) -> io::Result<ToolOutcome> {
-        self.send_and_drain(tab_id, &ClientMessage::Navigate { url: url.to_string() })
+        let action_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_ids(&mut self.stream, tab_id, Some(action_id), &ClientMessage::Navigate { url: url.to_string() })?;
+
+        // `session.rs` writes Navigated followed by FrameReady for a
+        // successful navigation. Wait for both before requesting the
+        // representation: doing it sooner can race the background
+        // gatekeeper/fetch and describe the preceding page instead.
+        let mut error = None;
+        let mut navigated = false;
+        loop {
+            let (frame_tab_id, request_id, message) = blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+            if matches!(request_id, Some(id) if id != action_id) {
+                continue;
+            }
+            match message {
+                ServerMessage::Navigated { .. } => navigated = true,
+                ServerMessage::Error { message } => {
+                    error = Some(message);
+                    break;
+                }
+                ServerMessage::GatekeeperBlocked { reason, category, url } => {
+                    error = Some(format!("blocked by the gatekeeper ({category}) for {url}: {reason}"));
+                    break;
+                }
+                ServerMessage::FrameReady { shm_path, width, height, generation } => {
+                    self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
+                    if navigated {
+                        break;
+                    }
+                }
+                ServerMessage::Representation(_)
+                | ServerMessage::Dom(_)
+                | ServerMessage::Hello { .. }
+                | ServerMessage::Unknown
+                | ServerMessage::TabOpened { .. }
+                | ServerMessage::TabClosed { .. }
+                | ServerMessage::Tabs(_) => {}
+            }
+        }
+
+        let snapshot = self.representation(tab_id)?;
+        Ok(ToolOutcome { error, snapshot })
     }
 
     pub fn act(&mut self, id: u64, action: NodeAction, tab_id: Option<u64>) -> io::Result<ToolOutcome> {
@@ -630,6 +666,7 @@ mod tests {
     use blueice_ipc::{AiNode, Bounds, NameFrom, NodeState, Role};
     use std::os::unix::net::UnixStream;
     use std::thread;
+    use std::time::Duration;
 
     fn sample_snapshot(generation: u64) -> AiSnapshot {
         AiSnapshot {
@@ -685,7 +722,7 @@ mod tests {
     }
 
     #[test]
-    fn navigate_pipelines_get_representation_and_returns_the_resulting_snapshot() {
+    fn navigate_waits_for_a_success_frame_then_returns_the_resulting_snapshot() {
         let (client, server) = UnixStream::pair().unwrap();
         fake_core(
             server,
@@ -704,6 +741,44 @@ mod tests {
 
         let mut conn = CoreConnection::new(client);
         let outcome = conn.navigate("https://example.com", None).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(outcome.snapshot.generation, 1);
+        assert_eq!(conn.last_frame(None).unwrap().generation, 1);
+    }
+
+    #[test]
+    fn navigate_waits_for_its_terminal_reply_before_requesting_a_snapshot() {
+        // A real `http(s)` navigation completes asynchronously in core. The
+        // old implementation sent GetRepresentation immediately, so core
+        // processed it before this reply and MCP returned the prior page.
+        let (client, mut server) = UnixStream::pair().unwrap();
+        thread::spawn(move || {
+            let first = blueice_ipc::read_client_message(&mut server).unwrap();
+            assert!(matches!(first, ClientMessage::Navigate { .. }));
+
+            // There must not yet be a pipelined GetRepresentation. If there
+            // is, emulate core's old-page reply; the assertion below then
+            // proves the adapter did not accept it as the navigate result.
+            server.set_read_timeout(Some(Duration::from_millis(50))).unwrap();
+            match blueice_ipc::read_client_message(&mut server) {
+                Ok(ClientMessage::GetRepresentation) => {
+                    reply(&mut server, &ServerMessage::Representation(sample_snapshot(0)));
+                }
+                Ok(other) => panic!("expected GetRepresentation, got {other:?}"),
+                Err(error) if matches!(error.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock) => {
+                    reply(&mut server, &ServerMessage::Navigated { url: "https://example.com/new".to_string() });
+                    reply_tab(&mut server, 1, &ServerMessage::FrameReady { shm_path: "/tmp/new".to_string(), width: 10, height: 10, generation: 1 });
+                    server.set_read_timeout(None).unwrap();
+                    let second = blueice_ipc::read_client_message(&mut server).unwrap();
+                    assert!(matches!(second, ClientMessage::GetRepresentation));
+                    reply(&mut server, &ServerMessage::Representation(sample_snapshot(1)));
+                }
+                Err(error) => panic!("unexpected read error: {error}"),
+            }
+        });
+
+        let mut conn = CoreConnection::new(client);
+        let outcome = conn.navigate("https://example.com/new", None).unwrap();
         assert_eq!(outcome.error, None);
         assert_eq!(outcome.snapshot.generation, 1);
         assert_eq!(conn.last_frame(None).unwrap().generation, 1);

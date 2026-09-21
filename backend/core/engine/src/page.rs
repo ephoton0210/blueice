@@ -27,6 +27,7 @@ use blueice_raster::{rasterize, Pixmap};
 use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsSource, DownloadsView};
 use std::collections::HashMap;
 use std::sync::Arc;
+use url::Url;
 
 pub struct Page {
     doc: Document,
@@ -191,11 +192,12 @@ impl Page {
     /// here to reach content coordinates) against the layout tree,
     /// returning the URL to follow if the click landed on an `<a
     /// href>` (the clicked node itself or any ancestor up to the
-    /// nearest one).
+    /// nearest one). Relative links are resolved against the current
+    /// page URL when it is an absolute, hierarchical URL.
     pub fn click(&self, x: f64, y: f64) -> Option<String> {
         let content_y = y + self.scroll_y;
         let node = hit_test(&self.fragment, x, content_y)?;
-        nearest_link_href(&self.doc, node)
+        nearest_link_href(&self.doc, node).map(|href| self.resolve_link_href(href))
     }
 
     /// Hit-tests a pointer move the same way [`Page::click`] hit-tests
@@ -219,17 +221,18 @@ impl Page {
     /// Applies `action` to the element addressed by `id` -- see
     /// [`NodeAction`]'s own docs for what each variant does. Returns
     /// the URL to navigate to when `action` is [`NodeAction::Click`]
-    /// on a link, same shape as [`Page::click`]'s return value, so a
-    /// caller drives both the same way. A stale or unknown `id` (e.g.
-    /// from before the last navigation) is silently a no-op, not an
-    /// error -- the same tolerance [`Page::click`] already has for a
-    /// point that hits nothing.
+    /// on a link, same shape as [`Page::click`]'s return value (and the
+    /// same relative-link resolution), so a caller drives both the same
+    /// way. A stale or unknown `id` (e.g. from before the last
+    /// navigation) is silently a no-op, not an error -- the same
+    /// tolerance [`Page::click`] already has for a point that hits
+    /// nothing.
     pub fn act(&mut self, id: NodeId, action: NodeAction) -> Option<String> {
         if !self.doc.contains(id) {
             return None;
         }
         match action {
-            NodeAction::Click => nearest_link_href(&self.doc, id),
+            NodeAction::Click => nearest_link_href(&self.doc, id).map(|href| self.resolve_link_href(href)),
             NodeAction::Focus => {
                 self.focused = Some(id);
                 None
@@ -260,6 +263,20 @@ impl Page {
                 None
             }
         }
+    }
+
+    /// Resolves an anchor's raw `href` using the current document URL.
+    /// Test-only pages and built-in pages may have no usable hierarchical
+    /// base; in that case preserve the raw target, so the session's normal
+    /// scheme validation reports an invalid target rather than silently
+    /// inventing a destination.
+    fn resolve_link_href(&self, href: String) -> String {
+        self.url
+            .as_deref()
+            .and_then(|base| Url::parse(base).ok())
+            .and_then(|base| base.join(&href).ok())
+            .map(|url| url.to_string())
+            .unwrap_or(href)
     }
 
     /// A snapshot of the AI-facing representation
@@ -632,6 +649,26 @@ mod tests {
         let mut page = Page::new(320.0, 200.0);
         page.load_html_str(r#"<a href="/x"><b>bold link text</b></a>"#, None);
         assert_eq!(page.click(2.0, 2.0), Some("/x".to_string()));
+    }
+
+    #[test]
+    fn clicking_a_relative_link_resolves_it_against_the_current_page_url() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"<a href="../next?q=blue#section">next</a>"#,
+            Some("https://example.com/guide/start/index.html?old=query".to_string()),
+        );
+
+        assert_eq!(page.click(2.0, 2.0), Some("https://example.com/guide/next?q=blue#section".to_string()));
+    }
+
+    #[test]
+    fn acting_on_a_relative_link_uses_the_same_resolution_as_a_pointer_click() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(r#"<a href="/downloads/file.zip">file</a>"#, Some("https://example.com/guide/start".to_string()));
+        let link_id = page.snapshot(0, 1).nodes[0].id;
+
+        assert_eq!(page.act(NodeId::from_u64(link_id), NodeAction::Click), Some("https://example.com/downloads/file.zip".to_string()));
     }
 
     #[test]
