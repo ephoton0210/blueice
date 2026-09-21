@@ -62,6 +62,14 @@ impl Vm {
             if self.heap.proxy(id)?.is_some() {
                 return self.proxy_has(id, key);
             }
+            // A foreign facade's own properties live in its Realm.
+            if self.test262_foreign_reference(id).is_some() {
+                if self.test262_foreign_get_own_property(id, key)?.is_some() {
+                    return Ok(true);
+                }
+                current = self.object_get_prototype(id)?;
+                continue;
+            }
             self.trigger_deferred_namespace(id, Some(key))?;
             if let Some(numeric) = self.heap.typed_array_numeric_key(id, key)? {
                 return match numeric {

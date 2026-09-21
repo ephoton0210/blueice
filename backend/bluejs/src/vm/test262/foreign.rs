@@ -614,6 +614,164 @@ impl Vm {
         realm.vm.object_own_property_keys(target)
     }
 
+    /// Materializes an abrupt completion of an operation run in a foreign
+    /// Realm as that Realm's own Error object and imports it, so the caller
+    /// observes an error from the Realm whose code failed. Resource errors
+    /// pass through unchanged.
+    fn test262_foreign_completion<T>(
+        &mut self,
+        realm_id: ObjectId,
+        result: Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        match result {
+            Ok(value) => Ok(value),
+            Err(RuntimeError::Thrown(value)) => Err(RuntimeError::Thrown(
+                self.test262_import_foreign_value(realm_id, value)?,
+            )),
+            Err(
+                error @ (RuntimeError::TypeError(_)
+                | RuntimeError::RangeError(_)
+                | RuntimeError::ReferenceError(_)
+                | RuntimeError::SyntaxError(_)),
+            ) => {
+                let error = self
+                    .test262_realms
+                    .get_mut(&realm_id)
+                    .expect("foreign realm remains live")
+                    .vm
+                    .error_value(error)?;
+                Err(RuntimeError::Thrown(
+                    self.test262_import_foreign_value(realm_id, error)?,
+                ))
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// The Realm and target behind `wrapper`, with a fresh instruction budget
+    /// for the operation about to run there.
+    fn test262_foreign_target(&mut self, wrapper: ObjectId) -> (ObjectId, ObjectId, &mut Vm) {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign internal method has a membrane record");
+        let realm = self
+            .test262_realms
+            .get_mut(&realm_id)
+            .expect("foreign realm remains live");
+        realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+        (realm_id, target, &mut realm.vm)
+    }
+
+    /// [[GetOwnProperty]] of a foreign facade, performed in its Realm. Values
+    /// and accessor functions in the descriptor are imported as facades of
+    /// the Realm's own objects.
+    pub(in super::super) fn test262_foreign_get_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: &PropertyName,
+    ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        let (realm_id, target, vm) = self.test262_foreign_target(wrapper);
+        let result = vm.object_get_own_property(target, key);
+        let Some(mut descriptor) = self.test262_foreign_completion(realm_id, result)? else {
+            return Ok(None);
+        };
+        for slot in [
+            &mut descriptor.value,
+            &mut descriptor.get,
+            &mut descriptor.set,
+        ] {
+            if let Some(value) = slot.take() {
+                *slot = Some(self.test262_import_foreign_value(realm_id, value)?);
+            }
+        }
+        Ok(Some(descriptor))
+    }
+
+    /// [[DefineOwnProperty]] of a foreign facade, performed in its Realm with
+    /// the descriptor's values transported across the membrane.
+    pub(in super::super) fn test262_foreign_define_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: PropertyName,
+        mut descriptor: PropertyDescriptor,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, _, _) = self.test262_foreign_target(wrapper);
+        for slot in [
+            &mut descriptor.value,
+            &mut descriptor.get,
+            &mut descriptor.set,
+        ] {
+            if let Some(value) = slot.take() {
+                *slot = Some(self.test262_export_foreign_value(realm_id, &value)?);
+            }
+        }
+        let (_, target, vm) = self.test262_foreign_target(wrapper);
+        let result = vm.object_define_own_property(target, key, descriptor);
+        self.test262_foreign_completion(realm_id, result)
+    }
+
+    /// [[Delete]] of a foreign facade, performed in its Realm.
+    pub(in super::super) fn test262_foreign_delete(
+        &mut self,
+        wrapper: ObjectId,
+        key: &PropertyName,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, target, vm) = self.test262_foreign_target(wrapper);
+        let result = vm.object_delete(target, key);
+        self.test262_foreign_completion(realm_id, result)
+    }
+
+    /// [[IsExtensible]] of a foreign facade, performed in its Realm.
+    pub(in super::super) fn test262_foreign_is_extensible(
+        &mut self,
+        wrapper: ObjectId,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, target, vm) = self.test262_foreign_target(wrapper);
+        let result = vm.object_is_extensible(target);
+        self.test262_foreign_completion(realm_id, result)
+    }
+
+    /// [[PreventExtensions]] of a foreign facade, performed in its Realm.
+    pub(in super::super) fn test262_foreign_prevent_extensions(
+        &mut self,
+        wrapper: ObjectId,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, target, vm) = self.test262_foreign_target(wrapper);
+        let result = vm.object_prevent_extensions(target);
+        self.test262_foreign_completion(realm_id, result)
+    }
+
+    /// [[SetPrototypeOf]] of a foreign facade, performed in its Realm. A
+    /// prototype belonging to another Realm crosses the membrane like any
+    /// other value, and replaces the prototype recorded by construction.
+    pub(in super::super) fn test262_foreign_set_prototype(
+        &mut self,
+        wrapper: ObjectId,
+        prototype: Option<ObjectId>,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, _, _) = self.test262_foreign_target(wrapper);
+        let prototype = prototype
+            .map(|prototype| {
+                self.test262_export_foreign_value(realm_id, &Value::Object(prototype))
+                    .map(|value| {
+                        value
+                            .object_id()
+                            .expect("an exported object stays an object")
+                    })
+            })
+            .transpose()?;
+        let (_, target, vm) = self.test262_foreign_target(wrapper);
+        let result = vm.object_set_prototype(target, prototype);
+        let succeeded = self.test262_foreign_completion(realm_id, result)?;
+        if succeeded {
+            self.test262_foreign_values
+                .get_mut(&wrapper)
+                .expect("foreign facade keeps its membrane record")
+                .prototype_override = None;
+        }
+        Ok(succeeded)
+    }
+
     /// Runs a foreign facade's [[Set]] in its owning Realm. `Reflect.set`
     /// exposes its explicit receiver to accessors and Proxy traps, so both
     /// receiver and value must cross the membrane before the internal method
