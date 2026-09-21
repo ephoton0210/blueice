@@ -295,19 +295,23 @@ close. An unknown realm and a failed installation reject without an implicit
 realm allocation or a partial program execution.
 
 This is a binding mechanism, not a general page API. `DirectPageScriptHost`
-currently recognizes one canonical non-empty profile:
+currently recognizes two canonical non-empty profiles.
 `core-script-document-text-v1` installs `blueiceDocumentText(): string` as the
 stable `dom.document-text` `dom-read` binding. It captures one document's
 recursive text when the profile is installed, accepts no arguments, and returns
 the copied string; it does not expose a DOM reference, node identity, mutable
-operation, or event. A profile switch in one realm is rejected, and navigation
-must install a fresh snapshot in its replacement realm. Every other non-empty
-profile is rejected unless the host adds its matching runtime installer. The
-inline executor may select this same verified profile through its owned direct
-host; the default production session still constructs no executor. A future
-binding profile MUST pair every installed value with the generated typing
-inventory, a stable binding ID, and its declared capability/origin policy
-before it can be advertised in `lib.blueice.d.ts`.
+operation, or event. `core-script-document-context-v1` composes that same
+binding with `blueiceDocumentOrigin(): string` (`dom.document-origin`). The
+origin is the core-derived canonical tuple origin only: it excludes the page
+URL's path, query, fragment, and URL-object identity. A profile switch in one
+realm is rejected, and navigation must install fresh snapshots in its
+replacement realm. Every other non-empty profile is rejected unless the host
+adds its matching runtime installer. The inline executor may select either
+verified profile through its owned direct host; the default production session
+still constructs no executor. A future binding profile MUST pair every
+installed value with the generated typing inventory, a stable binding ID, and
+its declared capability/origin policy before it can be advertised in
+`lib.blueice.d.ts`.
 
 ## Host-generated `lib.blueice.d.ts`
 
@@ -345,9 +349,12 @@ byte-for-byte reproducible empty declaration root and manifest. Core's narrow
 script IPC dispatcher is not a BlueJS object binding, so this profile MUST NOT
 declare `document`, DOM node types, or any other global. The additional
 `core-script-document-text-v1` checked-in artifact declares exactly
-`blueiceDocumentText(): string`; the direct host verifies this canonical
-artifact and inventory before installing the matching snapshot callback. The
-profile catalog and artifact validator reject unknown profiles, ABI/identity
+`blueiceDocumentText(): string`; the composed
+`core-script-document-context-v1` artifact adds exactly
+`blueiceDocumentOrigin(): string`, which returns only the canonical tuple
+origin. The direct host verifies either canonical artifact and inventory before
+installing their matching snapshot callbacks. The profile catalog and artifact
+validator reject unknown profiles, ABI/identity
 and schema drift, binding-inventory drift, and declaration-byte drift without
 fallback. The generated artifact additionally verifies that a host's installed
 runtime registration records equal the schema-derived inventory regardless of
@@ -362,8 +369,9 @@ admission also enables the fingerprinted `require_declared_global_calls`
 policy, so a direct call must resolve to a local function or this verified
 ambient root before bytecode is admitted. The standalone `bluetsc` leaves both
 host-only facilities unavailable. The empty profile therefore rejects
-`blueiceDocumentText()` statically, while an unconfigured raw BlueJS realm
-rejects it at runtime; the matching profile both checks and installs it. This
+`blueiceDocumentText()` and `blueiceDocumentOrigin()` statically, while an
+unconfigured raw BlueJS realm rejects either at runtime; the matching profile
+both checks and installs them. This
 establishes one truthful page capability without advertising a broad DOM API
 before matching runtime bindings exist.
 
@@ -385,7 +393,7 @@ The first structured classic-script and resolver-preserving module-graph bridge 
 
 1. Integrate the shipped public, tested BlueJS node IDs, code-unit IDs, and safe-point validation APIs into the process-owned page host and native debugger channel. `BlueJsPageRuntime` already validates them for the exact live tab-owned generation, but it does not expose a debugger wire protocol or pause execution.
 2. Bridge conformance fixtures extending the shipped no-emitted-JavaScript-reparse proof to exact origin/module preservation and deterministic bytecode-map ordering.
-3. Preserve the host-schema invariant for every future binding: its generated `lib.blueice.d.ts` declaration, exact profile inventory, BlueJS installation, and static/runtime absence behavior must be covered together. The shipped `core-script-document-text-v1` profile already meets this rule: the direct-page compiler rejects it under the empty profile before VM admission, and an unconfigured BlueJS realm rejects it at runtime.
+3. Preserve the host-schema invariant for every future binding: its generated `lib.blueice.d.ts` declaration, exact profile inventory, BlueJS installation, and static/runtime absence behavior must be covered together. The shipped `core-script-document-text-v1` and `core-script-document-context-v1` profiles meet this rule: the direct-page compiler rejects their globals under the empty profile before VM admission, and an unconfigured BlueJS realm rejects them at runtime.
 4. Debugger tests for breakpoint binding, step/exception locations, stale-map rejection and the distinction between a static TypeScript type and a runtime BlueJS value.
 
 Until those gates are satisfied, `BlueTsDebugInfo` remains VM-independent and contains static source/type/symbol data only. This document records the shipped bounded hand-off and fixes the rejection behavior for the still-missing page APIs.

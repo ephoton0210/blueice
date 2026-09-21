@@ -16,8 +16,8 @@ BlueTS-to-BlueJS structured-program bridge are complete for `blue-ts-0.1`.
 They do not yet make a general TypeScript page executable or debuggable. The
 bridge now has a limited, in-memory mapping from a single direct module's
 top-level lowering spans to verified BlueJS safe points, plus an in-process
-page host with one read-only document-text binding. It still has no general DOM
-or event surface, live contract boundary, debugger IPC, or MCP
+page host with two read-only document-oriented profiles. It still has no
+general DOM or event surface, live contract boundary, debugger IPC, or MCP
 project-registration path.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
@@ -103,6 +103,14 @@ or second module resolver to bypass them.
   realm and snapshot. A non-empty profile with no matching installer fails
   closed before compilation/admission, and a realm cannot switch profiles.
 
+  `core-script-document-context-v1` is the only broader composition currently
+  accepted. It retains the same copied text snapshot and adds exactly
+  `blueiceDocumentOrigin(): string` (`dom.document-origin`,
+  `global.blueiceDocumentOrigin`, `dom-read`). The value is the core-derived,
+  canonical tuple origin for the current document, never its path, query,
+  fragment, URL object, or a capability-bearing DOM object. Navigation creates
+  a new realm and therefore a new text/origin snapshot.
+
   The page runtime now exposes this substrate only through a temporary,
   realm-scoped registrar. It permits global-function/object/method registration
   but not VM execution, heap access, source inspection, or object inspection,
@@ -114,11 +122,12 @@ or second module resolver to bypass them.
   Direct-page compilation enables the fingerprinted
   `require_declared_global_calls` policy, so a top-level direct call must be a
   local function or a supplied ambient host declaration. Consequently,
-  `blueiceDocumentText()` under `core-script-empty-v1` fails with `UnknownName`
-  before VM admission; a raw BlueJS realm with no registration rejects the same
-  global with `ReferenceError`. The declared profile also rejects an incorrect
-  argument count statically. The first binding does not yet satisfy the full
-  DOM/event surface, so this item remains open.
+  `blueiceDocumentText()` and `blueiceDocumentOrigin()` under
+  `core-script-empty-v1` fail with `UnknownName` before VM admission; a raw
+  BlueJS realm with no registration rejects either global with `ReferenceError`.
+  The declared profile also rejects an incorrect argument count statically.
+  The first bindings do not yet satisfy the full DOM/event surface, so this
+  item remains open.
 
   Acceptance: each initial binding has an implementation, capability policy,
   stable binding ID, and JavaScript page-level behavior test; an unimplemented
@@ -179,7 +188,10 @@ or second module resolver to bypass them.
   core's narrow IPC dispatcher alone is not a BlueJS object binding. The
   checked-in `core-script-document-text-v1` fixture is the first non-empty
   artifact; it declares only `blueiceDocumentText(): string` and matches the
-  direct host's `dom.document-text` snapshot binding. No broad `document` or
+  direct host's `dom.document-text` snapshot binding. The checked-in
+  `core-script-document-context-v1` artifact composes that same binding with
+  `blueiceDocumentOrigin(): string`; the latter receives only the core's
+  canonical tuple origin, never a URL or DOM object. No broad `document` or
   DOM node type is claimed. `GeneratedHostTypingsV1::verify_for_direct_compiler`
   now checks the selected manifest, exact declaration bytes, and complete
   runtime registration inventory before returning the one `.d.ts` source that
@@ -192,10 +204,10 @@ or second module resolver to bypass them.
   call whose global function is neither local nor present in the verified
   ambient declaration root. The standalone `bluetsc` intentionally cannot set
   either host-only facility. Regression coverage proves the declared
-  document-text binding executes only in its matching profile, the empty
-  profile rejects that call statically without admitting VM bytecode, an
-  unconfigured BlueJS realm rejects it at runtime, and artifact mismatches
-  execute nothing. New bindings must retain the same exact inventory,
+  document-text/context bindings execute only in their matching profiles, the
+  empty profile rejects both globals statically without admitting VM bytecode,
+  an unconfigured BlueJS realm rejects either at runtime, and artifact
+  mismatches execute nothing. New bindings must retain the same exact inventory,
   static-absence, and runtime-absence guarantees.
 
   Acceptance: a checked-in fixture generates byte-identical typing artifacts;

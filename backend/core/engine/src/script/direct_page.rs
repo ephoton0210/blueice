@@ -15,7 +15,7 @@
 use super::host_typings::{
     core_script_host_type_catalog, GeneratedHostTypingsV1, HostRuntimeBindingV1,
     HostTypeSurfaceCatalogV1, HostTypingsError, HostTypingsManifestV1,
-    CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+    CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1, CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
 };
 use crate::{Page, TabId, TabManager};
 use blueice_bluets::{
@@ -352,33 +352,51 @@ impl DirectPageScriptHost {
             return Ok(());
         }
 
-        let expected = core_script_host_type_catalog()
-            .generate(CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1)
-            .expect("the checked-in document-text host profile is valid");
-        if profile != CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1
-            || artifact.manifest != expected.manifest
+        let expected = match profile {
+            CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1 | CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1 => {
+                core_script_host_type_catalog()
+                    .generate(profile)
+                    .expect("the checked-in core host profile is valid")
+            }
+            _ => return Err(DirectPageScriptError::RuntimeBindingProfileUnavailable),
+        };
+        if artifact.manifest != expected.manifest
             || artifact.declaration_source != expected.declaration_source
             || artifact.runtime_bindings != expected.runtime_bindings
         {
             return Err(DirectPageScriptError::RuntimeBindingProfileUnavailable);
         }
-        let document_text = tabs
-            .get(tab_id)
-            .ok_or(DirectPageScriptError::UnknownTab {
-                tab_id: tab_id.as_u64(),
-            })?
-            .script_document_text_content();
+        let page = tabs.get(tab_id).ok_or(DirectPageScriptError::UnknownTab {
+            tab_id: tab_id.as_u64(),
+        })?;
+        let document_text = page.script_document_text_content();
+        let document_origin = self
+            .live_documents
+            .get(&tab_id)
+            .expect("a bound profile always has a synchronized live document")
+            .origin
+            .as_str()
+            .to_string();
         self.realms
             .configure_realm_bindings(tab_id.as_u64(), move |bindings| {
+                if profile == CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1 {
+                    let document_origin = document_origin.clone();
+                    bindings.install_global_function(
+                        "blueiceDocumentOrigin",
+                        0,
+                        move |args: &[blueice_bluejs::HostValue]| {
+                            require_no_arguments(args, "blueiceDocumentOrigin")?;
+                            Ok(blueice_bluejs::HostValue::String(
+                                document_origin.clone().into(),
+                            ))
+                        },
+                    )?;
+                }
                 bindings.install_global_function(
                     "blueiceDocumentText",
                     0,
                     move |args: &[blueice_bluejs::HostValue]| {
-                        if !args.is_empty() {
-                            return Err(blueice_bluejs::HostFunctionError::new(
-                                "blueiceDocumentText requires no arguments",
-                            ));
-                        }
+                        require_no_arguments(args, "blueiceDocumentText")?;
                         Ok(blueice_bluejs::HostValue::String(
                             document_text.clone().into(),
                         ))
@@ -388,6 +406,19 @@ impl DirectPageScriptHost {
             .map_err(DirectPageScriptError::Bridge)?;
         self.bound_profiles.insert(tab_id, profile.to_string());
         Ok(())
+    }
+}
+
+fn require_no_arguments(
+    arguments: &[blueice_bluejs::HostValue],
+    function: &str,
+) -> Result<(), blueice_bluejs::HostFunctionError> {
+    if arguments.is_empty() {
+        Ok(())
+    } else {
+        Err(blueice_bluejs::HostFunctionError::new(format!(
+            "{function} requires no arguments"
+        )))
     }
 }
 
@@ -536,8 +567,8 @@ impl std::error::Error for DirectPageScriptError {}
 #[cfg(test)]
 mod tests {
     use super::super::host_typings::{
-        core_script_host_type_catalog, HostTypeSurfaceV1, CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
-        CORE_SCRIPT_EMPTY_PROFILE_V1,
+        core_script_host_type_catalog, HostTypeSurfaceV1, CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1,
+        CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1, CORE_SCRIPT_EMPTY_PROFILE_V1,
     };
     use super::*;
     use blueice_bluets::{AuthorizedModule, AuthorizedModuleResolution};
@@ -708,6 +739,74 @@ mod tests {
     }
 
     #[test]
+    fn document_context_profile_exposes_only_canonical_origin_and_text_snapshot() {
+        let profiles = core_script_host_type_catalog();
+        let artifact = profiles
+            .generate(CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1)
+            .unwrap();
+        let loader = AuthorizedModuleLoader::new(
+            [AuthorizedModule::new(
+                "page:///app/main.ts",
+                concat!(
+                    "const text: string = blueiceDocumentText(); ",
+                    "const origin: string = blueiceDocumentOrigin(); ",
+                    "origin + ':' + text;"
+                ),
+            )],
+            [],
+        )
+        .unwrap();
+        let (mut tabs, tab_id) = loaded_tabs();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<main>context document</main>",
+            Some("https://EXAMPLE.test:443/app/index.html?private=value#part".to_string()),
+        );
+        let mut host = DirectPageScriptHost::new(profiles);
+
+        assert_eq!(
+            host.execute(
+                &tabs,
+                DirectPageScriptRequest {
+                    tab_id,
+                    kind: DirectPageScriptKind::Classic,
+                    entry: "page:///app/main.ts".to_string(),
+                    loader: &loader,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1.to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            )
+            .unwrap(),
+            blueice_bluejs::Value::String("https://example.test:context document".into())
+        );
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<main>replacement context</main>",
+            Some("https://other.test/new/path?private=next".to_string()),
+        );
+        assert_eq!(
+            host.execute(
+                &tabs,
+                DirectPageScriptRequest {
+                    tab_id,
+                    kind: DirectPageScriptKind::Classic,
+                    entry: "page:///app/main.ts".to_string(),
+                    loader: &loader,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1.to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            )
+            .unwrap(),
+            blueice_bluejs::Value::String("https://other.test:replacement context".into())
+        );
+    }
+
+    #[test]
     fn non_empty_profiles_require_a_matching_runtime_installer() {
         let profiles = HostTypeSurfaceCatalogV1::new([HostTypeSurfaceV1::new(
             LANGUAGE_VERSION,
@@ -793,42 +892,45 @@ mod tests {
     }
 
     #[test]
-    fn empty_profile_rejects_document_text_before_vm_admission() {
+    fn empty_profile_rejects_document_context_globals_before_vm_admission() {
         let profiles = core_script_host_type_catalog();
         let artifact = profiles.generate(CORE_SCRIPT_EMPTY_PROFILE_V1).unwrap();
-        let loader = AuthorizedModuleLoader::new(
-            [AuthorizedModule::new(
-                "page:///app/main.ts",
-                "blueiceDocumentText();",
-            )],
-            [],
-        )
-        .unwrap();
         let (tabs, tab_id) = loaded_tabs();
         let mut host = DirectPageScriptHost::new(profiles);
 
-        assert!(matches!(
-            host.execute(
-                &tabs,
-                DirectPageScriptRequest {
-                    tab_id,
-                    kind: DirectPageScriptKind::Classic,
-                    entry: "page:///app/main.ts".to_string(),
-                    loader: &loader,
-                    compiler_options: CompilerOptions::default(),
-                    feature_profile: CORE_SCRIPT_EMPTY_PROFILE_V1.to_string(),
-                    supplied_manifest: &artifact.manifest,
-                    supplied_declaration_source: &artifact.declaration_source,
-                    supplied_runtime_bindings: &artifact.runtime_bindings,
-                },
-            ),
-            Err(DirectPageScriptError::Bridge(BridgeError::BlueTs(diagnostics)))
-                if diagnostics.iter().any(|diagnostic| {
-                    diagnostic.code == blueice_bluets::DiagnosticCode::UnknownName
-                        && diagnostic.message
-                            == "function blueiceDocumentText is not declared by this page profile"
-                })
-        ));
+        for global in ["blueiceDocumentText", "blueiceDocumentOrigin"] {
+            let loader = AuthorizedModuleLoader::new(
+                [AuthorizedModule::new(
+                    "page:///app/main.ts",
+                    format!("{global}();"),
+                )],
+                [],
+            )
+            .unwrap();
+            let expected_message =
+                format!("function {global} is not declared by this page profile");
+            assert!(matches!(
+                host.execute(
+                    &tabs,
+                    DirectPageScriptRequest {
+                        tab_id,
+                        kind: DirectPageScriptKind::Classic,
+                        entry: "page:///app/main.ts".to_string(),
+                        loader: &loader,
+                        compiler_options: CompilerOptions::default(),
+                        feature_profile: CORE_SCRIPT_EMPTY_PROFILE_V1.to_string(),
+                        supplied_manifest: &artifact.manifest,
+                        supplied_declaration_source: &artifact.declaration_source,
+                        supplied_runtime_bindings: &artifact.runtime_bindings,
+                    },
+                ),
+                Err(DirectPageScriptError::Bridge(BridgeError::BlueTs(diagnostics)))
+                    if diagnostics.iter().any(|diagnostic| {
+                        diagnostic.code == blueice_bluets::DiagnosticCode::UnknownName
+                            && diagnostic.message == expected_message
+                    })
+            ));
+        }
         assert_eq!(host.debug_record_count(), 0);
     }
 

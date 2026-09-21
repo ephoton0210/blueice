@@ -459,7 +459,8 @@ impl std::error::Error for DirectPageInlineExecutorError {}
 mod tests {
     use super::*;
     use crate::script::host_typings::{
-        core_script_host_type_catalog, HostTypeSurfaceV1, CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+        core_script_host_type_catalog, HostTypeSurfaceV1, CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1,
+        CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
     };
     use crate::script::page_source_authorizer::{
         AuthorizedPageScriptGraph, PageScriptSourceAuthorizationError,
@@ -579,6 +580,39 @@ mod tests {
         )
         .unwrap();
         executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.reports(),
+            &VecDeque::from([DirectPageScriptExecutionReport::Executed {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                ordinal: 0,
+                kind: DirectPageScriptKind::Classic,
+            }])
+        );
+    }
+
+    #[test]
+    fn inline_executor_runs_the_document_context_profile_through_page_lifecycle() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            concat!(
+                "<main>current context</main>",
+                "<script type=\"application/x-blueice-typescript\">",
+                "const origin: string = blueiceDocumentOrigin(); ",
+                "const text: string = blueiceDocumentText(); origin + text;",
+                "</script>"
+            ),
+            Some("https://example.test/app/index.html".to_string()),
+        );
+        let mut executor = DirectPageInlineExecutor::new(
+            core_script_host_type_catalog(),
+            CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1,
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+
         assert_eq!(
             executor.reports(),
             &VecDeque::from([DirectPageScriptExecutionReport::Executed {

@@ -710,23 +710,25 @@ mod tests {
     }
 
     #[test]
-    fn unconfigured_document_text_global_is_rejected_at_runtime() {
+    fn unconfigured_document_context_globals_are_rejected_at_runtime() {
         let mut runtime = BlueJsPageRuntime::default();
         runtime.open_realm(7, origin()).unwrap();
-        let program = runtime
-            .install_program(
-                7,
-                &origin(),
-                source("page:///unconfigured.js"),
-                &BlueJsProgramV1::Script(parse("blueiceDocumentText();").unwrap()),
-            )
-            .unwrap();
+        for global in ["blueiceDocumentText", "blueiceDocumentOrigin"] {
+            let program = runtime
+                .install_program(
+                    7,
+                    &origin(),
+                    source(&format!("page:///unconfigured-{global}.js")),
+                    &BlueJsProgramV1::Script(parse(&format!("{global}();")).unwrap()),
+                )
+                .unwrap();
 
-        assert!(matches!(
-            runtime.execute_program(7, program),
-            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::ReferenceError(name)))
-                if name == "blueiceDocumentText"
-        ));
+            assert!(matches!(
+                runtime.execute_program(7, program),
+                Err(BlueJsPageRuntimeError::Runtime(RuntimeError::ReferenceError(name)))
+                    if name == global
+            ));
+        }
     }
 
     #[test]

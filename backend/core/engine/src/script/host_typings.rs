@@ -28,6 +28,10 @@ pub const CORE_SCRIPT_EMPTY_PROFILE_V1: &str = "core-script-empty-v1";
 /// The first truthful core page profile: one read-only document-text global.
 pub const CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1: &str = "core-script-document-text-v1";
 
+/// A read-only page-context profile. It exposes only the canonical origin and
+/// a copied document-text snapshot; it is not a general `document` object.
+pub const CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1: &str = "core-script-document-context-v1";
+
 /// Core host API version associated with [`CORE_SCRIPT_EMPTY_PROFILE_V1`].
 pub const CORE_SCRIPT_HOST_API_VERSION_V1: &str = "blueice-core-script-v1";
 
@@ -282,6 +286,31 @@ pub fn core_script_host_type_catalog() -> HostTypeSurfaceCatalogV1 {
                 "document-text",
                 CORE_SCRIPT_HOST_API_VERSION_V1,
             )],
+        ),
+        HostTypeSurfaceV1::new(
+            BLUEICE_HOST_TYPINGS_LANGUAGE_VERSION_V1,
+            CORE_SCRIPT_HOST_API_VERSION_V1,
+            CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1,
+            vec![
+                HostTypeBindingV1::new(
+                    "dom.document-origin",
+                    "declare function blueiceDocumentOrigin(): string;",
+                    HostBindingRoleV1::Value,
+                    "global.blueiceDocumentOrigin",
+                    "dom-read",
+                    "document-origin",
+                    CORE_SCRIPT_HOST_API_VERSION_V1,
+                ),
+                HostTypeBindingV1::new(
+                    "dom.document-text",
+                    "declare function blueiceDocumentText(): string;",
+                    HostBindingRoleV1::Value,
+                    "global.blueiceDocumentText",
+                    "dom-read",
+                    "document-text",
+                    CORE_SCRIPT_HOST_API_VERSION_V1,
+                ),
+            ],
         ),
     ])
     .expect("the built-in core script host profile is valid")
@@ -706,6 +735,37 @@ mod tests {
         assert_eq!(
             artifact.runtime_bindings[0].runtime_binding_id,
             "global.blueiceDocumentText"
+        );
+    }
+
+    #[test]
+    fn document_context_profile_declares_only_copied_page_context() {
+        let artifact = core_script_host_type_catalog()
+            .generate(CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1)
+            .unwrap();
+        assert_eq!(
+            artifact.declaration_source,
+            include_str!(
+                "../../tests/fixtures/host_typings/core-script-document-context/lib.blueice.d.ts"
+            )
+        );
+        assert_eq!(
+            artifact.manifest_json,
+            include_str!(
+                "../../tests/fixtures/host_typings/core-script-document-context/lib.blueice.manifest.json"
+            )
+        );
+        assert_eq!(
+            artifact.manifest.binding_ids,
+            ["dom.document-origin", "dom.document-text"]
+        );
+        assert_eq!(
+            artifact
+                .runtime_bindings
+                .iter()
+                .map(|binding| binding.runtime_binding_id.as_str())
+                .collect::<Vec<_>>(),
+            ["global.blueiceDocumentOrigin", "global.blueiceDocumentText"]
         );
     }
 
