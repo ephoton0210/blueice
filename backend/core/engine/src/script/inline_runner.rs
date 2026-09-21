@@ -452,6 +452,9 @@ fn report_error_message(error: DirectPageScriptError) -> &'static str {
         | DirectPageScriptError::BindingProfileAlreadySelected => {
             "host binding profile rejected the page script"
         }
+        DirectPageScriptError::BindingContractViolation { .. } => {
+            "host binding contract rejected the page script"
+        }
         DirectPageScriptError::UnknownTab { .. } => "page tab is no longer available",
         DirectPageScriptError::PageHasNoUrl { .. }
         | DirectPageScriptError::InvalidPageUrl { .. } => {
@@ -667,6 +670,58 @@ mod tests {
                 kind: DirectPageScriptKind::Classic,
             }])
         );
+    }
+
+    #[test]
+    fn inline_executor_redacts_a_host_binding_contract_rejection() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            concat!(
+                "<main>page-controlled oversized document text</main>",
+                "<script type=\"application/x-blueice-typescript\">",
+                "blueiceDocumentText();",
+                "</script>"
+            ),
+            Some("https://example.test/app/index.html".to_string()),
+        );
+        let profiles = core_script_host_type_catalog();
+        let host = DirectPageScriptHost::with_realm_owner_and_contract_limits(
+            profiles.clone(),
+            DirectPageRealmOwner::default(),
+            crate::script::contracts::CoreScriptBindingContractLimits {
+                document_text: blueice_bluets::ValidationLimits {
+                    max_string_bytes: 8,
+                    ..blueice_bluets::ValidationLimits::default()
+                },
+                ..crate::script::contracts::CoreScriptBindingContractLimits::default()
+            },
+        );
+        let mut executor = DirectPageInlineExecutor::new_with_host(
+            profiles,
+            CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+            CompilerOptions::default(),
+            None,
+            host,
+        )
+        .unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert_eq!(
+            executor.reports(),
+            &VecDeque::from([DirectPageScriptExecutionReport::Rejected {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                ordinal: 0,
+                kind: DirectPageScriptKind::Classic,
+                message: "host binding contract rejected the page script".to_string(),
+            }])
+        );
+        assert_eq!(executor.debug_record_count(), 0);
+        let stats = executor.realm_stats(tab_id).unwrap();
+        assert_eq!(stats.program_count, 0);
+        assert_eq!(stats.bytecode_bytes, 0);
     }
 
     #[test]

@@ -315,6 +315,19 @@ installed value with the generated typing inventory, a stable binding ID, and
 its declared capability/origin policy before it can be advertised in
 `lib.blueice.d.ts`.
 
+Before a matching callback captures either copied result, core validates it as
+a pure string result boundary: `dom.document-text` uses
+`core-script-document-text-result-v1`, while `dom.document-origin` uses
+`core-script-document-origin-result-v1`. Both are `host-to-script`, `dom-read`
+boundaries with no script-provided value; the former uses the validator's
+default 1 MiB string budget and the latter a 4 KiB canonical-origin budget.
+The limits belong to the core-created page host, never the page request. A
+validation failure rejects profile installation before direct compilation can
+admit bytecode, and an inline execution report reduces it to a source-free
+host-contract rejection. This is deliberately an inventory for only these
+immutable primitive snapshots, not a claim of DOM-object, JSON, Fetch/XHR,
+storage, messaging, foreign-module, or extension contract coverage.
+
 ## Host-generated `lib.blueice.d.ts`
 
 `lib.blueice.d.ts` is a generated, host-supplied declaration root. It is not a hand-maintained substitute for `lib.dom.d.ts`, and it must describe only APIs that the current BlueIce page-script host has actually exposed.

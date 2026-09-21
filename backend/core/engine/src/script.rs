@@ -18,6 +18,9 @@ use std::sync::mpsc;
 /// navigation completions in one session-loop turn.
 const MAX_SCRIPT_REQUESTS_PER_SESSION_TICK: usize = 64;
 
+/// First live host-to-script contract inventory for direct BlueTS page
+/// bindings. It contains only bindings that this core host actually installs.
+pub mod contracts;
 mod declarations;
 pub mod direct_page;
 /// Deterministic host typing artifacts derived from the core-owned binding

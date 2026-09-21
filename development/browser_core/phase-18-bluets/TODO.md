@@ -378,6 +378,18 @@ or second module resolver to bypass them.
   validation limits, failure schema, and policy requirements. Do not claim a
   boundary before its underlying host API exists.
 
+  Foundation delivered: the current inventory intentionally names only the two
+  installed direct-page host-to-script result boundaries: stable binding
+  `dom.document-text` / contract
+  `core-script-document-text-result-v1`, and `dom.document-origin` / contract
+  `core-script-document-origin-result-v1`. Both are `dom-read`, return one
+  copied primitive string snapshot, accept no data from script, and have no
+  source span because they are core-created host values rather than lowered
+  TypeScript calls. The catalog exposes their stable runtime binding IDs,
+  direction, capability, contract IDs, and independent validation limits. It
+  explicitly contains no speculative JSON, Fetch/XHR, URL/query, storage,
+  messaging, foreign-module, extension, or DOM-object boundary.
+
   Acceptance: `strict-runtime` rejects a supported boundary with no reifiable
   contract, unreifiable type, or unchecked `any` unless an authorized reviewed
   contract is supplied; `checked` and `transpile-only` remain visibly distinct
@@ -388,6 +400,19 @@ or second module resolver to bypass them.
   proxy, user callback, fetch, or capability acquisition during validation.
   Attribute validator/cache/debug allocations and failures to the initiating
   tab and include the lowered behavior in the gatekeeper summary.
+
+  Foundation delivered: before a document-text or document-origin snapshot can
+  be captured in a direct realm callback, the core constructs its exact
+  reifiable string `ContractPlan` and validates the copied value with
+  core-selected `ValidationLimits`. The default text budget is the validator's
+  one-mebibyte string limit and the canonical-origin budget is 4 KiB; a page
+  request cannot loosen either. A violation rejects profile installation before
+  BlueTS/BlueJS program admission, retains no program/bytecode/debug record,
+  and becomes a source-free inline-executor result. This covers only immutable
+  primitive host results; it does not yet provide declared boundary source
+  spans, strict-runtime coverage checks, validator/cache/debug allocation
+  attribution, diagnostics retention, gatekeeper summaries, or any mutable or
+  foreign-data boundary.
 
   Acceptance: malformed, recursive, cyclic, deep, oversized, and
   resource-exhausting values fail at a bounded path and budget; valid data

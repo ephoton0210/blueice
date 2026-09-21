@@ -12,6 +12,10 @@
 //! together prevents a caller from compiling against a host profile that the
 //! runtime did not verify.
 
+use super::contracts::{
+    core_script_binding_contract, CoreScriptBindingContractLimits,
+    CORE_SCRIPT_DOCUMENT_ORIGIN_RESULT_CONTRACT_V1, CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1,
+};
 use super::host_typings::{
     core_script_host_type_catalog, GeneratedHostTypingsV1, HostRuntimeBindingV1,
     HostTypeSurfaceCatalogV1, HostTypingsError, HostTypingsManifestV1,
@@ -70,6 +74,7 @@ pub struct DirectInlinePageScriptRequest<'a> {
 pub struct DirectPageScriptHost {
     profiles: HostTypeSurfaceCatalogV1,
     realms: DirectPageRealmOwner,
+    binding_contract_limits: CoreScriptBindingContractLimits,
     live_documents: BTreeMap<TabId, LivePageIdentity>,
     bound_profiles: BTreeMap<TabId, String>,
 }
@@ -95,9 +100,26 @@ impl DirectPageScriptHost {
         profiles: HostTypeSurfaceCatalogV1,
         realms: DirectPageRealmOwner,
     ) -> Self {
+        Self::with_realm_owner_and_contract_limits(
+            profiles,
+            realms,
+            CoreScriptBindingContractLimits::default(),
+        )
+    }
+
+    /// Creates a direct-page host with fixed budgets for the current live
+    /// host-to-script binding contracts. Page requests cannot alter these
+    /// budgets; a result that exceeds one is rejected before compilation can
+    /// admit bytecode into the realm.
+    pub fn with_realm_owner_and_contract_limits(
+        profiles: HostTypeSurfaceCatalogV1,
+        realms: DirectPageRealmOwner,
+        binding_contract_limits: CoreScriptBindingContractLimits,
+    ) -> Self {
         Self {
             profiles,
             realms,
+            binding_contract_limits,
             live_documents: BTreeMap::new(),
             bound_profiles: BTreeMap::new(),
         }
@@ -370,17 +392,43 @@ impl DirectPageScriptHost {
             tab_id: tab_id.as_u64(),
         })?;
         let document_text = page.script_document_text_content();
-        let document_origin = self
-            .live_documents
-            .get(&tab_id)
-            .expect("a bound profile always has a synchronized live document")
-            .origin
-            .as_str()
-            .to_string();
+        let includes_document_origin = profile == CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1;
+        let document_origin = includes_document_origin.then(|| {
+            self.live_documents
+                .get(&tab_id)
+                .expect("a bound profile always has a synchronized live document")
+                .origin
+                .as_str()
+                .to_string()
+        });
+        let text_boundary = core_script_binding_contract("dom.document-text")
+            .expect("the installed document-text binding has a contract inventory entry");
+        text_boundary
+            .validate_string(&document_text, self.binding_contract_limits.document_text)
+            .map_err(|error| DirectPageScriptError::BindingContractViolation {
+                stable_binding_id: text_boundary.stable_binding_id,
+                contract_id: CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1,
+                error,
+            })?;
+        if let Some(document_origin) = document_origin.as_deref() {
+            let origin_boundary = core_script_binding_contract("dom.document-origin")
+                .expect("the installed document-origin binding has a contract inventory entry");
+            origin_boundary
+                .validate_string(
+                    document_origin,
+                    self.binding_contract_limits.document_origin,
+                )
+                .map_err(|error| DirectPageScriptError::BindingContractViolation {
+                    stable_binding_id: origin_boundary.stable_binding_id,
+                    contract_id: CORE_SCRIPT_DOCUMENT_ORIGIN_RESULT_CONTRACT_V1,
+                    error,
+                })?;
+        }
         self.realms
             .configure_realm_bindings(tab_id.as_u64(), move |bindings| {
-                if profile == CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1 {
-                    let document_origin = document_origin.clone();
+                if includes_document_origin {
+                    let document_origin = document_origin
+                        .expect("the document-context profile captures its validated origin");
                     bindings.install_global_function(
                         "blueiceDocumentOrigin",
                         0,
@@ -485,6 +533,11 @@ pub enum DirectPageScriptError {
     },
     RuntimeBindingProfileUnavailable,
     BindingProfileAlreadySelected,
+    BindingContractViolation {
+        stable_binding_id: &'static str,
+        contract_id: &'static str,
+        error: blueice_bluets::ValidationError,
+    },
     UnknownTab {
         tab_id: u64,
     },
@@ -534,6 +587,15 @@ impl fmt::Display for DirectPageScriptError {
             Self::BindingProfileAlreadySelected => {
                 formatter.write_str("page realm already selected a different host binding profile")
             }
+            Self::BindingContractViolation {
+                stable_binding_id,
+                contract_id,
+                error,
+            } => write!(
+                formatter,
+                "page host binding `{stable_binding_id}` violated contract `{contract_id}` at {}: expected {}, observed {}",
+                error.path, error.expected, error.observed
+            ),
             Self::UnknownTab { tab_id } => write!(formatter, "unknown page tab {tab_id}"),
             Self::PageHasNoUrl { tab_id } => {
                 write!(formatter, "page tab {tab_id} has no loaded document URL")
@@ -736,6 +798,64 @@ mod tests {
             .unwrap(),
             blueice_bluejs::Value::String("replacement document".into())
         );
+    }
+
+    #[test]
+    fn document_text_contract_rejects_an_oversized_snapshot_before_admission() {
+        let profiles = core_script_host_type_catalog();
+        let artifact = profiles
+            .generate(CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1)
+            .unwrap();
+        let loader = AuthorizedModuleLoader::new(
+            [AuthorizedModule::new(
+                "page:///app/main.ts",
+                "blueiceDocumentText();",
+            )],
+            [],
+        )
+        .unwrap();
+        let (mut tabs, tab_id) = loaded_tabs();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<main>oversized document snapshot</main>",
+            Some("https://example.test/app/index.html".to_string()),
+        );
+        let mut host = DirectPageScriptHost::with_realm_owner_and_contract_limits(
+            profiles,
+            DirectPageRealmOwner::default(),
+            CoreScriptBindingContractLimits {
+                document_text: blueice_bluets::ValidationLimits {
+                    max_string_bytes: 8,
+                    ..blueice_bluets::ValidationLimits::default()
+                },
+                ..CoreScriptBindingContractLimits::default()
+            },
+        );
+
+        assert!(matches!(
+            host.execute(
+                &tabs,
+                DirectPageScriptRequest {
+                    tab_id,
+                    kind: DirectPageScriptKind::Classic,
+                    entry: "page:///app/main.ts".to_string(),
+                    loader: &loader,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1.to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            ),
+            Err(DirectPageScriptError::BindingContractViolation {
+                stable_binding_id: "dom.document-text",
+                contract_id: CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1,
+                ..
+            })
+        ));
+        assert_eq!(host.debug_record_count(), 0);
+        let stats = host.realm_stats(tab_id).unwrap();
+        assert_eq!(stats.program_count, 0);
+        assert_eq!(stats.bytecode_bytes, 0);
     }
 
     #[test]
