@@ -892,6 +892,11 @@ impl Parser {
                 break;
             }
         }
+        // `new` takes a MemberExpression, which has no OptionalChain form:
+        // `new a?.b()` and `new a?.()` are early errors.
+        if self.check_punct(Punct::QuestionDot) {
+            return Err(self.syntax_error("an optional chain cannot be the target of 'new'"));
+        }
         let args = if self.check_punct(Punct::LParen) {
             self.parse_arguments()?
         } else {

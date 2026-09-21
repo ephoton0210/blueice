@@ -260,6 +260,17 @@ impl Vm {
         {
             return Ok(false);
         }
+        if self.globals.get("globalThis") == Some(&object) {
+            // The standard globals are created on first use. A non-extensible
+            // global object cannot gain them later, and they belong to it from
+            // the start, so create them before the object is closed.
+            for name in ["undefined", "NaN", "Infinity"]
+                .iter()
+                .chain(super::super::execution::LAZY_STANDARD_GLOBALS)
+            {
+                self.materialize_lexical_global(object, name)?;
+            }
+        }
         self.heap.prevent_extensions(object)?;
         Ok(true)
     }

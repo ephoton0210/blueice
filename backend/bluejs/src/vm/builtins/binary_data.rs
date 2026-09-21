@@ -231,7 +231,8 @@ impl Vm {
         if integer < 0.0 {
             return Err(RuntimeError::RangeError("invalid buffer index".into()));
         }
-        if integer > usize::MAX as f64 {
+        // ToIndex: an integer above 2^53 - 1 is a RangeError.
+        if integer > 9_007_199_254_740_991.0 {
             return Err(RuntimeError::RangeError("buffer index is too large".into()));
         }
         Ok(integer as usize)

@@ -525,20 +525,58 @@ impl Vm {
             if regexp.source.is_empty() {
                 return Ok(Value::String("(?:)".into()));
             }
-            let mut source = JsString::default();
-            let mut escaped = false;
+            // EscapeRegExpPattern: `/` and line terminators must be escaped so
+            // that "/" + source + "/" reparses as the same pattern. A `/` in a
+            // character class needs no escape, and a backslash that already
+            // precedes a line terminator is absorbed into that terminator's
+            // escape (`\<LF>` is `\n`, not a backslash followed by `\n`).
+            let unicode_sets = regexp.flags.contains('v');
+            let mut units = Vec::with_capacity(regexp.source.as_code_units().len());
+            let (mut escaped, mut class_depth) = (false, 0usize);
             for &unit in regexp.source.as_code_units() {
-                let part = match unit {
-                    0x2f if !escaped => "\\/".into(),
-                    0x0a => "\\n".into(),
-                    0x0d => "\\r".into(),
-                    0x2028 => "\\u2028".into(),
-                    0x2029 => "\\u2029".into(),
-                    _ => JsString::from_code_units(vec![unit]),
+                let terminator = match unit {
+                    0x0a => Some("\\n"),
+                    0x0d => Some("\\r"),
+                    0x2028 => Some("\\u2028"),
+                    0x2029 => Some("\\u2029"),
+                    _ => None,
                 };
-                native::append(&mut source, &part, self.config.max_string_bytes)?;
-                escaped = unit == 0x5c && !escaped;
+                if let Some(escape) = terminator {
+                    if escaped {
+                        units.pop();
+                    }
+                    units.extend(escape.encode_utf16());
+                    escaped = false;
+                    continue;
+                }
+                if escaped {
+                    units.push(unit);
+                    escaped = false;
+                    continue;
+                }
+                match unit {
+                    0x5c => {
+                        units.push(unit);
+                        escaped = true;
+                    }
+                    0x2f if class_depth == 0 => units.extend("\\/".encode_utf16()),
+                    0x5b => {
+                        if unicode_sets || class_depth == 0 {
+                            class_depth += 1;
+                        }
+                        units.push(unit);
+                    }
+                    0x5d => {
+                        if class_depth > 0 {
+                            class_depth = if unicode_sets { class_depth - 1 } else { 0 };
+                        }
+                        units.push(unit);
+                    }
+                    _ => units.push(unit),
+                }
             }
+            let source = JsString::from_code_units(units);
+            self.check_string(&Value::String(source.clone()))?;
             return Ok(Value::String(source));
         }
         let flag = match name {

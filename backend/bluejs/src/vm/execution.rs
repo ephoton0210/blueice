@@ -26,6 +26,73 @@ fn push_object_roots<'a>(roots: &mut Vec<ObjectId>, values: impl IntoIterator<It
     }
 }
 
+/// The standard global properties of the realm global object that are created
+/// on first use rather than eagerly.
+pub(super) const LAZY_STANDARD_GLOBALS: &[&str] = &[
+    "String",
+    "Symbol",
+    "RegExp",
+    "Object",
+    "Reflect",
+    "Math",
+    "Number",
+    "Boolean",
+    "BigInt",
+    "Atomics",
+    "Array",
+    "ArrayBuffer",
+    "SharedArrayBuffer",
+    "DataView",
+    "Int8Array",
+    "Uint8Array",
+    "Uint8ClampedArray",
+    "Int16Array",
+    "Uint16Array",
+    "Int32Array",
+    "Uint32Array",
+    "Float16Array",
+    "Float32Array",
+    "Float64Array",
+    "BigInt64Array",
+    "BigUint64Array",
+    "Map",
+    "Set",
+    "WeakMap",
+    "WeakSet",
+    "WeakRef",
+    "FinalizationRegistry",
+    "DisposableStack",
+    "AsyncDisposableStack",
+    "ShadowRealm",
+    "Iterator",
+    "Function",
+    "Proxy",
+    "Promise",
+    "Intl",
+    "Temporal",
+    "Error",
+    "TypeError",
+    "RangeError",
+    "SyntaxError",
+    "ReferenceError",
+    "EvalError",
+    "URIError",
+    "AggregateError",
+    "SuppressedError",
+    "eval",
+    "isNaN",
+    "isFinite",
+    "parseInt",
+    "parseFloat",
+    "encodeURI",
+    "encodeURIComponent",
+    "decodeURI",
+    "decodeURIComponent",
+    "escape",
+    "unescape",
+    "JSON",
+];
+
 impl Vm {
     pub(super) fn execute_with_global_bindings(
         &mut self,
@@ -88,9 +155,11 @@ impl Vm {
         self.active_scopes.clear();
         self.active_scope_slots.clear();
         self.with_objects.clear();
+        self.inherited_with_depth = 0;
         self.top_level_module = false;
         self.pending_completions.clear();
         self.completion_saves.clear();
+        self.call_stack.clear();
         // WeakRef's KeepDuringJob guarantee ends only after the complete
         // script/module job (including abrupt completion cleanup) has run.
         self.kept_weak_objects.clear();
@@ -208,71 +277,7 @@ impl Vm {
             }
             return Ok(());
         }
-        if matches!(
-            name,
-            "String"
-                | "Symbol"
-                | "RegExp"
-                | "Object"
-                | "Reflect"
-                | "Math"
-                | "Number"
-                | "Boolean"
-                | "BigInt"
-                | "Atomics"
-                | "Array"
-                | "ArrayBuffer"
-                | "SharedArrayBuffer"
-                | "DataView"
-                | "Int8Array"
-                | "Uint8Array"
-                | "Uint8ClampedArray"
-                | "Int16Array"
-                | "Uint16Array"
-                | "Int32Array"
-                | "Uint32Array"
-                | "Float16Array"
-                | "Float32Array"
-                | "Float64Array"
-                | "BigInt64Array"
-                | "BigUint64Array"
-                | "Map"
-                | "Set"
-                | "WeakMap"
-                | "WeakSet"
-                | "WeakRef"
-                | "FinalizationRegistry"
-                | "DisposableStack"
-                | "AsyncDisposableStack"
-                | "ShadowRealm"
-                | "Iterator"
-                | "Function"
-                | "Proxy"
-                | "Promise"
-                | "Intl"
-                | "Temporal"
-                | "Error"
-                | "TypeError"
-                | "RangeError"
-                | "SyntaxError"
-                | "ReferenceError"
-                | "EvalError"
-                | "URIError"
-                | "AggregateError"
-                | "SuppressedError"
-                | "eval"
-                | "isNaN"
-                | "isFinite"
-                | "parseInt"
-                | "parseFloat"
-                | "encodeURI"
-                | "encodeURIComponent"
-                | "decodeURI"
-                | "decodeURIComponent"
-                | "escape"
-                | "unescape"
-                | "JSON"
-        ) {
+        if LAZY_STANDARD_GLOBALS.contains(&name) {
             self.global(name)?;
         }
         Ok(())
@@ -1007,6 +1012,7 @@ impl Vm {
                 .iter()
                 .chain(self.templates.values())
                 .chain(self.joining.iter())
+                .chain(self.call_stack.iter())
             {
                 roots.push(*object);
             }

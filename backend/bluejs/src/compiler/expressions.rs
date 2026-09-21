@@ -194,7 +194,30 @@ impl Compiler {
                     UnaryOp::Delete | UnaryOp::Void => Opcode::DeleteProperty,
                 };
                 if *op == UnaryOp::Delete {
-                    if matches!(&**arg, Expr::Member { .. }) {
+                    if matches!(&**arg, Expr::Member { .. } | Expr::OptionalMember { .. })
+                        && optional_chain_root(arg)
+                    {
+                        // `delete a?.b` and `delete a?.b.c` delete the chain's
+                        // final Reference. A `?.` that short-circuits skips
+                        // the rest of the chain, including its deletion, and
+                        // the operation evaluates to true.
+                        if private_member_name(arg).is_some() {
+                            return Err(CompileError::InvalidSyntax(
+                                "cannot delete a private element",
+                            ));
+                        }
+                        let mut exits = Vec::new();
+                        self.optional_chain_member_reference(arg, &mut exits)?;
+                        self.emit(opcode, 0)?;
+                        let deleted = self.emit(Opcode::Jump, 0)?;
+                        let short_circuited = self.offset()?;
+                        for exit in exits {
+                            self.patch(exit, short_circuited);
+                        }
+                        self.emit(Opcode::Pop, 0)?;
+                        self.constant(Value::Bool(true))?;
+                        self.patch(deleted, self.offset()?);
+                    } else if matches!(&**arg, Expr::Member { .. }) {
                         if private_member_name(arg).is_some() {
                             return Err(CompileError::InvalidSyntax(
                                 "cannot delete a private element",

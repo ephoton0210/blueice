@@ -1247,16 +1247,14 @@ impl Vm {
             }
             let values = self.array_sort_values(values, compare)?;
             let mut index = 0usize;
+            // Set(obj, key, value, true): a failed write throws whatever the
+            // strictness of the caller, and an unchanged value is still written.
             for value in values {
-                self.set_property_value(&Value::Object(object), &index.to_string().into(), &value)?;
+                self.array_set_or_throw(object, index.to_string().into(), &value)?;
                 index += 1;
             }
             for _ in 0..undefined {
-                self.set_property_value(
-                    &Value::Object(object),
-                    &index.to_string().into(),
-                    &Value::Undefined,
-                )?;
+                self.array_set_or_throw(object, index.to_string().into(), &Value::Undefined)?;
                 index += 1;
             }
             while index < length {

@@ -364,6 +364,16 @@ fn compile_with_limit_and_mode(
     Ok(compiler.bytecode)
 }
 
+/// The `with` object environments active where a direct eval runs.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct EvalWithScopes {
+    /// How many are active in total.
+    pub(crate) depth: usize,
+    /// The first `inherited` of them were in scope when the running function
+    /// was created, so its own bindings are nested inside them.
+    pub(crate) inherited: usize,
+}
+
 /// What a direct eval inherits from the function that calls it, other than
 /// its visible bindings.
 #[derive(Default)]
@@ -374,8 +384,7 @@ pub(crate) struct EvalContext {
     /// The caller is a class field initializer (or an arrow function inside
     /// one).
     pub(crate) class_field_initializer: bool,
-    /// The number of `with` environments the eval runs inside.
-    pub(crate) with_depth: usize,
+    pub(crate) with_scopes: EvalWithScopes,
 }
 
 /// Compiles direct-eval source with cells for the caller's visible bindings.
@@ -392,8 +401,9 @@ pub(crate) fn compile_eval(
         strict,
         new_target_allowed,
         class_field_initializer,
-        with_depth,
+        with_scopes,
     } = context;
+    let with_depth = with_scopes.depth;
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
         names: vec![HashMap::new()],
@@ -407,9 +417,13 @@ pub(crate) fn compile_eval(
         local_scope: 1,
         with_depth,
         // Captured bindings form the outer lexical environment of direct
-        // eval. Any inherited `with` environments occur after it, while the
-        // eval's own declaration scope is entered below.
-        with_scope_depths: vec![1; with_depth],
+        // eval. The `with` environments the calling function entered occur
+        // after it, while the eval's own declaration scope is entered below.
+        // The first `inherited` objects were in scope when the calling
+        // function was created: its own bindings are nested inside them.
+        with_scope_depths: (0..with_depth)
+            .map(|index| usize::from(index >= with_scopes.inherited))
+            .collect(),
         annex_b_parameter_names: BTreeSet::new(),
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
