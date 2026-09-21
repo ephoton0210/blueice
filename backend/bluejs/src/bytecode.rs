@@ -273,6 +273,28 @@ opcodes! {
     BindThisValue: 5, 0;
     // `F, result` -> `result` after InitializeInstanceElements(result, F).
     InitializeInstanceElements: 1, 0;
+    // Decorators. `F` -> `F, metadata`: a fresh metadata object whose
+    // prototype is the superclass's `Symbol.metadata` (or null).
+    CreateMetadata: 1, 0;
+    // `F, metadata` -> `F`: defines `F[Symbol.metadata]`.
+    DefineMetadata: 1, 0;
+    // `decorators, name, owner, privateName, value, value2, metadata` ->
+    // `record`: applies one class element's decorators, last to first, and
+    // returns `[extraInitializers, ...]` (the operand encodes the element
+    // kind, `static` and `private`; see `vm/builtins/decorators.rs`).
+    DecorateElement: 5, 0;
+    // `F, decorators, name, metadata` -> `[extraInitializers, F']`.
+    DecorateClass: 1, 0;
+    // `target, key, original, replacement` -> nothing: puts a decorated
+    // method or accessor half back on its class (or private owner) unless a
+    // later element already replaced it. The operand encodes the kind and
+    // whether the name is private.
+    ReplaceClassElement: 5, 0;
+    // `receiver, initializers` -> nothing: calls each with `this` = receiver.
+    RunInitializers: 1, 0;
+    // `value, receiver, initializers` -> `value'`: threads a field's initial
+    // value through each initializer with `this` = receiver.
+    ApplyInitializers: 1, 0;
     DeleteProperty: 1, 0;
     Instanceof: 1, 0;
     In: 1, 0;
@@ -286,6 +308,19 @@ opcodes! {
     // Drop a retained Reference beneath the assignment's expression value.
     // The operand gives the number of stack values encoding that Reference.
     DiscardReference: 5, 0;
+}
+
+/// The operand encoding shared by `DecorateElement` and `ReplaceClassElement`:
+/// bits 0-2 are the element kind, bit 3 is `static` and bit 4 is `private`.
+pub(crate) mod decoration {
+    pub const METHOD: u32 = 0;
+    pub const GETTER: u32 = 1;
+    pub const SETTER: u32 = 2;
+    pub const FIELD: u32 = 3;
+    pub const ACCESSOR: u32 = 4;
+    pub const KIND_MASK: u32 = 7;
+    pub const STATIC: u32 = 8;
+    pub const PRIVATE: u32 = 16;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -153,6 +153,12 @@ impl Vm {
                 self.promise_value_thunk(state, thrower)
             }
             NativeFunction::PromiseWithResolvers => self.promise_with_resolvers(&receiver),
+            NativeFunction::DecoratorAddInitializer { state } => {
+                self.decorator_add_initializer(state, first)
+            }
+            NativeFunction::DecoratorAccess { op, state } => {
+                self.decorator_access(op, state, &args)
+            }
             NativeFunction::ToLocaleLowerCase
             | NativeFunction::ToLocaleUpperCase
             | NativeFunction::LocaleCompare => {

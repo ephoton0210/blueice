@@ -461,6 +461,21 @@ pub enum Stmt {
     /// names the hidden lexical binding that holds the declaring class's
     /// private-brand owner.
     ClassPrivateBrand(String),
+    /// Compiler-internal wrapper for a decorated class field (or an
+    /// auto-accessor's hidden storage field). The inner `ClassField` defines
+    /// the field; its initial value first passes through the decorators'
+    /// initializer functions, and the extra initializers the decorators added
+    /// run right after the definition. `record` names the hidden lexical
+    /// binding holding the `[extraInitializers, initializers, ...]` record
+    /// the decorators produced.
+    ClassDecoratedField {
+        field: Box<Stmt>,
+        record: String,
+    },
+    /// Compiler-internal: calls the extra initializers (`record[0]`) the
+    /// decorators of a method or accessor added, with `this` the instance
+    /// being initialized. The string names the hidden record binding.
+    ClassExtraInitializers(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -864,7 +879,8 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
             search == SuperSearch::Arguments && class_contains_arguments(class)
         }
         Stmt::ClassField(statement) => stmt_contains_super(statement, search),
-        Stmt::ClassPrivateBrand(_) => false,
+        Stmt::ClassDecoratedField { field, .. } => stmt_contains_super(field, search),
+        Stmt::ClassPrivateBrand(_) | Stmt::ClassExtraInitializers(_) => false,
     }
 }
 
@@ -1102,11 +1118,19 @@ fn class_contains_arguments(class: &Class) -> bool {
         .extends
         .as_deref()
         .is_some_and(expr_contains_arguments)
+        || class.decorators.iter().any(expr_contains_arguments)
         || class.elements.iter().any(|element| match element {
-            ClassElement::Method { key, .. }
-            | ClassElement::Accessor { key, .. }
-            | ClassElement::Field { key, .. } => {
-                matches!(key, PropertyKey::Computed(expr) if expr_contains_arguments(expr))
+            ClassElement::Method {
+                key, decorators, ..
+            }
+            | ClassElement::Accessor {
+                key, decorators, ..
+            }
+            | ClassElement::Field {
+                key, decorators, ..
+            } => {
+                decorators.iter().any(expr_contains_arguments)
+                    || matches!(key, PropertyKey::Computed(expr) if expr_contains_arguments(expr))
             }
             ClassElement::StaticBlock(_) => false,
         })

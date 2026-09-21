@@ -43,6 +43,36 @@ fn is_function_declaration(statement: &Stmt) -> bool {
 }
 
 impl Compiler {
+    /// Emits the value of decorated field: `value` on the stack becomes the
+    /// value after every initializer function the decorators returned (in
+    /// `record[1]`) has been applied with `this` the instance.
+    fn apply_field_initializers(&mut self, record: u32) -> Result<(), CompileError> {
+        self.emit_this()?;
+        self.class_decoration_record_element(record, 1)?;
+        self.emit(Opcode::ApplyInitializers, 0)?;
+        Ok(())
+    }
+
+    /// Pushes `record[index]` of the decoration record in the given slot.
+    pub(super) fn class_decoration_record_element(
+        &mut self,
+        record: u32,
+        index: usize,
+    ) -> Result<(), CompileError> {
+        self.emit(Opcode::GetBinding, record)?;
+        self.constant(Value::String(index.to_string().into()))?;
+        self.emit(Opcode::GetProperty, 0)?;
+        Ok(())
+    }
+
+    /// Runs the extra initializers of `record[0]` with `this`.
+    fn run_extra_initializers(&mut self, record: u32) -> Result<(), CompileError> {
+        self.emit_this()?;
+        self.class_decoration_record_element(record, 0)?;
+        self.emit(Opcode::RunInitializers, 0)?;
+        Ok(())
+    }
+
     /// DefineField for one lowered class field (see `class_field_definition`),
     /// running inside the function that initializes it with the receiver as
     /// `this`. A public field is created with CreateDataPropertyOrThrow,
@@ -50,7 +80,11 @@ impl Compiler {
     /// [[DefineOwnProperty]] (a Proxy trap, a deferred namespace, ...) -- and
     /// a private one with PrivateFieldAdd. An anonymous function definition
     /// initializer is named after the field.
-    fn class_field(&mut self, statement: &Stmt) -> Result<(), CompileError> {
+    /// A decorated field (`record`, the slot of its decoration record) also
+    /// threads its initial value through the initializer functions the
+    /// decorators returned first, and runs the extra initializers they added
+    /// right after the definition.
+    fn class_field(&mut self, statement: &Stmt, record: Option<u32>) -> Result<(), CompileError> {
         if let Some((key, computed, value)) = public_field_definition(statement) {
             self.emit_this()?;
             match (key, computed) {
@@ -76,7 +110,13 @@ impl Compiler {
                 self.expression(value)?;
                 self.emit(Opcode::SetFunctionName, 0)?;
             }
+            if let Some(record) = record {
+                self.apply_field_initializers(record)?;
+            }
             self.emit(Opcode::DefineInstanceField, 0)?;
+            if let Some(record) = record {
+                self.run_extra_initializers(record)?;
+            }
             return Ok(());
         }
         let Stmt::Expr(Expr::Assign { target, value, .. }) = statement else {
@@ -90,7 +130,13 @@ impl Compiler {
         } else {
             self.expression_with_name(value, Some(&format!("#{name}")))?;
         }
+        if let Some(record) = record {
+            self.apply_field_initializers(record)?;
+        }
         self.emit(Opcode::PrivateFieldAdd, owner)?;
+        if let Some(record) = record {
+            self.run_extra_initializers(record)?;
+        }
         Ok(())
     }
 
@@ -588,7 +634,22 @@ impl Compiler {
                 self.class_expression(class, None)?;
                 self.emit(Opcode::InitializeBinding, slot)?;
             }
-            Stmt::ClassField(statement) => self.class_field(statement)?,
+            Stmt::ClassField(statement) => self.class_field(statement, None)?,
+            Stmt::ClassDecoratedField { field, record } => {
+                let slot = self.resolve(record).ok_or(CompileError::InvalidSyntax(
+                    "decoration record binding is not available in this function",
+                ))?;
+                let Stmt::ClassField(field) = &**field else {
+                    return Err(CompileError::InvalidSyntax("invalid decorated field AST"));
+                };
+                self.class_field(field, Some(slot))?;
+            }
+            Stmt::ClassExtraInitializers(record) => {
+                let slot = self.resolve(record).ok_or(CompileError::InvalidSyntax(
+                    "decoration record binding is not available in this function",
+                ))?;
+                self.run_extra_initializers(slot)?;
+            }
             Stmt::ClassPrivateBrand(binding) => {
                 let slot = self.resolve(binding).ok_or(CompileError::InvalidSyntax(
                     "private brand binding is not available in this function",

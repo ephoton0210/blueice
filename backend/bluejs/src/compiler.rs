@@ -794,7 +794,8 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
         | Stmt::FunctionDecl(_)
         | Stmt::ModuleDefaultFunction { .. }
         | Stmt::ClassDecl(_)
-        | Stmt::ClassPrivateBrand(_) => false,
+        | Stmt::ClassPrivateBrand(_)
+        | Stmt::ClassExtraInitializers(_) => false,
         Stmt::Expr(expr) | Stmt::Throw(expr) => strict_assignment_in_expression(expr),
         Stmt::Block(statements) => strict_assignment_to_restricted_name(statements),
         Stmt::VarDecl(_, declarations) => declarations.iter().any(|declaration| {
@@ -849,9 +850,9 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
                         || strict_assignment_to_restricted_name(&case.consequent)
                 })
         }
-        Stmt::Labelled { item, .. } | Stmt::ClassField(item) => {
-            strict_assignment_in_statement(item)
-        }
+        Stmt::Labelled { item, .. }
+        | Stmt::ClassField(item)
+        | Stmt::ClassDecoratedField { field: item, .. } => strict_assignment_in_statement(item),
         Stmt::Return(value) => value.as_ref().is_some_and(strict_assignment_in_expression),
         Stmt::Try {
             block,

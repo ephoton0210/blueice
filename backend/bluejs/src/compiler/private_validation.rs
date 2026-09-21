@@ -37,7 +37,12 @@ fn validate_private_statement(
     names: &HashSet<String>,
 ) -> Result<(), CompileError> {
     match statement {
-        Stmt::Empty | Stmt::Break(_) | Stmt::Continue(_) | Stmt::ClassPrivateBrand(_) => Ok(()),
+        Stmt::Empty
+        | Stmt::Break(_)
+        | Stmt::Continue(_)
+        | Stmt::ClassPrivateBrand(_)
+        | Stmt::ClassExtraInitializers(_) => Ok(()),
+        Stmt::ClassDecoratedField { field, .. } => validate_private_statement(field, names),
         Stmt::Expr(expr) | Stmt::Throw(expr) => validate_private_expression(expr, names),
         Stmt::Block(statements) => validate_private_statements(statements, names),
         Stmt::VarDecl(_, declarations) => {
@@ -160,6 +165,11 @@ fn validate_private_for_head(head: &ForHead, names: &HashSet<String>) -> Result<
 fn validate_private_class(class: &Class, names: &HashSet<String>) -> Result<(), CompileError> {
     // ClassHeritage is evaluated in the *outer* PrivateEnvironment.  The
     // class's own names become visible only after this point.
+    // The class's own decorators sit before `class`, so they too see only the
+    // outer names; an element's decorators are inside the class body.
+    for decorator in &class.decorators {
+        validate_private_expression(decorator, names)?;
+    }
     if let Some(base) = &class.extends {
         validate_private_expression(base, names)?;
     }
@@ -168,14 +178,33 @@ fn validate_private_class(class: &Class, names: &HashSet<String>) -> Result<(), 
     class_names.extend(declarations.into_iter().map(|(name, _)| name));
     for element in &class.elements {
         match element {
-            ClassElement::Method { key, function, .. }
-            | ClassElement::Accessor { key, function, .. } => {
+            ClassElement::Method {
+                key,
+                function,
+                decorators,
+                ..
+            }
+            | ClassElement::Accessor {
+                key,
+                function,
+                decorators,
+                ..
+            } => {
+                for decorator in decorators {
+                    validate_private_expression(decorator, &class_names)?;
+                }
                 validate_private_key(key, &class_names)?;
                 validate_private_function(function, &class_names)?;
             }
             ClassElement::Field {
-                key, initializer, ..
+                key,
+                initializer,
+                decorators,
+                ..
             } => {
+                for decorator in decorators {
+                    validate_private_expression(decorator, &class_names)?;
+                }
                 validate_private_key(key, &class_names)?;
                 if let Some(initializer) = initializer {
                     validate_private_expression(initializer, &class_names)?;
