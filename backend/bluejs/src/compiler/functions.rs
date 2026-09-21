@@ -691,11 +691,10 @@ impl Compiler {
                 parameter_bindings.push((DERIVED_THIS_BINDING.into(), DeclKind::Let));
             }
             if arguments_needed {
+                // The arguments binding lives in the parameter environment. A
+                // body `var arguments` is a second binding in the separate
+                // body variable environment, initialized from this one below.
                 parameter_bindings.push(("arguments".into(), DeclKind::Let));
-                // The arguments binding lives in the parameter environment.
-                // A body `var arguments` is its redeclaration, not a second
-                // binding in the body variable environment.
-                vars.remove("arguments");
             }
             child.enter_scope(parameter_bindings, &BTreeSet::new(), true)?;
         } else {
@@ -750,9 +749,12 @@ impl Compiler {
             child.local_scope = child.names.len();
             child.enter_scope(lexical, &vars, true)?;
             child.bytecode.variable_scope = child.scopes.last().copied().unwrap();
-            // A redeclared var starts with the parameter's value. A function
+            // A redeclared var starts with the value of the parameter (or of the
+            // implicit `arguments` binding) it shares a name with. A function
             // declaration instead supplies its own value during hoisting.
-            for name in vars.intersection(&parameters) {
+            for name in vars.iter().filter(|name| {
+                parameters.contains(*name) || (arguments_needed && *name == "arguments")
+            }) {
                 if function.body.iter().any(|statement| matches!(statement, Stmt::FunctionDecl(function) if function.name.as_ref() == Some(name))) {
                     continue;
                 }
