@@ -137,6 +137,25 @@ impl Vm {
     /// `Vm::async_dispose_helper`.
     pub(in super::super) fn dispose_resources_sync(
         &mut self,
+        resources: Vec<DisposableResource>,
+        prior: Option<RuntimeError>,
+    ) -> Result<(), RuntimeError> {
+        // The resources were drained out of a rooted table (`self.disposables`
+        // or a stack's side table), so the values they hold -- and every
+        // pending error value -- are reachable only from this frame. Root
+        // them until disposal finishes.
+        let base = self.stack.len();
+        self.root_resources(&resources);
+        if let Some(error) = &prior {
+            self.root_error(error);
+        }
+        let result = self.dispose_resources_rooted(resources, prior);
+        self.stack.truncate(base);
+        result
+    }
+
+    fn dispose_resources_rooted(
+        &mut self,
         mut resources: Vec<DisposableResource>,
         prior: Option<RuntimeError>,
     ) -> Result<(), RuntimeError> {
@@ -155,16 +174,16 @@ impl Vm {
                 if !new_error.is_catchable() {
                     return Err(new_error);
                 }
+                self.root_error(&new_error);
                 completion = Some(match completion {
                     Some(prior_error) if prior_error.is_catchable() => {
                         let error_value = self.error_value(new_error)?;
-                        let base = self.stack.len();
                         self.stack.push(error_value.clone());
-                        let suppressed_value = self.error_value(prior_error);
-                        self.stack.truncate(base);
-                        let suppressed_value = suppressed_value?;
+                        let suppressed_value = self.error_value(prior_error)?;
+                        self.stack.push(suppressed_value.clone());
                         let suppressed =
                             self.make_suppressed_error(error_value, suppressed_value)?;
+                        self.stack.push(suppressed.clone());
                         RuntimeError::Thrown(suppressed)
                     }
                     _ => new_error,
@@ -172,6 +191,29 @@ impl Vm {
             }
         }
         completion.map_or(Ok(()), Err)
+    }
+
+    /// Pushes every heap value held by `resources` onto the VM stack so a
+    /// collection cannot reclaim it. The caller truncates the stack to the
+    /// length it recorded before calling.
+    fn root_resources(&mut self, resources: &[DisposableResource]) {
+        for resource in resources {
+            self.stack.push(resource.receiver.clone());
+            if let Some(argument) = &resource.argument {
+                self.stack.push(argument.clone());
+            }
+            if let Some(method) = &resource.method {
+                self.stack.push(method.clone());
+            }
+        }
+    }
+
+    /// Roots the JS value carried by a thrown error (native errors that have
+    /// not been converted to objects yet hold no heap reference).
+    fn root_error(&mut self, error: &RuntimeError) {
+        if let RuntimeError::Thrown(value) = error {
+            self.stack.push(value.clone());
+        }
     }
 
     /// Converts a drained resource list plus any prior pending error into
@@ -186,18 +228,22 @@ impl Vm {
         resources: Vec<DisposableResource>,
         prior: Option<RuntimeError>,
     ) -> Result<Value, RuntimeError> {
-        let (has_error, pending_error) = match prior {
-            None => (false, Value::Undefined),
-            Some(error) => {
-                if !error.is_catchable() {
-                    return Err(error);
-                }
-                (true, self.error_value(error)?)
-            }
-        };
+        // The drained resources are reachable only from this frame; root
+        // them before `error_value` (which may allocate) and before any
+        // entry array is built.
         let base = self.stack.len();
-        self.stack.push(pending_error.clone());
+        self.root_resources(&resources);
         let result = (|| {
+            let (has_error, pending_error) = match prior {
+                None => (false, Value::Undefined),
+                Some(error) => {
+                    if !error.is_catchable() {
+                        return Err(error);
+                    }
+                    (true, self.error_value(error)?)
+                }
+            };
+            self.stack.push(pending_error.clone());
             let entries = self.entries_array_from_resources(resources)?;
             self.stack.push(entries.clone());
             self.array_from(vec![Value::Bool(has_error), pending_error, entries])
@@ -214,6 +260,7 @@ impl Vm {
         resources: Vec<DisposableResource>,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
+        self.root_resources(&resources);
         let result = (|| {
             let mut entry_values = Vec::with_capacity(resources.len());
             for resource in resources {
@@ -688,17 +735,27 @@ impl Vm {
             state.disposed = true;
             std::mem::take(&mut state.resources)
         };
-        let entries = match self.entries_array_from_resources(resources) {
-            Ok(entries) => entries,
-            Err(error) => return self.reject_with(error),
-        };
-        let helper = self.async_dispose_helper()?;
-        self.call_native(
-            helper,
-            Value::Undefined,
-            vec![Value::Bool(false), Value::Undefined, entries],
-            false,
-        )
+        let base = self.stack.len();
+        let result = (|| {
+            let entries = match self.entries_array_from_resources(resources) {
+                Ok(entries) => entries,
+                Err(error) => return self.reject_with(error),
+            };
+            // `entries` and the helper are reachable only from this frame
+            // until the call below roots them as its arguments/callee, and
+            // compiling the helper on first use allocates.
+            self.stack.push(entries.clone());
+            let helper = self.async_dispose_helper()?;
+            self.stack.push(helper.clone());
+            self.call_native(
+                helper,
+                Value::Undefined,
+                vec![Value::Bool(false), Value::Undefined, entries],
+                false,
+            )
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     /// A catchable `RuntimeError` becomes a rejected Promise (the caller's
