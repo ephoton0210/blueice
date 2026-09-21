@@ -994,6 +994,12 @@ pub struct Vm {
     /// Those errors belong to the *caller's* realm; a Test262 membrane reads
     /// the flag to tell them apart from errors raised by the callee's body.
     construct_completion_check_failed: bool,
+    /// The Test262 realm (a key of `test262_realms`) whose built-in function
+    /// is running in this `Vm` on its behalf, because the function's
+    /// operands live here rather than in its own realm. Fresh objects and
+    /// errors the function creates belong to that realm. Cleared while any
+    /// nested call runs, so callbacks and getters are unaffected.
+    acting_realm: Option<ObjectId>,
     shadow_realm_prototype: Option<ObjectId>,
     shadow_realms: HashMap<ObjectId, ShadowRealmRecord>,
     /// Reverse index from a `ShadowRealm` child's own heap tag back to the
@@ -1150,6 +1156,7 @@ impl Vm {
             test262_foreign_buffer_mirrors: HashMap::new(),
             test262_imported_callables: HashSet::new(),
             construct_completion_check_failed: false,
+            acting_realm: None,
             shadow_realm_prototype: None,
             shadow_realms: HashMap::new(),
             shadow_realm_by_heap: HashMap::new(),
@@ -2079,12 +2086,30 @@ impl Vm {
                 .map(|module| self.active_module_name.replace(module))
         });
         self.call_depth += 1;
+        // Whatever this call runs belongs to its own realm, not to the realm a
+        // running native is acting for (see `acting_realm`).
+        let acting_realm = self.acting_realm.take();
         let result = self
             .dispatch_call(callee, receiver, args, construct)
             .and_then(|value| {
                 self.check_string(&value)?;
                 Ok(value)
             });
+        self.acting_realm = acting_realm;
+        // The acting native turns its own unmaterialized language errors into
+        // the acting realm's; create the callee's here so they are not
+        // mistaken for that.
+        let result = match result {
+            Err(
+                error @ (RuntimeError::TypeError(_)
+                | RuntimeError::RangeError(_)
+                | RuntimeError::ReferenceError(_)
+                | RuntimeError::SyntaxError(_)),
+            ) if acting_realm.is_some() => self
+                .error_value(error)
+                .and_then(|value| Err(RuntimeError::Thrown(value))),
+            result => result,
+        };
         self.new_target = previous_target;
         self.new_target_allowed = previous_new_target_allowed;
         if let Some(module) = previous_module {

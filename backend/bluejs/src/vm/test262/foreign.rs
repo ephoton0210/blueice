@@ -630,24 +630,38 @@ impl Vm {
             Err(RuntimeError::Thrown(value)) => Err(RuntimeError::Thrown(
                 self.test262_import_foreign_value(realm_id, value)?,
             )),
-            Err(
-                error @ (RuntimeError::TypeError(_)
+            Err(error) => Err(self.test262_create_error_in_realm(realm_id, error)?),
+        }
+    }
+
+    /// An unmaterialized language error (`TypeError`, `RangeError`,
+    /// `ReferenceError`, `SyntaxError`) becomes the corresponding Error
+    /// object of the foreign Realm `realm_id`, imported here. Every other
+    /// completion, resource errors and already thrown values included, is
+    /// returned unchanged.
+    fn test262_create_error_in_realm(
+        &mut self,
+        realm_id: ObjectId,
+        error: RuntimeError,
+    ) -> Result<RuntimeError, RuntimeError> {
+        if !matches!(
+            error,
+            RuntimeError::TypeError(_)
                 | RuntimeError::RangeError(_)
                 | RuntimeError::ReferenceError(_)
-                | RuntimeError::SyntaxError(_)),
-            ) => {
-                let error = self
-                    .test262_realms
-                    .get_mut(&realm_id)
-                    .expect("foreign realm remains live")
-                    .vm
-                    .error_value(error)?;
-                Err(RuntimeError::Thrown(
-                    self.test262_import_foreign_value(realm_id, error)?,
-                ))
-            }
-            Err(error) => Err(error),
+                | RuntimeError::SyntaxError(_)
+        ) {
+            return Ok(error);
         }
+        let error = self
+            .test262_realms
+            .get_mut(&realm_id)
+            .expect("foreign realm remains live")
+            .vm
+            .error_value(error)?;
+        Ok(RuntimeError::Thrown(
+            self.test262_import_foreign_value(realm_id, error)?,
+        ))
     }
 
     /// The Realm and target behind `wrapper`, with a fresh instruction budget
@@ -1430,6 +1444,38 @@ impl Vm {
                     .ok()
                     .flatten()
             });
+        // A built-in that is generic over its receiver (an Array method, an
+        // Iterator helper, the `stack` accessors) applied to an object that
+        // is not the callee Realm's own must see that object, not the opaque
+        // stand-in the membrane would transport: run its algorithm here, on
+        // behalf of the callee's Realm. `method.call(receiver, ...)` reaches
+        // the membrane as a foreign `Call`, so look through it.
+        if !construct {
+            let generic = if foreign_native == Some(NativeFunction::Call) {
+                call_target_native
+                    .filter(|method| runs_where_its_receiver_lives(*method))
+                    .map(|method| {
+                        (
+                            method,
+                            args.first().cloned().unwrap_or(Value::Undefined),
+                            args.get(1..).unwrap_or_default().to_vec(),
+                        )
+                    })
+            } else {
+                foreign_native
+                    .filter(|method| runs_where_its_receiver_lives(*method))
+                    .map(|method| (method, receiver.clone(), args.clone()))
+            };
+            if let Some((method, this_value, arguments)) = generic {
+                if this_value.object_id().is_some_and(|object| {
+                    self.test262_foreign_reference(object)
+                        .is_none_or(|(object_realm, _, _, _)| object_realm != realm_id)
+                }) {
+                    return self
+                        .test262_run_native_for_realm(realm_id, method, this_value, arguments);
+                }
+            }
+        }
         if !construct
             && foreign_native == Some(NativeFunction::Call)
             && args
@@ -1677,6 +1723,27 @@ impl Vm {
         Ok(result)
     }
 
+    /// Runs the built-in `function` of the foreign Realm `realm_id` in this
+    /// Realm's `Vm`, where its receiver and arguments live. Objects it creates
+    /// directly (`acting_realm`) and errors it raises belong to `realm_id`;
+    /// values thrown by callbacks are left alone.
+    fn test262_run_native_for_realm(
+        &mut self,
+        realm_id: ObjectId,
+        function: NativeFunction,
+        receiver: Value,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        let previous = self.acting_realm.replace(realm_id);
+        let result = self.native_call(function, receiver, args, false);
+        self.acting_realm = previous;
+        result.map_err(
+            |error| match self.test262_create_error_in_realm(realm_id, error) {
+                Ok(error) | Err(error) => error,
+            },
+        )
+    }
+
     pub(in super::super) fn test262_foreign_next(
         &mut self,
         receiver: &Value,
@@ -1791,4 +1858,57 @@ fn foreign_constructor_intrinsic(function: NativeFunction) -> Option<&'static st
         NativeFunction::Error(name) => name,
         _ => return None,
     })
+}
+
+/// Built-in functions whose algorithm reads and writes their receiver only
+/// through ordinary property access and internal slots that any Realm's
+/// objects share, so a foreign function applied to an object of the calling
+/// Realm must run on that object rather than on a transported copy.
+fn runs_where_its_receiver_lives(function: NativeFunction) -> bool {
+    matches!(
+        function,
+        NativeFunction::ArrayAt
+            | NativeFunction::ArrayFill
+            | NativeFunction::ArrayCopyWithin
+            | NativeFunction::ArrayToReversed
+            | NativeFunction::ArrayToSorted
+            | NativeFunction::ArrayToSpliced
+            | NativeFunction::ArrayWith
+            | NativeFunction::ArrayFlat
+            | NativeFunction::ArrayFlatMap
+            | NativeFunction::ArrayOf
+            | NativeFunction::ArrayFrom
+            | NativeFunction::ArrayForEach
+            | NativeFunction::ArrayFilter
+            | NativeFunction::ArrayMap
+            | NativeFunction::ArrayFind
+            | NativeFunction::ArrayFindIndex
+            | NativeFunction::ArrayFindLast
+            | NativeFunction::ArrayFindLastIndex
+            | NativeFunction::ArrayEvery
+            | NativeFunction::ArraySome
+            | NativeFunction::ArrayIncludes
+            | NativeFunction::ArrayReduce
+            | NativeFunction::ArrayReduceRight
+            | NativeFunction::ArrayPush
+            | NativeFunction::ArrayPop
+            | NativeFunction::ArrayShift
+            | NativeFunction::ArrayUnshift
+            | NativeFunction::ArrayReverse
+            | NativeFunction::ArrayIndexOf
+            | NativeFunction::ArrayLastIndexOf
+            | NativeFunction::ArraySlice
+            | NativeFunction::ArraySplice
+            | NativeFunction::ArraySort
+            | NativeFunction::ArrayToLocaleString
+            | NativeFunction::IteratorHelper(_)
+            | NativeFunction::IteratorToArray
+            | NativeFunction::IteratorForEach
+            | NativeFunction::IteratorEvery
+            | NativeFunction::IteratorSome
+            | NativeFunction::IteratorFind
+            | NativeFunction::IteratorReduce
+            | NativeFunction::ErrorStackGetter
+            | NativeFunction::ErrorStackSetter
+    )
 }
