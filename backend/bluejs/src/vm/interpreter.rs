@@ -698,6 +698,12 @@ impl Vm {
                             if let Some(home) = self.home_object {
                                 self.with_roots(|heap| heap.set_closure_home(id, home))?;
                             }
+                            if self.new_target != Value::Undefined {
+                                let new_target = self.new_target.clone();
+                                self.with_roots(|heap| {
+                                    heap.set_closure_new_target(id, new_target)
+                                })?;
+                            }
                             // A derived constructor's arrow may invoke `super()`.
                             // Store its resolved superclass on the arrow closure;
                             // the call frame then treats that closure as the

@@ -45,3 +45,30 @@ fn class_constructor_own_keys_start_with_length_name_prototype() {
          Object.getOwnPropertyNames(C).join() === '1,length,name,prototype,x'",
     );
 }
+
+#[test]
+fn an_arrow_function_closes_over_its_creators_new_target() {
+    assert_true(
+        "function F() { return () => new.target; }
+         const viaNew = new F();
+         const viaCall = F();
+         viaNew() === F && viaCall() === undefined",
+    );
+    // The caller's own `new.target` never leaks into the arrow.
+    assert_true(
+        "function F() { return () => new.target; }
+         const arrow = F();
+         let seen = 'unset';
+         function G() { seen = arrow(); }
+         new G();
+         seen === undefined",
+    );
+    assert_true(
+        "function F() { return () => () => new.target; }
+         new F()()() === F",
+    );
+    assert_true(
+        "function F() { return () => eval('new.target'); }
+         new F()() === F",
+    );
+}

@@ -221,6 +221,9 @@ impl PrivateElement {
 struct ClosureMetadata {
     home: Option<ObjectId>,
     class_base: Option<Value>,
+    /// An arrow function's lexical `new.target`, captured when the closure is
+    /// created. Absent (equivalent to `undefined`) for every other closure.
+    new_target: Option<Value>,
 }
 
 impl ClosureMetadata {
@@ -228,6 +231,7 @@ impl ClosureMetadata {
         self.home
             .into_iter()
             .chain(self.class_base.iter().filter_map(Value::object_id))
+            .chain(self.new_target.iter().filter_map(Value::object_id))
     }
 }
 

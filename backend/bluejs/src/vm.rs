@@ -2014,24 +2014,22 @@ impl Vm {
                 "maximum call depth exceeded".into(),
             ));
         }
-        // Arrow functions inherit their enclosing `new.target`.  This is
-        // observable when a derived-constructor arrow invokes `super()`:
-        // the superclass must allocate with the original derived class.
-        let arrow = if !construct {
-            match callee.object_id() {
-                Some(id) => self
-                    .heap
-                    .closure(id)?
-                    .is_some_and(|(code, _, _, _, _)| code.arrow),
-                None => false,
-            }
-        } else {
-            false
+        // An arrow function's `new.target` is lexical: the value its creating
+        // function had, captured when the closure was created (not whatever
+        // the caller happens to be running with). This is observable when a
+        // derived-constructor arrow invokes `super()`: the superclass must
+        // allocate with the original derived class.
+        let closure_code = match callee.object_id() {
+            Some(id) => self.heap.closure(id)?.map(|(code, _, _, _, _)| code),
+            None => None,
         };
-        let target = if arrow {
-            self.new_target.clone()
-        } else {
-            target
+        let arrow = !construct && closure_code.as_ref().is_some_and(|code| code.arrow);
+        let target = match callee.object_id() {
+            Some(id) if arrow => self
+                .heap
+                .closure_new_target(id)?
+                .unwrap_or(Value::Undefined),
+            _ => target,
         };
         self.charge_step()?;
         let base = self.stack.len();
@@ -2039,14 +2037,11 @@ impl Vm {
         self.stack.extend(args.iter().cloned());
         self.stack.push(target.clone());
         let previous_target = std::mem::replace(&mut self.new_target, target);
-        let regular_function = matches!(
-            callee.object_id(),
-            Some(id) if self
-                .heap
-                .closure(id)?
-                .is_some_and(|(code, _, _, _, _)| !code.arrow)
-        );
-        let next_new_target_allowed = (arrow && self.new_target_allowed) || regular_function;
+        // Whether direct eval may use `new.target` is lexical too: it was
+        // decided when the function's own code was compiled.
+        let next_new_target_allowed = closure_code
+            .as_ref()
+            .is_some_and(|code| code.new_target_allowed);
         let previous_new_target_allowed =
             std::mem::replace(&mut self.new_target_allowed, next_new_target_allowed);
         let previous_module = callee.object_id().and_then(|id| {

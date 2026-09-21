@@ -972,6 +972,36 @@ impl Heap {
         }
     }
 
+    /// Record the `new.target` an arrow function closes over.
+    pub(crate) fn set_closure_new_target(
+        &mut self,
+        object: ObjectId,
+        new_target: Value,
+    ) -> Result<(), HeapError> {
+        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
+            return Err(HeapError::InvalidObject(object));
+        }
+        let protected: Vec<_> = new_target.object_id().into_iter().collect();
+        self.ensure_closure_metadata(object, &protected)?;
+        self.write_barrier(object, new_target.object_id());
+        self.closure_metadata
+            .get_mut(&object)
+            .expect("metadata was installed")
+            .new_target = Some(new_target);
+        Ok(())
+    }
+
+    /// The `new.target` captured by [`Self::set_closure_new_target`], if any.
+    pub(crate) fn closure_new_target(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
+        match &self.object(object)?.kind {
+            ObjectKind::Closure { .. } => Ok(self
+                .closure_metadata
+                .get(&object)
+                .and_then(|metadata| metadata.new_target.clone())),
+            _ => Err(HeapError::InvalidObject(object)),
+        }
+    }
+
     fn ensure_closure_metadata(
         &mut self,
         object: ObjectId,
