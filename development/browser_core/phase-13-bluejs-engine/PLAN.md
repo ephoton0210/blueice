@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress — BlueJS has a modular parser/compiler/VM, generational heap, standard-library and Temporal/Intl implementation. The current complete Ubuntu Test262 inventory passes 86,304 / 91,820 ECMA-262 Core modes (93.993%) and 6,364 / 6,714 ECMA-402 modes (94.787%); it is not a full-conformance claim. The classified remaining failures, page-script integration and cross-platform verification are tracked below.
+**Status**: In progress — BlueJS has a modular parser/compiler/VM, generational heap, standard-library and Temporal/Intl implementation. The complete unfiltered Test262 inventory of 2026-09-21 passes 89,444 / 91,820 (97.412%) ECMA-262 Core modes and 6,714 / 6,714 (100.000%) ECMA-402 modes on Ubuntu 24.04.4 (macOS: 89,444 / 91,820 (97.412%) Core, identical ECMA-402), and 99,897 of 102,926 modes overall (97.057%); it is not a full-conformance claim. The classified remaining failures, page-script integration and cross-platform verification are tracked below.
 
 ## Ubuntu verification scope (2026-09-19)
 
