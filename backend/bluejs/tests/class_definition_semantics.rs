@@ -29,3 +29,19 @@ fn extends_null_keeps_function_prototype_as_the_constructor_parent() {
              && Object.getPrototypeOf(E.prototype) === null",
     );
 }
+
+#[test]
+fn class_constructor_own_keys_start_with_length_name_prototype() {
+    assert_true(
+        "class C { static m() {} static a = 1; static [Symbol.iterator]() {} }
+         Object.getOwnPropertyNames(C).join() === 'length,name,prototype,m,a'",
+    );
+    assert_true(
+        "const C = class { static m() {} };
+         Object.getOwnPropertyNames(C).join() === 'length,name,prototype,m'",
+    );
+    assert_true(
+        "class C { static [1]() {} static ['x']() {} }
+         Object.getOwnPropertyNames(C).join() === '1,length,name,prototype,x'",
+    );
+}

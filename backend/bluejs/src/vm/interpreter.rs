@@ -708,18 +708,20 @@ impl Vm {
                                 }
                             }
                         }
+                        // OrdinaryFunctionCreate's SetFunctionLength precedes
+                        // SetFunctionName, so `length` is the first own key.
                         self.define_data(
                             id,
-                            "name",
-                            Value::String(child.function_name.clone().into()),
+                            "length",
+                            Value::Number(child.function_length as f64),
                             false,
                             false,
                             true,
                         )?;
                         self.define_data(
                             id,
-                            "length",
-                            Value::Number(child.function_length as f64),
+                            "name",
+                            Value::String(child.function_name.clone().into()),
                             false,
                             false,
                             true,
