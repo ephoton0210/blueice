@@ -257,6 +257,120 @@ fn weak_collection_values_follow_live_keys_to_an_ephemeron_fixed_point() {
     heap.unroot(first_root).unwrap();
 }
 
+/// A heap whose collections only ever run when a test asks for one, so a test
+/// can build a large structure without unrooted objects being reclaimed.
+fn manual_collection_heap() -> Heap {
+    Heap::new(HeapConfig {
+        nursery_capacity: usize::MAX,
+        major_threshold_bytes: usize::MAX,
+        max_heap_bytes: usize::MAX,
+    })
+    .unwrap()
+}
+
+/// A chain in which each key's only reference is the previous key's table
+/// value is the worst case for an ephemeron scan that restarts from the
+/// beginning after every newly live key. Marking must cost time proportional
+/// to the number of entries, not to their square: this fixture
+/// (`staging/sm/regress/regress-1507322-deep-weakmap.js`) builds a hundred
+/// thousand links and collects repeatedly while doing so.
+#[test]
+fn a_deep_weak_map_chain_is_marked_in_linear_time() {
+    const LINKS: usize = 5_000;
+    let mut heap = manual_collection_heap();
+    let table = heap.alloc_weak_collection(true, None).unwrap();
+    let table_root = heap.root(table).unwrap();
+    let head = heap.alloc_object(None).unwrap();
+    let head_root = heap.root(head).unwrap();
+    let mut keys = vec![head];
+    for _ in 0..LINKS {
+        let next = heap.alloc_object(None).unwrap();
+        heap.weak_collection_set(
+            table,
+            Value::Object(*keys.last().unwrap()),
+            Value::Object(next),
+        )
+        .unwrap();
+        keys.push(next);
+    }
+
+    let started = std::time::Instant::now();
+    heap.collect_minor();
+    heap.collect_major();
+    let elapsed = started.elapsed();
+    assert!(
+        keys.iter().all(|key| heap.contains(*key)),
+        "every link is reachable from the rooted head through the table"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(1),
+        "collecting a {LINKS}-link ephemeron chain took {elapsed:?}"
+    );
+
+    // Dropping the head releases the whole chain at once.
+    heap.unroot(head_root).unwrap();
+    heap.collect_major();
+    assert!(keys.iter().all(|key| !heap.contains(*key)));
+    heap.unroot(table_root).unwrap();
+}
+
+/// A table that is itself reachable only as an ephemeron value becomes live
+/// mid-scan; its entries must then take part in the same fixed point, whatever
+/// order the marker meets the table and its keys in. `promote_first` runs a
+/// minor collection before the inner structure exists, so the outer table and
+/// its key are old while everything the inner table holds is young.
+#[test]
+fn an_ephemeron_table_reached_only_through_another_table_still_retains_its_values() {
+    for promote_first in [false, true] {
+        let mut heap = manual_collection_heap();
+        let outer = heap.alloc_weak_collection(true, None).unwrap();
+        let outer_root = heap.root(outer).unwrap();
+        let key = heap.alloc_object(None).unwrap();
+        let key_root = heap.root(key).unwrap();
+        if promote_first {
+            heap.collect_minor();
+        }
+        let inner = heap.alloc_weak_collection(true, None).unwrap();
+        let derived_key = heap.alloc_object(None).unwrap();
+        let leaf = heap.alloc_object(None).unwrap();
+        let symbol_value = heap.alloc_object(None).unwrap();
+        let symbol = JsSymbol::new(Some("weak key".into()));
+
+        // The inner table is live only through `outer[key]`; `derived_key` is
+        // live only through `inner[key]`; `leaf` only through
+        // `inner[derived_key]`. Each step needs the one before it.
+        heap.weak_collection_set(outer, Value::Object(key), Value::Object(inner))
+            .unwrap();
+        heap.weak_collection_set(inner, Value::Object(derived_key), Value::Object(leaf))
+            .unwrap();
+        heap.weak_collection_set(inner, Value::Object(key), Value::Object(derived_key))
+            .unwrap();
+        heap.weak_collection_set(inner, Value::Symbol(symbol), Value::Object(symbol_value))
+            .unwrap();
+
+        heap.collect_minor();
+        for object in [inner, derived_key, leaf, symbol_value] {
+            assert!(heap.contains(object), "promote_first={promote_first}");
+        }
+        heap.collect_major();
+        for object in [inner, derived_key, leaf, symbol_value] {
+            assert!(heap.contains(object), "promote_first={promote_first}");
+        }
+        assert_eq!(
+            heap.weak_collection_get(inner, &Value::Object(derived_key))
+                .unwrap(),
+            Some(Value::Object(leaf))
+        );
+
+        heap.unroot(key_root).unwrap();
+        heap.collect_major();
+        for object in [inner, derived_key, leaf, symbol_value] {
+            assert!(!heap.contains(object), "promote_first={promote_first}");
+        }
+        heap.unroot(outer_root).unwrap();
+    }
+}
+
 #[test]
 fn weak_ref_does_not_trace_its_target_and_clears_after_collection() {
     let mut heap = Heap::default();

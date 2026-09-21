@@ -160,60 +160,84 @@ impl Heap {
         }
         // WeakMap/WeakSet entries are ephemerons, rather than ordinary
         // object edges. Once a live key has independently been marked, its
-        // value joins the mark worklist; repeat to a fixed point because that
-        // value may in turn make another key reachable. During a minor
+        // value joins the mark worklist, and that value may in turn make
+        // another key, or a whole other table, reachable. During a minor
         // collection old objects are retained conservatively, so old tables
         // and old keys participate even though only young objects are marked.
-        loop {
-            let mut ephemeron_work = Vec::new();
-            for (owner, object) in &self.objects {
-                let table_live = if young_only {
-                    !object.young || marked.contains(owner)
-                } else {
-                    marked.contains(owner)
-                };
-                if !table_live {
+        //
+        // The fixed point is computed with a worklist rather than by
+        // rescanning every table until nothing changes: a chain in which each
+        // key's only reference is the previous key's value needs as many
+        // rescans as it has links, which is quadratic (475 seconds for a
+        // 20,000-entry WeakMap chain). Instead a table is *activated* once,
+        // when it becomes live: each of its entries either releases its value
+        // straight away (its key is already live) or waits on its key, and
+        // marking a key releases exactly the values waiting on it.
+        let key_is_live = |key: &WeakCollectionKey, marked: &HashSet<ObjectId>| match key {
+            WeakCollectionKey::Object(key) if young_only => self
+                .objects
+                .get(key)
+                .is_some_and(|key_object| !key_object.young || marked.contains(key)),
+            WeakCollectionKey::Object(key) => marked.contains(key),
+            // Symbols have identity but no heap record; a non-registered
+            // symbol key is therefore live while the table itself is
+            // reachable.
+            WeakCollectionKey::Symbol(_) => true,
+        };
+        let mut waiting: HashMap<ObjectId, Vec<ObjectId>> = HashMap::new();
+        let mut ephemeron_work = Vec::new();
+        // Called once per table, at the moment it is known to be live.
+        let activate = |owner: ObjectId,
+                        marked: &HashSet<ObjectId>,
+                        waiting: &mut HashMap<ObjectId, Vec<ObjectId>>,
+                        ephemeron_work: &mut Vec<ObjectId>| {
+            let ObjectKind::WeakCollection { entries, .. } = &self.objects[&owner].kind else {
+                return;
+            };
+            for (key, value) in entries {
+                let Some(value) = value
+                    .object_id()
+                    .filter(|value| self.objects.contains_key(value))
+                else {
                     continue;
-                }
-                let ObjectKind::WeakCollection { entries, .. } = &object.kind else {
-                    continue;
                 };
-                for (key, value) in entries {
-                    let key_live = match key {
-                        WeakCollectionKey::Object(key) if young_only => self
-                            .objects
-                            .get(key)
-                            .is_some_and(|key_object| !key_object.young || marked.contains(key)),
-                        WeakCollectionKey::Object(key) => marked.contains(key),
-                        // Symbols have identity but no heap record; a
-                        // non-registered symbol key is therefore live while
-                        // the table itself is reachable.
-                        WeakCollectionKey::Symbol(_) => true,
-                    };
-                    if key_live {
-                        if let Some(value) = value
-                            .object_id()
-                            .filter(|value| self.objects.contains_key(value))
-                        {
-                            ephemeron_work.push(value);
-                        }
+                match key {
+                    WeakCollectionKey::Object(target) if !key_is_live(key, marked) => {
+                        waiting.entry(*target).or_default().push(value);
                     }
+                    _ => ephemeron_work.push(value),
                 }
             }
-            let mut added = false;
-            while let Some(id) = ephemeron_work.pop() {
-                let obj = &self.objects[&id];
-                if (young_only && !obj.young) || !marked.insert(id) {
-                    continue;
-                }
-                added = true;
-                ephemeron_work.extend(obj.references());
-                if let Some(metadata) = self.closure_metadata.get(&id) {
-                    ephemeron_work.extend(metadata.references());
-                }
+        };
+        for (owner, object) in &self.objects {
+            if !matches!(object.kind, ObjectKind::WeakCollection { .. }) {
+                continue;
             }
-            if !added {
-                break;
+            let table_live = if young_only {
+                !object.young || marked.contains(owner)
+            } else {
+                marked.contains(owner)
+            };
+            if table_live {
+                activate(*owner, &marked, &mut waiting, &mut ephemeron_work);
+            }
+        }
+        while let Some(id) = ephemeron_work.pop() {
+            let obj = &self.objects[&id];
+            if (young_only && !obj.young) || !marked.insert(id) {
+                continue;
+            }
+            ephemeron_work.extend(obj.references());
+            if let Some(metadata) = self.closure_metadata.get(&id) {
+                ephemeron_work.extend(metadata.references());
+            }
+            // A newly marked key releases the values waiting on it, and a
+            // newly marked table becomes live for the first time.
+            if let Some(released) = waiting.remove(&id) {
+                ephemeron_work.extend(released);
+            }
+            if matches!(obj.kind, ObjectKind::WeakCollection { .. }) {
+                activate(id, &marked, &mut waiting, &mut ephemeron_work);
             }
         }
         marked
