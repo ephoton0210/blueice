@@ -1134,7 +1134,9 @@ impl Vm {
                 .checked_add(items.len() as u64)
                 .filter(|length| *length <= 9_007_199_254_740_991)
                 .ok_or_else(|| RuntimeError::TypeError("invalid Array length".into()))?;
-            for index in (0..length).rev() {
+            // With nothing to insert no element moves, however long the receiver is.
+            let moved = if items.is_empty() { 0 } else { length };
+            for index in (0..moved).rev() {
                 self.charge_step()?;
                 let from: PropertyName = index.to_string().into();
                 let to: PropertyName = (index + items.len() as u64).to_string().into();
@@ -1187,6 +1189,9 @@ impl Vm {
                 } else {
                     None
                 };
+                if lower_value.is_none() && upper_value.is_none() {
+                    continue;
+                }
                 let swapped: Result<(), RuntimeError> = (|| {
                     if let Some(value) = &upper_value {
                         self.array_set_or_throw(object, lower.clone(), value)?;
@@ -1203,7 +1208,7 @@ impl Vm {
                 self.stack.truncate(step_base);
                 swapped?;
             }
-            Ok(receiver.clone())
+            Ok(Value::Object(object))
         })();
         self.stack.truncate(base);
         result
@@ -1392,7 +1397,7 @@ impl Vm {
                 self.object_delete(object, &index.to_string().into())?;
                 index += 1;
             }
-            Ok(receiver.clone())
+            Ok(Value::Object(object))
         })();
         self.stack.truncate(base);
         result
@@ -1624,7 +1629,9 @@ impl Vm {
             let length = self.get_property(&Value::Object(object), &"length".into())?;
             let length = self.coerce_length(&length)? as i64;
             let start = self.array_start_index(native::argument(args, 0), length)?;
-            let delete_count = if args.len() < 2 {
+            let delete_count = if args.is_empty() {
+                0
+            } else if args.len() < 2 {
                 length - start
             } else {
                 self.coerce_length(native::argument(args, 1))? as i64
