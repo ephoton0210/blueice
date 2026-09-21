@@ -289,10 +289,10 @@ impl Parser {
         self.expect_punct(Punct::LParen)?;
         let test = self.parse_expression()?;
         self.expect_punct(Punct::RParen)?;
-        // A trailing `;` after `do ... while (test)` is conventional
-        // but the spec (and real scripts) tolerate its absence too;
-        // ASI's `consume_semicolon` already accepts either.
-        self.consume_semicolon()?;
+        // §12.10.1: a semicolon is inserted after the closing `)` of a
+        // do-while statement even without a line terminator, so the `;` is
+        // always optional here (`do ; while (0) x = 1;`).
+        self.eat_punct(Punct::Semicolon);
         Ok(Stmt::DoWhile { body, test })
     }
 

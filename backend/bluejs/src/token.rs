@@ -282,9 +282,9 @@ impl Tokenizer {
         loop {
             let c = self
                 .advance()
-                .ok_or_else(|| LexError::new("unterminated RegExp literal"))?;
+                .ok_or_else(|| LexError::syntax("unterminated RegExp literal"))?;
             if is_line_terminator(c) {
-                return Err(LexError::new("line terminator in RegExp literal"));
+                return Err(LexError::syntax("line terminator in RegExp literal"));
             }
             if c == '/' && !class {
                 break;
@@ -293,9 +293,9 @@ impl Tokenizer {
             if c == '\\' {
                 let escaped = self
                     .advance()
-                    .ok_or_else(|| LexError::new("unterminated RegExp escape"))?;
+                    .ok_or_else(|| LexError::syntax("unterminated RegExp escape"))?;
                 if is_line_terminator(escaped) {
-                    return Err(LexError::new("line terminator in RegExp escape"));
+                    return Err(LexError::syntax("line terminator in RegExp escape"));
                 }
                 pattern.push_code_point(escaped as u32);
             } else if c == '[' {
@@ -397,6 +397,18 @@ impl Tokenizer {
         Tokenizer {
             html_comments_enabled: false,
             ..Self::new(input)
+        }
+    }
+
+    /// Consumes a Hashbang comment (`#!` through the end of the line, not
+    /// including the line terminator) when it is the first thing in the
+    /// source text. Callers apply this only to complete Script or Module
+    /// text; the line terminator that ends it is ordinary trivia.
+    pub(crate) fn skip_hashbang(&mut self) {
+        if self.pos == 0 && self.peek() == Some('#') && self.peek_at(1) == Some('!') {
+            while self.peek().is_some_and(|c| !is_line_terminator(c)) {
+                self.advance();
+            }
         }
     }
 
