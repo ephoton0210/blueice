@@ -732,6 +732,8 @@ pub struct Vm {
     /// `%TypedArray%` and `%TypedArray%.prototype`, kept outside the global
     /// object but permanently reachable from every concrete constructor.
     typed_array_intrinsics: Option<(ObjectId, ObjectId)>,
+    /// Annex B legacy static properties of this realm's `%RegExp%`.
+    regexp_legacy: crate::regexp::LegacyStatics,
     result_root: Option<RootId>,
     stack: Vec<Value>,
     // None is a lexical binding's uninitialized state, never JS undefined.
@@ -1012,6 +1014,7 @@ impl Vm {
             array_prototype,
             string_intrinsics: None,
             typed_array_intrinsics: None,
+            regexp_legacy: crate::regexp::LegacyStatics::default(),
             result_root: None,
             stack: Vec::new(),
             bindings: Vec::new(),

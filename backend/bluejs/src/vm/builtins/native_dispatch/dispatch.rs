@@ -1434,6 +1434,10 @@ impl Vm {
             }
             NativeFunction::RegExpMethod(method) => self.regexp_method(method, &receiver, &args),
             NativeFunction::RegExpGetter(name) => self.regexp_getter(name, &receiver),
+            NativeFunction::RegExpLegacyGetter(which) => self.regexp_legacy_get(which, &receiver),
+            NativeFunction::RegExpLegacySetter(which) => {
+                self.regexp_legacy_set(which, &receiver, first)
+            }
             NativeFunction::RegExpIteratorNext => self.regexp_iterator_next(&receiver),
             NativeFunction::ThrowTypeError => Err(RuntimeError::TypeError(
                 "restricted function property".into(),

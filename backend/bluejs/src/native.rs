@@ -678,6 +678,9 @@ pub(crate) enum NativeFunction {
     RegExpEscape,
     RegExpMethod(RegExpMethod),
     RegExpGetter(&'static str),
+    /// Annex B legacy static accessors of `%RegExp%`.
+    RegExpLegacyGetter(LegacyRegExpStatic),
+    RegExpLegacySetter(LegacyRegExpStatic),
     RegExpIteratorNext,
     StringMethod(StringMethod),
     /// The `DisposableStack`/`AsyncDisposableStack` constructors (Explicit
@@ -918,6 +921,18 @@ pub(crate) enum PatternMethod {
     Match,
     MatchAll,
     Search,
+}
+
+/// The legacy static RegExp properties, one per internal slot of `%RegExp%`
+/// (`RegExp.$1`-`$9` are `Paren(1)`-`Paren(9)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LegacyRegExpStatic {
+    Input,
+    LastMatch,
+    LastParen,
+    LeftContext,
+    RightContext,
+    Paren(u8),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

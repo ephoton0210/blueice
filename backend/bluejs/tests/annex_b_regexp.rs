@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Annex B RegExp behavior: `RegExp.prototype.compile` (B.2.4.1).
+//! Annex B RegExp behavior: `RegExp.prototype.compile` (B.2.4.1) and the
+//! legacy static accessors (`RegExp.$1`-`$9`, `input`, `lastMatch`, ...).
 
 use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
 
@@ -120,4 +121,80 @@ fn regexp_constructor_reads_the_source_after_observing_symbol_match() {
 #[test]
 fn flags_are_reported_in_canonical_order_after_compile() {
     check("var re=/(?:)/;re.compile('(?:)','imsuyg');re.flags==='gimsuy'");
+}
+
+#[test]
+fn legacy_static_properties_start_empty_and_track_the_last_successful_match() {
+    check(
+        "RegExp.input===''&&RegExp.lastMatch===''&&RegExp.$1===''&&RegExp['$&']===''&&RegExp.leftContext===''",
+    );
+    check(
+        "/(a)(b)?(c)/.exec('xacy');\
+         RegExp.$1==='a'&&RegExp.$2===''&&RegExp.$3==='c'&&RegExp.$4===''&&RegExp.$9===''\
+         &&RegExp.lastMatch==='ac'&&RegExp['$&']==='ac'&&RegExp.lastParen==='c'&&RegExp['$+']==='c'\
+         &&RegExp.leftContext==='x'&&RegExp['$`']==='x'&&RegExp.rightContext==='y'&&RegExp[\"$'\"]==='y'\
+         &&RegExp.input==='xacy'&&RegExp.$_==='xacy'",
+    );
+    // A failed match leaves the previous values alone; no groups gives an empty lastParen.
+    check(
+        "/(a)/.exec('a');/zzz/.exec('a');var kept=RegExp.$1==='a';\
+         /b/.test('abc');kept&&RegExp.lastParen===''&&RegExp.$1===''&&RegExp.leftContext==='a'&&RegExp.rightContext==='c'",
+    );
+    // Only nine numbered groups are exposed; lastParen is the last group.
+    check(
+        "/(1)(2)(3)(4)(5)(6)(7)(8)(9)(10)/.exec('12345678910');\
+         RegExp.$9==='9'&&RegExp.lastParen==='10'&&RegExp.$10===undefined",
+    );
+    // String methods drive the same exec.
+    check(
+        "'hello world'.replace(/o (w)/,'');\
+         RegExp.$1==='w'&&RegExp.leftContext==='hell'&&RegExp.rightContext==='orld'",
+    );
+}
+
+#[test]
+fn legacy_input_is_writable_and_the_other_properties_are_read_only() {
+    check("RegExp.input=123;var a=RegExp.input==='123'&&RegExp.$_==='123';RegExp.$_='x';a&&RegExp.input==='x'");
+    check(
+        "/(a)/.exec('bab');RegExp.input='other';\
+         RegExp.input==='other'&&RegExp.leftContext==='b'&&RegExp.$1==='a'",
+    );
+    check(
+        "'use strict';var threw=false;try{RegExp.lastMatch='x'}catch(e){threw=e instanceof TypeError}threw",
+    );
+    check(
+        "['input','$_','lastMatch','$&','lastParen','$+','leftContext','$`','rightContext',\"$'\",'$1','$5','$9'].every(function(k){\
+         var d=Object.getOwnPropertyDescriptor(RegExp,k);return typeof d.get==='function'&&!d.enumerable&&d.configurable\
+         &&(k==='input'||k==='$_'?typeof d.set==='function':d.set===undefined)})",
+    );
+}
+
+#[test]
+fn legacy_getters_require_the_regexp_constructor_itself_as_receiver() {
+    check(
+        "var d=Object.getOwnPropertyDescriptor(RegExp,'$1');class Sub extends RegExp{}\
+         [undefined,null,{},true,0,'s',/ /,RegExp.prototype,Sub].every(function(v){\
+         try{d.get.call(v);return false}catch(e){return e instanceof TypeError}})\
+         &&(function(){try{Sub.$1;return false}catch(e){return e instanceof TypeError}})()",
+    );
+    check(
+        "var d=Object.getOwnPropertyDescriptor(RegExp,'input');class Sub extends RegExp{}\
+         (function(){try{d.set.call(Sub,'x');return false}catch(e){return e instanceof TypeError}})()",
+    );
+}
+
+#[test]
+fn non_legacy_regexps_invalidate_the_static_properties_until_the_next_legacy_match() {
+    check(
+        "class Sub extends RegExp{}/(a)/.exec('a');new Sub('b').exec('b');\
+         ['input','lastMatch','lastParen','leftContext','rightContext','$1','$9'].every(function(k){\
+         try{RegExp[k];return false}catch(e){return e instanceof TypeError}})",
+    );
+    // Assigning input revives only that slot; a new legacy match revives all.
+    check(
+        "class Sub extends RegExp{}new Sub('b').exec('b');RegExp.input='q';\
+         var only=RegExp.input==='q'&&\
+         (function(){try{RegExp.lastMatch;return false}catch(e){return e instanceof TypeError}})();\
+         /c/.exec('c');only&&RegExp.lastMatch==='c'&&RegExp.input==='c'",
+    );
 }

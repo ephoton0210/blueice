@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use crate::native::RegExpMethod;
+use crate::native::{LegacyRegExpStatic, RegExpMethod};
 use crate::regexp::{advance, RegExp};
 use std::rc::Rc;
 
@@ -120,6 +120,7 @@ impl Vm {
                 "get [Symbol.species]",
                 NativeFunction::RegExpGetter("species"),
             )?;
+            self.install_legacy_accessors(constructor, function_prototype)?;
             Ok(Value::Object(constructor))
         })();
         match result {
@@ -348,6 +349,130 @@ impl Vm {
         Ok(receiver.clone())
     }
 
+    /// Installs the Annex B legacy static accessors on `%RegExp%`.
+    fn install_legacy_accessors(
+        &mut self,
+        constructor: ObjectId,
+        function_prototype: ObjectId,
+    ) -> Result<(), RuntimeError> {
+        use LegacyRegExpStatic::*;
+        let mut read_only = vec![
+            ("lastMatch", LastMatch),
+            ("$&", LastMatch),
+            ("lastParen", LastParen),
+            ("$+", LastParen),
+            ("leftContext", LeftContext),
+            ("$`", LeftContext),
+            ("rightContext", RightContext),
+            ("$'", RightContext),
+        ];
+        let digits: Vec<String> = (1..=9).map(|digit| format!("${digit}")).collect();
+        for (index, name) in digits.iter().enumerate() {
+            read_only.push((name.as_str(), Paren(index as u8 + 1)));
+        }
+        for (name, which) in read_only {
+            self.install_getter(
+                constructor,
+                function_prototype,
+                name.into(),
+                &format!("get {name}"),
+                NativeFunction::RegExpLegacyGetter(which),
+            )?;
+        }
+        for name in ["input", "$_"] {
+            let getter = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::RegExpLegacyGetter(Input),
+                    &format!("get {name}"),
+                    function_prototype,
+                )
+            })?;
+            self.stack.push(Value::Object(getter));
+            let setter = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::RegExpLegacySetter(Input),
+                    &format!("set {name}"),
+                    function_prototype,
+                )
+            })?;
+            self.stack.push(Value::Object(setter));
+            for (function, function_name, length) in [
+                (getter, format!("get {name}"), 0.0),
+                (setter, format!("set {name}"), 1.0),
+            ] {
+                self.define_data(
+                    function,
+                    "name",
+                    Value::String(function_name.as_str().into()),
+                    false,
+                    false,
+                    true,
+                )?;
+                self.define_data(
+                    function,
+                    "length",
+                    Value::Number(length),
+                    false,
+                    false,
+                    true,
+                )?;
+            }
+            self.with_roots(|heap| {
+                heap.define_own_property(
+                    constructor,
+                    PropertyName::from(name),
+                    PropertyDescriptor {
+                        get: Some(Value::Object(getter)),
+                        set: Some(Value::Object(setter)),
+                        enumerable: Some(false),
+                        configurable: Some(true),
+                        ..Default::default()
+                    },
+                )
+            })?;
+            self.stack.pop();
+            self.stack.pop();
+        }
+        Ok(())
+    }
+
+    /// GetLegacyRegExpStaticProperty (RegExp legacy features proposal).
+    pub(super) fn regexp_legacy_get(
+        &mut self,
+        which: LegacyRegExpStatic,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        if *receiver != self.regexp_global()? {
+            return Err(RuntimeError::TypeError(
+                "legacy RegExp static property requires %RegExp% as receiver".into(),
+            ));
+        }
+        match self.regexp_legacy.get(which) {
+            Some(string) => Ok(Value::String(string)),
+            None => Err(RuntimeError::TypeError(
+                "legacy RegExp static property is unavailable after a non-legacy match".into(),
+            )),
+        }
+    }
+
+    /// SetLegacyRegExpStaticProperty for `RegExp.input` / `RegExp.$_`.
+    pub(super) fn regexp_legacy_set(
+        &mut self,
+        which: LegacyRegExpStatic,
+        receiver: &Value,
+        value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        debug_assert_eq!(which, LegacyRegExpStatic::Input);
+        if *receiver != self.regexp_global()? {
+            return Err(RuntimeError::TypeError(
+                "legacy RegExp static property requires %RegExp% as receiver".into(),
+            ));
+        }
+        let string = self.coerce_string(value)?;
+        self.regexp_legacy.set_input(string);
+        Ok(Value::Undefined)
+    }
+
     pub(super) fn regexp_getter(
         &mut self,
         name: &str,
@@ -516,6 +641,16 @@ impl Vm {
         };
         if stateful {
             self.set_required(receiver, "lastIndex", Value::Number(matched.end() as f64))?;
+        }
+        if regexp.legacy_features {
+            self.regexp_legacy.update(
+                string,
+                matched.start(),
+                matched.end(),
+                matched.groups().skip(1).collect(),
+            );
+        } else {
+            self.regexp_legacy.invalidate();
         }
         let values = matched
             .groups()

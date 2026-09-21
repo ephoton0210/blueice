@@ -76,6 +76,106 @@ impl RegExp {
     }
 }
 
+/// The realm's legacy static RegExp properties (`RegExp.$1`-`$9`, `input`,
+/// `lastMatch`, `lastParen`, `leftContext`, `rightContext`). The proposal keeps
+/// each as a String in an internal slot of `%RegExp%`; the match-derived ones
+/// are stored here as ranges into the matched input so that a match costs one
+/// copy of that input rather than one substring per property.
+pub(crate) struct LegacyStatics {
+    /// [[RegExpInput]]; `None` is the proposal's "empty" (getter throws).
+    input: Option<JsString>,
+    matched: LegacyMatch,
+}
+
+enum LegacyMatch {
+    /// No match yet: every slot holds the empty String.
+    Initial,
+    /// InvalidateLegacyRegExpStaticProperties: every slot is empty.
+    Invalidated,
+    Matched {
+        input: JsString,
+        start: usize,
+        end: usize,
+        /// Capture groups 1..n; unmatched groups read as the empty String.
+        groups: Vec<Option<std::ops::Range<usize>>>,
+    },
+}
+
+impl Default for LegacyStatics {
+    fn default() -> Self {
+        Self {
+            input: Some(JsString::default()),
+            matched: LegacyMatch::Initial,
+        }
+    }
+}
+
+impl LegacyStatics {
+    /// UpdateLegacyRegExpStaticProperties. `groups` excludes the whole match.
+    pub fn update(
+        &mut self,
+        input: &JsString,
+        start: usize,
+        end: usize,
+        groups: Vec<Option<std::ops::Range<usize>>>,
+    ) {
+        self.input = Some(input.clone());
+        self.matched = LegacyMatch::Matched {
+            input: input.clone(),
+            start,
+            end,
+            groups,
+        };
+    }
+
+    /// InvalidateLegacyRegExpStaticProperties.
+    pub fn invalidate(&mut self) {
+        self.input = None;
+        self.matched = LegacyMatch::Invalidated;
+    }
+
+    /// SetLegacyRegExpStaticProperty for `RegExp.input`.
+    pub fn set_input(&mut self, input: JsString) {
+        self.input = Some(input);
+    }
+
+    /// The slot's current String, or `None` when it is empty (invalidated).
+    pub fn get(&self, which: crate::native::LegacyRegExpStatic) -> Option<JsString> {
+        use crate::native::LegacyRegExpStatic::*;
+        if which == Input {
+            return self.input.clone();
+        }
+        let slice = |input: &JsString, range: std::ops::Range<usize>| {
+            JsString::from_code_units(input.as_code_units()[range].to_vec())
+        };
+        match &self.matched {
+            LegacyMatch::Initial => Some(JsString::default()),
+            LegacyMatch::Invalidated => None,
+            LegacyMatch::Matched {
+                input,
+                start,
+                end,
+                groups,
+            } => {
+                let group = |group: Option<&Option<std::ops::Range<usize>>>| {
+                    group
+                        .cloned()
+                        .flatten()
+                        .map_or_else(JsString::default, |range| slice(input, range))
+                };
+                Some(match which {
+                    Input => unreachable!("handled above"),
+                    LastMatch => slice(input, *start..*end),
+                    LastParen => group(groups.last()),
+                    LeftContext => slice(input, 0..*start),
+                    RightContext => slice(input, *end..input.len()),
+                    Paren(index) => group(groups.get(usize::from(index) - 1)),
+                })
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum CharacterClassEscape {
     Digit,
