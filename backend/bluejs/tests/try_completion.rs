@@ -354,6 +354,9 @@ fn function_and_inheritance_early_errors_are_classified() {
         "class C{async method(value=await){}}",
         "class C{*method(value=yield){}}",
         "class C{static{function await(){}}}",
+        // In strict code `yield` is a reserved word, so it is not even a valid
+        // IdentifierReference: the parser reports it itself.
+        "'use strict';function*g(){function f(value=yield){unbound=value;}}",
     ] {
         let error = parse(source).unwrap_err();
         assert!(error.known_syntax, "{source}: {error:?}");
@@ -363,7 +366,6 @@ fn function_and_inheritance_early_errors_are_classified() {
         "function f(a=0,a){}",
         "function f(a=0){'use strict';}",
         "'use strict';function f(arguments){}",
-        "'use strict';function*g(){function f(value=yield){unbound=value;}}",
     ] {
         let program = parse(source).unwrap();
         assert!(

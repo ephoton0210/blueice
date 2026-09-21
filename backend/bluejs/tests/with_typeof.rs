@@ -73,3 +73,54 @@ fn plain_reads_of_standard_globals_inside_with_resolve() {
     truthy("var r;with({}){r=undefined}r===undefined");
     truthy("var r;with({a:1}){r=Object.keys({a})}r.length===1");
 }
+
+#[test]
+fn delete_of_a_name_removes_the_with_objects_property() {
+    truthy("var o={p:1,q:2};var r;with(o){r=delete p}r===true&&!('p' in o)&&o.q===2");
+    truthy("var o={};var r;with(o){r=delete missing}r===true");
+    truthy(
+        "var o=Object.defineProperty({},'p',{value:1});var r;with(o){r=delete p}r===false&&o.p===1",
+    );
+}
+
+#[test]
+fn delete_of_a_name_finds_the_innermost_with_object_first() {
+    truthy("var a={p:1},b={p:2};with(a){with(b){delete p}}('p' in a)&&!('p' in b)");
+    truthy("var a={p:1},b={};with(a){with(b){delete p}}!('p' in a)");
+}
+
+#[test]
+fn delete_of_a_name_respects_unscopables_and_falls_back_to_bindings() {
+    truthy(
+        "var o={p:1,[Symbol.unscopables]:{p:true}};this.p=2;var r;with(o){r=delete p}r===true&&o.p===1&&!('p' in this)",
+    );
+    truthy("var v=1;var r;with({}){r=delete v}r===false&&v===1");
+    truthy("function f(){var l=1;var r;with({}){r=delete l}return r===false&&l===1}f()");
+    truthy("this.g=1;var r;with({}){r=delete g}r===true&&typeof g==='undefined'");
+}
+
+#[test]
+fn delete_of_an_unqualified_global_name_deletes_the_global_property() {
+    truthy("this.p=2;var r=delete p;r===true&&!('p' in this)");
+    truthy("x=1;var r=delete x;r===true&&typeof x==='undefined'");
+    truthy("var r=delete NaN;r===false");
+    truthy("var v=1;var r=delete v;r===false&&v===1");
+    truthy("let l=1;var r=delete l;r===false&&l===1");
+    truthy("var r=delete neverDefined;r===true");
+}
+
+#[test]
+fn a_var_initializer_inside_with_assigns_through_the_with_object() {
+    // §14.3.2.1: the declared name is resolved as a reference before the
+    // initializer runs, so a with object that has the property receives it.
+    truthy("var o={v:'a'};with(o){var v='b'}o.v==='b'&&v===undefined");
+    truthy("var o={};with(o){var w='b'}!('w' in o)&&w==='b'");
+    truthy("var o={v:'a'};with(o){var v}o.v==='a'&&v===undefined");
+    truthy(
+        "var o={x:1,y:2};with(o){var x=10,y=20}o.x===10&&o.y===20&&x===undefined&&y===undefined",
+    );
+    truthy("var o={v:1};with(o){var f=function(){}}f.name==='f'&&!('f' in o)");
+    truthy("var o={f:0};with(o){var f=function(){}}o.f.name==='f'");
+    // The reference is resolved before the initializer can add the property.
+    truthy("var o={};with(o){var z=(o.z='inner',1)}o.z==='inner'&&z===1");
+}

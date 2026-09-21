@@ -1206,8 +1206,26 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let deleted = self.delete_dynamic_eval_binding(&name)?;
+                        let deleted = self.delete_unbound_name(&name)?;
                         self.stack.push(Value::Bool(deleted));
+                    }
+                    Opcode::DeleteWithBinding => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!("compiler emits a name")
+                        };
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        let mut outcome = Value::Undefined;
+                        for object in self.with_objects.clone().into_iter().rev() {
+                            if self.with_has_binding(&object, &name)? {
+                                let Value::Object(id) = object else {
+                                    unreachable!("with objects are objects")
+                                };
+                                outcome =
+                                    Value::Bool(self.object_delete(id, &name.as_str().into())?);
+                                break;
+                            }
+                        }
+                        self.stack.push(outcome);
                     }
                     Opcode::DeleteDynamicBinding => {
                         let name = &code.bindings[operand].name;

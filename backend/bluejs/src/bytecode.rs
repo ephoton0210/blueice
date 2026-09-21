@@ -38,6 +38,10 @@ opcodes! {
     UnboundName: 5, 0;
     SetUnboundName: 5, 0;
     DeleteUnboundName: 5, 0;
+    // `delete name` inside `with`: deletes the property of the innermost with
+    // object that has the binding and pushes the result, or pushes `undefined`
+    // when no with object has it (the caller then falls back to the binding).
+    DeleteWithBinding: 5, 0;
     DeleteDynamicBinding: 5, 0;
     EnterScope: 5, 0;
     CloneScope: 5, 0;
