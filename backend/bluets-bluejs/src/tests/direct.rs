@@ -82,6 +82,22 @@ fn installs_direct_bytecode_with_its_checked_canonical_source_identity() {
     registry
         .validate_ast_node(handle, attachment.provenance[0].node_id)
         .unwrap();
+    let DirectSafePointBinding::Bound(safe_point) = attachment.provenance[0].safe_point else {
+        panic!("the lowered variable declaration must have a bound safe point")
+    };
+    registry.validate_safe_point(handle, safe_point).unwrap();
+    assert_eq!(
+        attachment.safe_point_map.format,
+        BLUEJS_SAFE_POINT_MAP_ABI_V1
+    );
+    assert_eq!(
+        attachment.safe_point_map.entries.len(),
+        attachment.provenance.len()
+    );
+    attachment
+        .safe_point_map
+        .validate_against(&registry, handle)
+        .unwrap();
     registry
         .validate_safe_point(handle, installed.safe_points().next().unwrap())
         .unwrap();

@@ -4,6 +4,13 @@
 
 use super::*;
 
+fn is_function_declaration(statement: &Stmt) -> bool {
+    matches!(
+        statement,
+        Stmt::FunctionDecl(_) | Stmt::ModuleDefaultFunction { .. }
+    )
+}
+
 impl Compiler {
     pub(super) fn statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
         self.function_declarations(statements)?;
@@ -313,41 +320,64 @@ impl Compiler {
         statements: &[Stmt],
     ) -> Result<(), CompileError> {
         for statement in statements {
-            let (function, binding_name) = match statement {
-                Stmt::FunctionDecl(function) => (
-                    function,
-                    function.name.as_ref().expect("declaration has a name"),
-                ),
-                Stmt::ModuleDefaultFunction { function, binding } => (function, binding),
-                _ => continue,
-            };
-            if matches!(statement, Stmt::ModuleDefaultFunction { binding, .. } if binding == MODULE_DEFAULT_BINDING)
-            {
-                // An anonymous default function declaration has a private
-                // module binding, but its function object is named
-                // `"default"`.  This is inference, not a named function
-                // expression, so it must not create an inner `default`
-                // lexical binding.
-                self.function_named(function, false, Some("default"), false)?;
-            } else {
-                self.function(function, false)?;
+            self.function_declaration(statement)?;
+        }
+        Ok(())
+    }
+
+    /// Compiles root-level function declaration instantiation while preserving
+    /// source-order offsets for the debugger/provenance boundary.
+    pub(super) fn top_level_function_declarations(
+        &mut self,
+        statements: &[Stmt],
+        offsets: &mut [Option<u32>],
+    ) -> Result<(), CompileError> {
+        debug_assert_eq!(statements.len(), offsets.len());
+        for (index, statement) in statements.iter().enumerate() {
+            if !is_function_declaration(statement) {
+                continue;
             }
-            let slot = self.resolve(binding_name).unwrap();
-            if self.bytecode.bindings[slot as usize].lexical {
-                self.emit(Opcode::InitializeBinding, slot)?;
-            } else {
-                self.emit(Opcode::StoreBinding, slot)?;
+            offsets[index] = Some(self.offset()?);
+            self.function_declaration(statement)?;
+        }
+        Ok(())
+    }
+
+    fn function_declaration(&mut self, statement: &Stmt) -> Result<(), CompileError> {
+        let (function, binding_name) = match statement {
+            Stmt::FunctionDecl(function) => (
+                function,
+                function.name.as_ref().expect("declaration has a name"),
+            ),
+            Stmt::ModuleDefaultFunction { function, binding } => (function, binding),
+            _ => return Ok(()),
+        };
+        if matches!(statement, Stmt::ModuleDefaultFunction { binding, .. } if binding == MODULE_DEFAULT_BINDING)
+        {
+            // An anonymous default function declaration has a private
+            // module binding, but its function object is named
+            // `"default"`.  This is inference, not a named function
+            // expression, so it must not create an inner `default`
+            // lexical binding.
+            self.function_named(function, false, Some("default"), false)?;
+        } else {
+            self.function(function, false)?;
+        }
+        let slot = self.resolve(binding_name).unwrap();
+        if self.bytecode.bindings[slot as usize].lexical {
+            self.emit(Opcode::InitializeBinding, slot)?;
+        } else {
+            self.emit(Opcode::StoreBinding, slot)?;
+            self.emit(Opcode::Pop, 0)?;
+        }
+        // Annex B.3.2/B.3.3 only supplies the legacy outer var for
+        // ordinary functions. Generator and async declarations stay
+        // exclusively lexical even in sloppy code.
+        if matches!(statement, Stmt::FunctionDecl(_)) && is_annex_b_function(function) {
+            if let Some(outer) = self.annex_b_outer_var_slot(slot) {
+                self.emit(Opcode::GetBinding, slot)?;
+                self.emit(Opcode::StoreBinding, outer)?;
                 self.emit(Opcode::Pop, 0)?;
-            }
-            // Annex B.3.2/B.3.3 only supplies the legacy outer var for
-            // ordinary functions. Generator and async declarations stay
-            // exclusively lexical even in sloppy code.
-            if matches!(statement, Stmt::FunctionDecl(_)) && is_annex_b_function(function) {
-                if let Some(outer) = self.annex_b_outer_var_slot(slot) {
-                    self.emit(Opcode::GetBinding, slot)?;
-                    self.emit(Opcode::StoreBinding, outer)?;
-                    self.emit(Opcode::Pop, 0)?;
-                }
             }
         }
         Ok(())
@@ -359,6 +389,29 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         for statement in statements {
             self.statement(statement, true)?;
+        }
+        Ok(())
+    }
+
+    /// Compiles every non-function root statement and records its exact first
+    /// emitted root-code-unit instruction. A statement with no output remains
+    /// explicitly unbound instead of inheriting the following statement's
+    /// offset.
+    pub(super) fn top_level_statements_after_function_declarations(
+        &mut self,
+        statements: &[Stmt],
+        offsets: &mut [Option<u32>],
+    ) -> Result<(), CompileError> {
+        debug_assert_eq!(statements.len(), offsets.len());
+        for (index, statement) in statements.iter().enumerate() {
+            if is_function_declaration(statement) {
+                continue;
+            }
+            let start = self.offset()?;
+            self.statement(statement, true)?;
+            if self.offset()? > start {
+                offsets[index] = Some(start);
+            }
         }
         Ok(())
     }

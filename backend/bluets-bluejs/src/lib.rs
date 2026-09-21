@@ -23,6 +23,9 @@ use std::fmt;
 /// The first directly executable BlueTS-to-BlueJS bridge ABI.
 pub const BLUE_TS_BLUEJS_BRIDGE_ABI_V1: &str = "blue-ts-bluejs-bridge-v1";
 
+/// The first generation-bound TypeScript-to-BlueJS instruction map format.
+pub const BLUEJS_SAFE_POINT_MAP_ABI_V1: &str = "bluejs-safe-point-map-v1";
+
 /// A source identity retained alongside the structured program. Source text is
 /// intentionally absent: the bridge preserves only the compiler-provided hash
 /// and canonical module ID needed to reject stale attachments later.
@@ -33,10 +36,21 @@ pub struct BridgeSource {
 }
 
 /// A direct-lowering span. It identifies a BlueTS source range that supplied
-/// at least one executable BlueJS AST statement, not a bytecode safe point.
+/// at least one executable BlueJS AST statement; it is not itself a bytecode
+/// safe point until a live attachment resolves its AST node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoweringProvenance {
     pub source: SourceSpan,
+    pub kind: LoweringProvenanceKind,
+}
+
+/// How a TypeScript source span contributed a direct BlueJS AST statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LoweringProvenanceKind {
+    /// The executable expression was copied without a TypeScript-only rewrite.
+    Copied,
+    /// TypeScript syntax was erased or lowered while producing executable AST.
+    LoweredSyntax,
 }
 
 /// A checked, direct BlueJS compilation of one classic TypeScript script.
@@ -86,6 +100,8 @@ pub struct DirectProgramAttachment {
     pub handle: bluejs::BlueJsProgramHandle,
     /// Ordered lowering spans paired with their exact generated AST nodes.
     pub provenance: Vec<AttachedLoweringProvenance>,
+    /// Deterministic, validated safe-point entries for bound lowering spans.
+    pub safe_point_map: BlueTsSafePointMapV1,
 }
 
 /// One source-level lowering span attached to a generated BlueJS AST node.
@@ -93,8 +109,58 @@ pub struct DirectProgramAttachment {
 pub struct AttachedLoweringProvenance {
     /// The exact TypeScript source bytes that contributed the node.
     pub source: SourceSpan,
+    /// How the source span contributed its generated AST statement.
+    pub kind: LoweringProvenanceKind,
     /// The generation-bound BlueJS structured AST node.
     pub node_id: bluejs::BlueJsAstNodeId,
+    /// The exact compiler-recorded instruction boundary for this node, or an
+    /// explicit unbound result when the node emits no root instruction.
+    pub safe_point: DirectSafePointBinding,
+}
+
+/// The direct bridge's safe-point resolution for one lowered source span.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DirectSafePointBinding {
+    /// The associated AST node has a verified root-code-unit instruction.
+    Bound(bluejs::BlueJsSafePoint),
+    /// The AST node emitted no root instruction; callers must report an
+    /// unbound breakpoint rather than remapping it heuristically.
+    Unbound,
+}
+
+/// A generation-bound direct-bridge safe-point map.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlueTsSafePointMapV1 {
+    /// Always [`BLUEJS_SAFE_POINT_MAP_ABI_V1`].
+    pub format: &'static str,
+    /// The BlueJS structured-program ABI used to compile the program.
+    pub program_abi: &'static str,
+    /// The opaque registry generation that owns every entry.
+    pub program_generation: u64,
+    /// The exact BlueTS compiler-options fingerprint used by the bridge.
+    pub compiler_options_fingerprint: String,
+    /// Deterministic fingerprint of the canonical source identities.
+    pub source_set_hash: String,
+    /// Sorted, unique bound entries. Unbound spans remain in attachment
+    /// provenance instead of acquiring a guessed instruction location.
+    pub entries: Vec<BlueTsSafePointEntryV1>,
+}
+
+/// One bound top-level TypeScript lowering span.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlueTsSafePointEntryV1 {
+    /// BlueJS code unit that owns the instruction.
+    pub code_unit: bluejs::BlueJsCodeUnitId,
+    /// Verified instruction start inside `code_unit`.
+    pub bytecode_offset: u32,
+    /// Canonical TypeScript module identity.
+    pub source: String,
+    /// Inclusive UTF-8 source-byte start.
+    pub start_byte: usize,
+    /// Exclusive UTF-8 source-byte end.
+    pub end_byte: usize,
+    /// How the original source supplied the executable statement.
+    pub provenance_kind: LoweringProvenanceKind,
 }
 
 /// The bridge either propagates BlueTS diagnostics, rejects a checker-accepted
@@ -168,7 +234,13 @@ impl DirectScript {
         &self,
         registry: &mut bluejs::BlueJsProgramRegistry,
     ) -> Result<DirectProgramAttachment, BridgeError> {
-        attach_direct_program(registry, &self.sources, &self.program, &self.provenance)
+        attach_direct_program(
+            registry,
+            &self.sources,
+            &self.program,
+            &self.provenance,
+            &self.compiler_options_fingerprint,
+        )
     }
 }
 
@@ -188,7 +260,13 @@ impl DirectModule {
         &self,
         registry: &mut bluejs::BlueJsProgramRegistry,
     ) -> Result<DirectProgramAttachment, BridgeError> {
-        attach_direct_program(registry, &self.sources, &self.program, &self.provenance)
+        attach_direct_program(
+            registry,
+            &self.sources,
+            &self.program,
+            &self.provenance,
+            &self.compiler_options_fingerprint,
+        )
     }
 }
 
@@ -430,6 +508,7 @@ fn attach_direct_program(
     sources: &[BridgeSource],
     program: &bluejs::BlueJsProgramV1,
     provenance: &[LoweringProvenance],
+    compiler_options_fingerprint: &str,
 ) -> Result<DirectProgramAttachment, BridgeError> {
     let [source] = sources else {
         return Err(BridgeError::InvalidSourceIdentity(
@@ -458,17 +537,168 @@ fn attach_direct_program(
             nodes.len()
         )));
     }
+    let attached_provenance = provenance
+        .iter()
+        .zip(nodes)
+        .map(|(provenance, node_id)| {
+            let safe_point = match registry.safe_point_for_ast_node(handle, node_id) {
+                Ok(safe_point) => DirectSafePointBinding::Bound(safe_point),
+                Err(bluejs::BlueJsProgramDebugError::AstNodeUnbound) => {
+                    DirectSafePointBinding::Unbound
+                }
+                Err(error) => return Err(BridgeError::BlueJsDebug(error)),
+            };
+            Ok(AttachedLoweringProvenance {
+                source: provenance.source.clone(),
+                kind: provenance.kind,
+                node_id,
+                safe_point,
+            })
+        })
+        .collect::<Result<Vec<_>, BridgeError>>()?;
+    let safe_point_map = match build_safe_point_map(
+        handle,
+        compiler_options_fingerprint,
+        sources,
+        &attached_provenance,
+    ) {
+        Ok(map) => map,
+        Err(error) => {
+            registry.invalidate(handle);
+            return Err(error);
+        }
+    };
     Ok(DirectProgramAttachment {
         handle,
-        provenance: provenance
-            .iter()
-            .zip(nodes)
-            .map(|(provenance, node_id)| AttachedLoweringProvenance {
-                source: provenance.source.clone(),
-                node_id,
-            })
-            .collect(),
+        provenance: attached_provenance,
+        safe_point_map,
     })
+}
+
+impl BlueTsSafePointMapV1 {
+    /// Verifies this map against its exact live BlueJS generation. The caller
+    /// must separately compare the retained compiler/source fingerprints with
+    /// its authorized page-load request before exposing the map.
+    pub fn validate_against(
+        &self,
+        registry: &bluejs::BlueJsProgramRegistry,
+        handle: bluejs::BlueJsProgramHandle,
+    ) -> Result<(), BridgeError> {
+        if self.format != BLUEJS_SAFE_POINT_MAP_ABI_V1
+            || self.program_abi != bluejs::BLUEJS_PROGRAM_ABI_V1
+            || self.program_generation != handle.generation().as_u64()
+        {
+            return Err(BridgeError::ProvenanceAttachment(
+                "safe-point map ABI or generation does not match the live program".to_string(),
+            ));
+        }
+        for entry in &self.entries {
+            registry
+                .validate_safe_point(
+                    handle,
+                    bluejs::BlueJsSafePoint {
+                        code_unit: entry.code_unit,
+                        bytecode_offset: entry.bytecode_offset,
+                    },
+                )
+                .map_err(BridgeError::BlueJsDebug)?;
+        }
+        if !safe_point_entries_are_strictly_valid(&self.entries) {
+            return Err(BridgeError::ProvenanceAttachment(
+                "safe-point map entries are not sorted and unique".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn build_safe_point_map(
+    handle: bluejs::BlueJsProgramHandle,
+    compiler_options_fingerprint: &str,
+    sources: &[BridgeSource],
+    provenance: &[AttachedLoweringProvenance],
+) -> Result<BlueTsSafePointMapV1, BridgeError> {
+    let mut entries = provenance
+        .iter()
+        .filter_map(|provenance| match provenance.safe_point {
+            DirectSafePointBinding::Bound(safe_point) => Some(BlueTsSafePointEntryV1 {
+                code_unit: safe_point.code_unit,
+                bytecode_offset: safe_point.bytecode_offset,
+                source: provenance.source.module.clone(),
+                start_byte: provenance.source.start,
+                end_byte: provenance.source.end,
+                provenance_kind: provenance.kind,
+            }),
+            DirectSafePointBinding::Unbound => None,
+        })
+        .collect::<Vec<_>>();
+    entries.sort_by(safe_point_entry_order);
+    if !safe_point_entries_are_strictly_valid(&entries) {
+        return Err(BridgeError::ProvenanceAttachment(
+            "multiple lowering spans resolved to the same safe-point map entry".to_string(),
+        ));
+    }
+    Ok(BlueTsSafePointMapV1 {
+        format: BLUEJS_SAFE_POINT_MAP_ABI_V1,
+        program_abi: bluejs::BLUEJS_PROGRAM_ABI_V1,
+        program_generation: handle.generation().as_u64(),
+        compiler_options_fingerprint: compiler_options_fingerprint.to_string(),
+        source_set_hash: source_set_hash(sources),
+        entries,
+    })
+}
+
+fn safe_point_entries_are_strictly_valid(entries: &[BlueTsSafePointEntryV1]) -> bool {
+    entries.windows(2).all(|pair| {
+        safe_point_entry_order(&pair[0], &pair[1]).is_lt()
+            && (pair[0].code_unit != pair[1].code_unit
+                || pair[0].bytecode_offset != pair[1].bytecode_offset)
+    })
+}
+
+fn safe_point_entry_order(
+    left: &BlueTsSafePointEntryV1,
+    right: &BlueTsSafePointEntryV1,
+) -> std::cmp::Ordering {
+    (
+        left.code_unit.generation(),
+        left.code_unit.ordinal(),
+        left.bytecode_offset,
+        &left.source,
+        left.start_byte,
+        left.end_byte,
+        left.provenance_kind,
+    )
+        .cmp(&(
+            right.code_unit.generation(),
+            right.code_unit.ordinal(),
+            right.bytecode_offset,
+            &right.source,
+            right.start_byte,
+            right.end_byte,
+            right.provenance_kind,
+        ))
+}
+
+fn source_set_hash(sources: &[BridgeSource]) -> String {
+    let mut source_identities = sources
+        .iter()
+        .map(|source| (&source.module, &source.content_hash))
+        .collect::<Vec<_>>();
+    source_identities.sort_unstable();
+    let mut hash = 0xcbf29ce484222325u64;
+    for (module, content_hash) in source_identities {
+        for byte in module
+            .bytes()
+            .chain(std::iter::once(0xff))
+            .chain(content_hash.bytes())
+            .chain(std::iter::once(0xfe))
+        {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    format!("bts-source-set-{hash:016x}")
 }
 
 fn lower_script(
@@ -483,6 +713,7 @@ fn lower_script(
                 body.push(lower_variable(module, variable)?);
                 provenance.push(LoweringProvenance {
                     source: variable.span.clone(),
+                    kind: LoweringProvenanceKind::LoweredSyntax,
                 });
             }
             Declaration::Raw(raw) => {
@@ -491,6 +722,7 @@ fn lower_script(
                 ));
                 provenance.push(LoweringProvenance {
                     source: raw.span.clone(),
+                    kind: LoweringProvenanceKind::Copied,
                 });
             }
             Declaration::Import(import) if import.type_only => {}
@@ -527,6 +759,7 @@ fn lower_script(
                 body.push(lower_function(module, function)?);
                 provenance.push(LoweringProvenance {
                     source: function.span.clone(),
+                    kind: LoweringProvenanceKind::LoweredSyntax,
                 });
             }
             Declaration::Function(function) => {
@@ -556,6 +789,7 @@ fn lower_module(
                 body.push(lower_variable(module, variable)?);
                 provenance.push(LoweringProvenance {
                     source: variable.span.clone(),
+                    kind: LoweringProvenanceKind::LoweredSyntax,
                 });
                 if variable.exported {
                     exports.push(bluejs::ExportEntry::Local {
@@ -568,6 +802,7 @@ fn lower_module(
                 body.push(lower_function(module, function)?);
                 provenance.push(LoweringProvenance {
                     source: function.span.clone(),
+                    kind: LoweringProvenanceKind::LoweredSyntax,
                 });
                 if function.default_export {
                     exports.push(bluejs::ExportEntry::Local {
@@ -587,6 +822,7 @@ fn lower_module(
                 ));
                 provenance.push(LoweringProvenance {
                     source: raw.span.clone(),
+                    kind: LoweringProvenanceKind::Copied,
                 });
             }
             Declaration::DefaultExport(export) => exports.push(bluejs::ExportEntry::Local {

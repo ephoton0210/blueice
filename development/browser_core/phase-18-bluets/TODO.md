@@ -13,10 +13,11 @@ evidence, not just an API, design document, or unit test.
 The standalone front end, BlueTSC emitter, VM-independent debug metadata,
 bounded contract validator, incremental cache, and the host-neutral direct
 BlueTS-to-BlueJS structured-program bridge are complete for `blue-ts-0.1`.
-They do not yet make a TypeScript page executable or debuggable. In particular,
-the bridge has no stable BlueJS node/code-unit IDs or bytecode safe points, and
-BlueTS has no page host, DOM bindings, live contract boundary, debugger IPC, or
-MCP project-registration path.
+They do not yet make a TypeScript page executable or debuggable. The bridge now
+has a limited, in-memory mapping from a single direct module's top-level
+lowering spans to verified BlueJS safe points, but it has no page host, DOM
+bindings, live contract boundary, debugger IPC, or MCP project-registration
+path.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
 syntax matrix while an earlier item prevents an already-supported program from
@@ -77,10 +78,13 @@ or second module resolver to bypass them.
   instruction-boundary enumeration, and fail-closed validation. The
   host-neutral direct bridge installs its structured program and checked source
   identity without a JS-text round trip, pairing each top-level lowering span
-  with its verified generated AST statement. Replacement, navigation-style
-  invalidation, and malformed offsets are tested. It deliberately does not yet
-  provide complete nested-expression provenance, a page host, or debugger
-  pause mechanics, so this prerequisite remains open.
+  with its verified generated AST statement. The BlueJS compiler records the
+  exact root-statement instruction start (or an explicit unbound result), and
+  the registry resolves that AST statement only to this verified safe point.
+  Replacement, navigation-style invalidation, and malformed offsets are
+  tested. It deliberately does not yet provide complete nested-expression
+  provenance, a page host, or debugger pause mechanics, so this prerequisite
+  remains open.
 
   Acceptance: a bytecode instruction can be named by `(code_unit, offset)` and
   verified by BlueJS; a program replacement invalidates its old IDs; malformed
@@ -126,6 +130,18 @@ or second module resolver to bypass them.
   `bluejs-safe-point-map-v1` format defined by the integration contract.
   Preserve UTF-8 byte spans at this boundary and require explicit conversion
   from BlueTSC Source Map v3's UTF-16 columns.
+
+  Foundation delivered: the direct bridge now publishes an in-memory
+  `bluejs-safe-point-map-v1` for a single directly attached source module. It
+  retains the program ABI/generation, compiler-options fingerprint, canonical
+  source-set hash, UTF-8 lowering span, and lowering kind. Its bound entries
+  are deterministically sorted, unique by instruction tuple, and revalidated
+  against the live BlueJS generation; a no-output top-level statement remains
+  explicitly unbound in the attachment rather than being remapped. The map is
+  intentionally limited to direct top-level lowering spans: page loader
+  integration, multi-module lifetime ownership, nested-expression locations,
+  host-request fingerprint checks, breakpoint search policy, and debugger IPC
+  are still absent, so this item remains open.
 
   Acceptance: entries are deterministic, sorted, unique and validated against
   BlueJS code units; a TS breakpoint binds to the nearest permitted following
