@@ -44,6 +44,57 @@ fn hex4(points: &[u32], at: usize) -> Option<u32> {
 const NON_WORD_UNICODE_IGNORE_CASE: &str =
     "\\x00-\\x2f\\x3a-\\x40\\x5b-\\x5e\\x60\\u{7b}-\\u{17e}\\u{180}-\\u{2129}\\u{212b}-\\u{10ffff}";
 
+/// The pattern as the matcher process should receive it: in the `u` and `v`
+/// modes a braced escape may carry any number of leading zeros
+/// (`\u{000...0041}`), which say nothing, and the request that carries a
+/// pattern has a fixed size limit that a pattern of millions of digits would
+/// exceed. Runs of two or more leading zeros are removed; everything else,
+/// and every pattern without such a run, is returned unchanged.
+pub(crate) fn strip_braced_leading_zeros<'a>(
+    units: &'a [u16],
+    flags: &str,
+) -> std::borrow::Cow<'a, [u16]> {
+    if !flags.contains(['u', 'v']) {
+        return std::borrow::Cow::Borrowed(units);
+    }
+    let zero = u16::from(b'0');
+    let mut stripped: Option<Vec<u16>> = None;
+    let (mut index, mut copied) = (0, 0);
+    while index < units.len() {
+        if units[index] != u16::from(b'\\') {
+            index += 1;
+            continue;
+        }
+        let braced_escape = units.get(index + 1) == Some(&u16::from(b'u'))
+            && units.get(index + 2) == Some(&u16::from(b'{'));
+        if !braced_escape {
+            index += 2;
+            continue;
+        }
+        let digits = index + 3;
+        let zeros = units[digits.min(units.len())..]
+            .iter()
+            .take_while(|&&unit| unit == zero)
+            .count();
+        index = digits + zeros;
+        if zeros >= 2 {
+            // Keep one zero when nothing else is left in the escape.
+            let keep = usize::from(units.get(index) == Some(&u16::from(b'}')));
+            let stripped = stripped.get_or_insert_with(|| Vec::with_capacity(units.len()));
+            stripped.extend_from_slice(&units[copied..digits]);
+            stripped.extend(std::iter::repeat_n(zero, keep));
+            copied = index;
+        }
+    }
+    match stripped {
+        Some(mut stripped) => {
+            stripped.extend_from_slice(&units[copied..]);
+            std::borrow::Cow::Owned(stripped)
+        }
+        None => std::borrow::Cow::Borrowed(units),
+    }
+}
+
 /// Rewrites `points` (one entry per code unit without the `u` and `v` flags,
 /// one per code point with them) as described in the module comment.
 pub(crate) fn adjust_escapes(points: Vec<u32>, flags: &str) -> Vec<u32> {
@@ -153,6 +204,29 @@ mod tests {
         assert_eq!(adjust(r"[\u{41}]x\\u{41}", "i"), r"[u{41}]x\\u{41}");
         assert_eq!(adjust(r"\u{41}", "u"), r"\u{41}");
         assert_eq!(adjust(r"\u{41}", "v"), r"\u{41}");
+    }
+
+    #[test]
+    fn leading_zeros_of_braced_escapes_are_stripped_only_with_the_u_or_v_flag() {
+        let strip = |text: &str, flags: &str| {
+            let units: Vec<u16> = text.encode_utf16().collect();
+            String::from_utf16(&strip_braced_leading_zeros(&units, flags)).unwrap()
+        };
+        assert_eq!(strip(r"\u{000041}", "u"), r"\u{41}");
+        assert_eq!(strip(r"\u{000041}", "v"), r"\u{41}");
+        assert_eq!(strip(r"\u{0000}", "u"), r"\u{0}");
+        assert_eq!(
+            strip(r"[\u{0001}\u{00000002}]\u{003}x\u{00g}", "u"),
+            r"[\u{1}\u{2}]\u{3}x\u{g}"
+        );
+        // One zero, a lone escape, an escaped backslash and no u flag are all left as they are.
+        assert_eq!(
+            strip(r"\u{01}\\u{0002}\u0041", "u"),
+            r"\u{01}\\u{0002}\u0041"
+        );
+        assert_eq!(strip(r"\u{0002}", ""), r"\u{0002}");
+        assert_eq!(strip(r"\u{000", "u"), r"\u{");
+        assert_eq!(strip("abc", "u"), "abc");
     }
 
     #[test]

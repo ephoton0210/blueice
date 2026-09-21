@@ -8,7 +8,7 @@
 //! a lead surrogate escape pairs with a following `\u` trail surrogate escape
 //! and with nothing else.
 
-use blueice_bluejs::{compile, parse, Value, Vm};
+use blueice_bluejs::{compile, parse, HeapConfig, Value, Vm, VmConfig};
 
 fn evaluate(source: &str) -> Value {
     Vm::default()
@@ -146,5 +146,33 @@ fn w_inside_a_class_excludes_the_extra_word_characters_of_unicode_ignore_case() 
         // Without the i flag the case variants are not word characters.
         if (m("[\\W]", "u", "S") !== null) return "[\\W] with u only";
         "#,
+    );
+}
+
+#[test]
+fn braced_escape_with_millions_of_leading_zeros_is_matched_without_shipping_them() {
+    // The matcher runs in a child process behind a size-limited request; the
+    // zeros carry no information, so the pattern is sent without them.
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            max_heap_bytes: 512 * 1024 * 1024,
+            ..HeapConfig::default()
+        },
+        max_string_bytes: 64 * 1024 * 1024,
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let source = r#"(function() {
+      var zeros = "0".repeat(6 * 1024 * 1024);
+      var literal = new RegExp("\\u{" + zeros + "1234}", "u").exec("\u{1234}");
+      var inClass = new RegExp("[\\u{" + zeros + "41}]", "u").exec("A");
+      var tooBig = "";
+      try { new RegExp("\\u{" + zeros + "110000}", "u"); tooBig = "no error"; }
+      catch (e) { tooBig = e instanceof SyntaxError; }
+      return literal !== null && literal[0] === "\u{1234}" && inClass !== null && inClass[0] === "A" && tooBig === true;
+    })()"#;
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::Bool(true))
     );
 }
