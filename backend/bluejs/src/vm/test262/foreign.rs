@@ -289,6 +289,18 @@ impl Vm {
                     realm.vm.intl_global()?;
                     Value::Object(realm.vm.globals["%Intl.Segmenter%"])
                 }
+                // The function-kind constructors have no globals: reach each
+                // through its prototype's `constructor`.
+                "GeneratorFunction" | "AsyncFunction" | "AsyncGeneratorFunction" => {
+                    let prototype = match intrinsic {
+                        "GeneratorFunction" => realm.vm.generator_function_prototype()?,
+                        "AsyncFunction" => realm.vm.async_function_prototype()?,
+                        _ => realm.vm.async_generator_function_prototype()?,
+                    };
+                    realm
+                        .vm
+                        .get_property(&Value::Object(prototype), &"constructor".into())?
+                }
                 _ => realm.vm.global(intrinsic)?,
             };
             realm.vm.get_property(&constructor, &"prototype".into())?
@@ -1531,12 +1543,27 @@ impl Vm {
         };
         self.test262_sync_imported_data_properties(realm_id)?;
         let result = self.test262_import_foreign_result(realm_id, result)?;
-        if construct && foreign_native == Some(NativeFunction::Function) {
-            // CreateDynamicFunction uses `newTarget` only to select the
-            // function object's [[Prototype]].  Its body and own
-            // `prototype` object remain in the callee realm.  Preserve that
-            // cross-realm edge on the caller-side facade.
-            let default = self.function_prototype()?;
+        // CreateDynamicFunction uses `newTarget` only to select the function
+        // object's [[Prototype]] (the kind's own intrinsic prototype, taken
+        // from newTarget's realm when its `prototype` is not an object).
+        // Its body and own `prototype` object remain in the callee realm.
+        // Preserve that cross-realm edge on the caller-side facade.
+        let dynamic_default = if construct {
+            match foreign_native {
+                Some(NativeFunction::Function) => Some(self.function_prototype()?),
+                Some(NativeFunction::AsyncFunction) => Some(self.async_function_prototype()?),
+                Some(NativeFunction::GeneratorFunction) => {
+                    Some(self.generator_function_prototype()?)
+                }
+                Some(NativeFunction::AsyncGeneratorFunction) => {
+                    Some(self.async_generator_function_prototype()?)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if let Some(default) = dynamic_default {
             let prototype = self.constructor_prototype(default)?;
             if let Some(wrapper) = result.object_id() {
                 self.test262_set_foreign_prototype_override(wrapper, prototype);

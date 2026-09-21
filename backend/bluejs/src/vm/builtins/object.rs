@@ -629,6 +629,24 @@ impl Vm {
                 Some("Date")
             } else if default == self.base_iterator_prototype()? {
                 Some("Iterator")
+            } else if default == self.string_intrinsics()?.1 {
+                Some("String")
+            } else if self.promise_prototype == Some(default) {
+                Some("Promise")
+            } else if self.generator_function_prototype == Some(default) {
+                Some("GeneratorFunction")
+            } else if self.async_function_prototype == Some(default) {
+                Some("AsyncFunction")
+            } else if self.async_generator_function_prototype == Some(default) {
+                Some("AsyncGeneratorFunction")
+            } else if self.globals.get("RegExp").is_some_and(|constructor| {
+                self.heap
+                    .get(*constructor, "prototype")
+                    .ok()
+                    .and_then(|value| value.object_id())
+                    == Some(default)
+            }) {
+                Some("RegExp")
             } else {
                 None
             };
