@@ -40,3 +40,35 @@ opt-level = 3
 
 [profile.test.package.blueice-bluejs]
 opt-level = 3
+
+# The rest of the engine's runtime path needs the same treatment. Left at the
+# default level, dependencies dominated the run time of the heaviest Test262
+# cases (measured on one machine, before -> after):
+#   * `regress` (RegExp matching, in the `bluejs-regexp-worker` helper process)
+#     and `serde_json` (every request and reply crosses a pipe) made
+#     `Function/prototype/toString/built-in-function-object.js` 73.6 s -> 19.3 s;
+#     `regress` also ran its debug assertions while compiling the large Unicode
+#     classes of the `nativeFunctionMatcher.js` harness, so they are turned off.
+#   * ICU4X and the other dependencies behind `blueice-ecma402` made
+#     `intl402/fallback-locales-are-supported.js` 16.7 s -> 4.5 s.
+# `"*"` covers every dependency but no workspace member, so the rest of the
+# workspace keeps its fast unoptimised debug builds.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.test.package."*"]
+opt-level = 3
+
+[profile.dev.package.regress]
+opt-level = 3
+debug-assertions = false
+
+[profile.test.package.regress]
+opt-level = 3
+debug-assertions = false
+
+[profile.dev.package.blueice-ecma402]
+opt-level = 3
+
+[profile.test.package.blueice-ecma402]
+opt-level = 3
