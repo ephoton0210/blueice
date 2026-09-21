@@ -196,15 +196,23 @@ or second module resolver to bypass them.
   public debugger/MCP boundary as applicable; no assertion is satisfied solely
   by a host-neutral unit test.
 
-- [ ] **Make the TypeScript 5.9.3 compatibility oracle a reproducible CI
-  gate.** Provision the exact pinned compiler executable, verify its version
-  before execution, run the supported fixture matrix, and keep accepted and
-  rejected cases checked by diagnostic code/count/source line. Add Node/BlueJS
-  behavioral differentials only for features that the direct bridge executes.
+- [x] **Make the TypeScript 5.9.3 compatibility oracle a reproducible CI
+  gate.** The `typescript-oracle` CI job provisions the exact pinned compiler
+  with `npm exec --package typescript@5.9.3`, passes it explicitly through
+  `BLUEICE_BLUETSC_ORACLE`, and runs the ignored oracle test. The test verifies
+  the compiler version before execution, then runs the supported fixture
+  matrix with accepted and rejected cases checked by diagnostic
+  code/count/source line. Node/BlueJS behavioral differentials remain limited
+  to features that the direct bridge executes.
 
-  Acceptance: the oracle test is not silently skipped in its designated CI job;
-  fixture updates state whether they test parser, checker, emitter, direct
-  lowering, runtime behavior, source locations, and/or declarations.
+  Evidence: `.github/workflows/ci.yml` makes `typescript-oracle` a dependency
+  of the required `ci-gate`; the job cannot pass by silently skipping the
+  ignored test.
+
+  Verified acceptance: the oracle job is selected by the normal CI triggers,
+  runs the otherwise-ignored test explicitly, and is required for the final
+  CI gate. Fixtures identify parser/checker/emitter/direct-lowering/runtime/
+  source-location/declaration expectations in the test's case matrix.
 
 - [ ] **Restore the relevant quality gates before declaring Phase 18 ready.**
   Run formatting, `clippy -D warnings`, focused crate tests, the applicable

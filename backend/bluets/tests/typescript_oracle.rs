@@ -668,7 +668,7 @@ const CASES: &[OracleCase] = &[
         expected_stdout: None,
         expected_diagnostics: &[ExpectedDiagnostic {
             code: DiagnosticCode::TypeMismatch,
-            line: 9,
+            line: 10,
         }],
     },
     OracleCase {
