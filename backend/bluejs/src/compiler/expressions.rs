@@ -640,6 +640,17 @@ impl Compiler {
                         self.member_reference(callee)?;
                         self.emit(Opcode::GetMethod, 0)?;
                     }
+                } else if !construct
+                    && self.with_depth != 0
+                    && matches!(&**callee, Expr::Identifier(name) if self.resolve_inside_innermost_with(name).is_none())
+                {
+                    // `f()` inside `with`: a function found on a with object
+                    // is called with that object as `this` (WithBaseObject).
+                    let Expr::Identifier(name) = &**callee else {
+                        unreachable!()
+                    };
+                    let index = self.name_constant(name)?;
+                    self.emit(Opcode::WithGetMethod, index)?;
                 } else {
                     self.expression(callee)?;
                     self.constant(Value::Undefined)?;

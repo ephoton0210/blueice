@@ -86,3 +86,16 @@ fn a_callee_that_returns_restores_the_callers_with_objects() {
     truthy("var o={v:'o'};var p={v:'p'};var f;with(p){f=function(){return v}}var r;with(o){var a=f();r=v+a}r==='op'");
     truthy("var o={v:1};var f;with(o){f=function(){return v}}var r;with(o){f();r=v}r===1");
 }
+
+#[test]
+fn a_function_called_by_name_inside_with_gets_the_with_object_as_this() {
+    truthy("var r;var o={m(){r=this}};with(o){m()}r===o");
+    truthy("var o={get g(){return this}};var r;with(o){r=g}r===o");
+    // A name found outside the with objects keeps an undefined receiver.
+    truthy("var r='unset';function f(){'use strict';r=this}with({}){f()}r===undefined");
+    // Through a closure created in the with statement, too.
+    truthy("var r;var o={m(){r=this}};var f;with(o){f=function(){m()}}f();r===o");
+    // Arguments are still evaluated after the callee, and calls still work.
+    truthy("var o={sum(a,b){return a+b}};var r;with(o){r=sum(1,2)}r===3");
+    truthy("var x=(function(){return 5});var r;with({}){r=x()}r===5");
+}

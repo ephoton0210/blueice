@@ -513,19 +513,21 @@ impl Vm {
     /// Resolve `name` through the active `with` objects, then the enclosing
     /// binding (`fallback`: `Some(Some(v))` initialized, `Some(None)` still
     /// in its temporal dead zone) and finally the global object. `None` means
-    /// the name is unresolvable everywhere.
+    /// the name is unresolvable everywhere. The second element is the with
+    /// object the name was found on (WithBaseObject), `undefined` otherwise.
     fn with_lookup(
         &mut self,
         name: &str,
         fallback: Option<Option<Value>>,
-    ) -> Result<Option<Value>, RuntimeError> {
+    ) -> Result<Option<(Value, Value)>, RuntimeError> {
         for object in self.with_objects.clone().into_iter().rev() {
             if self.with_has_binding(&object, name)? {
-                return self.get_property(&object, &name.into()).map(Some);
+                let value = self.get_property(&object, &name.into())?;
+                return Ok(Some((value, object)));
             }
         }
         match fallback {
-            Some(Some(value)) => Ok(Some(value)),
+            Some(Some(value)) => Ok(Some((value, Value::Undefined))),
             Some(None) => Err(RuntimeError::ReferenceError(name.into())),
             None => {
                 // Standard globals (`Math`, `Array`, `undefined`, ...) are
@@ -533,7 +535,9 @@ impl Vm {
                 // object; outside `with` the compiler emits a dedicated
                 // opcode for them, so make sure that object exists first.
                 self.global("globalThis")?;
-                self.lookup_global_name(name)
+                Ok(self
+                    .lookup_global_name(name)?
+                    .map(|value| (value, Value::Undefined)))
             }
         }
     }
@@ -543,6 +547,18 @@ impl Vm {
         name: &str,
         fallback: Option<Option<Value>>,
     ) -> Result<Value, RuntimeError> {
+        self.with_lookup(name, fallback)?
+            .map(|(value, _)| value)
+            .ok_or_else(|| RuntimeError::ReferenceError(name.into()))
+    }
+
+    /// The callee of `name(...)` inside `with`: the function together with
+    /// its `this` value, which is the with object the name was found on.
+    pub(super) fn with_get_method(
+        &mut self,
+        name: &str,
+        fallback: Option<Option<Value>>,
+    ) -> Result<(Value, Value), RuntimeError> {
         self.with_lookup(name, fallback)?
             .ok_or_else(|| RuntimeError::ReferenceError(name.into()))
     }
@@ -556,7 +572,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         Ok(self
             .with_lookup(name, fallback)?
-            .unwrap_or(Value::Undefined))
+            .map_or(Value::Undefined, |(value, _)| value))
     }
 
     pub(super) fn with_set(&mut self, name: &str, value: Value) -> Result<(), RuntimeError> {

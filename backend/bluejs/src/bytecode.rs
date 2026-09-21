@@ -122,6 +122,9 @@ opcodes! {
     LeaveWith: 1, 0;
     WithGet: 5, 0;
     WithGetOrUndefined: 5, 0;
+    // Callee of `name(...)` inside `with`: pushes the function and its `this`
+    // (the with object the name was found on, else undefined).
+    WithGetMethod: 5, 0;
     WithSet: 5, 0;
     ResolveWithReference: 5, 0;
     LoadWithReference: 1, 0;
