@@ -60,9 +60,12 @@ or second module resolver to bypass them.
   on a worker, and routes each request synchronously to the session thread that
   exclusively owns the live `TabManager`. This proves real-process DOM
   dispatch without exposing a cross-thread DOM reference. The launcher-managed
-  out-of-process BlueJS host, authorized source/resolver transport,
-  tab-memory accounting, JavaScript DOM bindings, and normal page-pipeline
-  fixture are still absent, so this prerequisite remains open.
+  out-of-process BlueJS host, JavaScript DOM bindings, and host-wide
+  source-fetch/cache accounting are still absent, so this prerequisite remains
+  open. The in-process direct host now exposes only its live realm's per-tab
+  program count, retained root-bytecode charge, and VM heap statistics;
+  navigation/close releases old-realm charges before a successor is observed.
+  This is not a substitute for the process host's overall resource policy.
 
   Acceptance: a page fixture can run a supported JavaScript classic script and
   module in its own realm; navigation/reload invalidates old program handles;

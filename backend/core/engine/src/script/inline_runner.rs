@@ -184,6 +184,16 @@ impl DirectPageInlineExecutor {
         self.host.debug_record_count()
     }
 
+    /// Returns bounded per-tab program, bytecode, and heap accounting for one
+    /// currently admitted realm. It deliberately exposes no runtime values,
+    /// source text, or VM handle.
+    pub fn realm_stats(
+        &self,
+        tab_id: TabId,
+    ) -> Result<blueice_bluejs::BlueJsPageRealmStats, DirectPageScriptError> {
+        self.host.realm_stats(tab_id)
+    }
+
     fn execute_declaration(
         &mut self,
         tabs: &TabManager,
@@ -520,6 +530,7 @@ mod tests {
         executor.synchronize_and_execute(&tabs).unwrap();
 
         assert_eq!(executor.debug_record_count(), 2);
+        assert_eq!(executor.realm_stats(tab_id).unwrap().program_count, 2);
         assert_eq!(
             executor.reports(),
             &VecDeque::from([

@@ -112,6 +112,13 @@ import in that one-module graph remains an ordinary closed-loader resolution
 failure; external scripts and module graphs still require a page loader to
 authorize canonical records and exact edges.
 
+For every admitted in-process realm, `DirectPageScriptHost::realm_stats` and
+`DirectPageInlineExecutor::realm_stats` expose only the tab identity, canonical
+origin, retained program count, root-bytecode charge, and BlueJS heap totals.
+They MUST NOT expose a VM, source text, bytecode, object ID, or runtime value.
+Replacing or closing a document releases its prior realm's program and bytecode
+charge before statistics for the successor realm are observed.
+
 `DirectPageInlineExecutor` is the sole shipped automatic caller of that inline
 helper. A core owner MUST construct it with a known host-profile catalog,
 selected profile, and compiler options; it generates the matching typing

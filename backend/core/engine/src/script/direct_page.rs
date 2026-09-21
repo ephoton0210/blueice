@@ -276,6 +276,19 @@ impl DirectPageScriptHost {
         self.realms.debug_record_count()
     }
 
+    /// Returns bounded runtime accounting for one currently admitted page
+    /// realm. The result contains no VM handle, source text, or bytecode; it
+    /// lets the core host attribute retained programs, bytecode, and heap use
+    /// to the tab that caused them.
+    pub fn realm_stats(
+        &self,
+        tab_id: TabId,
+    ) -> Result<blueice_bluejs::BlueJsPageRealmStats, DirectPageScriptError> {
+        self.realms
+            .realm_stats(tab_id.as_u64())
+            .map_err(DirectPageScriptError::Bridge)
+    }
+
     fn synchronize_live_document(
         &mut self,
         tab_id: TabId,
@@ -495,6 +508,10 @@ mod tests {
             blueice_bluejs::Value::Number(42.0)
         );
         assert_eq!(host.debug_record_count(), 1);
+        let stats = host.realm_stats(tab_id).unwrap();
+        assert_eq!(stats.tab_id, tab_id.as_u64());
+        assert_eq!(stats.program_count, 1);
+        assert!(stats.bytecode_bytes > 0);
     }
 
     #[test]
@@ -588,6 +605,31 @@ mod tests {
             1,
             "a same-origin replacement must prune the preceding realm metadata"
         );
+        assert_eq!(host.realm_stats(tab_id).unwrap().program_count, 1);
+    }
+
+    #[test]
+    fn navigation_releases_a_realm_bytecode_charge_before_the_next_script_admission() {
+        let profiles = catalog();
+        let artifact = profiles.generate("test-empty-v1").unwrap();
+        let loader =
+            AuthorizedModuleLoader::new([AuthorizedModule::new("page:///app/main.ts", "42;")], [])
+                .unwrap();
+        let (mut tabs, tab_id) = loaded_tabs();
+        let mut host = DirectPageScriptHost::new(profiles);
+        host.execute(&tabs, request(tab_id, &loader, &artifact))
+            .unwrap();
+        assert!(host.realm_stats(tab_id).unwrap().bytecode_bytes > 0);
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<main id=\"next\"></main>",
+            Some("https://example.test/app/next.html".to_string()),
+        );
+        host.synchronize_tab(&tabs, tab_id).unwrap();
+        let stats = host.realm_stats(tab_id).unwrap();
+        assert_eq!(stats.program_count, 0);
+        assert_eq!(stats.bytecode_bytes, 0);
+        assert_eq!(host.debug_record_count(), 0);
     }
 
     #[test]
