@@ -77,3 +77,29 @@ fn an_unfinished_delegate_keeps_being_delegated_to() {
          }), () => finish(false));",
     );
 }
+
+#[test]
+fn a_throwing_result_getter_is_thrown_at_the_yield_star_site() {
+    // The `done`/`value` reads of a delegate's answer are evaluated inside the
+    // generator, so the generator's own try/catch observes their exceptions.
+    for (method, request) in [("return", "it.return()"), ("throw", "it.throw('t')")] {
+        for getter in ["value", "done"] {
+            let done_part = if getter == "done" { "" } else { "done: false," };
+            run_both(&format!(
+                "var token = {{}};
+                 var inner = {{ [Symbol.asyncIterator]() {{ return this; }},
+                   next() {{ return {{ done: false, value: 0 }}; }},
+                   {method}() {{ return {{ {done_part} get {getter}() {{ throw token; }} }}; }} }};
+                 async function* g() {{
+                   var thrown;
+                   try {{ yield* inner; }} catch (e) {{ thrown = e; }}
+                   return thrown;
+                 }}
+                 var it = g();
+                 it.next().then(() => {request}).then(r => {{
+                   finish(r.value === token && r.done === true);
+                 }}, () => finish(false));"
+            ));
+        }
+    }
+}
