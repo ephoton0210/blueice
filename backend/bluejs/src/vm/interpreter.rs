@@ -457,9 +457,10 @@ impl Vm {
                     }
                     Opcode::ForInKeys => {
                         let source = self.stack.last().expect("for-in has a source").clone();
-                        let keys = self.for_in_keys(&source)?;
+                        let record = self.for_in_iterator(&source)?;
                         self.pop();
-                        self.stack.push(keys);
+                        self.stack.push(record.clone());
+                        iterators.push(record);
                     }
                     Opcode::IteratorStep => {
                         let record = self.stack.last().unwrap().clone();
