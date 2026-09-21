@@ -522,7 +522,7 @@ impl Vm {
     ) -> Result<Option<(Value, Value)>, RuntimeError> {
         for object in self.with_objects.clone().into_iter().rev() {
             if self.with_has_binding(&object, name)? {
-                let value = self.get_property(&object, &name.into())?;
+                let value = self.object_environment_get(&object, name)?;
                 return Ok(Some((value, object)));
             }
         }
@@ -540,6 +540,26 @@ impl Vm {
                     .map(|value| (value, Value::Undefined)))
             }
         }
+    }
+
+    /// GetBindingValue of an object Environment Record (§9.1.1.2.6): the
+    /// binding is probed again with HasProperty (observable through a Proxy
+    /// or an @@unscopables getter that deleted it); a vanished binding reads
+    /// as `undefined` in sloppy code and is a ReferenceError in strict code.
+    pub(super) fn object_environment_get(
+        &mut self,
+        object: &Value,
+        name: &str,
+    ) -> Result<Value, RuntimeError> {
+        let id = object.object_id().expect("with objects are objects");
+        if !self.has_property(id, &name.into())? {
+            return if self.strict {
+                Err(RuntimeError::ReferenceError(name.into()))
+            } else {
+                Ok(Value::Undefined)
+            };
+        }
+        self.get_property(object, &name.into())
     }
 
     pub(super) fn with_get(
@@ -578,6 +598,11 @@ impl Vm {
     pub(super) fn with_set(&mut self, name: &str, value: Value) -> Result<(), RuntimeError> {
         for object in self.with_objects.clone().into_iter().rev() {
             if self.with_has_binding(&object, name)? {
+                let id = object.object_id().expect("with objects are objects");
+                let still_exists = self.has_property(id, &name.into())?;
+                if self.strict && !still_exists {
+                    return Err(RuntimeError::ReferenceError(name.into()));
+                }
                 return self.set_property(&object, &name.into(), &value);
             }
         }
@@ -595,7 +620,8 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let value = match (&target, &marker) {
             (Value::Object(object), Value::String(name)) => {
-                self.get_property(&Value::Object(*object), &name.clone().into())?
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                self.object_environment_get(&Value::Object(*object), &name)?
             }
             (Value::Number(slot), Value::Null)
                 if slot.is_finite()
@@ -627,10 +653,12 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         match (target, marker) {
             (Value::Object(object), Value::String(name)) => {
-                // SetMutableBinding of an object Environment Record: a
-                // strict reference to a binding that has disappeared since
-                // it was resolved is a ReferenceError (§9.1.1.2.5).
-                if code.strict && !self.has_property(object, &name.clone().into())? {
+                // SetMutableBinding of an object Environment Record: the
+                // binding is probed again, and a strict reference to one that
+                // has disappeared since it was resolved is a ReferenceError
+                // (§9.1.1.2.5).
+                let still_exists = self.has_property(object, &name.clone().into())?;
+                if code.strict && !still_exists {
                     return Err(RuntimeError::ReferenceError(
                         name.to_utf8().expect("compiler emits a UTF-8 identifier"),
                     ));
