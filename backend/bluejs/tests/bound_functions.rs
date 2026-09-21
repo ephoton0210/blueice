@@ -232,7 +232,9 @@ fn retained_arguments_are_charged_and_failed_bindings_release_roots() {
     let heap = HeapConfig {
         nursery_capacity: 1,
         major_threshold_bytes: 256,
-        max_heap_bytes: 128 * 1024,
+        // Must hold the built-in bootstrap (grows as intrinsics are added)
+        // yet stay below the 256 KiB string the bind below tries to retain.
+        max_heap_bytes: 192 * 1024,
     };
     let mut vm = Vm::new(VmConfig {
         heap,

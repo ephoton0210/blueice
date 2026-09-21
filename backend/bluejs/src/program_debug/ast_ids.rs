@@ -195,7 +195,9 @@ impl AstNodeVisitor {
                     self.expression(value);
                 }
             }
-            Expr::DynamicImport { specifier, options } => {
+            Expr::DynamicImport {
+                specifier, options, ..
+            } => {
                 self.expression(specifier);
                 if let Some(options) = options {
                     self.expression(options);

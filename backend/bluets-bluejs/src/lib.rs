@@ -899,7 +899,15 @@ fn lower_module(
             body,
             imports,
             exports,
-            requests,
+            // BlueTS has no `import defer` / source-phase syntax: every runtime
+            // import is an ordinary evaluation-phase request.
+            requests: requests
+                .into_iter()
+                .map(|specifier| bluejs::RequestedModule {
+                    specifier,
+                    phase: bluejs::ImportPhase::Evaluation,
+                })
+                .collect(),
         },
         provenance,
     ))

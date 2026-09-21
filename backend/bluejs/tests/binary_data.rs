@@ -322,7 +322,7 @@ fn fixed_length_array_buffers_views_and_typed_indices_share_backing_bytes() {
             Value::Bool(true),
         ),
         (
-            "let source=new ArrayBuffer(4,{maxByteLength:8});new Uint8Array(source).set([1,2,3,4]);let moved=source.transfer(6);let preserving=moved.resizable&&moved.maxByteLength===8&&moved.byteLength===6;let fixed=moved.transferToFixedLength(3);let detached=source.byteLength===0&&moved.byteLength===0;preserving&&detached&&moved.resizable===false&&fixed.resizable===false&&fixed.maxByteLength===3&&fixed.byteLength===3&&new Uint8Array(fixed).join()==='1,2,3'",
+            "let source=new ArrayBuffer(4,{maxByteLength:8});new Uint8Array(source).set([1,2,3,4]);let moved=source.transfer(6);let preserving=moved.resizable&&moved.maxByteLength===8&&moved.byteLength===6;let fixed=moved.transferToFixedLength(3);let detached=source.byteLength===0&&moved.byteLength===0;preserving&&detached&&moved.resizable===true&&fixed.resizable===false&&fixed.maxByteLength===3&&fixed.byteLength===3&&new Uint8Array(fixed).join()==='1,2,3'",
             Value::Bool(true),
         ),
         (
@@ -369,4 +369,52 @@ fn typed_array_prototype_tostringtag_getter_reports_the_kind_of_a_detached_view(
             .unwrap(),
         Value::Bool(true)
     );
+}
+
+#[test]
+fn test262_host_detach_is_idempotent_for_an_already_detached_buffer() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    // A transfer detaches the source; the harness then detaches it again.
+    let source = "let buffer=new ArrayBuffer(4);buffer.transfer();$262.detachArrayBuffer(buffer);$262.detachArrayBuffer(buffer);buffer.byteLength===0";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+fn evaluate_with_host(source: &str) -> Value {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    vm.execute(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap_or_else(|error| panic!("{source}: {error}"))
+}
+
+#[test]
+fn atomics_store_returns_the_coerced_value_rather_than_the_wrapped_element() {
+    for source in [
+        // Numbers: ToIntegerOrInfinity(value), so neither truncation to the
+        // element width nor a stored NaN/Infinity leaks into the result.
+        "let i16=new Int16Array(new SharedArrayBuffer(8));let wide=Atomics.store(i16,0,123456789)===123456789&&i16[0]===-13035;let ints=Atomics.store(i16,1,3.9)===3&&Atomics.store(i16,1,-3.9)===-3&&Atomics.store(i16,1,'7')===7&&Atomics.store(i16,1,undefined)===0&&Atomics.store(i16,1,NaN)===0&&Object.is(Atomics.store(i16,1,-0),0);let inf=Atomics.store(i16,1,Infinity)===Infinity&&i16[1]===0&&Atomics.store(i16,1,-Infinity)===-Infinity;let u8=new Uint8Array(new ArrayBuffer(2));let plain=Atomics.store(u8,0,-5)===-5&&u8[0]===251&&Atomics.store(u8,0,300.7)===300&&u8[0]===44;wide&&ints&&inf&&plain",
+        // BigInt: the ToBigInt result, not the 64-bit wrapped element.
+        "let u64=new BigUint64Array(new SharedArrayBuffer(16));let wrapped=Atomics.store(u64,0,-5n)===-5n&&u64[0]===18446744073709551611n;let wide=Atomics.store(u64,1,2n**64n+3n)===2n**64n+3n&&u64[1]===3n;let i64=new BigInt64Array(new ArrayBuffer(8));wrapped&&wide&&Atomics.store(i64,0,2n**63n)===2n**63n&&i64[0]===-(2n**63n)",
+    ] {
+        assert_eq!(evaluate_with_host(source), Value::Bool(true), "{source}");
+    }
+}
+
+#[test]
+fn atomics_revalidate_the_view_after_index_and_value_coercion() {
+    for source in [
+        // Detaching the buffer while an index or operand is coerced must
+        // throw a TypeError before any read or write, for every operation.
+        "let ok=true;let names=['store','compareExchange','exchange','add','sub','and','or','xor'];for(let TA of [Int32Array,Int8Array,Uint16Array]){{let ta=new TA(1);let bad={valueOf(){$262.detachArrayBuffer(ta.buffer);return 0}};try{Atomics.load(ta,bad);ok=false}catch(e){ok=ok&&e instanceof TypeError}}for(let name of names){for(let position of name==='compareExchange'?[1,2,3]:[1,2]){let ta=new TA(1);let args=[ta,0,0,0];args[position]={valueOf(){$262.detachArrayBuffer(ta.buffer);return 0}};try{Atomics[name](...args);ok=false}catch(e){ok=ok&&e instanceof TypeError}}}}ok",
+        // Shrinking a resizable buffer during coercion: a fixed-length view
+        // is now out of bounds (TypeError), while a length-tracking view is
+        // still valid unless the index fell off its end (RangeError).
+        "let rab=new ArrayBuffer(4,{maxByteLength:8});let tracking=new Uint8Array(rab);let range=false;try{Atomics.store(tracking,3,{valueOf(){rab.resize(2);return 1}})}catch(e){range=e instanceof RangeError}let rab2=new ArrayBuffer(4,{maxByteLength:8});let fixed=new Uint8Array(rab2,0,4);let oob=false;try{Atomics.add(fixed,0,{valueOf(){rab2.resize(2);return 1}})}catch(e){oob=e instanceof TypeError}let rab3=new ArrayBuffer(4,{maxByteLength:8});let t3=new Uint8Array(rab3);let fine=Atomics.store(t3,1,{valueOf(){rab3.resize(2);return 9}})===9&&t3[1]===9;let rab4=new ArrayBuffer(4,{maxByteLength:8});let t4=new Uint8Array(rab4);let load=false;try{Atomics.load(t4,{valueOf(){rab4.resize(0);return 0}})}catch(e){load=e instanceof RangeError}range&&oob&&fine&&load",
+    ] {
+        assert_eq!(evaluate_with_host(source), Value::Bool(true), "{source}");
+    }
 }

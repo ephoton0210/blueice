@@ -66,6 +66,66 @@ impl Vm {
         }
     }
 
+    /// Built-in prototype methods are installed lazily with the string
+    /// intrinsics. Any lookup that names one of them (`[[Get]]` and
+    /// `[[HasProperty]]` alike) must materialize that set first, or an
+    /// inherited built-in reads as absent (`'push' in []`, a `with` lookup).
+    pub(super) fn materialize_string_intrinsics_for_key(
+        &mut self,
+        key: &PropertyName,
+    ) -> Result<(), RuntimeError> {
+        if self.string_intrinsics.is_none()
+            && (key == "toString"
+                || key == "toLocaleString"
+                || key == "valueOf"
+                || key == "at"
+                || key == "fill"
+                || key == "copyWithin"
+                || key == "flat"
+                || key == "flatMap"
+                || key == "toReversed"
+                || key == "toSorted"
+                || key == "toSpliced"
+                || key == "with"
+                || key == "entries"
+                || key == "keys"
+                || key == "values"
+                || key == "join"
+                || key == "forEach"
+                || key == "filter"
+                || key == "map"
+                || key == "find"
+                || key == "findIndex"
+                || key == "findLast"
+                || key == "findLastIndex"
+                || key == "every"
+                || key == "some"
+                || key == "includes"
+                || key == "reduce"
+                || key == "reduceRight"
+                || key == "push"
+                || key == "pop"
+                || key == "shift"
+                || key == "unshift"
+                || key == "reverse"
+                || key == "indexOf"
+                || key == "lastIndexOf"
+                || key == "slice"
+                || key == "splice"
+                || key == "sort"
+                || key == "__defineGetter__"
+                || key == "__defineSetter__"
+                || key == "__lookupGetter__"
+                || key == "__lookupSetter__"
+                || key == "__proto__"
+                || *key == PropertyName::from(JsSymbol::well_known("iterator"))
+                || *key == PropertyName::from(JsSymbol::well_known("unscopables")))
+        {
+            self.string_intrinsics()?;
+        }
+        Ok(())
+    }
+
     /// [[Get]] with the lookup target separated from the receiver supplied to
     /// accessors and Proxy traps.  Ordinary property syntax supplies the same
     /// object for both arguments; Reflect.get and inherited Proxy operations
@@ -107,47 +167,7 @@ impl Vm {
                 .get_own(cell, "value")?
                 .ok_or_else(|| RuntimeError::ReferenceError("global binding".into()));
         }
-        if self.string_intrinsics.is_none()
-            && (key == "toString"
-                || key == "toLocaleString"
-                || key == "valueOf"
-                || key == "at"
-                || key == "fill"
-                || key == "entries"
-                || key == "keys"
-                || key == "values"
-                || key == "join"
-                || key == "forEach"
-                || key == "filter"
-                || key == "map"
-                || key == "find"
-                || key == "findIndex"
-                || key == "findLast"
-                || key == "findLastIndex"
-                || key == "every"
-                || key == "some"
-                || key == "includes"
-                || key == "reduce"
-                || key == "reduceRight"
-                || key == "push"
-                || key == "pop"
-                || key == "shift"
-                || key == "unshift"
-                || key == "reverse"
-                || key == "indexOf"
-                || key == "lastIndexOf"
-                || key == "slice"
-                || key == "splice"
-                || key == "sort"
-                || key == "__defineGetter__"
-                || key == "__defineSetter__"
-                || key == "__lookupGetter__"
-                || key == "__lookupSetter__"
-                || key == "__proto__"
-                || *key == PropertyName::from(JsSymbol::well_known("iterator")))
-        {
-            self.string_intrinsics()?;
-        }
+        self.materialize_string_intrinsics_for_key(key)?;
         if key == "propertyIsEnumerable" {
             self.property_is_enumerable_intrinsic()?;
         }
@@ -328,6 +348,16 @@ impl Vm {
         })?;
         match element {
             PrivateElement::Field => {
+                // The first store of a field is its PrivateFieldAdd, which an
+                // object that stopped being extensible in the meantime (say by
+                // an earlier field initializer) rejects.
+                if self.heap.private_slot(object, owner, &name)?.is_none()
+                    && !self.object_is_extensible(object)?
+                {
+                    return Err(RuntimeError::TypeError(
+                        "cannot add a private element to a non-extensible object".into(),
+                    ));
+                }
                 self.with_roots(|heap| heap.set_private_slot(object, owner, name, value))
             }
             PrivateElement::Method(_) => Err(RuntimeError::TypeError(

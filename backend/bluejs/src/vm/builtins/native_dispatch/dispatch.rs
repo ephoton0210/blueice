@@ -46,6 +46,22 @@ impl Vm {
             return self
                 .test262_foreign_typed_array_native_call(function, receiver, args, construct);
         }
+        if matches!(
+            function,
+            NativeFunction::Atomics(_)
+                | NativeFunction::AtomicsNotify
+                | NativeFunction::AtomicsWait
+                | NativeFunction::AtomicsWaitAsync
+        ) {
+            if let Some(result) = self.test262_foreign_atomics_call(function, &args)? {
+                return Ok(result);
+            }
+        }
+        // `RequireInternalSlot(this, ...)` is every Temporal prototype
+        // member's first step, ahead of any argument access.
+        if let Some(kind) = function.temporal_receiver_kind() {
+            self.require_temporal_receiver(&receiver, kind)?;
+        }
         let first = native::argument(&args, 0);
         match function {
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
@@ -254,14 +270,16 @@ impl Vm {
             NativeFunction::TemporalFrom(kind) => {
                 self.temporal_from(kind, first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalWithCalendar => self.temporal_with_calendar(&receiver, first),
-            NativeFunction::TemporalPlainToZonedDateTime => {
+            NativeFunction::TemporalWithCalendar(_) => {
+                self.temporal_with_calendar(&receiver, first)
+            }
+            NativeFunction::TemporalPlainToZonedDateTime(_) => {
                 self.temporal_plain_to_zoned_date_time(&receiver, first, native::argument(&args, 1))
             }
             NativeFunction::TemporalInstantToZonedDateTimeIso => {
                 self.temporal_instant_to_zoned_date_time_iso(&receiver, first)
             }
-            NativeFunction::TemporalGetter(getter) => self.temporal_getter(&receiver, getter),
+            NativeFunction::TemporalGetter(_, getter) => self.temporal_getter(&receiver, getter),
             NativeFunction::TemporalZonedDateTimeToLocaleString => {
                 self.temporal_zoned_date_time_to_locale_string(&receiver, &args)
             }
@@ -381,30 +399,32 @@ impl Vm {
                 self.temporal_duration_to_locale_string(&receiver, &args)
             }
             NativeFunction::TemporalDurationValueOf => self.temporal_duration_value_of(),
-            NativeFunction::TemporalDateWith => {
+            NativeFunction::TemporalDateWith(_) => {
                 self.temporal_date_with(&receiver, first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalDateAdd => {
+            NativeFunction::TemporalDateAdd(_) => {
                 self.temporal_date_add(&receiver, first, native::argument(&args, 1), false)
             }
-            NativeFunction::TemporalDateSubtract => {
+            NativeFunction::TemporalDateSubtract(_) => {
                 self.temporal_date_add(&receiver, first, native::argument(&args, 1), true)
             }
-            NativeFunction::TemporalDateUntil => {
+            NativeFunction::TemporalDateUntil(_) => {
                 self.temporal_date_difference(&receiver, first, native::argument(&args, 1), false)
             }
-            NativeFunction::TemporalDateSince => {
+            NativeFunction::TemporalDateSince(_) => {
                 self.temporal_date_difference(&receiver, first, native::argument(&args, 1), true)
             }
-            NativeFunction::TemporalDateEquals => self.temporal_date_equals(&receiver, first),
+            NativeFunction::TemporalDateEquals(_) => self.temporal_date_equals(&receiver, first),
             NativeFunction::TemporalDateCompare(kind) => {
                 self.temporal_date_compare(kind, first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalDateToString => self.temporal_date_to_string(&receiver, first),
-            NativeFunction::TemporalDateToJson => {
+            NativeFunction::TemporalDateToString(_) => {
+                self.temporal_date_to_string(&receiver, first)
+            }
+            NativeFunction::TemporalDateToJson(_) => {
                 self.temporal_date_to_string(&receiver, &Value::Undefined)
             }
-            NativeFunction::TemporalDateToLocaleString => {
+            NativeFunction::TemporalDateToLocaleString(_) => {
                 self.temporal_date_to_locale_string(&receiver, &args)
             }
             NativeFunction::TemporalDateValueOf => self.temporal_date_value_of(),
@@ -551,17 +571,8 @@ impl Vm {
             NativeFunction::TemporalZonedDateTimeToPlainDateTime => {
                 self.temporal_zoned_date_time_to_plain_date_time(&receiver)
             }
-            NativeFunction::TemporalZonedDateTimeToPlainYearMonth => {
-                self.temporal_zoned_date_time_to_plain_year_month(&receiver)
-            }
-            NativeFunction::TemporalZonedDateTimeToPlainMonthDay => {
-                self.temporal_zoned_date_time_to_plain_month_day(&receiver)
-            }
             NativeFunction::TemporalZonedDateTimeStartOfDay => {
                 self.temporal_zoned_date_time_start_of_day(&receiver)
-            }
-            NativeFunction::TemporalZonedDateTimeGetIsoFields => {
-                self.temporal_zoned_date_time_get_iso_fields(&receiver)
             }
             NativeFunction::TemporalZonedDateTimeGetTimeZoneTransition => {
                 self.temporal_zoned_date_time_get_time_zone_transition(&receiver, first)
@@ -638,14 +649,20 @@ impl Vm {
                     .array_buffer_byte_length(self.array_buffer_receiver(&receiver)?)?
                     as f64,
             )),
+            NativeFunction::ArrayBufferDetached => Ok(Value::Bool(
+                self.heap
+                    .array_buffer_is_detached(self.array_buffer_receiver(&receiver)?)?,
+            )),
             NativeFunction::ArrayBufferMaxByteLength => Ok(Value::Number(
                 self.heap
                     .buffer_max_byte_length(self.array_buffer_receiver(&receiver)?)?
                     as f64,
             )),
+            // IsResizableArrayBuffer looks only at the buffer's kind, so a
+            // detached resizable buffer still reports true.
             NativeFunction::ArrayBufferResizable => Ok(Value::Bool(
                 self.heap
-                    .buffer_resizable(self.array_buffer_receiver(&receiver)?)?,
+                    .array_buffer_is_resizable(self.array_buffer_receiver(&receiver)?)?,
             )),
             NativeFunction::ArrayBufferResize => self.buffer_resize(&receiver, first),
             NativeFunction::ArrayBufferTransfer => {
@@ -655,6 +672,13 @@ impl Vm {
                 self.array_buffer_transfer(&receiver, &args, true)
             }
             NativeFunction::ArrayBufferSlice => self.array_buffer_slice(&receiver, &args),
+            NativeFunction::ArrayBufferImmutable => self.array_buffer_immutable(&receiver),
+            NativeFunction::ArrayBufferTransferToImmutable => {
+                self.array_buffer_transfer_to_immutable(&receiver, &args)
+            }
+            NativeFunction::ArrayBufferSliceToImmutable => {
+                self.array_buffer_slice_to_immutable(&receiver, &args)
+            }
             NativeFunction::ArrayBufferIsView => {
                 Ok(Value::Bool(first.object_id().is_some_and(|object| {
                     self.heap.is_data_view(object).unwrap_or(false)
@@ -934,9 +958,23 @@ impl Vm {
             NativeFunction::ArrayIsArray => Ok(Value::Bool(self.is_array(first)?)),
             NativeFunction::ArrayAt => self.array_at(&receiver, first),
             NativeFunction::ArrayFill => self.array_fill(&receiver, &args),
+            NativeFunction::ArrayCopyWithin => self.array_copy_within(&receiver, &args),
+            NativeFunction::ArrayToReversed => self.array_to_reversed(&receiver),
+            NativeFunction::ArrayToSorted => self.array_to_sorted(&receiver, first),
+            NativeFunction::ArrayToSpliced => self.array_to_spliced(&receiver, &args),
+            NativeFunction::ArrayWith => self.array_with(&receiver, &args),
+            NativeFunction::ArrayFlat => self.array_flat(&receiver, first),
+            NativeFunction::ArrayFlatMap => {
+                self.array_flat_map(&receiver, first, native::argument(&args, 1))
+            }
             NativeFunction::ArrayOf => self.array_of_method(&receiver, &args),
             NativeFunction::ArraySpecies => Ok(receiver),
-            NativeFunction::ArrayFrom => self.array_from_method(&args),
+            NativeFunction::ArrayFrom => self.array_from_method(&receiver, &args),
+            NativeFunction::ArrayFromAsync => self.array_from_async(&receiver, &args),
+            NativeFunction::ArrayFromAsyncResume { state, rejected } => {
+                self.array_from_async_resume(state, first.clone(), rejected)?;
+                Ok(Value::Undefined)
+            }
             NativeFunction::ArrayForEach => {
                 self.array_for_each(&receiver, first, native::argument(&args, 1))
             }
@@ -971,16 +1009,39 @@ impl Vm {
             NativeFunction::ArrayReduceRight => self.array_reduce_right(&receiver, &args),
             NativeFunction::ArrayPush => {
                 let object = self.coerce_object(&receiver)?;
-                let array = Value::Object(object);
-                self.stack.push(array.clone());
-                let result = (|| {
-                    for value in &args {
-                        self.array_push(&array, value, 0)?;
-                    }
-                    self.heap.get(object, "length").map_err(Into::into)
-                })();
-                self.stack.pop();
-                result
+                // Genuine, growable arrays (whose `length` is a valid uint32
+                // by construction) keep the direct element/length stores.
+                // Every other receiver, including a frozen array or one with a
+                // locked `length`, goes through the generic algorithm so its
+                // strict Sets can throw.
+                // The direct stores also require an unobservable prototype
+                // chain: an inherited index setter or read-only property must
+                // see the strict Set the generic algorithm performs.
+                let direct = matches!(self.heap.is_array(object), Ok(true))
+                    && matches!(self.heap.get(object, "length"), Ok(Value::Number(_)))
+                    && matches!(self.heap.is_extensible(object), Ok(true))
+                    && matches!(
+                        self.heap.get_own_property_descriptor(object, "length"),
+                        Ok(Some(PropertyDescriptor {
+                            writable: Some(true),
+                            ..
+                        }))
+                    )
+                    && self.array_push_is_unobservable(object, args.len())?;
+                if direct {
+                    let array = Value::Object(object);
+                    self.stack.push(array.clone());
+                    let result = (|| {
+                        for value in &args {
+                            self.array_push(&array, value, 0)?;
+                        }
+                        self.heap.get(object, "length").map_err(Into::into)
+                    })();
+                    self.stack.pop();
+                    result
+                } else {
+                    self.array_push_generic(object, &args)
+                }
             }
             NativeFunction::ArrayPop => self.array_pop(&receiver),
             NativeFunction::ArrayShift => self.array_shift(&receiver),
@@ -993,7 +1054,9 @@ impl Vm {
             NativeFunction::ArraySlice => self.array_slice(&receiver, &args),
             NativeFunction::ArraySplice => self.array_splice(&receiver, &args),
             NativeFunction::ArraySort => self.array_sort(&receiver, first),
-            NativeFunction::ArrayToLocaleString => self.array_to_locale_string(&receiver, &args),
+            NativeFunction::ArrayToLocaleString => {
+                self.array_to_locale_string(&receiver, &args, false)
+            }
             NativeFunction::NumberMethod(method) => self.number_method(&receiver, &args, method),
             NativeFunction::Eval => self.indirect_eval(first),
             NativeFunction::IsNaN => Ok(Value::Bool(self.coerce_number(first)?.is_nan())),
@@ -1002,16 +1065,6 @@ impl Vm {
             NativeFunction::ParseFloat => self.parse_float(first),
             NativeFunction::EncodeUri { component } => self.encode_uri(first, component),
             NativeFunction::DecodeUri { component } => self.decode_uri(first, component),
-            NativeFunction::DynamicImport { source } => {
-                if source {
-                    self.dynamic_import_source(first.clone())
-                } else {
-                    // `import.defer(specifier)` reaches this same host
-                    // function as ordinary `import()`; it takes no import
-                    // attributes second argument of its own.
-                    self.dynamic_import(first.clone(), Value::Undefined)
-                }
-            }
             NativeFunction::JsonParse => self.json_parse(first, args.get(1)),
             NativeFunction::JsonStringify => self.json_stringify(&args),
             NativeFunction::JsonRawJson => self.json_raw_json(first),
@@ -1069,8 +1122,9 @@ impl Vm {
                 };
                 self.iterator_result(value, done)
             }
-            NativeFunction::CollectionIterator { map } => self.collection_iterator(map, &receiver),
-            NativeFunction::CollectionIteratorNext => self.iterator_result(Value::Undefined, true),
+            NativeFunction::CollectionIteratorNext { map } => {
+                self.collection_iterator_next(map, &receiver)
+            }
             NativeFunction::GeneratorNext => {
                 self.generator_next(&receiver, Some(first.clone()), None)
             }

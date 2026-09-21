@@ -14,7 +14,7 @@ impl Parser {
     /// keys) but otherwise only retained as the module-request string, per
     /// this function's original scope.
     pub(super) fn parse_import_attributes(&mut self) -> Result<bool, ParseError> {
-        if !self.eat_identifier("with") {
+        if !self.eat_contextual_keyword("with")? {
             return Ok(false);
         }
         self.expect_punct(Punct::LBrace)?;
@@ -70,6 +70,9 @@ impl Parser {
 
     pub(super) fn parse_import_declaration(&mut self) -> Result<Vec<ImportEntry>, ParseError> {
         debug_assert!(self.check_identifier("import"));
+        if self.current_identifier_escaped() {
+            return Err(self.syntax_error("the import keyword cannot contain an escape"));
+        }
         self.advance();
         if matches!(self.peek(), Token::String(_)) {
             let module_request = self.expect_module_name()?;
@@ -95,7 +98,7 @@ impl Parser {
         {
             self.advance();
             let local_name = self.expect_binding_identifier()?;
-            if !self.eat_identifier("from") {
+            if !self.eat_contextual_keyword("from")? {
                 return Err(self.syntax_error("source import requires 'from'"));
             }
             let module_request = self.expect_module_name()?;
@@ -109,6 +112,16 @@ impl Parser {
             }]);
         }
 
+        // `import defer * as ns from "..."`: `defer` is a contextual keyword
+        // recognized only directly before the `*` of a namespace import (an
+        // escaped spelling is an ordinary binding name, and so fails below);
+        // everywhere else it stays a valid default-binding identifier.
+        let deferred = self.check_identifier("defer")
+            && !self.current_identifier_escaped()
+            && self.check_punct_at(1, Punct::Star);
+        if deferred {
+            self.advance();
+        }
         let mut entries = Vec::new();
         let mut has_following_clause = true;
         if !self.check_punct(Punct::LBrace) && !self.check_punct(Punct::Star) {
@@ -120,15 +133,20 @@ impl Parser {
             }
         }
         if has_following_clause && self.eat_punct(Punct::Star) {
-            if !self.eat_identifier("as") {
+            if !self.eat_contextual_keyword("as")? {
                 return Err(self.syntax_error("namespace import requires 'as'"));
             }
-            entries.push((ImportName::Namespace, self.expect_binding_identifier()?));
+            let import_name = if deferred {
+                ImportName::DeferredNamespace
+            } else {
+                ImportName::Namespace
+            };
+            entries.push((import_name, self.expect_binding_identifier()?));
         } else if has_following_clause {
             self.expect_punct(Punct::LBrace)?;
             while !self.check_punct(Punct::RBrace) {
                 let import_name = self.expect_module_export_name()?;
-                let local_name = if self.eat_identifier("as") {
+                let local_name = if self.eat_contextual_keyword("as")? {
                     self.expect_binding_identifier()?
                 } else {
                     import_name.clone()
@@ -140,7 +158,7 @@ impl Parser {
             }
             self.expect_punct(Punct::RBrace)?;
         }
-        if !self.eat_identifier("from") {
+        if !self.eat_contextual_keyword("from")? {
             return Err(self.syntax_error("import declaration requires 'from'"));
         }
         let module_request = self.expect_module_name()?;
@@ -171,14 +189,17 @@ impl Parser {
         exports: &mut Vec<ExportEntry>,
     ) -> Result<Option<String>, ParseError> {
         debug_assert!(self.check_identifier("export"));
+        if self.current_identifier_escaped() {
+            return Err(self.syntax_error("the export keyword cannot contain an escape"));
+        }
         self.advance();
         if self.eat_punct(Punct::Star) {
-            let export_name = if self.eat_identifier("as") {
+            let export_name = if self.eat_contextual_keyword("as")? {
                 Some(self.expect_module_export_name()?)
             } else {
                 None
             };
-            if !self.eat_identifier("from") {
+            if !self.eat_contextual_keyword("from")? {
                 return Err(self.syntax_error("star export requires 'from'"));
             }
             let module_request = self.expect_module_name()?;
@@ -198,7 +219,11 @@ impl Parser {
             });
             return Ok(Some(request));
         }
-        if self.eat_identifier("default") || self.eat_keyword(Keyword::Default) {
+        if self.check_identifier("default") || self.check_keyword(Keyword::Default) {
+            if self.current_identifier_escaped() {
+                return Err(self.syntax_error("the default keyword cannot contain an escape"));
+            }
+            self.advance();
             let hidden = "\0bluejs_module_default".to_string();
             let (local_name, consume_terminator) = match self.peek().clone() {
                 Token::Keyword(Keyword::Function) => {
@@ -275,7 +300,7 @@ impl Parser {
             while !self.check_punct(Punct::RBrace) {
                 let local_is_string = matches!(self.peek(), Token::String(_));
                 let local_name = self.expect_module_export_name()?;
-                let export_name = if self.eat_identifier("as") {
+                let export_name = if self.eat_contextual_keyword("as")? {
                     self.expect_module_export_name()?
                 } else {
                     local_name.clone()
@@ -286,7 +311,7 @@ impl Parser {
                 }
             }
             self.expect_punct(Punct::RBrace)?;
-            let request = if self.eat_identifier("from") {
+            let request = if self.eat_contextual_keyword("from")? {
                 let module_request = self.expect_module_name()?;
                 let json = self.parse_import_attributes()?;
                 for (import_name, export_name, _) in specifiers {

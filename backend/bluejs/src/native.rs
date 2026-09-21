@@ -84,17 +84,26 @@ pub(crate) enum WeakCollectionMethod {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MapMethod {
+    Clear,
     Delete,
+    Entries,
+    ForEach,
     Get,
     Has,
+    Keys,
     Set,
+    Values,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SetMethod {
     Add,
+    Clear,
     Delete,
+    Entries,
+    ForEach,
     Has,
+    Values,
 }
 
 /// The lazy iterator helpers share one native dispatcher. Keeping the method
@@ -132,6 +141,9 @@ pub(crate) enum DateMethod {
     ToLocaleString,
     ToLocaleTimeString,
     ToPrimitive,
+    /// `Date.prototype.toTemporalInstant`: ECMA-262's one Temporal member
+    /// that lives on a non-Temporal prototype.
+    ToTemporalInstant,
     ToUtcString,
     ValueOf,
 }
@@ -176,10 +188,14 @@ pub(crate) enum NativeFunction {
     DateMethod(DateMethod),
     TemporalConstructor(TemporalKind),
     TemporalFrom(TemporalKind),
-    TemporalWithCalendar,
-    TemporalPlainToZonedDateTime,
+    /// Shared by `PlainDate`, `PlainDateTime` and `ZonedDateTime`. Like every
+    /// Temporal native that several prototypes share, it carries the type of
+    /// the prototype it was installed on, which is the type its receiver must
+    /// be (`NativeFunction::temporal_receiver_kind`).
+    TemporalWithCalendar(TemporalKind),
+    TemporalPlainToZonedDateTime(TemporalKind),
     TemporalInstantToZonedDateTimeIso,
-    TemporalGetter(TemporalGetter),
+    TemporalGetter(TemporalKind, TemporalGetter),
     TemporalZonedDateTimeToLocaleString,
     TemporalInstantAdd,
     TemporalInstantSubtract,
@@ -225,17 +241,20 @@ pub(crate) enum NativeFunction {
     TemporalDurationToLocaleString,
     TemporalDurationValueOf,
     /// `Temporal.PlainDate.prototype.with`/`Temporal.PlainDateTime.prototype.with`,
-    /// dispatched on the receiver's own `TemporalKind`.
-    TemporalDateWith,
-    TemporalDateAdd,
-    TemporalDateSubtract,
-    TemporalDateUntil,
-    TemporalDateSince,
-    TemporalDateEquals,
+    /// dispatched on the receiver's own `TemporalKind`. The payload is the
+    /// type of the prototype the function is installed on, so a
+    /// `PlainDateTime` receiver of `PlainDate.prototype.with` is still a
+    /// brand-check failure.
+    TemporalDateWith(TemporalKind),
+    TemporalDateAdd(TemporalKind),
+    TemporalDateSubtract(TemporalKind),
+    TemporalDateUntil(TemporalKind),
+    TemporalDateSince(TemporalKind),
+    TemporalDateEquals(TemporalKind),
     TemporalDateCompare(TemporalKind),
-    TemporalDateToString,
-    TemporalDateToJson,
-    TemporalDateToLocaleString,
+    TemporalDateToString(TemporalKind),
+    TemporalDateToJson(TemporalKind),
+    TemporalDateToLocaleString(TemporalKind),
     TemporalDateValueOf,
     TemporalPlainDateToPlainDateTime,
     TemporalPlainDateToPlainYearMonth,
@@ -289,19 +308,20 @@ pub(crate) enum NativeFunction {
     TemporalZonedDateTimeToPlainDate,
     TemporalZonedDateTimeToPlainTime,
     TemporalZonedDateTimeToPlainDateTime,
-    TemporalZonedDateTimeToPlainYearMonth,
-    TemporalZonedDateTimeToPlainMonthDay,
     TemporalZonedDateTimeStartOfDay,
-    TemporalZonedDateTimeGetIsoFields,
     TemporalZonedDateTimeGetTimeZoneTransition,
     ArrayBuffer,
     ArrayBufferByteLength,
+    ArrayBufferDetached,
     ArrayBufferMaxByteLength,
     ArrayBufferResizable,
     ArrayBufferResize,
     ArrayBufferTransfer,
     ArrayBufferTransferToFixedLength,
     ArrayBufferSlice,
+    ArrayBufferImmutable,
+    ArrayBufferTransferToImmutable,
+    ArrayBufferSliceToImmutable,
     ArrayBufferIsView,
     ArrayBufferSpecies,
     SharedArrayBuffer,
@@ -375,9 +395,23 @@ pub(crate) enum NativeFunction {
     ArrayIsArray,
     ArrayAt,
     ArrayFill,
+    ArrayCopyWithin,
+    ArrayToReversed,
+    ArrayToSorted,
+    ArrayToSpliced,
+    ArrayWith,
+    ArrayFlat,
+    ArrayFlatMap,
     ArrayOf,
     ArraySpecies,
     ArrayFrom,
+    ArrayFromAsync,
+    /// A settled Await inside an `Array.fromAsync` run: `state` is the run's
+    /// heap-resident state record.
+    ArrayFromAsyncResume {
+        state: ObjectId,
+        rejected: bool,
+    },
     ArrayForEach,
     ArrayFilter,
     ArrayMap,
@@ -412,11 +446,6 @@ pub(crate) enum NativeFunction {
     },
     DecodeUri {
         component: bool,
-    },
-    /// The source/defer variants of dynamic import. They remain separate from
-    /// ordinary `import()` because their host phase is observable.
-    DynamicImport {
-        source: bool,
     },
     JsonParse,
     JsonStringify,
@@ -521,10 +550,11 @@ pub(crate) enum NativeFunction {
     ArrayJoin,
     ArrayIterator(ArrayIteratorKind),
     ArrayIteratorNext,
-    CollectionIterator {
+    /// `%MapIteratorPrototype%.next` (`map`) or `%SetIteratorPrototype%.next`:
+    /// one function per kind, so each rejects the other kind's iterators.
+    CollectionIteratorNext {
         map: bool,
     },
-    CollectionIteratorNext,
     GeneratorNext,
     GeneratorReturn,
     GeneratorThrow,
@@ -700,6 +730,7 @@ impl NativeFunction {
             Self::ProxyRevoker(proxy) => vec![proxy],
             Self::PromiseResolvingFunction { promise, .. } => vec![promise],
             Self::PromiseCapabilityExecutor { storage } => vec![storage],
+            Self::ArrayFromAsyncResume { state, .. } => vec![state],
             Self::AsyncFromSyncFulfill { target, .. } => vec![target],
             Self::AsyncFromSyncReject { target, record } => vec![target, record],
             Self::PromiseAllResolve { target, .. }

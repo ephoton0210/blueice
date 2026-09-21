@@ -138,6 +138,22 @@ SM_TYPED_ARRAY_LONG_FIXTURES = frozenset(
     {"staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"}
 )
 SM_TYPED_ARRAY_LONG_TIMEOUT = 90
+# These three copyWithin fixtures build a 10,000-element source array and run
+# testTypedArray.js's byte-by-byte `copyIntoArrayBuffer` loop for every
+# constructor/factory pair (about 26 dispatches per byte, roughly 27M in
+# total), which exceeds the generic testTypedArray.js envelope above. Measured
+# at 27 s per mode on an idle debug adapter and about 50 s under load, so the
+# allowance is scoped to these exact files with margin for scheduler
+# contention rather than raising the harness-wide limits.
+TYPED_ARRAY_DETACH_COERCION_FIXTURES = frozenset(
+    {
+        "built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js",
+        "built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached.js",
+        "built-ins/TypedArray/prototype/copyWithin/coerced-values-start-detached.js",
+    }
+)
+TYPED_ARRAY_DETACH_COERCION_TIMEOUT = 120
+TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET = 50_000_000
 # `testIntl.js` runs every asserted result through a finite locale and
 # numbering-system matrix. Debug interpreter dispatch exceeds the ordinary
 # two-second process deadline, so grant that upstream harness a bounded wall
@@ -250,6 +266,9 @@ FINITE_STRESS_FIXTURES = frozenset(
         "annexB/built-ins/RegExp/RegExp-leading-escape-BMP.js",
         "annexB/built-ins/RegExp/RegExp-trailing-escape-BMP.js",
         "built-ins/Array/prototype/concat/Array.prototype.concat_large-typed-array.js",
+        # Its argument-coercion matrix (every start/end coercion outcome
+        # against every buffer state) is finite but far above the default fuel.
+        "built-ins/ArrayBuffer/prototype/sliceToImmutable/argument-coercion.js",
         # This walks the complete reachable graph of well-known intrinsics
         # and checks each built-in function's NativeFunction source form.
         "built-ins/Function/prototype/toString/built-in-function-object.js",
@@ -346,6 +365,11 @@ FINITE_STRESS_FIXTURES = frozenset(
         "intl402/Segmenter/prototype/segment/segment-grapheme-iterable.js",
         "intl402/supportedLocalesOf-consistent-with-resolvedOptions.js",
         "intl402/supportedLocalesOf-unicode-extensions-ignored.js",
+        # Compares every pair of the ~446 primary time zone identifiers
+        # (about 99,000 pairs of two constructions, `withTimeZone` and
+        # `equals`). Finite, and each pair is cheap, but the pair count is far
+        # past the ordinary fuel budget and wall deadline.
+        "intl402/Temporal/ZonedDateTime/prototype/equals/canonical-not-equal.js",
     }
 )
 FINITE_STRESS_INSTRUCTION_BUDGET = 10_000_000
@@ -393,24 +417,55 @@ ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES = frozenset(
     }
 )
 ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET = 1_000_000
-# Four intl402 fixtures walk a fixed calendar table through the real
+# Seven intl402 fixtures walk a fixed calendar table through the real
 # `Temporal.*.from` path: hebrew-keviah.js visits 2,101 Hebrew years (two
 # `PlainDate.from` calls plus a symbol lookup each), persian-new-year-dates.js
-# checks 293 Nowruz dates, and the two `roundtrip-from-property-bag.js`
-# fixtures run one `from` + a dozen property assertions per row of a 42-row
-# calendar table. Each is finite and its per-row cost is one ordinary call
-# chain; only the row count exceeds the default. Measured minimums are
-# 500,000 (hebrew-keviah) and 200,000 (the other three); the allowance is 4x
-# the largest.
+# checks 293 Nowruz dates, the two `roundtrip-from-property-bag.js` fixtures
+# run one `from` + a dozen property assertions per row of a 42-row calendar
+# table, and the three `dayOfYear/non-iso-calendar-basic.js` fixtures step
+# through every day of one year in each of 15 calendars (about 5,500 dates,
+# each a `year` read, a `dayOfYear` read, an assertion and an `add`). Each is
+# finite and its per-row cost is one ordinary call chain; only the row count
+# exceeds the default. Measured minimums are 500,000 (hebrew-keviah), 240,000
+# (the dayOfYear walks) and 200,000 (the other two); the allowance is 4x the
+# largest.
 TEMPORAL_CALENDAR_TABLE_FIXTURES = frozenset(
     {
         "intl402/Temporal/PlainDate/from/hebrew-keviah.js",
         "intl402/Temporal/PlainDate/from/persian-new-year-dates.js",
         "intl402/Temporal/PlainDateTime/from/roundtrip-from-property-bag.js",
         "intl402/Temporal/ZonedDateTime/from/roundtrip-from-property-bag.js",
+        "intl402/Temporal/PlainDate/prototype/dayOfYear/non-iso-calendar-basic.js",
+        "intl402/Temporal/PlainDateTime/prototype/dayOfYear/non-iso-calendar-basic.js",
+        "intl402/Temporal/ZonedDateTime/prototype/dayOfYear/non-iso-calendar-basic.js",
     }
 )
 TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET = 2_000_000
+# `ZonedDateTime.from/timezone-case-insensitive.js` builds
+# `[...new Set([...timeZoneIdentifiers, ...Intl.supportedValuesOf('timeZone')])]`
+# (about 600 identifiers) and calls `Temporal.ZonedDateTime.from` three times per
+# identifier (as spelled, lower- and upper-case): finite, one ordinary call chain
+# per row. Until `Set` iteration was implemented that spread was empty, the loop
+# never ran and the fixture passed vacuously; it now does real work. Measured
+# minimum: between 100,000 (the default, which is not enough) and 150,000
+# dispatches; the allowance is ~3x the upper bound.
+TEMPORAL_TIME_ZONE_ID_TABLE_FIXTURES = frozenset(
+    {
+        "intl402/Temporal/ZonedDateTime/from/timezone-case-insensitive.js",
+    }
+)
+TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET = 500_000
+# ZonedDateTime/links.js walks a fixed table of about 120 IANA link names,
+# building two ZonedDateTimes per row and comparing `offsetNanoseconds` at ten
+# epochs for each. It is finite, and its per-row cost is one ordinary call
+# chain; only the row count exceeds the default. Measured minimum is between
+# 110,000 and 125,000; the allowance is 4x the upper bound.
+TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES = frozenset(
+    {
+        "intl402/Temporal/ZonedDateTime/links.js",
+    }
+)
+TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET = 500_000
 TEMPORAL_CALENDAR_MATRIX_TIMEOUT = 360
 # The six upstream Iterator.zip/zipKeyed basic fixtures enumerate every prefix
 # combination through three inputs, then verify descriptor details for every
@@ -552,7 +607,10 @@ def module_sources(
     *static* instead -- preserving the original, established behavior for a
     plain dynamic `import()` with a variable specifier (where such a
     candidate's own parse failure must still hard-fail eagerly, exactly as
-    it always has). Pass `speculative_relative_strings=True` only when a
+    it always has). The string token that *is* a literal `import('...')`
+    argument is not such a candidate: it stays the dynamic edge it already
+    is, so a fixture that is only invalid as a module rejects that import's
+    promise instead of failing the whole run. Pass `speculative_relative_strings=True` only when a
     relative-string candidate may be a deliberately invalid, never-actually-
     imported fixture (e.g. reached via `ShadowRealm.prototype.importValue`'s
     own heuristic trigger), so the adapter's lazy per-import rejection
@@ -594,12 +652,21 @@ def module_sources(
             for match in DYNAMIC_IMPORT_SOURCE_OR_DEFER_REQUEST.finditer(source)
         )
         if include_dynamic_string_roots:
+            # The specifier of a literal `import('...')` is already a dynamic
+            # edge above; its own string token must not be re-read as a
+            # relative-string candidate, or that (statically classified)
+            # candidate would silently override the edge and force a fixture
+            # that is invalid only *as a module* to fail eagerly.
+            literal_dynamic_spans = {
+                match.span(1) for match in DYNAMIC_IMPORT_PLAIN_REQUEST.finditer(source)
+            }
             requests.extend(
                 (
                     match.group(1),
                     "dynamic" if speculative_relative_strings else "static",
                 )
                 for match in RELATIVE_STRING.finditer(source)
+                if match.span(1) not in literal_dynamic_spans
             )
         for request, sub_reason in requests:
             if not request or not request.startswith("."):
@@ -745,6 +812,10 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET)
     if relative in TEMPORAL_CALENDAR_TABLE_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET)
+    if relative in TEMPORAL_TIME_ZONE_ID_TABLE_FIXTURES:
+        return max(default, TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET)
+    if relative in TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES:
+        return max(default, TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET)
     if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
         return max(default, ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET)
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:
@@ -753,6 +824,8 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, URI_EXHAUSTIVE_INSTRUCTION_BUDGET)
     if is_uri_global_fixture(relative):
         return max(default, URI_GLOBAL_INSTRUCTION_BUDGET)
+    if relative in TYPED_ARRAY_DETACH_COERCION_FIXTURES:
+        return max(default, TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET)
     if relative in FINITE_STRESS_FIXTURES:
         return max(default, FINITE_STRESS_INSTRUCTION_BUDGET)
     if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
@@ -776,6 +849,8 @@ def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
     if relative in SM_TYPED_ARRAY_LONG_FIXTURES:
         return max(default, SM_TYPED_ARRAY_LONG_TIMEOUT)
+    if relative in TYPED_ARRAY_DETACH_COERCION_FIXTURES:
+        return max(default, TYPED_ARRAY_DETACH_COERCION_TIMEOUT)
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_TIMEOUT)
     if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:

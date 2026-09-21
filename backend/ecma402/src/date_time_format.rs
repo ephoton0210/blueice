@@ -1132,6 +1132,7 @@ impl DateTimeFormat {
             writer.into_range_parts(),
             self.options.fractional_second_digits,
         ));
+        self.apply_zero_offset_range_zone_name(&mut parts, start_offset, end_offset);
         let start = self.format_range_endpoint_to_parts(start, start_offset)?;
         let end = self.format_range_endpoint_to_parts(end, end_offset)?;
         self.repair_missing_range_seconds(&mut parts, &start, &end);
@@ -1311,6 +1312,7 @@ impl DateTimeFormat {
         self.apply_flexible_day_period(&mut parts, datetime.time.hour.number());
         self.apply_h24_hour_cycle(&mut parts, datetime.time.hour.number());
         self.apply_calendar_part_completeness(&mut parts);
+        self.apply_zero_offset_zone_name(&mut parts, offset_seconds);
         Ok(parts)
     }
 
@@ -1344,6 +1346,7 @@ impl DateTimeFormat {
         self.apply_flexible_day_period(&mut parts, datetime.time.hour.number());
         self.apply_h24_hour_cycle(&mut parts, datetime.time.hour.number());
         self.apply_calendar_part_completeness(&mut parts);
+        self.apply_zero_offset_zone_name(&mut parts, offset_seconds);
         Ok(parts)
     }
 
@@ -2093,6 +2096,7 @@ fn append_datetime_parts(
 }
 
 mod details;
+mod zero_offset;
 
 use details::*;
 

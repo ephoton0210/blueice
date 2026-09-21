@@ -27,10 +27,12 @@ impl Heap {
             nursery: Vec::new(),
             remembered: HashSet::new(),
             roots: HashMap::new(),
+            scoped_roots: Vec::new(),
             managed_bytes: 0,
             next_major_bytes: config.major_threshold_bytes,
             minor_collections: 0,
             major_collections: 0,
+            root_registrations: 0,
         })
     }
 
@@ -758,6 +760,7 @@ impl Heap {
     pub(crate) fn alloc_module_namespace(
         &mut self,
         mut exports: Vec<(JsString, ObjectId)>,
+        deferred: bool,
     ) -> Result<ObjectId, HeapError> {
         for (_, cell) in &exports {
             self.object(*cell)?;
@@ -767,7 +770,19 @@ impl Heap {
         self.define_own_property(
             namespace,
             JsSymbol::well_known("toStringTag"),
-            PropertyDescriptor::data(Value::String("Module".into()), false, false, false),
+            PropertyDescriptor::data(
+                Value::String(
+                    if deferred {
+                        "Deferred Module"
+                    } else {
+                        "Module"
+                    }
+                    .into(),
+                ),
+                false,
+                false,
+                false,
+            ),
         )?;
         self.prevent_extensions(namespace)?;
         Ok(namespace)
@@ -890,6 +905,18 @@ impl Heap {
         prototype: Option<ObjectId>,
     ) -> Result<ObjectId, HeapError> {
         self.alloc(ObjectKind::Temporal(Box::new(value)), prototype)
+    }
+
+    /// The Temporal type of `object`'s internal slot, without cloning the
+    /// value (the receiver brand check runs before every prototype member).
+    pub(crate) fn temporal_kind(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<TemporalKind>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Temporal(value) => Some(value.kind),
+            _ => None,
+        })
     }
 
     pub(crate) fn temporal_value(

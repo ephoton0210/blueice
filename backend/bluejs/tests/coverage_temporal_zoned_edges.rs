@@ -88,9 +88,9 @@ fn every_method_brand_checks_its_receiver() {
       const methods = {
         add: [{ days: 1 }], subtract: [{ days: 1 }], until: ["2020-01-01T00:00[UTC]"], since: ["2020-01-01T00:00[UTC]"],
         round: ["hour"], equals: ["2020-01-01T00:00[UTC]"], toString: [], toJSON: [], toLocaleString: [], valueOf: [],
-        toInstant: [], toPlainDate: [], toPlainTime: [], toPlainDateTime: [], toPlainYearMonth: [], toPlainMonthDay: [],
+        toInstant: [], toPlainDate: [], toPlainTime: [], toPlainDateTime: [],
         startOfDay: [], getTimeZoneTransition: ["next"], with: [{ day: 1 }], withPlainTime: ["12:00"],
-        withTimeZone: ["UTC"], getISOFields: [],
+        withTimeZone: ["UTC"],
       };
       const receivers = { five: 5, undef: undefined, nul: null, string: "x", plain: {}, plainDate: D.from("2020-01-01"),
         plainDateTime: DT.from("2020-01-01T00:00"), instant: new Temporal.Instant(0n) };
@@ -165,8 +165,13 @@ fn invalid_strings_and_era_aware_with() {
       same(() => min.until(max, { largestUnit: "years" }).toString(), "P547581Y4M24D");
       same(() => min.until(max, { largestUnit: "months" }).toString(), "P6570976M24D");
       same(() => max.until(min, { largestUnit: "years" }).toString(), "-P547581Y4M23D");
-      same(() => min.until(max, { largestUnit: "years", smallestUnit: "years" }).toString(), "P547581Y");
-      same(() => max.until(min, { largestUnit: "years", smallestUnit: "years" }).toString(), "-P547581Y");
+      // Rounding to years measures the fraction inside the window whose far end is
+      // `547582` years from the receiver -- year 275761, past the last
+      // representable date -- and `NudgeToCalendarUnit` requires that ending
+      // bound itself to be representable, exactly as
+      // `roundingincrement-addition-out-of-range.js` pins for a days window.
+      range(() => min.until(max, { largestUnit: "years", smallestUnit: "years" }));
+      range(() => max.until(min, { largestUnit: "years", smallestUnit: "years" }));
       same(() => min.until(max, { largestUnit: "hours" }).hours, 4800000000);
     "#);
 }

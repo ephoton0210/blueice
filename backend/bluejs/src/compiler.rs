@@ -100,7 +100,7 @@ fn compile_with_limit_and_mode(
     module: bool,
     module_imports: &[ImportEntry],
     module_exports: &[ExportEntry],
-    module_requests: &[String],
+    module_requests: &[RequestedModule],
 ) -> Result<Bytecode, CompileError> {
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
@@ -219,6 +219,9 @@ fn compile_with_limit_and_mode(
                     import_name: match &import.import_name {
                         ImportName::Named(name) => CompiledModuleImportName::Named(name.clone()),
                         ImportName::Namespace => CompiledModuleImportName::Namespace,
+                        ImportName::DeferredNamespace => {
+                            CompiledModuleImportName::DeferredNamespace
+                        }
                         ImportName::Source => CompiledModuleImportName::Source,
                     },
                     local_slot,
@@ -272,6 +275,16 @@ fn compile_with_limit_and_mode(
                     }),
                     Some(ImportEntry {
                         module_request,
+                        import_name: ImportName::DeferredNamespace,
+                        json,
+                        ..
+                    }) => Ok(CompiledModuleExport::DeferredNamespace {
+                        export_name: export_name.clone(),
+                        module_request: module_request.clone(),
+                        json: *json,
+                    }),
+                    Some(ImportEntry {
+                        module_request,
                         import_name: ImportName::Source,
                         ..
                     }) => Ok(CompiledModuleExport::Source {
@@ -319,9 +332,15 @@ fn compile_with_limit_and_mode(
         let mut seen = HashSet::new();
         compiler.bytecode.module_requests = module_requests
             .iter()
-            .filter(|request| seen.insert(request.as_str()))
-            .map(|module_request| CompiledModuleRequest {
-                module_request: module_request.clone(),
+            .filter(|request| {
+                seen.insert((
+                    request.specifier.as_str(),
+                    request.phase == ImportPhase::Defer,
+                ))
+            })
+            .map(|request| CompiledModuleRequest {
+                module_request: request.specifier.clone(),
+                deferred: request.phase == ImportPhase::Defer,
             })
             .collect();
     }
@@ -919,7 +938,9 @@ fn strict_assignment_in_expression(expression: &Expr) -> bool {
         | Expr::Unary {
             arg: expression, ..
         } => strict_assignment_in_expression(expression),
-        Expr::DynamicImport { specifier, options } => {
+        Expr::DynamicImport {
+            specifier, options, ..
+        } => {
             strict_assignment_in_expression(specifier)
                 || options
                     .as_deref()

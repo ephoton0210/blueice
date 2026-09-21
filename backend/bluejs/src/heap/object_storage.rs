@@ -16,7 +16,12 @@ impl Heap {
             match numeric {
                 TypedArrayNumericKey::Index(index) => {
                     if let Some(value) = self.typed_array_index_value(object, index)? {
-                        return Ok(Some(PropertyDescriptor::data(value, true, true, true)));
+                        // An element of an immutable-buffer view is neither
+                        // writable nor configurable.
+                        let mutable = !self.typed_array_is_immutable(object)?;
+                        return Ok(Some(PropertyDescriptor::data(
+                            value, mutable, true, mutable,
+                        )));
                     }
                 }
                 TypedArrayNumericKey::Invalid => return Ok(None),
@@ -436,6 +441,7 @@ impl Heap {
         };
         self.next_root = next;
         self.roots.insert(id, object);
+        self.root_registrations += 1;
         Ok(id)
     }
 

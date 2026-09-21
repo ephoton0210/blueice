@@ -338,6 +338,19 @@ impl Vm {
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let home_object = std::mem::replace(&mut self.home_object, frame_home);
         let callee = std::mem::replace(&mut self.callee, frame_callee);
+        // A generator body resumes wherever its request happened to come
+        // from -- typically a Promise job with no ambient script/module
+        // identity -- so an `import()` inside it must resolve against the
+        // module or script that created the generator function, exactly as
+        // an ordinary call of a module closure does.
+        let referrer = self
+            .callee
+            .object_id()
+            .and_then(|id| self.module_closure_referrers.get(&id).cloned());
+        let active_module_name = match referrer {
+            Some(module) => self.active_module_name.replace(module),
+            None => self.active_module_name.clone(),
+        };
         let variable_scope = std::mem::replace(&mut self.variable_scope, frame_variable_scope);
         let variable_scope_lexicals = std::mem::replace(
             &mut self.variable_scope_lexicals,
@@ -554,6 +567,7 @@ impl Vm {
         self.variable_scope = variable_scope;
         self.variable_scope_lexicals = variable_scope_lexicals;
         self.remaining_instructions = remaining_instructions;
+        self.active_module_name = active_module_name;
         self.stack.truncate(base);
         if let Some((state, promise)) = suspended_async {
             self.suspend_async_await(state, promise)?;

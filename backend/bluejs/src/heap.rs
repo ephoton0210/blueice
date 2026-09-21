@@ -40,6 +40,8 @@ use std::time::Duration;
 
 mod binary_data;
 pub(crate) use binary_data::{f16_bits_to_f64, f64_to_f16_bits};
+mod collection_iteration;
+pub(crate) use collection_iteration::CollectionEntry;
 mod core;
 mod exotic;
 mod lifecycle;
@@ -97,6 +99,7 @@ pub enum HeapError {
     InvalidArrayLength,
     InvalidBufferRange,
     DetachedArrayBuffer,
+    ImmutableArrayBuffer,
     UninitializedModuleExport,
     ReadOnlyProperty,
     HeapLimitExceeded { limit: usize },
@@ -121,6 +124,7 @@ impl fmt::Display for HeapError {
             ),
             Self::InvalidBufferRange => write!(f, "invalid ArrayBuffer view range"),
             Self::DetachedArrayBuffer => write!(f, "ArrayBuffer has been detached"),
+            Self::ImmutableArrayBuffer => write!(f, "ArrayBuffer is immutable"),
             Self::UninitializedModuleExport => {
                 write!(f, "module namespace export is uninitialized")
             }
@@ -145,6 +149,8 @@ pub struct HeapStats {
     pub next_major_bytes: usize,
     pub minor_collections: u64,
     pub major_collections: u64,
+    /// Cumulative number of individual `Heap::root` registrations.
+    pub root_registrations: u64,
 }
 
 pub(crate) type RegExpIteratorState = (ObjectId, JsString, bool, bool, bool);
@@ -823,6 +829,11 @@ enum ObjectKind {
         detached: bool,
         max_byte_length: Option<usize>,
         shared: bool,
+        /// The proposal's `[[ArrayBufferIsImmutable]]` slot. Set once, at
+        /// allocation, by `alloc_immutable_array_buffer`; an immutable buffer
+        /// is always an unshared, fixed-length, never-detached ArrayBuffer
+        /// whose bytes nothing may write after that allocation.
+        immutable: bool,
     },
     DataView {
         buffer: ObjectId,
@@ -877,6 +888,19 @@ enum ObjectKind {
         index: u64,
         done: bool,
         kind: ArrayIteratorKind,
+    },
+    /// A Map or Set iterator (`%MapIteratorPrototype%` /
+    /// `%SetIteratorPrototype%`). `index` is a position in the collection's
+    /// insertion-ordered entry list -- deletions leave tombstones and `clear`
+    /// empties every slot without shortening the list, so an index stays valid
+    /// while the collection changes and the iterator observes those changes.
+    /// `collection` is `None` once the iterator has finished
+    /// (`[[IteratedMap]]`/`[[IteratedSet]]` set to undefined): it stays done.
+    CollectionIterator {
+        collection: Option<ObjectId>,
+        index: usize,
+        kind: ArrayIteratorKind,
+        map: bool,
     },
     /// `Iterator.from` wraps a valid iterator which does not already inherit
     /// `%Iterator.prototype%`. The cached `next` method is an internal slot,
@@ -1276,6 +1300,9 @@ impl Object {
                 | ObjectKind::SegmentIterator { .. } => Vec::new(),
                 ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
                 ObjectKind::ArrayIterator { object, .. } => vec![*object],
+                ObjectKind::CollectionIterator { collection, .. } => {
+                    collection.iter().copied().collect()
+                }
                 ObjectKind::IteratorWrapper { iterator, next } => {
                     std::iter::once(*iterator).chain(next.object_id()).collect()
                 }
@@ -1481,6 +1508,9 @@ fn allocation_references(kind: &ObjectKind, prototype: Option<ObjectId>) -> Vec<
             | ObjectKind::SegmentIterator { .. } => Vec::new(),
             ObjectKind::RegExpIterator { matcher, .. } => vec![*matcher],
             ObjectKind::ArrayIterator { object, .. } => vec![*object],
+            ObjectKind::CollectionIterator { collection, .. } => {
+                collection.iter().copied().collect()
+            }
             ObjectKind::IteratorWrapper { iterator, next } => {
                 std::iter::once(*iterator).chain(next.object_id()).collect()
             }
@@ -1526,10 +1556,14 @@ pub struct Heap {
     nursery: Vec<ObjectId>,
     remembered: HashSet<ObjectId>,
     roots: HashMap<RootId, ObjectId>,
+    /// Batches of temporary roots, innermost last. A VM safepoint registers
+    /// everything it holds as one batch instead of one `roots` entry each.
+    scoped_roots: Vec<Vec<ObjectId>>,
     managed_bytes: usize,
     next_major_bytes: usize,
     minor_collections: u64,
     major_collections: u64,
+    root_registrations: u64,
 }
 
 impl Default for Heap {

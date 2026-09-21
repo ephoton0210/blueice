@@ -4,6 +4,37 @@
 
 use super::*;
 
+/// The `(key, computed, value)` of a lowered public instance field
+/// (`this[key] = value`, see `class_instance_field`); a private field stays a
+/// private-name store and any other statement is not a field definition.
+fn public_field_definition(statement: &Stmt) -> Option<(&Expr, bool, &Expr)> {
+    let Stmt::Expr(Expr::Assign {
+        op: AssignOp::Assign,
+        target,
+        value,
+    }) = statement
+    else {
+        return None;
+    };
+    let Expr::Member {
+        object,
+        property,
+        computed,
+    } = &**target
+    else {
+        return None;
+    };
+    if !matches!(**object, Expr::This) {
+        return None;
+    }
+    if let (Expr::Identifier(name), false) = (&**property, computed) {
+        if name.starts_with('#') {
+            return None;
+        }
+    }
+    Some((property, *computed, value))
+}
+
 fn is_function_declaration(statement: &Stmt) -> bool {
     matches!(
         statement,
@@ -458,7 +489,24 @@ impl Compiler {
             }
             Stmt::ClassField(statement) => {
                 self.emit(Opcode::EnterClassFieldInitializer, 0)?;
-                self.statement(statement, declarations_allowed)?;
+                match public_field_definition(statement) {
+                    // DefineField: a public instance field is created with
+                    // CreateDataPropertyOrThrow, never with [[Set]] -- it
+                    // shadows an inherited setter and reaches [[DefineOwnProperty]]
+                    // (a Proxy trap, a deferred namespace, ...).
+                    Some((key, computed, value)) => {
+                        self.expression(&Expr::This)?;
+                        match (key, computed) {
+                            (Expr::Identifier(name), false) => {
+                                self.constant(Value::String(name.as_str().into()))?
+                            }
+                            (key, _) => self.expression(key)?,
+                        }
+                        self.expression(value)?;
+                        self.emit(Opcode::DefineInstanceField, 0)?;
+                    }
+                    None => self.statement(statement, declarations_allowed)?,
+                }
                 self.emit(Opcode::LeaveClassFieldInitializer, 0)?;
             }
             Stmt::ClassPrivateBrand(binding) => {

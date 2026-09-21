@@ -99,7 +99,7 @@ pub(crate) fn parse_identifier(source: &str) -> Option<TimeZone> {
 }
 
 /// `TimeZoneIdentifier ::: UTCOffset[~SubMinutePrecision] | TimeZoneIANAName`
-fn parse_bare_identifier(source: &str) -> Option<TimeZone> {
+pub(crate) fn parse_bare_identifier(source: &str) -> Option<TimeZone> {
     if matches!(source.as_bytes().first(), Some(b'+' | b'-')) {
         return parse_minute_offset(source).map(TimeZone::Offset);
     }
@@ -229,48 +229,27 @@ impl TimeZone {
 
     /// `TimeZoneEquals`: whether `self` and `other` denote the same time
     /// zone -- an offset identifier compares by exact minutes, and a named
-    /// identifier compares by IANA *primary-zone* identity, not by spelling.
-    /// `Self::Iana`'s own stored identifier deliberately preserves whichever
-    /// alias was written (`Asia/Calcutta` stays `Asia/Calcutta`, see that
-    /// variant's doc comment) precisely so a `ZonedDateTime`'s `timeZoneId`
-    /// getter can report it back unchanged
-    /// (`canonicalize-utc-timezone.js`'s own "should be preserved" checks) --
-    /// so identity for *this* comparison has to be computed separately
-    /// rather than read off that stored spelling.
+    /// identifier compares by ECMA-402 *primary identifier*, not by spelling
+    /// or by the zone's data. `Self::Iana`'s own stored identifier deliberately
+    /// preserves whichever alias was written (`Asia/Calcutta` stays
+    /// `Asia/Calcutta`, see that variant's doc comment) so a `ZonedDateTime`'s
+    /// `timeZoneId` getter can report it back unchanged.
     ///
-    /// Two real zones can be spelled differently yet be the exact same zone
-    /// (an IANA `Link`, e.g. `Asia/Calcutta`/`Asia/Kolkata`): the pinned
-    /// `jiff_tzdb` database already de-duplicates a `Link`'s TZif bytes with
-    /// its target's, so comparing the looked-up byte slices is a correct,
-    /// alias-table-free way to detect this
-    /// (`canonicalize-iana-names.js`/`canonical-iana-names.js`). The one
-    /// group this does *not* catch is `Etc/GMT`/`GMT`/`Etc/GMT0`/`GMT0`,
-    /// which ECMA-402's `AvailableNamedTimeZoneIdentifiers` step 5.c
-    /// explicitly special-cases to primary identifier `"UTC"` even though
-    /// their own TZif bytes are not the bundled database's byte-identical
-    /// copy of `UTC`'s (`canonicalize-utc-timezone.js`) -- confirmed by
-    /// direct measurement, not assumed, since `Etc/UTC`/`Etc/UCT` *do*
-    /// already match by byte identity alone.
+    /// Two names have the same primary identifier when one is a
+    /// backward-compatibility alias of the other (`Asia/Calcutta` and
+    /// `Asia/Kolkata`; every spelling of UTC and GMT). Zones that the tz
+    /// database merely *stores* with identical data are distinct
+    /// (`Africa/Accra` and `Africa/Abidjan`, both listed in `zone.tab`), so
+    /// comparing TZif bytes -- the earlier approach -- is wrong in both
+    /// directions. See [`blueice_ecma402::primary_time_zone_identifier`].
     pub(crate) fn time_zone_equals(&self, other: &TimeZone) -> bool {
         match (self, other) {
             (Self::Offset(a), Self::Offset(b)) => a == b,
             (Self::Iana(a), Self::Iana(b)) => {
-                fn etc_gmt_family(name: &str) -> bool {
-                    matches!(name, "Etc/GMT" | "Etc/GMT0" | "GMT" | "GMT0")
-                }
-                fn primary_utc(name: &str) -> bool {
-                    name == "UTC" || etc_gmt_family(name)
-                }
-                if a == b {
-                    return true;
-                }
-                if primary_utc(a) && primary_utc(b) {
-                    return true;
-                }
-                match (jiff_tzdb::get(a), jiff_tzdb::get(b)) {
-                    (Some((_, data_a)), Some((_, data_b))) => data_a == data_b,
-                    _ => false,
-                }
+                a == b
+                    || blueice_ecma402::primary_time_zone_identifier(a)
+                        .zip(blueice_ecma402::primary_time_zone_identifier(b))
+                        .is_some_and(|(one, two)| one == two)
             }
             _ => false,
         }
@@ -399,13 +378,12 @@ impl TimeZone {
     /// specific lookup onto, unlike [`Self::offset_nanoseconds_for`]'s own
     /// periodic-cycle projection for a plain offset query).
     ///
-    /// Delegates to `jiff::tz::TimeZone::following`/`preceding`, which reads
+    /// Delegates to `jiff::tz::TimeZone::following`/`preceding`, which read
     /// real transition entries directly from the same pinned TZif data
-    /// `offset_nanoseconds_for` already resolves offsets from — so a
-    /// same-abbreviation/same-offset rule change that the underlying TZif
-    /// data itself never recorded as a transition (`rule-change-without-
-    /// offset-transition.js`'s own Europe/London/America/Anchorage cases)
-    /// is not reported here either, with no separate filtering needed.
+    /// `offset_nanoseconds_for` already resolves offsets from, keeping only the
+    /// entries that actually change the total UTC offset
+    /// (`rule-change-without-offset-transition.js`'s own Europe/London and
+    /// America/Anchorage cases).
     pub(crate) fn adjacent_transition(
         &self,
         epoch_nanoseconds: &BigInt,
@@ -419,20 +397,39 @@ impl TimeZone {
             .get(name)
             .expect("a named zone only ever comes from this same pinned database");
         let nanoseconds = i128::try_from(epoch_nanoseconds).ok()?;
-        // `Timestamp::from_nanosecond` trips a debug assertion rather than
-        // returning a clean `Err` for an out-of-range input (the same sharp
-        // edge `jiff_timestamp` above already works around for
-        // `from_second`), so the range is checked explicitly first.
-        if !(Timestamp::MIN.as_nanosecond()..=Timestamp::MAX.as_nanosecond()).contains(&nanoseconds)
-        {
-            return None;
-        }
-        let timestamp =
-            Timestamp::from_nanosecond(nanoseconds).expect("range was just checked above");
-        let transition = if forward {
-            zone.following(timestamp).next()
+        // Offsets only ever change on a whole-second boundary, and Jiff's
+        // `following`/`preceding` are unreliable for a pre-1970 instant with a
+        // sub-second part (its `Timestamp` stores the second rounded toward
+        // zero, the sharp edge `jiff_timestamp` documents), so ask about a
+        // whole second instead: the one at or just below `epoch_nanoseconds`
+        // when looking forward -- the next transition after 23:59:59.999999999
+        // is the same as after 23:59:59 -- and the one at or just above it when
+        // looking back, where a transition at the second *before* a fractional
+        // instant is already in the past.
+        let (seconds, fraction) = (
+            nanoseconds.div_euclid(1_000_000_000),
+            nanoseconds.rem_euclid(1_000_000_000),
+        );
+        let seconds = if forward || fraction == 0 {
+            seconds
         } else {
-            zone.preceding(timestamp).next()
+            seconds + 1
+        };
+        let timestamp = jiff_timestamp(i64::try_from(seconds).ok()?)?;
+        // The TZif data records every change of *rule*, including ones that
+        // leave the total UTC offset alone (Europe/London's 1968 switch from
+        // "BST as daylight time" to "British Standard Time", both +01:00).
+        // Those are not `GetNamedTimeZoneNextTransition`/`Previous
+        // Transition`s, so walk on to the first entry whose offset really
+        // differs from the one just before it.
+        let changes_offset = |transition: &jiff::tz::TimeZoneTransition<'_>| {
+            let at = BigInt::from(transition.timestamp().as_nanosecond());
+            self.offset_nanoseconds_for(&(&at - 1)) != self.offset_nanoseconds_for(&at)
+        };
+        let transition = if forward {
+            zone.following(timestamp).find(changes_offset)
+        } else {
+            zone.preceding(timestamp).find(changes_offset)
         }?;
         Some(BigInt::from(transition.timestamp().as_nanosecond()))
     }
@@ -519,6 +516,40 @@ mod tests {
         assert_eq!(parse_identifier("Mars/Olympus_Mons"), None);
         assert_eq!(parse_identifier("America/Nonexistent"), None);
         assert_eq!(parse_identifier(""), None);
+    }
+
+    fn zone(name: &str) -> TimeZone {
+        parse_identifier(name).unwrap_or_else(|| panic!("{name} is a bundled zone"))
+    }
+
+    #[test]
+    fn time_zone_equality_follows_primary_identifiers_not_spelling_or_data() {
+        // A backward-compatibility alias is the same zone as its target, in
+        // either order and whatever the spelling's case.
+        assert!(zone("Asia/Calcutta").time_zone_equals(&zone("Asia/Kolkata")));
+        assert!(zone("asia/kolkata").time_zone_equals(&zone("ASIA/CALCUTTA")));
+        assert!(zone("Etc/GMT+0").time_zone_equals(&zone("UTC")));
+        assert!(zone("Zulu").time_zone_equals(&zone("Etc/GMT")));
+        // Zones the tz database stores with identical data are still distinct
+        // when both are in `zone.tab`.
+        assert!(!zone("Africa/Accra").time_zone_equals(&zone("Africa/Abidjan")));
+        assert!(!zone("Europe/Amsterdam").time_zone_equals(&zone("Europe/Brussels")));
+        assert!(!zone("Etc/GMT+1").time_zone_equals(&zone("UTC")));
+        // Offsets compare by minutes and never equal a named zone.
+        assert!(zone("+01:00").time_zone_equals(&zone("+01:00")));
+        assert!(!zone("+01:00").time_zone_equals(&zone("+02:00")));
+        assert!(!zone("+00:00").time_zone_equals(&zone("UTC")));
+        assert!(!zone("UTC").time_zone_equals(&zone("+00:00")));
+    }
+
+    #[test]
+    fn a_name_unknown_to_the_table_only_equals_itself() {
+        // Not reachable through `parse_identifier`, which only yields bundled
+        // names; the comparison still fails closed rather than panicking.
+        let unknown = TimeZone::Iana("Mars/Olympus_Mons");
+        assert!(unknown.time_zone_equals(&unknown));
+        assert!(!unknown.time_zone_equals(&zone("UTC")));
+        assert!(!zone("UTC").time_zone_equals(&unknown));
     }
 
     #[test]

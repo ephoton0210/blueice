@@ -566,7 +566,13 @@ fn preserves_bluets_resolved_targets_in_a_direct_module_graph() {
             json: false,
         }]
     );
-    assert_eq!(main.requests, vec!["graph/dep.ts".to_string()]);
+    assert_eq!(
+        main.requests
+            .iter()
+            .map(|request| (request.specifier.as_str(), request.phase))
+            .collect::<Vec<_>>(),
+        vec![("graph/dep.ts", bluejs::ImportPhase::Evaluation)]
+    );
     assert_eq!(
         bluejs::Vm::default()
             .execute_module_graph(&graph.entry, &graph.bytecode_map())
@@ -586,7 +592,13 @@ fn preserves_a_non_relative_caller_authorized_module_alias() {
     let bluejs::BlueJsProgramV1::Module(main) = &graph.modules["virtual/main.ts"].program else {
         panic!("the direct graph entry must produce a BlueJS module AST");
     };
-    assert_eq!(main.requests, vec!["canonical/runtime.ts".to_string()]);
+    assert_eq!(
+        main.requests
+            .iter()
+            .map(|request| (request.specifier.as_str(), request.phase))
+            .collect::<Vec<_>>(),
+        vec![("canonical/runtime.ts", bluejs::ImportPhase::Evaluation)]
+    );
     assert_eq!(
         bluejs::Vm::default()
             .execute_module_graph(&graph.entry, &graph.bytecode_map())

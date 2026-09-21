@@ -90,7 +90,7 @@ fn run_raw(body: &str) {
 }
 
 const CALENDARS: &str = r#"
-const twelveMonth = ["indian", "islamic-civil", "islamic-tbla", "islamic-umalqura", "islamic", "persian",
+const twelveMonth = ["indian", "islamic-civil", "islamic-tbla", "islamic-umalqura", "persian",
                      "gregory", "roc", "buddhist", "japanese"];
 const thirteenMonth = ["coptic", "ethiopic", "ethioaa"];
 const leapMonth = ["hebrew", "chinese", "dangi"];
@@ -156,7 +156,7 @@ fn check_fixed_month_calendars(calendars: &str, whole_months: bool) {
 #[test]
 fn round_trip_and_sign_properties_hold_in_islamic_calendars() {
     check_fixed_month_calendars(
-        r#"["islamic-civil", "islamic-tbla", "islamic-umalqura", "islamic"]"#,
+        r#"["islamic-civil", "islamic-tbla", "islamic-umalqura"]"#,
         true,
     );
 }
@@ -173,10 +173,12 @@ fn round_trip_and_sign_properties_hold_in_gregorian_variant_calendars() {
 
 #[test]
 fn round_trip_and_sign_properties_hold_in_thirteen_month_calendars() {
-    // Only the sign, `since` negation, day and week differences are checked
-    // here: a year-based difference in a thirteen-month calendar does not
-    // round-trip (the implementation assumes twelve months per year).
-    check_fixed_month_calendars(r#"["coptic", "ethiopic", "ethioaa"]"#, false);
+    // A year here has thirteen months (twelve 30-day months plus a 5/6-day
+    // intercalary one), so the full property set applies, including the
+    // year- and month-based round trip (`a.add(a.until(b, { largestUnit })) ==
+    // b`). See `temporal_thirteen_month_calendar_difference.rs` for the
+    // fixture-derived expectations.
+    check_fixed_month_calendars(r#"["coptic", "ethiopic", "ethioaa"]"#, true);
 }
 
 #[test]
@@ -223,7 +225,7 @@ fn round_trip_and_sign_properties_hold_in_leap_month_calendars() {
 fn same_day_of_month_differences_have_exact_values() {
     run(r#"
       const cals = ["coptic", "ethiopic", "ethioaa", "indian", "islamic-civil", "islamic-tbla", "islamic-umalqura",
-                    "islamic", "persian", "gregory", "roc", "buddhist", "japanese", "hebrew"];
+                    "persian", "gregory", "roc", "buddhist", "japanese", "hebrew"];
       for (const calendar of cals) {
         CTX = calendar;
         const at = (y, m, d) => D.from({ year: y, month: m, day: d, calendar });
@@ -241,7 +243,7 @@ fn same_day_of_month_differences_have_exact_values() {
         same(() => at(1400, 1, 16).until(a, { largestUnit: "years" }).toString(), "-P1D");
       }
       // twelve-month calendars agree exactly on a whole number of months
-      for (const calendar of ["indian", "islamic-civil", "islamic-tbla", "islamic-umalqura", "islamic", "persian", "gregory", "roc", "buddhist", "japanese"]) {
+      for (const calendar of ["indian", "islamic-civil", "islamic-tbla", "islamic-umalqura", "persian", "gregory", "roc", "buddhist", "japanese"]) {
         CTX = calendar;
         const at = (y, m, d) => D.from({ year: y, month: m, day: d, calendar });
         same(() => at(1400, 1, 15).until(at(1402, 3, 15), { largestUnit: "months" }).toString(), "P26M");

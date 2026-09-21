@@ -16,7 +16,7 @@
 //! "day 30 of month 5" may not even exist in most years), so the spec simply
 //! does not define these operations for this type.
 
-use super::epoch::CivilDate;
+use super::epoch::{is_date_within_limits, CivilDate};
 use super::plain_date::{
     format_calendar_annotation, format_iso_date, regulate_iso_date, ShowCalendar,
 };
@@ -27,10 +27,11 @@ use icu_calendar::types::DateFields;
 use icu_calendar::{AnyCalendar, AnyCalendarKind, Date, Iso};
 
 /// The calendar fields `CalendarMonthDayFromFields` reads: `day` is always
-/// present; either `monthCode` or `ordinalMonth` identifies the month; `year`
-/// is optional -- when absent, `icu_calendar` derives the calendar's own
-/// *reference year* for that month/day pair (`1972` for `iso8601`, matching
-/// `ToTemporalMonthDay`'s own hardcoded ISO reference year exactly).
+/// present; either `monthCode` or `ordinalMonth` identifies the month (both may
+/// be given, in which case they must agree); `year` (or `era`+`eraYear`) is
+/// optional and only decides whether the day exists -- the result's *reference
+/// year* is always derived afresh from the month code and day
+/// ([`month_day_from_fields`]).
 #[derive(Default)]
 pub(crate) struct MonthDayFields<'a> {
     pub extended_year: Option<i32>,
@@ -38,11 +39,11 @@ pub(crate) struct MonthDayFields<'a> {
     /// (`CalendarExtraFields`'s own conditional field expansion --
     /// requesting `year`, which `ToTemporalMonthDay`'s field list always
     /// does, also reads `era`/`eraYear` when the calendar has them).
-    /// Mutually exclusive with `extended_year` at the call site, matching
-    /// `temporal_plain_date_from_fields`'s own established precedent:
-    /// `icu_calendar::Date::try_from_fields` resolves the year from these
-    /// two fields directly, without a separate era-to-extended-year
-    /// conversion step of this module's own.
+    /// When both are supplied they resolve the year on their own, and an
+    /// `extended_year` given next to them is only cross-checked against the
+    /// result (`icu_calendar::Date::try_from_fields` resolves the year from
+    /// `era`/`era_year` directly, without a separate era-to-extended-year
+    /// conversion step of this module's own).
     pub era: Option<&'a [u8]>,
     pub era_year: Option<i32>,
     pub month_code: Option<&'a str>,
@@ -50,28 +51,98 @@ pub(crate) struct MonthDayFields<'a> {
     pub day: u8,
 }
 
-/// `CalendarMonthDayFromFields`: resolves month+day (and optionally year)
-/// fields to a concrete ISO date.
+/// `CalendarMonthDayFromFields` for a non-ISO calendar: resolves month+day (and
+/// optionally year) fields to the ISO *reference date* a `PlainMonthDay` keeps.
+///
+/// Two steps, exactly as Intl.Era-monthcode defines it:
+///
+/// 1. **With a year** (`year`, or `era`+`eraYear`, which must be inside
+///    Temporal's range), resolve the fields in that
+///    year under `overflow`: this is what decides whether the day exists
+///    (`overflow: "reject"` refuses one that does not, `"constrain"` clamps
+///    it, and a leap month missing from that year falls back to its common
+///    neighbour). An explicit `year` next to `era`/`eraYear`, and an ordinal
+///    `month` next to a `monthCode`, must agree with the result. The year itself
+///    is then **discarded**: only the resulting month code and day survive.
+///    Without a year the month code and day are taken as given.
+/// 2. Derive the reference year from that month code and day alone
+///    (`MissingFieldsStrategy::Ecma`): the latest ISO year at or before 1972
+///    that has them, else the earliest one after it -- `{ year: 2021,
+///    monthCode: "M02", day: 29, calendar: "gregory" }` is `1972-02-28`, not
+///    `2021-02-28`. Under `overflow: "reject"` a month-day that occurs in no
+///    such year (a Chinese `M01L` 29th) is refused; under `"constrain"` it
+///    falls back to the common month.
+///
+/// A `month` without a `monthCode` needs a year to be meaningful (an ordinal
+/// month's identity varies by year); callers reject that with a `TypeError`
+/// before getting here.
 pub(crate) fn month_day_from_fields(
     calendar: AnyCalendarKind,
     fields: &MonthDayFields,
     reject: bool,
 ) -> Result<CivilDate, ()> {
-    let mut date_fields = DateFields::default();
-    date_fields.extended_year = fields.extended_year;
-    date_fields.era = fields.era;
-    date_fields.era_year = fields.era_year;
-    if let Some(month_code) = fields.month_code {
-        date_fields.month_code = Some(month_code.as_bytes());
-    }
-    date_fields.ordinal_month = fields.ordinal_month;
-    date_fields.day = Some(fields.day);
-    let mut options = DateFromFieldsOptions::default();
-    options.overflow = Some(if reject {
+    let overflow = if reject {
         IcuOverflow::Reject
     } else {
         IcuOverflow::Constrain
-    });
+    };
+    let has_era_pair = fields.era.is_some() && fields.era_year.is_some();
+    let (month_code, day) = if has_era_pair || fields.extended_year.is_some() {
+        let mut date_fields = DateFields::default();
+        if has_era_pair {
+            date_fields.era = fields.era;
+            date_fields.era_year = fields.era_year;
+        } else {
+            date_fields.extended_year = fields.extended_year;
+        }
+        match fields.month_code {
+            Some(month_code) => date_fields.month_code = Some(month_code.as_bytes()),
+            None => date_fields.ordinal_month = fields.ordinal_month,
+        }
+        date_fields.day = Some(fields.day);
+        let mut options = DateFromFieldsOptions::default();
+        options.overflow = Some(overflow);
+        let date = Date::try_from_fields(date_fields, options, AnyCalendar::new(calendar))
+            .map_err(|_| ())?;
+        if fields
+            .extended_year
+            .is_some_and(|year| year != date.year().extended_year())
+        {
+            return Err(());
+        }
+        if fields.month_code.is_some()
+            && fields
+                .ordinal_month
+                .is_some_and(|month| month != date.month().ordinal)
+        {
+            return Err(());
+        }
+        // The year is discarded afterwards, but it must still be one Temporal
+        // can represent: a year far outside the range bails out with a
+        // `RangeError` rather than being resolved (`intl402/Temporal/
+        // PlainMonthDay/from/dont-calculate-month-info-for-out-of-range-year.js`).
+        let iso = date.to_calendar(Iso);
+        let resolved: CivilDate = (
+            iso.year().extended_year(),
+            iso.month().number(),
+            iso.day_of_month().0,
+        );
+        if !is_date_within_limits(resolved) {
+            return Err(());
+        }
+        (
+            date.month().to_input().code().to_string(),
+            date.day_of_month().0,
+        )
+    } else {
+        (fields.month_code.ok_or(())?.to_string(), fields.day)
+    };
+
+    let mut date_fields = DateFields::default();
+    date_fields.month_code = Some(month_code.as_bytes());
+    date_fields.day = Some(day);
+    let mut options = DateFromFieldsOptions::default();
+    options.overflow = Some(overflow);
     options.missing_fields_strategy = Some(MissingFieldsStrategy::Ecma);
     let date =
         Date::try_from_fields(date_fields, options, AnyCalendar::new(calendar)).map_err(|_| ())?;
@@ -221,7 +292,9 @@ mod tests {
     }
 
     #[test]
-    fn uses_an_explicit_year_when_one_is_given() {
+    fn an_explicit_year_only_decides_whether_the_day_exists() {
+        // 2000 is a leap year, so 29 February exists; the reference year is
+        // still derived afresh (1972, the latest leap year at or before it).
         let fields = MonthDayFields {
             extended_year: Some(2000),
             ordinal_month: Some(2),
@@ -230,12 +303,14 @@ mod tests {
         };
         assert_eq!(
             month_day_from_fields(AnyCalendarKind::Iso, &fields, false),
-            Ok((2000, 2, 29))
+            Ok((1972, 2, 29))
         );
     }
 
     #[test]
     fn constrains_a_leap_day_in_a_non_leap_year_by_default() {
+        // 2001 is not a leap year: the day constrains to the 28th, and the
+        // reference year is 1972 (not 2001).
         let fields = MonthDayFields {
             extended_year: Some(2001),
             ordinal_month: Some(2),
@@ -244,8 +319,100 @@ mod tests {
         };
         assert_eq!(
             month_day_from_fields(AnyCalendarKind::Iso, &fields, false),
-            Ok((2001, 2, 28))
+            Ok((1972, 2, 28))
         );
+    }
+
+    #[test]
+    fn a_hebrew_leap_month_day_gets_a_reference_year_before_1972() {
+        // Adar I (`M05L`) does not occur in 1972; the latest year at or before
+        // it that has it is 1970 (`intl402/Temporal/PlainMonthDay/from/
+        // reference-year-1972.js`).
+        let fields = MonthDayFields {
+            month_code: Some("M05L"),
+            day: 1,
+            ..Default::default()
+        };
+        let (year, _, _) = month_day_from_fields(AnyCalendarKind::Hebrew, &fields, false).unwrap();
+        assert_eq!(year, 1970);
+    }
+
+    #[test]
+    fn a_year_and_a_month_code_may_disagree_on_the_ordinal_only_when_consistent() {
+        // Chinese 2004 has a leap M02, so M04 is ordinal month 5 there.
+        let mut fields = MonthDayFields {
+            extended_year: Some(2004),
+            month_code: Some("M04"),
+            ordinal_month: Some(5),
+            day: 1,
+            ..Default::default()
+        };
+        assert!(month_day_from_fields(AnyCalendarKind::Chinese, &fields, false).is_ok());
+        // A month that does not match the code in that year is refused.
+        fields.ordinal_month = Some(4);
+        assert_eq!(
+            month_day_from_fields(AnyCalendarKind::Chinese, &fields, false),
+            Err(())
+        );
+    }
+
+    #[test]
+    fn an_explicit_year_must_agree_with_the_era_year() {
+        let mut fields = MonthDayFields {
+            extended_year: Some(2023),
+            era: Some(b"ce"),
+            era_year: Some(2024),
+            month_code: Some("M01"),
+            day: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            month_day_from_fields(AnyCalendarKind::Gregorian, &fields, false),
+            Err(())
+        );
+        fields.extended_year = Some(2024);
+        assert!(month_day_from_fields(AnyCalendarKind::Gregorian, &fields, false).is_ok());
+    }
+
+    #[test]
+    fn a_year_outside_temporals_range_is_refused_in_every_calendar() {
+        for calendar in [
+            AnyCalendarKind::Gregorian,
+            AnyCalendarKind::Hebrew,
+            AnyCalendarKind::Chinese,
+            AnyCalendarKind::Persian,
+        ] {
+            for year in [-999_999, 999_999] {
+                let fields = MonthDayFields {
+                    extended_year: Some(year),
+                    month_code: Some("M01"),
+                    day: 1,
+                    ..Default::default()
+                };
+                assert_eq!(
+                    month_day_from_fields(calendar, &fields, false),
+                    Err(()),
+                    "{calendar:?} {year}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_month_day_that_never_occurs_is_refused_under_reject_and_constrained_otherwise() {
+        // Chinese M01L 29th has not occurred since 1900.
+        let fields = MonthDayFields {
+            extended_year: Some(1898),
+            month_code: Some("M01L"),
+            day: 29,
+            ..Default::default()
+        };
+        assert_eq!(
+            month_day_from_fields(AnyCalendarKind::Chinese, &fields, true),
+            Err(())
+        );
+        let (year, _, _) = month_day_from_fields(AnyCalendarKind::Chinese, &fields, false).unwrap();
+        assert_eq!(year, 1972);
     }
 
     #[test]
