@@ -801,30 +801,37 @@ impl Parser {
                     args,
                 };
             } else if self.tokenizer.at_template(self.positions[self.pos]) {
-                if optional_chain_expression(&expr) {
-                    return Err(known_syntax(self.syntax_error(
-                        "an optional chain cannot be used as a template tag",
-                    )));
-                }
-                let (raw, cooked, sources) = self
-                    .tokenizer
-                    .tagged_template_at(self.positions[self.pos])?;
-                self.rescan_suffix();
-                let expressions = sources
-                    .iter()
-                    .map(|source| self.parse_template_placeholder(source))
-                    .collect::<Result<Vec<_>, _>>()?;
-                expr = Expr::TaggedTemplate {
-                    tag: Box::new(expr),
-                    raw,
-                    cooked,
-                    expressions,
-                };
+                expr = self.parse_tagged_template(expr)?;
             } else {
                 break;
             }
         }
         Ok(expr)
+    }
+
+    /// `tag` followed by a template literal: MemberExpression TemplateLiteral.
+    /// The tagged form keeps invalid escapes (their cooked value is
+    /// `undefined`), so the template is re-scanned from source.
+    fn parse_tagged_template(&mut self, tag: Expr) -> Result<Expr, ParseError> {
+        if optional_chain_expression(&tag) {
+            return Err(known_syntax(self.syntax_error(
+                "an optional chain cannot be used as a template tag",
+            )));
+        }
+        let (raw, cooked, sources) = self
+            .tokenizer
+            .tagged_template_at(self.positions[self.pos])?;
+        self.rescan_suffix();
+        let expressions = sources
+            .iter()
+            .map(|source| self.parse_template_placeholder(source))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Expr::TaggedTemplate {
+            tag: Box::new(tag),
+            raw,
+            cooked,
+            expressions,
+        })
     }
 
     /// `new` already consumed by the caller. Real ECMAScript's
@@ -878,6 +885,8 @@ impl Parser {
                     property: Box::new(prop),
                     computed: true,
                 };
+            } else if self.tokenizer.at_template(self.positions[self.pos]) {
+                callee = self.parse_tagged_template(callee)?;
             } else {
                 break;
             }
