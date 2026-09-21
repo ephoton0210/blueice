@@ -541,6 +541,27 @@ impl Vm {
         self.heap.delete(binding.cell, "value").map_err(Into::into)
     }
 
+    /// Whether `name`, which no function or block binding resolves, resolves
+    /// to an eval-created binding, a global binding or a property of the
+    /// global object (the standard globals are created lazily).
+    pub(super) fn unbound_name_resolves(&mut self, name: &str) -> Result<bool, RuntimeError> {
+        if self.dynamic_eval_bindings.contains_key(name)
+            || self
+                .dynamic_eval_outer_bindings
+                .iter()
+                .any(|bindings| bindings.contains_key(name))
+            || self.global_bindings.contains_key(name)
+        {
+            return Ok(true);
+        }
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is an object");
+        self.materialize_lexical_global(global, name)?;
+        self.has_property(global, &name.into())
+    }
+
     /// `delete name` for a name that no function or block binding resolves:
     /// the reference is looked up in eval-created bindings, then the global
     /// Environment Record (§9.1.1.4.7 DeleteBinding). A declarative (`let`,

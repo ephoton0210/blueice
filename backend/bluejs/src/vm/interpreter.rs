@@ -1176,12 +1176,25 @@ impl Vm {
                                 .push(value.ok_or(RuntimeError::ReferenceError(name))?);
                         }
                     }
-                    Opcode::SetUnboundName => {
+                    Opcode::ResolveUnboundName => {
                         let Value::String(name) = &code.constants[operand] else {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let value = self.stack.last().expect("assignment has a value").clone();
+                        let resolves = self.unbound_name_resolves(&name)?;
+                        self.stack.push(Value::Bool(resolves));
+                    }
+                    Opcode::SetUnboundName | Opcode::SetResolvedUnboundName => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!("compiler emits a name")
+                        };
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        // Stack: [resolved flag,] value. The flag was computed
+                        // before the right-hand side ran.
+                        let value = self.stack.pop().expect("assignment has a value");
+                        let resolved = (instruction.opcode == Opcode::SetResolvedUnboundName)
+                            .then(|| self.stack.pop() == Some(Value::Bool(true)));
+                        self.stack.push(value.clone());
                         if !self.set_dynamic_eval_binding(&name, value.clone())?
                             && !self.set_global_binding(&name, value.clone())?
                         {
@@ -1191,6 +1204,16 @@ impl Vm {
                             // Standard globals (`NaN`, `undefined`, ...) are
                             // created lazily; the name resolves once made.
                             self.materialize_lexical_global(global_id, &name)?;
+                            let unresolvable = match resolved {
+                                Some(resolved) => !resolved,
+                                None => !self.has_property(global_id, &key)?,
+                            };
+                            if code.strict && unresolvable {
+                                return Err(RuntimeError::ReferenceError(name));
+                            }
+                            // A strict write to a binding that resolved but
+                            // has since disappeared is also a ReferenceError
+                            // (SetMutableBinding of the object record).
                             if code.strict && !self.has_property(global_id, &key)? {
                                 return Err(RuntimeError::ReferenceError(name));
                             }

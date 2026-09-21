@@ -38,6 +38,11 @@ opcodes! {
     UnboundName: 5, 0;
     SetUnboundName: 5, 0;
     DeleteUnboundName: 5, 0;
+    // Strict `name = value` for a name that no binding resolves: resolves the
+    // reference before the right-hand side runs (pushes whether it resolved),
+    // and SetResolvedUnboundName stores through it (stack: flag, value).
+    ResolveUnboundName: 5, 0;
+    SetResolvedUnboundName: 5, 0;
     // `delete name` inside `with`: deletes the property of the innermost with
     // object that has the binding and pushes the result, or pushes `undefined`
     // when no with object has it (the caller then falls back to the binding).

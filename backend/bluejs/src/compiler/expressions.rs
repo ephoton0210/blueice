@@ -1341,11 +1341,24 @@ impl Compiler {
                 if op != AssignOp::Assign {
                     self.emit(Opcode::UnboundName, index)?;
                 }
+                // Strict `name = value`: the Reference is resolved before the
+                // right-hand side runs, which may create the binding.
+                let resolve_first = self.bytecode.strict && op == AssignOp::Assign;
+                if resolve_first {
+                    self.emit(Opcode::ResolveUnboundName, index)?;
+                }
                 self.expression_with_name(value, inferred_name)?;
                 if let Some(opcode) = compound_assignment_opcode(op) {
                     self.emit(opcode, 0)?;
                 }
-                self.emit(Opcode::SetUnboundName, index)?;
+                self.emit(
+                    if resolve_first {
+                        Opcode::SetResolvedUnboundName
+                    } else {
+                        Opcode::SetUnboundName
+                    },
+                    index,
+                )?;
                 return Ok(());
             }
         }
