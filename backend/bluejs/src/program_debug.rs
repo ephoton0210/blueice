@@ -137,6 +137,7 @@ pub enum BlueJsAstNodeKind {
 pub struct BlueJsAstNodeInfo {
     id: BlueJsAstNodeId,
     kind: BlueJsAstNodeKind,
+    top_level_statement: bool,
 }
 
 impl BlueJsAstNodeInfo {
@@ -149,11 +150,21 @@ impl BlueJsAstNodeInfo {
     pub fn kind(&self) -> BlueJsAstNodeKind {
         self.kind
     }
+
+    /// Whether this node is a direct child statement of the program root.
+    ///
+    /// This explicit structural flag lets a source front end associate its
+    /// ordered top-level lowering records without inferring tree depth from a
+    /// numeric node ordinal.
+    pub fn is_top_level_statement(&self) -> bool {
+        self.top_level_statement
+    }
 }
 
 #[derive(Clone, Copy)]
 struct AstNodeDescriptor {
     kind: BlueJsAstNodeKind,
+    top_level_statement: bool,
 }
 
 impl BlueJsCodeUnitId {
@@ -420,6 +431,7 @@ impl BlueJsProgramRegistry {
                             .map_err(|_| BlueJsProgramDebugError::AstNodeLimitExceeded)?,
                     },
                     kind: descriptor.kind,
+                    top_level_statement: descriptor.top_level_statement,
                 })
             })
             .collect::<Result<Vec<_>, BlueJsProgramDebugError>>()?;

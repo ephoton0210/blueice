@@ -74,6 +74,29 @@ pub struct DirectModuleGraph {
     pub sources: Vec<BridgeSource>,
 }
 
+/// A live direct-program attachment with exact source-to-AST provenance.
+///
+/// This is intentionally not yet a bytecode safe-point map: the attached
+/// node identifies the direct structured statement supplied by BlueTS, while
+/// BlueJS remains responsible for subsequently associating that node with a
+/// verified executable instruction boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirectProgramAttachment {
+    /// The live generation-bound BlueJS program handle.
+    pub handle: bluejs::BlueJsProgramHandle,
+    /// Ordered lowering spans paired with their exact generated AST nodes.
+    pub provenance: Vec<AttachedLoweringProvenance>,
+}
+
+/// One source-level lowering span attached to a generated BlueJS AST node.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachedLoweringProvenance {
+    /// The exact TypeScript source bytes that contributed the node.
+    pub source: SourceSpan,
+    /// The generation-bound BlueJS structured AST node.
+    pub node_id: bluejs::BlueJsAstNodeId,
+}
+
 /// The bridge either propagates BlueTS diagnostics, rejects a checker-accepted
 /// runtime shape outside its current direct subset, or reports BlueJS bytecode
 /// compilation failure. No variant offers a generated-JavaScript fallback.
@@ -84,6 +107,7 @@ pub enum BridgeError {
     BlueJs(bluejs::CompileError),
     BlueJsDebug(bluejs::BlueJsProgramDebugError),
     InvalidSourceIdentity(String),
+    ProvenanceAttachment(String),
 }
 
 impl fmt::Display for BridgeError {
@@ -114,6 +138,12 @@ impl fmt::Display for BridgeError {
                     "BlueTS direct program has no usable source identity: {message}"
                 )
             }
+            Self::ProvenanceAttachment(message) => {
+                write!(
+                    formatter,
+                    "cannot attach direct lowering provenance: {message}"
+                )
+            }
         }
     }
 }
@@ -129,7 +159,16 @@ impl DirectScript {
         &self,
         registry: &mut bluejs::BlueJsProgramRegistry,
     ) -> Result<bluejs::BlueJsProgramHandle, BridgeError> {
-        install_direct_program(registry, &self.sources, &self.program)
+        Ok(self.attach_in(registry)?.handle)
+    }
+
+    /// Installs the program and attaches every top-level BlueTS lowering span
+    /// to the exact BlueJS AST statement it generated.
+    pub fn attach_in(
+        &self,
+        registry: &mut bluejs::BlueJsProgramRegistry,
+    ) -> Result<DirectProgramAttachment, BridgeError> {
+        attach_direct_program(registry, &self.sources, &self.program, &self.provenance)
     }
 }
 
@@ -140,7 +179,16 @@ impl DirectModule {
         &self,
         registry: &mut bluejs::BlueJsProgramRegistry,
     ) -> Result<bluejs::BlueJsProgramHandle, BridgeError> {
-        install_direct_program(registry, &self.sources, &self.program)
+        Ok(self.attach_in(registry)?.handle)
+    }
+
+    /// Installs the module and attaches every top-level BlueTS lowering span
+    /// to the exact BlueJS AST statement it generated.
+    pub fn attach_in(
+        &self,
+        registry: &mut bluejs::BlueJsProgramRegistry,
+    ) -> Result<DirectProgramAttachment, BridgeError> {
+        attach_direct_program(registry, &self.sources, &self.program, &self.provenance)
     }
 }
 
@@ -377,11 +425,12 @@ fn bridge_sources(debug_info: &BlueTsDebugInfo) -> Vec<BridgeSource> {
         .collect()
 }
 
-fn install_direct_program(
+fn attach_direct_program(
     registry: &mut bluejs::BlueJsProgramRegistry,
     sources: &[BridgeSource],
     program: &bluejs::BlueJsProgramV1,
-) -> Result<bluejs::BlueJsProgramHandle, BridgeError> {
+    provenance: &[LoweringProvenance],
+) -> Result<DirectProgramAttachment, BridgeError> {
     let [source] = sources else {
         return Err(BridgeError::InvalidSourceIdentity(
             "a direct script or module must retain exactly one source".to_string(),
@@ -390,9 +439,36 @@ fn install_direct_program(
     let source =
         bluejs::BlueJsSourceIdentity::new(source.module.clone(), source.content_hash.clone())
             .map_err(BridgeError::BlueJsDebug)?;
-    registry
+    let handle = registry
         .install(source, program)
-        .map_err(BridgeError::BlueJsDebug)
+        .map_err(BridgeError::BlueJsDebug)?;
+    let nodes = registry
+        .get(handle)
+        .expect("a newly installed direct program remains live")
+        .ast_nodes()
+        .iter()
+        .filter(|node| node.is_top_level_statement())
+        .map(|node| node.id())
+        .collect::<Vec<_>>();
+    if nodes.len() != provenance.len() {
+        registry.invalidate(handle);
+        return Err(BridgeError::ProvenanceAttachment(format!(
+            "BlueTS retained {} top-level lowering spans but BlueJS generated {} top-level statements",
+            provenance.len(),
+            nodes.len()
+        )));
+    }
+    Ok(DirectProgramAttachment {
+        handle,
+        provenance: provenance
+            .iter()
+            .zip(nodes)
+            .map(|(provenance, node_id)| AttachedLoweringProvenance {
+                source: provenance.source.clone(),
+                node_id,
+            })
+            .collect(),
+    })
 }
 
 fn lower_script(

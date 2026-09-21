@@ -58,7 +58,8 @@ fn installs_direct_bytecode_with_its_checked_canonical_source_identity() {
     .unwrap();
     let expected_source = artifact.sources[0].clone();
     let mut registry = bluejs::BlueJsProgramRegistry::default();
-    let handle = artifact.install_in(&mut registry).unwrap();
+    let attachment = artifact.attach_in(&mut registry).unwrap();
+    let handle = attachment.handle;
     let installed = registry.get(handle).unwrap();
 
     assert_eq!(
@@ -73,6 +74,14 @@ fn installs_direct_bytecode_with_its_checked_canonical_source_identity() {
     let root = installed.ast_nodes()[0];
     assert_eq!(root.kind(), bluejs::BlueJsAstNodeKind::Script);
     registry.validate_ast_node(handle, root.id()).unwrap();
+    assert_eq!(attachment.provenance.len(), artifact.provenance.len());
+    assert_eq!(
+        attachment.provenance[0].source,
+        artifact.provenance[0].source
+    );
+    registry
+        .validate_ast_node(handle, attachment.provenance[0].node_id)
+        .unwrap();
     registry
         .validate_safe_point(handle, installed.safe_points().next().unwrap())
         .unwrap();

@@ -68,10 +68,11 @@ or second module resolver to bypass them.
   identity, deterministic root-first executable AST/code-unit IDs,
   instruction-boundary enumeration, and fail-closed validation. The
   host-neutral direct bridge installs its structured program and checked source
-  identity without a JS-text round trip. Replacement, navigation-style
+  identity without a JS-text round trip, pairing each top-level lowering span
+  with its verified generated AST statement. Replacement, navigation-style
   invalidation, and malformed offsets are tested. It deliberately does not yet
-  provide AST source spans, a page host, or debugger pause mechanics, so this
-  prerequisite remains open.
+  provide complete nested-expression provenance, a page host, or debugger
+  pause mechanics, so this prerequisite remains open.
 
   Acceptance: a bytecode instruction can be named by `(code_unit, offset)` and
   verified by BlueJS; a program replacement invalidates its old IDs; malformed

@@ -15,12 +15,12 @@ pub(super) fn collect_ast_nodes(program: &BlueJsProgramV1) -> Vec<AstNodeDescrip
     let mut visitor = AstNodeVisitor { nodes: Vec::new() };
     match program {
         BlueJsProgramV1::Script(program) => {
-            visitor.push(BlueJsAstNodeKind::Script);
-            visitor.statements(&program.body);
+            visitor.push(BlueJsAstNodeKind::Script, false);
+            visitor.statements(&program.body, true);
         }
         BlueJsProgramV1::Module(module) => {
-            visitor.push(BlueJsAstNodeKind::Module);
-            visitor.statements(&module.body);
+            visitor.push(BlueJsAstNodeKind::Module, false);
+            visitor.statements(&module.body, true);
         }
     }
     visitor.nodes
@@ -31,22 +31,25 @@ struct AstNodeVisitor {
 }
 
 impl AstNodeVisitor {
-    fn push(&mut self, kind: BlueJsAstNodeKind) {
-        self.nodes.push(AstNodeDescriptor { kind });
+    fn push(&mut self, kind: BlueJsAstNodeKind, top_level_statement: bool) {
+        self.nodes.push(AstNodeDescriptor {
+            kind,
+            top_level_statement,
+        });
     }
 
-    fn statements(&mut self, statements: &[Stmt]) {
+    fn statements(&mut self, statements: &[Stmt], top_level: bool) {
         for statement in statements {
-            self.statement(statement);
+            self.statement(statement, top_level);
         }
     }
 
-    fn statement(&mut self, statement: &Stmt) {
-        self.push(BlueJsAstNodeKind::Statement);
+    fn statement(&mut self, statement: &Stmt, top_level: bool) {
+        self.push(BlueJsAstNodeKind::Statement, top_level);
         match statement {
             Stmt::Empty | Stmt::Break(_) | Stmt::Continue(_) | Stmt::ClassPrivateBrand(_) => {}
             Stmt::Expr(expression) | Stmt::Throw(expression) => self.expression(expression),
-            Stmt::Block(statements) => self.statements(statements),
+            Stmt::Block(statements) => self.statements(statements, false),
             Stmt::VarDecl(_, declarations) => {
                 for declaration in declarations {
                     self.pattern(&declaration.pattern);
@@ -61,9 +64,9 @@ impl AstNodeVisitor {
                 alternate,
             } => {
                 self.expression(test);
-                self.statement(consequent);
+                self.statement(consequent, false);
                 if let Some(alternate) = alternate {
-                    self.statement(alternate);
+                    self.statement(alternate, false);
                 }
             }
             Stmt::For {
@@ -81,7 +84,7 @@ impl AstNodeVisitor {
                 if let Some(update) = update {
                     self.expression(update);
                 }
-                self.statement(body);
+                self.statement(body, false);
             }
             Stmt::ForIn { left, right, body }
             | Stmt::ForOf {
@@ -89,14 +92,14 @@ impl AstNodeVisitor {
             } => {
                 self.for_head(left);
                 self.expression(right);
-                self.statement(body);
+                self.statement(body, false);
             }
             Stmt::While { test, body } => {
                 self.expression(test);
-                self.statement(body);
+                self.statement(body, false);
             }
             Stmt::DoWhile { body, test } => {
-                self.statement(body);
+                self.statement(body, false);
                 self.expression(test);
             }
             Stmt::Switch {
@@ -108,10 +111,10 @@ impl AstNodeVisitor {
                     if let Some(test) = &case.test {
                         self.expression(test);
                     }
-                    self.statements(&case.consequent);
+                    self.statements(&case.consequent, false);
                 }
             }
-            Stmt::Labelled { item, .. } | Stmt::ClassField(item) => self.statement(item),
+            Stmt::Labelled { item, .. } | Stmt::ClassField(item) => self.statement(item, false),
             Stmt::Return(value) => {
                 if let Some(value) = value {
                     self.expression(value);
@@ -122,17 +125,17 @@ impl AstNodeVisitor {
                 handler,
                 finalizer,
             } => {
-                self.statements(block);
+                self.statements(block, false);
                 if let Some(handler) = handler {
                     self.catch_clause(handler);
                 }
                 if let Some(finalizer) = finalizer {
-                    self.statements(finalizer);
+                    self.statements(finalizer, false);
                 }
             }
             Stmt::With { object, body } => {
                 self.expression(object);
-                self.statement(body);
+                self.statement(body, false);
             }
             Stmt::FunctionDecl(function) | Stmt::ModuleDefaultFunction { function, .. } => {
                 self.function(function)
@@ -142,7 +145,7 @@ impl AstNodeVisitor {
     }
 
     fn expression(&mut self, expression: &Expr) {
-        self.push(BlueJsAstNodeKind::Expression);
+        self.push(BlueJsAstNodeKind::Expression, false);
         match expression {
             Expr::Number(_)
             | Expr::BigInt(_)
@@ -204,7 +207,7 @@ impl AstNodeVisitor {
                 }
                 match body {
                     ArrowBody::Expr(expression) => self.expression(expression),
-                    ArrowBody::Block(statements) => self.statements(statements),
+                    ArrowBody::Block(statements) => self.statements(statements, false),
                 }
             }
             Expr::Unary { arg, .. } | Expr::Update { arg, .. } => self.expression(arg),
@@ -257,7 +260,7 @@ impl AstNodeVisitor {
         for parameter in &function.params {
             self.parameter(parameter);
         }
-        self.statements(&function.body);
+        self.statements(&function.body, false);
     }
 
     fn parameter(&mut self, parameter: &Param) {
@@ -286,7 +289,7 @@ impl AstNodeVisitor {
                         self.expression(initializer);
                     }
                 }
-                ClassElement::StaticBlock(statements) => self.statements(statements),
+                ClassElement::StaticBlock(statements) => self.statements(statements, false),
             }
         }
     }
@@ -321,7 +324,7 @@ impl AstNodeVisitor {
         if let Some(parameter) = &handler.param {
             self.pattern(parameter);
         }
-        self.statements(&handler.body);
+        self.statements(&handler.body, false);
     }
 
     fn pattern(&mut self, pattern: &Pattern) {
