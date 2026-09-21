@@ -3,6 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::script::{
+    direct_page::{DirectPageScriptHost, DirectPageScriptKind, DirectPageScriptRequest},
+    host_typings::{HostTypeSurfaceCatalogV1, HostTypeSurfaceV1},
+};
+use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, CompilerOptions, LANGUAGE_VERSION};
 use std::net::TcpListener;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
@@ -79,6 +84,91 @@ fn handshake(client: &mut UnixStream) {
 fn default_page(tabs: &mut TabManager) -> &mut Page {
     let default = tabs.default_tab();
     tabs.get_mut(default).unwrap()
+}
+
+fn admitted_direct_page_host(tabs: &TabManager, tab_id: TabId) -> DirectPageScriptHost {
+    let profiles = HostTypeSurfaceCatalogV1::new([HostTypeSurfaceV1::new(
+        LANGUAGE_VERSION,
+        "session-page-v1",
+        "session-empty-v1",
+        Vec::new(),
+    )])
+    .unwrap();
+    let artifact = profiles.generate("session-empty-v1").unwrap();
+    let loader =
+        AuthorizedModuleLoader::new([AuthorizedModule::new("page:///app/main.ts", "42;")], [])
+            .unwrap();
+    let mut host = DirectPageScriptHost::new(profiles);
+    assert_eq!(
+        host.execute(
+            tabs,
+            DirectPageScriptRequest {
+                tab_id,
+                kind: DirectPageScriptKind::Classic,
+                entry: "page:///app/main.ts".to_string(),
+                loader: &loader,
+                compiler_options: CompilerOptions::default(),
+                feature_profile: "session-empty-v1".to_string(),
+                supplied_manifest: &artifact.manifest,
+                supplied_declaration_source: &artifact.declaration_source,
+                supplied_runtime_bindings: &artifact.runtime_bindings,
+            },
+        )
+        .unwrap(),
+        blueice_bluejs::Value::Number(42.0)
+    );
+    host
+}
+
+#[test]
+fn direct_page_host_is_invalidated_by_a_session_document_replacement() {
+    let dir = temp_frame_dir("direct-page-lifecycle");
+    std::fs::create_dir_all(&dir).unwrap();
+    let (mut client, mut server) = client_pair();
+    let client_task = thread::spawn(move || {
+        handshake(&mut client);
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "about:blank".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated { .. }
+        ));
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+    });
+
+    let mut tabs = TabManager::new(320.0, 200.0);
+    let tab_id = tabs.default_tab();
+    tabs.get_mut(tab_id).unwrap().load_html_str(
+        "<main id=\"app\"></main>",
+        Some("https://example.test/app/index.html".to_string()),
+    );
+    let mut direct_page_host = admitted_direct_page_host(&tabs, tab_id);
+    assert_eq!(direct_page_host.debug_record_count(), 1);
+    let mut generation = 0;
+    let unused_gatekeeper = unique_gatekeeper_socket_path("direct-page-lifecycle");
+    run_session_with_script_requests_and_direct_page_host(
+        &mut tabs,
+        &mut server,
+        &dir,
+        &mut generation,
+        &unused_gatekeeper,
+        None,
+        Some(&mut direct_page_host),
+    )
+    .unwrap();
+    client_task.join().unwrap();
+
+    assert_eq!(direct_page_host.debug_record_count(), 0);
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]

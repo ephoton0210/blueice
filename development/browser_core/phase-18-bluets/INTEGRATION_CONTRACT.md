@@ -81,8 +81,11 @@ so a same-origin document replacement cannot retain the preceding document's
 programs or static metadata. A missing tab, URL-less page, or unsupported
 scheme closes any tracked realm for that tab and fails the request. A
 lifecycle owner MAY call `synchronize_tabs` to release realms for closed tabs;
-the current session loop does not yet own this adapter, so this is not a claim
-of automatic HTML page-script execution or launcher-managed process wiring.
+the optional
+`run_session_with_script_requests_and_direct_page_host` entry point invokes it
+after each session batch. The default session and production binary do not yet
+construct a host, so this is not a claim of automatic HTML page-script
+execution or launcher-managed process wiring.
 
 One page realm owns at most one live or previously linked program for each
 canonical ESM module ID. BlueJS retains module cells by that ID, so a second

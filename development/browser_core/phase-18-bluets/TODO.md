@@ -192,10 +192,13 @@ or second module resolver to bypass them.
   it on a same-origin replacement; `synchronize_tabs` also prunes a realm when
   its tab is gone. Blank and built-in pages fail closed until they receive an
   explicit origin policy. This remains an in-process core API, not the
-  launcher-managed BlueJS process or an HTML script loader; `run_session` does
-  not yet own this host or call its lifecycle synchronization, and no DOM
-  bindings, source/resolver transport, or normal page-pipeline fixture exists.
-  The prerequisite consequently remains open.
+  launcher-managed BlueJS process or an HTML script loader. The optional
+  `run_session_with_script_requests_and_direct_page_host` entry point now
+  accepts a core-owned host and synchronizes only realms that have already
+  admitted a direct script after every frontend/session lifecycle batch. The
+  default `run_session` and `blueice-core` do not instantiate it yet, and no
+  DOM bindings, source/resolver transport, or normal page-pipeline fixture
+  exists. The prerequisite consequently remains open.
 
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering

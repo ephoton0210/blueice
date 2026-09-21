@@ -51,7 +51,10 @@
 //! error still means disconnect, exactly as before gating existed).
 
 use crate::gatekeeper_client::{self, NavOutcome};
-use crate::{script::ScriptRequestReceiver, Page, TabId, TabManager};
+use crate::{
+    script::{direct_page::DirectPageScriptHost, ScriptRequestReceiver},
+    Page, TabId, TabManager,
+};
 use blueice_dom::NodeId;
 use blueice_ipc::{shm, ClientMessage, NodeAction, ServerMessage, TabSummary};
 use std::collections::HashMap;
@@ -156,6 +159,33 @@ pub fn run_session_with_script_requests<S: Read + Write + ReadTimeout>(
     gatekeeper_socket: &Path,
     script_requests: Option<&ScriptRequestReceiver>,
 ) -> io::Result<()> {
+    run_session_with_script_requests_and_direct_page_host(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        script_requests,
+        None,
+    )
+}
+
+/// Like [`run_session_with_script_requests`], while an optional core-owned
+/// direct BlueTS host observes document/tab lifecycle boundaries. The host
+/// only synchronizes realms that previously admitted a direct script; ordinary
+/// pages never allocate a BlueJS realm merely because the session observed
+/// them. This is an in-process lifecycle seam, not an HTML script loader or
+/// out-of-process BlueJS supervisor.
+pub fn run_session_with_script_requests_and_direct_page_host<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    script_requests: Option<&ScriptRequestReceiver>,
+    direct_page_host: Option<&mut DirectPageScriptHost>,
+) -> io::Result<()> {
+    let mut direct_page_host = direct_page_host;
     // Best-effort: on at least one real platform, setting a read
     // timeout on a Unix domain socket whose peer has *already*
     // disconnected (a client that connects and drops the connection
@@ -174,6 +204,7 @@ pub fn run_session_with_script_requests<S: Read + Write + ReadTimeout>(
     if !perform_handshake(stream)? {
         return Ok(());
     }
+    synchronize_direct_page_host(&mut direct_page_host, tabs)?;
 
     let (completion_tx, completion_rx) = mpsc::channel::<Completion>();
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
@@ -386,7 +417,22 @@ pub fn run_session_with_script_requests<S: Read + Write + ReadTimeout>(
         if let Some(script_requests) = script_requests {
             script_requests.dispatch_pending(tabs);
         }
+        synchronize_direct_page_host(&mut direct_page_host, tabs)?;
     }
+}
+
+fn synchronize_direct_page_host(
+    direct_page_host: &mut Option<&mut DirectPageScriptHost>,
+    tabs: &TabManager,
+) -> io::Result<()> {
+    let Some(direct_page_host) = direct_page_host.as_deref_mut() else {
+        return Ok(());
+    };
+    direct_page_host.synchronize_tabs(tabs).map_err(|error| {
+        io::Error::other(format!(
+            "direct page lifecycle synchronization failed: {error}"
+        ))
+    })
 }
 
 /// Which reply variant a background gated navigation's eventual

@@ -21,10 +21,7 @@ use blueice_bluets::{AuthorizedModuleLoader, CompilerOptions, RuntimePolicy, LAN
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectPageRealmOwner,
 };
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-};
+use std::{collections::BTreeMap, fmt};
 
 /// The only opt-in TypeScript script forms this admission boundary recognizes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,22 +100,22 @@ impl DirectPageScriptHost {
         self.synchronize_live_document(tab_id, target)
     }
 
-    /// Synchronizes every open core tab and releases realms whose tabs have
-    /// closed. Session/page lifecycle owners call this after a lifecycle batch;
-    /// [`Self::execute`] also synchronizes its addressed tab defensively.
+    /// Synchronizes every already-admitted realm with its current core tab and
+    /// releases realms whose tabs have closed or no longer have an HTTP(S)
+    /// document. This deliberately does not allocate VMs for ordinary tabs
+    /// that have never admitted a direct script. Session/page lifecycle owners
+    /// call this after a lifecycle batch; [`Self::execute`] also synchronizes
+    /// its addressed tab defensively.
     pub fn synchronize_tabs(&mut self, tabs: &TabManager) -> Result<(), DirectPageScriptError> {
-        let live_tabs: BTreeSet<_> = tabs.ids().collect();
-        for tab_id in &live_tabs {
-            self.synchronize_tab(tabs, *tab_id)?;
-        }
-        let closed_tabs: Vec<_> = self
-            .live_documents
-            .keys()
-            .copied()
-            .filter(|tab_id| !live_tabs.contains(tab_id))
-            .collect();
-        for tab_id in closed_tabs {
-            self.close_page(tab_id);
+        let tracked_tabs: Vec<_> = self.live_documents.keys().copied().collect();
+        for tab_id in tracked_tabs {
+            match self.synchronize_tab(tabs, tab_id) {
+                Ok(())
+                | Err(DirectPageScriptError::UnknownTab { .. })
+                | Err(DirectPageScriptError::PageHasNoUrl { .. })
+                | Err(DirectPageScriptError::InvalidPageUrl { .. }) => {}
+                Err(error) => return Err(error),
+            }
         }
         Ok(())
     }
@@ -501,6 +498,14 @@ mod tests {
             host.synchronize_tab(&tabs, tab_id),
             Err(DirectPageScriptError::UnknownTab { .. })
         ));
+    }
+
+    #[test]
+    fn synchronizing_tabs_does_not_allocate_a_realm_for_an_unadmitted_page() {
+        let (tabs, _) = loaded_tabs();
+        let mut host = DirectPageScriptHost::new(catalog());
+        host.synchronize_tabs(&tabs).unwrap();
+        assert_eq!(host.debug_record_count(), 0);
     }
 
     #[test]
