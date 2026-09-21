@@ -699,9 +699,14 @@ impl Vm {
         result
     }
 
-    /// Snapshots the enumerable string keys visible through an object's
-    /// prototype chain. Non-enumerable own keys still suppress an inherited
-    /// key with the same name; symbols never participate in `for-in`.
+    /// Snapshots the string keys `for-in` may visit, in enumeration order,
+    /// together with the object each one was found on. Non-enumerable own
+    /// keys still suppress an inherited key with the same name; symbols never
+    /// participate. The result is an enumerator record (`keys`, `holders`,
+    /// `index`) that `for_in_step` advances: EnumerateObjectProperties only
+    /// fixes *which* keys may be produced when the enumeration starts, and a
+    /// property that is deleted (or stops being enumerable) before it is
+    /// reached must be skipped, so each candidate is re-checked lazily.
     pub(super) fn for_in_keys(&mut self, source: &Value) -> Result<Value, RuntimeError> {
         // ForIn/OfHeadEvaluation: a `null` or `undefined` subject enumerates
         // nothing instead of failing ToObject.
@@ -714,6 +719,7 @@ impl Vm {
         let mut seen = HashSet::new();
         let mut visited_objects = HashSet::new();
         let mut keys = Vec::new();
+        let mut holders = Vec::new();
         let result = (|| {
             while let Some(object) = current {
                 // Keep each traversed object live while Proxy traps execute.
@@ -733,14 +739,65 @@ impl Vm {
                             .is_some_and(|descriptor| descriptor.enumerable == Some(true))
                         {
                             keys.push(Value::String(key));
+                            holders.push(Value::Object(object));
                         }
                     }
                 }
                 current = self.object_get_prototype(object)?;
             }
-            self.array_from(keys)
+            let keys = self.array_from(keys)?;
+            self.stack.push(keys.clone());
+            let holders = self.array_from(holders)?;
+            self.stack.push(holders.clone());
+            let record = self.with_roots(|heap| heap.alloc_object(None))?;
+            self.stack.push(Value::Object(record));
+            self.with_roots(|heap| heap.set(record, "keys", keys))?;
+            self.with_roots(|heap| heap.set(record, "holders", holders))?;
+            self.with_roots(|heap| heap.set(record, "index", Value::Number(0.0)))?;
+            Ok(Value::Object(record))
         })();
         self.stack.truncate(base);
         result
+    }
+
+    /// Advances a `for_in_keys` enumerator to the next key that still names an
+    /// enumerable own property of the object it was found on. `None` means
+    /// the enumeration is exhausted.
+    pub(super) fn for_in_step(&mut self, record: &Value) -> Result<Option<Value>, RuntimeError> {
+        let Value::Object(record) = record else {
+            unreachable!("compiler only emits for-in enumerators")
+        };
+        let record = *record;
+        let (Some(Value::Object(keys)), Some(Value::Object(holders)), Some(Value::Number(index))) = (
+            self.heap.get_own(record, "keys")?,
+            self.heap.get_own(record, "holders")?,
+            self.heap.get_own(record, "index")?,
+        ) else {
+            unreachable!("for-in enumerators are built by for_in_keys")
+        };
+        let Some(Value::Number(length)) = self.heap.get_own(keys, "length")? else {
+            unreachable!("for-in enumerator keys are an Array")
+        };
+        let length = length as usize;
+        let mut index = index as usize;
+        while index < length {
+            self.charge_step()?;
+            let (Some(Value::String(key)), Some(Value::Object(holder))) = (
+                self.heap.get_own(keys, index.to_string())?,
+                self.heap.get_own(holders, index.to_string())?,
+            ) else {
+                unreachable!("for-in enumerators hold a key and a holder per index")
+            };
+            index += 1;
+            if self
+                .object_get_own_property(holder, &PropertyName::String(key.clone()))?
+                .is_some_and(|descriptor| descriptor.enumerable == Some(true))
+            {
+                self.with_roots(|heap| heap.set(record, "index", Value::Number(index as f64)))?;
+                return Ok(Some(Value::String(key)));
+            }
+        }
+        self.with_roots(|heap| heap.set(record, "index", Value::Number(length as f64)))?;
+        Ok(None)
     }
 }

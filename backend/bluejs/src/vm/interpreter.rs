@@ -510,6 +510,16 @@ impl Vm {
                         self.pop();
                         self.stack.push(keys);
                     }
+                    Opcode::ForInStep => {
+                        let record = self.stack.last().unwrap().clone();
+                        let key = self.for_in_step(&record)?;
+                        self.pop();
+                        if let Some(key) = key {
+                            self.stack.push(key);
+                        } else {
+                            pc = operand;
+                        }
+                    }
                     Opcode::IteratorStep => {
                         let record = self.stack.last().unwrap().clone();
                         iterators.retain(|active| active != &record);

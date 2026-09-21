@@ -139,7 +139,11 @@ opcodes! {
     IteratorNext: 5, 0;
     IteratorStepValue: 5, 0;
     GetAsyncIterator: 1, 0;
+    // `for-in`: `ForInKeys` replaces the subject with an enumerator record and
+    // `ForInStep` (operand: exit target) advances it like `IteratorStep`, but
+    // skips a property deleted since the enumeration began.
     ForInKeys: 1, 0;
+    ForInStep: 5, 0;
     IteratorStep: 5, 0;
     AsyncIteratorNext: 5, 0;
     AsyncIteratorStep: 5, 0;

@@ -1197,20 +1197,26 @@ impl Compiler {
         }
         self.expression(right)?;
         if for_in {
+            // An enumerator record, not an iterator: EnumerateObjectProperties
+            // is not observable through `@@iterator`, and a `for-in` never
+            // closes it.
             self.emit(Opcode::ForInKeys, 0)?;
+        } else {
+            self.emit(
+                if is_await {
+                    Opcode::GetAsyncIterator
+                } else {
+                    Opcode::GetIterator
+                },
+                0,
+            )?;
         }
-        self.emit(
-            if is_await {
-                Opcode::GetAsyncIterator
-            } else {
-                Opcode::GetIterator
-            },
-            0,
-        )?;
         self.emit(Opcode::InitializeBinding, iterator)?;
         let start = self.offset()?;
         self.emit(Opcode::GetBinding, iterator)?;
-        let exit = if is_await {
+        let exit = if for_in {
+            self.emit(Opcode::ForInStep, 0)?
+        } else if is_await {
             self.emit(Opcode::AsyncIteratorNext, 0)?;
             self.emit(Opcode::Await, 0)?;
             self.emit(Opcode::AsyncIteratorStep, 0)?
@@ -1223,7 +1229,7 @@ impl Compiler {
             scope_depth: self.scopes.len(),
             breaks: Vec::new(),
             continues: Some(Vec::new()),
-            iterator: Some(iterator),
+            iterator: (!for_in).then_some(iterator),
         });
         if lexical {
             self.enter_scope(
