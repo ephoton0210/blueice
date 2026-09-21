@@ -5,6 +5,31 @@
 use super::*;
 
 impl Vm {
+    /// `%Object.prototype%.hasOwnProperty` and `.propertyIsEnumerable` are
+    /// installed on first ordinary lookup. Every reflective internal method
+    /// on that object ([[GetOwnProperty]], [[DefineOwnProperty]], [[Delete]],
+    /// [[OwnPropertyKeys]]) must see them as the ordinary own properties they
+    /// are: without this a first `Object.defineProperty` would define a fresh
+    /// non-configurable property, and a first `delete` would report success
+    /// yet leave the method to be installed again by the next lookup. `key` is
+    /// `None` for [[OwnPropertyKeys]].
+    pub(in super::super) fn materialize_object_prototype_methods(
+        &mut self,
+        object: ObjectId,
+        key: Option<&PropertyName>,
+    ) -> Result<(), RuntimeError> {
+        if object != self.object_prototype {
+            return Ok(());
+        }
+        if key.is_none_or(|key| key == "propertyIsEnumerable") {
+            self.property_is_enumerable_intrinsic()?;
+        }
+        if key.is_none_or(|key| key == "hasOwnProperty") {
+            self.has_own_property_intrinsic()?;
+        }
+        Ok(())
+    }
+
     /// [[GetOwnProperty]] dispatch used by descriptor APIs, Proxy invariants,
     /// and receiver-aware [[Set]].  Ordinary heap records stay below this
     /// boundary; every Proxy operation re-enters through the VM so its trap
@@ -31,14 +56,7 @@ impl Vm {
         // lookup. [[GetOwnProperty]] is also observable through descriptor
         // APIs, however, so it must not expose a transient lazy-intrinsic
         // absence to Object.getOwnPropertyDescriptor.
-        if object == self.object_prototype {
-            if key == "propertyIsEnumerable" {
-                self.property_is_enumerable_intrinsic()?;
-            }
-            if key == "hasOwnProperty" {
-                self.has_own_property_intrinsic()?;
-            }
-        }
+        self.materialize_object_prototype_methods(object, Some(key))?;
         // Likewise, %Function.prototype%'s constructor is installed while
         // materializing %Function%. A reflective lookup needs the same
         // observable property that `fn.constructor` receives through [[Get]].
@@ -63,6 +81,7 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_define_own_property(object, key, descriptor);
         }
+        self.materialize_object_prototype_methods(object, Some(&key))?;
         if self.test262_foreign_reference(object).is_some() {
             return self.test262_foreign_define_own_property(object, key, descriptor);
         }
@@ -145,6 +164,7 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_delete(object, key);
         }
+        self.materialize_object_prototype_methods(object, Some(key))?;
         self.heap.delete(object, key).map_err(Into::into)
     }
 
@@ -159,47 +179,18 @@ impl Vm {
         if self.heap.proxy(object)?.is_none() && self.test262_foreign_reference(object).is_some() {
             return self.test262_foreign_own_property_keys(object);
         }
+        self.materialize_object_prototype_methods(object, None)?;
         // Global built-ins are initialized on demand to keep ordinary realms
         // compact. [[OwnPropertyKeys]] is nevertheless a reflective view of
-        // the realm record, so it must expose the standard global properties
+        // the realm record, so it must expose every standard global property
         // even when no direct identifier/property access has initialized
-        // them yet. Keep this to the P0 realm surface rather than creating
-        // later-phase collection and asynchronous library globals here.
+        // them yet: the same set `Object.preventExtensions(globalThis)`
+        // creates before it closes the object.
         if self.globals.get("globalThis") == Some(&object) {
-            for name in [
-                "undefined",
-                "NaN",
-                "Infinity",
-                "eval",
-                "parseInt",
-                "parseFloat",
-                "isNaN",
-                "isFinite",
-                "decodeURI",
-                "decodeURIComponent",
-                "encodeURI",
-                "encodeURIComponent",
-                "escape",
-                "unescape",
-                "Object",
-                "Function",
-                "Array",
-                "String",
-                "Boolean",
-                "Number",
-                "Date",
-                "RegExp",
-                "Error",
-                "EvalError",
-                "RangeError",
-                "ReferenceError",
-                "SyntaxError",
-                "TypeError",
-                "URIError",
-                "Math",
-                "JSON",
-                "Iterator",
-            ] {
+            for name in ["undefined", "NaN", "Infinity"]
+                .iter()
+                .chain(super::super::execution::LAZY_STANDARD_GLOBALS)
+            {
                 self.materialize_lexical_global(object, name)?;
             }
         }
