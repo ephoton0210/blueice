@@ -384,6 +384,13 @@ impl Page {
         crate::script::discover_blue_ts_page_scripts(&self.doc)
     }
 
+    /// Returns supported standard JavaScript declarations in source order.
+    /// Like the BlueTS accessor, this is observation only: an external `src`
+    /// remains inert until a core-owned host authorizes a closed source graph.
+    pub fn blue_js_script_declarations(&self) -> Vec<crate::script::BlueJsPageScriptDeclaration> {
+        crate::script::discover_blue_js_page_scripts(&self.doc)
+    }
+
     /// The identity of the currently loaded document within this page.
     ///
     /// This is intentionally crate-visible: it is a core lifecycle token, not
@@ -672,6 +679,35 @@ mod tests {
                     ordinal: 1,
                     kind: crate::script::direct_page::DirectPageScriptKind::Module,
                     src: "/module.ts".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn page_exposes_standard_javascript_declarations_separately_from_bluets() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"
+                <script>const javascript = true;</script>
+                <script type="module">export const module = true;</script>
+                <script type="application/x-blueice-typescript">const typed: number = 42;</script>
+            "#,
+            Some("https://example.test/".to_string()),
+        );
+
+        assert_eq!(
+            page.blue_js_script_declarations(),
+            vec![
+                crate::script::BlueJsPageScriptDeclaration::Inline {
+                    ordinal: 0,
+                    kind: crate::script::BlueJsPageScriptKind::Classic,
+                    source: "const javascript = true;".to_string(),
+                },
+                crate::script::BlueJsPageScriptDeclaration::Inline {
+                    ordinal: 1,
+                    kind: crate::script::BlueJsPageScriptKind::Module,
+                    source: "export const module = true;".to_string(),
                 },
             ]
         );

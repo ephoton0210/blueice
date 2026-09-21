@@ -56,14 +56,16 @@ use crate::{
     script::{
         direct_page::{DirectPageScriptHost, DirectPageScriptKind},
         inline_runner::{DirectPageInlineExecutor, DirectPageScriptExecutionReport},
+        javascript::{JavaScriptPageExecutionReport, JavaScriptPageExecutor},
         ScriptRequestReceiver,
     },
     Page, TabId, TabManager,
 };
 use blueice_dom::NodeId;
 use blueice_ipc::{
-    shm, BlueTsScriptExecutionOutcome, BlueTsScriptExecutionReport, BlueTsScriptKind,
-    ClientMessage, NodeAction, ServerMessage, TabSummary,
+    shm, BlueJsScriptExecutionOutcome, BlueJsScriptExecutionReport, BlueJsScriptKind,
+    BlueTsScriptExecutionOutcome, BlueTsScriptExecutionReport, BlueTsScriptKind, ClientMessage,
+    NodeAction, ServerMessage, TabSummary,
 };
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -105,6 +107,7 @@ pub struct CoreSessionRequests<'a> {
 struct PageScriptRuntime<'a> {
     direct_page_host: Option<&'a mut DirectPageScriptHost>,
     inline_page_executor: Option<&'a mut DirectPageInlineExecutor>,
+    inline_javascript_executor: Option<&'a mut JavaScriptPageExecutor>,
 }
 
 #[cfg(unix)]
@@ -225,6 +228,7 @@ pub fn run_session_with_script_requests_and_direct_page_host<S: Read + Write + R
         PageScriptRuntime {
             direct_page_host,
             inline_page_executor: None,
+            inline_javascript_executor: None,
         },
     )
 }
@@ -256,6 +260,7 @@ pub fn run_session_with_script_requests_and_inline_page_executor<S: Read + Write
         PageScriptRuntime {
             direct_page_host: None,
             inline_page_executor,
+            inline_javascript_executor: None,
         },
     )
 }
@@ -286,6 +291,7 @@ pub fn run_session_with_script_and_debugger_requests<S: Read + Write + ReadTimeo
         PageScriptRuntime {
             direct_page_host: None,
             inline_page_executor: None,
+            inline_javascript_executor: None,
         },
     )
 }
@@ -315,13 +321,46 @@ pub fn run_session_with_script_and_debugger_requests_and_inline_page_executor<
         PageScriptRuntime {
             direct_page_host: None,
             inline_page_executor,
+            inline_javascript_executor: None,
+        },
+    )
+}
+
+/// Like [`run_session_with_script_and_debugger_requests`], while running one
+/// explicitly enabled standard-JavaScript page executor. This remains a
+/// bounded in-process host seam: it has no DOM bindings and may not be paired
+/// with the separate BlueTS executor, which would otherwise allocate a second
+/// realm for the same page.
+pub fn run_session_with_script_and_debugger_requests_and_inline_javascript_executor<
+    S: Read + Write + ReadTimeout,
+>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    requests: CoreSessionRequests<'_>,
+    inline_javascript_executor: Option<&mut JavaScriptPageExecutor>,
+) -> io::Result<()> {
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        requests,
+        PageScriptRuntime {
+            direct_page_host: None,
+            inline_page_executor: None,
+            inline_javascript_executor,
         },
     )
 }
 
 /// Shared session implementation for the observer-only direct host and the
-/// explicitly enabled inline runner. [`PageScriptRuntime`] rejects both at
-/// once: independent hosts would allocate separate page realms for one page.
+/// explicitly enabled inline runners. [`PageScriptRuntime`] rejects multiple
+/// hosts at once: independent hosts would allocate separate page realms for
+/// one page.
 fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     tabs: &mut TabManager,
     stream: &mut S,
@@ -329,14 +368,21 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     generation: &mut u64,
     gatekeeper_socket: &Path,
     requests: CoreSessionRequests<'_>,
-    page_script_runtime: PageScriptRuntime<'_>,
+    mut page_script_runtime: PageScriptRuntime<'_>,
 ) -> io::Result<()> {
-    let mut direct_page_host = page_script_runtime.direct_page_host;
-    let mut inline_page_executor = page_script_runtime.inline_page_executor;
-    if direct_page_host.is_some() && inline_page_executor.is_some() {
+    if [
+        page_script_runtime.direct_page_host.is_some(),
+        page_script_runtime.inline_page_executor.is_some(),
+        page_script_runtime.inline_javascript_executor.is_some(),
+    ]
+    .into_iter()
+    .filter(|enabled| *enabled)
+    .count()
+        > 1
+    {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "direct page host observer and inline executor cannot share one session",
+            "page-script runtime owners cannot share one session",
         ));
     }
     // Best-effort: on at least one real platform, setting a read
@@ -357,7 +403,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     if !perform_handshake(stream)? {
         return Ok(());
     }
-    synchronize_page_script_runtime(&mut direct_page_host, &mut inline_page_executor, tabs)?;
+    synchronize_page_script_runtime(&mut page_script_runtime, tabs)?;
 
     let (completion_tx, completion_rx) = mpsc::channel::<Completion>();
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
@@ -468,7 +514,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
                     ClientMessage::GetBlueTsScriptReports => match tabs.get(target) {
-                        Some(_) => match inline_page_executor.as_deref_mut() {
+                        Some(_) => match page_script_runtime.inline_page_executor.as_deref_mut() {
                             Some(executor) => blueice_ipc::write_server_message_with_ids(
                                 stream,
                                 reply_tab,
@@ -482,6 +528,30 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                                 reply_tab,
                                 request_id,
                                 "inline BlueTS execution is not enabled".to_string(),
+                            )?,
+                        },
+                        None => write_unknown_tab_error(stream, request_id, target)?,
+                    },
+                    ClientMessage::GetBlueJsScriptReports => match tabs.get(target) {
+                        Some(_) => match page_script_runtime
+                            .inline_javascript_executor
+                            .as_deref_mut()
+                        {
+                            Some(executor) => blueice_ipc::write_server_message_with_ids(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                &ServerMessage::BlueJsScriptReports(
+                                    inline_javascript_execution_reports(
+                                        executor.drain_reports_for_tab(target),
+                                    ),
+                                ),
+                            )?,
+                            None => write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "inline JavaScript execution is not enabled".to_string(),
                             )?,
                         },
                         None => write_unknown_tab_error(stream, request_id, target)?,
@@ -584,7 +654,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                 generation,
                 &pending_nav_seq,
                 completion,
-                &mut inline_page_executor,
+                &mut page_script_runtime,
             )?;
         }
         if let Some(script_requests) = requests.script {
@@ -593,7 +663,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
         if let Some(debugger_requests) = requests.debugger {
             debugger_requests.dispatch_pending(tabs);
         }
-        synchronize_page_script_runtime(&mut direct_page_host, &mut inline_page_executor, tabs)?;
+        synchronize_page_script_runtime(&mut page_script_runtime, tabs)?;
     }
 }
 
@@ -642,19 +712,84 @@ fn inline_script_kind(kind: DirectPageScriptKind) -> BlueTsScriptKind {
     }
 }
 
+/// Converts core-owned standard JavaScript execution records into the public
+/// source-free observation format. As with BlueTS reports, no source,
+/// diagnostic, bytecode, program identity, or completion value can cross this
+/// control-plane query.
+fn inline_javascript_execution_reports(
+    reports: Vec<JavaScriptPageExecutionReport>,
+) -> Vec<BlueJsScriptExecutionReport> {
+    reports
+        .into_iter()
+        .map(|report| match report {
+            JavaScriptPageExecutionReport::Executed {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+            } => BlueJsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: inline_javascript_kind(kind),
+                outcome: BlueJsScriptExecutionOutcome::Executed,
+            },
+            JavaScriptPageExecutionReport::Rejected {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+                category,
+            } => BlueJsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: inline_javascript_kind(kind),
+                outcome: BlueJsScriptExecutionOutcome::Rejected {
+                    category: category.to_string(),
+                },
+            },
+        })
+        .collect()
+}
+
+fn inline_javascript_kind(kind: crate::script::BlueJsPageScriptKind) -> BlueJsScriptKind {
+    match kind {
+        crate::script::BlueJsPageScriptKind::Classic => BlueJsScriptKind::Classic,
+        crate::script::BlueJsPageScriptKind::Module => BlueJsScriptKind::Module,
+    }
+}
+
 fn synchronize_page_script_runtime(
-    direct_page_host: &mut Option<&mut DirectPageScriptHost>,
-    inline_page_executor: &mut Option<&mut DirectPageInlineExecutor>,
+    page_script_runtime: &mut PageScriptRuntime<'_>,
     tabs: &TabManager,
 ) -> io::Result<()> {
-    if let Some(direct_page_host) = direct_page_host.as_deref_mut() {
+    if let Some(direct_page_host) = page_script_runtime.direct_page_host.as_deref_mut() {
         direct_page_host.synchronize_tabs(tabs).map_err(|error| {
             io::Error::other(format!(
                 "direct page lifecycle synchronization failed: {error}"
             ))
         })?;
     }
-    synchronize_inline_page_executor(inline_page_executor, tabs)?;
+    synchronize_inline_page_executor(&mut page_script_runtime.inline_page_executor, tabs)?;
+    synchronize_inline_javascript_executor(
+        &mut page_script_runtime.inline_javascript_executor,
+        tabs,
+    )?;
+    Ok(())
+}
+
+fn synchronize_inline_javascript_executor(
+    inline_javascript_executor: &mut Option<&mut JavaScriptPageExecutor>,
+    tabs: &TabManager,
+) -> io::Result<()> {
+    if let Some(inline_javascript_executor) = inline_javascript_executor.as_deref_mut() {
+        inline_javascript_executor
+            .synchronize_and_execute(tabs)
+            .map_err(|error| {
+                io::Error::other(format!("inline JavaScript execution failed: {error}"))
+            })?;
+    }
     Ok(())
 }
 
@@ -815,7 +950,7 @@ fn apply_completion<S: Write>(
     generation: &mut u64,
     pending_nav_seq: &HashMap<TabId, u64>,
     completion: Completion,
-    inline_page_executor: &mut Option<&mut DirectPageInlineExecutor>,
+    page_script_runtime: &mut PageScriptRuntime<'_>,
 ) -> io::Result<()> {
     let Completion {
         tab_id,
@@ -843,7 +978,7 @@ fn apply_completion<S: Write>(
             // A configured runner observes the loaded document before its
             // first success reply/frame. This preserves future DOM script
             // semantics while the default session has no runner at all.
-            synchronize_inline_page_executor(inline_page_executor, tabs)?;
+            synchronize_page_script_runtime(page_script_runtime, tabs)?;
             let page = tabs
                 .get(tab_id)
                 .expect("the session thread exclusively owns the checked tab");

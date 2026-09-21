@@ -656,6 +656,125 @@ fn real_subprocess_executes_an_opted_in_inline_bluets_profile_and_reports_source
 }
 
 #[test]
+fn real_subprocess_executes_opted_in_standard_javascript_and_reports_source_free_outcomes() {
+    // This is the Phase 13 page-host process proof: ordinary HTML scripts
+    // travel through real HTTP navigation into the compiled core binary, share
+    // its tab/document realm lifecycle, and expose only bounded outcomes.
+    let socket_path = unique_socket_path("inline-bluejs");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-inline-bluejs-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("ij-gk");
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = concat!(
+            "<main>inline JavaScript process proof</main>",
+            "<script>const classicAnswer = 42;</script>",
+            "<script type=\"module\">export const moduleAnswer = 43;</script>",
+            "<script>const = malformed;</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+            "--inline-bluejs",
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn blueice-core");
+
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut stream).unwrap();
+    let url = format!("http://{addr}");
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url }
+    );
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
+    ));
+
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueJsScriptReports,
+    )
+    .unwrap();
+    let reports = match blueice_ipc::read_server_message(&mut stream).unwrap() {
+        blueice_ipc::ServerMessage::BlueJsScriptReports(reports) => reports,
+        other => panic!("expected BlueJsScriptReports, got {other:?}"),
+    };
+    assert_eq!(
+        reports,
+        vec![
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 0,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 1,
+                kind: blueice_ipc::BlueJsScriptKind::Module,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 2,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Rejected {
+                    category: "JavaScript parsing rejected the page script".to_string(),
+                },
+            },
+        ]
+    );
+    assert!(reports.iter().all(|report| match &report.outcome {
+        blueice_ipc::BlueJsScriptExecutionOutcome::Executed => true,
+        blueice_ipc::BlueJsScriptExecutionOutcome::Rejected { category } => {
+            !category.contains("const = malformed")
+        }
+    }));
+
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(!socket_path.exists());
+    assert!(!frame_dir.exists());
+}
+
+#[test]
 fn real_subprocess_rejects_an_oversized_document_text_binding_before_inline_admission() {
     // The profile's document-text boundary has a core-selected 1 MiB contract
     // limit. Exercise it through real navigation and process IPC so the page

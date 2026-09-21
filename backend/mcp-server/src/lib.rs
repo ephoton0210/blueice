@@ -205,6 +205,7 @@ mod unix {
                 ServerMessage::Navigated { .. }
                 | ServerMessage::Dom(_)
                 | ServerMessage::BlueTsScriptReports(_)
+                | ServerMessage::BlueJsScriptReports(_)
                 | ServerMessage::Hello { .. }
                 | ServerMessage::Unknown
                 // `mcp-server` doesn't call `OpenTab`/`CloseTab`/`ListTabs`
@@ -285,6 +286,7 @@ mod unix {
                     | ServerMessage::Navigated { .. }
                     | ServerMessage::Dom(_)
                     | ServerMessage::BlueTsScriptReports(_)
+                    | ServerMessage::BlueJsScriptReports(_)
                     | ServerMessage::Hello { .. }
                     | ServerMessage::Unknown
                     | ServerMessage::TabOpened { .. }
@@ -337,6 +339,7 @@ mod unix {
                     | ServerMessage::Navigated { .. }
                     | ServerMessage::Representation(_)
                     | ServerMessage::BlueTsScriptReports(_)
+                    | ServerMessage::BlueJsScriptReports(_)
                     | ServerMessage::Hello { .. }
                     | ServerMessage::Unknown
                     | ServerMessage::TabOpened { .. }
@@ -436,6 +439,7 @@ mod unix {
                     | ServerMessage::Dom(_)
                     | ServerMessage::Representation(_)
                     | ServerMessage::BlueTsScriptReports(_)
+                    | ServerMessage::BlueJsScriptReports(_)
                     | ServerMessage::Hello { .. }
                     | ServerMessage::Unknown
                     | ServerMessage::TabClosed { .. }
@@ -485,6 +489,7 @@ mod unix {
                     | ServerMessage::Dom(_)
                     | ServerMessage::Representation(_)
                     | ServerMessage::BlueTsScriptReports(_)
+                    | ServerMessage::BlueJsScriptReports(_)
                     | ServerMessage::Hello { .. }
                     | ServerMessage::Unknown
                     | ServerMessage::TabOpened { .. }
@@ -533,6 +538,7 @@ mod unix {
                     | ServerMessage::Dom(_)
                     | ServerMessage::Representation(_)
                     | ServerMessage::BlueTsScriptReports(_)
+                    | ServerMessage::BlueJsScriptReports(_)
                     | ServerMessage::Hello { .. }
                     | ServerMessage::Unknown
                     | ServerMessage::TabOpened { .. }

@@ -92,6 +92,35 @@ or second module resolver to bypass them.
   is reported source-free. This does not make the script-socket dispatcher a
   JavaScript binding or close the real out-of-process host acceptance.
 
+  `blueice_engine::script::javascript::JavaScriptPageExecutor` now supplies
+  the first bounded standard-JavaScript page-pipeline seam. It recognizes
+  classic `<script>` declarations (missing/empty or common JavaScript MIME
+  `type`) and `type="module"` separately from BlueTS, runs them only when its
+  core owner explicitly synchronizes it, and uses the public `BlueJsPageRuntime`
+  for an HTTP(S)-origin-bound realm per tab/document generation. Inline source
+  receives a core-minted canonical identity and deterministic content hash;
+  source is capped at 1 MiB per module, graphs at 128 modules, and BlueJS's
+  fixed realm/program/bytecode limits apply before execution. Replacement,
+  close, an unsupported origin, parse/compile/runtime failure, and an
+  over-budget source leave source-free fixed outcome categories; one rejected
+  declaration does not suppress a later declaration. External `src` fails
+  closed by default. The only opt-in external authority is a core-owned
+  `JavaScriptPageSourceAuthorizer`, which returns a closed graph of canonical
+  source records plus every static `(from, specifier) -> canonical target`
+  record; before compiling, the executor rewrites each static request to that
+  canonical target and rejects a missing edge before admitting any graph
+  program. It never fetches, performs URL/import-map lookup, or falls back to
+  relative resolution. `blueice-core --inline-bluejs` is disabled by default,
+  cannot be combined with the separate experimental BlueTS executor (so one
+  page cannot receive two independent VMs), and exposes a tab-addressed drain
+  of bounded source-free `GetBlueJsScriptReports` records. A real subprocess
+  HTTP fixture proves classic and module scripts execute in document order and
+  that a parse rejection is redacted. This is an in-process, no-DOM-binding
+  foundation: no launcher-managed/out-of-process BlueJS process, production
+  fetch/cache/integrity authorizer, shared JavaScript/BlueTS realm, host-wide
+  memory accounting, or JavaScript DOM binding is claimed, so the prerequisite
+  remains open.
+
   Acceptance: a page fixture can run a supported JavaScript classic script and
   module in its own realm; navigation/reload invalidates old program handles;
   an over-budget compilation fails without executing a partial program.

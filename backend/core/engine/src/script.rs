@@ -29,9 +29,11 @@ pub mod direct_page;
 /// matching direct-page runtime binding.
 pub mod host_typings;
 pub mod inline_runner;
+pub mod javascript;
 pub mod page_source_authorizer;
 pub use declarations::{
-    discover_blue_ts_page_scripts, BlueTsPageScriptDeclaration, BLUE_TS_CLASSIC_SCRIPT_TYPE,
+    discover_blue_js_page_scripts, discover_blue_ts_page_scripts, BlueJsPageScriptDeclaration,
+    BlueJsPageScriptKind, BlueTsPageScriptDeclaration, BLUE_TS_CLASSIC_SCRIPT_TYPE,
     BLUE_TS_MODULE_SCRIPT_TYPE,
 };
 

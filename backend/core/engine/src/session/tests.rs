@@ -7,6 +7,7 @@ use crate::script::{
     direct_page::{DirectInlinePageScriptRequest, DirectPageScriptHost},
     host_typings::{HostTypeSurfaceCatalogV1, HostTypeSurfaceV1},
     inline_runner::{DirectPageInlineExecutor, DirectPageScriptExecutionReport},
+    javascript::JavaScriptPageExecutor,
     page_source_authorizer::{
         AuthorizedPageScriptGraph, PageScriptSourceAuthorizationError, PageScriptSourceAuthorizer,
         PageScriptSourceRequest,
@@ -295,6 +296,103 @@ fn script_reports_query_does_not_enable_the_default_session_executor() {
     blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
 
     handle.join().unwrap();
+}
+
+#[test]
+fn inline_javascript_scripts_execute_after_a_real_session_navigation() {
+    let dir = temp_frame_dir("inline-javascript-page-pipeline");
+    std::fs::create_dir_all(&dir).unwrap();
+    let gatekeeper = clearing_gatekeeper("inline-javascript-page-pipeline");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0u8; 1024];
+        let _ = std::io::Read::read(&mut stream, &mut request);
+        let body = concat!(
+            "<script>const classicAnswer = 42;</script>",
+            "<script type=\"module\">export const moduleAnswer = 43;</script>",
+            "<script>const = malformed;</script>"
+        );
+        std::io::Write::write_all(
+            &mut stream,
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    });
+
+    let (mut client, mut server) = client_pair();
+    let dir_for_thread = dir.clone();
+    let gatekeeper_for_thread = gatekeeper.clone();
+    let handle = thread::spawn(move || {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let mut generation = 0;
+        let mut executor = JavaScriptPageExecutor::default();
+        run_session_with_script_and_debugger_requests_and_inline_javascript_executor(
+            &mut tabs,
+            &mut server,
+            &dir_for_thread,
+            &mut generation,
+            &gatekeeper_for_thread,
+            CoreSessionRequests::default(),
+            Some(&mut executor),
+        )
+        .unwrap();
+    });
+    handshake(&mut client);
+    blueice_ipc::write_client_message(
+        &mut client,
+        &ClientMessage::Navigate {
+            url: format!("http://{address}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut client).unwrap(),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut client).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
+    blueice_ipc::write_client_message(&mut client, &ClientMessage::GetBlueJsScriptReports).unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut client).unwrap(),
+        ServerMessage::BlueJsScriptReports(vec![
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 0,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 1,
+                kind: blueice_ipc::BlueJsScriptKind::Module,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 2,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Rejected {
+                    category: "JavaScript parsing rejected the page script".to_string(),
+                },
+            },
+        ])
+    );
+    blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+
+    handle.join().unwrap();
+    let _ = std::fs::remove_file(gatekeeper);
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]

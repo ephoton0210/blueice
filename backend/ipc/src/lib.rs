@@ -145,6 +145,11 @@ pub enum ClientMessage {
     /// This is observability only: it neither enables inline execution nor
     /// exposes a script's source, diagnostics, or runtime values.
     GetBlueTsScriptReports,
+    /// Requests source-free execution outcomes for standard JavaScript scripts
+    /// in the addressed tab, replied to with [`ServerMessage::BlueJsScriptReports`].
+    /// This is observability only: it neither enables JavaScript execution nor
+    /// exposes a script's source, diagnostics, or runtime values.
+    GetBlueJsScriptReports,
     /// Opens a new, blank tab, replied to with [`ServerMessage::TabOpened`]
     /// -- `phase-16-multi-tab-and-tab-groups/PLAN.md`'s minimal first
     /// slice. `url` is optional purely for convenience (equivalent to
@@ -213,6 +218,11 @@ pub enum ServerMessage {
     /// script kind, ordinal, and a source-free outcome category. They are not
     /// an execution-result, diagnostic, or source-inspection API.
     BlueTsScriptReports(Vec<BlueTsScriptExecutionReport>),
+    /// Reply to [`ClientMessage::GetBlueJsScriptReports`]. These bounded
+    /// records have the same source-free shape as BlueTS reports, but identify
+    /// standard JavaScript declarations executed by an explicitly enabled
+    /// BlueJS page host.
+    BlueJsScriptReports(Vec<BlueJsScriptExecutionReport>),
     /// Reply to [`ClientMessage::OpenTab`]. `url` reflects whatever
     /// actually ended up loaded -- `None` for a blank tab (`OpenTab`
     /// was given no `url`), `Some(final_url)` once a requested
@@ -286,6 +296,35 @@ pub struct BlueTsScriptExecutionReport {
     pub ordinal: u32,
     pub kind: BlueTsScriptKind,
     pub outcome: BlueTsScriptExecutionOutcome,
+}
+
+/// The HTML script classification used by a [`BlueJsScriptExecutionReport`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueJsScriptKind {
+    Classic,
+    Module,
+}
+
+/// The source-free outcome of one standard JavaScript script attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueJsScriptExecutionOutcome {
+    Executed,
+    Rejected {
+        /// A bounded host/parser/compiler/runtime category, never page source
+        /// or diagnostics.
+        category: String,
+    },
+}
+
+/// One source-free standard JavaScript execution report for a tab/document
+/// pair. This is not a JavaScript completion, debugger, or source API.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlueJsScriptExecutionReport {
+    pub tab_id: u64,
+    pub document_generation: u64,
+    pub ordinal: u32,
+    pub kind: BlueJsScriptKind,
+    pub outcome: BlueJsScriptExecutionOutcome,
 }
 
 fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
@@ -620,6 +659,7 @@ mod tests {
             ClientMessage::Highlight { id: None },
             ClientMessage::GetDom,
             ClientMessage::GetBlueTsScriptReports,
+            ClientMessage::GetBlueJsScriptReports,
             ClientMessage::OpenTab {
                 url: Some("https://example.com".to_string()),
             },
@@ -686,6 +726,22 @@ mod tests {
                 ordinal: 0,
                 kind: BlueTsScriptKind::Classic,
                 outcome: BlueTsScriptExecutionOutcome::Executed,
+            }]),
+            ServerMessage::BlueJsScriptReports(vec![BlueJsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 0,
+                kind: BlueJsScriptKind::Classic,
+                outcome: BlueJsScriptExecutionOutcome::Executed,
+            }]),
+            ServerMessage::BlueJsScriptReports(vec![BlueJsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 1,
+                kind: BlueJsScriptKind::Module,
+                outcome: BlueJsScriptExecutionOutcome::Rejected {
+                    category: "BlueJS compilation rejected the page script".to_string(),
+                },
             }]),
             ServerMessage::BlueTsScriptReports(vec![BlueTsScriptExecutionReport {
                 tab_id: 2,

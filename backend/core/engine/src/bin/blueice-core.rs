@@ -62,6 +62,10 @@ struct Args {
     /// default no-inline-execution process mode; page content cannot select a
     /// profile or alter the compiler policy.
     inline_bluets_profile: Option<String>,
+    /// Enables the bounded in-process standard JavaScript page host. It has no
+    /// DOM bindings and is mutually exclusive with the experimental inline
+    /// BlueTS executor so one page cannot acquire two independent VMs.
+    inline_bluejs: bool,
 }
 
 /// Takes an injectable argument iterator (rather than reading
@@ -81,6 +85,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut script_socket = None;
     let mut debugger_socket = None;
     let mut inline_bluets_profile = None;
+    let mut inline_bluejs = false;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -102,11 +107,15 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
             "--inline-bluets-profile" => inline_bluets_profile = Some(value()?),
+            "--inline-bluejs" => inline_bluejs = true,
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
 
     let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
+    if inline_bluets_profile.is_some() && inline_bluejs {
+        return Err("--inline-bluejs cannot be combined with --inline-bluets-profile".to_string());
+    }
     Ok(Args {
         socket,
         width,
@@ -116,6 +125,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         script_socket,
         debugger_socket,
         inline_bluets_profile,
+        inline_bluejs,
     })
 }
 
@@ -229,6 +239,7 @@ fn main() -> ExitCode {
     let script_socket = args.script_socket.clone();
     let debugger_socket = args.debugger_socket.clone();
     let inline_bluets_profile = args.inline_bluets_profile.clone();
+    let inline_bluejs = args.inline_bluejs;
 
     let script_listener = match script_socket.as_ref() {
         Some(path) => {
@@ -301,7 +312,27 @@ fn main() -> ExitCode {
         let (mut stream, _) = listener.accept()?;
         let mut tabs = TabManager::new(args.width, args.height);
         let mut generation = 0u64;
-        if let Some(feature_profile) = inline_bluets_profile {
+        if inline_bluejs {
+            let mut javascript_executor = script::javascript::JavaScriptPageExecutor::new()
+                .map_err(|error| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("invalid inline JavaScript host configuration: {error}"),
+                    )
+                })?;
+            session::run_session_with_script_and_debugger_requests_and_inline_javascript_executor(
+                &mut tabs,
+                &mut stream,
+                &frame_dir,
+                &mut generation,
+                &gatekeeper_socket,
+                session::CoreSessionRequests {
+                    script: script_socket.as_ref().map(|_| &script_requests),
+                    debugger: debugger_socket.as_ref().map(|_| &debugger_requests),
+                },
+                Some(&mut javascript_executor),
+            )
+        } else if let Some(feature_profile) = inline_bluets_profile {
             let mut inline_executor = script::inline_runner::DirectPageInlineExecutor::new(
                 script::host_typings::core_script_host_type_catalog(),
                 feature_profile,
@@ -386,6 +417,7 @@ mod tests {
         assert_eq!(parsed.script_socket, None);
         assert_eq!(parsed.debugger_socket, None);
         assert_eq!(parsed.inline_bluets_profile, None);
+        assert!(!parsed.inline_bluejs);
     }
 
     #[test]
@@ -420,7 +452,27 @@ mod tests {
                 script_socket: Some(PathBuf::from("/tmp/script.sock")),
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
+                inline_bluejs: false,
             }
+        );
+    }
+
+    #[test]
+    fn inline_javascript_host_is_opt_in_and_cannot_share_a_session_with_bluets() {
+        assert!(
+            args(&["--socket", "/tmp/x.sock", "--inline-bluejs"])
+                .unwrap()
+                .inline_bluejs
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--inline-bluejs",
+                "--inline-bluets-profile",
+                "core-script-document-text-v1",
+            ]),
+            Err("--inline-bluejs cannot be combined with --inline-bluets-profile".to_string())
         );
     }
 

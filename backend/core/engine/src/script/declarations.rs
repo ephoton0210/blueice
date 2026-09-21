@@ -11,6 +11,16 @@
 use super::direct_page::DirectPageScriptKind;
 use blueice_dom::{Document, NodeData, NodeId};
 
+/// The standard JavaScript script forms supported by the first BlueJS page
+/// host. This is intentionally separate from the non-standard BlueTS kinds:
+/// ordinary `<script>` tags belong to the JavaScript pipeline and must never
+/// be reinterpreted as TypeScript declarations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlueJsPageScriptKind {
+    Classic,
+    Module,
+}
+
 /// The explicit, non-portable HTML type for an opt-in classic BlueTS script.
 pub const BLUE_TS_CLASSIC_SCRIPT_TYPE: &str = "application/x-blueice-typescript";
 
@@ -37,6 +47,26 @@ pub enum BlueTsPageScriptDeclaration {
     },
 }
 
+/// One standard JavaScript page-script declaration in document order.
+///
+/// The declaration is a parsed-document record only. It supplies no source
+/// loading, URL resolution, origin, DOM, or execution authority. In
+/// particular, an external `src` is not fetched unless a core-owned JavaScript
+/// source authorizer later returns a closed graph for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlueJsPageScriptDeclaration {
+    Inline {
+        ordinal: u32,
+        kind: BlueJsPageScriptKind,
+        source: String,
+    },
+    External {
+        ordinal: u32,
+        kind: BlueJsPageScriptKind,
+        src: String,
+    },
+}
+
 /// Returns every explicit BlueTS script declaration in document order.
 ///
 /// Ordinary JavaScript, `text/typescript`, and unknown `type` values are not
@@ -46,6 +76,19 @@ pub enum BlueTsPageScriptDeclaration {
 pub fn discover_blue_ts_page_scripts(doc: &Document) -> Vec<BlueTsPageScriptDeclaration> {
     let mut declarations = Vec::new();
     collect(doc, doc.root(), &mut declarations);
+    declarations
+}
+
+/// Returns the supported standard JavaScript declarations in document order.
+///
+/// This first host recognizes classic scripts with no `type`, an empty type,
+/// or one of the common JavaScript MIME types, plus `type="module"`. Unknown
+/// types and every explicit BlueTS type are ignored. This classification does
+/// not make JavaScript execution the default: the core must explicitly enable
+/// its JavaScript page executor.
+pub fn discover_blue_js_page_scripts(doc: &Document) -> Vec<BlueJsPageScriptDeclaration> {
+    let mut declarations = Vec::new();
+    collect_blue_js(doc, doc.root(), &mut declarations);
     declarations
 }
 
@@ -80,6 +123,41 @@ fn collect(doc: &Document, node: NodeId, declarations: &mut Vec<BlueTsPageScript
     }
 }
 
+fn collect_blue_js(
+    doc: &Document,
+    node: NodeId,
+    declarations: &mut Vec<BlueJsPageScriptDeclaration>,
+) {
+    if let NodeData::Element {
+        tag_name,
+        attributes,
+    } = doc.data(node)
+    {
+        if tag_name == "script" {
+            if let Some(kind) = blue_js_script_kind(attributes) {
+                let ordinal = u32::try_from(declarations.len())
+                    .expect("a document cannot contain more than u32::MAX JavaScript scripts");
+                if let Some(src) = attribute(attributes, "src") {
+                    declarations.push(BlueJsPageScriptDeclaration::External {
+                        ordinal,
+                        kind,
+                        src: src.to_string(),
+                    });
+                } else {
+                    declarations.push(BlueJsPageScriptDeclaration::Inline {
+                        ordinal,
+                        kind,
+                        source: text_content(doc, node),
+                    });
+                }
+            }
+        }
+    }
+    for child in doc.children(node) {
+        collect_blue_js(doc, child, declarations);
+    }
+}
+
 fn script_kind(attributes: &[(String, String)]) -> Option<DirectPageScriptKind> {
     let script_type = attribute(attributes, "type")?;
     if script_type
@@ -94,6 +172,27 @@ fn script_kind(attributes: &[(String, String)]) -> Option<DirectPageScriptKind> 
         Some(DirectPageScriptKind::Module)
     } else {
         None
+    }
+}
+
+fn blue_js_script_kind(attributes: &[(String, String)]) -> Option<BlueJsPageScriptKind> {
+    let script_type = attribute(attributes, "type").map(str::trim);
+    match script_type {
+        None | Some("") => Some(BlueJsPageScriptKind::Classic),
+        Some(value) if value.eq_ignore_ascii_case("module") => Some(BlueJsPageScriptKind::Module),
+        Some(value)
+            if [
+                "text/javascript",
+                "application/javascript",
+                "text/ecmascript",
+                "application/ecmascript",
+            ]
+            .iter()
+            .any(|mime| value.eq_ignore_ascii_case(mime)) =>
+        {
+            Some(BlueJsPageScriptKind::Classic)
+        }
+        Some(_) => None,
     }
 }
 
@@ -158,6 +257,41 @@ mod tests {
                 kind: DirectPageScriptKind::Classic,
                 src: "/app.ts".to_string(),
             }]
+        );
+    }
+
+    #[test]
+    fn discovers_supported_standard_javascript_without_reinterpreting_bluets() {
+        let doc = blueice_html::parse(
+            r#"
+                <script>const first = 1;</script>
+                <script type="application/javascript" src="/classic.js">ignored</script>
+                <script type="module">export const second = 2;</script>
+                <script type="application/x-blueice-typescript">const typed: number = 3;</script>
+                <script type="text/typescript">const ignored: number = 4;</script>
+                <script type="not-javascript">ignored</script>
+            "#,
+        );
+
+        assert_eq!(
+            discover_blue_js_page_scripts(&doc),
+            vec![
+                BlueJsPageScriptDeclaration::Inline {
+                    ordinal: 0,
+                    kind: BlueJsPageScriptKind::Classic,
+                    source: "const first = 1;".to_string(),
+                },
+                BlueJsPageScriptDeclaration::External {
+                    ordinal: 1,
+                    kind: BlueJsPageScriptKind::Classic,
+                    src: "/classic.js".to_string(),
+                },
+                BlueJsPageScriptDeclaration::Inline {
+                    ordinal: 2,
+                    kind: BlueJsPageScriptKind::Module,
+                    source: "export const second = 2;".to_string(),
+                },
+            ]
         );
     }
 }
