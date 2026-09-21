@@ -2019,10 +2019,11 @@ impl Vm {
         } else {
             false
         };
-        let target = if arrow {
-            self.new_target.clone()
-        } else {
-            target
+        // The captured value, not the caller's: an arrow reads the
+        // `new.target` of the function it was created in.
+        let target = match (arrow, callee.object_id()) {
+            (true, Some(id)) => self.heap.closure_new_target(id)?,
+            _ => target,
         };
         self.charge_step()?;
         let base = self.stack.len();

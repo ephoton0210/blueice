@@ -368,12 +368,22 @@ impl Vm {
                         let value = self.super_call(args)?;
                         self.stack.push(value);
                     }
-                    Opcode::EnterClassFieldInitializer => self.class_field_initializer_depth += 1,
+                    Opcode::EnterClassFieldInitializer => {
+                        self.class_field_initializer_depth += 1;
+                        // A field initializer is evaluated like a method
+                        // called without `new`: `new.target` is undefined in
+                        // it (and in arrows created there), not the class
+                        // being constructed. The saved value rides on the
+                        // operand stack, below the initializer's own values.
+                        let saved = std::mem::replace(&mut self.new_target, Value::Undefined);
+                        self.stack.push(saved);
+                    }
                     Opcode::LeaveClassFieldInitializer => {
                         self.class_field_initializer_depth = self
                             .class_field_initializer_depth
                             .checked_sub(1)
                             .expect("compiler balances class field initializers");
+                        self.new_target = self.pop();
                     }
                     Opcode::RegExpLiteral => {
                         let base = self.stack.len() - 2;
@@ -690,6 +700,10 @@ impl Vm {
                             self.module_closure_referrers.insert(id, module.clone());
                         }
                         self.stack.push(Value::Object(id));
+                        if child.arrow && self.new_target != Value::Undefined {
+                            let new_target = self.new_target.clone();
+                            self.with_roots(|heap| heap.set_closure_new_target(id, new_target))?;
+                        }
                         if child.with_depth != 0 {
                             let with_objects = self.with_objects.clone();
                             self.with_roots(|heap| {

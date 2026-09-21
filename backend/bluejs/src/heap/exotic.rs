@@ -961,6 +961,37 @@ impl Heap {
         Ok(())
     }
 
+    /// Records the `new.target` an arrow function closes over.
+    pub(crate) fn set_closure_new_target(
+        &mut self,
+        object: ObjectId,
+        new_target: Value,
+    ) -> Result<(), HeapError> {
+        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
+            return Err(HeapError::InvalidObject(object));
+        }
+        let target = new_target.object_id();
+        self.ensure_closure_metadata(object, target.as_slice())?;
+        self.write_barrier(object, target);
+        self.closure_metadata
+            .get_mut(&object)
+            .expect("metadata was installed")
+            .new_target = Some(new_target);
+        Ok(())
+    }
+
+    /// The `new.target` captured by an arrow closure (`undefined` when none).
+    pub(crate) fn closure_new_target(&self, object: ObjectId) -> Result<Value, HeapError> {
+        match &self.object(object)?.kind {
+            ObjectKind::Closure { .. } => Ok(self
+                .closure_metadata
+                .get(&object)
+                .and_then(|metadata| metadata.new_target.clone())
+                .unwrap_or(Value::Undefined)),
+            _ => Err(HeapError::InvalidObject(object)),
+        }
+    }
+
     /// The with objects captured by `object`; empty for a closure that was not
     /// created inside `with`.
     pub(crate) fn closure_with_objects(&self, object: ObjectId) -> Result<Vec<Value>, HeapError> {
