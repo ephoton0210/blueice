@@ -23,7 +23,7 @@ use super::{
 };
 use crate::{TabId, TabManager};
 use blueice_bluets::{CompilerOptions, RuntimePolicy};
-use blueice_bluets_bluejs::BridgeError;
+use blueice_bluets_bluejs::{BridgeError, DirectPageRealmOwner};
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 
@@ -75,7 +75,21 @@ impl DirectPageInlineExecutor {
         feature_profile: impl Into<String>,
         compiler_options: CompilerOptions,
     ) -> Result<Self, DirectPageInlineExecutorError> {
-        Self::new_with_external_source_authorizer(profiles, feature_profile, compiler_options, None)
+        let host = DirectPageScriptHost::new(profiles.clone());
+        Self::new_with_host(profiles, feature_profile, compiler_options, None, host)
+    }
+
+    /// Creates an opt-in runner with caller-selected, already validated page
+    /// realm and static-debug retention limits. The limits are fixed before a
+    /// document is observed and cannot be changed by its declarations.
+    pub fn with_realm_owner(
+        profiles: HostTypeSurfaceCatalogV1,
+        feature_profile: impl Into<String>,
+        compiler_options: CompilerOptions,
+        realms: DirectPageRealmOwner,
+    ) -> Result<Self, DirectPageInlineExecutorError> {
+        let host = DirectPageScriptHost::with_realm_owner(profiles.clone(), realms);
+        Self::new_with_host(profiles, feature_profile, compiler_options, None, host)
     }
 
     /// Creates an opt-in runner whose external declarations can be resolved
@@ -87,19 +101,41 @@ impl DirectPageInlineExecutor {
         compiler_options: CompilerOptions,
         authorizer: impl PageScriptSourceAuthorizer + 'static,
     ) -> Result<Self, DirectPageInlineExecutorError> {
-        Self::new_with_external_source_authorizer(
+        let host = DirectPageScriptHost::new(profiles.clone());
+        Self::new_with_host(
             profiles,
             feature_profile,
             compiler_options,
             Some(Box::new(authorizer)),
+            host,
         )
     }
 
-    fn new_with_external_source_authorizer(
+    /// Creates an opt-in runner with both a core-owned external-source
+    /// authorizer and caller-selected fixed page-realm limits.
+    pub fn with_external_source_authorizer_and_realm_owner(
+        profiles: HostTypeSurfaceCatalogV1,
+        feature_profile: impl Into<String>,
+        compiler_options: CompilerOptions,
+        authorizer: impl PageScriptSourceAuthorizer + 'static,
+        realms: DirectPageRealmOwner,
+    ) -> Result<Self, DirectPageInlineExecutorError> {
+        let host = DirectPageScriptHost::with_realm_owner(profiles.clone(), realms);
+        Self::new_with_host(
+            profiles,
+            feature_profile,
+            compiler_options,
+            Some(Box::new(authorizer)),
+            host,
+        )
+    }
+
+    fn new_with_host(
         profiles: HostTypeSurfaceCatalogV1,
         feature_profile: impl Into<String>,
         compiler_options: CompilerOptions,
         external_source_authorizer: Option<Box<dyn PageScriptSourceAuthorizer>>,
+        host: DirectPageScriptHost,
     ) -> Result<Self, DirectPageInlineExecutorError> {
         if !compiler_options.ambient_declaration_modules.is_empty() {
             return Err(DirectPageInlineExecutorError::CallerSuppliedAmbientDeclarations);
@@ -115,7 +151,7 @@ impl DirectPageInlineExecutor {
             .generate(&feature_profile)
             .map_err(DirectPageInlineExecutorError::HostTypings)?;
         Ok(Self {
-            host: DirectPageScriptHost::new(profiles),
+            host,
             compiler_options,
             feature_profile,
             generated_typings,
@@ -558,6 +594,48 @@ mod tests {
 
         executor.synchronize_and_execute(&tabs).unwrap();
         assert_eq!(executor.reports().len(), 2, "the document runs only once");
+    }
+
+    #[test]
+    fn configured_realm_limits_reject_inline_code_without_retaining_programs() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script type=\"application/x-blueice-typescript\">42;</script>",
+            Some("https://example.test/app/index.html".to_string()),
+        );
+        let realms = DirectPageRealmOwner::new(
+            blueice_bluejs::BlueJsPageRuntimeConfig {
+                max_bytecode_bytes_per_realm: 1,
+                ..blueice_bluejs::BlueJsPageRuntimeConfig::default()
+            },
+            blueice_bluets_bluejs::DirectDebugRetentionLimits::default(),
+        )
+        .unwrap();
+        let mut executor = DirectPageInlineExecutor::with_realm_owner(
+            profiles(),
+            "inline-runner-empty-v1",
+            CompilerOptions::default(),
+            realms,
+        )
+        .unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert_eq!(
+            executor.reports(),
+            &VecDeque::from([DirectPageScriptExecutionReport::Rejected {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                ordinal: 0,
+                kind: DirectPageScriptKind::Classic,
+                message: "BlueJS page execution failed".to_string(),
+            }])
+        );
+        assert_eq!(executor.debug_record_count(), 0);
+        let stats = executor.realm_stats(tab_id).unwrap();
+        assert_eq!(stats.program_count, 0);
+        assert_eq!(stats.bytecode_bytes, 0);
     }
 
     #[test]

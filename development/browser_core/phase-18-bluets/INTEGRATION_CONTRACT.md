@@ -125,8 +125,10 @@ charge before statistics for the successor realm are observed.
 
 `DirectPageInlineExecutor` is the sole shipped automatic caller of that inline
 helper. A core owner MUST construct it with a known host-profile catalog,
-selected profile, and compiler options; it generates the matching typing
-artifact itself and rejects caller-supplied ambient declarations and
+selected profile, and compiler options; it may also supply a validated
+`DirectPageRealmOwner`, fixing VM, realm, program-count, bytecode, and
+static-debug retention limits before a declaration is observed. It generates
+the matching typing artifact itself and rejects caller-supplied ambient declarations and
 `transpile-only`. At each session lifecycle observation it synchronizes prior
 realms, then runs a document's inline opted-in declarations at most once in
 document order. On a successful fetched navigation this happens after the new

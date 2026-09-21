@@ -66,7 +66,10 @@ or second module resolver to bypass them.
   open. A core owner can now construct the in-process direct host with a
   caller-selected `DirectPageRealmOwner`, whose validated VM, realm,
   program-count, bytecode, and static-debug retention limits apply before a
-  direct program executes. The host exposes only its live realm's per-tab
+  direct program executes. `DirectPageInlineExecutor` can receive the same
+  owner for its explicitly enabled lifecycle seam, so inline declarations do
+  not silently fall back to default resource limits. The host exposes only its
+  live realm's per-tab
   program count, retained root-bytecode charge, and VM heap statistics;
   navigation/close releases old-realm charges before a successor is observed.
   This remains a per-host in-process policy, not a substitute for the process
