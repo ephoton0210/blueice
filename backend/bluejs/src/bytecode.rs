@@ -38,6 +38,11 @@ opcodes! {
     UnboundName: 5, 0;
     SetUnboundName: 5, 0;
     DeleteUnboundName: 5, 0;
+    // Strict `name = value` for a name that no binding resolves: resolves the
+    // reference before the right-hand side runs (pushes whether it resolved),
+    // and SetResolvedUnboundName stores through it (stack: flag, value).
+    ResolveUnboundName: 5, 0;
+    SetResolvedUnboundName: 5, 0;
     // `delete name` inside `with`: deletes the property of the innermost with
     // object that has the binding and pushes the result, or pushes `undefined`
     // when no with object has it (the caller then falls back to the binding).
@@ -104,6 +109,11 @@ opcodes! {
     GlobalString: 1, 0;
     GetMethod: 1, MAY_USE_INLINE_CACHE;
     Call: 5, 0;
+    // `return callee(args)` in tail position (§15.10.2). Same stack layout as
+    // Call. Operand: argument count << 1, plus 1 when the callee is spelled
+    // `eval` (a direct eval candidate). The frame is replaced by the callee's
+    // when the current call can be replaced; otherwise it is an ordinary call.
+    TailCall: 5, 0;
     DirectEval: 5, 0;
     Construct: 5, 0;
     Closure: 5, 0;
@@ -132,6 +142,9 @@ opcodes! {
     // `name++` etc. on a `ResolveWithReference` pair. Operand bit 0:
     // decrement; bit 1: prefix.
     UpdateWithReference: 5, 0;
+    // The parameter list has been evaluated: later direct evals declare their
+    // `var`s in the function body's own environment again.
+    EndParameterEvalScope: 1, 0;
     Global: 5, 0;
     ToPropertyKey: 1, 0;
     PreparePropertyReference: 1, MAY_USE_INLINE_CACHE;
@@ -492,6 +505,10 @@ pub struct Bytecode {
     /// A closure over such a function captures the with objects that are
     /// active when it is created.
     pub(crate) with_depth: u32,
+    /// A sloppy function whose parameter list contains a direct eval: its
+    /// calls get an environment of their own, outside the parameters, for the
+    /// `var`s such an eval declares (see `Vm::call_closure`).
+    pub(crate) parameter_eval_scope: bool,
     pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
     pub(crate) captures: Vec<u32>,
     /// The immutable name environment binding of a named function expression.
@@ -577,6 +594,7 @@ impl Bytecode {
             new_target_allowed: false,
             import_meta_allowed: false,
             with_depth: 0,
+            parameter_eval_scope: false,
             functions: Vec::new(),
             captures: Vec::new(),
             self_slot: None,

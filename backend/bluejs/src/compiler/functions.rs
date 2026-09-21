@@ -998,10 +998,30 @@ impl Compiler {
             with_depth: self.with_depth,
             with_scope_depths: vec![1; self.with_depth],
             annex_b_parameter_names: BTreeSet::new(),
+            tail_call_blockers: 0,
+            tail_call_pending: false,
         };
         child.bytecode.with_depth = self.with_depth as u32;
         child.bytecode.strict =
             options.force_strict || self.bytecode.strict || strict_body(&function.body);
+        // A direct eval in the parameter list of a sloppy function declares
+        // its `var`s in an environment that sits outside the parameters and
+        // around the whole function (§10.2.11). It is entered like a `with`
+        // object at call time, so every closure made in the parameters or the
+        // body captures it and sees those vars whenever it runs.
+        let parameter_eval_scope = !child.bytecode.strict
+            && !function.is_async
+            && !function.params.iter().all(|param| {
+                !param.rest
+                    && param.default.is_none()
+                    && matches!(param.pattern, Pattern::Identifier(_))
+            })
+            && crate::ast::params_contain_direct_eval(&function.params);
+        if parameter_eval_scope {
+            child.with_depth += 1;
+            child.with_scope_depths = vec![1; child.with_depth];
+            child.bytecode.parameter_eval_scope = true;
+        }
         validate_function_early_errors(
             function,
             child.bytecode.strict,
@@ -1220,6 +1240,9 @@ impl Compiler {
                     child.names[child.local_scope][name],
                 )?;
             }
+        }
+        if parameter_eval_scope {
+            child.emit(Opcode::EndParameterEvalScope, 0)?;
         }
         if child.bytecode.generator {
             child.bytecode.generator_entry = child.offset()?;

@@ -941,7 +941,7 @@ impl Vm {
                 Completion::Return(value)
                 | Completion::Yield(value)
                 | Completion::Throw(RuntimeError::Thrown(value)) => add_value(value),
-                Completion::TailRecur(values) => {
+                Completion::TailRecur(values) | Completion::TailCall(values) => {
                     for value in values {
                         add_value(value);
                     }
@@ -1082,9 +1082,9 @@ impl Vm {
                     Some((handlers, 0)),
                 ),
                 CompletionAction::Return(value) => Ok(InterpreterExit::Return(value)),
-                CompletionAction::TailRecur(_) => Err(RuntimeError::TypeError(
-                    "top-level await cannot recur".into(),
-                )),
+                CompletionAction::TailRecur(_) | CompletionAction::TailCall(_) => Err(
+                    RuntimeError::TypeError("top-level await cannot recur".into()),
+                ),
                 CompletionAction::Throw(error) => Err(error),
             }
         };
@@ -1449,9 +1449,9 @@ impl Vm {
                     Some((handlers, 0)),
                 ),
                 Ok(CompletionAction::Return(value)) => Ok(InterpreterExit::Return(value)),
-                Ok(CompletionAction::TailRecur(_)) => Err(RuntimeError::TypeError(
-                    "async function cannot tail recur across await".into(),
-                )),
+                Ok(CompletionAction::TailRecur(_) | CompletionAction::TailCall(_)) => Err(
+                    RuntimeError::TypeError("async function cannot tail recur across await".into()),
+                ),
                 Ok(CompletionAction::Throw(error)) | Err(error) => Err(error),
             }
         };
@@ -1566,9 +1566,11 @@ impl Vm {
                     Some((handlers, 0)),
                 ),
                 Ok(CompletionAction::Return(value)) => Ok(InterpreterExit::Return(value)),
-                Ok(CompletionAction::TailRecur(_)) => Err(RuntimeError::TypeError(
-                    "async generator cannot tail recur across await".into(),
-                )),
+                Ok(CompletionAction::TailRecur(_) | CompletionAction::TailCall(_)) => {
+                    Err(RuntimeError::TypeError(
+                        "async generator cannot tail recur across await".into(),
+                    ))
+                }
                 Ok(CompletionAction::Throw(error)) | Err(error) => Err(error),
             }
         };
@@ -1602,6 +1604,7 @@ impl Vm {
                                 }
                             })
                         });
+                let delegated = async_delegate.is_some();
                 let state = GeneratorState::Suspended {
                     code,
                     pc,
@@ -1632,13 +1635,15 @@ impl Vm {
                         .collect(),
                     home: std::mem::take(&mut self.home_object),
                     callee: std::mem::replace(&mut self.callee, Value::Undefined),
+                    with_objects: std::mem::take(&mut self.with_objects),
                 };
                 self.heap.set_generator_state(generator, state)?;
                 ambient.templates.extend(self.templates.clone());
                 self.restore_module_execution(ambient);
                 self.call_depth = ambient_call_depth;
                 let result = self.iterator_result(value, false)?;
-                self.await_async_generator_yield(generator, target, result)
+                self.async_delegated_yield = delegated;
+                self.finish_async_generator_run(generator, target, result)
             }
             Ok(InterpreterExit::Await {
                 promise,

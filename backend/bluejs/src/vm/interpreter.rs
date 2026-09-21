@@ -515,9 +515,10 @@ impl Vm {
                     }
                     Opcode::ForInKeys => {
                         let source = self.stack.last().expect("for-in has a source").clone();
-                        let keys = self.for_in_keys(&source)?;
+                        let record = self.for_in_iterator(&source)?;
                         self.pop();
-                        self.stack.push(keys);
+                        self.stack.push(record.clone());
+                        iterators.push(record);
                     }
                     Opcode::IteratorStep => {
                         let record = self.stack.last().unwrap().clone();
@@ -1036,6 +1037,7 @@ impl Vm {
                         self.store_with_reference(code, target, marker, &value)?;
                         self.stack.push(value);
                     }
+                    Opcode::EndParameterEvalScope => self.parameter_eval_env = None,
                     Opcode::UpdateWithReference => {
                         // `name++` / `--name` on a Reference resolved before
                         // the read: GetValue, ToNumeric, then PutValue on that
@@ -1218,12 +1220,25 @@ impl Vm {
                                 .push(value.ok_or(RuntimeError::ReferenceError(name))?);
                         }
                     }
-                    Opcode::SetUnboundName => {
+                    Opcode::ResolveUnboundName => {
                         let Value::String(name) = &code.constants[operand] else {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let value = self.stack.last().expect("assignment has a value").clone();
+                        let resolves = self.unbound_name_resolves(&name)?;
+                        self.stack.push(Value::Bool(resolves));
+                    }
+                    Opcode::SetUnboundName | Opcode::SetResolvedUnboundName => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!("compiler emits a name")
+                        };
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        // Stack: [resolved flag,] value. The flag was computed
+                        // before the right-hand side ran.
+                        let value = self.stack.pop().expect("assignment has a value");
+                        let resolved = (instruction.opcode == Opcode::SetResolvedUnboundName)
+                            .then(|| self.stack.pop() == Some(Value::Bool(true)));
+                        self.stack.push(value.clone());
                         if !self.set_dynamic_eval_binding(&name, value.clone())?
                             && !self.set_global_binding(&name, value.clone())?
                         {
@@ -1233,6 +1248,16 @@ impl Vm {
                             // Standard globals (`NaN`, `undefined`, ...) are
                             // created lazily; the name resolves once made.
                             self.materialize_lexical_global(global_id, &name)?;
+                            let unresolvable = match resolved {
+                                Some(resolved) => !resolved,
+                                None => !self.has_property(global_id, &key)?,
+                            };
+                            if code.strict && unresolvable {
+                                return Err(RuntimeError::ReferenceError(name));
+                            }
+                            // A strict write to a binding that resolved but
+                            // has since disappeared is also a ReferenceError
+                            // (SetMutableBinding of the object record).
                             if code.strict && !self.has_property(global_id, &key)? {
                                 return Err(RuntimeError::ReferenceError(name));
                             }
@@ -1418,6 +1443,36 @@ impl Vm {
                         self.stack.push(value);
                         if instruction.opcode == Opcode::GetMethod {
                             self.stack.push(receiver);
+                        }
+                    }
+                    Opcode::TailCall => {
+                        let eval_candidate = operand & 1 != 0;
+                        let argument_count = operand >> 1;
+                        let base = self.stack.len() - argument_count - 2;
+                        let callee = self.stack[base].clone();
+                        if eval_candidate && self.is_intrinsic_eval(&callee)? {
+                            // A direct eval runs in this frame's scope: not a
+                            // call that can replace it.
+                            let args = self.stack[base + 2..].to_vec();
+                            let result = self.direct_eval(native::argument(&args, 0))?;
+                            self.check_string(&result)?;
+                            self.stack.truncate(base);
+                            self.stack.push(result);
+                        } else if self.frame_can_be_replaced(code) && self.is_callable(&callee)? {
+                            let values = self.stack.split_off(base);
+                            return Ok(Some(Completion::TailCall(values)));
+                        } else {
+                            // The frame is a construct call (its result is
+                            // adjusted after it returns) or the callee is not
+                            // callable (a TypeError raised here, in this
+                            // frame): an ordinary call, then the `Return`
+                            // the compiler emitted after this instruction.
+                            let receiver = self.stack[base + 1].clone();
+                            let args = self.stack[base + 2..].to_vec();
+                            let result = self.call_native(callee, receiver, args, false)?;
+                            self.check_string(&result)?;
+                            self.stack.truncate(base);
+                            self.stack.push(result);
                         }
                     }
                     Opcode::Call | Opcode::DirectEval | Opcode::Construct => {
@@ -1638,6 +1693,12 @@ impl Vm {
                     CompletionAction::Continue => {}
                     CompletionAction::Jump(target) => pc = target,
                     CompletionAction::Return(value) => return Ok(InterpreterExit::Return(value)),
+                    CompletionAction::TailCall(values) => {
+                        // The frame ends here; `call_with_target` runs the
+                        // callee at this frame's depth once it is torn down.
+                        self.pending_tail_call = Some(values);
+                        return Ok(InterpreterExit::Return(Value::Undefined));
+                    }
                     CompletionAction::TailRecur(args) => {
                         self.stack.truncate(stack_base);
                         self.unwind_scopes(code, 0);
