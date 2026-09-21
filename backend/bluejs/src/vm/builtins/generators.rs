@@ -56,6 +56,12 @@ impl Vm {
         let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let home_object = std::mem::replace(&mut self.home_object, home);
+        // A generator is never constructed, so its own `new.target` is
+        // `undefined`; whether a direct eval in it may mention `new.target`
+        // is a property of its code, not of whoever called `next()`.
+        let new_target = std::mem::replace(&mut self.new_target, Value::Undefined);
+        let new_target_allowed =
+            std::mem::replace(&mut self.new_target_allowed, code.new_target_allowed);
         let variable_scope = std::mem::replace(&mut self.variable_scope, code.variable_scope);
         let variable_scope_lexicals = std::mem::replace(
             &mut self.variable_scope_lexicals,
@@ -133,6 +139,8 @@ impl Vm {
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
         self.home_object = home_object;
+        self.new_target = new_target;
+        self.new_target_allowed = new_target_allowed;
         self.variable_scope = variable_scope;
         self.variable_scope_lexicals = variable_scope_lexicals;
         self.stack.truncate(base - 1);
@@ -368,6 +376,9 @@ impl Vm {
         );
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let home_object = std::mem::replace(&mut self.home_object, frame_home);
+        let new_target = std::mem::replace(&mut self.new_target, Value::Undefined);
+        let new_target_allowed =
+            std::mem::replace(&mut self.new_target_allowed, code.new_target_allowed);
         let callee = std::mem::replace(&mut self.callee, frame_callee);
         // A generator body resumes wherever its request happened to come
         // from -- typically a Promise job with no ambient script/module
@@ -610,6 +621,8 @@ impl Vm {
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
         self.home_object = home_object;
+        self.new_target = new_target;
+        self.new_target_allowed = new_target_allowed;
         self.callee = callee;
         self.variable_scope = variable_scope;
         self.variable_scope_lexicals = variable_scope_lexicals;

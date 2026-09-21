@@ -247,3 +247,16 @@ fn super_properties_are_valid_destructuring_for_and_delete_operands() {
          new C().m() === 'a!'",
     );
 }
+
+#[test]
+fn a_generator_body_sees_undefined_new_target_and_may_eval_it() {
+    assert_true(
+        "function* g() {
+             yield new.target;
+             yield eval('new.target');
+             yield (() => new.target)();
+         }
+         const it = g();
+         it.next().value === undefined && it.next().value === undefined && it.next().value === undefined",
+    );
+}
