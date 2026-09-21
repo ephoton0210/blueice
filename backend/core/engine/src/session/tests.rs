@@ -396,6 +396,145 @@ fn inline_javascript_scripts_execute_after_a_real_session_navigation() {
 }
 
 #[test]
+fn inline_javascript_reports_remain_isolated_by_tab_after_real_session_navigation() {
+    // The report drain is a tab-addressed observation boundary. Drive two
+    // ordinary JavaScript documents through the live session and prove that
+    // draining tab one cannot disclose or discard tab two's outcome.
+    let dir = temp_frame_dir("inline-javascript-tab-isolation");
+    std::fs::create_dir_all(&dir).unwrap();
+    let gatekeeper = clearing_gatekeeper("inline-javascript-tab-isolation");
+
+    let first_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let first_address = first_listener.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = first_listener.accept().unwrap();
+        let mut request = [0u8; 1024];
+        let _ = std::io::Read::read(&mut stream, &mut request);
+        let body = "<main>first JavaScript tab</main><script>41 + 1;</script>";
+        std::io::Write::write_all(
+            &mut stream,
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    });
+
+    let second_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let second_address = second_listener.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = second_listener.accept().unwrap();
+        let mut request = [0u8; 1024];
+        let _ = std::io::Read::read(&mut stream, &mut request);
+        let body = "<main>second JavaScript tab</main><script>40 + 3;</script>";
+        std::io::Write::write_all(
+            &mut stream,
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    });
+
+    let (mut client, mut server) = client_pair();
+    let dir_for_thread = dir.clone();
+    let gatekeeper_for_thread = gatekeeper.clone();
+    let handle = thread::spawn(move || {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let mut generation = 0;
+        let mut executor = JavaScriptPageExecutor::default();
+        run_session_with_script_and_debugger_requests_and_inline_javascript_executor(
+            &mut tabs,
+            &mut server,
+            &dir_for_thread,
+            &mut generation,
+            &gatekeeper_for_thread,
+            CoreSessionRequests::default(),
+            Some(&mut executor),
+        )
+        .unwrap();
+    });
+
+    handshake(&mut client);
+    blueice_ipc::write_client_message(
+        &mut client,
+        &ClientMessage::Navigate {
+            url: format!("http://{first_address}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut client).unwrap(),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut client).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
+
+    blueice_ipc::write_client_message(
+        &mut client,
+        &ClientMessage::OpenTab {
+            url: Some(format!("http://{second_address}")),
+        },
+    )
+    .unwrap();
+    let second_tab = match blueice_ipc::read_server_message(&mut client).unwrap() {
+        ServerMessage::TabOpened { tab_id, .. } => tab_id,
+        other => panic!("expected TabOpened, got {other:?}"),
+    };
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut client).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
+
+    blueice_ipc::write_client_message(&mut client, &ClientMessage::GetBlueJsScriptReports).unwrap();
+    let (reply_tab, _, first_reports) =
+        blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+    assert_eq!(reply_tab, Some(1));
+    assert_eq!(
+        first_reports,
+        ServerMessage::BlueJsScriptReports(vec![blueice_ipc::BlueJsScriptExecutionReport {
+            tab_id: 1,
+            document_generation: 1,
+            ordinal: 0,
+            kind: blueice_ipc::BlueJsScriptKind::Classic,
+            outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+        }])
+    );
+
+    blueice_ipc::write_client_message_with_ids(
+        &mut client,
+        Some(second_tab),
+        None,
+        &ClientMessage::GetBlueJsScriptReports,
+    )
+    .unwrap();
+    let (reply_tab, _, second_reports) =
+        blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+    assert_eq!(reply_tab, Some(second_tab));
+    assert_eq!(
+        second_reports,
+        ServerMessage::BlueJsScriptReports(vec![blueice_ipc::BlueJsScriptExecutionReport {
+            tab_id: second_tab,
+            document_generation: 1,
+            ordinal: 0,
+            kind: blueice_ipc::BlueJsScriptKind::Classic,
+            outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+        }])
+    );
+
+    blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+    handle.join().unwrap();
+    let _ = std::fs::remove_file(gatekeeper);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn authorized_external_blue_ts_module_graph_executes_after_a_real_session_navigation() {
     let dir = temp_frame_dir("external-blue-ts-page-pipeline");
     std::fs::create_dir_all(&dir).unwrap();

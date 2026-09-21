@@ -119,6 +119,8 @@ or second module resolver to bypass them.
   fixture makes each document assert its own canonical origin snapshot and
   observes a new source-free execution report generation after both navigations;
   a stale first-document realm or callback would reject the second assertion.
+  A two-tab session HTTP regression further proves that draining one tab's
+  JavaScript reports neither exposes nor discards the other tab's report.
   A fixed one-byte bytecode realm budget unit fixture proves a compilation
   rejection retains neither a partial program nor a bytecode charge. This is an
   in-process,

@@ -91,6 +91,11 @@ The initial implementation completes the work that has no BlueJS dependency befo
   the prior realm and snapshot rather than retaining the first document's
   callback. This remains process evidence for the narrow immutable binding,
   not general DOM, debugger, or stale-handle coverage.
+- A two-tab standard-JavaScript session regression drives independent HTTP
+  documents through the tab lifecycle and drains each addressed
+  `GetBlueJsScriptReports` envelope. Draining the first result neither reveals
+  nor consumes the second, proving the source-free JavaScript observation queue
+  remains tab-isolated at the core session boundary.
 - Another binary regression serves a document whose copied text exceeds the
   document-text binding's fixed one-mebibyte contract budget. The normal HTTP
   navigation completes, but inline admission reports only the fixed source-free
