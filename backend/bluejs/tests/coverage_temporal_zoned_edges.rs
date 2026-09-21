@@ -82,7 +82,6 @@ fn run(body: &str) {
     }
 }
 
-
 #[test]
 fn every_method_brand_checks_its_receiver() {
     run(r#"

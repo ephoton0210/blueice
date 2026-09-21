@@ -85,7 +85,6 @@ fn run(body: &str) {
     }
 }
 
-
 #[test]
 fn plain_date_to_string_reads_only_calendar_name() {
     run(r#"

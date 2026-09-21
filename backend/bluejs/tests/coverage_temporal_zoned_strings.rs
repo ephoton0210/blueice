@@ -84,8 +84,6 @@ fn run(body: &str) {
     }
 }
 
-
-
 #[test]
 fn to_string_fractional_second_digits_and_smallest_unit() {
     run(r#"
