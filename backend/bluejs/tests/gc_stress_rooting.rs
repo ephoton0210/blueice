@@ -70,3 +70,24 @@ fn array_from_keeps_a_freshly_read_iterator_method_alive_while_the_result_is_all
          ok",
     );
 }
+
+/// `Iterator.from` reads `next` from the iterator, then asks for the
+/// iterator's prototype chain (observable through a Proxy) and allocates the
+/// wrapper prototype. The `next` read through a Proxy handler whose `get`
+/// returns a fresh bound function is reachable only from a Rust local across
+/// those steps.
+#[test]
+fn iterator_from_keeps_a_freshly_read_next_method_alive_until_the_wrapper_exists() {
+    gc_stress_matches_ordinary(
+        "var handlerProxy = new Proxy({}, {\
+           get: (target, key, receiver) => (...args) => {\
+             var item = Reflect[key](...args);\
+             return typeof item === 'function' ? item.bind(receiver) : item;\
+           }\
+         });\
+         var iter = new Proxy({ next: () => ({ done: false, value: 7 }) }, handlerProxy);\
+         var wrap = Iterator.from(iter);\
+         var first = wrap.next(), second = wrap.next();\
+         first.value === 7 && second.done === false",
+    );
+}
