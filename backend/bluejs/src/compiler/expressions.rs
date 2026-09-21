@@ -376,7 +376,13 @@ impl Compiler {
                     {
                         self.emit(Opcode::Dup, 0)?;
                         self.property_key(key)?;
-                        self.function(function, false)?;
+                        self.function_named_with(
+                            function,
+                            false,
+                            None,
+                            false,
+                            FunctionCompileOptions::object_method(),
+                        )?;
                         std::rc::Rc::get_mut(self.bytecode.functions.last_mut().unwrap())
                             .unwrap()
                             .constructible = false;

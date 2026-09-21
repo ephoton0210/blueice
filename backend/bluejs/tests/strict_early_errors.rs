@@ -183,3 +183,42 @@ fn direct_eval_inherits_caller_strictness_for_syntax() {
     assert_eq!(outcome("", "var a; a = 01;"), Value::Number(0.0));
     assert_eq!(outcome("", "var public;"), Value::Number(0.0));
 }
+
+#[test]
+fn a_method_definitions_name_is_not_a_binding_in_strict_code() {
+    // The name of a method is only a property name, so `eval`, `arguments`
+    // and `yield` are fine there even in strict code.
+    for body in [
+        "({ eval() { return 1; }, arguments() { return 2; } });",
+        "({ *yield() {} });",
+        "({ get eval() { return 1; }, set arguments(v) {} });",
+        "({ async eval() {}, async *arguments() {} });",
+    ] {
+        assert!(
+            !is_rejected(&format!("\"use strict\";\n{body}")),
+            "strict: {body}"
+        );
+    }
+    assert_eq!(
+        evaluate("\"use strict\"; var o = { eval() { return 1; }, arguments() { return 2; } }; o.eval() + o.arguments()"),
+        Value::Number(3.0)
+    );
+    // ... whereas a function expression's own name is a binding.
+    assert_strict_rejected("(function eval() {});");
+    assert_strict_rejected("(function arguments() {});");
+}
+
+#[test]
+fn a_generator_declaration_may_be_named_yield_outside_generators_and_strict_code() {
+    assert!(!is_rejected("function* yield() {}"));
+    assert_eq!(
+        evaluate(
+            "function* yield() { var a = yield 1; return a; } var it = yield(); it.next().value"
+        ),
+        Value::Number(1.0)
+    );
+    // The name of a generator expression is in its own [+Yield] context.
+    assert!(is_rejected("(function* yield() {});"));
+    assert!(is_rejected("function* g() { function* yield() {} }"));
+    assert_strict_rejected("function* yield() {}");
+}

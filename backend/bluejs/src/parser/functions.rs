@@ -117,7 +117,13 @@ impl Parser {
         } else {
             None
         };
-        if generator && matches!(name.as_deref(), Some("yield")) {
+        // A generator *declaration* names its binding in the enclosing
+        // context, so `yield` is fine there in sloppy non-generator code; a
+        // generator expression's name is parsed with [+Yield].
+        if generator
+            && matches!(name.as_deref(), Some("yield"))
+            && (!is_declaration || self.generator_depth != 0 || self.strict)
+        {
             return Err(self.syntax_error("yield cannot be used as a generator function name"));
         }
         if !self.check_punct(Punct::LParen) {

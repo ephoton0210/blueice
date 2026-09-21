@@ -516,6 +516,16 @@ struct FunctionCompileOptions {
 }
 
 impl FunctionCompileOptions {
+    /// An object-literal MethodDefinition: like a class method its name is
+    /// only a property name, not a binding, but it is not implicitly strict.
+    fn object_method() -> Self {
+        Self {
+            constructible: false,
+            force_strict: false,
+            ..Self::class_method()
+        }
+    }
+
     fn class_method() -> Self {
         Self {
             constructible: false,
