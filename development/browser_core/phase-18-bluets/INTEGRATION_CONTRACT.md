@@ -79,8 +79,12 @@ the page's core-private document generation alongside that origin. A changed
 generation MUST call realm navigation even if the tuple origin is unchanged,
 so a same-origin document replacement cannot retain the preceding document's
 programs or static metadata. A missing tab, URL-less page, or unsupported
-scheme closes any tracked realm for that tab and fails the request. A
-lifecycle owner MAY call `synchronize_tabs` to release realms for closed tabs;
+scheme closes any tracked realm for that tab and fails the request. A direct
+admission attempt performs this synchronization before examining any
+caller-controlled compiler/profile input or whether an inline declaration uses
+an external `src`, so a rejected request cannot preserve the preceding
+document's realm. A lifecycle owner MAY call `synchronize_tabs` to release
+realms for closed tabs;
 the optional
 `run_session_with_script_requests_and_direct_page_host` entry point invokes it
 after each session batch. The default session and production binary do not yet

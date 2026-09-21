@@ -152,6 +152,10 @@ impl DirectPageScriptHost {
         tabs: &TabManager,
         request: DirectPageScriptRequest<'_>,
     ) -> Result<blueice_bluejs::Value, DirectPageScriptError> {
+        // Lifecycle synchronization must precede every caller-controlled
+        // compiler/profile rejection. Otherwise a malformed request arriving
+        // after navigation could leave the preceding document's realm alive.
+        self.synchronize_tab(tabs, request.tab_id)?;
         if !request
             .compiler_options
             .ambient_declaration_modules
@@ -172,7 +176,6 @@ impl DirectPageScriptHost {
         let declaration = verified_declaration(&artifact, &request)?;
         let mut options = request.compiler_options;
         options.ambient_declaration_modules = vec![declaration];
-        self.synchronize_tab(tabs, request.tab_id)?;
         let origin = self
             .live_documents
             .get(&request.tab_id)
@@ -215,6 +218,9 @@ impl DirectPageScriptHost {
         tabs: &TabManager,
         request: DirectInlinePageScriptRequest<'_>,
     ) -> Result<blueice_bluejs::Value, DirectPageScriptError> {
+        // An external declaration is rejected below, but it still belongs to
+        // the current document and must invalidate a prior document's realm.
+        self.synchronize_tab(tabs, request.tab_id)?;
         let page = tabs
             .get(request.tab_id)
             .ok_or(DirectPageScriptError::UnknownTab {
@@ -713,6 +719,54 @@ mod tests {
         );
         let mut host = DirectPageScriptHost::new(profiles);
 
+        assert!(matches!(
+            host.execute_inline(
+                &tabs,
+                DirectInlinePageScriptRequest {
+                    tab_id,
+                    ordinal: 0,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: "test-empty-v1".to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            ),
+            Err(DirectPageScriptError::ExternalScriptRequiresLoader { .. })
+        ));
+        assert_eq!(host.debug_record_count(), 0);
+    }
+
+    #[test]
+    fn rejected_external_declaration_still_retires_the_prior_document_realm() {
+        let profiles = catalog();
+        let artifact = profiles.generate("test-empty-v1").unwrap();
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script type=\"application/x-blueice-typescript\">42;</script>",
+            Some("https://example.test/app/first.html".to_string()),
+        );
+        let mut host = DirectPageScriptHost::new(profiles);
+        host.execute_inline(
+            &tabs,
+            DirectInlinePageScriptRequest {
+                tab_id,
+                ordinal: 0,
+                compiler_options: CompilerOptions::default(),
+                feature_profile: "test-empty-v1".to_string(),
+                supplied_manifest: &artifact.manifest,
+                supplied_declaration_source: &artifact.declaration_source,
+                supplied_runtime_bindings: &artifact.runtime_bindings,
+            },
+        )
+        .unwrap();
+        assert_eq!(host.debug_record_count(), 1);
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script type=\"application/x-blueice-typescript\" src=\"/second.ts\"></script>",
+            Some("https://example.test/app/second.html".to_string()),
+        );
         assert!(matches!(
             host.execute_inline(
                 &tabs,
