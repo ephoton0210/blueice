@@ -196,6 +196,14 @@ fn a_foreign_array_method_calls_the_local_callbacks_it_is_given() {
         check('find', foreign.find((x) => x > 3) === 4);
         check('sort', other.eval('[3, 1, 2]').sort((a, b) => a - b).join() === '1,2,3');
         expectThrown('callback error keeps its realm', TypeError, () => foreign.map(() => {{ null.property; }}));
+
+        // Anything a callback creates belongs to the callback's own realm,
+        // even when the callback is itself a built-in.
+        let created;
+        foreign.forEach(() => {{ created = Object.keys({{ a: 1 }}); }});
+        check('object created by a callback is local', created instanceof Array);
+        const nested = other.eval('["ab"]').map(Object.keys);
+        check('array created by a built-in callback is local', nested[0] instanceof Array);
         failures.join('; ')
         "#
     );
