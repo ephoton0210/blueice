@@ -431,7 +431,9 @@ impl Vm {
             .object_id()
             .expect("class constructors have a prototype object");
         let (constructor_parent, instance_parent) = match &base {
-            Value::Null => (None, None),
+            // `extends null`: the constructor still inherits from
+            // %Function.prototype%; only the instance prototype chain ends.
+            Value::Null => (Some(self.function_prototype()?), None),
             Value::Object(base) if self.is_constructor(&Value::Object(*base))? => {
                 let instance_parent =
                     match self.get_property(&Value::Object(*base), &"prototype".into())? {
