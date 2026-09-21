@@ -233,6 +233,9 @@ opcodes! {
     PrivateSet: 5, MAY_USE_INLINE_CACHE;
     // A destructuring leaf's PrivateSet: `value, receiver, name` -> `value`.
     PrivateSetLeaf: 5, 0;
+    // `++`/`--` on a private member: `receiver, name` -> the old or new
+    // number. The operand is `owner_slot << 2 | prefix << 1 | decrement`.
+    PrivateUpdate: 5, MAY_USE_INLINE_CACHE;
     PrivateIn: 5, MAY_USE_INLINE_CACHE;
     // A super property Reference is the operand pair `base, key` (like any
     // other property Reference) with the `this` value pushed on top just

@@ -311,6 +311,20 @@ impl Vm {
                             .clone();
                         self.private_set(&receiver, owner, name, value)?;
                     }
+                    Opcode::PrivateUpdate => {
+                        let (receiver, owner, name) = self.private_reference(operand >> 2)?;
+                        // The private Reference is evaluated once: PrivateGet
+                        // then PrivateSet on the same receiver and name.
+                        // Keep the receiver rooted across a getter or setter.
+                        self.stack.push(receiver.clone());
+                        let old_value = self.private_get(&receiver, owner, &name)?;
+                        let (old, new) = self.numeric_step(&old_value, operand & 1 != 0)?;
+                        self.stack.push(new.clone());
+                        self.private_set(&receiver, owner, name, new.clone())?;
+                        self.stack.pop();
+                        self.stack.pop();
+                        self.stack.push(if operand & 2 == 0 { old } else { new });
+                    }
                     Opcode::PrivateIn => {
                         let (receiver, owner, _name) = self.private_reference(operand)?;
                         let object = receiver.object_id().ok_or_else(|| {

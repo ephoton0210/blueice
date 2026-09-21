@@ -596,7 +596,13 @@ impl Compiler {
                     computed,
                 } = arg.as_ref()
                 {
-                    if matches!(&**object, Expr::Super) {
+                    if private_member_name(arg).is_some() {
+                        let owner = self.private_member_reference(arg)?;
+                        let operand = owner.checked_mul(4).ok_or(CompileError::ProgramTooLarge)?
+                            | u32::from(*op == UpdateOp::Dec)
+                            | (u32::from(*prefix) << 1);
+                        self.emit(Opcode::PrivateUpdate, operand)?;
+                    } else if matches!(&**object, Expr::Super) {
                         self.super_reference(property, *computed)?;
                         // GetValue converts the key immediately; the later
                         // PutValue must not convert it again.
