@@ -35,9 +35,16 @@ fn primitive_completions_and_error_classes_match_node() {
             .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
             .map(str::to_owned),
     );
-    for locale in [
-        "en", "tr", "az", "lt", "el", "sv", "de", "da", "ja", "th", "zz",
-    ] {
+    let mut locales = vec!["en", "tr", "az", "lt", "el", "sv", "de", "da", "ja", "th"];
+    // `zz` is not a supported locale, so each engine falls back to its default
+    // locale. ECMA-402 leaves that choice to the host: BlueJS fixes en-US,
+    // whereas Node follows the operating system (a zh-TW Windows machine makes
+    // `'é'.localeCompare('e', 'zz')` -1 instead of 1). The probe is therefore
+    // only comparable where Node's default is also en-US.
+    if node_default_locale() == "en-US" {
+        locales.push("zz");
+    }
+    for locale in locales {
         for string in ["Iİiı", "I\\u0301", "ΟΣ", "άι", "Straße", "I\\ud800İ", ""] {
             for method in ["toLocaleLowerCase", "toLocaleUpperCase"] {
                 corpus.push(format!("'{string}'.{method}('{locale}')"));
@@ -562,6 +569,14 @@ fn decode_result(result: &str) -> String {
             .collect(),
         None => result.to_owned(),
     }
+}
+
+fn node_default_locale() -> String {
+    let output = Command::new("node")
+        .args(["-p", "Intl.DateTimeFormat().resolvedOptions().locale"])
+        .output()
+        .expect("install Node.js to run the opt-in differential test");
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
 
 fn node_oracle(corpus: &[String]) -> Vec<String> {
