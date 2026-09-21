@@ -1163,9 +1163,15 @@ impl Vm {
         args: Vec<Value>,
         construct: bool,
     ) -> Result<Value, RuntimeError> {
-        let (realm_id, target, _, _) = self
+        let (realm_id, target, _, constructible) = self
             .test262_foreign_reference(wrapper)
             .expect("foreign call has a membrane record");
+        // The IsConstructor check belongs to the caller (`new`,
+        // Reflect.construct), so its TypeError is created in this Realm and
+        // must not be delegated to the callee's.
+        if construct && !constructible {
+            return Err(RuntimeError::TypeError("value is not a constructor".into()));
+        }
         // Proxy.revocable does not capture a realm-specific intrinsic in its
         // result; its proxy must instead retain the supplied target and
         // handler. Those values belong to the caller VM and cannot be copied
@@ -1455,11 +1461,23 @@ impl Vm {
             .get_mut(&realm_id)
             .expect("foreign realm remains live");
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+        realm.vm.construct_completion_check_failed = false;
         let result = realm
             .vm
             .call_native(Value::Object(target), receiver, args, construct);
         let result = match result {
             Ok(value) => Ok(value),
+            // [[Construct]]'s completion checks (a derived constructor's
+            // return value and `this` binding) run after the callee's
+            // execution context is removed, so their error is created in
+            // this Realm: leave it unmaterialized for the caller.
+            Err(error @ (RuntimeError::TypeError(_) | RuntimeError::ReferenceError(_)))
+                if construct
+                    && realm.vm.construct_completion_check_failed
+                    && matches!(realm.vm.heap.closure(target), Ok(Some(_))) =>
+            {
+                Err(error)
+            }
             // RuntimeError represents spec throws until they cross a VM
             // boundary. Materialize every ordinary abrupt completion in the
             // child before import so a foreign closure, Proxy, or builtin

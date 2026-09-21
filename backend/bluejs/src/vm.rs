@@ -987,6 +987,13 @@ pub struct Vm {
     /// but `ShadowRealm` needs the callable bit locally when it applies
     /// `GetWrappedValue` before any call can cross its own boundary.
     test262_imported_callables: HashSet<ObjectId>,
+    /// Whether the most recent function [[Construct]] this realm finished
+    /// failed one of the completion checks the specification performs after
+    /// the callee's execution context has been removed (a derived
+    /// constructor returning a non-object or never initializing `this`).
+    /// Those errors belong to the *caller's* realm; a Test262 membrane reads
+    /// the flag to tell them apart from errors raised by the callee's body.
+    construct_completion_check_failed: bool,
     shadow_realm_prototype: Option<ObjectId>,
     shadow_realms: HashMap<ObjectId, ShadowRealmRecord>,
     /// Reverse index from a `ShadowRealm` child's own heap tag back to the
@@ -1142,6 +1149,7 @@ impl Vm {
             test262_foreign_values: HashMap::new(),
             test262_foreign_buffer_mirrors: HashMap::new(),
             test262_imported_callables: HashSet::new(),
+            construct_completion_check_failed: false,
             shadow_realm_prototype: None,
             shadow_realms: HashMap::new(),
             shadow_realm_by_heap: HashMap::new(),
