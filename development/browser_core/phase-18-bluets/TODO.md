@@ -115,9 +115,13 @@ or second module resolver to bypass them.
   page cannot receive two independent VMs), and exposes a tab-addressed drain
   of bounded source-free `GetBlueJsScriptReports` records. A real subprocess
   HTTP fixture proves classic and module scripts execute in document order and
-  that a parse rejection is redacted. A fixed one-byte bytecode realm budget
-  unit fixture proves a compilation rejection retains neither a partial
-  program nor a bytecode charge. This is an in-process,
+  that a parse rejection is redacted. A separate two-navigation subprocess
+  fixture makes each document assert its own canonical origin snapshot and
+  observes a new source-free execution report generation after both navigations;
+  a stale first-document realm or callback would reject the second assertion.
+  A fixed one-byte bytecode realm budget unit fixture proves a compilation
+  rejection retains neither a partial program nor a bytecode charge. This is an
+  in-process,
   no-general-DOM-object-or-event-binding
   foundation: no launcher-managed/out-of-process BlueJS process, production
   fetch/cache/integrity authorizer, shared JavaScript/BlueTS realm, host-wide

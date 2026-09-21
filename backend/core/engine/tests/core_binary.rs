@@ -775,6 +775,127 @@ fn real_subprocess_executes_opted_in_standard_javascript_and_reports_source_free
 }
 
 #[test]
+fn real_subprocess_rebinds_inline_javascript_document_context_after_replacement() {
+    // The current document origin is a copied, realm-local value. Exercise two
+    // real navigations so a stale first-document callback would turn the second
+    // document's explicit origin assertion into a source-free runtime failure.
+    let socket_path = unique_socket_path("ij-repl");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-inline-bluejs-replacement-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("ijr-gk");
+
+    let listener_one = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url_one = format!("http://{}", listener_one.local_addr().unwrap());
+    let first_document_origin = url_one.clone();
+    thread::spawn(move || {
+        let (mut stream, _) = listener_one.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = format!(
+            "<main>first JavaScript replacement document</main>\
+             <script>if (blueiceDocumentOrigin() !== '{first_document_origin}') \
+             {{ throw 'stale origin'; }}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let listener_two = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url_two = format!("http://{}", listener_two.local_addr().unwrap());
+    let second_document_origin = url_two.clone();
+    thread::spawn(move || {
+        let (mut stream, _) = listener_two.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = format!(
+            "<main>second JavaScript replacement document</main>\
+             <script>if (blueiceDocumentOrigin() !== '{second_document_origin}') \
+             {{ throw 'stale origin'; }}</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+            "--inline-bluejs",
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn blueice-core");
+
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut stream).unwrap();
+
+    for (expected_generation, url) in [(1, url_one), (2, url_two)] {
+        blueice_ipc::write_client_message(
+            &mut stream,
+            &blueice_ipc::ClientMessage::Navigate { url },
+        )
+        .unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut stream).unwrap(),
+            blueice_ipc::ServerMessage::Navigated { .. }
+        ));
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut stream).unwrap(),
+            blueice_ipc::ServerMessage::FrameReady {
+                generation,
+                ..
+            } if generation == expected_generation
+        ));
+
+        blueice_ipc::write_client_message(
+            &mut stream,
+            &blueice_ipc::ClientMessage::GetBlueJsScriptReports,
+        )
+        .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut stream).unwrap(),
+            blueice_ipc::ServerMessage::BlueJsScriptReports(vec![
+                blueice_ipc::BlueJsScriptExecutionReport {
+                    tab_id: 1,
+                    document_generation: expected_generation,
+                    ordinal: 0,
+                    kind: blueice_ipc::BlueJsScriptKind::Classic,
+                    outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+                },
+            ])
+        );
+    }
+
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(!socket_path.exists());
+    assert!(!frame_dir.exists());
+}
+
+#[test]
 fn real_subprocess_rejects_an_oversized_document_text_binding_before_inline_admission() {
     // The profile's document-text boundary has a core-selected 1 MiB contract
     // limit. Exercise it through real navigation and process IPC so the page

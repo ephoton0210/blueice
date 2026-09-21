@@ -84,6 +84,13 @@ The initial implementation completes the work that has no BlueJS dependency befo
   core-private document generations prove the configured executor observes the
   replacement and executes the new inline declaration once; it does not by
   itself prove every stale-handle/debugger invalidation requirement.
+- The equivalent standard-JavaScript binary regression navigates one tab through
+  two HTTP documents. Each document asserts that `blueiceDocumentOrigin()` is
+  its current core-canonical tuple origin before its bounded report is emitted;
+  the two successful, distinct-generation reports prove the executor replaces
+  the prior realm and snapshot rather than retaining the first document's
+  callback. This remains process evidence for the narrow immutable binding,
+  not general DOM, debugger, or stale-handle coverage.
 - Another binary regression serves a document whose copied text exceeds the
   document-text binding's fixed one-mebibyte contract budget. The normal HTTP
   navigation completes, but inline admission reports only the fixed source-free
