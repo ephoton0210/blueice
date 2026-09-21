@@ -240,3 +240,45 @@ fn class_accessors_are_named_get_and_set() {
          d.get.name === 'get id' && d.set.name === 'set id' && s.get.name === 'get sid'",
     );
 }
+
+#[test]
+fn every_super_call_form_initializes_the_fields_of_the_returned_object() {
+    // Default derived constructor, explicit super(), spread super(...).
+    assert_true(
+        "class B { constructor(...args) { this.args = args.join(); } }
+         class Default extends B { f = 'default'; }
+         class Explicit extends B { f = 'explicit'; constructor(a) { super(a, 2); } }
+         class Spread extends B { f = 'spread'; constructor(...rest) { super(...rest); } }
+         new Default(1, 2).f === 'default' && new Default(1, 2).args === '1,2'
+             && new Explicit(1).f === 'explicit' && new Explicit(1).args === '1,2'
+             && new Spread(3, 4).f === 'spread' && new Spread(3, 4).args === '3,4'",
+    );
+    // Fields see a fully initialized base and run for an arrow's super() too.
+    assert_true(
+        "class B { constructor() { this.base = true; } }
+         class C extends B { seen = this.base; constructor() { const call = () => super(); call(); } }
+         new C().seen === true",
+    );
+    // A base constructor's return override is what gets its fields.
+    assert_true(
+        "class B { constructor() { return { fromBase: true }; } }
+         class C extends B { f = 1; }
+         const c = new C();
+         c.fromBase === true && c.f === 1 && !(c instanceof C)",
+    );
+}
+
+#[test]
+fn static_blocks_and_fields_run_in_order_with_the_class_as_this() {
+    assert_true(
+        "const order = [];
+         class C {
+             static a = order.push('a', this === C);
+             static { order.push('block1', this === C); }
+             static b = order.push('b');
+             static { order.push('block2'); }
+             static [(order.push('key'), 'k')] = order.push('k');
+         }
+         order.join() === 'key,a,true,block1,true,b,block2,k'",
+    );
+}

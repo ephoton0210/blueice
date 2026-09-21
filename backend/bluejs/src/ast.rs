@@ -439,9 +439,10 @@ pub enum Stmt {
         binding: String,
     },
     ClassDecl(Class),
-    /// Compiler-internal wrapper for an instance field lowered into its
-    /// constructor body. The VM uses it to retain field-initializer lexical
-    /// context for direct eval early errors.
+    /// Compiler-internal wrapper for a class field lowered to `this[key] =
+    /// initializer` inside the function that defines it (the class's
+    /// instance-field initializer, or a static field's own function). The
+    /// compiler turns it into DefineField or PrivateFieldAdd.
     ClassField(Box<Stmt>),
     /// Compiler-internal marker inserted before the instance-element
     /// initializers of a class that declares private elements.  The string
