@@ -431,9 +431,11 @@ impl Vm {
                     Some((handlers, frame_base)),
                 ),
                 Ok(CompletionAction::Return(value)) => Ok(InterpreterExit::Return(value)),
-                Ok(CompletionAction::TailRecur(_)) => Err(RuntimeError::TypeError(
-                    "generator cannot tail recur across an abrupt resume".into(),
-                )),
+                Ok(CompletionAction::TailRecur(_) | CompletionAction::TailCall(_)) => {
+                    Err(RuntimeError::TypeError(
+                        "generator cannot tail recur across an abrupt resume".into(),
+                    ))
+                }
                 Ok(CompletionAction::Throw(error)) | Err(error) => Err(error),
             }
         } else {

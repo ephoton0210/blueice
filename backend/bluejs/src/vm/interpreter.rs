@@ -1378,6 +1378,36 @@ impl Vm {
                             self.stack.push(receiver);
                         }
                     }
+                    Opcode::TailCall => {
+                        let eval_candidate = operand & 1 != 0;
+                        let argument_count = operand >> 1;
+                        let base = self.stack.len() - argument_count - 2;
+                        let callee = self.stack[base].clone();
+                        if eval_candidate && self.is_intrinsic_eval(&callee)? {
+                            // A direct eval runs in this frame's scope: not a
+                            // call that can replace it.
+                            let args = self.stack[base + 2..].to_vec();
+                            let result = self.direct_eval(native::argument(&args, 0))?;
+                            self.check_string(&result)?;
+                            self.stack.truncate(base);
+                            self.stack.push(result);
+                        } else if self.frame_can_be_replaced(code) && self.is_callable(&callee)? {
+                            let values = self.stack.split_off(base);
+                            return Ok(Some(Completion::TailCall(values)));
+                        } else {
+                            // The frame is a construct call (its result is
+                            // adjusted after it returns) or the callee is not
+                            // callable (a TypeError raised here, in this
+                            // frame): an ordinary call, then the `Return`
+                            // the compiler emitted after this instruction.
+                            let receiver = self.stack[base + 1].clone();
+                            let args = self.stack[base + 2..].to_vec();
+                            let result = self.call_native(callee, receiver, args, false)?;
+                            self.check_string(&result)?;
+                            self.stack.truncate(base);
+                            self.stack.push(result);
+                        }
+                    }
                     Opcode::Call | Opcode::DirectEval | Opcode::Construct => {
                         // Leave every call input on the stack until dispatch
                         // completes, so native allocations see all GC roots.
@@ -1596,6 +1626,12 @@ impl Vm {
                     CompletionAction::Continue => {}
                     CompletionAction::Jump(target) => pc = target,
                     CompletionAction::Return(value) => return Ok(InterpreterExit::Return(value)),
+                    CompletionAction::TailCall(values) => {
+                        // The frame ends here; `call_with_target` runs the
+                        // callee at this frame's depth once it is torn down.
+                        self.pending_tail_call = Some(values);
+                        return Ok(InterpreterExit::Return(Value::Undefined));
+                    }
                     CompletionAction::TailRecur(args) => {
                         self.stack.truncate(stack_base);
                         self.unwind_scopes(code, 0);

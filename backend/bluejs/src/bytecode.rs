@@ -104,6 +104,11 @@ opcodes! {
     GlobalString: 1, 0;
     GetMethod: 1, MAY_USE_INLINE_CACHE;
     Call: 5, 0;
+    // `return callee(args)` in tail position (§15.10.2). Same stack layout as
+    // Call. Operand: argument count << 1, plus 1 when the callee is spelled
+    // `eval` (a direct eval candidate). The frame is replaced by the callee's
+    // when the current call can be replaced; otherwise it is an ordinary call.
+    TailCall: 5, 0;
     DirectEval: 5, 0;
     Construct: 5, 0;
     Closure: 5, 0;

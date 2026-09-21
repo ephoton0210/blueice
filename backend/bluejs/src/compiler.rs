@@ -117,6 +117,7 @@ fn compile_with_limit_and_mode(
         with_scope_depths: Vec::new(),
         annex_b_parameter_names: BTreeSet::new(),
         tail_call_blockers: 0,
+        tail_call_pending: false,
     };
     compiler.bytecode.strict = module || strict_body(&program.body);
     compiler.bytecode.module = module;
@@ -396,6 +397,7 @@ pub(crate) fn compile_eval(
             .collect(),
         annex_b_parameter_names: BTreeSet::new(),
         tail_call_blockers: 0,
+        tail_call_pending: false,
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
     compiler.bytecode.new_target_allowed = new_target_allowed;
@@ -531,6 +533,9 @@ struct Compiler {
     /// and a block whose `using` declarations dispose after the return value
     /// is computed. Their handler must observe the call's outcome.
     tail_call_blockers: u32,
+    /// Set by a `return` in tail position just before it compiles the call
+    /// expression; the call consumes it to emit `TailCall` instead of `Call`.
+    tail_call_pending: bool,
 }
 
 #[derive(Clone, Copy)]

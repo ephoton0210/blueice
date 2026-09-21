@@ -577,7 +577,7 @@ impl Compiler {
                 if !self.function {
                     return Err(CompileError::InvalidSyntax("return requires a function"));
                 }
-                if let Some(value) = value.as_ref().filter(|_| self.bytecode.self_slot.is_some()) {
+                if let Some(value) = value.as_ref().filter(|_| self.bytecode.strict) {
                     if self.tail_position_return(value)? {
                         return Ok(());
                     }
@@ -721,7 +721,7 @@ impl Compiler {
     /// path ends in a `TailRecur` or a `Return`. `Ok(false)` means `value`
     /// has no such call and nothing was emitted.
     fn tail_position_return(&mut self, value: &Expr) -> Result<bool, CompileError> {
-        if self.tail_call_blockers != 0 || !self.contains_self_tail_call(value) {
+        if self.tail_call_blockers != 0 || !self.contains_tail_call(value) {
             return Ok(false);
         }
         match value {
@@ -763,10 +763,21 @@ impl Compiler {
                 }
                 self.tail_position_return_or_value(last)?;
             }
+            call if self.self_tail_call_args(call).is_none() => {
+                // A call to any other function: `TailCall` replaces this
+                // frame with the callee's, or (when this frame cannot be
+                // replaced, e.g. a constructor) calls it and falls through to
+                // the ordinary `Return`.
+                self.tail_call_pending = true;
+                self.expression(call)?;
+                debug_assert!(!self.tail_call_pending, "the call consumed the flag");
+                self.tail_call_pending = false;
+                self.emit(Opcode::Return, 0)?;
+            }
             call => {
                 let args = self
                     .self_tail_call_args(call)
-                    .expect("contains_self_tail_call found a self tail call");
+                    .expect("contains_tail_call found a self tail call");
                 for argument in args {
                     let Argument::Normal(value) = argument else {
                         unreachable!("self tail calls exclude spread arguments")
@@ -802,22 +813,49 @@ impl Compiler {
         Ok(())
     }
 
-    /// Whether `value`, read as a tail position, holds a self tail call.
-    fn contains_self_tail_call(&self, value: &Expr) -> bool {
+    /// Whether `value`, read as a tail position, holds a call this function
+    /// can compile as a tail call.
+    fn contains_tail_call(&self, value: &Expr) -> bool {
         match value {
-            Expr::Parenthesized(inner) => self.contains_self_tail_call(inner),
+            Expr::Parenthesized(inner) => self.contains_tail_call(inner),
             Expr::Conditional {
                 consequent,
                 alternate,
                 ..
-            } => {
-                self.contains_self_tail_call(consequent) || self.contains_self_tail_call(alternate)
-            }
-            Expr::Logical { right, .. } => self.contains_self_tail_call(right),
+            } => self.contains_tail_call(consequent) || self.contains_tail_call(alternate),
+            Expr::Logical { right, .. } => self.contains_tail_call(right),
             Expr::Sequence(expressions) => expressions
                 .last()
-                .is_some_and(|last| self.contains_self_tail_call(last)),
-            call => self.self_tail_call_args(call).is_some(),
+                .is_some_and(|last| self.contains_tail_call(last)),
+            call => self.self_tail_call_args(call).is_some() || self.is_general_tail_call(call),
+        }
+    }
+
+    /// A call that can replace this frame (§15.10.2): a plain call or tagged
+    /// template made from strict, non-generator, non-async function code that
+    /// is not a class constructor. Spread arguments, `super(...)` calls and
+    /// optional chains keep the ordinary call path, and so does a call inside
+    /// a loop that owns an iterator: closing it after the call would need the
+    /// frame this call replaces.
+    fn is_general_tail_call(&self, call: &Expr) -> bool {
+        if !self.function
+            || !self.bytecode.strict
+            || self.bytecode.generator
+            || self.bytecode.async_function
+            || self.bytecode.class_constructor
+            || self.loops.iter().any(|context| context.iterator.is_some())
+        {
+            return false;
+        }
+        match call {
+            Expr::Call { callee, args } => {
+                !matches!(&**callee, Expr::Super)
+                    && args
+                        .iter()
+                        .all(|argument| matches!(argument, Argument::Normal(_)))
+            }
+            Expr::TaggedTemplate { .. } => true,
+            _ => false,
         }
     }
 

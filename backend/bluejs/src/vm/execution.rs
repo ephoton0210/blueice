@@ -813,6 +813,17 @@ impl Vm {
         self.completion_empty = empty;
     }
 
+    /// Whether the running function frame can be replaced by a tail call: it
+    /// is an ordinary (not construct) call made through `call_with_target`,
+    /// which runs the callee once this frame is gone. An arrow is never a
+    /// construct call (its `new.target` is only the one it captured), and a
+    /// derived-constructor arrow must return through its own frame.
+    pub(super) fn frame_can_be_replaced(&self, code: &Bytecode) -> bool {
+        self.call_depth != 0
+            && self.class_constructor.is_none()
+            && (code.arrow || self.new_target == Value::Undefined)
+    }
+
     pub(super) fn resolve_completion(
         &mut self,
         code: &Bytecode,
@@ -849,6 +860,7 @@ impl Vm {
                     Completion::Throw(error) => CompletionAction::Throw(error),
                     Completion::Return(value) => CompletionAction::Return(value),
                     Completion::TailRecur(args) => CompletionAction::TailRecur(args),
+                    Completion::TailCall(values) => CompletionAction::TailCall(values),
                     Completion::Jump { cleanup, .. } => CompletionAction::Jump(cleanup),
                     Completion::Resume(_) | Completion::Halt(_) | Completion::Yield(_) => {
                         unreachable!("handled above")
@@ -991,7 +1003,7 @@ impl Vm {
                     Completion::Return(value)
                     | Completion::Yield(value)
                     | Completion::Throw(RuntimeError::Thrown(value)) => std::slice::from_ref(value),
-                    Completion::TailRecur(args) => args,
+                    Completion::TailRecur(args) | Completion::TailCall(args) => args,
                     Completion::Throw(_)
                     | Completion::Jump { .. }
                     | Completion::Resume(_)
@@ -1004,6 +1016,9 @@ impl Vm {
                 self.completion_saves.iter().map(|(value, _)| value),
             );
             push_object_roots(&mut roots, &self.with_objects);
+            if let Some(call) = &self.pending_tail_call {
+                push_object_roots(&mut roots, call);
+            }
             for object in &self.kept_weak_objects {
                 roots.push(*object);
             }
