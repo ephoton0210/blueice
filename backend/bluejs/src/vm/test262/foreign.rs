@@ -870,12 +870,15 @@ impl Vm {
         // `assert.sameValue` into a child Realm; preserving that child's
         // equivalent native helper keeps the call boundary functional rather
         // than replacing it with the deliberately opaque ordinary-object
-        // transport used for arbitrary parent objects.
+        // transport used for arbitrary parent objects. Only harness helpers
+        // are interchangeable: any other built-in (`RegExp`, `Object`, ...)
+        // of this Realm is a distinct function from its namesake there.
         let native = value
             .object_id()
             .map(|object| self.heap.native_function(object))
             .transpose()?
-            .flatten();
+            .flatten()
+            .filter(|native| matches!(native, NativeFunction::Test262(_)));
         let equivalent_native = if let Some(native) = native {
             let realm = self
                 .test262_realms

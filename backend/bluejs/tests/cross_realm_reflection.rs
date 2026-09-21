@@ -178,3 +178,26 @@ fn prototype_cycles_are_detected_across_realms() {
     );
     assert_no_failures(&source);
 }
+
+#[test]
+fn assigning_a_local_built_in_to_a_foreign_object_stores_that_built_in() {
+    let source = format!(
+        r#"{HELPERS}
+        const holder = other.eval('({{}})');
+        holder.constructor = other.RegExp;
+        check('foreign built-in', holder.constructor === other.RegExp);
+        // The same built-in of this realm is not "equivalent": it replaces it.
+        holder.constructor = RegExp;
+        check('local built-in replaces the foreign one', holder.constructor === RegExp);
+        // `RegExp(pattern)` returns a pattern whose `constructor` is this realm's RegExp.
+        const pattern = other.eval('({{ [Symbol.match]: true, source: "foo", flags: "gi" }})');
+        check('other realm pattern is copied', RegExp(pattern) !== pattern);
+        pattern.constructor = other.RegExp;
+        check('still copied with its own RegExp', RegExp(pattern) !== pattern);
+        pattern.constructor = RegExp;
+        check('returned as is with this realm RegExp', RegExp(pattern) === pattern);
+        failures.join('; ')
+        "#
+    );
+    assert_no_failures(&source);
+}
