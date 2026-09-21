@@ -351,11 +351,73 @@ fn dynamic_import_honours_type_text_and_type_bytes() {
 }
 
 #[test]
+fn a_deferred_import_of_a_text_or_bytes_resource_yields_its_default() {
+    let script = "
+        Promise.all([
+            import.defer('./data.txt', { with: { type: 'text' } }),
+            import.defer('./data.bin', { with: { type: 'bytes' } }),
+        ]).then(([t, b]) => {
+            if (t.default === 'hello' && b.default instanceof Uint8Array && b.default[1] === 8)
+                $DONE();
+            else $DONE(new Error('unexpected deferred namespaces'));
+        }, e => $DONE(e));";
+    let done = run_script(&[("data.txt", "hello")], &[("data.bin", &[9, 8])], script);
+    assert_eq!(done, Some(Ok(())));
+    let result = run(
+        &[(
+            "main.js",
+            "import defer * as ns from './data' with { type: 'text' }; ns.default",
+        )],
+        &[("data", "deferred")],
+        &[],
+    );
+    assert_eq!(result, Ok(string("deferred")));
+}
+
+#[test]
+fn a_synthetic_module_has_no_source_phase_representation() {
+    // GetModuleSource of a Synthetic Module Record throws a SyntaxError, even
+    // though the host does have the resource (and would load it as text).
+    let script = "
+        Promise.all([
+            import.source('./data.txt', { with: { type: 'text' } }).then(() => 'resolved', e => e.name),
+            import.source('./data.bin', { with: { type: 'bytes' } }).then(() => 'resolved', e => e.name),
+        ]).then(names => {
+            if (names.join() === 'SyntaxError,SyntaxError') $DONE();
+            else $DONE(new Error(names.join()));
+        }, e => $DONE(e));";
+    let done = run_script(&[("data.txt", "hello")], &[("data.bin", &[9, 8])], script);
+    assert_eq!(done, Some(Ok(())));
+}
+
+#[test]
 fn dynamic_import_of_a_missing_text_resource_rejects() {
     let script = "
         import('./missing', { with: { type: 'text' } })
             .then(() => $DONE(new Error('resolved')), () => $DONE());";
     assert_eq!(run_script(&[], &[], script), Some(Ok(())));
+}
+
+#[test]
+fn a_side_effect_only_import_still_requires_the_resource() {
+    // `import "./data" with { type: "text" }` binds nothing but is a request:
+    // it succeeds when the host has the resource and fails linking (before
+    // anything evaluates) when it does not.
+    let main = "globalThis.ran = true; import './data' with { type: 'text' };";
+    let ok = run(&[("main.js", main)], &[("data", "x")], &[]);
+    assert_eq!(ok, Ok(Value::Bool(true)));
+    let missing = run(
+        &[(
+            "main.js",
+            "$DONOTEVALUATE(); import './data' with { type: 'bytes' };",
+        )],
+        &[("data", "x")],
+        &[],
+    );
+    assert!(
+        matches!(missing, Err(RuntimeError::TypeError(ref message)) if message.contains("bytes module source")),
+        "{missing:?}"
+    );
 }
 
 #[test]

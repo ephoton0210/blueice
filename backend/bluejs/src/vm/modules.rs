@@ -664,8 +664,8 @@ impl Vm {
             let promise = self.new_promise()?;
             self.stack.push(Value::Object(promise));
             match self.evaluate_import_call_arguments(specifier, options) {
-                Ok((specifier, _)) if phase == ImportPhase::Source => {
-                    self.dynamic_import_source(promise, &specifier)?;
+                Ok((specifier, module_type)) if phase == ImportPhase::Source => {
+                    self.dynamic_import_source(promise, &specifier, module_type)?;
                 }
                 Ok((specifier, module_type)) => {
                     let referrer = self

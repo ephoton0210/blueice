@@ -13,13 +13,21 @@ impl Vm {
     /// Source-phase dynamic import has the same promise and argument
     /// boundary as ordinary import(), but asks the host for a Module Source
     /// object. A source-text module therefore rejects with SyntaxError instead
-    /// of linking or evaluating it as an ordinary dynamic import would.
+    /// of linking or evaluating it as an ordinary dynamic import would, and
+    /// so does a Synthetic Module Record (`type: "json" | "text" | "bytes"`),
+    /// whose GetModuleSource likewise throws a SyntaxError.
     pub(super) fn dynamic_import_source(
         &mut self,
         promise: ObjectId,
         specifier: &str,
+        module_type: ModuleType,
     ) -> Result<(), RuntimeError> {
         let result = (|| {
+            if module_type != ModuleType::JavaScript {
+                return Err(RuntimeError::SyntaxError(
+                    "a synthetic module has no source-phase representation".into(),
+                ));
+            }
             let referrer = self
                 .active_module_name
                 .clone()
