@@ -1105,3 +1105,51 @@ fn method_order_and_attributes_are_unchanged_by_decoration() {
          Object.getOwnPropertyNames(C.prototype).join() === 'constructor,a,b,c'",
     );
 }
+
+// ---- Modules ----
+
+fn run_module(sources: &[(&str, &str)]) -> Result<Value, RuntimeError> {
+    let modules: std::collections::HashMap<_, _> = sources
+        .iter()
+        .map(|(name, source)| {
+            (
+                format!("t/{name}"),
+                blueice_bluejs::compile_module(
+                    &blueice_bluejs::parse_module(source)
+                        .unwrap_or_else(|e| panic!("{name}: {e:?}")),
+                )
+                .unwrap_or_else(|e| panic!("{name}: {e:?}")),
+            )
+        })
+        .collect();
+    Vm::default().execute_module_graph("t/main.js", &modules)
+}
+
+#[test]
+fn exported_classes_are_decorated_before_or_after_the_export_keyword() {
+    let dep = "export const log = [];
+               const d = (n) => (v, ctx) => { log.push(n + ':' + ctx.kind + ':' + ctx.name); };
+               @d('a') export class A { @d('am') m() {} }
+               export @d('b') class B {}
+               @d('c') export default class {}
+               export const done = true;";
+    let main = "import Anonymous, { log, A, B } from './dep.js';
+                log.join() === 'am:method:m,a:class:A,b:class:B,c:class:default'
+                    && typeof Anonymous === 'function' && typeof A === 'function' && typeof B === 'function'";
+    assert_eq!(
+        run_module(&[("main.js", main), ("dep.js", dep)]),
+        Ok(Value::Bool(true))
+    );
+}
+
+#[test]
+fn an_exported_class_binding_is_the_decorated_class() {
+    let dep = "export @(v => class extends v { static wrapped = true; }) class C {}
+               export default @(v => class extends v { static wrapped = 'default'; }) class {}";
+    let main = "import D, { C } from './dep.js';
+                C.wrapped === true && D.wrapped === 'default'";
+    assert_eq!(
+        run_module(&[("main.js", main), ("dep.js", dep)]),
+        Ok(Value::Bool(true))
+    );
+}

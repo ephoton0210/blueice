@@ -153,3 +153,80 @@ fn a_decorated_class_declaration_needs_a_class_after_the_decorators() {
     rejects("@dec export");
     rejects("@dec let x");
 }
+
+// ---- Modules: decorators around `export` ----
+
+fn accepts_module(source: &str) {
+    blueice_bluejs::parse_module(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+}
+
+fn rejects_module(source: &str) {
+    let error = blueice_bluejs::parse_module(source).expect_err(source);
+    assert!(error.known_syntax, "{source}: {error:?}");
+}
+
+#[test]
+fn decorators_may_come_before_or_after_export() {
+    accepts_module("@dec export class C {}");
+    accepts_module("export @dec class C {}");
+    accepts_module("@dec export default class C {}");
+    accepts_module("@dec export default class {}");
+    accepts_module("export default @dec class C {}");
+    accepts_module("export default @dec class {}");
+    accepts_module("@a @b(1) @(c) export class C {}");
+    accepts_module("@dec class C {} export { C }");
+}
+
+#[test]
+fn exported_decorated_classes_keep_their_decorators() {
+    let module =
+        blueice_bluejs::parse_module("@a export class C {} export default @b @c class {}").unwrap();
+    let decorated: Vec<usize> = module
+        .body
+        .iter()
+        .filter_map(|statement| match statement {
+            Stmt::ClassDecl(class) => Some(class.decorators.len()),
+            Stmt::VarDecl(_, declarations) => match &declarations[0].init {
+                Some(Expr::Class(class)) => Some(class.decorators.len()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(decorated, [1, 2]);
+}
+
+#[test]
+fn decorators_cannot_appear_on_both_sides_of_export() {
+    rejects_module("@a export @b class C {}");
+    rejects_module("@a export default @b class C {}");
+    rejects_module("@a export default @b class {}");
+}
+
+#[test]
+fn only_a_class_can_be_decorated_in_an_export() {
+    rejects_module("@dec export function f() {}");
+    rejects_module("@dec export var x;");
+    rejects_module("@dec export default function f() {}");
+    rejects_module("@dec export default 1;");
+    rejects_module("@dec export { x }; var x;");
+    rejects_module("@dec export * from './m.js';");
+    rejects_module("export @dec function f() {}");
+    rejects_module("export @dec var x;");
+    rejects_module("export default @dec function f() {}");
+    rejects_module("@dec export");
+}
+
+#[test]
+fn a_decorated_exported_class_declaration_needs_a_name_unless_it_is_the_default() {
+    rejects_module("@dec export class {}");
+    rejects_module("export @dec class {}");
+    accepts_module("@dec export default class {}");
+}
+
+#[test]
+fn a_module_level_decorated_class_declaration_needs_a_name() {
+    accepts_module("@dec class C {}");
+    rejects_module("@dec class {}");
+    rejects_module("@dec function f() {}");
+}
