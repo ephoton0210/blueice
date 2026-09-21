@@ -238,18 +238,38 @@ impl Vm {
 
         for &slot in &slots {
             let binding = &code.bindings[slot as usize];
+            let function = code.global_function_names.contains(&binding.name);
             if !self.global_bindings.contains_key(&binding.name) {
-                self.create_global_binding(
-                    global,
-                    binding,
-                    code.global_function_names.contains(&binding.name),
-                    false,
-                )?;
+                if self.global_var_is_accessor(global, binding, function)? {
+                    continue;
+                }
+                self.create_global_binding(global, binding, function, false)?;
             }
             self.script_global_slots
                 .insert(slot as usize, binding.name.clone());
         }
         Ok(())
+    }
+
+    /// Whether a `var` declaration names an existing accessor property of the
+    /// global object. CreateGlobalVarBinding leaves an existing own property
+    /// untouched, but a cell-backed global binding mirrors a *data* property,
+    /// so it can neither read through the getter nor forward to the setter:
+    /// such a `var` gets no global binding at all. Name lookups and
+    /// assignments then reach the accessor through the global object itself.
+    fn global_var_is_accessor(
+        &self,
+        global: ObjectId,
+        binding: &Binding,
+        function: bool,
+    ) -> Result<bool, RuntimeError> {
+        if function || binding.lexical {
+            return Ok(false);
+        }
+        Ok(self
+            .heap
+            .get_own_property_descriptor(global, binding.name.as_str())?
+            .is_some_and(|descriptor| descriptor.accessor()))
     }
 
     /// Standard global properties exist independently of a script lexical
@@ -1365,13 +1385,12 @@ impl Vm {
             if binding.lexical {
                 continue;
             }
+            let function = code.global_function_names.contains(&binding.name);
             if !self.global_bindings.contains_key(&binding.name) {
-                self.create_global_binding(
-                    global,
-                    binding,
-                    code.global_function_names.contains(&binding.name),
-                    true,
-                )?;
+                if self.global_var_is_accessor(global, binding, function)? {
+                    continue;
+                }
+                self.create_global_binding(global, binding, function, true)?;
             }
             self.script_global_slots
                 .insert(slot as usize, binding.name.clone());
