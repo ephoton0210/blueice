@@ -606,6 +606,7 @@ impl Parser {
                     };
                     return Err(self.syntax_error(detail));
                 }
+                self.validate_binding_identifier(&name, self.current_identifier_escaped())?;
                 self.advance();
                 self.advance();
                 let params = vec![Param {

@@ -579,6 +579,7 @@ impl Compiler {
                     name.as_str(),
                     "implements"
                         | "interface"
+                        | "let"
                         | "package"
                         | "private"
                         | "protected"

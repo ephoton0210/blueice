@@ -87,7 +87,7 @@ pub enum Keyword {
 }
 
 impl Keyword {
-    fn from_str(s: &str) -> Option<Keyword> {
+    pub(crate) fn from_str(s: &str) -> Option<Keyword> {
         Some(match s {
             "var" => Keyword::Var,
             "let" => Keyword::Let,
@@ -906,9 +906,13 @@ impl Tokenizer {
             }
             text.push(character);
         }
+        // A keyword spelled with a Unicode escape is never that keyword
+        // (§12.7.2): it stays an IdentifierName, valid as a property name,
+        // and the parser rejects it wherever a reserved word cannot be an
+        // IdentifierReference or BindingIdentifier.
         match Keyword::from_str(&text) {
-            Some(kw) => Ok(Token::Keyword(kw)),
-            None => Ok(Token::Identifier(text)),
+            Some(kw) if !self.identifier_escaped => Ok(Token::Keyword(kw)),
+            _ => Ok(Token::Identifier(text)),
         }
     }
 

@@ -5,14 +5,21 @@
 use super::*;
 
 impl Parser {
-    fn validate_binding_identifier(&self, name: &str, escaped: bool) -> Result<(), ParseError> {
+    pub(super) fn validate_binding_identifier(
+        &self,
+        name: &str,
+        escaped: bool,
+    ) -> Result<(), ParseError> {
         // These are ReservedWords which the tokenizer preserves as
-        // IdentifierName tokens because they remain valid property names. A
+        // IdentifierName tokens because they remain valid property names,
+        // together with every keyword spelled with a Unicode escape (which
+        // the tokenizer also returns as an IdentifierName). A
         // BindingIdentifier may not use them, escaped or otherwise.
         if matches!(
             name,
             "class" | "debugger" | "enum" | "export" | "extends" | "import" | "super" | "with"
-        ) {
+        ) || Keyword::from_str(name).is_some_and(|keyword| keyword != Keyword::Let)
+        {
             return Err(self.syntax_error("a reserved word cannot be used as a binding identifier"));
         }
         if name == "await" && (self.async_depth != 0 || self.module_await) {

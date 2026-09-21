@@ -698,6 +698,9 @@ impl Parser {
             && matches!(self.peek_at(1), Token::Punct(Punct::Dot))
             && matches!(self.peek_at(2), Token::Identifier(name) if name == "target")
         {
+            if self.tokens[self.pos + 2].identifier_escaped {
+                return Err(self.syntax_error("new.target cannot contain an escape"));
+            }
             self.advance();
             self.advance();
             self.advance();
@@ -1095,6 +1098,11 @@ impl Parser {
                 Err(self.syntax_error("unexpected expression after await identifier"))
             }
             Token::Identifier(name) => {
+                if !self.identifier_reference_name_is_valid(&name) {
+                    return Err(self.syntax_error(
+                        "a reserved word cannot be used as an identifier reference",
+                    ));
+                }
                 self.advance();
                 Ok(Expr::Identifier(name))
             }
@@ -1240,6 +1248,11 @@ impl Parser {
                         PropertyKey::Identifier(n) => n.clone(),
                         _ => return Err(self.error("expected ':' after object property key")),
                     };
+                    if !self.identifier_reference_name_is_valid(&name) {
+                        return Err(self.syntax_error(
+                            "a reserved word cannot be a shorthand property",
+                        ));
+                    }
                     props.push(ObjectProp::KeyValue {
                         key: PropertyKey::Identifier(name.clone()),
                         value: Expr::Identifier(name),

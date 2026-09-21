@@ -403,24 +403,37 @@ impl Parser {
         let Token::Identifier(name) = self.peek() else {
             return false;
         };
-        if name == "enum" {
+        self.identifier_reference_name_is_valid(name)
+    }
+
+    /// Whether `name` may be an IdentifierReference here (§13.1.1). Besides
+    /// the ReservedWords, the strict-mode reserved words and the `yield` /
+    /// `await` context rules apply. The keywords the tokenizer keeps as
+    /// [`Keyword`] tokens can only arrive here as a property-name string
+    /// (`({ true })`) or as an escaped spelling, and are reserved too.
+    fn identifier_reference_name_is_valid(&self, name: &str) -> bool {
+        if Keyword::from_str(name).is_some_and(|keyword| keyword != Keyword::Let) {
             return false;
         }
         if matches!(
-            name.as_str(),
-            "class" | "debugger" | "export" | "extends" | "import" | "super" | "with"
+            name,
+            "class" | "debugger" | "enum" | "export" | "extends" | "import" | "super" | "with"
         ) {
             return false;
         }
         if name == "yield" && (self.generator_depth != 0 || self.strict) {
             return false;
         }
-        if name == "await" && (self.async_depth != 0 || self.module_await) {
+        if name == "await"
+            && (self.async_depth != 0
+                || self.module_await
+                || self.static_block_function_depths.last() == Some(&self.function_depth))
+        {
             return false;
         }
         !(self.strict
             && matches!(
-                name.as_str(),
+                name,
                 "implements"
                     | "interface"
                     | "let"

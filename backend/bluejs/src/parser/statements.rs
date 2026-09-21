@@ -73,6 +73,13 @@ impl Parser {
                 Ok(Stmt::VarDecl(DeclKind::AwaitUsing, declarators))
             }
             Token::Identifier(name) if name == "with" => self.parse_with_stmt(),
+            // §14.16: evaluating a DebuggerStatement without a debugging
+            // facility does nothing. An escaped spelling is not the keyword.
+            Token::Identifier(name) if name == "debugger" && !self.current_identifier_escaped() => {
+                self.advance();
+                self.consume_semicolon()?;
+                Ok(Stmt::Empty)
+            }
             Token::Keyword(Keyword::If) => self.parse_if_stmt(),
             Token::Keyword(Keyword::For) => self.parse_for_stmt(),
             Token::Keyword(Keyword::While) => self.parse_while_stmt(),
@@ -148,6 +155,9 @@ impl Parser {
         let identifier_escaped = self.current_identifier_escaped();
         let label = self.expect_identifier_name()?;
         self.expect_punct(Punct::Colon)?;
+        if !self.identifier_reference_name_is_valid(&label) {
+            return Err(self.syntax_error("a reserved word cannot be used as a label"));
+        }
         if label == "await" && (self.async_depth != 0 || self.module_await) {
             let detail = if identifier_escaped {
                 "the await keyword cannot contain an escape"
