@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress
+**Status**: Done
 
 ## Objective
 
@@ -22,7 +22,7 @@ trait TransferBackend {
 
 HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; SFTP via an `ssh2`- or `russh`-based crate — Phase 10's chunking/resume logic calls through this trait rather than knowing which protocol it's talking to.
 
-**Credentials**: FTP/SFTP need stored auth (username/password, or an SSH key for SFTP) that HTTP downloads mostly don't — this needs a secure local credential store (ideally OS-keychain integration per platform eventually; an encrypted local vault as a nearer-term fallback). Not yet in the checklist below; flagging it here since it's easy to overlook until someone actually tries to save an SFTP password.
+**Credentials**: FTP/SFTP need stored auth (username/password, or an SSH key for SFTP) that HTTP downloads mostly don't. BlueIce uses the platform credential store for passwords and encrypted private-key passphrases; key paths remain process-local configuration, never transfer state.
 
 ## Decisions
 
@@ -67,7 +67,11 @@ HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; S
   the URL. The SFTP backend tries SSH agent authentication first and opens the
   credential store only after host-key verification has succeeded. The
   explicit-FTPS backend similarly opens its credential only after the TLS
-  handshake has verified the certificate and hostname.
+  handshake has verified the certificate and hostname. An SFTP private key is
+  selected only with `blueice-downloads --sftp-private-key PATH`; its
+  passphrase is a distinct keychain entry set through
+  `SetSftpPrivateKeyPassphrase`. Authentication tries SSH agent, then that
+  configured key, then a saved password, all after host-key verification.
 
 ## Checklist
 
@@ -78,5 +82,5 @@ HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; S
 - [x] Design the credential storage mechanism for FTP/SFTP auth
 - [x] Implement the SFTP backend, known-host verification, and SSH-agent authentication (no password is accepted in a URL or recorded in transfer state)
 - [x] Add OS-keychain credential references for SFTP passwords, with a local MCP/IPC set/remove path that does not echo secrets
-- [ ] Add OS-keychain references for encrypted private-key passphrases
+- [x] Add OS-keychain references for encrypted private-key passphrases, with `--sftp-private-key`, IPC, MCP, and post-host-verification authentication wiring
 - [x] Add an explicit-FTPS backend using `suppaftp` 12.0.1; plain FTP is anonymous-only and both are safe single-stream transfers

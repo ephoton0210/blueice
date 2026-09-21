@@ -31,7 +31,7 @@ use crate::store::{Store, StoredTransfer};
 use blueice_ipc::downloads::{BlockedInfo, ErrorCode, TransferEvent, TransferInfo, TransferState};
 use blueice_net::download::backend::validate_url;
 use blueice_net::download::clearance::{Blocked, Reviewer};
-use blueice_net::download::credentials::{delete_ftps_password, delete_sftp_password, save_ftps_password, save_sftp_password, FtpsCredentialRef, SftpCredentialRef};
+use blueice_net::download::credentials::{delete_ftps_password, delete_sftp_password, delete_sftp_private_key_passphrase, save_ftps_password, save_sftp_password, save_sftp_private_key_passphrase, FtpsCredentialRef, SftpCredentialRef, SftpPrivateKeyPassphraseRef};
 use blueice_net::download::file_name::choose_file_name;
 use blueice_net::download::probe::probe;
 use blueice_net::download::sidecar::remove_partials;
@@ -318,6 +318,19 @@ impl TransferManager {
     pub fn remove_sftp_password(&self, host: &str, port: u16, username: &str) -> Result<(), ManagerError> {
         let reference = SftpCredentialRef::new(host, port, username).map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
         delete_sftp_password(&reference).map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))
+    }
+
+    /// Stores a passphrase for the local SFTP private key selected at process
+    /// startup. The private-key path itself never crosses this socket or enters
+    /// transfer state.
+    pub fn set_sftp_private_key_passphrase(&self, host: &str, port: u16, username: &str, passphrase: &str) -> Result<(), ManagerError> {
+        let reference = SftpPrivateKeyPassphraseRef::new(host, port, username).map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        save_sftp_private_key_passphrase(&reference, passphrase).map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))
+    }
+
+    pub fn remove_sftp_private_key_passphrase(&self, host: &str, port: u16, username: &str) -> Result<(), ManagerError> {
+        let reference = SftpPrivateKeyPassphraseRef::new(host, port, username).map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        delete_sftp_private_key_passphrase(&reference).map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))
     }
 
     /// Writes an explicit-FTPS password to the platform credential store.

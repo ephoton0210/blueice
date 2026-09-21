@@ -8,7 +8,7 @@
 //! workers.  Host verification is strict -- no trust-on-first-use fallback.
 
 use crate::download::backend::{plain_stream, ByteRange, ByteStream, TransferBackend};
-use crate::download::credentials::{load_sftp_password, SftpCredentialRef};
+use crate::download::credentials::{load_sftp_password, load_sftp_private_key_passphrase, SftpCredentialRef, SftpPrivateKeyPassphraseRef};
 use crate::download::probe::Probe;
 use crate::download::{DownloadError, DownloadOptions};
 use percent_encoding::percent_decode_str;
@@ -26,10 +26,12 @@ pub(crate) struct SftpBackend {
     connect_timeout: Duration,
     response_timeout: Duration,
     known_hosts: Option<PathBuf>,
+    private_key: Option<PathBuf>,
     /// Keyring backends are not reliably reentrant on every supported OS.
     /// Serialize each credential's first lookup, then keep the zeroizing
     /// secret only for this backend instance's short transfer lifetime.
     passwords: Mutex<HashMap<SftpCredentialRef, Option<Zeroizing<String>>>>,
+    key_passphrases: Mutex<HashMap<SftpPrivateKeyPassphraseRef, Option<Zeroizing<String>>>>,
 }
 
 struct Endpoint {
@@ -42,7 +44,14 @@ struct Endpoint {
 
 impl SftpBackend {
     pub(crate) fn new(options: &DownloadOptions) -> Self {
-        SftpBackend { connect_timeout: options.connect_timeout, response_timeout: options.response_timeout, known_hosts: options.sftp_known_hosts.clone(), passwords: Mutex::new(HashMap::new()) }
+        SftpBackend {
+            connect_timeout: options.connect_timeout,
+            response_timeout: options.response_timeout,
+            known_hosts: options.sftp_known_hosts.clone(),
+            private_key: options.sftp_private_key.clone(),
+            passwords: Mutex::new(HashMap::new()),
+            key_passphrases: Mutex::new(HashMap::new()),
+        }
     }
 
     fn known_hosts_path(&self) -> Result<PathBuf, DownloadError> {
@@ -62,6 +71,31 @@ impl SftpBackend {
         let password = load_sftp_password(&reference).map_err(|error| DownloadError::Credentials(error.to_string()))?;
         passwords.insert(reference, password.clone());
         Ok(password)
+    }
+
+    fn private_key_passphrase(&self, endpoint: &Endpoint) -> Result<Option<Zeroizing<String>>, DownloadError> {
+        let reference = SftpPrivateKeyPassphraseRef::new(&endpoint.host, endpoint.port, &endpoint.username).map_err(|error| DownloadError::Credentials(error.to_string()))?;
+        let mut passphrases = self.key_passphrases.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(passphrase) = passphrases.get(&reference) {
+            return Ok(passphrase.clone());
+        }
+        let passphrase = load_sftp_private_key_passphrase(&reference).map_err(|error| DownloadError::Credentials(error.to_string()))?;
+        passphrases.insert(reference, passphrase.clone());
+        Ok(passphrase)
+    }
+
+    /// The key path comes only from local process configuration, never a URL
+    /// or transfer record. A key's passphrase is opened only after strict
+    /// host-key verification has completed.
+    fn authenticate_private_key(&self, session: &mut Session, endpoint: &Endpoint) -> Result<bool, DownloadError> {
+        let Some(private_key) = &self.private_key else {
+            return Ok(false);
+        };
+        let passphrase = self.private_key_passphrase(endpoint)?;
+        Ok(session
+            .userauth_pubkey_file(&endpoint.username, None, private_key, passphrase.as_deref().map(String::as_str))
+            .is_ok()
+            && session.authenticated())
     }
 
     fn connect(&self, endpoint: &Endpoint) -> Result<Sftp, DownloadError> {
@@ -96,14 +130,21 @@ impl SftpBackend {
             CheckResult::Failure => return Err(DownloadError::HostVerification(format!("could not check {}:{} against {}", endpoint.host, endpoint.port, known_hosts_path.display()))),
         }
 
-        if session.userauth_agent(&endpoint.username).is_err() {
+        let agent_authenticated = session.userauth_agent(&endpoint.username).is_ok() && session.authenticated();
+        let key_authenticated = !agent_authenticated && self.authenticate_private_key(&mut session, endpoint)?;
+        if !agent_authenticated && !key_authenticated {
             match self.password(endpoint)? {
                 Some(password) => session.userauth_password(&endpoint.username, &password).map_err(|_| DownloadError::Authentication(format!("the saved SFTP password could not authenticate {}", endpoint.username)))?,
-                None => return Err(DownloadError::Authentication(format!("no matching SSH-agent identity or saved SFTP password for {}", endpoint.username))),
+                None => {
+                    return Err(DownloadError::Authentication(format!(
+                        "no matching SSH-agent identity, configured private key, or saved SFTP password for {}",
+                        endpoint.username
+                    )));
+                }
             }
         }
         if !session.authenticated() {
-            return Err(DownloadError::Authentication(format!("the SSH agent did not authenticate {}", endpoint.username)));
+            return Err(DownloadError::Authentication(format!("SFTP authentication did not authenticate {}", endpoint.username)));
         }
         session.sftp().map_err(|error| DownloadError::Network(format!("could not start SFTP for {}@{}: {error}", endpoint.username, endpoint.host)))
     }

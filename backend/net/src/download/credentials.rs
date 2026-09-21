@@ -12,6 +12,7 @@ use keyring::Entry;
 use zeroize::Zeroizing;
 
 const SFTP_SERVICE_PREFIX: &str = "org.blueice.downloads.sftp";
+const SFTP_KEY_PASSPHRASE_SERVICE_PREFIX: &str = "org.blueice.downloads.sftp-key-passphrase";
 const FTPS_SERVICE_PREFIX: &str = "org.blueice.downloads.ftps";
 
 /// Identifies an SFTP password without containing the password itself.
@@ -42,6 +43,37 @@ impl SftpCredentialRef {
         // ignores keyring's `target`, so the endpoint belongs in the service
         // name rather than relying on a platform-specific target behavior.
         Entry::new(&format!("{SFTP_SERVICE_PREFIX}.{}:{}", self.host, self.port), &self.username).map_err(|_| CredentialError::Unavailable)
+    }
+}
+
+/// Identifies a passphrase for the configured SFTP private key without
+/// containing that passphrase or the private-key path. A host, port, and
+/// username are enough to keep the passphrase separate from an SFTP password
+/// for the same login, while the key path stays process-local configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SftpPrivateKeyPassphraseRef {
+    host: String,
+    port: u16,
+    username: String,
+}
+
+impl SftpPrivateKeyPassphraseRef {
+    pub fn new(host: impl Into<String>, port: u16, username: impl Into<String>) -> Result<Self, CredentialError> {
+        let (host, username) = (host.into(), username.into());
+        if host.is_empty() || host.chars().any(char::is_control) {
+            return Err(CredentialError::InvalidReference("SFTP host must be non-empty and contain no control characters".to_string()));
+        }
+        if port == 0 {
+            return Err(CredentialError::InvalidReference("SFTP port must be between 1 and 65535".to_string()));
+        }
+        if username.is_empty() || username.chars().any(char::is_control) {
+            return Err(CredentialError::InvalidReference("SFTP username must be non-empty and contain no control characters".to_string()));
+        }
+        Ok(SftpPrivateKeyPassphraseRef { host, port, username })
+    }
+
+    fn entry(&self) -> Result<Entry, CredentialError> {
+        Entry::new(&format!("{SFTP_KEY_PASSPHRASE_SERVICE_PREFIX}.{}:{}", self.host, self.port), &self.username).map_err(|_| CredentialError::Unavailable)
     }
 }
 
@@ -122,6 +154,34 @@ pub(crate) fn load_sftp_password(reference: &SftpCredentialRef) -> Result<Option
     }
 }
 
+/// Saves a configured SFTP private key's passphrase in the operating system
+/// credential store. The key path itself is not persisted here.
+pub fn save_sftp_private_key_passphrase(reference: &SftpPrivateKeyPassphraseRef, passphrase: &str) -> Result<(), CredentialError> {
+    if passphrase.is_empty() {
+        return Err(CredentialError::InvalidReference("SFTP private-key passphrase must not be empty".to_string()));
+    }
+    reference.entry()?.set_password(passphrase).map_err(|_| CredentialError::Unavailable)
+}
+
+/// Deletes a saved SFTP private-key passphrase. A missing passphrase is
+/// already the desired state, so this is idempotent.
+pub fn delete_sftp_private_key_passphrase(reference: &SftpPrivateKeyPassphraseRef) -> Result<(), CredentialError> {
+    match reference.entry()?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(_) => Err(CredentialError::Unavailable),
+    }
+}
+
+/// Reads a private-key passphrase only after the SFTP server's host key has
+/// passed verification. The returned value zeroizes itself on drop.
+pub(crate) fn load_sftp_private_key_passphrase(reference: &SftpPrivateKeyPassphraseRef) -> Result<Option<Zeroizing<String>>, CredentialError> {
+    match reference.entry()?.get_password() {
+        Ok(passphrase) => Ok(Some(Zeroizing::new(passphrase))),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(_) => Err(CredentialError::Unavailable),
+    }
+}
+
 /// Saves an explicit-FTPS password in the operating system credential store.
 pub fn save_ftps_password(reference: &FtpsCredentialRef, password: &str) -> Result<(), CredentialError> {
     if password.is_empty() {
@@ -159,6 +219,15 @@ mod tests {
         assert_eq!(reference.host, "files.example.test");
         assert_eq!(reference.port, 2222);
         assert_eq!(reference.username, "alice");
+    }
+
+    #[test]
+    fn a_private_key_passphrase_reference_has_its_own_credential_namespace() {
+        let reference = SftpPrivateKeyPassphraseRef::new("files.example.test", 2222, "alice").unwrap();
+        assert_eq!(reference.host, "files.example.test");
+        assert_eq!(reference.port, 2222);
+        assert_eq!(reference.username, "alice");
+        assert!(matches!(SftpPrivateKeyPassphraseRef::new("host", 22, "alice\nroot"), Err(CredentialError::InvalidReference(_))));
     }
 
     #[test]

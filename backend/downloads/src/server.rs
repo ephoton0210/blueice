@@ -83,6 +83,8 @@ fn handle_connection(stream: UnixStream, manager: &Arc<TransferManager>, stop: &
             DownloadsRequest::Remove { id } => manager.remove(id).map(|()| DownloadsReply::Ok).unwrap_or_else(refusal),
             DownloadsRequest::SetSftpPassword { host, port, username, password } => manager.set_sftp_password(&host, port, &username, &password).map(|()| DownloadsReply::Ok).unwrap_or_else(refusal),
             DownloadsRequest::RemoveSftpPassword { host, port, username } => manager.remove_sftp_password(&host, port, &username).map(|()| DownloadsReply::Ok).unwrap_or_else(refusal),
+            DownloadsRequest::SetSftpPrivateKeyPassphrase { host, port, username, passphrase } => manager.set_sftp_private_key_passphrase(&host, port, &username, &passphrase).map(|()| DownloadsReply::Ok).unwrap_or_else(refusal),
+            DownloadsRequest::RemoveSftpPrivateKeyPassphrase { host, port, username } => manager.remove_sftp_private_key_passphrase(&host, port, &username).map(|()| DownloadsReply::Ok).unwrap_or_else(refusal),
             DownloadsRequest::SetFtpsPassword { host, port, username, password } => manager.set_ftps_password(&host, port, &username, &password).map(|()| DownloadsReply::Ok).unwrap_or_else(refusal),
             DownloadsRequest::RemoveFtpsPassword { host, port, username } => manager.remove_ftps_password(&host, port, &username).map(|()| DownloadsReply::Ok).unwrap_or_else(refusal),
             DownloadsRequest::Subscribe => {

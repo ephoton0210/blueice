@@ -64,6 +64,9 @@ pub struct DownloadOptions {
     /// `None` means the current user's `~/.ssh/known_hosts`; a missing file
     /// is an error, never a trust-on-first-use prompt.
     pub sftp_known_hosts: Option<PathBuf>,
+    /// A local private key to try after SSH-agent authentication. Its
+    /// passphrase, if any, is held only in the OS credential store.
+    pub sftp_private_key: Option<PathBuf>,
 }
 
 impl Default for DownloadOptions {
@@ -82,6 +85,7 @@ impl Default for DownloadOptions {
             tick: Duration::from_millis(100),
             overwrite: false,
             sftp_known_hosts: None,
+            sftp_private_key: None,
         }
     }
 }
@@ -187,6 +191,7 @@ mod tests {
         assert_eq!(o.tick, Duration::from_millis(100));
         assert!(!o.overwrite);
         assert_eq!(o.sftp_known_hosts, None);
+        assert_eq!(o.sftp_private_key, None);
     }
 
     #[test]

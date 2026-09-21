@@ -124,6 +124,29 @@ struct RemoveSftpPasswordParams {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+struct SetSftpPrivateKeyPassphraseParams {
+    /// SFTP server host, without a URL scheme or path.
+    host: String,
+    /// SFTP port; defaults to 22.
+    port: Option<u16>,
+    /// The SSH username used in the matching sftp://user@host/path URL.
+    username: String,
+    /// The configured private key's passphrase. It is sent only to the local
+    /// downloads process and is never returned, logged, or stored with a transfer.
+    passphrase: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct RemoveSftpPrivateKeyPassphraseParams {
+    /// SFTP server host, without a URL scheme or path.
+    host: String,
+    /// SFTP port; defaults to 22.
+    port: Option<u16>,
+    /// The SSH username used in the matching sftp://user@host/path URL.
+    username: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 struct SetFtpsPasswordParams {
     /// Explicit-FTPS server host, without a URL scheme or path.
     host: String,
@@ -339,7 +362,7 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
-        description = "Start downloading a file over HTTP(S), anonymous FTP as ftp://host/path, SFTP as sftp://user@host/path, or explicit FTPS as ftps://user@host/path, with BlueIce's built-in download manager. HTTP(S) uses several connections at once and is resumable when the server supplies a validator; FTP-family and SFTP transfers are single-stream and restart from the beginning after a pause. SFTP verifies the host against known-hosts; FTPS verifies the TLS certificate and can use a password saved through set_ftps_password. Passwords in URLs are refused. \
+        description = "Start downloading a file over HTTP(S), anonymous FTP as ftp://host/path, SFTP as sftp://user@host/path, or explicit FTPS as ftps://user@host/path, with BlueIce's built-in download manager. HTTP(S) uses several connections at once and is resumable when the server supplies a validator; FTP-family and SFTP transfers are single-stream and restart from the beginning after a pause. SFTP verifies the host against known-hosts and can use an SSH agent, a configured private key (whose passphrase can be saved through set_sftp_private_key_passphrase), or a saved password; FTPS verifies the TLS certificate and can use a password saved through set_ftps_password. Passwords in URLs are refused. \
         Returns as soon as the transfer is queued -- it does NOT wait for the download to finish; read progress with get_transfer or list_transfers. \
         Every download is first reviewed by the safety gatekeeper, so a transfer can end up 'blocked' instead of downloading (the result says why). \
         `dest` is an optional path relative to the download directory (absolute paths and '..' are refused); without it the name comes from the server or the URL. \
@@ -366,6 +389,24 @@ impl BlueIceMcpServer {
         let port = port.unwrap_or(22);
         match downloads_call(self.downloads.clone(), true, move |client| client.remove_sftp_password(&host, port, &username)).await {
             Ok(()) => Ok(CallToolResult::success(vec![Content::text("Saved SFTP password removed from the local operating-system credential store.")])),
+            Err(error) => Ok(call_error_result(error)),
+        }
+    }
+
+    #[tool(description = "Store the passphrase for the SFTP private key configured when the downloads process starts (--sftp-private-key PATH). The passphrase is sent only to the local downloads process, opened only after known-host verification, and is never returned, logged, placed in a URL, or written into transfer state.")]
+    async fn set_sftp_private_key_passphrase(&self, Parameters(SetSftpPrivateKeyPassphraseParams { host, port, username, passphrase }): Parameters<SetSftpPrivateKeyPassphraseParams>) -> Result<CallToolResult, ErrorData> {
+        let port = port.unwrap_or(22);
+        match downloads_call(self.downloads.clone(), false, move |client| client.set_sftp_private_key_passphrase(&host, port, &username, &passphrase)).await {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text("SFTP private-key passphrase saved in the local operating-system credential store. It will not be returned or recorded with transfers.")])),
+            Err(error) => Ok(call_error_result(error)),
+        }
+    }
+
+    #[tool(description = "Remove the saved passphrase for the SFTP private key configured for a host, port, and username. This does not alter the key file, downloaded files, or transfer history.")]
+    async fn remove_sftp_private_key_passphrase(&self, Parameters(RemoveSftpPrivateKeyPassphraseParams { host, port, username }): Parameters<RemoveSftpPrivateKeyPassphraseParams>) -> Result<CallToolResult, ErrorData> {
+        let port = port.unwrap_or(22);
+        match downloads_call(self.downloads.clone(), true, move |client| client.remove_sftp_private_key_passphrase(&host, port, &username)).await {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text("Saved SFTP private-key passphrase removed from the local operating-system credential store.")])),
             Err(error) => Ok(call_error_result(error)),
         }
     }
