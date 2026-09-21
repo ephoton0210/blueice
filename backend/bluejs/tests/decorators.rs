@@ -1153,3 +1153,63 @@ fn an_exported_class_binding_is_the_decorated_class() {
         Ok(Value::Bool(true))
     );
 }
+
+#[test]
+fn the_context_name_is_the_property_key_for_every_kind_of_literal_key() {
+    assert_true(
+        "const names = [];
+         const dec = (v, ctx) => { names.push(ctx.name); };
+         const s = Symbol('sym');
+         class C {
+             @dec 1() {}
+             @dec 'str'() {}
+             @dec 2.5() {}
+             @dec [s]() {}
+             @dec id() {}
+             @dec 0x10 = 1;
+             @dec accessor 'acc' = 2;
+         }
+         names[0] === '1' && names[1] === 'str' && names[2] === '2.5' && names[3] === s
+             && names[4] === 'id' && names[5] === '16' && names[6] === 'acc'",
+    );
+}
+
+#[test]
+fn generator_and_async_methods_can_be_decorated() {
+    assert_true(
+        "let seen = [];
+         const dec = (v, ctx) => { seen.push(Object.getPrototypeOf(v).constructor.name); return v; };
+         class C { @dec *g() { yield 1; } @dec async a() {} @dec async *ag() {} }
+         seen.join() === 'GeneratorFunction,AsyncFunction,AsyncGeneratorFunction'
+             && [...new C().g()].join() === '1'",
+    );
+}
+
+#[test]
+fn a_decorated_element_can_be_the_only_element_of_a_class_that_is_otherwise_empty() {
+    assert_true("class C { @(() => {}) static s; } C.hasOwnProperty('s')");
+    assert_true("class C { @(() => {}) f; } new C().hasOwnProperty('f')");
+}
+
+#[test]
+fn decorators_see_the_surrounding_scopes_this_and_arguments() {
+    assert_true(
+        "function outer() {
+             let seen;
+             class C { @((v, ctx) => { seen = [this, arguments[0]]; }) m() {} }
+             return seen;
+         }
+         const receiver = {};
+         const seen = outer.call(receiver, 'arg');
+         seen[0] === receiver && seen[1] === 'arg'",
+    );
+}
+
+#[test]
+fn a_decorator_can_call_eval_in_the_class_scope() {
+    assert_true(
+        "let value;
+         class C { @(eval('(v, ctx) => { value = ctx.name; }')) named() {} }
+         value === 'named'",
+    );
+}
