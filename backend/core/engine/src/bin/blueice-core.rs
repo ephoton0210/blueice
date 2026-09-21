@@ -15,9 +15,10 @@
 //!
 //! Accepts exactly one client connection, then exits when that client
 //! disconnects or sends `Shutdown` -- there is no multi-frontend
-//! support in this reference implementation. An optional second Unix socket
-//! routes the narrow, long-lived BlueJS script protocol into that same session
-//! thread; its listener never owns DOM or tab state itself.
+//! support in this reference implementation. Optional additional Unix sockets
+//! route the narrow BlueJS script protocol and debugger-discovery protocol into
+//! that same session thread; their listeners never own DOM, tab, realm, or VM
+//! state themselves.
 
 #[cfg(unix)]
 use blueice_engine::{script, session, TabManager};
@@ -52,6 +53,10 @@ struct Args {
     /// or an integration test; omitting it preserves the reference binary's
     /// current frontend-only mode.
     script_socket: Option<PathBuf>,
+    /// Optional listener for the native debugger discovery channel. It remains
+    /// separate from both frontend and DOM-script IPC; the session thread
+    /// validates each requested tab/document generation before replying.
+    debugger_socket: Option<PathBuf>,
     /// An explicitly selected, core-owned host typing profile for executing
     /// discovered inline BlueTS page declarations. Omission preserves the
     /// default no-inline-execution process mode; page content cannot select a
@@ -74,6 +79,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut frame_dir = None;
     let mut gatekeeper_socket = None;
     let mut script_socket = None;
+    let mut debugger_socket = None;
     let mut inline_bluets_profile = None;
 
     let mut it = args;
@@ -94,6 +100,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
+            "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
             "--inline-bluets-profile" => inline_bluets_profile = Some(value()?),
             other => return Err(format!("unrecognized argument: {other}")),
         }
@@ -107,6 +114,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         frame_dir,
         gatekeeper_socket,
         script_socket,
+        debugger_socket,
         inline_bluets_profile,
     })
 }
@@ -155,6 +163,53 @@ fn serve_script_listener(listener: UnixListener, sender: script::ScriptRequestSe
     }
 }
 
+/// Serves one native debugger discovery connection. The first-message
+/// negotiation belongs at this transport boundary; every later target lookup
+/// is forwarded to the core session thread, which owns live tab state.
+#[cfg(unix)]
+fn serve_debugger_connection(
+    mut stream: UnixStream,
+    sender: blueice_engine::debugger::DebuggerRequestSender,
+) -> io::Result<()> {
+    let first = blueice_ipc::debugger::read_debugger_request(&mut stream)?;
+    let accepted = matches!(
+        first,
+        blueice_ipc::debugger::DebuggerRequest::Hello {
+            protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+        }
+    );
+    let reply = blueice_ipc::debugger::negotiate(&first);
+    blueice_ipc::debugger::write_debugger_reply(&mut stream, &reply)?;
+    if !accepted {
+        return Ok(());
+    }
+
+    loop {
+        let request = match blueice_ipc::debugger::read_debugger_request(&mut stream) {
+            Ok(request) => request,
+            Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let reply = sender.request(request)?;
+        blueice_ipc::debugger::write_debugger_reply(&mut stream, &reply)?;
+    }
+}
+
+/// Accepts successive debugger peers. A malformed/disconnected peer ends only
+/// its connection and never interrupts the owning frontend session.
+#[cfg(unix)]
+fn serve_debugger_listener(
+    listener: UnixListener,
+    sender: blueice_engine::debugger::DebuggerRequestSender,
+) {
+    for stream in listener.incoming() {
+        let Ok(stream) = stream else {
+            break;
+        };
+        let _ = serve_debugger_connection(stream, sender.clone());
+    }
+}
+
 #[cfg(unix)]
 fn main() -> ExitCode {
     let args = match parse_args(std::env::args().skip(1)) {
@@ -172,6 +227,7 @@ fn main() -> ExitCode {
         .gatekeeper_socket
         .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
     let script_socket = args.script_socket.clone();
+    let debugger_socket = args.debugger_socket.clone();
     let inline_bluets_profile = args.inline_bluets_profile.clone();
 
     let script_listener = match script_socket.as_ref() {
@@ -182,6 +238,25 @@ fn main() -> ExitCode {
                 Err(error) => {
                     eprintln!(
                         "blueice-core: failed to bind script socket {}: {error}",
+                        path.display()
+                    );
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        None => None,
+    };
+    let debugger_listener = match debugger_socket.as_ref() {
+        Some(path) => {
+            let _ = std::fs::remove_file(path);
+            match UnixListener::bind(path) {
+                Ok(listener) => Some(listener),
+                Err(error) => {
+                    if let Some(path) = &script_socket {
+                        let _ = std::fs::remove_file(path);
+                    }
+                    eprintln!(
+                        "blueice-core: failed to bind debugger socket {}: {error}",
                         path.display()
                     );
                     return ExitCode::FAILURE;
@@ -202,6 +277,9 @@ fn main() -> ExitCode {
             if let Some(path) = &script_socket {
                 let _ = std::fs::remove_file(path);
             }
+            if let Some(path) = &debugger_socket {
+                let _ = std::fs::remove_file(path);
+            }
             eprintln!(
                 "blueice-core: failed to bind {}: {e}",
                 args.socket.display()
@@ -212,8 +290,13 @@ fn main() -> ExitCode {
 
     let result = (|| -> std::io::Result<()> {
         let (script_sender, script_requests) = script::script_request_channel();
+        let (debugger_sender, debugger_requests) =
+            blueice_engine::debugger::debugger_request_channel();
         if let Some(listener) = script_listener {
             thread::spawn(move || serve_script_listener(listener, script_sender));
+        }
+        if let Some(listener) = debugger_listener {
+            thread::spawn(move || serve_debugger_listener(listener, debugger_sender));
         }
         let (mut stream, _) = listener.accept()?;
         let mut tabs = TabManager::new(args.width, args.height);
@@ -230,29 +313,36 @@ fn main() -> ExitCode {
                     format!("invalid inline BlueTS profile: {error}"),
                 )
             })?;
-            session::run_session_with_script_requests_and_inline_page_executor(
+            session::run_session_with_script_and_debugger_requests_and_inline_page_executor(
                 &mut tabs,
                 &mut stream,
                 &frame_dir,
                 &mut generation,
                 &gatekeeper_socket,
-                script_socket.as_ref().map(|_| &script_requests),
+                session::CoreSessionRequests {
+                    script: script_socket.as_ref().map(|_| &script_requests),
+                    debugger: debugger_socket.as_ref().map(|_| &debugger_requests),
+                },
                 Some(&mut inline_executor),
             )
         } else {
-            session::run_session_with_script_requests(
+            session::run_session_with_script_and_debugger_requests(
                 &mut tabs,
                 &mut stream,
                 &frame_dir,
                 &mut generation,
                 &gatekeeper_socket,
                 script_socket.as_ref().map(|_| &script_requests),
+                debugger_socket.as_ref().map(|_| &debugger_requests),
             )
         }
     })();
 
     let _ = std::fs::remove_file(&args.socket);
     if let Some(path) = script_socket {
+        let _ = std::fs::remove_file(path);
+    }
+    if let Some(path) = debugger_socket {
         let _ = std::fs::remove_file(path);
     }
     let _ = std::fs::remove_dir_all(&frame_dir);
@@ -294,6 +384,7 @@ mod tests {
         assert_eq!(parsed.frame_dir, None);
         assert_eq!(parsed.gatekeeper_socket, None);
         assert_eq!(parsed.script_socket, None);
+        assert_eq!(parsed.debugger_socket, None);
         assert_eq!(parsed.inline_bluets_profile, None);
     }
 
@@ -312,6 +403,8 @@ mod tests {
             "/tmp/gk.sock",
             "--script-socket",
             "/tmp/script.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
             "--inline-bluets-profile",
             "core-script-document-text-v1",
         ])
@@ -325,6 +418,7 @@ mod tests {
                 frame_dir: Some(PathBuf::from("/tmp/frames")),
                 gatekeeper_socket: Some(PathBuf::from("/tmp/gk.sock")),
                 script_socket: Some(PathBuf::from("/tmp/script.sock")),
+                debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
             }
         );

@@ -11,6 +11,7 @@
 mod ai_snapshot;
 pub mod compiler_service;
 pub mod credits;
+pub mod debugger;
 mod gatekeeper_client;
 mod page;
 pub mod script;

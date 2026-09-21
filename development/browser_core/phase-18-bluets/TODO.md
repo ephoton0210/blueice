@@ -189,11 +189,19 @@ or second module resolver to bypass them.
   MUST validate exact BlueJS instruction boundaries rather than remap an
   offset. The capability schema can report `available`, `planned`, or
   `unsupported` for breakpoints, pause/resume, stepping, stack, scopes,
-  exception policy, and bounded values. This is only the public protocol
-  boundary: no listener, core-to-BlueJS routing, program-registry validation,
-  breakpoint table, pause state, stack/scope/value implementation, or debugger
-  IPC consumer exists yet, so no capability is currently advertised as
-  available by a running host.
+  exception policy, and bounded values. `blueice_engine::debugger` now routes
+  post-handshake discovery requests from a socket worker to the one session
+  thread that owns live tabs. `blueice-core --debugger-socket <path>` binds
+  that separate listener, negotiates `Hello` at its transport boundary, and
+  validates the default browser-context ID, live tab, and exact private
+  document generation before returning a capability document. A stale
+  generation returns `StaleRealm`; malformed/unknown targets return
+  `InvalidTarget`. The running core advertises every listed capability as
+  `planned` with fixed source-free details, never as `available`. A real core
+  subprocess regression proves the socket handshake, session-owned target
+  lookup, planned-only report, and stale-realm rejection after navigation.
+  There is still no core-to-BlueJS program-registry validation, breakpoint
+  table, pause state, stack/scope/value implementation, or debugger consumer.
 
   Acceptance: a JS page fixture pauses at a verified safe point, supports the
   declared stepping subset, rejects stale frame/value handles after

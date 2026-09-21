@@ -186,6 +186,186 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
 }
 
 #[test]
+fn real_subprocess_routes_debugger_discovery_through_the_live_core_session() {
+    // The debugger protocol must remain separate from both frontend and DOM
+    // script IPC, but it still has to validate a target against the session's
+    // actual document lifecycle. Only discovery is installed: every runtime
+    // operation is deliberately advertised as planned.
+    let socket_path = unique_socket_path("debugger-core");
+    let debugger_socket_path = unique_socket_path("debugger-host");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-debugger-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debugger_socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("dbg-gk");
+
+    let listener_one = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr_one = listener_one.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener_one.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = "<main>first debugger document</main>";
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    let listener_two = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr_two = listener_two.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener_two.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = "<main>replacement debugger document</main>";
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--debugger-socket",
+            debugger_socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn blueice-core");
+
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    assert!(wait_for(&debugger_socket_path, Duration::from_secs(5)));
+    let mut frontend = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{addr_one}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
+    ));
+
+    let mut invalid_debugger = UnixStream::connect(&debugger_socket_path).unwrap();
+    blueice_ipc::debugger::write_debugger_request(
+        &mut invalid_debugger,
+        &blueice_ipc::debugger::DebuggerRequest::DescribeCapabilities {
+            realm: blueice_ipc::debugger::DebuggerPageRealm {
+                browser_context_id: blueice_engine::debugger::DEFAULT_BROWSER_CONTEXT_ID,
+                tab_id: 1,
+                realm_generation: 1,
+            },
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::debugger::read_debugger_reply(&mut invalid_debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::ProtocolVersion,
+            ..
+        }
+    ));
+    drop(invalid_debugger);
+
+    let mut debugger = UnixStream::connect(&debugger_socket_path).unwrap();
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::Hello {
+            protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::HelloAck {
+            protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+        }
+    );
+    let first_realm = blueice_ipc::debugger::DebuggerPageRealm {
+        browser_context_id: blueice_engine::debugger::DEFAULT_BROWSER_CONTEXT_ID,
+        tab_id: 1,
+        realm_generation: 1,
+    };
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::DescribeCapabilities { realm: first_realm },
+    )
+    .unwrap();
+    let first_capabilities =
+        match blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap() {
+            blueice_ipc::debugger::DebuggerReply::Capabilities(capabilities) => capabilities,
+            other => panic!("expected debugger capabilities, got {other:?}"),
+        };
+    assert_eq!(first_capabilities.realm, first_realm);
+    assert!(first_capabilities
+        .reports
+        .iter()
+        .all(|report| { report.state == blueice_ipc::debugger::DebuggerCapabilityState::Planned }));
+
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{addr_two}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 2, .. }
+    ));
+
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::DescribeCapabilities { realm: first_realm },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(!socket_path.exists());
+    assert!(!debugger_socket_path.exists());
+    assert!(!frame_dir.exists());
+}
+
+#[test]
 fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
     let socket_path = unique_socket_path("full-session");
     let frame_dir = std::env::temp_dir().join(format!(

@@ -52,6 +52,7 @@
 
 use crate::gatekeeper_client::{self, NavOutcome};
 use crate::{
+    debugger::DebuggerRequestReceiver,
     script::{
         direct_page::{DirectPageScriptHost, DirectPageScriptKind},
         inline_runner::{DirectPageInlineExecutor, DirectPageScriptExecutionReport},
@@ -86,6 +87,24 @@ const POLL_INTERVAL: Duration = Duration::from_millis(25);
 /// practice.
 pub trait ReadTimeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
+}
+
+/// Optional worker-to-session request channels for one core connection. The
+/// workers own decoded transport only; the session owns all live tab/document
+/// resolution. Grouping them keeps the composite lifecycle API explicit
+/// without growing an unbounded list of transport parameters.
+#[derive(Clone, Copy, Default)]
+pub struct CoreSessionRequests<'a> {
+    pub script: Option<&'a ScriptRequestReceiver>,
+    pub debugger: Option<&'a DebuggerRequestReceiver>,
+}
+
+/// The mutually exclusive core-owned page-script lifecycle owners for one
+/// session. Keeping their relation explicit avoids an ever-growing internal
+/// session function signature and preserves the one-realm-owner invariant.
+struct PageScriptRuntime<'a> {
+    direct_page_host: Option<&'a mut DirectPageScriptHost>,
+    inline_page_executor: Option<&'a mut DirectPageInlineExecutor>,
 }
 
 #[cfg(unix)]
@@ -199,9 +218,14 @@ pub fn run_session_with_script_requests_and_direct_page_host<S: Read + Write + R
         frame_dir,
         generation,
         gatekeeper_socket,
-        script_requests,
-        direct_page_host,
-        None,
+        CoreSessionRequests {
+            script: script_requests,
+            debugger: None,
+        },
+        PageScriptRuntime {
+            direct_page_host,
+            inline_page_executor: None,
+        },
     )
 }
 
@@ -225,28 +249,90 @@ pub fn run_session_with_script_requests_and_inline_page_executor<S: Read + Write
         frame_dir,
         generation,
         gatekeeper_socket,
-        script_requests,
-        None,
-        inline_page_executor,
+        CoreSessionRequests {
+            script: script_requests,
+            debugger: None,
+        },
+        PageScriptRuntime {
+            direct_page_host: None,
+            inline_page_executor,
+        },
     )
 }
 
-/// Shared session implementation for the observer-only direct host and the
-/// explicitly enabled inline runner. They must not be supplied together:
-/// independent hosts would allocate separate page realms for one document.
-#[allow(clippy::too_many_arguments)]
-fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
+/// Like [`run_session_with_script_requests`], while routing debugger discovery
+/// requests through the owning session thread. The debugger receiver is a
+/// separate transport from the page-script receiver and can only inspect the
+/// live tab/document identity; it cannot borrow page or VM state.
+pub fn run_session_with_script_and_debugger_requests<S: Read + Write + ReadTimeout>(
     tabs: &mut TabManager,
     stream: &mut S,
     frame_dir: &Path,
     generation: &mut u64,
     gatekeeper_socket: &Path,
     script_requests: Option<&ScriptRequestReceiver>,
-    direct_page_host: Option<&mut DirectPageScriptHost>,
+    debugger_requests: Option<&DebuggerRequestReceiver>,
+) -> io::Result<()> {
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        CoreSessionRequests {
+            script: script_requests,
+            debugger: debugger_requests,
+        },
+        PageScriptRuntime {
+            direct_page_host: None,
+            inline_page_executor: None,
+        },
+    )
+}
+
+/// Like [`run_session_with_script_and_debugger_requests`], while also running
+/// one explicitly configured inline BlueTS executor. This is the composite
+/// production seam used only when core selected both optional socket/profile
+/// features at startup.
+pub fn run_session_with_script_and_debugger_requests_and_inline_page_executor<
+    S: Read + Write + ReadTimeout,
+>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    requests: CoreSessionRequests<'_>,
     inline_page_executor: Option<&mut DirectPageInlineExecutor>,
 ) -> io::Result<()> {
-    let mut direct_page_host = direct_page_host;
-    let mut inline_page_executor = inline_page_executor;
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        requests,
+        PageScriptRuntime {
+            direct_page_host: None,
+            inline_page_executor,
+        },
+    )
+}
+
+/// Shared session implementation for the observer-only direct host and the
+/// explicitly enabled inline runner. [`PageScriptRuntime`] rejects both at
+/// once: independent hosts would allocate separate page realms for one page.
+fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    requests: CoreSessionRequests<'_>,
+    page_script_runtime: PageScriptRuntime<'_>,
+) -> io::Result<()> {
+    let mut direct_page_host = page_script_runtime.direct_page_host;
+    let mut inline_page_executor = page_script_runtime.inline_page_executor;
     if direct_page_host.is_some() && inline_page_executor.is_some() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -501,8 +587,11 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                 &mut inline_page_executor,
             )?;
         }
-        if let Some(script_requests) = script_requests {
+        if let Some(script_requests) = requests.script {
             script_requests.dispatch_pending(tabs);
+        }
+        if let Some(debugger_requests) = requests.debugger {
+            debugger_requests.dispatch_pending(tabs);
         }
         synchronize_page_script_runtime(&mut direct_page_host, &mut inline_page_executor, tabs)?;
     }
