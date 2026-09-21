@@ -873,7 +873,16 @@ impl Vm {
             AsyncGeneratorDelegateKind::Return => "return",
             AsyncGeneratorDelegateKind::Throw => "throw",
         };
-        let method = self.get_method(&iterator, &name.into())?;
+        let method = match self.get_method(&iterator, &name.into()) {
+            Ok(method) => method,
+            Err(error) => {
+                // A throwing `return`/`throw` getter fails the request like
+                // any other abrupt delegate call.
+                let error = self.error_value(error)?;
+                self.finish_async_generator_delegate(generator, target, kind, error, false)?;
+                return Ok(Some(Value::Undefined));
+            }
+        };
         if method == Value::Undefined {
             if matches!(kind, AsyncGeneratorDelegateKind::Throw) {
                 self.close_async_generator(generator)?;
@@ -894,11 +903,40 @@ impl Vm {
                 )
                 .map(Some);
         }
-        let result = self.call_native(method, iterator, vec![value], false)?;
-        let promise = self
-            .promise_resolve(result)?
-            .object_id()
-            .expect("Promise.resolve returns a Promise");
+        // A delegate method that throws (or whose result cannot be turned
+        // into a promise) fails the request exactly as a rejected result
+        // does: the generator is closed and the request rejected.
+        let async_from_sync = matches!(
+            self.heap.get_own(record, "asyncFromSync")?,
+            Some(Value::Bool(true))
+        );
+        let called = self
+            .call_native(method, iterator, vec![value], false)
+            .and_then(|result| {
+                if async_from_sync {
+                    // Over a synchronous iterator the delegate is the
+                    // AsyncFromSyncIterator: `return` and `throw` results go
+                    // through its continuation (`throw` closes an unfinished
+                    // iterator whose value rejects, `return` never does).
+                    self.async_from_sync_continue(
+                        record,
+                        result,
+                        matches!(kind, AsyncGeneratorDelegateKind::Throw),
+                    )
+                } else {
+                    self.promise_resolve(result)
+                }
+            });
+        let promise = match called {
+            Ok(promise) => promise
+                .object_id()
+                .expect("Promise.resolve returns a Promise"),
+            Err(error) => {
+                let error = self.error_value(error)?;
+                self.finish_async_generator_delegate(generator, target, kind, error, false)?;
+                return Ok(Some(Value::Undefined));
+            }
+        };
         match self
             .promises
             .get(&promise)
@@ -1282,6 +1320,7 @@ impl Vm {
         fulfilled: bool,
     ) -> Result<(), RuntimeError> {
         if !fulfilled {
+            self.retire_async_delegate(generator)?;
             self.close_async_generator(generator)?;
             self.complete_async_generator_request(
                 generator,
@@ -1291,6 +1330,7 @@ impl Vm {
             return self.resume_async_generator_next(generator);
         }
         if !matches!(result, Value::Object(_)) {
+            self.retire_async_delegate(generator)?;
             self.close_async_generator(generator)?;
             let error = self.error_object(
                 "TypeError",
@@ -1393,6 +1433,19 @@ impl Vm {
                 }
             }
         }
+    }
+
+    /// The delegate of a failed `yield*` request has already been given its
+    /// `return`/`throw`; the throw that ends the generator must not close it
+    /// a second time, so its iterator record is marked done first.
+    fn retire_async_delegate(&mut self, generator: ObjectId) -> Result<(), RuntimeError> {
+        let state = self.heap.take_generator_state(generator)?;
+        let record = Self::yield_star_delegate(&state).map(|(record, _)| record);
+        self.heap.set_generator_state(generator, state)?;
+        if let Some(Value::Object(record)) = record {
+            self.with_roots(|heap| heap.set(record, "done", Value::Bool(true)))?;
+        }
+        Ok(())
     }
 
     pub(in super::super) fn close_async_generator(

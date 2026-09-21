@@ -1446,7 +1446,7 @@ impl Vm {
             return result;
         }
         match result {
-            Ok(result) => self.async_from_sync_continue(*record, result),
+            Ok(result) => self.async_from_sync_continue(*record, result, true),
             Err(error) => {
                 let error = self.error_value(error)?;
                 self.promise_reject(error)
@@ -1472,12 +1472,15 @@ impl Vm {
 
     /// AsyncFromSyncIteratorContinuation. A synchronous iterator result's
     /// `value` is adopted through PromiseResolve before a for-await loop sees
-    /// it; rejection closes the original iterator and rejects the public
-    /// `next()` capability.
+    /// it. `close_on_rejection` (true for `next` and `throw`, false for
+    /// `return`) makes an unfinished iterator get closed when that value
+    /// cannot be resolved or its promise rejects; every failure rejects the
+    /// returned promise.
     pub(in super::super::super) fn async_from_sync_continue(
         &mut self,
         record: ObjectId,
         result: Value,
+        close_on_rejection: bool,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         let outcome = (|| {
@@ -1487,22 +1490,53 @@ impl Vm {
                 ));
             }
             let done = self.get_property(&result, &"done".into())?;
+            let done = self.to_boolean(&done)?;
             let value = self.get_property(&result, &"value".into())?;
-            let value_wrapper = self.promise_resolve(value)?;
+            let close = close_on_rejection && !done;
+            let value_wrapper = match self.promise_resolve(value) {
+                Ok(wrapper) => wrapper,
+                Err(error) => {
+                    if close {
+                        // IteratorClose with the throw completion: the
+                        // original error wins over anything `return` does.
+                        let error_base = self.stack.len();
+                        if let RuntimeError::Thrown(thrown) = &error {
+                            self.stack.push(thrown.clone());
+                        }
+                        let _ = self.iterator_close(&Value::Object(record));
+                        self.stack.truncate(error_base);
+                    }
+                    return Err(error);
+                }
+            };
             let target = self.new_promise()?;
             self.stack
                 .extend([value_wrapper.clone(), Value::Object(target)]);
-            let fulfilled = self.async_from_sync_handler(NativeFunction::AsyncFromSyncFulfill {
-                target,
-                done: self.to_boolean(&done)?,
-            })?;
-            // Each later allocation (the other handler, then_promise's derived
+            let fulfilled = self
+                .async_from_sync_handler(NativeFunction::AsyncFromSyncFulfill { target, done })?;
+            // Each later allocation (the other handler, the derived
             // promise) can collect, so both handlers stay stack-rooted.
             self.stack.push(fulfilled.clone());
-            let rejected = self
-                .async_from_sync_handler(NativeFunction::AsyncFromSyncReject { target, record })?;
-            self.stack.push(rejected.clone());
-            self.promise_then(&value_wrapper, &[fulfilled, rejected])?;
+            let rejected = if close {
+                let rejected =
+                    self.async_from_sync_handler(NativeFunction::AsyncFromSyncReject {
+                        target,
+                        record,
+                    })?;
+                self.stack.push(rejected.clone());
+                rejected
+            } else {
+                Value::Undefined
+            };
+            let wrapper = value_wrapper
+                .object_id()
+                .expect("PromiseResolve returns a promise object");
+            self.perform_promise_then(
+                wrapper,
+                fulfilled,
+                rejected,
+                ReactionTarget::Native(target),
+            )?;
             Ok(Value::Object(target))
         })();
         self.stack.truncate(base);
