@@ -615,7 +615,11 @@ impl Compiler {
                 self.emit(Opcode::SetCompletion, 0)?;
             }
             Stmt::Block(body) => {
-                self.enter_scope(block_lexical_names(body)?, &var_names(body)?, false)?;
+                self.enter_scope(
+                    block_lexical_names(body, self.bytecode.strict)?,
+                    &var_names(body)?,
+                    false,
+                )?;
                 self.statements_with_disposal(body)?;
                 self.leave_scope()?;
             }
@@ -712,7 +716,7 @@ impl Compiler {
                 if !function.generator && !function.is_async)
         {
             self.enter_scope(
-                block_lexical_names(std::slice::from_ref(statement))?,
+                block_lexical_names(std::slice::from_ref(statement), self.bytecode.strict)?,
                 &BTreeSet::new(),
                 false,
             )?;
@@ -908,7 +912,7 @@ impl Compiler {
 
     pub(super) fn scoped_statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
         self.enter_scope(
-            block_lexical_names(statements)?,
+            block_lexical_names(statements, self.bytecode.strict)?,
             &var_names(statements)?,
             false,
         )?;
@@ -924,7 +928,7 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         validate_switch_case_declarations(cases, self.bytecode.strict)?;
         self.emit(Opcode::ClearCompletion, 0)?;
-        let lexical = switch_lexical_names(cases)?;
+        let lexical = switch_lexical_names(cases, self.bytecode.strict)?;
         let vars = switch_var_names(cases)?;
         // Switch evaluation creates its case-block lexical environment only
         // after evaluating the discriminant.  A closure created by the
@@ -1071,7 +1075,7 @@ impl Compiler {
             // completion value.
             self.emit(Opcode::ClearCompletion, 0)?;
             self.enter_scope(
-                block_lexical_names(&catch.body)?,
+                block_lexical_names(&catch.body, self.bytecode.strict)?,
                 &var_names(&catch.body)?,
                 false,
             )?;

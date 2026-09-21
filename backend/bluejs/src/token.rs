@@ -255,11 +255,11 @@ pub struct Tokenizer {
     html_comments_enabled: bool,
 }
 
-fn is_ident_start(c: char) -> bool {
+pub(crate) fn is_ident_start(c: char) -> bool {
     matches!(c, '_' | '$') || CodePointSetData::new::<props::IdStart>().contains(c)
 }
 
-fn is_ident_continue(c: char) -> bool {
+pub(crate) fn is_ident_continue(c: char) -> bool {
     matches!(c, '_' | '$' | '\u{200c}' | '\u{200d}')
         || CodePointSetData::new::<props::IdContinue>().contains(c)
 }

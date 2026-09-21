@@ -405,6 +405,7 @@ impl Compiler {
             local_scope: 1,
             with_depth: 0,
             with_scope_depths: Vec::new(),
+            annex_b_parameter_names: BTreeSet::new(),
         };
         child.bytecode.strict =
             options.force_strict || self.bytecode.strict || strict_body(&function.body);
@@ -474,10 +475,16 @@ impl Compiler {
             .collect();
         let lexical = lexical_names(&function.body)?;
         if !child.bytecode.strict {
+            // Annex B.3.2.1 exempts `parameterNames`. That list holds only the
+            // formal parameters: the implicit `arguments` binding is added to
+            // the separate `parameterBindings`, so a block function named
+            // `arguments` is still hoisted over the arguments object.
+            child.annex_b_parameter_names = parameters.clone();
             vars.extend(
                 annex_b_function_names(&function.body, &lexical)
                     .into_iter()
-                    .filter(|name| !lexical.iter().any(|(lexical_name, _)| lexical_name == name)),
+                    .filter(|name| !lexical.iter().any(|(lexical_name, _)| lexical_name == name))
+                    .filter(|name| !child.annex_b_parameter_names.contains(name)),
             );
         }
         if let Some((name, _)) = lexical.iter().find(|(name, _)| parameters.contains(name)) {

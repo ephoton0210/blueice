@@ -115,6 +115,7 @@ fn compile_with_limit_and_mode(
         local_scope: 0,
         with_depth: 0,
         with_scope_depths: Vec::new(),
+        annex_b_parameter_names: BTreeSet::new(),
     };
     compiler.bytecode.strict = module || strict_body(&program.body);
     compiler.bytecode.module = module;
@@ -377,6 +378,7 @@ pub(crate) fn compile_eval(
         // eval. Any inherited `with` environments occur after it, while the
         // eval's own declaration scope is entered below.
         with_scope_depths: vec![1; with_depth],
+        annex_b_parameter_names: BTreeSet::new(),
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
     compiler.bytecode.new_target_allowed = new_target_allowed;
@@ -503,6 +505,10 @@ struct Compiler {
     /// environment was inserted. A binding declared after the innermost
     /// entry wins before that object environment during name resolution.
     with_scope_depths: Vec<usize>,
+    /// The enclosing function's formal parameter names (`parameterNames`).
+    /// Annex B.3.2.1 gives a block function no legacy var binding, and no
+    /// copy into one, for these names.
+    annex_b_parameter_names: BTreeSet<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -675,6 +681,9 @@ impl Compiler {
             return None;
         }
         let name = &self.bytecode.bindings[slot as usize].name;
+        if self.annex_b_parameter_names.contains(name) {
+            return None;
+        }
         for scope in self.names[..self.names.len() - 1].iter().rev() {
             let Some(&candidate) = scope.get(name) else {
                 continue;
@@ -1361,25 +1370,42 @@ pub(super) fn has_await_using_declaration(statements: &[Stmt]) -> bool {
         .any(|statement| matches!(statement, Stmt::VarDecl(DeclKind::AwaitUsing, _)))
 }
 
-fn block_lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
+/// The lexical names of a Block. Annex B.3.2.4 lets sloppy code repeat a name
+/// that only ordinary FunctionDeclarations bind (the later declaration
+/// supplies the value); every other repeat stays a duplicate for the caller's
+/// scope to reject.
+fn block_lexical_names(
+    statements: &[Stmt],
+    strict: bool,
+) -> Result<Vec<(String, DeclKind)>, CompileError> {
     let mut names = lexical_names(statements)?;
+    let mut repeatable = BTreeSet::new();
     for statement in statements {
         if let Stmt::FunctionDecl(function) = statement {
-            names.push((
-                function
-                    .name
-                    .clone()
-                    .expect("function declaration has a name"),
-                DeclKind::Let,
-            ));
+            let name = function
+                .name
+                .clone()
+                .expect("function declaration has a name");
+            if !strict && is_annex_b_function(function) && !repeatable.insert(name.clone()) {
+                continue;
+            }
+            names.push((name, DeclKind::Let));
         }
     }
     Ok(names)
 }
 
-fn switch_lexical_names(cases: &[SwitchCase]) -> Result<Vec<(String, DeclKind)>, CompileError> {
+/// The lexical names of a CaseBlock. `validate_switch_case_declarations` has
+/// already rejected every duplicate except Annex B.3.2.5's sloppy repeats of
+/// ordinary function declarations, which share one binding.
+fn switch_lexical_names(
+    cases: &[SwitchCase],
+    strict: bool,
+) -> Result<Vec<(String, DeclKind)>, CompileError> {
+    let mut seen = BTreeSet::new();
     Ok(switch_case_lexical_declarations(cases)?
         .into_iter()
+        .filter(|(name, _, _)| strict || seen.insert(name.clone()))
         .map(|(name, kind, _)| (name, kind))
         .collect())
 }
