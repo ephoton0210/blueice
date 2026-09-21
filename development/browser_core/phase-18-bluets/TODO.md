@@ -49,9 +49,20 @@ or second module resolver to bypass them.
   core-owned dispatcher for the existing narrow script IPC vocabulary. It
   scopes DOM lookup/mutation to one live tab, validates raw node IDs before
   mutation, relayouts after changes, and rejects stale/cross-tab handles after
-  navigation. The core listener, long-lived out-of-process BlueJS host,
-  authorized script submission, realm lifecycle, and resource accounting are
-  still absent, so this prerequisite remains open.
+  navigation. `blueice_bluejs::BlueJsPageRuntime` now also provides a
+  host-neutral, in-process realm foundation: caller-owned opaque tab IDs and
+  origin identities, one VM per tab, bounded root-bytecode/program retention,
+  generation-owned program handles, and fail-closed invalidation on
+  navigation/reload/close. It runs an already-authorized structured classic
+  script or module, but it opens no URL and installs no DOM or IPC capability.
+  `blueice-core --script-socket <path>` now binds the initial long-lived core
+  listener: it requires `Hello` before a request, decodes the script protocol
+  on a worker, and routes each request synchronously to the session thread that
+  exclusively owns the live `TabManager`. This proves real-process DOM
+  dispatch without exposing a cross-thread DOM reference. The launcher-managed
+  out-of-process BlueJS host, authorized source/resolver transport,
+  tab-memory accounting, JavaScript DOM bindings, and normal page-pipeline
+  fixture are still absent, so this prerequisite remains open.
 
   Acceptance: a page fixture can run a supported JavaScript classic script and
   module in its own realm; navigation/reload invalidates old program handles;
@@ -108,6 +119,28 @@ or second module resolver to bypass them.
   the direct-page compiler reject unavailable profiles, schema mismatches, or
   declaration-byte mismatches.
 
+  Foundation delivered: `blueice_engine::script::host_typings` now owns
+  `HostTypeSurfaceV1`, deterministic declaration/manifest generation, a
+  profile catalog, and a runtime-binding inventory derived from the same
+  schema. Generated artifacts have sorted binding IDs, normalized LF
+  declarations, fixed-order JSON, and schema/declaration hashes; a supplied
+  manifest or source with a wrong profile, identity, schema, binding inventory,
+  or declaration bytes is rejected without fallback. The generated artifact
+  also validates a host's runtime registrations as an order-independent but
+  exact inventory, rejecting missing, duplicate, extra, or drifted bindings.
+  The checked-in `core-script-empty-v1` fixture is deliberately empty: core
+  has an IPC dispatcher but no BlueJS DOM globals, so declaring `document`
+  would be dishonest. `GeneratedHostTypingsV1::verify_for_direct_compiler`
+  now checks the selected manifest, exact declaration bytes, and complete
+  runtime registration inventory before returning the one `.d.ts` source that
+  a direct compiler may place in `CompilerOptions::ambient_declaration_modules`.
+  BlueTS parses that declaration under its ordinary module/source limits,
+  includes its exact bytes in the compiler fingerprint and static source
+  metadata, exposes its declarations only as static ambient names, and emits
+  no declaration code. The standalone `bluetsc` intentionally cannot set this
+  host-only option. Actual bindings, their matching BlueJS installation, and
+  page-host request adoption remain required before this item can close.
+
   Acceptance: a checked-in fixture generates byte-identical typing artifacts;
   every declared binding can be invoked in the matching host profile; an absent
   binding is rejected by both BlueTS and the host; a profile/schema mismatch
@@ -119,6 +152,42 @@ or second module resolver to bypass them.
   and submit the resulting `BlueJsProgramV1` to BlueJS without an emitted-JS
   text round trip. Preserve canonical module IDs, source hashes, ordering,
   policy, language version, and all compiler-limit fingerprints.
+
+  Foundation delivered: `blueice_bluets::AuthorizedModuleLoader` represents a
+  closed host-supplied graph of canonical module records and exact
+  `(from-module, specifier) -> canonical-target` records. It validates duplicate
+  and dangling records before compilation, performs no filesystem/URL/import-map
+  lookup, and rejects an absent edge rather than falling back to relative
+  resolution. The direct BlueTS-to-BlueJS graph bridge preserves these canonical
+  targets through module requests and executes the supplied graph without a
+  JavaScript-text reparse. A page host still must validate the host-typing
+  manifest, select an opted-in script kind, bind the request's origin/policy/
+  resolver and compiler fingerprints, submit to the page realm, and invalidate
+  it at lifecycle boundaries, so this item remains open.
+
+  The first classic-script realm seam is now available as
+  `DirectScript::attach_in_page_realm` (or its static-metadata variant): it
+  submits the existing `BlueJsProgramV1` to the owned `BlueJsPageRuntime`,
+  checks that the resulting live generation retains the artifact's exact source
+  identity and bytecode, then attaches lowering provenance and verified safe
+  points. A provenance or metadata failure discards the just-installed program
+  and returns its bytecode charge before it can execute. `DirectModuleGraph`
+  now applies the same all-or-cleaned-up admission rule to every closed runtime
+  ESM module and executes only those attached canonical module IDs in the tab
+  realm; navigation makes its handles unusable. `DirectPageRealmOwner` now
+  combines either seam with its static metadata registry and prunes invalid
+  records after its own navigation/reload or close operation. A realm reserves
+  a canonical ESM ID after its first execution attempt, so no later artifact
+  can reuse BlueJS's linked module cells until navigation/reload creates a
+  replacement realm. `blueice_engine::script::direct_page::DirectPageScriptHost`
+  now gives a core/page-host caller one admission boundary: it requires an
+  explicitly selected verified host profile, accepts only an
+  `AuthorizedModuleLoader`, rejects caller-supplied ambient declarations and
+  `transpile-only`, injects only the verified host declaration, and drives the
+  owned realm admission/execution path for opted-in classic/module kinds. It
+  remains an in-process core API, not the launcher-managed BlueJS process or
+  normal page pipeline; core still must connect actual tab lifecycle and
+  policy events to this owner before the item can close.
 
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering
@@ -138,10 +207,12 @@ or second module resolver to bypass them.
   are deterministically sorted, unique by instruction tuple, and revalidated
   against the live BlueJS generation; a no-output top-level statement remains
   explicitly unbound in the attachment rather than being remapped. The map is
-  intentionally limited to direct top-level lowering spans: page loader
-  integration, multi-module lifetime ownership, nested-expression locations,
-  host-request fingerprint checks, breakpoint search policy, and debugger IPC
-  are still absent, so this item remains open.
+  intentionally limited to direct top-level lowering spans. Page-realm ESM
+  admission now gives every closed runtime module its own exact map and static
+  metadata record, but page loader integration, host-owned multi-module
+  lifetime ownership, nested-expression locations, host-request fingerprint
+  checks, breakpoint search policy, and debugger IPC are still absent, so this
+  item remains open.
 
   Acceptance: entries are deterministic, sorted, unique and validated against
   BlueJS code units; a TS breakpoint binds to the nearest permitted following
@@ -154,6 +225,23 @@ or second module resolver to bypass them.
   only for the corresponding live program generation. Enforce source/privacy
   policy and bounded retention; static types must always be distinguished from
   a BlueJS runtime value.
+
+  Foundation delivered: direct scripts/modules now preserve their compiler
+  produced `BlueTsDebugInfo`, and `DirectDebugRegistry` attaches it only after
+  validating the exact live BlueJS generation, safe-point map, language
+  version, compiler-options fingerprint, and canonical source hash set. It
+  retains no source text or runtime values, bounds programs/sources/symbols/
+  types, rejects mismatched or over-limit attachments before exposing metadata,
+  and can prune records after the owning BlueJS generation is invalidated.
+  `DirectModuleGraph::attach_debug_in_page_realm` now derives a module-local
+  static subset (one source, that module's symbols, and their referenced type
+  IDs) for every graph generation and rolls back all retained records/programs
+  if any module fails the limit or identity checks. `DirectPageRealmOwner`
+  prunes the registry automatically after its navigation/reload and close
+  operations. The page host still must route all actual lifecycle/cache/
+  hibernation events through that owner (or an equivalent invariant) and add
+  source policy, diagnostics/contracts, debugger IPC, stack locations, and
+  runtime-value inspection before this item can close.
 
   Acceptance: TS breakpoints, stack locations, scopes, symbol navigation, and
   static type display point to original source; navigation, reload, cache

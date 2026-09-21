@@ -94,7 +94,9 @@ pub(crate) fn emit(
             checked
                 .modules
                 .iter()
-                .filter(|(id, _)| is_declaration_module(id))
+                .filter(|(id, _)| {
+                    is_declaration_module(id) && !project.is_ambient_declaration_module(id)
+                })
                 .map(|(id, checked_module)| (id.clone(), checked_module.module.source.clone()))
                 .collect()
         }

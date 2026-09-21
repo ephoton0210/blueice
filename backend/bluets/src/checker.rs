@@ -71,6 +71,19 @@ struct FunctionSignature {
     return_type: Type,
 }
 
+/// Static declarations selected by the host and injected into ordinary source
+/// modules after their local bindings. These declarations have no emitted
+/// JavaScript, symbols, runtime values, or resolution authority of their own.
+/// A source module's local/imported name deliberately wins over an ambient
+/// name, matching the ordinary lexical lookup model without making host
+/// metadata look like a source-local debugger symbol.
+#[derive(Default)]
+struct AmbientDeclarations {
+    types: BTreeMap<String, TypeDefinition>,
+    values: BTreeMap<String, Type>,
+    functions: BTreeMap<String, Vec<FunctionSignature>>,
+}
+
 struct TypeExpansionBudget {
     remaining: usize,
     exhausted: bool,
@@ -107,6 +120,8 @@ pub(crate) fn check_incremental(
     max_type_expansions: usize,
 ) -> (CheckedProject, Vec<Diagnostic>) {
     let mut diagnostics = project::declaration_module_diagnostics(project);
+    let (ambient, mut ambient_diagnostics) = ambient_declarations(project);
+    diagnostics.append(&mut ambient_diagnostics);
     let exported_types = project::exported_types(project);
     let mut checked_modules = BTreeMap::new();
 
@@ -121,6 +136,7 @@ pub(crate) fn check_incremental(
             project,
             module,
             &exported_types,
+            (!project.ambient_declaration_modules.contains(module_id)).then_some(&ambient),
             enforce_types,
             max_type_expansions,
         );
@@ -143,6 +159,117 @@ pub(crate) fn check_incremental(
         },
         diagnostics,
     )
+}
+
+fn ambient_declarations(project: &Project) -> (AmbientDeclarations, Vec<Diagnostic>) {
+    let mut ambient = AmbientDeclarations::default();
+    let mut diagnostics = Vec::new();
+    for module_id in &project.ambient_declaration_modules {
+        let Some(module) = project.modules.get(module_id) else {
+            continue;
+        };
+        for declaration in &module.declarations {
+            match declaration {
+                Declaration::TypeAlias(alias) => insert_ambient_type(
+                    &mut ambient,
+                    &mut diagnostics,
+                    &alias.name,
+                    TypeDefinition {
+                        kind: TypeDefinitionKind::Alias,
+                        parameters: alias.type_parameters.clone(),
+                        value: alias.value.clone(),
+                    },
+                    &alias.span,
+                ),
+                Declaration::Interface(interface) => insert_ambient_type(
+                    &mut ambient,
+                    &mut diagnostics,
+                    &interface.name,
+                    TypeDefinition {
+                        kind: TypeDefinitionKind::Interface,
+                        parameters: interface.type_parameters.clone(),
+                        value: interface_value(interface),
+                    },
+                    &interface.span,
+                ),
+                Declaration::Variable(variable) if variable.declared => insert_ambient_value(
+                    &mut ambient,
+                    &mut diagnostics,
+                    &variable.name,
+                    variable.annotation.clone().unwrap_or(Type::Unknown),
+                    &variable.span,
+                ),
+                Declaration::Function(function) if function.declared || function.overload => {
+                    insert_ambient_function(&mut ambient, &mut diagnostics, function);
+                }
+                _ => {}
+            }
+        }
+    }
+    (ambient, diagnostics)
+}
+
+fn insert_ambient_type(
+    ambient: &mut AmbientDeclarations,
+    diagnostics: &mut Vec<Diagnostic>,
+    name: &str,
+    definition: TypeDefinition,
+    span: &SourceSpan,
+) {
+    if ambient.types.insert(name.to_string(), definition).is_some() {
+        diagnostics.push(Diagnostic::error(
+            DiagnosticCode::DuplicateDeclaration,
+            span.clone(),
+            format!("duplicate ambient declaration of `{name}`"),
+        ));
+    }
+}
+
+fn insert_ambient_value(
+    ambient: &mut AmbientDeclarations,
+    diagnostics: &mut Vec<Diagnostic>,
+    name: &str,
+    value: Type,
+    span: &SourceSpan,
+) {
+    if ambient.values.insert(name.to_string(), value).is_some() {
+        diagnostics.push(Diagnostic::error(
+            DiagnosticCode::DuplicateDeclaration,
+            span.clone(),
+            format!("duplicate ambient declaration of `{name}`"),
+        ));
+    }
+}
+
+fn insert_ambient_function(
+    ambient: &mut AmbientDeclarations,
+    diagnostics: &mut Vec<Diagnostic>,
+    function: &FunctionDeclaration,
+) {
+    let signature = FunctionSignature {
+        parameters: function.parameters.clone(),
+        type_parameters: function.type_parameters.clone(),
+        return_type: function.return_type.clone().unwrap_or(Type::Unknown),
+    };
+    if ambient.values.contains_key(&function.name)
+        && !ambient.functions.contains_key(&function.name)
+    {
+        diagnostics.push(Diagnostic::error(
+            DiagnosticCode::DuplicateDeclaration,
+            function.span.clone(),
+            format!("duplicate ambient declaration of `{}`", function.name),
+        ));
+        return;
+    }
+    ambient
+        .values
+        .entry(function.name.clone())
+        .or_insert_with(|| signature.return_type.clone());
+    ambient
+        .functions
+        .entry(function.name.clone())
+        .or_default()
+        .push(signature);
 }
 
 mod module;

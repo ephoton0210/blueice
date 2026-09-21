@@ -51,7 +51,7 @@
 //! error still means disconnect, exactly as before gating existed).
 
 use crate::gatekeeper_client::{self, NavOutcome};
-use crate::{Page, TabId, TabManager};
+use crate::{script::ScriptRequestReceiver, Page, TabId, TabManager};
 use blueice_dom::NodeId;
 use blueice_ipc::{shm, ClientMessage, NodeAction, ServerMessage, TabSummary};
 use std::collections::HashMap;
@@ -140,6 +140,21 @@ pub fn run_session<S: Read + Write + ReadTimeout>(
     frame_dir: &Path,
     generation: &mut u64,
     gatekeeper_socket: &Path,
+) -> io::Result<()> {
+    run_session_with_script_requests(tabs, stream, frame_dir, generation, gatekeeper_socket, None)
+}
+
+/// Like [`run_session`], while dispatching each pending external script
+/// request on the owning core session thread between frontend reads. The
+/// listener side receives only structured replies; it cannot borrow or move
+/// the tab manager across the process/thread boundary.
+pub fn run_session_with_script_requests<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    script_requests: Option<&ScriptRequestReceiver>,
 ) -> io::Result<()> {
     // Best-effort: on at least one real platform, setting a read
     // timeout on a Unix domain socket whose peer has *already*
@@ -367,6 +382,9 @@ pub fn run_session<S: Read + Write + ReadTimeout>(
                 &pending_nav_seq,
                 completion,
             )?;
+        }
+        if let Some(script_requests) = script_requests {
+            script_requests.dispatch_pending(tabs);
         }
     }
 }

@@ -5,6 +5,7 @@
 //! Expression, template, and graph-lowering regressions.
 
 use super::*;
+use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution};
 
 #[test]
 fn lowers_checked_simple_string_escapes() {
@@ -598,6 +599,61 @@ fn preserves_a_non_relative_caller_authorized_module_alias() {
             .map(|request| (request.specifier.as_str(), request.phase))
             .collect::<Vec<_>>(),
         vec![("canonical/runtime.ts", bluejs::ImportPhase::Evaluation)]
+    );
+    assert_eq!(
+        bluejs::Vm::default()
+            .execute_module_graph(&graph.entry, &graph.bytecode_map())
+            .unwrap(),
+        bluejs::Value::Number(42.0)
+    );
+}
+
+#[test]
+fn direct_graph_retains_host_authorized_canonical_module_records() {
+    let entry = "page:///app/main.ts";
+    let runtime = "page:///modules/runtime.ts";
+    let loader = AuthorizedModuleLoader::new(
+        [
+            AuthorizedModule::new(
+                entry,
+                "import { value } from '@host/runtime'; \
+                 export const answer: number = value + 1; answer;",
+            ),
+            AuthorizedModule::new(runtime, "export const value: number = 41;"),
+        ],
+        [AuthorizedModuleResolution::new(
+            entry,
+            "@host/runtime",
+            runtime,
+        )],
+    )
+    .unwrap();
+    let graph = compile_direct_module_graph(
+        entry,
+        &loader,
+        CompilerOptions {
+            resolver_fingerprint: "page-authorized-resolver-v1".to_string(),
+            ..CompilerOptions::default()
+        },
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Module(main) = &graph.modules[entry].program else {
+        panic!("the direct graph entry must produce a BlueJS module AST");
+    };
+    assert_eq!(
+        main.requests
+            .iter()
+            .map(|request| request.specifier.as_str())
+            .collect::<Vec<_>>(),
+        vec![runtime]
+    );
+    assert_eq!(
+        graph
+            .sources
+            .iter()
+            .map(|source| source.module.as_str())
+            .collect::<Vec<_>>(),
+        vec![entry, runtime]
     );
     assert_eq!(
         bluejs::Vm::default()

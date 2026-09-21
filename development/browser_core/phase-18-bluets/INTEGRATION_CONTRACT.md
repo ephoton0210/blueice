@@ -16,6 +16,7 @@ The keywords **MUST**, **MUST NOT**, **SHOULD**, and **MAY** express the contrac
 | Lowered program hand-off | `bluejs-program-v1` | BlueJS ABI, BlueTS lowering adapter | Major/version mismatch rejects before VM compilation. |
 | BlueTS static debug metadata | `blue-ts-debug-v1` | BlueTS | May be consumed without a VM; it has no bytecode offsets. |
 | Bytecode safe-point map | `bluejs-safe-point-map-v1` | BlueJS ABI, bridge | It is valid only for the exact generated program. |
+| Page-realm lifecycle | `bluejs-page-runtime-v1` | BlueJS host foundation | A handle belongs to one caller-authorized tab/origin realm and expires on navigation/reload/close. |
 | Host typings manifest | `blueice-host-typings-v1` | Page-script host | Compiler and host schema hashes MUST match in direct-page mode. |
 
 Every direct-page compile request MUST carry all of the following:
@@ -32,6 +33,49 @@ source_set_hash
 `compiler_options_fingerprint` includes resource limits, target, runtime-policy, resolver identity, source-map/declaration modes and the language version. `source_set_hash` is a deterministic hash of each canonical module identity and its exact bytes. A cache hit, a debugger request, or a safe-point map lookup MUST reject rather than silently reuse a value when any of these identities differ.
 
 An incompatible major ABI, an unknown required field, a source hash mismatch, or a different module set is a compile/attach failure with no partial execution. Additive optional fields may be accepted only when the receiver's minor-version policy explicitly lists them; an unrecognized field is never silently interpreted as executable behavior.
+
+Before invoking BlueTS, a direct-page host MUST assemble a closed source graph
+from caller-authorized canonical module records and explicit resolution edges.
+`blueice_bluets::AuthorizedModuleLoader` is the reference in-memory carrier for
+that boundary: it validates duplicate or dangling records on construction,
+loads only a supplied canonical ID, and resolves only an exact supplied
+`(from-module, specifier)` edge. It performs no filesystem, URL, package, or
+relative-resolution fallback. The host remains responsible for canonicalizing
+those records, enforcing origin and capability policy, and placing its own
+resolver identity in `CompilerOptions::resolver_fingerprint`; the loader does
+not claim that an arbitrary map is an authorized page load.
+
+For the initial direct classic-script slice,
+`DirectScript::attach_in_page_realm` submits the already-lowered
+`BlueJsProgramV1` to `BlueJsPageRuntime` under one caller-authorized tab and
+origin. It then verifies that the live generation has the direct artifact's
+sole canonical source identity and bytecode before publishing provenance or a
+safe-point map. A failed provenance or static-debug attachment MUST discard
+that generation through the page runtime, including its bytecode accounting;
+it MUST NOT leave an executable but unpaired direct program behind. This is a
+host-neutral admission seam only: it neither discovers a page script nor
+installs host bindings or page lifetime automation. `DirectModuleGraph` applies
+the same source/bytecode/provenance check transactionally to every closed
+runtime ESM module, then calls `BlueJsPageRuntime::execute_module_graph` with
+only those attached canonical module IDs. Navigation/reload/close invalidation
+therefore makes every graph handle unusable instead of resolving an import
+again under a successor page policy. Its optional static-debug admission
+creates one module-local `BlueTsDebugInfo` record per live generation: the
+record's source, symbols, and referenced type IDs match that module's
+single-source safe-point map. A rejected record forgets every earlier graph
+record and discards every graph program; it never leaves a partially
+debuggable ESM graph. `DirectPageRealmOwner` owns both the page runtime and
+static registry for a language-side host adapter, and prunes invalid records
+after its navigation/reload and close operations. It has no page discovery,
+DOM binding, transport, cache, or hibernation authority; a real host must
+route those lifecycle events through this owner or enforce the same rule.
+
+One page realm owns at most one live or previously linked program for each
+canonical ESM module ID. BlueJS retains module cells by that ID, so a second
+artifact with the same identity is rejected even after its original handle was
+discarded; only navigation/reload produces a fresh module identity set. This
+prevents a newly attached artifact from executing against cells linked from an
+older graph.
 
 ## AST/IR hand-off
 
@@ -147,7 +191,9 @@ Source locations use UTF-8 byte offsets at this boundary. BlueTSC's Source Map v
 
 `lib.blueice.d.ts` is a generated, host-supplied declaration root. It is not a hand-maintained substitute for `lib.dom.d.ts`, and it must describe only APIs that the current BlueIce page-script host has actually exposed.
 
-The future host owns a declarative `HostTypeSurfaceV1` schema adjacent to the binding definitions that create each value. Each schema item records:
+The core script boundary now owns the initial declarative `HostTypeSurfaceV1`
+schema and deterministic generator adjacent to the binding definitions that
+will create each value. Each schema item records:
 
 - the global/module/member name and TypeScript declaration;
 - its value/type/namespace role and overload surface;
@@ -164,6 +210,7 @@ lib.blueice.manifest.json {
   language_version,
   host_api_version,
   schema_hash,
+  declaration_hash,
   enabled_feature_profile,
   binding_ids: [...]
 }
@@ -171,15 +218,45 @@ lib.blueice.manifest.json {
 
 The manifest is emitted with a stable field order, normalized LF text and no timestamps, checkout paths or machine-specific IDs. The `.d.ts` generator sorts declarations by stable binding ID and uses the same normalization rules, making the host-produced typing root reproducible. A direct BlueTS compile MUST be given this manifest and declaration source by the host's authorized module loader; it MUST reject an unavailable profile, a schema hash mismatch, or a declaration source whose bytes do not match the manifest. BlueTSC may consume an explicitly supplied local `.d.ts` module under its existing root-confined policy, but that does not claim a BlueIce host API.
 
+The current `core-script-empty-v1` profile provides a checked-in,
+byte-for-byte reproducible empty declaration root and manifest. Core's narrow
+script IPC dispatcher is not a BlueJS object binding, so this profile MUST NOT
+declare `document`, DOM node types, or any other global until the long-lived
+BlueJS host installs it from the same runtime-binding inventory. The profile
+catalog and artifact validator already reject unknown profiles, ABI/identity
+and schema drift, binding-inventory drift, and declaration-byte drift without
+fallback. The generated artifact additionally verifies that a host's installed
+runtime registration records equal the schema-derived inventory regardless of
+registration order; missing, duplicate, extra, or capability/identity-drifted
+bindings are rejected. `verify_for_direct_compiler` now performs all of those
+checks before producing one canonical `.d.ts` `ModuleSource` for
+`CompilerOptions::ambient_declaration_modules`. BlueTS parses this source under
+the normal source/module limits, includes its bytes in compiler fingerprints
+and static metadata, forbids imports/re-exports from it, and exposes only its
+static declarations; it produces no JavaScript or host capability. The
+standalone `bluetsc` leaves this host-only input empty. This establishes direct
+compiler consumption without advertising a page API before the BlueJS host has
+installed matching bindings.
+
+The direct bridge also retains `BlueTsDebugInfo` only through its exact live
+BlueJS generation when a caller opts into `DirectDebugRegistry`. Retention
+validates the safe-point map, language version, compiler-options fingerprint,
+and canonical source hashes; it has explicit program/source/symbol/type limits
+and stores no TypeScript source text or BlueJS runtime values. A host prunes
+the record after BlueJS invalidation. This is static metadata only: it does
+not provide page-lifetime automation, diagnostics/contracts retention, source
+authorization, stack locations, scopes, runtime type inspection, pause
+mechanics, or debugger IPC.
+
 Adding a host API is additive only when it preserves existing binding IDs and declaration meanings. Removing or changing a public declaration requires a new host API major version and a new compatible feature profile. A compiler may target a declared older profile only when the host explicitly supplies its matching generated manifest; it may never infer API availability from the installed BlueJS version.
 
 ## Remaining implementation gate
 
 The first structured classic-script and resolver-preserving module-graph bridge has landed. Direct-page activation remains gated on its owner providing:
 
-1. Public, tested BlueJS node IDs, code-unit IDs and safe-point validation APIs for the page/module AST surface.
+1. Integrate the shipped public, tested BlueJS node IDs, code-unit IDs, and safe-point validation APIs into the process-owned page host and native debugger channel. `BlueJsPageRuntime` already validates them for the exact live tab-owned generation, but it does not expose a debugger wire protocol or pause execution.
 2. Bridge conformance fixtures extending the shipped no-emitted-JavaScript-reparse proof to exact origin/module preservation and deterministic bytecode-map ordering.
-3. A host schema generator proving each generated `lib.blueice.d.ts` binding exists in the corresponding feature profile and that an absent binding is rejected by both checker and host.
+3. A host schema generator proving each generated `lib.blueice.d.ts` binding exists in the corresponding feature profile and that an absent binding is rejected by both checker and host. The generator, profile catalog, byte-exact manifest validator, and deliberately empty initial fixture are shipped; matching BlueJS bindings and direct-page compiler enforcement are still required.
 4. Debugger tests for breakpoint binding, step/exception locations, stale-map rejection and the distinction between a static TypeScript type and a runtime BlueJS value.
 
 Until those gates are satisfied, `BlueTsDebugInfo` remains VM-independent and contains static source/type/symbol data only. This document records the shipped bounded hand-off and fixes the rejection behavior for the still-missing page APIs.

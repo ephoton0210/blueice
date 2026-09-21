@@ -20,6 +20,14 @@ use blueice_bluets::{
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
+mod debug_attachment;
+mod page_runtime;
+pub use debug_attachment::{
+    DirectDebugAttachmentError, DirectDebugRegistry, DirectDebugRetentionLimits,
+    RetainedDirectDebugInfo,
+};
+pub use page_runtime::{DirectPageModuleGraphAttachment, DirectPageRealmOwner};
+
 /// The first directly executable BlueTS-to-BlueJS bridge ABI.
 pub const BLUE_TS_BLUEJS_BRIDGE_ABI_V1: &str = "blue-ts-bluejs-bridge-v1";
 
@@ -63,6 +71,9 @@ pub struct DirectScript {
     pub compiler_options_fingerprint: String,
     pub sources: Vec<BridgeSource>,
     pub provenance: Vec<LoweringProvenance>,
+    /// Static BlueTS source/type/symbol metadata for this exact compilation.
+    /// It contains no runtime BlueJS values or source text.
+    pub debug_info: BlueTsDebugInfo,
 }
 
 /// A checked, direct BlueJS compilation of one TypeScript source module.
@@ -75,6 +86,8 @@ pub struct DirectModule {
     pub compiler_options_fingerprint: String,
     pub sources: Vec<BridgeSource>,
     pub provenance: Vec<LoweringProvenance>,
+    /// Static BlueTS source/type/symbol metadata for this exact compilation.
+    pub debug_info: BlueTsDebugInfo,
 }
 
 /// A checked, direct BlueJS compilation of a closed TypeScript module graph.
@@ -86,14 +99,12 @@ pub struct DirectModuleGraph {
     pub language_version: String,
     pub compiler_options_fingerprint: String,
     pub sources: Vec<BridgeSource>,
+    /// Static metadata for the caller-authorized closed source graph.
+    pub debug_info: BlueTsDebugInfo,
 }
 
-/// A live direct-program attachment with exact source-to-AST provenance.
-///
-/// This is intentionally not yet a bytecode safe-point map: the attached
-/// node identifies the direct structured statement supplied by BlueTS, while
-/// BlueJS remains responsible for subsequently associating that node with a
-/// verified executable instruction boundary.
+/// A live direct-program attachment with exact source-to-AST provenance and
+/// a verified generation-bound safe-point map.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirectProgramAttachment {
     /// The live generation-bound BlueJS program handle.
@@ -172,8 +183,10 @@ pub enum BridgeError {
     UnsupportedRuntimeTarget { span: SourceSpan, message: String },
     BlueJs(bluejs::CompileError),
     BlueJsDebug(bluejs::BlueJsProgramDebugError),
+    PageRuntime(bluejs::BlueJsPageRuntimeError),
     InvalidSourceIdentity(String),
     ProvenanceAttachment(String),
+    DebugAttachment(DirectDebugAttachmentError),
 }
 
 impl fmt::Display for BridgeError {
@@ -198,6 +211,12 @@ impl fmt::Display for BridgeError {
                     "BlueJS rejected the direct-program attachment: {error}"
                 )
             }
+            Self::PageRuntime(error) => {
+                write!(
+                    formatter,
+                    "BlueJS page runtime rejected the direct program: {error}"
+                )
+            }
             Self::InvalidSourceIdentity(message) => {
                 write!(
                     formatter,
@@ -208,6 +227,12 @@ impl fmt::Display for BridgeError {
                 write!(
                     formatter,
                     "cannot attach direct lowering provenance: {message}"
+                )
+            }
+            Self::DebugAttachment(error) => {
+                write!(
+                    formatter,
+                    "cannot attach direct static debug metadata: {error}"
                 )
             }
         }
@@ -242,6 +267,49 @@ impl DirectScript {
             &self.compiler_options_fingerprint,
         )
     }
+
+    /// Attaches this artifact's provenance to an already-live BlueJS program.
+    /// The handle must carry this exact source identity and compiled bytecode;
+    /// a page runtime uses this after its own ownership/resource admission,
+    /// avoiding a second registry or generated-JavaScript reparse.
+    pub(crate) fn attach_existing_in(
+        &self,
+        registry: &bluejs::BlueJsProgramRegistry,
+        handle: bluejs::BlueJsProgramHandle,
+    ) -> Result<DirectProgramAttachment, BridgeError> {
+        attach_existing_direct_program(
+            registry,
+            handle,
+            &self.sources,
+            Some(&self.bytecode),
+            &self.provenance,
+            &self.compiler_options_fingerprint,
+        )
+    }
+
+    /// Installs the program and retains its static BlueTS metadata only for
+    /// the resulting live BlueJS generation. If retention rejects an identity
+    /// mismatch or limit, the just-installed generation is invalidated so a
+    /// caller cannot execute an unpaired direct program accidentally.
+    pub fn attach_debug_in(
+        &self,
+        registry: &mut bluejs::BlueJsProgramRegistry,
+        debug_registry: &mut DirectDebugRegistry,
+    ) -> Result<DirectProgramAttachment, BridgeError> {
+        let attachment = self.attach_in(registry)?;
+        if let Err(error) = debug_registry.retain(
+            registry,
+            &attachment,
+            &self.language_version,
+            &self.compiler_options_fingerprint,
+            &self.sources,
+            &self.debug_info,
+        ) {
+            registry.invalidate(attachment.handle);
+            return Err(BridgeError::DebugAttachment(error));
+        }
+        Ok(attachment)
+    }
 }
 
 impl DirectModule {
@@ -267,6 +335,44 @@ impl DirectModule {
             &self.provenance,
             &self.compiler_options_fingerprint,
         )
+    }
+
+    pub(crate) fn attach_existing_in(
+        &self,
+        registry: &bluejs::BlueJsProgramRegistry,
+        handle: bluejs::BlueJsProgramHandle,
+    ) -> Result<DirectProgramAttachment, BridgeError> {
+        attach_existing_direct_program(
+            registry,
+            handle,
+            &self.sources,
+            Some(&self.bytecode),
+            &self.provenance,
+            &self.compiler_options_fingerprint,
+        )
+    }
+
+    /// Equivalent to [`DirectScript::attach_debug_in`] for one direct ESM
+    /// module. The retained object is static metadata, not a runtime scope or
+    /// BlueJS value inspector.
+    pub fn attach_debug_in(
+        &self,
+        registry: &mut bluejs::BlueJsProgramRegistry,
+        debug_registry: &mut DirectDebugRegistry,
+    ) -> Result<DirectProgramAttachment, BridgeError> {
+        let attachment = self.attach_in(registry)?;
+        if let Err(error) = debug_registry.retain(
+            registry,
+            &attachment,
+            &self.language_version,
+            &self.compiler_options_fingerprint,
+            &self.sources,
+            &self.debug_info,
+        ) {
+            registry.invalidate(attachment.handle);
+            return Err(BridgeError::DebugAttachment(error));
+        }
+        Ok(attachment)
     }
 }
 
@@ -309,9 +415,10 @@ pub fn compile_direct_script(
         program,
         bytecode,
         language_version: LANGUAGE_VERSION.to_string(),
-        compiler_options_fingerprint: debug_info.compiler_options_hash,
+        compiler_options_fingerprint: debug_info.compiler_options_hash.clone(),
         sources,
         provenance,
+        debug_info,
     })
 }
 
@@ -337,9 +444,10 @@ pub fn compile_direct_module(
         program,
         bytecode,
         language_version: LANGUAGE_VERSION.to_string(),
-        compiler_options_fingerprint: debug_info.compiler_options_hash,
+        compiler_options_fingerprint: debug_info.compiler_options_hash.clone(),
         sources,
         provenance,
+        debug_info,
     })
 }
 
@@ -382,6 +490,7 @@ pub fn compile_direct_module_graph(
                 content_hash: source.content_hash.clone(),
             })
             .collect();
+        let module_debug_info = debug_info_for_module(&debug_info, &id);
         modules.insert(
             id,
             DirectModule {
@@ -392,6 +501,7 @@ pub fn compile_direct_module_graph(
                 compiler_options_fingerprint: debug_info.compiler_options_hash.clone(),
                 sources,
                 provenance,
+                debug_info: module_debug_info,
             },
         );
     }
@@ -407,8 +517,9 @@ pub fn compile_direct_module_graph(
         entry: entry.to_string(),
         modules,
         language_version: LANGUAGE_VERSION.to_string(),
-        compiler_options_fingerprint: debug_info.compiler_options_hash,
+        compiler_options_fingerprint: debug_info.compiler_options_hash.clone(),
         sources,
+        debug_info,
     })
 }
 
@@ -463,10 +574,17 @@ fn checked_entry(
     if compilation.has_errors() {
         return Err(BridgeError::BlueTs(compilation.diagnostics));
     }
-    if compilation.project.modules.len() != 1 {
+    if compilation
+        .project
+        .modules
+        .keys()
+        .filter(|module_id| !module_id.ends_with(".d.ts"))
+        .count()
+        != 1
+    {
         return Err(unsupported(
             SourceSpan::new(entry, 0, 0),
-            "the v1 direct bridge supports exactly one source module",
+            "the v1 direct bridge supports exactly one executable source module",
         ));
     }
     let module = compilation
@@ -503,6 +621,53 @@ fn bridge_sources(debug_info: &BlueTsDebugInfo) -> Vec<BridgeSource> {
         .collect()
 }
 
+/// Produces static debugger metadata for one generated module program. The
+/// graph-wide artifact still retains its complete metadata separately; this
+/// subset keeps a single program's source set and safe-point map exact.
+fn debug_info_for_module(debug_info: &BlueTsDebugInfo, module_id: &str) -> BlueTsDebugInfo {
+    let symbols = debug_info
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.span.module == module_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    let type_ids = symbols
+        .iter()
+        .filter_map(|symbol| symbol.static_type)
+        .collect::<BTreeSet<_>>();
+    BlueTsDebugInfo {
+        language_version: debug_info.language_version.clone(),
+        compiler_options_hash: debug_info.compiler_options_hash.clone(),
+        sources: debug_info
+            .sources
+            .iter()
+            .filter(|source| source.module == module_id)
+            .cloned()
+            .collect(),
+        types: debug_info
+            .types
+            .iter()
+            .filter(|static_type| type_ids.contains(&static_type.id))
+            .cloned()
+            .collect(),
+        symbols,
+    }
+}
+
+fn source_identity(sources: &[BridgeSource]) -> Result<bluejs::BlueJsSourceIdentity, BridgeError> {
+    let executable_sources = sources
+        .iter()
+        .filter(|source| !source.module.ends_with(".d.ts"))
+        .collect::<Vec<_>>();
+    let [source] = executable_sources.as_slice() else {
+        return Err(BridgeError::InvalidSourceIdentity(
+            "a direct script or module must retain exactly one executable source".to_string(),
+        ));
+    };
+    bluejs::BlueJsSourceIdentity::new(source.module.clone(), source.content_hash.clone())
+        .map_err(BridgeError::BlueJsDebug)
+}
+
 fn attach_direct_program(
     registry: &mut bluejs::BlueJsProgramRegistry,
     sources: &[BridgeSource],
@@ -510,27 +675,53 @@ fn attach_direct_program(
     provenance: &[LoweringProvenance],
     compiler_options_fingerprint: &str,
 ) -> Result<DirectProgramAttachment, BridgeError> {
-    let [source] = sources else {
-        return Err(BridgeError::InvalidSourceIdentity(
-            "a direct script or module must retain exactly one source".to_string(),
-        ));
-    };
-    let source =
-        bluejs::BlueJsSourceIdentity::new(source.module.clone(), source.content_hash.clone())
-            .map_err(BridgeError::BlueJsDebug)?;
+    let source = source_identity(sources)?;
     let handle = registry
         .install(source, program)
         .map_err(BridgeError::BlueJsDebug)?;
-    let nodes = registry
-        .get(handle)
-        .expect("a newly installed direct program remains live")
+    match attach_existing_direct_program(
+        registry,
+        handle,
+        sources,
+        None,
+        provenance,
+        compiler_options_fingerprint,
+    ) {
+        Ok(attachment) => Ok(attachment),
+        Err(error) => {
+            registry.invalidate(handle);
+            Err(error)
+        }
+    }
+}
+
+fn attach_existing_direct_program(
+    registry: &bluejs::BlueJsProgramRegistry,
+    handle: bluejs::BlueJsProgramHandle,
+    sources: &[BridgeSource],
+    expected_bytecode: Option<&bluejs::Bytecode>,
+    provenance: &[LoweringProvenance],
+    compiler_options_fingerprint: &str,
+) -> Result<DirectProgramAttachment, BridgeError> {
+    let source = source_identity(sources)?;
+    let compiled = registry.get(handle).map_err(BridgeError::BlueJsDebug)?;
+    if compiled.source() != &source {
+        return Err(BridgeError::ProvenanceAttachment(
+            "the live program source identity does not match this direct artifact".to_string(),
+        ));
+    }
+    if expected_bytecode.is_some_and(|expected| !bytecode_matches(expected, compiled.bytecode())) {
+        return Err(BridgeError::ProvenanceAttachment(
+            "the live program bytecode does not match this direct artifact".to_string(),
+        ));
+    }
+    let nodes = compiled
         .ast_nodes()
         .iter()
         .filter(|node| node.is_top_level_statement())
         .map(|node| node.id())
         .collect::<Vec<_>>();
     if nodes.len() != provenance.len() {
-        registry.invalidate(handle);
         return Err(BridgeError::ProvenanceAttachment(format!(
             "BlueTS retained {} top-level lowering spans but BlueJS generated {} top-level statements",
             provenance.len(),
@@ -556,23 +747,28 @@ fn attach_direct_program(
             })
         })
         .collect::<Result<Vec<_>, BridgeError>>()?;
-    let safe_point_map = match build_safe_point_map(
+    let safe_point_map = build_safe_point_map(
         handle,
         compiler_options_fingerprint,
         sources,
         &attached_provenance,
-    ) {
-        Ok(map) => map,
-        Err(error) => {
-            registry.invalidate(handle);
-            return Err(error);
-        }
-    };
+    )?;
     Ok(DirectProgramAttachment {
         handle,
         provenance: attached_provenance,
         safe_point_map,
     })
+}
+
+fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> bool {
+    expected.bytes() == actual.bytes()
+        && expected.constants() == actual.constants()
+        && expected.root_statement_offsets() == actual.root_statement_offsets()
+        && expected
+            .child_code_units()
+            .zip(actual.child_code_units())
+            .all(|(expected, actual)| bytecode_matches(expected, actual))
+        && expected.child_code_units().count() == actual.child_code_units().count()
 }
 
 impl BlueTsSafePointMapV1 {

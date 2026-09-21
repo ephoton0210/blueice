@@ -78,6 +78,114 @@ fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
 }
 
 #[test]
+fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_session() {
+    let socket_path = unique_socket_path("script-core");
+    let script_socket_path = unique_socket_path("script-host");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-script-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&script_socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--script-socket",
+            script_socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn blueice-core");
+
+    assert!(
+        wait_for(&socket_path, Duration::from_secs(5)),
+        "blueice-core never created its frontend socket"
+    );
+    assert!(
+        wait_for(&script_socket_path, Duration::from_secs(5)),
+        "blueice-core never created its script socket"
+    );
+    let mut frontend = UnixStream::connect(&socket_path)
+        .expect("failed to connect to the real core frontend socket");
+    blueice_ipc::client_handshake(&mut frontend)
+        .expect("the real subprocess must complete the frontend handshake");
+
+    let mut invalid = UnixStream::connect(&script_socket_path)
+        .expect("failed to connect an unhandshaken script client");
+    blueice_ipc::script::write_script_request(
+        &mut invalid,
+        &blueice_ipc::script::ScriptRequest::CreateTextNode {
+            tab_id: 1,
+            data: "must not run".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::script::read_script_reply(&mut invalid).unwrap(),
+        blueice_ipc::script::ScriptReply::Error { .. }
+    ));
+    drop(invalid);
+
+    let mut script =
+        UnixStream::connect(&script_socket_path).expect("failed to connect the real script host");
+    blueice_ipc::script::write_script_request(
+        &mut script,
+        &blueice_ipc::script::ScriptRequest::Hello,
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::script::read_script_reply(&mut script).unwrap(),
+        blueice_ipc::script::ScriptReply::HelloAck
+    );
+    blueice_ipc::script::write_script_request(
+        &mut script,
+        &blueice_ipc::script::ScriptRequest::CreateTextNode {
+            tab_id: 1,
+            data: "from script socket".to_string(),
+        },
+    )
+    .unwrap();
+    let node = match blueice_ipc::script::read_script_reply(&mut script).unwrap() {
+        blueice_ipc::script::ScriptReply::NodeCreated { node } => node,
+        reply => panic!("expected a created script node, got {reply:?}"),
+    };
+    blueice_ipc::script::write_script_request(
+        &mut script,
+        &blueice_ipc::script::ScriptRequest::GetTextContent { tab_id: 1, node },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::script::read_script_reply(&mut script).unwrap(),
+        blueice_ipc::script::ScriptReply::Text {
+            value: "from script socket".to_string(),
+        }
+    );
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    let status = child
+        .wait()
+        .expect("failed to wait for blueice-core to exit");
+    assert!(
+        status.success(),
+        "blueice-core must exit cleanly after Shutdown"
+    );
+    assert!(
+        !script_socket_path.exists(),
+        "blueice-core must remove its script socket on exit"
+    );
+    assert!(
+        !frame_dir.exists(),
+        "blueice-core must remove its script frame directory on exit"
+    );
+}
+
+#[test]
 fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
     let socket_path = unique_socket_path("full-session");
     let frame_dir = std::env::temp_dir().join(format!(

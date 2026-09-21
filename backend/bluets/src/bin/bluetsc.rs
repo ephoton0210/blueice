@@ -478,6 +478,10 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         source_map: config.source_map,
         declaration: config.declaration,
         resolver_fingerprint: import_map_fingerprint(&root, &imports),
+        // The standalone CLI has no page-host profile authority. Only a host
+        // that verified a generated `lib.blueice.d.ts` may add ambient
+        // declarations through the library API.
+        ambient_declaration_modules: Vec::new(),
         limits: CompilerLimits::default(),
     };
     Ok(Invocation {

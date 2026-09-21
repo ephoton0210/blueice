@@ -86,6 +86,12 @@ pub struct CompilerOptions {
     /// This prevents an artifact/cache key from being reused under a resolver
     /// policy different from the one that selected its module graph.
     pub resolver_fingerprint: String,
+    /// Host-provided `.d.ts` modules made available as ambient declarations to
+    /// every checked source module. They are parsed under the ordinary source
+    /// and module-count limits, emitted nowhere, and cannot import further
+    /// modules. This is for a selected, already-verified host type surface,
+    /// not a replacement for caller-authorized source-graph loading.
+    pub ambient_declaration_modules: Vec<ModuleSource>,
     pub limits: CompilerLimits,
 }
 
@@ -97,6 +103,7 @@ impl Default for CompilerOptions {
             source_map: false,
             declaration: false,
             resolver_fingerprint: "relative-v1".to_string(),
+            ambient_declaration_modules: Vec::new(),
             limits: CompilerLimits::default(),
         }
     }
@@ -170,6 +177,7 @@ pub struct Project {
     pub entry: String,
     pub modules: BTreeMap<String, Module>,
     pub(crate) resolutions: BTreeMap<(String, String), String>,
+    pub(crate) ambient_declaration_modules: BTreeSet<String>,
 }
 
 impl Project {
@@ -180,6 +188,14 @@ impl Project {
         self.resolutions
             .get(&(from_module.to_string(), specifier.to_string()))
             .map(String::as_str)
+    }
+
+    /// Returns whether `module_id` was supplied as a host-selected ambient
+    /// declaration rather than reached through an import in the source graph.
+    /// Such declarations contribute static checking/provenance only and are
+    /// never copied to standalone declaration output.
+    pub fn is_ambient_declaration_module(&self, module_id: &str) -> bool {
+        self.ambient_declaration_modules.contains(module_id)
     }
 }
 
@@ -259,6 +275,7 @@ impl Project {
             entry: entry.into(),
             modules: BTreeMap::new(),
             resolutions: BTreeMap::new(),
+            ambient_declaration_modules: BTreeSet::new(),
         }
     }
 }
@@ -279,6 +296,9 @@ fn compile_with_cache(
     let previous_project = cached.map(|cached| &cached.compilation.project);
     let mut builder = ProjectBuilder::new(loader, previous_project, options.limits.clone());
     builder.visit(entry, 0);
+    for declaration in &options.ambient_declaration_modules {
+        builder.visit_ambient_declaration(declaration);
+    }
     let ProjectBuilder {
         project,
         mut diagnostics,
@@ -496,6 +516,47 @@ impl<'a> ProjectBuilder<'a> {
                 return;
             }
         };
+        self.visit_loaded_source(module_id, source, depth);
+    }
+
+    fn visit_ambient_declaration(&mut self, source: &ModuleSource) {
+        let module_id = source.id.as_str();
+        if !is_declaration_module(module_id) {
+            self.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::InvalidDeclarationFile,
+                SourceSpan::new(module_id, 0, 0),
+                "ambient host declaration modules must use a `.d.ts` identity",
+            ));
+            return;
+        }
+        if self.state.contains_key(module_id) {
+            self.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::InvalidDeclarationFile,
+                SourceSpan::new(module_id, 0, 0),
+                "ambient host declaration module duplicates a source-graph module",
+            ));
+            return;
+        }
+        if self.state.len() >= self.limits.max_modules {
+            self.diagnostics.push(Diagnostic::error(
+                DiagnosticCode::ResourceLimit,
+                SourceSpan::new(module_id, 0, 0),
+                format!(
+                    "project exceeds the {} module limit",
+                    self.limits.max_modules
+                ),
+            ));
+            return;
+        }
+        self.state
+            .insert(module_id.to_string(), VisitState::Visiting);
+        self.project
+            .ambient_declaration_modules
+            .insert(module_id.to_string());
+        self.visit_loaded_source(module_id, source.clone(), 0);
+    }
+
+    fn visit_loaded_source(&mut self, module_id: &str, source: ModuleSource, depth: usize) {
         if source.id != module_id {
             self.diagnostics.push(Diagnostic::error(
                 DiagnosticCode::ModuleNotFound,
@@ -565,6 +626,14 @@ impl<'a> ProjectBuilder<'a> {
                 }
                 _ => continue,
             };
+            if self.project.ambient_declaration_modules.contains(module_id) {
+                self.diagnostics.push(Diagnostic::error(
+                    DiagnosticCode::InvalidDeclarationFile,
+                    span.clone(),
+                    "ambient host declaration modules cannot import or re-export another module",
+                ));
+                continue;
+            }
             match self.loader.resolve(module_id, specifier) {
                 Ok(resolved) => {
                     let resolution_key = (module_id.to_string(), specifier.clone());
@@ -656,6 +725,10 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(options.target.as_str());
     add(options.runtime_policy.as_str());
     add(&options.resolver_fingerprint);
+    for declaration in &options.ambient_declaration_modules {
+        add(&declaration.id);
+        add(&declaration.text);
+    }
     add(&options.limits.max_modules.to_string());
     add(&options.limits.max_module_edges.to_string());
     add(&options.limits.max_module_depth.to_string());
@@ -916,6 +989,114 @@ mod tests {
             .sources
             .iter()
             .any(|source| source.module == "memory:///src/types.d.ts"));
+    }
+
+    #[test]
+    fn consumes_host_verified_ambient_declarations_without_emitting_them() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///src/main.ts",
+            "const answer: number = hostAnswer; answer;",
+        )]);
+        let options = CompilerOptions {
+            ambient_declaration_modules: vec![ModuleSource::new(
+                "blueice:///profiles/test/lib.blueice.d.ts",
+                "declare const hostAnswer: number;",
+            )],
+            ..CompilerOptions::default()
+        };
+        let compilation = compile("memory:///src/main.ts", &loader, options.clone());
+        assert!(!compilation.has_errors(), "{:?}", compilation.diagnostics);
+        assert!(compilation
+            .project
+            .modules
+            .contains_key("blueice:///profiles/test/lib.blueice.d.ts"));
+        let javascript = &compilation.output.unwrap().artifacts["memory:///src/main.ts"].javascript;
+        assert!(javascript.contains("hostAnswer"));
+        assert!(!javascript.contains("declare const"));
+
+        let mismatch = compile(
+            "memory:///src/main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///src/main.ts",
+                "const answer: string = hostAnswer;",
+            )]),
+            options.clone(),
+        );
+        assert!(mismatch.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::TypeMismatch
+                && diagnostic.span.module == "memory:///src/main.ts"
+        }));
+        assert!(mismatch.output.is_none());
+
+        let declaration_output = compile(
+            "memory:///src/main.ts",
+            &loader,
+            CompilerOptions {
+                declaration: true,
+                ..options
+            },
+        )
+        .output
+        .unwrap();
+        assert!(!declaration_output
+            .declaration_modules
+            .contains_key("blueice:///profiles/test/lib.blueice.d.ts"));
+    }
+
+    #[test]
+    fn ambient_declarations_are_closed_and_counted_as_declaration_modules() {
+        let loader = MapLoader::from([ModuleSource::new("memory:///src/main.ts", "1;")]);
+        let invalid_id = compile(
+            "memory:///src/main.ts",
+            &loader,
+            CompilerOptions {
+                ambient_declaration_modules: vec![ModuleSource::new(
+                    "blueice:///profiles/test/lib.blueice.ts",
+                    "declare const hostAnswer: number;",
+                )],
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(invalid_id.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::InvalidDeclarationFile
+                && diagnostic.message.contains(".d.ts")
+        }));
+
+        let imported = compile(
+            "memory:///src/main.ts",
+            &loader,
+            CompilerOptions {
+                ambient_declaration_modules: vec![ModuleSource::new(
+                    "blueice:///profiles/test/lib.blueice.d.ts",
+                    "import type { Missing } from './missing.d.ts';",
+                )],
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(imported.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::InvalidDeclarationFile
+                && diagnostic.message.contains("cannot import")
+        }));
+
+        let limited = compile(
+            "memory:///src/main.ts",
+            &loader,
+            CompilerOptions {
+                ambient_declaration_modules: vec![ModuleSource::new(
+                    "blueice:///profiles/test/lib.blueice.d.ts",
+                    "declare const hostAnswer: number;",
+                )],
+                limits: CompilerLimits {
+                    max_modules: 1,
+                    ..CompilerLimits::default()
+                },
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(limited.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::ResourceLimit
+                && diagnostic.message.contains("module limit")
+        }));
     }
 
     #[test]

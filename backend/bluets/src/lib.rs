@@ -17,6 +17,7 @@
 //! as `UnsupportedSyntax`; it is never passed through accidentally as
 //! JavaScript.
 
+mod authorized_loader;
 mod checker;
 mod compiler;
 mod contracts;
@@ -26,6 +27,10 @@ mod emitter;
 mod parser;
 mod syntax;
 
+pub use authorized_loader::{
+    AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleLoaderError,
+    AuthorizedModuleResolution,
+};
 pub use checker::{CheckedModule, CheckedProject, Symbol, SymbolKind, Type};
 pub use compiler::{
     compile, CompilerLimits, CompilerOptions, EcmaTarget, IncrementalCompiler, IncrementalResult,

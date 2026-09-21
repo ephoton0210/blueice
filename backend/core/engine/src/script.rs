@@ -11,6 +11,81 @@
 
 use crate::{TabId, TabManager};
 use blueice_ipc::script::{ScriptReply, ScriptRequest};
+use std::io;
+use std::sync::mpsc;
+
+/// Prevents a chatty script connection from starving frontend requests or
+/// navigation completions in one session-loop turn.
+const MAX_SCRIPT_REQUESTS_PER_SESSION_TICK: usize = 64;
+
+pub mod direct_page;
+/// Deterministic host typing artifacts derived from the core-owned binding
+/// surface. The initial profile deliberately exposes no JavaScript globals:
+/// core's narrow IPC dispatcher is not itself a BlueJS DOM binding.
+pub mod host_typings;
+
+/// Sender owned by a script-socket worker. Sending a request blocks until the
+/// core session has applied it to the currently live [`TabManager`] and
+/// produced its reply; the worker itself never touches DOM state.
+#[derive(Clone)]
+pub struct ScriptRequestSender(mpsc::Sender<ScriptRequestEnvelope>);
+
+/// Receiver owned by the core session thread. It may dispatch a bounded batch
+/// between frontend reads without moving [`TabManager`] across threads.
+pub struct ScriptRequestReceiver(mpsc::Receiver<ScriptRequestEnvelope>);
+
+struct ScriptRequestEnvelope {
+    request: ScriptRequest,
+    reply: mpsc::SyncSender<ScriptReply>,
+}
+
+/// Creates the in-process hand-off between an IPC listener and its owning core
+/// session. This is deliberately transport-neutral so tests can prove the
+/// thread boundary without granting a worker direct DOM access.
+pub fn script_request_channel() -> (ScriptRequestSender, ScriptRequestReceiver) {
+    let (sender, receiver) = mpsc::channel();
+    (ScriptRequestSender(sender), ScriptRequestReceiver(receiver))
+}
+
+impl ScriptRequestSender {
+    /// Routes one already-decoded request to the core session and waits for its
+    /// reply. A disconnected session is a transport failure, not a fabricated
+    /// protocol reply that could be mistaken for a DOM result.
+    pub fn request(&self, request: ScriptRequest) -> io::Result<ScriptReply> {
+        let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+        self.0
+            .send(ScriptRequestEnvelope {
+                request,
+                reply: reply_sender,
+            })
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "core script session ended"))?;
+        reply_receiver
+            .recv()
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "core script reply unavailable"))
+    }
+}
+
+impl ScriptRequestReceiver {
+    /// Applies every request currently pending at the session boundary and
+    /// returns the number dispatched. Responses are best-effort because a
+    /// disconnected script peer must never interrupt the core render session.
+    pub fn dispatch_pending(&self, tabs: &mut TabManager) -> usize {
+        let mut dispatched = 0;
+        while dispatched < MAX_SCRIPT_REQUESTS_PER_SESSION_TICK {
+            let Ok(envelope) = self.0.try_recv() else {
+                break;
+            };
+            dispatch_script_request(tabs, envelope);
+            dispatched += 1;
+        }
+        dispatched
+    }
+}
+
+fn dispatch_script_request(tabs: &mut TabManager, envelope: ScriptRequestEnvelope) {
+    let reply = handle_script_request(tabs, envelope.request);
+    let _ = envelope.reply.send(reply);
+}
 
 /// Applies one decoded page-script request to the addressed live tab.
 ///
@@ -228,6 +303,35 @@ mod tests {
                 },
             ),
             ScriptReply::Error { .. }
+        ));
+    }
+
+    #[test]
+    fn request_worker_cannot_mutate_a_tab_until_the_session_dispatches_it() {
+        use std::thread;
+        use std::time::Duration;
+
+        let (mut tabs, tab) = loaded_tabs();
+        let (sender, receiver) = script_request_channel();
+        let worker = thread::spawn(move || {
+            sender.request(ScriptRequest::CreateTextNode {
+                tab_id: tab.as_u64(),
+                data: "from-worker".to_string(),
+            })
+        });
+
+        let envelope = receiver
+            .0
+            .recv_timeout(Duration::from_secs(1))
+            .expect("worker must enqueue a request without borrowing the tab manager");
+        assert!(
+            !tabs.get(tab).unwrap().dom_dump().contains("from-worker"),
+            "queueing itself must not mutate core-owned state"
+        );
+        dispatch_script_request(&mut tabs, envelope);
+        assert!(matches!(
+            worker.join().unwrap(),
+            Ok(ScriptReply::NodeCreated { .. })
         ));
     }
 }

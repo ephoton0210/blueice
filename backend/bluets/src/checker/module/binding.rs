@@ -11,6 +11,7 @@ impl<'a> ModuleChecker<'a> {
         project: &'a Project,
         module: &'a Module,
         exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
+        ambient: Option<&'a AmbientDeclarations>,
         enforce_types: bool,
         max_type_expansions: usize,
     ) -> Self {
@@ -18,6 +19,7 @@ impl<'a> ModuleChecker<'a> {
             project,
             module,
             exported_types,
+            ambient,
             enforce_types,
             diagnostics: Vec::new(),
             symbols: Vec::new(),
@@ -120,9 +122,34 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Raw(_) => {}
             }
         }
+        self.bind_ambient_declarations();
         self.validate_function_overloads();
         self.validate_default_exports();
         self.validate_value_exports();
+    }
+
+    fn bind_ambient_declarations(&mut self) {
+        let Some(ambient) = self.ambient else {
+            return;
+        };
+        let local_types = self.types.keys().cloned().collect::<BTreeSet<_>>();
+        let local_values = self.values.keys().cloned().collect::<BTreeSet<_>>();
+        let local_functions = self.functions.keys().cloned().collect::<BTreeSet<_>>();
+        for (name, definition) in &ambient.types {
+            if !local_types.contains(name) {
+                self.types.insert(name.clone(), definition.clone());
+            }
+        }
+        for (name, value) in &ambient.values {
+            if !local_values.contains(name) {
+                self.values.insert(name.clone(), value.clone());
+            }
+        }
+        for (name, signatures) in &ambient.functions {
+            if !local_values.contains(name) && !local_functions.contains(name) {
+                self.functions.insert(name.clone(), signatures.clone());
+            }
+        }
     }
 
     pub(super) fn validate_default_exports(&mut self) {
