@@ -678,3 +678,49 @@ fn rest_values_survive_collection_during_subsequent_steps() {
         rest.length===39&&sum===780";
     assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)));
 }
+
+/// `flatMap`, `chunks` and `windows` are installed on `%Iterator.prototype%`
+/// when first observed. Deleting one, whether or not it had been observed yet,
+/// must remove it for good: a later read or descriptor query must not install
+/// a fresh copy.
+#[test]
+fn deleted_lazy_iterator_helpers_stay_deleted() {
+    for helper in ["flatMap", "chunks", "windows"] {
+        // Deleted before anything has observed it.
+        let source = format!(
+            "delete Iterator.prototype.{helper} === true &&
+             !Object.prototype.hasOwnProperty.call(Iterator.prototype, '{helper}') &&
+             Iterator.prototype.{helper} === undefined &&
+             Object.getOwnPropertyDescriptor(Iterator.prototype, '{helper}') === undefined"
+        );
+        assert_eq!(
+            execute(&mut Vm::default(), &source),
+            Ok(Value::Bool(true)),
+            "{source}"
+        );
+        // Deleted after an ordinary read has installed it.
+        let source = format!(
+            "typeof Iterator.prototype.{helper} === 'function' &&
+             delete Iterator.prototype.{helper} === true &&
+             !('{helper}' in Iterator.prototype) &&
+             !Object.prototype.hasOwnProperty.call(Iterator.prototype, '{helper}') &&
+             Object.getOwnPropertyNames(Iterator.prototype).indexOf('{helper}') === -1"
+        );
+        assert_eq!(
+            execute(&mut Vm::default(), &source),
+            Ok(Value::Bool(true)),
+            "{source}"
+        );
+        // An untouched helper is still there, configurable and writable.
+        let source = format!(
+            "let d = Object.getOwnPropertyDescriptor(Iterator.prototype, '{helper}');
+             typeof d.value === 'function' && d.writable && !d.enumerable && d.configurable &&
+             Iterator.prototype.{helper} === d.value"
+        );
+        assert_eq!(
+            execute(&mut Vm::default(), &source),
+            Ok(Value::Bool(true)),
+            "{source}"
+        );
+    }
+}

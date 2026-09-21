@@ -893,6 +893,11 @@ pub struct Vm {
     // constructor bytecode.
     class_field_initializer_depth: u32,
     iterator_base: Option<ObjectId>,
+    /// The lazily installed `%Iterator.prototype%` helpers (`flatMap`,
+    /// `chunks`, `windows`) that have already been offered to the realm. Each
+    /// is installed at most once, so deleting one never lets a later
+    /// observation put a fresh copy back.
+    iterator_helpers_installed: Vec<&'static str>,
     /// `%WrapForValidIteratorPrototype%`, shared by the iterator wrappers
     /// created by `Iterator.from`.
     iterator_wrapper_prototype: Option<ObjectId>,
@@ -1083,6 +1088,7 @@ impl Vm {
             class_constructor: None,
             class_field_initializer_depth: 0,
             iterator_base: None,
+            iterator_helpers_installed: Vec::new(),
             iterator_wrapper_prototype: None,
             iterator_helper_prototype: None,
             array_iterator_prototype: None,
