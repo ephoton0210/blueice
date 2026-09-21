@@ -165,6 +165,19 @@ or second module resolver to bypass them.
   stack, scope, exception, and bounded-value operations. It must target one
   page realm and remain separate from script/DOM and network IPC.
 
+  Foundation delivered: `blueice_ipc::debugger` now owns an independently
+  framed v1 handshake and capability-discovery vocabulary. Its page-realm,
+  program, and safe-point identities include browser-context/tab/realm and
+  program generations, reject zero placeholder handles, and state that a host
+  MUST validate exact BlueJS instruction boundaries rather than remap an
+  offset. The capability schema can report `available`, `planned`, or
+  `unsupported` for breakpoints, pause/resume, stepping, stack, scopes,
+  exception policy, and bounded values. This is only the public protocol
+  boundary: no listener, core-to-BlueJS routing, program-registry validation,
+  breakpoint table, pause state, stack/scope/value implementation, or debugger
+  IPC consumer exists yet, so no capability is currently advertised as
+  available by a running host.
+
   Acceptance: a JS page fixture pauses at a verified safe point, supports the
   declared stepping subset, rejects stale frame/value handles after
   navigation/resume, and does not pause another tab or render transport.

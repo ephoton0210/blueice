@@ -402,6 +402,15 @@ not provide page-lifetime automation, diagnostics/contracts retention, source
 authorization, stack locations, scopes, runtime type inspection, pause
 mechanics, or debugger IPC.
 
+`blueice_ipc::debugger` now defines the separately framed v1 protocol boundary
+that an eventual core-to-BlueJS debugger channel must consume. Its realm,
+program, and safe-point tuples include exact generations, and its capability
+discovery response distinguishes `available`, `planned`, and `unsupported`.
+The module does not itself attach a debugger, validate a tuple against a live
+program registry, or provide breakpoint/pause/stack/scope/value behavior; a
+host MUST NOT advertise those capabilities until the corresponding native path
+exists.
+
 Adding a host API is additive only when it preserves existing binding IDs and declaration meanings. Removing or changing a public declaration requires a new host API major version and a new compatible feature profile. A compiler may target a declared older profile only when the host explicitly supplies its matching generated manifest; it may never infer API availability from the installed BlueJS version.
 
 ## Remaining implementation gate
