@@ -63,6 +63,14 @@ or second module resolver to bypass them.
   AST surface. IDs must be validated against the exact generated program and
   never guessed from a bytecode offset.
 
+  Foundation delivered: `bluejs-program-debug-v1` now gives a host an opaque,
+  monotonically generated program handle, immutable canonical-module/source-hash
+  identity, deterministic root-first code-unit IDs, instruction-boundary
+  enumeration, and fail-closed validation. Replacement, navigation-style
+  invalidation, and malformed offsets are tested. It deliberately does not yet
+  provide AST node identities, source spans, a page host, or debugger pause
+  mechanics, so this prerequisite remains open.
+
   Acceptance: a bytecode instruction can be named by `(code_unit, offset)` and
   verified by BlueJS; a program replacement invalidates its old IDs; malformed
   or stale IDs fail closed.

@@ -492,6 +492,16 @@ impl Bytecode {
         })
     }
 
+    /// Nested executable code units created for local function closures.
+    ///
+    /// The returned order is the compiler's stable closure-table order. A
+    /// host that needs generation-bound code-unit identifiers must traverse
+    /// this tree deterministically rather than deriving an identity from a
+    /// byte offset or a heap object address.
+    pub fn child_code_units(&self) -> impl Iterator<Item = &Bytecode> {
+        self.functions.iter().map(std::rc::Rc::as_ref)
+    }
+
     pub(crate) fn instruction(&self, offset: usize) -> Option<Instruction> {
         let opcode = Opcode::decode(*self.code.get(offset)?)?;
         let operand = if opcode.width() == 5 {
