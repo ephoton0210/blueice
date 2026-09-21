@@ -55,9 +55,14 @@ or second module resolver to bypass them.
   generation-owned program handles, and fail-closed invalidation on
   navigation/reload/close. It runs an already-authorized structured classic
   script or module, but it opens no URL and installs no DOM or IPC capability.
-  The core listener, long-lived out-of-process BlueJS host, authorized source
-  and resolver transport, tab-memory accounting, DOM bindings, and normal page
-  pipeline fixture are still absent, so this prerequisite remains open.
+  `blueice-core --script-socket <path>` now binds the initial long-lived core
+  listener: it requires `Hello` before a request, decodes the script protocol
+  on a worker, and routes each request synchronously to the session thread that
+  exclusively owns the live `TabManager`. This proves real-process DOM
+  dispatch without exposing a cross-thread DOM reference. The launcher-managed
+  out-of-process BlueJS host, authorized source/resolver transport,
+  tab-memory accounting, JavaScript DOM bindings, and normal page-pipeline
+  fixture are still absent, so this prerequisite remains open.
 
   Acceptance: a page fixture can run a supported JavaScript classic script and
   module in its own realm; navigation/reload invalidates old program handles;
