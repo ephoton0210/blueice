@@ -8,7 +8,6 @@ use super::*;
 
 mod assertions;
 mod cases;
-mod descriptors;
 mod foreign;
 mod harness;
 /// The four numbering-system digit sets selected by the pinned precision

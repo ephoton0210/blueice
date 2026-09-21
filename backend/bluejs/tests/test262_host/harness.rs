@@ -368,11 +368,44 @@ fn native_formatting_and_predicate_helpers_match_the_upstream_harness() {
     ]);
 }
 
-#[test]
-fn native_property_helpers_validate_descriptors_and_constructibility() {
+/// A harness VM whose `verifyProperty` family and `isConstructor` come from
+/// the corpus's own `propertyHelper.js` and `isConstructor.js`, unchanged. The
+/// adapter has no native counterparts for them: the runner hands those two
+/// scripts to every test that includes them, and they call the native
+/// `assert`.
+pub fn property_helper_vm() -> Vm {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();
     for source in [
+        include_str!(
+            "../../../../development/browser_core/reference/test262/harness/propertyHelper.js"
+        ),
+        include_str!(
+            "../../../../development/browser_core/reference/test262/harness/isConstructor.js"
+        ),
+    ] {
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap();
+    }
+    vm
+}
+
+/// Each source runs in a fresh VM because the upstream helpers are
+/// deliberately destructive: unless `restore` is requested they leave the
+/// verified property deleted or overwritten.
+fn expect_upstream_helpers_return_true(sources: &[&str]) {
+    for source in sources {
+        assert_eq!(
+            property_helper_vm().execute_script(&compile(&parse(source).unwrap()).unwrap()),
+            Ok(Value::Bool(true)),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn upstream_property_helpers_validate_descriptors_and_constructibility() {
+    expect_upstream_helpers_return_true(&[
         "verifyProperty(Math,'PI',{value:Math.PI,writable:false,enumerable:false,configurable:false});true",
         "verifyCallableProperty(Math,'abs','abs',1);true",
         "verifyPrimordialCallableProperty(Math,'abs','abs',1);true",
@@ -380,74 +413,74 @@ fn native_property_helpers_validate_descriptors_and_constructibility() {
         "verifyNotWritable(Math,'PI');verifyNotEnumerable(Math,'PI');verifyNotConfigurable(Math,'PI');true",
         "verifyWritable(Math,'abs');verifyEnumerable({x:1},'x');verifyConfigurable({x:1},'x');true",
         "verifyPrimordialProperty(Math,'PI',{value:Math.PI,writable:false,enumerable:false,configurable:false});true",
-        "let o={};Object.defineProperty(o,'x',{get:function getter(){return 1},set:undefined,enumerable:false,configurable:true});verifyAccessorProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:undefined});verifyPrimordialAccessorProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:undefined});true",
+        "let o={};Object.defineProperty(o,'x',{get:function getter(){return 1},set:undefined,enumerable:false,configurable:true});verifyAccessorProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:undefined});true",
+        "let o={};Object.defineProperty(o,'x',{get:function getter(){return 1},set:undefined,enumerable:false,configurable:true});verifyPrimordialAccessorProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:undefined});true",
         "isConstructor(function(){}) && !isConstructor(()=>{})",
-        "assert.throws(Test262Error,()=>isConstructor(1));assert.throws(Test262Error,()=>verifyProperty(Math,'PI',undefined));true",
-        "assert.throws(TypeError,()=>verifyProperty(1,'x',{}));true",
+        "isConstructor(function () {}) && isConstructor(class {}) && isConstructor(Array) && !isConstructor(() => {}) && !isConstructor(Math.abs) && !isConstructor(async function () {})",
         "verifyCallableProperty(Math,'abs','abs',1,{writable:true,enumerable:false,configurable:true});true",
-        "verifyCallableProperty(Math,'abs',undefined,1);verifyCallableProperty(Math,'abs','abs',1,{writable:true,enumerable:false});true",
-        "assert.throws(Test262Error,()=>verifyCallableProperty(Math,'abs','wrong',1));true",
-        "let o={};Object.defineProperty(o,Symbol.iterator,{value:function(){},writable:true,enumerable:false,configurable:true});assert.throws(Test262Error,()=>verifyCallableProperty(o,Symbol.iterator,undefined,0));true",
-        "let f=function f(){};Object.defineProperty(f,'name',{configurable:false});let o={};Object.defineProperty(o,'f',{value:f,writable:true,enumerable:false,configurable:true});assert.throws(Test262Error,()=>verifyCallableProperty(o,'f','f',0,{writable:true,enumerable:false,configurable:true}));assert.throws(Test262Error,()=>verifyCallableProperty(o,'f','f',0));true",
-        "let o={};Object.defineProperty(o,'x',{get:function(){return 1},enumerable:false,configurable:true});assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{get:undefined}));assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,enumerable:true}));assert.throws(Test262Error,()=>verifyAccessorProperty(Math,'PI',{}));true",
-        "assert.throws(Test262Error,()=>verifyProperty(Math,'PI',{unknown:1}));true",
-    ] {
-        assert_eq!(vm.execute(&compile(&parse(source).unwrap()).unwrap()).unwrap(), Value::Bool(true), "{source}");
-    }
-    let failure = compile(&parse("verifyProperty(Math,'PI',{writable:true})").unwrap()).unwrap();
-    assert!(matches!(
-        vm.execute(&failure),
-        Err(RuntimeError::Test262(_))
-    ));
-    for source in [
-        "verifyCallableProperty(Math,'PI','PI',0)",
-        "let o={};Object.defineProperty(o,'f',{value:function f(){},writable:false,enumerable:false,configurable:true});verifyCallableProperty(o,'f','f',0)",
-        "let o={};Object.defineProperty(o,Symbol.iterator,{value:function(){},writable:true,enumerable:false,configurable:true});verifyCallableProperty(o,Symbol.iterator,undefined,0)",
-        "let f=function f(){};Object.defineProperty(f,'name',{configurable:false});let o={};Object.defineProperty(o,'f',{value:f,writable:true,enumerable:false,configurable:true});verifyCallableProperty(o,'f','f',0,{writable:true,enumerable:false,configurable:true})",
-    ] {
-        let mut vm = Vm::default();
-        vm.install_test262_harness().unwrap();
-        assert!(matches!(vm.execute(&compile(&parse(source).unwrap()).unwrap()), Err(RuntimeError::Test262(_))), "{source}");
-    }
-    let source = "let o={};Object.defineProperty(o,'x',{get:function(){return 1},set:undefined,enumerable:false,configurable:true});verifyProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:undefined})";
-    let mut vm = Vm::default();
-    vm.install_test262_harness().unwrap();
-    assert_eq!(
-        vm.execute(&compile(&parse(source).unwrap()).unwrap())
-            .unwrap(),
-        Value::Bool(true)
-    );
-}
-
-#[test]
-fn native_accessor_helper_checks_the_name_and_length_getter_form() {
-    let mut vm = Vm::default();
-    vm.install_test262_harness().unwrap();
-    // The `{ name, length }` form describes the accessor function itself, as
-    // the corpus's own propertyHelper.js does; omitted fields default to the
-    // built-in accessor conventions ("get "/"set " + key, length 0/1).
-    for source in [
+        "verifyCallableProperty(Math,'abs',undefined,1);true",
+        "verifyCallableProperty(Math,'abs','abs',1,{writable:true,enumerable:false});true",
+        "let o={};Object.defineProperty(o,'x',{get:function(){return 1},set:undefined,enumerable:false,configurable:true});verifyProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:undefined});true",
+        // The `{ name, length }` form describes the accessor function itself;
+        // omitted fields default to the built-in accessor conventions
+        // ("get "/"set " plus the key, length 0/1).
         "verifyPrimordialAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{name:'get byteLength',length:0},set:undefined});true",
         "verifyPrimordialAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{},set:undefined});true",
         "verifyAccessorProperty(ArrayBuffer,Symbol.species,{get:{},set:undefined});true",
-        "let o={set x(v){}};verifyAccessorProperty(o,'x',{set:{},enumerable:true});verifyAccessorProperty(o,'x',{set:{name:'set x',length:1},enumerable:true});true",
-        "let o={set x(v){}};assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{set:{length:2},enumerable:true}));assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{set:{name:'x'},enumerable:true}));true",
+        "let o={set x(v){}};verifyAccessorProperty(o,'x',{set:{},enumerable:true});true",
+        "let o={set x(v){}};verifyAccessorProperty(o,'x',{set:{name:'set x',length:1},enumerable:true});true",
         "verifyAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{},set:undefined,configurable:true,enumerable:false});true",
-        // A wrong name, a wrong length, a non-accessor and a missing
-        // property are all reported as Test262Errors.
+    ]);
+}
+
+#[test]
+fn upstream_property_helpers_reject_what_does_not_match() {
+    expect_upstream_helpers_return_true(&[
+        "assert.throws(Test262Error,()=>verifyProperty(Math,'PI',{writable:true}));true",
+        "assert.throws(Test262Error,()=>verifyProperty(Math,'PI',undefined));true",
+        "assert.throws(Test262Error,()=>verifyProperty(Math,'PI',{unknown:1}));true",
+        "assert.throws(Test262Error,()=>verifyProperty({},'missing',{value:1}));true",
+        "assert.throws(Test262Error,()=>verifyProperty(1,'x',{}));true",
+        "assert.throws(Test262Error,()=>verifyProperty(Math,'PI'));true",
+        "assert.throws(Test262Error,()=>isConstructor(1));assert.throws(Test262Error,()=>isConstructor({}));assert.throws(Test262Error,()=>isConstructor(undefined));true",
+        "assert.throws(Test262Error,()=>verifyCallableProperty(Math,'abs','wrong',1));true",
+        "assert.throws(Test262Error,()=>verifyCallableProperty(Math,'PI','PI',0));true",
+        "let o={};Object.defineProperty(o,Symbol.iterator,{value:function(){},writable:true,enumerable:false,configurable:true});assert.throws(Test262Error,()=>verifyCallableProperty(o,Symbol.iterator,undefined,0));true",
+        "let f=function f(){};Object.defineProperty(f,'name',{configurable:false});let o={};Object.defineProperty(o,'f',{value:f,writable:true,enumerable:false,configurable:true});assert.throws(Test262Error,()=>verifyCallableProperty(o,'f','f',0,{writable:true,enumerable:false,configurable:true}));true",
+        "let f=function f(){};Object.defineProperty(f,'name',{configurable:false});let o={};Object.defineProperty(o,'f',{value:f,writable:true,enumerable:false,configurable:true});assert.throws(Test262Error,()=>verifyCallableProperty(o,'f','f',0));true",
+        "let o={};Object.defineProperty(o,'x',{get:function(){return 1},enumerable:false,configurable:true});assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{get:undefined}));true",
+        "let o={};Object.defineProperty(o,'x',{get:function(){return 1},enumerable:false,configurable:true});assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,enumerable:true}));true",
+        "assert.throws(Test262Error,()=>verifyAccessorProperty(Math,'PI',{}));true",
+        "let o={set x(v){}};assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{set:{length:2},enumerable:true}));assert.throws(Test262Error,()=>verifyAccessorProperty(o,'x',{set:{name:'x'},enumerable:true}));true",
         "assert.throws(Test262Error,()=>verifyAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{name:'get length'}}));true",
         "assert.throws(Test262Error,()=>verifyAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{length:1}}));true",
         "assert.throws(Test262Error,()=>verifyAccessorProperty(ArrayBuffer.prototype,'byteLength',{get:{},set:{}}));true",
-        "assert.throws(Test262Error,()=>verifyAccessorProperty(Math,'PI',{get:{}}));true",
         "assert.throws(Test262Error,()=>verifyAccessorProperty(Math,'missing',{get:{}}));true",
-    ] {
-        assert_eq!(
-            vm.execute(&compile(&parse(source).unwrap()).unwrap())
-                .unwrap(),
-            Value::Bool(true),
-            "{source}"
-        );
-    }
+    ]);
+}
+
+/// Behaviour the native counterparts never had: `verifyProperty` really
+/// attempts the deletion, the write and the `for-in`, so an object whose
+/// descriptor claims more than its behaviour delivers is rejected, and the
+/// property is left deleted unless `restore` says otherwise.
+#[test]
+fn upstream_verify_property_probes_behaviour_and_honours_restore() {
+    expect_upstream_helpers_return_true(&[
+        "let o={x:1};verifyProperty(o,'x',{configurable:true});Object.hasOwn(o,'x')===false",
+        "let o={x:1};verifyProperty(o,'x',{configurable:true},{restore:true});Object.hasOwn(o,'x')&&o.x===1",
+        "let o={x:1};verifyProperty(o,'x',{writable:true,value:1});o.x===1",
+        // A descriptor that reports `configurable` although `delete` does
+        // nothing must not verify.
+        "let p=new Proxy({x:1},{deleteProperty(){return false}});assert.throws(Test262Error,()=>verifyProperty(p,'x',{configurable:true}));true",
+        // Likewise an own enumerable property that `for-in` never yields.
+        "let p=new Proxy({x:1},{ownKeys(){return []}});assert.throws(Test262Error,()=>verifyProperty(p,'x',{enumerable:true}));true",
+        // A setter that swallows the write is not writable.
+        "let o={};Object.defineProperty(o,'x',{get(){return 1},set(v){},enumerable:true,configurable:true});assert.throws(Test262Error,()=>verifyProperty(o,'x',{get:Object.getOwnPropertyDescriptor(o,'x').get,set:Object.getOwnPropertyDescriptor(o,'x').set,enumerable:true,configurable:true,writable:true}));true",
+        "verifyNotWritable(Object.preventExtensions({}),'missing','missing');true",
+        "assert.throws(Test262Error,()=>verifyNotWritable({},'missing','missing'));true",
+        // The failure message is upstream's, assembled from every mismatch.
+        "let message;try{verifyProperty(Object.defineProperty({},'prop',{value:1}),'prop',{value:2})}catch(e){message=e.message}message==='prop descriptor value should be 2; prop value should be 2'",
+    ]);
 }
 
 #[test]

@@ -222,16 +222,6 @@ fn native_deep_equal_rejects_every_kind_of_mismatch() {
 }
 
 #[test]
-fn is_constructor_distinguishes_constructors_and_rejects_non_callables() {
-    expect_true(
-        "isConstructor(function () {}) && isConstructor(class {}) && isConstructor(Array) &&\
-         !isConstructor(() => {}) && !isConstructor(Math.abs) && !isConstructor(async function () {})",
-    );
-    expect_test262_failure("isConstructor({})");
-    expect_test262_failure("isConstructor(undefined)");
-}
-
-#[test]
 fn build_string_concatenates_lone_code_points_then_ranges() {
     expect_true(
         "let s = buildString({ loneCodePoints: [0x41, 0x1f600], ranges: [[0x61, 0x63], [0x10000, 0x10002]] });\
@@ -626,20 +616,6 @@ fn create_realm_returns_an_independent_harness_realm() {
          typeof other === 'object' && typeof other.global === 'object' &&\
          other.global !== globalThis && other.global.Array !== Array",
     );
-}
-
-#[test]
-fn property_helper_verifies_descriptor_attributes() {
-    expect_true(
-        "let o = { x: 1 };\
-         Object.defineProperty(o, 'y', { value: 2, writable: false, enumerable: false, configurable: false });\
-         verifyProperty(o, 'x', { value: 1, writable: true, enumerable: true, configurable: true });\
-         verifyProperty(o, 'y', { value: 2, writable: false, enumerable: false, configurable: false });\
-         true",
-    );
-    expect_test262_failure("let o = { x: 1 }; verifyProperty(o, 'x', { value: 2 })");
-    expect_test262_failure("let o = { x: 1 }; verifyProperty(o, 'x', { writable: false })");
-    expect_test262_failure("verifyProperty({}, 'missing', { value: 1 })");
 }
 
 #[test]

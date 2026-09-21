@@ -229,30 +229,6 @@ impl Vm {
             3,
             NativeFunction::Test262("deepEqual"),
         )?;
-        for (name, length) in [
-            ("verifyProperty", 4),
-            ("verifyCallableProperty", 6),
-            ("verifyAccessorProperty", 4),
-            ("verifyEqualTo", 3),
-            ("verifyWritable", 4),
-            ("verifyNotWritable", 4),
-            ("verifyEnumerable", 2),
-            ("verifyNotEnumerable", 2),
-            ("verifyConfigurable", 2),
-            ("verifyNotConfigurable", 2),
-            ("verifyPrimordialProperty", 4),
-            ("verifyPrimordialCallableProperty", 6),
-            ("verifyPrimordialAccessorProperty", 4),
-            ("isConstructor", 1),
-        ] {
-            self.install_native(
-                global,
-                prototype,
-                name,
-                length,
-                NativeFunction::Test262(name),
-            )?;
-        }
         self.install_native(
             global,
             prototype,

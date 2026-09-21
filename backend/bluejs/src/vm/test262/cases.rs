@@ -109,30 +109,6 @@ impl Vm {
                 native::argument(args, 3),
             );
         }
-        if matches!(
-            name,
-            "verifyProperty"
-                | "verifyCallableProperty"
-                | "verifyAccessorProperty"
-                | "verifyEqualTo"
-                | "verifyWritable"
-                | "verifyNotWritable"
-                | "verifyEnumerable"
-                | "verifyNotEnumerable"
-                | "verifyConfigurable"
-                | "verifyNotConfigurable"
-                | "verifyPrimordialProperty"
-                | "verifyPrimordialCallableProperty"
-                | "verifyPrimordialAccessorProperty"
-        ) {
-            return self.test262_property_helper(name, args);
-        }
-        if name == "isConstructor" {
-            if !self.is_callable(first)? {
-                return Err(self.test262_failure(name));
-            }
-            return Ok(Value::Bool(self.is_constructor(first)?));
-        }
         if name == "deepEqual" {
             return if self.test262_deep_equal_array_objects(first, second)? {
                 Ok(Value::Undefined)
@@ -141,6 +117,10 @@ impl Vm {
             };
         }
         Err(self.test262_failure(name))
+    }
+
+    pub(in super::super) fn test262_failure(&self, name: &str) -> RuntimeError {
+        RuntimeError::Test262(format!("{name} failed"))
     }
 
     /// A bounded structural comparison for the DateTimeFormat part fixtures

@@ -83,7 +83,14 @@ DYNAMIC_SOURCE_PHASE_IMPORT_REQUEST = re.compile(
 )
 # Test262's host-provided Module Source specifier (INTERPRETING.md).
 HOST_MODULE_SOURCE_SPECIFIER = "<module source>"
-NATIVE_INCLUDES = frozenset({"sta.js", "assert.js", "propertyHelper.js", "isConstructor.js"})
+# Only `sta.js` and `assert.js` are replaced by native helpers: a JavaScript
+# `assert.js` costs enough dispatches per call to push loop-driven fixtures
+# (e.g. `built-ins/Math/sqrt/results.js`) past the ordinary instruction budget,
+# and the native `assert` family is differentially tested against the upstream
+# source. `propertyHelper.js` and `isConstructor.js` run unchanged: their
+# behaviour (destructive `delete`/write probes, `restore`, exact messages) is
+# defined by that source, and executing it costs no fixture its budget.
+NATIVE_INCLUDES = frozenset({"sta.js", "assert.js"})
 # Test262's general deepEqual harness is preserved by default. The two
 # DateTimeFormat fixtures compare wide arrays of two-/three-field part data
 # records, and this TypedArray fixture compares 39 view/species pairs; their
@@ -1403,7 +1410,7 @@ def main():
             "static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable",
             "unclassified parser rejections never satisfy parse-SyntaxError negative tests",
             "harness sources still require supported grammar and APIs",
-            "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
+            "native overrides for sta.js and assert.js (propertyHelper.js and isConstructor.js run their upstream source), the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
             "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, the two Temporal calendar matrices, and the six finite Iterator.zip/zipKeyed basic matrices receive their recorded budgets",
         ],
     }
