@@ -107,13 +107,18 @@ impl Vm {
         let number = |value: &Value, vm: &mut Self| vm.coerce_number(value);
         let result = match method {
             MathMethod::Max | MathMethod::Min => {
+                // Every argument is coerced before any of them is compared,
+                // so a NaN does not hide a later argument's valueOf.
+                let mut values = Vec::with_capacity(args.len());
+                for value in args {
+                    values.push(number(value, self)?);
+                }
                 let mut result = if method == MathMethod::Max {
                     f64::NEG_INFINITY
                 } else {
                     f64::INFINITY
                 };
-                for value in args {
-                    let value = number(value, self)?;
+                for value in values {
                     if value.is_nan() {
                         return Ok(Value::Number(f64::NAN));
                     }
@@ -132,15 +137,15 @@ impl Vm {
                 result
             }
             MathMethod::Hypot => {
+                // Coerce every argument first: an infinity does not excuse
+                // a later argument's abrupt conversion.
                 let mut values = Vec::with_capacity(args.len());
                 for value in args {
-                    let value = number(value, self)?.abs();
-                    if value.is_infinite() {
-                        return Ok(Value::Number(f64::INFINITY));
-                    }
-                    values.push(value);
+                    values.push(number(value, self)?.abs());
                 }
-                if values.iter().any(|value| value.is_nan()) {
+                if values.iter().any(|value| value.is_infinite()) {
+                    f64::INFINITY
+                } else if values.iter().any(|value| value.is_nan()) {
                     f64::NAN
                 } else {
                     let scale = values.iter().copied().fold(0.0_f64, f64::max);
@@ -163,7 +168,10 @@ impl Vm {
             }
             MathMethod::Clz32 => primitive::to_uint32(number(first, self)?).leading_zeros() as f64,
             MathMethod::Atan2 => number(first, self)?.atan2(number(second, self)?),
-            MathMethod::Pow => number(first, self)?.powf(number(second, self)?),
+            MathMethod::Pow => {
+                let base = number(first, self)?;
+                primitive::number_exponentiate(base, number(second, self)?)
+            }
             MathMethod::Random => {
                 let elapsed = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -172,16 +180,24 @@ impl Vm {
             }
             MathMethod::Round => {
                 let value = number(first, self)?;
-                if value.is_nan() || !value.is_finite() || value == 0.0 {
+                if !value.is_finite() || value == 0.0 || value.abs() >= 4_503_599_627_370_496.0 {
+                    // Zeroes, non-finite values and every |x| >= 2**52 (already
+                    // an integer) are returned unchanged.
                     value
-                } else if (-0.5..0.5).contains(&value) {
-                    if value.is_sign_negative() {
+                } else {
+                    // Round half toward +Infinity, computed without the
+                    // `floor(x + 0.5)` overshoot near 0.5 and near 2**52.
+                    let floor = value.floor();
+                    let rounded = if value - floor >= 0.5 {
+                        floor + 1.0
+                    } else {
+                        floor
+                    };
+                    if rounded == 0.0 && value < 0.0 {
                         -0.0
                     } else {
-                        0.0
+                        rounded
                     }
-                } else {
-                    (value + 0.5).floor()
                 }
             }
             MathMethod::Sign => {

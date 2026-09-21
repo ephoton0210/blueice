@@ -63,6 +63,17 @@ pub(crate) fn numeric(value: &Value) -> Result<Numeric, RuntimeError> {
     }
 }
 
+/// `Number::exponentiate ( base, exponent )`. Rust's `powf` follows C `pow`,
+/// which returns 1 for `1 ** NaN` and for `(+-1) ** (+-Infinity)`; ECMAScript
+/// specifies NaN for both.
+pub(crate) fn number_exponentiate(base: f64, exponent: f64) -> f64 {
+    if exponent.is_nan() || (exponent.is_infinite() && base.abs() == 1.0) {
+        f64::NAN
+    } else {
+        base.powf(exponent)
+    }
+}
+
 /// ECMAScript ToUint32 applied after observable numeric coercion. The finite
 /// result is an integer in `[0, 2^32)`, exactly representable as an `f64`.
 pub(crate) fn to_uint32(number: f64) -> u32 {

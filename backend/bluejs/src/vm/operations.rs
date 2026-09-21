@@ -292,15 +292,7 @@ impl Vm {
             let right = vm.coerce_numeric(&right)?;
             match (left, right) {
                 (primitive::Numeric::Number(left), primitive::Numeric::Number(right)) => {
-                    // libm's powf returns 1 for ±1 raised to ±∞, whereas
-                    // Number::exponentiate explicitly specifies NaN for
-                    // that pair.
-                    let value = if right.is_infinite() && left.abs() == 1.0 {
-                        f64::NAN
-                    } else {
-                        left.powf(right)
-                    };
-                    Ok(Value::Number(value))
+                    Ok(Value::Number(primitive::number_exponentiate(left, right)))
                 }
                 (primitive::Numeric::BigInt(left), primitive::Numeric::BigInt(right)) => {
                     Ok(Value::BigInt(bigint_exponentiate(left, right)?))
