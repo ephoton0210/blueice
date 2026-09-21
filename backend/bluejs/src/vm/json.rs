@@ -399,6 +399,7 @@ impl Vm {
                 replacer: Some(replacer.clone()),
                 property_list: None,
                 gap: self.json_gap(space)?,
+                stack: Default::default(),
             });
         }
         if !self.is_array(replacer)? {
@@ -428,6 +429,7 @@ impl Vm {
             replacer: None,
             property_list: Some(property_list),
             gap: self.json_gap(space)?,
+            stack: Default::default(),
         })
     }
 
@@ -591,16 +593,20 @@ impl Vm {
                 if self.is_callable(value)? {
                     return Ok(None);
                 }
-                if self.joining.contains(object) {
+                if state.stack.borrow().contains(object) {
                     return Err(RuntimeError::TypeError("cyclic JSON value".into()));
                 }
-                self.joining.push(*object);
-                let result = if self.is_array(value)? {
+                let is_array = self.is_array(value)?;
+                state.stack.borrow_mut().push(*object);
+                // Keep the holder reachable for the collector as well.
+                self.stack.push(value.clone());
+                let result = if is_array {
                     self.json_array(*object, state, indent)
                 } else {
                     self.json_object(*object, state, indent)
                 };
-                self.joining.pop();
+                self.stack.pop();
+                state.stack.borrow_mut().pop();
                 result.map(Some)
             }
         }
@@ -953,6 +959,10 @@ struct JsonStringifyState {
     replacer: Option<Value>,
     property_list: Option<Vec<JsString>>,
     gap: JsString,
+    /// The spec's per-call `stack` of holder objects being serialized: a value
+    /// found on it is a cycle. It is owned by one JSON.stringify call, so a
+    /// nested call from a replacer or `toJSON` starts with an empty stack.
+    stack: std::cell::RefCell<Vec<ObjectId>>,
 }
 
 fn json_quote(value: &JsString) -> String {
