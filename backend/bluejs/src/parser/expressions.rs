@@ -760,7 +760,7 @@ impl Parser {
                 self.rescan_suffix();
                 let expressions = sources
                     .iter()
-                    .map(|source| parse_expression_from_source(source))
+                    .map(|source| self.parse_template_placeholder(source))
                     .collect::<Result<Vec<_>, _>>()?;
                 expr = Expr::TaggedTemplate {
                     tag: Box::new(expr),
@@ -998,7 +998,7 @@ impl Parser {
                 raw_expressions,
             } => {
                 self.advance();
-                parse_template(quasis, raw_expressions)
+                self.parse_template(quasis, raw_expressions)
             }
             Token::Keyword(Keyword::True) => {
                 self.advance();
@@ -1050,6 +1050,7 @@ impl Parser {
                             Token::Punct(
                                 Punct::Semicolon
                                     | Punct::Comma
+                                    | Punct::Colon
                                     | Punct::RBrace
                                     | Punct::RBracket
                                     | Punct::RParen
