@@ -320,6 +320,7 @@ impl Parser {
             let accessor = match self.peek() {
                 Token::Identifier(keyword)
                     if (keyword == "get" || keyword == "set")
+                        && !self.current_identifier_escaped()
                         && matches!(
                             self.peek_at(1),
                             Token::Identifier(_)
