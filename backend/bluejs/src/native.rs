@@ -651,6 +651,19 @@ pub(crate) enum NativeFunction {
         thrower: bool,
     },
     PromiseWithResolvers,
+    /// The `addInitializer` function of a decorator's context object. `state`
+    /// is the heap record holding that decorator application's `finished`
+    /// flag and the list of extra initializers it appends to.
+    DecoratorAddInitializer {
+        state: ObjectId,
+    },
+    /// `access.get`, `access.set` or `access.has` of a decorator's context
+    /// object; `state` holds the private-name owner (or `undefined`) and the
+    /// property key or private name it reaches.
+    DecoratorAccess {
+        op: DecoratorAccessOp,
+        state: ObjectId,
+    },
     Test262Done,
     Symbol,
     SymbolFor,
@@ -747,6 +760,15 @@ pub(crate) enum NativeFunction {
     ShadowRealmWrappedFunction,
 }
 
+/// Which member of a decorator context's `access` object a
+/// `NativeFunction::DecoratorAccess` is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DecoratorAccessOp {
+    Get,
+    Set,
+    Has,
+}
+
 /// Which of a Promise combinator's element functions a
 /// `NativeFunction::PromiseElement` is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -784,7 +806,9 @@ impl NativeFunction {
             Self::AsyncFromSyncReject { target, record } => vec![target, record],
             Self::PromiseElement { state, .. }
             | Self::PromiseFinallyFunction { state, .. }
-            | Self::PromiseValueThunk { state, .. } => vec![state],
+            | Self::PromiseValueThunk { state, .. }
+            | Self::DecoratorAddInitializer { state }
+            | Self::DecoratorAccess { state, .. } => vec![state],
             _ => Vec::new(),
         }
     }

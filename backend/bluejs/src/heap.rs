@@ -340,6 +340,8 @@ pub(crate) enum GeneratorState {
         receiver: Value,
         args: Vec<Value>,
         home: Option<ObjectId>,
+        /// The `with` objects the generator function closed over.
+        with_objects: Vec<Value>,
     },
     Suspended {
         code: Rc<Bytecode>,
@@ -373,6 +375,10 @@ pub(crate) enum GeneratorState {
         dynamic_bindings: Vec<(String, ObjectId, Vec<ObjectId>)>,
         home: Option<ObjectId>,
         callee: Value,
+        /// The `with` objects in scope at the suspension point: the ones the
+        /// function closed over, its parameter environment and any `with`
+        /// statement the body is inside.
+        with_objects: Vec<Value>,
     },
     /// The frame is executing: its state has moved into the interpreter, and
     /// GeneratorValidate makes a re-entrant `next`/`return`/`throw` a
@@ -509,6 +515,7 @@ impl GeneratorState {
                 receiver,
                 args,
                 home,
+                with_objects,
                 ..
             } => captures
                 .iter()
@@ -517,6 +524,7 @@ impl GeneratorState {
                 .chain(receiver.object_id())
                 .chain(args.iter().filter_map(Value::object_id))
                 .chain(*home)
+                .chain(with_objects.iter().filter_map(Value::object_id))
                 .collect(),
             Self::Suspended {
                 stack,
@@ -533,10 +541,12 @@ impl GeneratorState {
                 dynamic_bindings,
                 home,
                 callee,
+                with_objects,
                 ..
             } => {
                 let mut references = stack
                     .iter()
+                    .chain(with_objects.iter())
                     .chain(bindings.iter().flatten())
                     .chain(std::iter::once(this))
                     .chain(args.iter())

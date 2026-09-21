@@ -285,6 +285,7 @@ impl Parser {
             if self.eat_punct(Punct::Semicolon) {
                 continue;
             }
+            let decorators = self.parse_decorators()?;
             let is_static = matches!(self.peek(), Token::Identifier(static_keyword) if static_keyword == "static")
                 && !self.current_identifier_escaped()
                 && !matches!(
@@ -295,6 +296,9 @@ impl Parser {
                 self.advance();
             }
             if is_static && self.check_punct(Punct::LBrace) {
+                if !decorators.is_empty() {
+                    return Err(self.syntax_error("a class static block cannot be decorated"));
+                }
                 self.static_block_function_depths.push(self.function_depth);
                 let body = self.parse_block();
                 self.static_block_function_depths.pop();
@@ -413,6 +417,7 @@ impl Parser {
                     initializer,
                     is_static,
                     accessor: auto_accessor,
+                    decorators,
                 });
                 continue;
             }
@@ -451,6 +456,7 @@ impl Parser {
                     function,
                     getter,
                     is_static,
+                    decorators,
                 });
             } else {
                 if is_static
@@ -463,12 +469,16 @@ impl Parser {
                     if is_async || generator || has_constructor {
                         return Err(self.syntax_error("invalid class constructor"));
                     }
+                    if !decorators.is_empty() {
+                        return Err(self.syntax_error("a class constructor cannot be decorated"));
+                    }
                     has_constructor = true;
                 }
                 elements.push(ClassElement::Method {
                     key,
                     function,
                     is_static,
+                    decorators,
                 });
             }
         }
@@ -477,7 +487,77 @@ impl Parser {
             name,
             extends,
             elements,
+            decorators: Vec::new(),
         })
+    }
+
+    /// `DecoratorList`: every `@` decorator at the current position, in source
+    /// order (empty when none starts here).
+    pub(super) fn parse_decorators(&mut self) -> Result<Vec<Expr>, ParseError> {
+        let mut decorators = Vec::new();
+        while self.eat_punct(Punct::At) {
+            decorators.push(self.parse_decorator()?);
+        }
+        Ok(decorators)
+    }
+
+    /// One decorator after its `@`. Only three shapes exist, so that a
+    /// decorator never needs arbitrary-expression parsing to find its own end:
+    /// `DecoratorMemberExpression` (`a.b.#c`), `DecoratorCallExpression` (the
+    /// same followed by one argument list) and `DecoratorParenthesizedExpression`
+    /// (`(expression)`, the escape hatch for anything else). The result is the
+    /// expression whose value is the decorator function.
+    fn parse_decorator(&mut self) -> Result<Expr, ParseError> {
+        if self.eat_punct(Punct::LParen) {
+            let expression = self.with_in_allowed(Self::parse_expression)?;
+            self.expect_punct(Punct::RParen).map_err(|mut error| {
+                error.known_syntax = true;
+                error
+            })?;
+            return Ok(Expr::Parenthesized(Box::new(expression)));
+        }
+        let name = match self.peek().clone() {
+            Token::Identifier(name) if self.identifier_reference_name_is_valid(&name) => name,
+            // `let` is an IdentifierReference in sloppy code only.
+            Token::Keyword(Keyword::Let) if !self.strict => "let".to_string(),
+            _ => return Err(self.syntax_error("expected a decorator expression")),
+        };
+        self.advance();
+        let mut expression = Expr::Identifier(name);
+        while self.eat_punct(Punct::Dot) {
+            let property = self.expect_member_name()?;
+            expression = Expr::Member {
+                object: Box::new(expression),
+                property: Box::new(Expr::Identifier(property)),
+                computed: false,
+            };
+        }
+        if self.check_punct(Punct::LParen) {
+            expression = Expr::Call {
+                callee: Box::new(expression),
+                args: self.parse_arguments()?,
+            };
+        }
+        Ok(expression)
+    }
+
+    /// A class that follows already-parsed decorators: `class` itself, then
+    /// the rest of the definition. The decorators are stored on the class.
+    pub(super) fn parse_decorated_class(
+        &mut self,
+        decorators: Vec<Expr>,
+    ) -> Result<Class, ParseError> {
+        if !matches!(self.peek(), Token::Identifier(name) if name == "class")
+            || self.current_identifier_escaped()
+        {
+            return Err(
+                self.syntax_error("a decorator must be followed by a class or class element")
+            );
+        }
+        self.advance();
+        let mut class = self.parse_class()?;
+        class.decorators = decorators;
+        Ok(class)
     }
 
     /// A parenthesized arrow cannot be a ClassHeritage (which starts with a

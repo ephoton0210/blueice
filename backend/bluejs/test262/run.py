@@ -207,6 +207,42 @@ STRING_SUBSTR_NUMBER_MATRIX_FIXTURES = frozenset(
     {"annexB/built-ins/String/prototype/substr/start-and-length-as-numbers.js"}
 )
 STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET = 6_000_000
+# Fixed, finite staging fixtures whose size only just exceeds the default: each
+# is straight-line or a bounded loop (a few hundred iterations, or a run of
+# assertions that build their failure message eagerly), and each finishes in a
+# small fraction of a second. Every entry is an exact path with an allowance of
+# 4x its measured minimum, which is identical in sloppy and strict mode; the
+# ordinary two-second wall deadline still bounds them.
+#   with-dense.js                          178,125  (63 receivers x 13 indices)
+#   parse-reviver-array-delete.js          185,937  (about 4,100 reviver calls)
+#   log2-approx.js                         325,000  (2,097 assertNear checks)
+#   es5ish-defineGetter-defineSetter.js    110,156  (about 60 descriptor checks)
+# A fixture that is too slow for that deadline even with fuel is deliberately
+# not listed (staging/sm/Array/toSpliced-dense.js needs 19.6M dispatches and
+# about 7 s; each staging/sm/Date/dst-offset-caching-N-of-8.js part needs
+# 100M-130M dispatches and runs for more than half a minute).
+FINITE_FIXTURE_INSTRUCTION_BUDGETS = {
+    "staging/sm/Array/with-dense.js": 750_000,
+    "staging/sm/JSON/parse-reviver-array-delete.js": 750_000,
+    "staging/sm/Math/log2-approx.js": 1_300_000,
+    "staging/sm/extensions/es5ish-defineGetter-defineSetter.js": 450_000,
+}
+# `staging/sm/String/unicode-braced.js` evaluates a source string built from
+# 2**24 zeros, which is 32 MiB of UTF-16 by itself: it needs a string limit of at
+# least 33,558,528 bytes (33,554,432 is not enough) against the ordinary 1 MiB.
+# The remainder is a few dozen assertions and it runs in about a second with the
+# default dispatch budget and heap. The limit is 64 MiB, twice the requirement
+# (a data size, so more headroom would buy nothing), for this exact path only.
+FIXTURE_STRING_LIMITS = {
+    "staging/sm/String/unicode-braced.js": 64 * 1024 * 1024,
+}
+
+
+def fixture_string_limit(relative):
+    """Return the exact-path string limit for a fixture, or None for the default."""
+    return FIXTURE_STRING_LIMITS.get(relative)
+
+
 TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET = 50_000_000
 # `testIntl.js` runs every asserted result through a finite locale and
 # numbering-system matrix. Debug interpreter dispatch exceeds the ordinary
@@ -951,9 +987,6 @@ def format_progress(completed, total, counts, active, now, checkpoint=False):
 LARGE_FIXTURE_RESOURCES = {
     # new DataView(new ArrayBuffer(20 * 1024 * 1024)); the heap needs 21 MiB.
     "staging/sm/extensions/dataview.js": {"heap_limit": 64 * 1024 * 1024},
-    # eval of a string literal whose braced code point escape has 2**24
-    # leading zeros: a 32 MiB string.
-    "staging/sm/String/unicode-braced.js": {"string_limit": 128 * 1024 * 1024},
     # Two regular expressions with a 2**24-zero braced escape, built by eval
     # and by the RegExp constructor: 32 MiB strings, a 36 MiB heap, 2.2 s.
     "staging/sm/RegExp/unicode-braced.js": {
@@ -1012,6 +1045,8 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET)
     if relative in STRING_SUBSTR_NUMBER_MATRIX_FIXTURES:
         return max(default, STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET)
+    if relative in FINITE_FIXTURE_INSTRUCTION_BUDGETS:
+        return max(default, FINITE_FIXTURE_INSTRUCTION_BUDGETS[relative])
     if relative in FINITE_STRESS_FIXTURES:
         return max(default, FINITE_STRESS_INSTRUCTION_BUDGET)
     if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
@@ -1352,6 +1387,8 @@ def main():
                     request["regex_timeout_ms"] = REGEXP_PROPERTY_ESCAPES_REGEX_TIMEOUT_MS
                 elif relative in REGEXP_CLASS_ESCAPE_FIXTURES:
                     request["string_limit"] = REGEXP_CLASS_ESCAPE_STRING_LIMIT
+                elif fixture_string_limit(relative) is not None:
+                    request["string_limit"] = fixture_string_limit(relative)
                 if relative == STRING_CASE_MAPPING_FIXTURE:
                     request["heap_limit"] = STRING_CASE_MAPPING_HEAP_LIMIT
                 request.update(large_fixture_limits(relative))

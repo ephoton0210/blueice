@@ -130,6 +130,8 @@ fn compile_with_limit_and_mode(
         with_depth: 0,
         with_scope_depths: Vec::new(),
         annex_b_parameter_names: BTreeSet::new(),
+        tail_call_blockers: 0,
+        tail_call_pending: false,
     };
     compiler.bytecode.strict = module || strict_body(&program.body);
     compiler.bytecode.module = module;
@@ -425,6 +427,8 @@ pub(crate) fn compile_eval(
             .map(|index| usize::from(index >= with_scopes.inherited))
             .collect(),
         annex_b_parameter_names: BTreeSet::new(),
+        tail_call_blockers: 0,
+        tail_call_pending: false,
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
     compiler.bytecode.new_target_allowed = new_target_allowed;
@@ -556,6 +560,14 @@ struct Compiler {
     /// Annex B.3.2.1 gives a block function no legacy var binding, and no
     /// copy into one, for these names.
     annex_b_parameter_names: BTreeSet<String>,
+    /// How many enclosing statements make a `return f()` here not a tail call
+    /// (§15.10.2): a `try` block, the block of a `catch` that has a `finally`,
+    /// and a block whose `using` declarations dispose after the return value
+    /// is computed. Their handler must observe the call's outcome.
+    tail_call_blockers: u32,
+    /// Set by a `return` in tail position just before it compiles the call
+    /// expression; the call consumes it to emit `TailCall` instead of `Call`.
+    tail_call_pending: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -794,7 +806,8 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
         | Stmt::FunctionDecl(_)
         | Stmt::ModuleDefaultFunction { .. }
         | Stmt::ClassDecl(_)
-        | Stmt::ClassPrivateBrand(_) => false,
+        | Stmt::ClassPrivateBrand(_)
+        | Stmt::ClassExtraInitializers(_) => false,
         Stmt::Expr(expr) | Stmt::Throw(expr) => strict_assignment_in_expression(expr),
         Stmt::Block(statements) => strict_assignment_to_restricted_name(statements),
         Stmt::VarDecl(_, declarations) => declarations.iter().any(|declaration| {
@@ -849,9 +862,9 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
                         || strict_assignment_to_restricted_name(&case.consequent)
                 })
         }
-        Stmt::Labelled { item, .. } | Stmt::ClassField(item) => {
-            strict_assignment_in_statement(item)
-        }
+        Stmt::Labelled { item, .. }
+        | Stmt::ClassField(item)
+        | Stmt::ClassDecoratedField { field: item, .. } => strict_assignment_in_statement(item),
         Stmt::Return(value) => value.as_ref().is_some_and(strict_assignment_in_expression),
         Stmt::Try {
             block,

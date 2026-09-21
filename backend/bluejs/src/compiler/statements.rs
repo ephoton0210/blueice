@@ -43,6 +43,36 @@ fn is_function_declaration(statement: &Stmt) -> bool {
 }
 
 impl Compiler {
+    /// Emits the value of decorated field: `value` on the stack becomes the
+    /// value after every initializer function the decorators returned (in
+    /// `record[1]`) has been applied with `this` the instance.
+    fn apply_field_initializers(&mut self, record: u32) -> Result<(), CompileError> {
+        self.emit_this()?;
+        self.class_decoration_record_element(record, 1)?;
+        self.emit(Opcode::ApplyInitializers, 0)?;
+        Ok(())
+    }
+
+    /// Pushes `record[index]` of the decoration record in the given slot.
+    pub(super) fn class_decoration_record_element(
+        &mut self,
+        record: u32,
+        index: usize,
+    ) -> Result<(), CompileError> {
+        self.emit(Opcode::GetBinding, record)?;
+        self.constant(Value::String(index.to_string().into()))?;
+        self.emit(Opcode::GetProperty, 0)?;
+        Ok(())
+    }
+
+    /// Runs the extra initializers of `record[0]` with `this`.
+    fn run_extra_initializers(&mut self, record: u32) -> Result<(), CompileError> {
+        self.emit_this()?;
+        self.class_decoration_record_element(record, 0)?;
+        self.emit(Opcode::RunInitializers, 0)?;
+        Ok(())
+    }
+
     /// DefineField for one lowered class field (see `class_field_definition`),
     /// running inside the function that initializes it with the receiver as
     /// `this`. A public field is created with CreateDataPropertyOrThrow,
@@ -50,7 +80,11 @@ impl Compiler {
     /// [[DefineOwnProperty]] (a Proxy trap, a deferred namespace, ...) -- and
     /// a private one with PrivateFieldAdd. An anonymous function definition
     /// initializer is named after the field.
-    fn class_field(&mut self, statement: &Stmt) -> Result<(), CompileError> {
+    /// A decorated field (`record`, the slot of its decoration record) also
+    /// threads its initial value through the initializer functions the
+    /// decorators returned first, and runs the extra initializers they added
+    /// right after the definition.
+    fn class_field(&mut self, statement: &Stmt, record: Option<u32>) -> Result<(), CompileError> {
         if let Some((key, computed, value)) = public_field_definition(statement) {
             self.emit_this()?;
             match (key, computed) {
@@ -76,7 +110,13 @@ impl Compiler {
                 self.expression(value)?;
                 self.emit(Opcode::SetFunctionName, 0)?;
             }
+            if let Some(record) = record {
+                self.apply_field_initializers(record)?;
+            }
             self.emit(Opcode::DefineInstanceField, 0)?;
+            if let Some(record) = record {
+                self.run_extra_initializers(record)?;
+            }
             return Ok(());
         }
         let Stmt::Expr(Expr::Assign { target, value, .. }) = statement else {
@@ -90,7 +130,13 @@ impl Compiler {
         } else {
             self.expression_with_name(value, Some(&format!("#{name}")))?;
         }
+        if let Some(record) = record {
+            self.apply_field_initializers(record)?;
+        }
         self.emit(Opcode::PrivateFieldAdd, owner)?;
+        if let Some(record) = record {
+            self.run_extra_initializers(record)?;
+        }
         Ok(())
     }
 
@@ -161,7 +207,11 @@ impl Compiler {
         // unchanged (`DisposeResources`). Clearing would turn `4; {using x =
         // null;}` into `undefined` instead of `4`.
         self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
-        compile_body(self)?;
+        // Disposal runs after the block's return value is computed.
+        self.tail_call_blockers += 1;
+        let body = compile_body(self);
+        self.tail_call_blockers -= 1;
+        body?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
         self.emit(Opcode::PopHandler, 0)?;
         self.emit(Opcode::SaveCompletion, 0)?;
@@ -588,7 +638,22 @@ impl Compiler {
                 self.class_expression(class, None)?;
                 self.emit(Opcode::InitializeBinding, slot)?;
             }
-            Stmt::ClassField(statement) => self.class_field(statement)?,
+            Stmt::ClassField(statement) => self.class_field(statement, None)?,
+            Stmt::ClassDecoratedField { field, record } => {
+                let slot = self.resolve(record).ok_or(CompileError::InvalidSyntax(
+                    "decoration record binding is not available in this function",
+                ))?;
+                let Stmt::ClassField(field) = &**field else {
+                    return Err(CompileError::InvalidSyntax("invalid decorated field AST"));
+                };
+                self.class_field(field, Some(slot))?;
+            }
+            Stmt::ClassExtraInitializers(record) => {
+                let slot = self.resolve(record).ok_or(CompileError::InvalidSyntax(
+                    "decoration record binding is not available in this function",
+                ))?;
+                self.run_extra_initializers(slot)?;
+            }
             Stmt::ClassPrivateBrand(binding) => {
                 let slot = self.resolve(binding).ok_or(CompileError::InvalidSyntax(
                     "private brand binding is not available in this function",
@@ -608,7 +673,7 @@ impl Compiler {
                 if !self.function {
                     return Err(CompileError::InvalidSyntax("return requires a function"));
                 }
-                if let Some(value) = value.as_ref().filter(|_| self.bytecode.self_slot.is_some()) {
+                if let Some(value) = value.as_ref().filter(|_| self.bytecode.strict) {
                     if self.tail_position_return(value)? {
                         return Ok(());
                     }
@@ -752,7 +817,7 @@ impl Compiler {
     /// path ends in a `TailRecur` or a `Return`. `Ok(false)` means `value`
     /// has no such call and nothing was emitted.
     fn tail_position_return(&mut self, value: &Expr) -> Result<bool, CompileError> {
-        if !self.contains_self_tail_call(value) {
+        if self.tail_call_blockers != 0 || !self.contains_tail_call(value) {
             return Ok(false);
         }
         match value {
@@ -794,10 +859,21 @@ impl Compiler {
                 }
                 self.tail_position_return_or_value(last)?;
             }
+            call if self.self_tail_call_args(call).is_none() => {
+                // A call to any other function: `TailCall` replaces this
+                // frame with the callee's, or (when this frame cannot be
+                // replaced, e.g. a constructor) calls it and falls through to
+                // the ordinary `Return`.
+                self.tail_call_pending = true;
+                self.expression(call)?;
+                debug_assert!(!self.tail_call_pending, "the call consumed the flag");
+                self.tail_call_pending = false;
+                self.emit(Opcode::Return, 0)?;
+            }
             call => {
                 let args = self
                     .self_tail_call_args(call)
-                    .expect("contains_self_tail_call found a self tail call");
+                    .expect("contains_tail_call found a self tail call");
                 for argument in args {
                     let Argument::Normal(value) = argument else {
                         unreachable!("self tail calls exclude spread arguments")
@@ -833,22 +909,52 @@ impl Compiler {
         Ok(())
     }
 
-    /// Whether `value`, read as a tail position, holds a self tail call.
-    fn contains_self_tail_call(&self, value: &Expr) -> bool {
+    /// Whether `value`, read as a tail position, holds a call this function
+    /// can compile as a tail call.
+    fn contains_tail_call(&self, value: &Expr) -> bool {
         match value {
-            Expr::Parenthesized(inner) => self.contains_self_tail_call(inner),
+            Expr::Parenthesized(inner) => self.contains_tail_call(inner),
             Expr::Conditional {
                 consequent,
                 alternate,
                 ..
-            } => {
-                self.contains_self_tail_call(consequent) || self.contains_self_tail_call(alternate)
-            }
-            Expr::Logical { right, .. } => self.contains_self_tail_call(right),
+            } => self.contains_tail_call(consequent) || self.contains_tail_call(alternate),
+            Expr::Logical { right, .. } => self.contains_tail_call(right),
             Expr::Sequence(expressions) => expressions
                 .last()
-                .is_some_and(|last| self.contains_self_tail_call(last)),
-            call => self.self_tail_call_args(call).is_some(),
+                .is_some_and(|last| self.contains_tail_call(last)),
+            call => self.self_tail_call_args(call).is_some() || self.is_general_tail_call(call),
+        }
+    }
+
+    /// A call that can replace this frame (§15.10.2): a plain call or tagged
+    /// template made from strict, non-generator, non-async function code that
+    /// is not a class constructor. Spread arguments, `super(...)` calls and
+    /// optional chains keep the ordinary call path, and so does a call inside
+    /// a loop that owns an iterator: closing it after the call would need the
+    /// frame this call replaces.
+    fn is_general_tail_call(&self, call: &Expr) -> bool {
+        if !self.function
+            || !self.bytecode.strict
+            || self.bytecode.generator
+            || self.bytecode.async_function
+            || self.bytecode.class_constructor
+            || self.loops.iter().any(|context| context.iterator.is_some())
+        {
+            return false;
+        }
+        match call {
+            // An optional chain is compiled by its own path (a short-circuit
+            // exit skips the call), which has no tail form.
+            Expr::Call { .. } if optional_chain_root(call) => false,
+            Expr::Call { callee, args } => {
+                !matches!(&**callee, Expr::Super)
+                    && args
+                        .iter()
+                        .all(|argument| matches!(argument, Argument::Normal(_)))
+            }
+            Expr::TaggedTemplate { .. } => true,
+            _ => false,
         }
     }
 
@@ -1168,7 +1274,12 @@ impl Compiler {
         // UpdateEmpty step.
         self.emit(Opcode::ClearCompletion, 0)?;
         self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
-        self.scoped_statements(block)?;
+        // A call in the try block is not a tail call: the catch and finally
+        // clauses have to observe how it ends.
+        self.tail_call_blockers += 1;
+        let try_block = self.scoped_statements(block);
+        self.tail_call_blockers -= 1;
+        try_block?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
         self.emit(Opcode::PopHandler, 0)?;
         if finalizer.is_some() {
@@ -1224,7 +1335,13 @@ impl Compiler {
                 &var_names(&catch.body)?,
                 false,
             )?;
-            self.statements_with_disposal(&catch.body)?;
+            // With a finally clause the catch block's call is not a tail
+            // call either: the finalizer runs after it returns.
+            let blocked = u32::from(finalizer.is_some());
+            self.tail_call_blockers += blocked;
+            let catch_body = self.statements_with_disposal(&catch.body);
+            self.tail_call_blockers -= blocked;
+            catch_body?;
             self.leave_scope()?;
             self.catch_var_slots
                 .pop()
@@ -1572,6 +1689,16 @@ impl Compiler {
                 self.emit(Opcode::Pop, 0)?;
             }
             None => {}
+        }
+        // CreatePerIterationEnvironment also runs once before the first test
+        // (ForBodyEvaluation step 2): closures made by the initializer keep
+        // the initial bindings, which the loop never writes again.
+        if own_scope {
+            let scope = *self
+                .scopes
+                .last()
+                .expect("lexical for scope remains active");
+            self.emit(Opcode::CloneScope, scope)?;
         }
         let start = self.offset()?;
         let mut exit = None;

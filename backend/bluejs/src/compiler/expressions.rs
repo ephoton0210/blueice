@@ -32,6 +32,7 @@ impl Compiler {
                 cooked,
                 expressions,
             } => {
+                let tail = std::mem::take(&mut self.tail_call_pending);
                 if matches!(&**tag, Expr::Member { .. }) {
                     if private_member_name(tag).is_some() {
                         let owner = self.private_member_reference(tag)?;
@@ -67,7 +68,12 @@ impl Compiler {
                 for expression in expressions {
                     self.expression(expression)?;
                 }
-                self.emit(Opcode::Call, expressions.len() as u32 + 1)?;
+                let argument_count = expressions.len() as u32 + 1;
+                if tail {
+                    self.emit(Opcode::TailCall, argument_count << 1)?;
+                } else {
+                    self.emit(Opcode::Call, argument_count)?;
+                }
             }
             Expr::Number(n) => self.constant(Value::Number(*n))?,
             Expr::BigInt(n) => self.constant(Value::BigInt(n.clone()))?,
@@ -643,6 +649,7 @@ impl Compiler {
             }
             Expr::Call { callee, args } | Expr::New { callee, args } => {
                 let construct = matches!(expr, Expr::New { .. });
+                let tail = std::mem::take(&mut self.tail_call_pending) && !construct;
                 if !construct && matches!(&**callee, Expr::Super) {
                     self.super_call_prologue()?;
                     if args.iter().any(|arg| matches!(arg, Argument::Spread(_))) {
@@ -741,15 +748,25 @@ impl Compiler {
                     };
                     self.expression(expr)?;
                 }
+                let argument_count =
+                    u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?;
+                let eval_candidate = matches!(&**callee, Expr::Identifier(name) if name == "eval");
+                if tail {
+                    self.emit(
+                        Opcode::TailCall,
+                        (argument_count << 1) | u32::from(eval_candidate),
+                    )?;
+                    return Ok(());
+                }
                 self.emit(
                     if construct {
                         Opcode::Construct
-                    } else if matches!(&**callee, Expr::Identifier(name) if name == "eval") {
+                    } else if eval_candidate {
                         Opcode::DirectEval
                     } else {
                         Opcode::Call
                     },
-                    u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
+                    argument_count,
                 )?;
             }
             Expr::OptionalCall { .. } => unreachable!("optional calls are compiled by expression"),
@@ -1196,10 +1213,9 @@ impl Compiler {
             )?;
         }
         self.expression(right)?;
+        // A for-in loop's iterator is the engine's own record of the walk over
+        // the prototype chain, not a call into the ECMAScript iterator protocol.
         if for_in {
-            // An enumerator record, not an iterator: EnumerateObjectProperties
-            // is not observable through `@@iterator`, and a `for-in` never
-            // closes it.
             self.emit(Opcode::ForInKeys, 0)?;
         } else {
             self.emit(
@@ -1214,9 +1230,7 @@ impl Compiler {
         self.emit(Opcode::InitializeBinding, iterator)?;
         let start = self.offset()?;
         self.emit(Opcode::GetBinding, iterator)?;
-        let exit = if for_in {
-            self.emit(Opcode::ForInStep, 0)?
-        } else if is_await {
+        let exit = if is_await {
             self.emit(Opcode::AsyncIteratorNext, 0)?;
             self.emit(Opcode::Await, 0)?;
             self.emit(Opcode::AsyncIteratorStep, 0)?
@@ -1229,7 +1243,7 @@ impl Compiler {
             scope_depth: self.scopes.len(),
             breaks: Vec::new(),
             continues: Some(Vec::new()),
-            iterator: (!for_in).then_some(iterator),
+            iterator: Some(iterator),
         });
         if lexical {
             self.enter_scope(
@@ -1430,11 +1444,24 @@ impl Compiler {
                 if op != AssignOp::Assign {
                     self.emit(Opcode::UnboundName, index)?;
                 }
+                // Strict `name = value`: the Reference is resolved before the
+                // right-hand side runs, which may create the binding.
+                let resolve_first = self.bytecode.strict && op == AssignOp::Assign;
+                if resolve_first {
+                    self.emit(Opcode::ResolveUnboundName, index)?;
+                }
                 self.expression_with_name(value, inferred_name)?;
                 if let Some(opcode) = compound_assignment_opcode(op) {
                     self.emit(opcode, 0)?;
                 }
-                self.emit(Opcode::SetUnboundName, index)?;
+                self.emit(
+                    if resolve_first {
+                        Opcode::SetResolvedUnboundName
+                    } else {
+                        Opcode::SetUnboundName
+                    },
+                    index,
+                )?;
                 return Ok(());
             }
         }

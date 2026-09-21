@@ -154,8 +154,13 @@ enum Completion {
     Throw(RuntimeError),
     Return(Value),
     TailRecur(Vec<Value>),
+    /// `[callee, this, arguments...]` of a call that replaces this frame.
+    TailCall(Vec<Value>),
     Yield(Value),
-    Jump { cleanup: usize, target: usize },
+    Jump {
+        cleanup: usize,
+        target: usize,
+    },
     Resume(usize),
     Halt(Value),
 }
@@ -190,9 +195,9 @@ impl Completion {
                 Ok(GeneratorPendingCompletion::Jump { cleanup, target })
             }
             Self::Throw(error) => Err(error),
-            Self::Yield(_) | Self::Resume(_) | Self::Halt(_) => Err(RuntimeError::Unsupported(
-                "cannot suspend a generator with an internal completion",
-            )),
+            Self::TailCall(_) | Self::Yield(_) | Self::Resume(_) | Self::Halt(_) => Err(
+                RuntimeError::Unsupported("cannot suspend a generator with an internal completion"),
+            ),
         }
     }
 
@@ -229,6 +234,7 @@ enum CompletionAction {
     Jump(usize),
     Return(Value),
     TailRecur(Vec<Value>),
+    TailCall(Vec<Value>),
     Throw(RuntimeError),
 }
 
@@ -753,6 +759,17 @@ pub struct Vm {
     // Values in suspended finally paths live here rather than in Rust-only
     // handler records, so VM safepoints root them during allocations.
     pending_completions: Vec<Completion>,
+    /// The parameter environment of the running sloppy function while its
+    /// parameter list is being evaluated: the object that receives the `var`s
+    /// a direct eval there declares (`Vm::call_closure` creates it).
+    parameter_eval_env: Option<ObjectId>,
+    /// Set when the async generator run that just yielded did so from a
+    /// `yield*` delegation: the yielded value is forwarded as is instead of
+    /// being awaited like a plain `yield` operand.
+    async_delegated_yield: bool,
+    /// A `TailCall` whose frame has been torn down: `[callee, this, args...]`,
+    /// consumed by the `call_with_target` that ran that frame.
+    pending_tail_call: Option<Vec<Value>>,
     completion_saves: Vec<(Value, bool)>,
     remaining_instructions: u64,
     cells: HashMap<usize, ObjectId>,
@@ -1051,6 +1068,9 @@ impl Vm {
             active_scope_slots: Vec::new(),
             with_objects: Vec::new(),
             pending_completions: Vec::new(),
+            pending_tail_call: None,
+            async_delegated_yield: false,
+            parameter_eval_env: None,
             completion_saves: Vec::new(),
             remaining_instructions: 0,
             cells: HashMap::new(),
@@ -1367,6 +1387,16 @@ impl Vm {
                 "hasInstance",
                 1,
                 NativeFunction::HasInstance,
+            )?;
+            // The decorator-metadata proposal: a class nothing decorated has
+            // `null` metadata, inherited from here.
+            self.define_data(
+                function_prototype,
+                JsSymbol::well_known("metadata"),
+                Value::Null,
+                false,
+                false,
+                false,
             )?;
             self.install_native(
                 function_prototype,
@@ -2025,6 +2055,26 @@ impl Vm {
     }
 
     fn call_with_target(
+        &mut self,
+        callee: Value,
+        receiver: Value,
+        args: Vec<Value>,
+        construct: bool,
+        target: Value,
+    ) -> Result<Value, RuntimeError> {
+        let mut result = self.enter_call(callee, receiver, args, construct, target);
+        // A frame that ended in a `TailCall` has already been torn down; its
+        // callee runs here, at the same depth, instead of nesting under it.
+        while let Some(mut call) = self.pending_tail_call.take() {
+            let args = call.split_off(2);
+            let receiver = call.pop().expect("a tail call carries its receiver");
+            let callee = call.pop().expect("a tail call carries its callee");
+            result = self.enter_call(callee, receiver, args, false, Value::Undefined);
+        }
+        result
+    }
+
+    fn enter_call(
         &mut self,
         callee: Value,
         receiver: Value,
