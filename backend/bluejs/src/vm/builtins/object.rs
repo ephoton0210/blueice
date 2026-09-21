@@ -14,6 +14,9 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        if self.heap.proxy(object)?.is_none() && self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_get_own_property(object, key);
+        }
         self.trigger_deferred_namespace(object, Some(key))?;
         // Intrinsic globals are lazily initialized, but reflective descriptor
         // operations must observe the same own properties as ordinary Get.

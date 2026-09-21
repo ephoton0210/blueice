@@ -621,6 +621,41 @@ impl Vm {
         self.test262_import_foreign_result(realm_id, result)
     }
 
+    /// Forwards a foreign facade's [[GetOwnProperty]] into its Realm and
+    /// imports the descriptor's value / accessor functions back across the
+    /// membrane, so the descriptor APIs see the properties of the facaded
+    /// object rather than those of its empty local stand-in.
+    pub(in super::super) fn test262_foreign_get_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: &PropertyName,
+    ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign getOwnProperty has a membrane record");
+        let descriptor = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            realm.vm.object_get_own_property(target, key)
+        };
+        let Some(mut descriptor) = descriptor? else {
+            return Ok(None);
+        };
+        for field in [
+            &mut descriptor.value,
+            &mut descriptor.get,
+            &mut descriptor.set,
+        ] {
+            if let Some(value) = field.take() {
+                *field = Some(self.test262_import_foreign_value(realm_id, value)?);
+            }
+        }
+        Ok(Some(descriptor))
+    }
+
     /// Forwards a foreign facade's [[OwnPropertyKeys]] into its Realm. Keys
     /// are primitives, so no wrapper allocation is needed; agent-wide
     /// registered Symbols already retain their identity across the boundary.
