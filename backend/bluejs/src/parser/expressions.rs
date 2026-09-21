@@ -1086,6 +1086,12 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Identifier(name))
             }
+            // `let` is only reserved in strict code; elsewhere it is an
+            // IdentifierReference (`let = 1`, `typeof let`).
+            Token::Keyword(Keyword::Let) if !self.strict => {
+                self.advance();
+                Ok(Expr::Identifier("let".to_string()))
+            }
             Token::Punct(Punct::LParen) => {
                 self.advance();
                 let expr = self.parse_expression()?;
@@ -1098,9 +1104,22 @@ impl Parser {
             }
             Token::Punct(Punct::LBracket) => self.parse_array_literal(),
             Token::Punct(Punct::LBrace) => self.parse_object_literal(),
-            Token::Punct(Punct::Assign | Punct::Star | Punct::Question) => {
-                Err(self.syntax_error("expected an expression"))
-            }
+            // Tokens no production of the expression grammar can begin with,
+            // including the closers/separators that show up when an operand
+            // is simply missing (`using [] = x` reads `using[]`, `x = ;`) and
+            // the end of input (`let =`).
+            Token::Eof => Err(self.syntax_error("expected an expression")),
+            Token::Punct(
+                Punct::Assign
+                | Punct::Star
+                | Punct::Question
+                | Punct::RBracket
+                | Punct::RParen
+                | Punct::RBrace
+                | Punct::Comma
+                | Punct::Semicolon
+                | Punct::Colon,
+            ) => Err(self.syntax_error("expected an expression")),
             _ => Err(self.error("expected an expression")),
         }
     }

@@ -182,11 +182,18 @@ fn async_function_environments_preserve_contextual_names_and_lexical_contexts() 
     for source in [
         "async function(){var await;}",
         "async function(){await:;}",
-        "async function await(){}",
+        // An async function *expression* binds its own name with `[+Await]`.
+        "(async function await(){})",
+        // A declaration's name uses the enclosing context, which reserves
+        // `await` inside an async function.
+        "async function outer(){async function await(){}}",
         "void \\u0061sync function value(){}",
     ] {
         assert!(parse(source).is_err(), "{source}");
     }
+    // At script top level `await` is an ordinary identifier, so the
+    // declaration form is valid (Test262 await-BindingIdentifier-in-global).
+    assert!(parse("async function await(){}").is_ok());
 
     let mut vm = Vm::default();
     let setup = "

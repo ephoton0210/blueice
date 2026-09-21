@@ -72,19 +72,46 @@ impl Parser {
         &mut self,
         is_async: bool,
     ) -> Result<Function, ParseError> {
+        self.parse_function_named(is_async, false)
+    }
+
+    /// A function *declaration*'s BindingIdentifier is parsed with the
+    /// enclosing context's `[Await]` parameter, unlike a function
+    /// expression's own name (which is `[~Yield, ~Await]` for a plain
+    /// function and `[+Await]` for an async one). So `async function
+    /// await() {}` is valid at script top level but not inside an async
+    /// function, a module or a class static block, and `function await() {}`
+    /// is invalid in those same enclosing contexts.
+    pub(super) fn parse_function_declaration(
+        &mut self,
+        is_async: bool,
+    ) -> Result<Function, ParseError> {
+        self.parse_function_named(is_async, true)
+    }
+
+    fn parse_function_named(
+        &mut self,
+        is_async: bool,
+        is_declaration: bool,
+    ) -> Result<Function, ParseError> {
         let generator = self.eat_punct(Punct::Star);
         if matches!(self.peek(), Token::Invalid(message) if message.contains("unexpected character '#'"))
         {
             return Err(self.syntax_error("a function cannot have a private name"));
         }
         let name = if let Token::Identifier(name) = self.peek() {
-            if is_async && name == "await" {
-                let detail = if self.current_identifier_escaped() {
-                    "the await keyword cannot contain an escape"
-                } else {
-                    "await cannot be used as an async function name"
-                };
-                return Err(self.syntax_error(detail));
+            if name == "await" {
+                let context_reserves_await = self.async_depth != 0
+                    || self.module_await
+                    || self.static_block_function_depths.last() == Some(&self.function_depth);
+                if (is_async && !is_declaration) || (is_declaration && context_reserves_await) {
+                    let detail = if self.current_identifier_escaped() {
+                        "the await keyword cannot contain an escape"
+                    } else {
+                        "await cannot be used as a function name here"
+                    };
+                    return Err(self.syntax_error(detail));
+                }
             }
             Some(self.expect_identifier_name()?)
         } else {
@@ -118,8 +145,14 @@ impl Parser {
         // `parse_params` also enters grammar that the subset may not yet
         // implement. Preserve an unclassified parse failure from that grammar;
         // explicit parameter early errors mark themselves as known syntax.
-        let params = self.parse_params()?;
+        //
+        // The parameters already belong to the new function for static-block
+        // purposes: a nested function's own `await` parameter is not a
+        // binding "directly within" the enclosing class static block.
         self.function_depth += 1;
+        let params = self
+            .parse_params()
+            .inspect_err(|_| self.function_depth -= 1)?;
         let body = self.parse_block();
         self.function_depth -= 1;
         self.generator_depth = outer_generator_depth;

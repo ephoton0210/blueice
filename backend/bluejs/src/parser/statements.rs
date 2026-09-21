@@ -23,11 +23,13 @@ impl Parser {
             }
             Token::Punct(Punct::LBrace) => Ok(Stmt::Block(self.parse_block()?)),
             Token::Keyword(Keyword::Var) => self.parse_var_decl_stmt(DeclKind::Var),
-            Token::Keyword(Keyword::Let) => self.parse_var_decl_stmt(DeclKind::Let),
+            Token::Keyword(Keyword::Let) if self.let_starts_declaration() => {
+                self.parse_var_decl_stmt(DeclKind::Let)
+            }
             Token::Keyword(Keyword::Const) => self.parse_var_decl_stmt(DeclKind::Const),
             Token::Keyword(Keyword::Function) => {
                 self.advance();
-                let f = self.parse_function()?;
+                let f = self.parse_function_declaration(false)?;
                 if f.name.is_none() {
                     return Err(self.syntax_error("function declarations require a name"));
                 }
@@ -44,7 +46,7 @@ impl Parser {
                 self.require_unescaped_async()?;
                 self.advance();
                 self.expect_keyword(Keyword::Function)?;
-                let f = self.parse_function_with_async(true)?;
+                let f = self.parse_function_declaration(true)?;
                 if f.name.is_none() {
                     return Err(self.syntax_error("function declarations require a name"));
                 }
@@ -66,7 +68,7 @@ impl Parser {
             {
                 self.advance(); // "await"
                 self.advance(); // "using"
-                let declarators = self.parse_var_declarators()?;
+                let declarators = self.parse_var_declarators(DeclKind::AwaitUsing)?;
                 self.consume_semicolon()?;
                 Ok(Stmt::VarDecl(DeclKind::AwaitUsing, declarators))
             }
@@ -206,15 +208,19 @@ impl Parser {
 
     pub(super) fn parse_var_decl_stmt(&mut self, kind: DeclKind) -> Result<Stmt, ParseError> {
         self.advance();
-        let declarators = self.parse_var_declarators()?;
+        let declarators = self.parse_var_declarators(kind)?;
         self.consume_semicolon()?;
         Ok(Stmt::VarDecl(kind, declarators))
     }
 
-    pub(super) fn parse_var_declarators(&mut self) -> Result<Vec<VarDeclarator>, ParseError> {
+    pub(super) fn parse_var_declarators(
+        &mut self,
+        kind: DeclKind,
+    ) -> Result<Vec<VarDeclarator>, ParseError> {
         let mut decls = Vec::new();
         loop {
             let pattern = self.parse_binding_pattern()?;
+            self.check_lexical_binding_names(kind, &pattern)?;
             let init = if self.eat_punct(Punct::Assign) {
                 Some(self.parse_assignment()?)
             } else {
@@ -353,13 +359,14 @@ impl Parser {
 
         let decl_kind = match self.peek() {
             Token::Keyword(Keyword::Var) => Some(DeclKind::Var),
-            Token::Keyword(Keyword::Let) => Some(DeclKind::Let),
+            Token::Keyword(Keyword::Let) if self.let_starts_declaration() => Some(DeclKind::Let),
             Token::Keyword(Keyword::Const) => Some(DeclKind::Const),
             _ => None,
         };
         if let Some(decl_kind) = decl_kind {
             self.advance();
             let pattern = self.parse_binding_pattern()?;
+            self.check_lexical_binding_names(decl_kind, &pattern)?;
 
             if self.eat_keyword(Keyword::In) {
                 if is_await {
@@ -412,6 +419,7 @@ impl Parser {
             }];
             while self.eat_punct(Punct::Comma) {
                 let pattern = self.parse_binding_pattern()?;
+                self.check_lexical_binding_names(decl_kind, &pattern)?;
                 declarators.push(VarDeclarator {
                     pattern,
                     init: self.parse_optional_for_init_value()?,

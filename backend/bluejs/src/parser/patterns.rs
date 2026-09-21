@@ -23,6 +23,16 @@ impl Parser {
             };
             return Err(self.syntax_error(detail));
         }
+        // "It is a Syntax Error if the code matched by this production is
+        // nested, directly or indirectly (but not crossing function or static
+        // initialization block boundaries), within a ClassStaticBlock and the
+        // StringValue of Identifier is "await"." Function parameters are
+        // parsed with `function_depth` already advanced, so only bindings that
+        // really sit directly in the block reach this.
+        if name == "await" && self.static_block_function_depths.last() == Some(&self.function_depth)
+        {
+            return Err(self.syntax_error("await cannot be bound directly in a class static block"));
+        }
         if name == "yield" && self.generator_depth != 0 {
             let detail = if escaped {
                 "the yield keyword cannot contain an escape"
@@ -34,12 +44,48 @@ impl Parser {
         Ok(())
     }
 
+    /// In sloppy code `let` is an ordinary identifier unless the token after
+    /// it can begin a lexical binding (a BindingIdentifier, `[` or `{`), in
+    /// which case it starts a `let` declaration. Strict code (and modules)
+    /// reserve `let`, so it always introduces a declaration there.
+    pub(super) fn let_starts_declaration(&self) -> bool {
+        self.strict
+            || matches!(
+                self.peek_at(1),
+                Token::Identifier(_)
+                    | Token::Keyword(Keyword::Let)
+                    | Token::Punct(Punct::LBracket | Punct::LBrace)
+            )
+    }
+
+    /// "It is a Syntax Error if the BoundNames of BindingList contains "let""
+    /// for `let`, `const`, `using` and `await using` declarations. (`var`
+    /// may bind `let` in sloppy code, which `parse_binding_pattern` allows.)
+    pub(super) fn check_lexical_binding_names(
+        &self,
+        kind: DeclKind,
+        pattern: &Pattern,
+    ) -> Result<(), ParseError> {
+        if kind != DeclKind::Var
+            && super::module::pattern_bound_names(pattern)
+                .iter()
+                .any(|name| name == "let")
+        {
+            return Err(self.syntax_error("a lexical declaration cannot bind the name 'let'"));
+        }
+        Ok(())
+    }
+
     pub(super) fn parse_binding_pattern(&mut self) -> Result<Pattern, ParseError> {
         match self.peek().clone() {
             Token::Identifier(name) => {
                 self.validate_binding_identifier(&name, self.current_identifier_escaped())?;
                 self.advance();
                 Ok(Pattern::Identifier(name))
+            }
+            Token::Keyword(Keyword::Let) if !self.strict => {
+                self.advance();
+                Ok(Pattern::Identifier("let".to_string()))
             }
             Token::Punct(Punct::LBracket) => self.parse_array_pattern(),
             Token::Punct(Punct::LBrace) => self.parse_object_pattern(),
