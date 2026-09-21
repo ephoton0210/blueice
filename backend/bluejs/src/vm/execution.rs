@@ -804,7 +804,13 @@ impl Vm {
                             handler.catch_end.expect("catch end is compiled") as usize,
                         )
                     }),
-                    HandlerState::Finally => None,
+                    // A finalizer running for a pending abrupt completion may
+                    // contain its own loops: a jump within the finalizer has
+                    // not left it, and must keep the pending completion.
+                    HandlerState::Finally => handler
+                        .finally
+                        .zip(handler.finally_end)
+                        .map(|(start, end)| (start as usize, end as usize)),
                 };
                 if region.is_some_and(|(start, end)| (start..end).contains(&target)) {
                     return Ok(CompletionAction::Jump(cleanup));

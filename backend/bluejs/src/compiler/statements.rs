@@ -100,6 +100,7 @@ impl Compiler {
             catch: None,
             catch_end: None,
             finally: None,
+            finally_end: None,
         });
         self.emit(Opcode::PushHandler, handler_index)?;
         self.emit(Opcode::MarkDisposables, 0)?;
@@ -122,6 +123,7 @@ impl Compiler {
             self.emit(Opcode::DisposeResources, handler_index)?;
         }
         self.emit(Opcode::ResumeCompletion, handler_index)?;
+        self.bytecode.handlers[handler_index as usize].finally_end = Some(self.offset()?);
         self.patch(normal_exit, finally_start);
         Ok(())
     }
@@ -1000,6 +1002,7 @@ impl Compiler {
             catch: None,
             catch_end: None,
             finally: None,
+            finally_end: None,
         });
         self.emit(Opcode::PushHandler, handler_index)?;
 
@@ -1092,6 +1095,7 @@ impl Compiler {
             // it replays the pending completion after the finalizer finishes.
             self.emit(Opcode::ResumeCompletion, handler_index)?;
             let end = self.offset()?;
+            self.bytecode.handlers[handler_index as usize].finally_end = Some(end);
             self.patch(normal_exit, start);
             if let Some(exit) = catch_exit {
                 self.patch(exit, start);
