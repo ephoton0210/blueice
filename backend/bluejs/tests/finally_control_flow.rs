@@ -79,7 +79,9 @@ fn nested_finally_may_break_a_label_inside_the_outer_finally() {
 #[test]
 fn break_out_of_finally_still_replaces_the_pending_completion() {
     assert_eq!(
-        evaluate("function f(){ do try { return 42 } finally { break } while (false); return 43 } f()"),
+        evaluate(
+            "function f(){ do try { return 42 } finally { break } while (false); return 43 } f()"
+        ),
         Value::Number(43.0)
     );
     assert_eq!(
