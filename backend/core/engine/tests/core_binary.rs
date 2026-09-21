@@ -68,6 +68,27 @@ fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
     false
 }
 
+/// Connects to a socket the subprocess is still setting up. A Unix socket's
+/// file appears at `bind` and only accepts connections after `listen`, so
+/// `wait_for` seeing the path is not proof of readiness: on a loaded machine a
+/// connect in between is refused. Retry that (and only that) briefly.
+fn connect(path: &std::path::Path) -> std::io::Result<UnixStream> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match UnixStream::connect(path) {
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
+                ) && Instant::now() < deadline =>
+            {
+                thread::sleep(Duration::from_millis(10));
+            }
+            result => return result,
+        }
+    }
+}
+
 #[test]
 fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
     let output = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
@@ -110,13 +131,13 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
         wait_for(&script_socket_path, Duration::from_secs(5)),
         "blueice-core never created its script socket"
     );
-    let mut frontend = UnixStream::connect(&socket_path)
-        .expect("failed to connect to the real core frontend socket");
+    let mut frontend =
+        connect(&socket_path).expect("failed to connect to the real core frontend socket");
     blueice_ipc::client_handshake(&mut frontend)
         .expect("the real subprocess must complete the frontend handshake");
 
-    let mut invalid = UnixStream::connect(&script_socket_path)
-        .expect("failed to connect an unhandshaken script client");
+    let mut invalid =
+        connect(&script_socket_path).expect("failed to connect an unhandshaken script client");
     blueice_ipc::script::write_script_request(
         &mut invalid,
         &blueice_ipc::script::ScriptRequest::CreateTextNode {
@@ -131,8 +152,7 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
     ));
     drop(invalid);
 
-    let mut script =
-        UnixStream::connect(&script_socket_path).expect("failed to connect the real script host");
+    let mut script = connect(&script_socket_path).expect("failed to connect the real script host");
     blueice_ipc::script::write_script_request(
         &mut script,
         &blueice_ipc::script::ScriptRequest::Hello,
@@ -235,8 +255,7 @@ fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
         wait_for(&socket_path, Duration::from_secs(5)),
         "blueice-core never created its socket"
     );
-    let mut stream =
-        UnixStream::connect(&socket_path).expect("failed to connect to the real subprocess");
+    let mut stream = connect(&socket_path).expect("failed to connect to the real subprocess");
     blueice_ipc::client_handshake(&mut stream)
         .expect("the real subprocess must complete the protocol_version handshake");
 
@@ -377,8 +396,7 @@ fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contami
         wait_for(&socket_path, Duration::from_secs(5)),
         "blueice-core never created its socket"
     );
-    let mut stream =
-        UnixStream::connect(&socket_path).expect("failed to connect to the real subprocess");
+    let mut stream = connect(&socket_path).expect("failed to connect to the real subprocess");
     blueice_ipc::client_handshake(&mut stream)
         .expect("the real subprocess must complete the protocol_version handshake");
 
@@ -496,7 +514,7 @@ fn a_client_disconnecting_without_shutdown_still_lets_the_subprocess_exit_cleanl
         .expect("failed to spawn blueice-core");
 
     assert!(wait_for(&socket_path, Duration::from_secs(5)));
-    let stream = UnixStream::connect(&socket_path).unwrap();
+    let stream = connect(&socket_path).unwrap();
     drop(stream); // disconnect without ever sending Shutdown
 
     let status = child.wait_timeout_or_kill();

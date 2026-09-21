@@ -687,6 +687,30 @@ mod unix {
         false
     }
 
+    /// Connects to a socket a child process is still setting up. The socket
+    /// file appears at `bind` but only accepts connections after `listen`, so
+    /// `wait_for_socket` seeing the path does not mean the child is ready: on a
+    /// loaded machine a connect in between is refused. Retry that briefly.
+    fn connect_when_listening(
+        path: &Path,
+        timeout: Duration,
+    ) -> io::Result<std::os::unix::net::UnixStream> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            match std::os::unix::net::UnixStream::connect(path) {
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
+                    ) && Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                result => return result,
+            }
+        }
+    }
+
     /// Whether this [`CoreProcess`] owns a private `core` it spawned itself
     /// (and must tear down), or is merely attached to one shared via
     /// `blueice-launcher`'s rendezvous socket (and must *not* tear it down
@@ -766,7 +790,7 @@ mod unix {
                     socket_path.display()
                 )));
             }
-            let stream = std::os::unix::net::UnixStream::connect(&socket_path)?;
+            let stream = connect_when_listening(&socket_path, Duration::from_secs(5))?;
             let mut conn = CoreConnection::new(stream);
             conn.handshake()?;
             Ok(CoreProcess {
@@ -1267,6 +1291,36 @@ mod unix {
             std::fs::write(&path, b"x").unwrap();
             assert!(wait_for_socket(&path, Duration::from_millis(50)));
             let _ = std::fs::remove_file(&path);
+        }
+
+        #[test]
+        fn connect_when_listening_waits_for_a_socket_that_is_not_yet_bound() {
+            let path = std::env::temp_dir().join(format!(
+                "blueice-mcp-connect-wait-{}.sock",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_file(&path);
+            let binder = {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(100));
+                    let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+                    listener.accept().map(|_| ()).unwrap();
+                })
+            };
+            connect_when_listening(&path, Duration::from_secs(5)).unwrap();
+            binder.join().unwrap();
+            let _ = std::fs::remove_file(&path);
+        }
+
+        #[test]
+        fn connect_when_listening_gives_up_after_the_timeout() {
+            let path = std::env::temp_dir().join(format!(
+                "blueice-mcp-connect-wait-missing-{}.sock",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_file(&path);
+            assert!(connect_when_listening(&path, Duration::from_millis(50)).is_err());
         }
 
         #[test]
