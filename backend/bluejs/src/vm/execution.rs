@@ -145,6 +145,7 @@ impl Vm {
         self.top_level_module = false;
         self.pending_completions.clear();
         self.completion_saves.clear();
+        self.call_stack.clear();
         // WeakRef's KeepDuringJob guarantee ends only after the complete
         // script/module job (including abrupt completion cleanup) has run.
         self.kept_weak_objects.clear();
@@ -941,6 +942,7 @@ impl Vm {
                 .chain(self.class_constructor.iter())
                 .chain(self.templates.values())
                 .chain(self.joining.iter())
+                .chain(self.call_stack.iter())
             {
                 roots.push(*object);
             }

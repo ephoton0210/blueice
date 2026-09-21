@@ -233,6 +233,8 @@ impl Vm {
         let result_root = self.result_root.take();
         let mut suspended_parent_stack = None;
         let mut suspended_async = None;
+        let running = callee.object_id();
+        self.call_stack.extend(running);
         let result = if async_function {
             let mut iterators = Vec::new();
             match self.interpret(&code, &mut iterators, 0, None, None, None) {
@@ -283,6 +285,9 @@ impl Vm {
         } else {
             self.run(&code)
         };
+        if running.is_some() {
+            self.call_stack.pop();
+        }
         let constructed = self.this.clone();
         let suspended = suspended_parent_stack.is_some();
         if let Some(stack) = suspended_parent_stack {

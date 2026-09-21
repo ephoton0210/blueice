@@ -1446,6 +1446,8 @@ impl Vm {
             NativeFunction::ThrowTypeError => Err(RuntimeError::TypeError(
                 "restricted function property".into(),
             )),
+            NativeFunction::LegacyFunctionCaller => self.legacy_function_caller(&receiver),
+            NativeFunction::LegacyFunctionArguments => self.legacy_function_arguments(&receiver),
             NativeFunction::Empty => Ok(Value::Undefined),
             NativeFunction::ObjectValueOf => self.coerce_object(&receiver).map(Value::Object),
             NativeFunction::ObjectIsPrototypeOf => {

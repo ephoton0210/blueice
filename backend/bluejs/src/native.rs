@@ -531,6 +531,10 @@ pub(crate) enum NativeFunction {
     ReflectConstruct,
     FunctionToString,
     ThrowTypeError,
+    /// Getters of the legacy own `caller` / `arguments` accessors that a
+    /// sloppy ordinary function carries.
+    LegacyFunctionCaller,
+    LegacyFunctionArguments,
     Empty,
     ObjectToString,
     ObjectToLocaleString,

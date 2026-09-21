@@ -989,6 +989,13 @@ pub struct Vm {
     shadow_realm_by_heap: HashMap<u64, ObjectId>,
     shadow_wrapped_functions: HashMap<ObjectId, ShadowWrappedFunction>,
     throw_type_error: Option<ObjectId>,
+    /// The shared `caller` / `arguments` getters of sloppy functions' legacy
+    /// own accessors, created on first use.
+    legacy_function_getters: Option<(ObjectId, ObjectId)>,
+    /// The closures whose bodies are currently running, innermost last. Only
+    /// legacy `f.caller` reads it: eval frames, natives, generators resumed
+    /// from a call and async continuations do not appear.
+    call_stack: Vec<ObjectId>,
     joining: Vec<ObjectId>,
 }
 
@@ -1131,6 +1138,8 @@ impl Vm {
             shadow_realm_by_heap: HashMap::new(),
             shadow_wrapped_functions: HashMap::new(),
             throw_type_error: None,
+            legacy_function_getters: None,
+            call_stack: Vec::new(),
             joining: Vec::new(),
         })
     }
