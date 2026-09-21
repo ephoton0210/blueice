@@ -5,12 +5,13 @@
 //! Process-isolated regular expressions. The parent never executes regress.
 
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 use std::io::{self, Read, Write};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -24,6 +25,17 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(250);
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_FRAME: usize = 16 * 1024 * 1024;
 const READY: &[u8] = b"bluejs-regexp-worker/1";
+
+/// Helper processes this process has started so far.
+static STARTED: AtomicU64 = AtomicU64::new(0);
+
+/// How many helper processes this process has started. A diagnostic for tests:
+/// a healthy process keeps one worker per concurrently matching thread rather
+/// than starting one per operation.
+#[doc(hidden)]
+pub fn workers_started() -> u64 {
+    STARTED.load(Ordering::Relaxed)
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case")]
@@ -178,6 +190,7 @@ impl Worker {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()?;
+        STARTED.fetch_add(1, Ordering::Relaxed);
         let mut input = child.stdin.take().unwrap();
         let mut output = child.stdout.take().unwrap();
         let (requests, incoming) = mpsc::channel::<Vec<u8>>();
@@ -344,10 +357,11 @@ impl Drop for Worker {
             let _ = self.child.kill();
         }
 
-        // Closing stdin alone does not reliably wake a Windows pipe reader
-        // while a thread-local destructor is running. Ask a healthy worker
-        // to exit explicitly, then close the channel and join its I/O thread
-        // before reaping the private child on every platform.
+        // Closing stdin alone does not reliably wake a Windows pipe reader.
+        // Ask a healthy worker to exit explicitly, then close the channel and
+        // join its I/O thread before reaping the private child on every
+        // platform. Workers are only dropped from ordinary code (never from a
+        // thread's exit destructor; see `IDLE`), where that join is safe.
         if let Some(requests) = self.requests.as_ref() {
             if let Ok(shutdown) = serde_json::to_vec(&Request::Shutdown) {
                 let _ = requests.send(shutdown);
@@ -391,53 +405,46 @@ fn cache_pattern(
     Ok(())
 }
 
-thread_local! { static WORKER: RefCell<Option<Worker>> = const { RefCell::new(None) }; }
+/// Most idle helper processes kept for reuse. A helper is started only when no
+/// idle one exists, so this bounds the processes left behind by a burst of
+/// concurrent matching threads rather than limiting concurrency itself.
+const MAX_IDLE_WORKERS: usize = 8;
+
+/// Idle helpers, shared by every thread. They are deliberately not
+/// thread-local: a thread-local `Worker` would be torn down by the thread's
+/// exit destructor, and on Windows waiting for an I/O thread there can hang or
+/// abort. Retiring the worker after every operation avoided that, at the price
+/// of one process start per RegExp operation (milliseconds each, and a
+/// Test262 case makes thousands). A static is never destructed, and every
+/// worker is dropped from ordinary code outside any lock, so both the process
+/// reuse and a deterministic shutdown are kept.
+static IDLE: Mutex<Vec<Worker>> = Mutex::new(Vec::new());
 
 fn with_worker<T>(
     operation: impl FnOnce(&mut Worker) -> Result<T, RuntimeError>,
 ) -> Result<T, RuntimeError> {
-    let (result, worker_to_drop) = WORKER.with(|slot| {
-        let mut slot = slot.borrow_mut();
-        if slot.is_none() {
-            let worker = match Worker::start() {
-                Ok(worker) => worker,
-                Err(error) => return (Err(worker_error(error)), None),
-            };
-            *slot = Some(worker);
+    let idle = IDLE.lock().unwrap_or_else(PoisonError::into_inner).pop();
+    let mut worker = match idle {
+        Some(worker) => worker,
+        None => Worker::start().map_err(worker_error)?,
+    };
+    let result = operation(&mut worker);
+    // A rejected pattern is an expected reply from a healthy worker. Keep it;
+    // transport and timeout failures require a fresh process for the next
+    // operation.
+    if result
+        .as_ref()
+        .is_err_and(|error| !matches!(error, RuntimeError::SyntaxError(_)))
+    {
+        worker.failed = true;
+    } else {
+        let mut idle = IDLE.lock().unwrap_or_else(PoisonError::into_inner);
+        if idle.len() < MAX_IDLE_WORKERS {
+            idle.push(worker);
+            return result;
         }
-        let result = operation(slot.as_mut().unwrap());
-
-        #[cfg(windows)]
-        {
-            // Joining an I/O thread from a Windows TLS destructor can hang.
-            // Retire every worker outside `WORKER.with` instead, where the
-            // normal shutdown path can join and reap it deterministically.
-            if result
-                .as_ref()
-                .is_err_and(|error| !matches!(error, RuntimeError::SyntaxError(_)))
-            {
-                slot.as_mut().unwrap().failed = true;
-            }
-            (result, slot.take())
-        }
-
-        #[cfg(not(windows))]
-        {
-            // A rejected pattern is an expected reply from a healthy worker.
-            // Keep that worker alive; transport and timeout failures require
-            // a fresh process for the next operation.
-            let worker_to_drop = result
-                .as_ref()
-                .is_err_and(|error| !matches!(error, RuntimeError::SyntaxError(_)))
-                .then(|| {
-                    let mut worker = slot.take().unwrap();
-                    worker.failed = true;
-                    worker
-                });
-            (result, worker_to_drop)
-        }
-    });
-    drop(worker_to_drop);
+    }
+    drop(worker);
     result
 }
 
