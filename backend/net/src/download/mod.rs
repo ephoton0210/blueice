@@ -19,6 +19,7 @@ pub mod backend;
 pub mod credentials;
 pub mod file_name;
 mod http;
+mod ftp;
 pub mod plan;
 pub mod probe;
 pub mod progress;

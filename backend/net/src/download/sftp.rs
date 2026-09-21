@@ -7,7 +7,7 @@
 //! retryable workers, and avoids sharing a stateful SFTP channel between
 //! workers.  Host verification is strict -- no trust-on-first-use fallback.
 
-use crate::download::backend::{ByteRange, ByteStream, TransferBackend};
+use crate::download::backend::{plain_stream, ByteRange, ByteStream, TransferBackend};
 use crate::download::credentials::{load_sftp_password, SftpCredentialRef};
 use crate::download::probe::Probe;
 use crate::download::{DownloadError, DownloadOptions};
@@ -154,7 +154,7 @@ impl TransferBackend for SftpBackend {
         if let Some(range) = range {
             file.seek(SeekFrom::Start(range.start)).map_err(|error| DownloadError::Network(format!("could not seek {} to byte {}: {error}", endpoint.path, range.start)))?;
         }
-        Ok(Box::new(file))
+        Ok(plain_stream(file))
     }
 }
 

@@ -649,8 +649,14 @@ impl Shared {
                 segment.owner = None;
             }
             inner.dirty = true;
+            // FTP's `finish` waits for the control-channel completion reply;
+            // never hold scheduling state while a remote server can delay it.
+            drop(inner);
             if finished {
-                return Outcome::Done;
+                return match reader.finish() {
+                    Ok(()) => Outcome::Done,
+                    Err(error) => Outcome::Retry(DownloadError::Network(error.to_string())),
+                };
             }
         }
     }

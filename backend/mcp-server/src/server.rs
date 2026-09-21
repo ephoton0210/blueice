@@ -87,9 +87,10 @@ struct CloseTabParams {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 struct DownloadFileParams {
-    /// The http://, https://, or sftp://user@host/path URL to download.
-    /// SFTP requires the server in known-hosts and a matching SSH-agent
-    /// identity; passwords in URLs are refused.
+    /// A http://, https://, ftp://host/path, sftp://user@host/path, or
+    /// ftps://user@host/path URL to download. Plain FTP is anonymous-only;
+    /// SFTP verifies known-hosts and FTPS verifies its TLS certificate.
+    /// Passwords in URLs are always refused.
     url: String,
     /// Where to save it, as a path *relative to the download directory*
     /// (e.g. "reports/q3.pdf"). Absolute paths and ".." are refused. Omit to
@@ -119,6 +120,29 @@ struct RemoveSftpPasswordParams {
     /// SFTP port; defaults to 22.
     port: Option<u16>,
     /// The SSH username used in the matching sftp://user@host/path URL.
+    username: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct SetFtpsPasswordParams {
+    /// Explicit-FTPS server host, without a URL scheme or path.
+    host: String,
+    /// Explicit-FTPS port; defaults to 21.
+    port: Option<u16>,
+    /// The username used in the matching ftps://user@host/path URL.
+    username: String,
+    /// The password to store. It is sent to the local downloads process but
+    /// is never returned, logged, or placed in a transfer record.
+    password: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct RemoveFtpsPasswordParams {
+    /// Explicit-FTPS server host, without a URL scheme or path.
+    host: String,
+    /// Explicit-FTPS port; defaults to 21.
+    port: Option<u16>,
+    /// The username used in the matching ftps://user@host/path URL.
     username: String,
 }
 
@@ -315,7 +339,7 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
-        description = "Start downloading a file over HTTP(S), or from SFTP as sftp://user@host/path, with BlueIce's built-in download manager. HTTP(S) uses several connections at once and is resumable when the server supplies a validator; SFTP verifies the host against known-hosts and uses the SSH agent, so passwords in URLs are refused. \
+        description = "Start downloading a file over HTTP(S), anonymous FTP as ftp://host/path, SFTP as sftp://user@host/path, or explicit FTPS as ftps://user@host/path, with BlueIce's built-in download manager. HTTP(S) uses several connections at once and is resumable when the server supplies a validator; FTP-family and SFTP transfers are single-stream and restart from the beginning after a pause. SFTP verifies the host against known-hosts; FTPS verifies the TLS certificate and can use a password saved through set_ftps_password. Passwords in URLs are refused. \
         Returns as soon as the transfer is queued -- it does NOT wait for the download to finish; read progress with get_transfer or list_transfers. \
         Every download is first reviewed by the safety gatekeeper, so a transfer can end up 'blocked' instead of downloading (the result says why). \
         `dest` is an optional path relative to the download directory (absolute paths and '..' are refused); without it the name comes from the server or the URL. \
@@ -342,6 +366,24 @@ impl BlueIceMcpServer {
         let port = port.unwrap_or(22);
         match downloads_call(self.downloads.clone(), true, move |client| client.remove_sftp_password(&host, port, &username)).await {
             Ok(()) => Ok(CallToolResult::success(vec![Content::text("Saved SFTP password removed from the local operating-system credential store.")])),
+            Err(error) => Ok(call_error_result(error)),
+        }
+    }
+
+    #[tool(description = "Store an explicit-FTPS password in this machine's operating-system credential store for a host, port, and username. It is used only after the FTPS server certificate and hostname have been verified, and is never returned, logged, put in a URL, or written into transfer state. Plain FTP is anonymous-only.")]
+    async fn set_ftps_password(&self, Parameters(SetFtpsPasswordParams { host, port, username, password }): Parameters<SetFtpsPasswordParams>) -> Result<CallToolResult, ErrorData> {
+        let port = port.unwrap_or(21);
+        match downloads_call(self.downloads.clone(), false, move |client| client.set_ftps_password(&host, port, &username, &password)).await {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text("Explicit-FTPS password saved in the local operating-system credential store. It will not be returned or recorded with transfers.")])),
+            Err(error) => Ok(call_error_result(error)),
+        }
+    }
+
+    #[tool(description = "Remove the saved explicit-FTPS password for a host, port, and username from this machine's operating-system credential store. This does not alter any downloaded files or transfer history.")]
+    async fn remove_ftps_password(&self, Parameters(RemoveFtpsPasswordParams { host, port, username }): Parameters<RemoveFtpsPasswordParams>) -> Result<CallToolResult, ErrorData> {
+        let port = port.unwrap_or(21);
+        match downloads_call(self.downloads.clone(), true, move |client| client.remove_ftps_password(&host, port, &username)).await {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text("Saved explicit-FTPS password removed from the local operating-system credential store.")])),
             Err(error) => Ok(call_error_result(error)),
         }
     }

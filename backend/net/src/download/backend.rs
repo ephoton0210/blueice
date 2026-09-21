@@ -9,7 +9,7 @@
 
 use crate::download::probe::{parse_content_range, ContentRange, Probe, Validator};
 use crate::download::{http, DownloadError, DownloadOptions};
-use std::io::Read;
+use std::io::{self, Read};
 use std::sync::Arc;
 use ureq::http::Response;
 use ureq::{Agent, Body};
@@ -27,11 +27,36 @@ impl ByteRange {
     }
 }
 
-/// The bytes returned by a transfer backend.  The stream begins at
-/// [`ByteRange::start`] when a range was requested.  It is owned and `Send`
+/// A transfer body that can report protocol-level completion after its bytes
+/// have been copied. HTTP and SFTP have nothing extra to do, but FTP's data
+/// socket must consume its final control-channel reply before a segment is
+/// counted as complete.
+pub trait FinishableRead: Read + Send {
+    fn finish(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// The bytes returned by a transfer backend. The stream begins at
+/// [`ByteRange::start`] when a range was requested. It is owned and `Send`
 /// so one coordinator worker can consume it without sharing protocol state
 /// with another worker.
-pub type ByteStream = Box<dyn Read + Send>;
+pub type ByteStream = Box<dyn FinishableRead>;
+
+struct PlainRead<R>(R);
+
+impl<R: Read> Read for PlainRead<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buffer)
+    }
+}
+
+impl<R: Read + Send> FinishableRead for PlainRead<R> {}
+
+/// Adapts a protocol body without a separate completion handshake.
+pub(crate) fn plain_stream<R: Read + Send + 'static>(reader: R) -> ByteStream {
+    Box::new(PlainRead(reader))
+}
 
 /// The protocol-specific half of a download.
 ///
@@ -56,8 +81,10 @@ pub(crate) fn for_url(url: &str, options: &DownloadOptions) -> Result<Arc<dyn Tr
         Ok(Arc::new(HttpBackend { agent: http::agent(options) }))
     } else if url.starts_with("sftp://") {
         Ok(Arc::new(crate::download::sftp::SftpBackend::new(options)))
+    } else if url.starts_with("ftp://") || url.starts_with("ftps://") {
+        Ok(Arc::new(crate::download::ftp::FtpBackend::new(options)))
     } else {
-        Err(DownloadError::InvalidUrl(format!("unsupported scheme in {url:?} (supported: http, https, sftp)")))
+        Err(DownloadError::InvalidUrl(format!("unsupported scheme in {url:?} (supported: http, https, ftp, ftps, sftp)")))
     }
 }
 
@@ -70,8 +97,10 @@ pub fn validate_url(url: &str) -> Result<(), DownloadError> {
         Ok(())
     } else if url.starts_with("sftp://") {
         crate::download::sftp::validate_url(url)
+    } else if url.starts_with("ftp://") || url.starts_with("ftps://") {
+        crate::download::ftp::validate_url(url)
     } else {
-        Err(DownloadError::InvalidUrl(format!("unsupported scheme in {url:?} (supported: http, https, sftp)")))
+        Err(DownloadError::InvalidUrl(format!("unsupported scheme in {url:?} (supported: http, https, ftp, ftps, sftp)")))
     }
 }
 
@@ -121,11 +150,11 @@ impl TransferBackend for HttpBackend {
         let validator = range.and_then(|_| probe.validator()).map(|value| value.if_range_value().to_string());
         let response = http::get(&self.agent, &probe.final_url, range.map(|value| (value.start, value.end - 1)), validator.as_deref())?;
         match (range, response.status().as_u16()) {
-            (None, 200..=299) => Ok(Box::new(response.into_body().into_reader())),
+            (None, 200..=299) => Ok(plain_stream(response.into_body().into_reader())),
             (None, code) => Err(DownloadError::Status(code)),
             (Some(range), 206) => {
                 Self::check_partial(&response, probe, range)?;
-                Ok(Box::new(response.into_body().into_reader()))
+                Ok(plain_stream(response.into_body().into_reader()))
             }
             (Some(_), 200) => Err(DownloadError::ResourceChanged("the server answered a Range request with the whole file: the file changed, or ranges stopped working".to_string())),
             (Some(_), 416) => Err(DownloadError::ResourceChanged("the requested range no longer exists: the remote file changed".to_string())),
@@ -150,7 +179,8 @@ mod tests {
         let options = DownloadOptions::default();
         assert!(for_url("https://example.test/file", &options).is_ok());
         assert!(for_url("sftp://alice@example.test/file", &options).is_ok());
-        assert!(matches!(for_url("ftp://example.test/file", &options), Err(DownloadError::InvalidUrl(_))));
+        assert!(for_url("ftp://example.test/file", &options).is_ok());
+        assert!(for_url("ftps://alice@example.test/file", &options).is_ok());
     }
 
     #[test]

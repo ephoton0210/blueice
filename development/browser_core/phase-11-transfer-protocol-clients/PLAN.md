@@ -40,13 +40,19 @@ HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; S
   binding to libssh2). Its blocking `Read + Seek` SFTP files fit the transfer
   workers directly; a Tokio-only client would add a second scheduler just to
   bridge to this engine.
-- **FTP candidate**: do **not** use `suppaftp` at this time. Its currently
-  unpatched [RustSec advisory RUSTSEC-2026-0271](https://rustsec.org/advisories/RUSTSEC-2026-0271.html)
-  permits CRLF command injection when a caller supplies credentials or paths.
-  `ftp` is unmaintained and `async-ftp` has no advantage for this synchronous
-  engine. This is a safety gate, not a waiver: the FTP/FTPS backend stays
-  unavailable until a patched dependency is available or a narrowly audited
-  implementation exists.
+- **FTP candidate**: use `suppaftp` 12.0.1 with its synchronous
+  `native-tls` feature. [RUSTSEC-2026-0271](https://rustsec.org/advisories/RUSTSEC-2026-0271.html)
+  was corrected in 10.0.2, and this version is newer; BlueIce additionally
+  rejects control characters after URL decoding before any FTP argument is
+  sent. Plain FTP is anonymous-only. `ftps://` means explicit RFC 4217 TLS:
+  it uses the platform trust store and hostname verification, then protects
+  both control and data channels. Deprecated implicit FTPS is not offered.
+- **FTP transfer shape**: FTP `REST` specifies only a starting offset, not an
+  exclusive end, so it cannot meet this subsystem's exact-range invariant.
+  FTP/FTPS therefore deliberately run as one checked stream, with `SIZE` and
+  optional `MDTM` same-run mutation checks; they discard partial files across
+  pauses/restarts rather than splice unproved bytes. The body is not counted
+  complete until its final FTP control response succeeds.
 - **Credential boundary**: URLs may select an endpoint and optional username,
   but never carry a password or private-key material. A normalized
   `(scheme, host, port, username)` reference is derived at authentication
@@ -59,7 +65,9 @@ HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; S
   explicitly mode `0600`; `SetSftpPassword` is the one request that carries a
   secret and replies only `Ok`, after which workers derive the reference from
   the URL. The SFTP backend tries SSH agent authentication first and opens the
-  credential store only after host-key verification has succeeded.
+  credential store only after host-key verification has succeeded. The
+  explicit-FTPS backend similarly opens its credential only after the TLS
+  handshake has verified the certificate and hostname.
 
 ## Checklist
 
@@ -71,4 +79,4 @@ HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; S
 - [x] Implement the SFTP backend, known-host verification, and SSH-agent authentication (no password is accepted in a URL or recorded in transfer state)
 - [x] Add OS-keychain credential references for SFTP passwords, with a local MCP/IPC set/remove path that does not echo secrets
 - [ ] Add OS-keychain references for encrypted private-key passphrases
-- [ ] Add a tested, audited explicit-FTPS backend once its dependency risk is resolved
+- [x] Add an explicit-FTPS backend using `suppaftp` 12.0.1; plain FTP is anonymous-only and both are safe single-stream transfers

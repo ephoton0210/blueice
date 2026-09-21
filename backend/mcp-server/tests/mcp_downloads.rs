@@ -320,7 +320,7 @@ fn pause_resume_cancel_and_remove_work_and_refusals_come_back_as_tool_errors() {
     assert!(missing.is_error && missing.text.contains("not_found"), "{}", missing.text);
     let bad_dest = mcp.call("download_file", json!({"url": mcp.url("/big.bin"), "dest": "../escape.bin"}));
     assert!(bad_dest.is_error && bad_dest.text.contains("invalid_request") && bad_dest.text.contains("'..'"), "{}", bad_dest.text);
-    let bad_url = mcp.call("download_file", json!({"url": "ftp://example.com/f"}));
+    let bad_url = mcp.call("download_file", json!({"url": "ftp://alice@example.com/f"}));
     assert!(bad_url.is_error && bad_url.text.contains("invalid_request"), "{}", bad_url.text);
     let bad_filter = mcp.call("list_transfers", json!({"state": "running"}));
     assert!(bad_filter.is_error && bad_filter.text.contains("awaiting_clearance"), "the valid states are listed: {}", bad_filter.text);

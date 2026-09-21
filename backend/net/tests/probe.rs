@@ -138,9 +138,9 @@ fn a_refused_connection_is_a_network_error() {
 }
 
 #[test]
-fn a_non_http_scheme_is_rejected_before_any_request_is_made() {
+fn an_unsupported_scheme_is_rejected_before_any_request_is_made() {
     let server = TestServer::start();
-    let result = probe_url("ftp://127.0.0.1/f");
+    let result = probe_url("file:///tmp/f");
     assert!(matches!(result, Err(DownloadError::InvalidUrl(_))), "{result:?}");
     assert!(server.requests().is_empty());
 }

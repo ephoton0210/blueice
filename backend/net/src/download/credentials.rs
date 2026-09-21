@@ -5,12 +5,14 @@
 //! The small boundary between transfer code and the platform credential
 //! store.  Secrets never enter URLs, sidecars, transfer records, or event
 //! messages: they are looked up only after an SFTP server's host key has been
-//! verified.
+//! verified, or after an FTPS control channel has completed certificate and
+//! hostname verification.
 
 use keyring::Entry;
 use zeroize::Zeroizing;
 
 const SFTP_SERVICE_PREFIX: &str = "org.blueice.downloads.sftp";
+const FTPS_SERVICE_PREFIX: &str = "org.blueice.downloads.ftps";
 
 /// Identifies an SFTP password without containing the password itself.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -40,6 +42,35 @@ impl SftpCredentialRef {
         // ignores keyring's `target`, so the endpoint belongs in the service
         // name rather than relying on a platform-specific target behavior.
         Entry::new(&format!("{SFTP_SERVICE_PREFIX}.{}:{}", self.host, self.port), &self.username).map_err(|_| CredentialError::Unavailable)
+    }
+}
+
+/// Identifies an explicit-FTPS password without containing the password
+/// itself. Plain FTP has no password reference because it is anonymous-only.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FtpsCredentialRef {
+    host: String,
+    port: u16,
+    username: String,
+}
+
+impl FtpsCredentialRef {
+    pub fn new(host: impl Into<String>, port: u16, username: impl Into<String>) -> Result<Self, CredentialError> {
+        let (host, username) = (host.into(), username.into());
+        if host.is_empty() || host.chars().any(char::is_control) {
+            return Err(CredentialError::InvalidReference("FTPS host must be non-empty and contain no control characters".to_string()));
+        }
+        if port == 0 {
+            return Err(CredentialError::InvalidReference("FTPS port must be between 1 and 65535".to_string()));
+        }
+        if username.is_empty() || username.chars().any(char::is_control) {
+            return Err(CredentialError::InvalidReference("FTPS username must be non-empty and contain no control characters".to_string()));
+        }
+        Ok(FtpsCredentialRef { host, port, username })
+    }
+
+    fn entry(&self) -> Result<Entry, CredentialError> {
+        Entry::new(&format!("{FTPS_SERVICE_PREFIX}.{}:{}", self.host, self.port), &self.username).map_err(|_| CredentialError::Unavailable)
     }
 }
 
@@ -91,6 +122,33 @@ pub(crate) fn load_sftp_password(reference: &SftpCredentialRef) -> Result<Option
     }
 }
 
+/// Saves an explicit-FTPS password in the operating system credential store.
+pub fn save_ftps_password(reference: &FtpsCredentialRef, password: &str) -> Result<(), CredentialError> {
+    if password.is_empty() {
+        return Err(CredentialError::InvalidReference("FTPS password must not be empty".to_string()));
+    }
+    reference.entry()?.set_password(password).map_err(|_| CredentialError::Unavailable)
+}
+
+/// Deletes an explicit-FTPS password. A missing password is already the
+/// desired state, so this is idempotent.
+pub fn delete_ftps_password(reference: &FtpsCredentialRef) -> Result<(), CredentialError> {
+    match reference.entry()?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(_) => Err(CredentialError::Unavailable),
+    }
+}
+
+/// Reads an explicit-FTPS password only after the TLS connection has been
+/// established and verified. The returned value zeroizes itself on drop.
+pub(crate) fn load_ftps_password(reference: &FtpsCredentialRef) -> Result<Option<Zeroizing<String>>, CredentialError> {
+    match reference.entry()?.get_password() {
+        Ok(password) => Ok(Some(Zeroizing::new(password))),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(_) => Err(CredentialError::Unavailable),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,6 +159,15 @@ mod tests {
         assert_eq!(reference.host, "files.example.test");
         assert_eq!(reference.port, 2222);
         assert_eq!(reference.username, "alice");
+    }
+
+    #[test]
+    fn ftp_and_sftp_references_use_distinct_protocol_namespaces() {
+        let ftps = FtpsCredentialRef::new("files.example.test", 21, "alice").unwrap();
+        assert_eq!(ftps.host, "files.example.test");
+        assert_eq!(ftps.port, 21);
+        assert_eq!(ftps.username, "alice");
+        assert!(matches!(FtpsCredentialRef::new("host", 0, "alice"), Err(CredentialError::InvalidReference(_))));
     }
 
     #[test]

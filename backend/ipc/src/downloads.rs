@@ -356,6 +356,22 @@ pub enum DownloadsRequest {
         port: u16,
         username: String,
     },
+    /// Store an explicit-FTPS password in the platform credential store.
+    /// Plain FTP is anonymous-only, so it has no password request.
+    SetFtpsPassword {
+        host: String,
+        #[serde(default = "default_ftps_port")]
+        port: u16,
+        username: String,
+        password: String,
+    },
+    /// Remove the saved password for this explicit-FTPS endpoint and user.
+    RemoveFtpsPassword {
+        host: String,
+        #[serde(default = "default_ftps_port")]
+        port: u16,
+        username: String,
+    },
     /// After this, every change to any transfer is pushed as
     /// [`DownloadsReply::Updated`] on this connection.
     Subscribe,
@@ -367,6 +383,10 @@ pub enum DownloadsRequest {
 
 fn default_sftp_port() -> u16 {
     22
+}
+
+fn default_ftps_port() -> u16 {
+    21
 }
 
 /// The downloads process's message to a client.
@@ -593,6 +613,16 @@ impl<S: Read + Write> DownloadsClient<S> {
         Self::ok_reply(self.call(DownloadsRequest::RemoveSftpPassword { host: host.to_string(), port, username: username.to_string() })?)
     }
 
+    /// Stores an explicit-FTPS password in the local operating system
+    /// credential store. As with SFTP, the password is never returned.
+    pub fn set_ftps_password(&mut self, host: &str, port: u16, username: &str, password: &str) -> Result<(), ClientError> {
+        Self::ok_reply(self.call(DownloadsRequest::SetFtpsPassword { host: host.to_string(), port, username: username.to_string(), password: password.to_string() })?)
+    }
+
+    pub fn remove_ftps_password(&mut self, host: &str, port: u16, username: &str) -> Result<(), ClientError> {
+        Self::ok_reply(self.call(DownloadsRequest::RemoveFtpsPassword { host: host.to_string(), port, username: username.to_string() })?)
+    }
+
     pub fn subscribe(&mut self) -> Result<(), ClientError> {
         Self::ok_reply(self.call(DownloadsRequest::Subscribe)?)
     }
@@ -665,6 +695,8 @@ mod tests {
             DownloadsRequest::Remove { id: 3 },
             DownloadsRequest::SetSftpPassword { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string(), password: "not-a-real-secret".to_string() },
             DownloadsRequest::RemoveSftpPassword { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string() },
+            DownloadsRequest::SetFtpsPassword { host: "files.example.test".to_string(), port: 2121, username: "alice".to_string(), password: "not-a-real-secret".to_string() },
+            DownloadsRequest::RemoveFtpsPassword { host: "files.example.test".to_string(), port: 2121, username: "alice".to_string() },
             DownloadsRequest::Subscribe,
             DownloadsRequest::Shutdown,
         ]
@@ -698,15 +730,23 @@ mod tests {
     }
 
     #[test]
-    fn an_sftp_password_request_without_a_port_uses_ssh_default_port() {
-        let raw = serde_json::json!({
-            "request_id": 1,
-            "message": {"SetSftpPassword": {"host": "files.example.test", "username": "alice", "password": "not-a-real-secret"}}
-        });
-        let bytes = serde_json::to_vec(&raw).unwrap();
-        let envelope: Envelope<DownloadsRequest> = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(envelope.request_id, Some(1));
-        assert_eq!(envelope.message, DownloadsRequest::SetSftpPassword { host: "files.example.test".to_string(), port: 22, username: "alice".to_string(), password: "not-a-real-secret".to_string() });
+    fn password_requests_without_ports_use_their_protocol_defaults() {
+        for (message, expected) in [
+            (
+                serde_json::json!({"SetSftpPassword": {"host": "files.example.test", "username": "alice", "password": "not-a-real-secret"}}),
+                DownloadsRequest::SetSftpPassword { host: "files.example.test".to_string(), port: 22, username: "alice".to_string(), password: "not-a-real-secret".to_string() },
+            ),
+            (
+                serde_json::json!({"SetFtpsPassword": {"host": "files.example.test", "username": "alice", "password": "not-a-real-secret"}}),
+                DownloadsRequest::SetFtpsPassword { host: "files.example.test".to_string(), port: 21, username: "alice".to_string(), password: "not-a-real-secret".to_string() },
+            ),
+        ] {
+            let raw = serde_json::json!({"request_id": 1, "message": message});
+            let bytes = serde_json::to_vec(&raw).unwrap();
+            let envelope: Envelope<DownloadsRequest> = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(envelope.request_id, Some(1));
+            assert_eq!(envelope.message, expected);
+        }
     }
 
     #[test]
@@ -961,10 +1001,18 @@ mod tests {
             let (id, request) = read_downloads_request(&mut s).unwrap();
             assert_eq!(request, DownloadsRequest::RemoveSftpPassword { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string() });
             write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
+            let (id, request) = read_downloads_request(&mut s).unwrap();
+            assert_eq!(request, DownloadsRequest::SetFtpsPassword { host: "files.example.test".to_string(), port: 2121, username: "alice".to_string(), password: "not-a-real-secret".to_string() });
+            write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
+            let (id, request) = read_downloads_request(&mut s).unwrap();
+            assert_eq!(request, DownloadsRequest::RemoveFtpsPassword { host: "files.example.test".to_string(), port: 2121, username: "alice".to_string() });
+            write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
         });
         let mut client = DownloadsClient::connect(stream).unwrap();
         client.set_sftp_password("files.example.test", 2222, "alice", "not-a-real-secret").unwrap();
         client.remove_sftp_password("files.example.test", 2222, "alice").unwrap();
+        client.set_ftps_password("files.example.test", 2121, "alice", "not-a-real-secret").unwrap();
+        client.remove_ftps_password("files.example.test", 2121, "alice").unwrap();
         server.join().unwrap();
     }
 
