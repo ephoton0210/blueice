@@ -427,7 +427,11 @@ impl JavaScriptPageExecutor {
                 }
             };
             let document_text = page.script_document_text_content();
-            if self.validate_document_text(&document_text).is_err() {
+            if self.validate_document_text(&document_text).is_err()
+                || self
+                    .validate_document_origin(identity.origin.as_str())
+                    .is_err()
+            {
                 self.close_page(tab_id);
                 for declaration in declarations {
                     self.reject_declaration(
@@ -501,6 +505,7 @@ impl JavaScriptPageExecutor {
         identity: LivePageIdentity,
         document_text: String,
     ) -> Result<(), JavaScriptPageExecutorError> {
+        let document_origin = identity.origin.as_str().to_string();
         match self.live_documents.get(&tab_id) {
             Some(current) if current == &identity => {}
             Some(_) => self
@@ -514,6 +519,14 @@ impl JavaScriptPageExecutor {
         }
         self.runtime
             .configure_realm_bindings(tab_id.as_u64(), move |bindings| {
+                bindings.install_global_function(
+                    "blueiceDocumentOrigin",
+                    0,
+                    move |arguments: &[HostValue]| {
+                        require_no_arguments(arguments, "blueiceDocumentOrigin")?;
+                        Ok(HostValue::String(document_origin.clone().into()))
+                    },
+                )?;
                 bindings.install_global_function(
                     "blueiceDocumentText",
                     0,
@@ -534,6 +547,16 @@ impl JavaScriptPageExecutor {
             .validate_string(
                 document_text,
                 self.config.binding_contract_limits.document_text,
+            )
+            .map_err(|_| ())
+    }
+
+    fn validate_document_origin(&self, document_origin: &str) -> Result<(), ()> {
+        core_script_binding_contract("dom.document-origin")
+            .expect("the installed document-origin binding has a contract inventory entry")
+            .validate_string(
+                document_origin,
+                self.config.binding_contract_limits.document_origin,
             )
             .map_err(|_| ())
     }
@@ -992,6 +1015,36 @@ mod tests {
                 "<main>current document</main>",
                 "<script>const text = blueiceDocumentText(); text;</script>",
                 "<script>blueiceDocumentText(1);</script>"
+            ),
+            "https://example.test/app/index.html",
+        );
+        let mut executor = JavaScriptPageExecutor::default();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert!(matches!(
+            reports(&mut executor, tab_id).as_slice(),
+            [
+                JavaScriptPageExecutionReport::Executed {
+                    kind: BlueJsPageScriptKind::Classic,
+                    ..
+                },
+                JavaScriptPageExecutionReport::Rejected {
+                    category: "BlueJS page execution failed",
+                    ..
+                }
+            ]
+        ));
+    }
+
+    #[test]
+    fn copied_document_origin_binding_executes_and_rejects_arguments() {
+        let (tabs, tab_id) = loaded_tabs(
+            concat!(
+                "<main>current document</main>",
+                "<script>if (blueiceDocumentOrigin() !== ",
+                "'https://example.test') { throw 'unexpected origin'; }</script>",
+                "<script>blueiceDocumentOrigin(1);</script>"
             ),
             "https://example.test/app/index.html",
         );

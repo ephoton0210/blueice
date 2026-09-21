@@ -677,7 +677,7 @@ fn real_subprocess_executes_opted_in_standard_javascript_and_reports_source_free
         let _ = stream.read(&mut buf);
         let body = concat!(
             "<main>inline JavaScript process proof</main>",
-            "<script>const documentText = blueiceDocumentText(); documentText;</script>",
+            "<script>blueiceDocumentText(); blueiceDocumentOrigin();</script>",
             "<script type=\"module\">export const moduleAnswer = 43;</script>",
             "<script>const = malformed;</script>"
         );

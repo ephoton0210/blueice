@@ -118,7 +118,7 @@ or second module resolver to bypass them.
   that a parse rejection is redacted. A fixed one-byte bytecode realm budget
   unit fixture proves a compilation rejection retains neither a partial
   program nor a bytecode charge. This is an in-process,
-  no-general-DOM-object/event-binding
+  no-general-DOM-object-or-event-binding
   foundation: no launcher-managed/out-of-process BlueJS process, production
   fetch/cache/integrity authorizer, shared JavaScript/BlueTS realm, host-wide
   memory accounting, or general JavaScript DOM-object/event binding is
@@ -178,17 +178,19 @@ or second module resolver to bypass them.
   `core-script-empty-v1` fail with `UnknownName` before VM admission; a raw
   BlueJS realm with no registration rejects either global with `ReferenceError`.
   The declared profile also rejects an incorrect argument count statically.
-  The bounded standard-JavaScript executor now installs that same exact
-  `dom.document-text` binding in every successfully admitted realm without
-  exposing a `document` object. It validates the copied recursive text against
-  the identical core-selected reifiable string contract before the realm is
-  opened, then installs only a zero-argument realm-local callback that captures
-  the validated snapshot. A classic JavaScript page-level test proves a normal
-  call executes while a supplied argument becomes a host-controlled runtime
-  failure; an oversized copied document fails before a JavaScript program or
-  realm is retained. The `--inline-bluejs` subprocess fixture now invokes the
-  binding through ordinary HTML script execution. This remains one immutable
-  primitive snapshot, not a general DOM object, node handle, event, mutation,
+  The bounded standard-JavaScript executor now installs those same exact
+  `dom.document-text` and `dom.document-origin` bindings in every successfully
+  admitted realm without exposing a `document` object. Before opening a realm,
+  it validates the copied recursive text and core-derived canonical tuple origin
+  against their identical core-selected reifiable string contracts; it then
+  installs only zero-argument realm-local callbacks that capture those validated
+  snapshots. A classic JavaScript page-level test proves the canonical origin
+  value is returned and that a supplied argument becomes a host-controlled
+  runtime failure; an oversized copied document fails before a JavaScript
+  program or realm is retained. The `--inline-bluejs` subprocess fixture now
+  invokes both bindings through ordinary HTML script execution. These remain
+  immutable primitive snapshots, not a general DOM object, node handle, event,
+  mutation,
   network, storage, or URL API.
   The first bindings do not yet satisfy the full DOM/event surface, so this
   item remains open.
@@ -478,9 +480,9 @@ or second module resolver to bypass them.
   `core-script-document-origin-result-v1`. Both are `dom-read`, return one
   copied primitive string snapshot, accept no data from script, and have no
   source span because they are core-created host values rather than lowered
-  TypeScript calls. `dom.document-text` is installed by both the verified
-  direct BlueTS host and the bounded standard-JavaScript executor;
-  `dom.document-origin` remains direct-host-only. The catalog exposes their stable runtime binding IDs,
+  TypeScript calls. Both bindings are installed by the verified direct BlueTS
+  host and the bounded standard-JavaScript executor. The catalog exposes their
+  stable runtime binding IDs,
   direction, capability, contract IDs, and independent validation limits. It
   explicitly contains no speculative JSON, Fetch/XHR, URL/query, storage,
   messaging, foreign-module, extension, or DOM-object boundary.
@@ -497,16 +499,17 @@ or second module resolver to bypass them.
   tab and include the lowered behavior in the gatekeeper summary.
 
   Foundation delivered: before a document-text or document-origin snapshot can
-  be captured in a direct realm callback, or document text in the bounded
-  JavaScript executor, the core constructs its exact
+  be captured in a direct realm callback, or either immutable snapshot in the
+  bounded JavaScript executor, the core constructs its exact
   reifiable string `ContractPlan` and validates the copied value with
   core-selected `ValidationLimits`. The default text budget is the validator's
   one-mebibyte string limit and the canonical-origin budget is 4 KiB; a page
   request cannot loosen either. A violation rejects profile installation before
   BlueTS/BlueJS program admission, retains no program/bytecode/debug record,
   and becomes a source-free inline-executor result. The JavaScript executor
-  likewise rejects an oversized copied document before opening a realm or
-  admitting any script. This covers only immutable primitive host results; it
+  likewise validates both snapshots before opening a realm or admitting any
+  script, and rejects an oversized copied document. This covers only immutable
+  primitive host results; it
   does not yet provide declared boundary source
   spans, strict-runtime coverage checks, validator/cache/debug allocation
   attribution, diagnostics retention, gatekeeper summaries, or any mutable or
