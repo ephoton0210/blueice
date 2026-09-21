@@ -91,3 +91,47 @@ fn iterator_from_keeps_a_freshly_read_next_method_alive_until_the_wrapper_exists
          first.value === 7 && second.done === false",
     );
 }
+
+/// A Proxy whose target is itself a Proxy: validating a trap's result against
+/// the target's invariants runs the inner Proxy's traps, which are user code
+/// that allocates. The outer trap's fresh result object must survive that.
+const NESTED_PROXY_TARGET: &str = "\
+    function inner(handler) { return new Proxy({}, handler); }\
+    function churn() { (() => 1)(); return [{}, []]; }\
+    var allocating = {\
+      getOwnPropertyDescriptor(t, k) { churn(); return undefined; },\
+      isExtensible(t) { churn(); return Reflect.isExtensible(t); },\
+      getPrototypeOf(t) { churn(); return Reflect.getPrototypeOf(t); }\
+    };";
+
+#[test]
+fn proxy_get_keeps_the_trap_result_alive_while_the_target_is_checked() {
+    gc_stress_matches_ordinary(&format!(
+        "{NESTED_PROXY_TARGET}\
+         var outer = new Proxy(inner(allocating), {{ get(t, k) {{ return {{tag: k}}; }} }});\
+         outer.x.tag === 'x'"
+    ));
+}
+
+#[test]
+fn proxy_get_own_property_keeps_the_trap_result_alive_while_the_target_is_checked() {
+    gc_stress_matches_ordinary(&format!(
+        "{NESTED_PROXY_TARGET}\
+         var outer = new Proxy(inner(allocating), {{\
+           getOwnPropertyDescriptor(t, k) {{\
+             return {{value: 1, writable: true, enumerable: true, configurable: true}};\
+           }}\
+         }});\
+         var descriptor = Object.getOwnPropertyDescriptor(outer, 'x');\
+         descriptor.value === 1 && descriptor.configurable === true"
+    ));
+}
+
+#[test]
+fn proxy_get_prototype_keeps_the_trap_result_alive_while_the_target_is_checked() {
+    gc_stress_matches_ordinary(&format!(
+        "{NESTED_PROXY_TARGET}\
+         var outer = new Proxy(inner(allocating), {{ getPrototypeOf(t) {{ return {{tag: 'proto'}}; }} }});\
+         Object.getPrototypeOf(outer).tag === 'proto'"
+    ));
+}
