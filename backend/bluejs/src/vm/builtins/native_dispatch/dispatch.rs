@@ -969,7 +969,7 @@ impl Vm {
             }
             NativeFunction::ArrayOf => self.array_of_method(&receiver, &args),
             NativeFunction::ArraySpecies => Ok(receiver),
-            NativeFunction::ArrayFrom => self.array_from_method(&args),
+            NativeFunction::ArrayFrom => self.array_from_method(&receiver, &args),
             NativeFunction::ArrayForEach => {
                 self.array_for_each(&receiver, first, native::argument(&args, 1))
             }

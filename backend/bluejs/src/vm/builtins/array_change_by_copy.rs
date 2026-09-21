@@ -39,7 +39,10 @@ pub(in super::super) const ARRAY_UNSCOPABLES: [&str; 16] = [
 
 impl Vm {
     /// `ArrayCreate(length)` with the current Realm's `%Array.prototype%`.
-    fn array_create_exact(&mut self, length: f64) -> Result<ObjectId, RuntimeError> {
+    pub(in super::super) fn array_create_exact(
+        &mut self,
+        length: f64,
+    ) -> Result<ObjectId, RuntimeError> {
         if length > MAX_ARRAY_LENGTH {
             return Err(RuntimeError::RangeError("invalid Array length".into()));
         }

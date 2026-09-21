@@ -147,10 +147,17 @@ impl Vm {
         result
     }
 
+    /// `Array.from(items, mapfn, thisArg)` with `this` as the constructor `C`
+    /// (`Array.from` step 1). The iterator method is read before `C` is
+    /// constructed, elements are defined with `CreateDataPropertyOrThrow`, and
+    /// `length` is set at the end. A non-constructor `this` builds a plain
+    /// Array, exactly as `Array.of` does.
     pub(in super::super) fn array_from_method(
         &mut self,
+        receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
+        const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
         let source = native::argument(args, 0).clone();
         if matches!(source, Value::Null | Value::Undefined) {
             return Err(RuntimeError::TypeError(
@@ -165,6 +172,7 @@ impl Vm {
         }
         let this_arg = native::argument(args, 2).clone();
         let base = self.stack.len();
+        self.stack.push(receiver.clone());
         self.stack.push(source.clone());
         if mapper != Value::Undefined {
             self.stack.push(mapper.clone());
@@ -172,6 +180,7 @@ impl Vm {
         }
         let result = (|| {
             let iterator = self.get_method(&source, &JsSymbol::well_known("iterator").into())?;
+            let constructor = self.is_constructor(receiver)?;
             if iterator == Value::Undefined {
                 // Each element is read, mapped and stored before the next
                 // one is read (spec order), so a mapper result is reachable
@@ -181,11 +190,11 @@ impl Vm {
                 let object_value = Value::Object(object);
                 self.stack.push(object_value.clone());
                 let length = self.get_property(&object_value, &"length".into())?;
-                let length = self.coerce_length(&length)? as u64;
-                let array = self.array_from(Vec::new())?;
-                self.stack.push(array.clone());
+                let length = self.coerce_length(&length)?;
+                let target = self.array_from_target(receiver, constructor, Some(length))?;
+                self.stack.push(Value::Object(target));
                 let mark = self.stack.len();
-                for index in 0..length {
+                for index in 0..length as u64 {
                     self.charge_step()?;
                     let value = self.get_property(&object_value, &index.to_string().into())?;
                     let value = if mapper == Value::Undefined {
@@ -200,10 +209,15 @@ impl Vm {
                         )?
                     };
                     self.stack.push(value.clone());
-                    self.array_push(&array, &value, 0)?;
+                    self.array_create_data_property_or_throw(
+                        target,
+                        index.to_string().into(),
+                        value,
+                    )?;
                     self.stack.truncate(mark);
                 }
-                return Ok(array);
+                self.array_set_or_throw(target, "length".into(), &Value::Number(length))?;
+                return Ok(Value::Object(target));
             }
 
             // Array.from maps one iterator value at a time. Collecting the
@@ -211,16 +225,26 @@ impl Vm {
             // budget before an abrupt mapper can close it, which is both
             // observably wrong and turns finite conformance checks into
             // timeouts.
+            let target = self.array_from_target(receiver, constructor, None)?;
+            self.stack.push(Value::Object(target));
             let record = self.get_iterator_from_method(&source, iterator)?;
             self.stack.push(record.clone());
-            let array = self.array_from(Vec::new())?;
-            self.stack.push(array.clone());
             let outcome = (|| {
-                let mut index = 0usize;
-                while let Some(value) = self.iterator_step(&record, true)? {
+                let mut index = 0u64;
+                loop {
+                    if index >= MAX_SAFE_INTEGER {
+                        return Err(RuntimeError::TypeError(
+                            "Array.from result length is too large".into(),
+                        ));
+                    }
+                    let Some(value) = self.iterator_step(&record, true)? else {
+                        break;
+                    };
+                    let mark = self.stack.len();
                     let value = if mapper == Value::Undefined {
                         value
                     } else {
+                        self.stack.push(value.clone());
                         self.call_native(
                             mapper.clone(),
                             this_arg.clone(),
@@ -228,12 +252,17 @@ impl Vm {
                             false,
                         )?
                     };
-                    self.array_push(&array, &value, 0)?;
-                    index = index.checked_add(1).ok_or(RuntimeError::RangeError(
-                        "Array.from result length is too large".into(),
-                    ))?;
+                    self.stack.push(value.clone());
+                    self.array_create_data_property_or_throw(
+                        target,
+                        index.to_string().into(),
+                        value,
+                    )?;
+                    self.stack.truncate(mark);
+                    index += 1;
                 }
-                Ok(array)
+                self.array_set_or_throw(target, "length".into(), &Value::Number(index as f64))?;
+                Ok(Value::Object(target))
             })();
             if outcome.is_err() {
                 // IteratorClose retains an existing abrupt completion. The
@@ -241,6 +270,9 @@ impl Vm {
                 // failure, so close only for its required side effect here.
                 // The thrown value is only reachable from `outcome`, and
                 // return() runs user code that can allocate and collect.
+                // A finished or failed iterator is already marked done, which
+                // makes the close a no-op (spec: no close after IteratorStep
+                // or the final length Set fails).
                 let error_base = self.stack.len();
                 if let Err(RuntimeError::Thrown(value)) = &outcome {
                     self.stack.push(value.clone());
@@ -252,6 +284,32 @@ impl Vm {
         })();
         self.stack.truncate(base);
         result
+    }
+
+    /// The result object of `Array.from`: `Construct(C)` (or `Construct(C,
+    /// «len»)` for an array-like) when `this` is a constructor, otherwise a
+    /// plain Array of the current Realm.
+    fn array_from_target(
+        &mut self,
+        receiver: &Value,
+        constructor: bool,
+        length: Option<f64>,
+    ) -> Result<ObjectId, RuntimeError> {
+        if !constructor {
+            return self.array_create_exact(length.unwrap_or(0.0));
+        }
+        let args = length.map(Value::Number).into_iter().collect();
+        self.call_with_target(
+            receiver.clone(),
+            Value::Undefined,
+            args,
+            true,
+            receiver.clone(),
+        )?
+        .object_id()
+        .ok_or_else(|| {
+            RuntimeError::TypeError("Array.from constructor returned a primitive".into())
+        })
     }
 
     pub(in super::super) fn array_of_method(
