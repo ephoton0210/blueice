@@ -63,10 +63,14 @@ or second module resolver to bypass them.
   dispatch without exposing a cross-thread DOM reference. The launcher-managed
   out-of-process BlueJS host, JavaScript DOM bindings, and host-wide
   source-fetch/cache accounting are still absent, so this prerequisite remains
-  open. The in-process direct host now exposes only its live realm's per-tab
+  open. A core owner can now construct the in-process direct host with a
+  caller-selected `DirectPageRealmOwner`, whose validated VM, realm,
+  program-count, bytecode, and static-debug retention limits apply before a
+  direct program executes. The host exposes only its live realm's per-tab
   program count, retained root-bytecode charge, and VM heap statistics;
   navigation/close releases old-realm charges before a successor is observed.
-  This is not a substitute for the process host's overall resource policy.
+  This remains a per-host in-process policy, not a substitute for the process
+  host's overall resource policy.
 
   Acceptance: a page fixture can run a supported JavaScript classic script and
   module in its own realm; navigation/reload invalidates old program handles;

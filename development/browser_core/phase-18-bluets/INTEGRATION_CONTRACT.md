@@ -89,7 +89,11 @@ the optional
 `run_session_with_script_requests_and_direct_page_host` entry point invokes it
 after each session batch. The default session and production binary do not yet
 construct a host, so this is not a claim of automatic HTML page-script
-execution or launcher-managed process wiring.
+execution or launcher-managed process wiring. A core owner may construct the
+host with a previously validated `DirectPageRealmOwner`; its VM, realm,
+program-count, bytecode, and static-debug retention limits are then fixed
+outside each script request. An over-budget attachment is rejected before
+execution and leaves no retained direct program or static debug record.
 
 The parsed core `Page` exposes `BlueTsPageScriptDeclaration` values in document
 order for exactly `application/x-blueice-typescript` (classic) and

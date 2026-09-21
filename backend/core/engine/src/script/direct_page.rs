@@ -84,9 +84,20 @@ struct LivePageIdentity {
 
 impl DirectPageScriptHost {
     pub fn new(profiles: HostTypeSurfaceCatalogV1) -> Self {
+        Self::with_realm_owner(profiles, DirectPageRealmOwner::default())
+    }
+
+    /// Creates a direct-page host with caller-selected, already validated
+    /// BlueJS realm and static-debug retention limits. This lets the core
+    /// process own its page-script resource policy without exposing a VM or
+    /// permitting a script request to change those limits.
+    pub fn with_realm_owner(
+        profiles: HostTypeSurfaceCatalogV1,
+        realms: DirectPageRealmOwner,
+    ) -> Self {
         Self {
             profiles,
-            realms: DirectPageRealmOwner::default(),
+            realms,
             live_documents: BTreeMap::new(),
             bound_profiles: BTreeMap::new(),
         }
@@ -593,6 +604,44 @@ mod tests {
         assert_eq!(stats.tab_id, tab_id.as_u64());
         assert_eq!(stats.program_count, 1);
         assert!(stats.bytecode_bytes > 0);
+    }
+
+    #[test]
+    fn configured_bytecode_limit_rejects_before_direct_page_execution() {
+        let profiles = catalog();
+        let artifact = profiles.generate("test-empty-v1").unwrap();
+        let loader = AuthorizedModuleLoader::new(
+            [AuthorizedModule::new(
+                "page:///app/main.ts",
+                "const answer: number = 42; answer;",
+            )],
+            [],
+        )
+        .unwrap();
+        let (tabs, tab_id) = loaded_tabs();
+        let realms = DirectPageRealmOwner::new(
+            blueice_bluejs::BlueJsPageRuntimeConfig {
+                max_bytecode_bytes_per_realm: 1,
+                ..blueice_bluejs::BlueJsPageRuntimeConfig::default()
+            },
+            blueice_bluets_bluejs::DirectDebugRetentionLimits::default(),
+        )
+        .unwrap();
+        let mut host = DirectPageScriptHost::with_realm_owner(profiles, realms);
+
+        assert!(matches!(
+            host.execute(&tabs, request(tab_id, &loader, &artifact)),
+            Err(DirectPageScriptError::Bridge(BridgeError::PageRuntime(
+                blueice_bluejs::BlueJsPageRuntimeError::BytecodeLimit {
+                    tab_id: failed_tab,
+                    limit: 1,
+                }
+            ))) if failed_tab == tab_id.as_u64()
+        ));
+        assert_eq!(host.debug_record_count(), 0);
+        let stats = host.realm_stats(tab_id).unwrap();
+        assert_eq!(stats.program_count, 0);
+        assert_eq!(stats.bytecode_bytes, 0);
     }
 
     #[test]
