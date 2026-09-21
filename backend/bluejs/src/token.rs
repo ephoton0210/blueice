@@ -282,9 +282,9 @@ impl Tokenizer {
         loop {
             let c = self
                 .advance()
-                .ok_or_else(|| LexError::new("unterminated RegExp literal"))?;
+                .ok_or_else(|| LexError::syntax("unterminated RegExp literal"))?;
             if is_line_terminator(c) {
-                return Err(LexError::new("line terminator in RegExp literal"));
+                return Err(LexError::syntax("line terminator in RegExp literal"));
             }
             if c == '/' && !class {
                 break;
@@ -293,9 +293,9 @@ impl Tokenizer {
             if c == '\\' {
                 let escaped = self
                     .advance()
-                    .ok_or_else(|| LexError::new("unterminated RegExp escape"))?;
+                    .ok_or_else(|| LexError::syntax("unterminated RegExp escape"))?;
                 if is_line_terminator(escaped) {
-                    return Err(LexError::new("line terminator in RegExp escape"));
+                    return Err(LexError::syntax("line terminator in RegExp escape"));
                 }
                 pattern.push_code_point(escaped as u32);
             } else if c == '[' {

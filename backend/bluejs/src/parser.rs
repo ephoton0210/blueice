@@ -509,8 +509,13 @@ impl Parser {
         }
     }
 
+    /// A token the grammar cannot accept at this point. Every production the
+    /// parser implements is complete for its goal, so a token that fails to
+    /// match a mandatory position is a specified SyntaxError. Only a lexical
+    /// placeholder for a construct this engine does not scan (see
+    /// `Token::Invalid`) stays unclassified, because the source may be valid.
     fn error(&self, message: impl Into<String>) -> ParseError {
-        let known_syntax = matches!(self.peek(), Token::Invalid(message) if !message.contains("not supported") && !message.contains("unexpected character '#'"));
+        let known_syntax = !matches!(self.peek(), Token::Invalid(message) if message.contains("not supported") || message.contains("unexpected character '#'"));
         ParseError {
             message: format!("{} (found {:?})", message.into(), self.peek()),
             resource: None,
