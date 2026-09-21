@@ -522,13 +522,35 @@ impl Vm {
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
         let _guard = register_active(self);
-        let wrapped_this = other.shadow_wrap_into(&mut *self, this_arg)?;
-        let mut wrapped_args = Vec::with_capacity(args.len());
-        for arg in args {
-            wrapped_args.push(other.shadow_wrap_into(&mut *self, arg)?);
-        }
-        other.remaining_instructions = other.config.instruction_budget;
-        let result = other.call_native(Value::Object(target), wrapped_this, wrapped_args, false);
+        // Each facade is a fresh object of `other`'s heap that nothing there
+        // references yet, and building the next one allocates (and may
+        // collect) in that same heap: keep every finished facade on `other`'s
+        // operand stack, a GC root, until the call has pushed its own frame.
+        let base = other.stack.len();
+        let wrapped = (|| {
+            let wrapped_this = other.shadow_wrap_into(&mut *self, this_arg)?;
+            other.stack.push(wrapped_this.clone());
+            let mut wrapped_args = Vec::with_capacity(args.len());
+            for arg in args {
+                let wrapped_arg = other.shadow_wrap_into(&mut *self, arg)?;
+                other.stack.push(wrapped_arg.clone());
+                wrapped_args.push(wrapped_arg);
+            }
+            Ok::<_, RuntimeError>((wrapped_this, wrapped_args))
+        })();
+        let result = match wrapped {
+            Ok((wrapped_this, wrapped_args)) => {
+                other.remaining_instructions = other.config.instruction_budget;
+                let result =
+                    other.call_native(Value::Object(target), wrapped_this, wrapped_args, false);
+                other.stack.truncate(base);
+                result
+            }
+            Err(error) => {
+                other.stack.truncate(base);
+                return Err(error);
+            }
+        };
         match result {
             Ok(value) => self.shadow_wrap_into(other, value),
             Err(_) => Err(RuntimeError::TypeError(String::new())),

@@ -11,7 +11,9 @@
 //! `development/browser_core/phase-13-bluejs-engine/ECMASCRIPT_2026.md` --
 //! implemented here per an explicit request regardless of that status.
 
-use blueice_bluejs::{compile, compile_module, parse, parse_module, RuntimeError, Value, Vm};
+use blueice_bluejs::{
+    compile, compile_module, parse, parse_module, RuntimeError, Value, Vm, VmConfig,
+};
 use std::collections::HashMap;
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
@@ -155,6 +157,27 @@ fn multiple_shadow_realms_can_exchange_wrapped_functions_across_a_gc_boundary() 
            return r2wrapped() === 1 && rewrapped() === 2 \
              && realm1.evaluate('globalThis.count') === 2; \
          })()",
+    );
+}
+
+#[test]
+fn wrapped_arguments_survive_collection_in_the_target_realm_until_the_call() {
+    // Every argument (and `this`) becomes a fresh facade allocated in the
+    // *target* realm before the call starts; with a one-object nursery each
+    // allocation collects there, so an earlier facade held only by a Rust
+    // local would be reclaimed while the next one is built.
+    let mut config = VmConfig::default();
+    config.heap.nursery_capacity = 1;
+    let mut vm = Vm::new(config).unwrap();
+    let source = "(() => { \
+        const r = new ShadowRealm(); \
+        const f = r.evaluate('(a, b, c) => typeof a + typeof b + typeof c + (a === b) + (a.x === undefined)'); \
+        return f(() => 1, () => 2, () => 3) === 'functionfunctionfunctionfalsetrue'; \
+    })()";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
     );
 }
 
