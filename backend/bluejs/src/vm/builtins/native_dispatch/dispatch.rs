@@ -1593,31 +1593,26 @@ impl Vm {
                     Value::BigInt(_) => "Object",
                     Value::Bool(_) => "Boolean",
                     Value::Object(id) => {
-                        // IsArray walks Proxy targets and throws for a
-                        // revoked Proxy before Object.prototype.toString
-                        // observes @@toStringTag.  The rest of BlueJS's
-                        // object brands remain heap-owned, so unwrap only
-                        // for this internal-slot inspection while retaining
-                        // the original receiver for the later Get.
-                        let mut branded = *id;
-                        while let Some((target, _)) = self.heap.proxy(branded)? {
-                            branded = target;
-                        }
-                        if self.heap.boxed_string(branded)?.is_some() {
-                            "String"
-                        } else if self.heap.is_array(branded)? {
+                        // Only IsArray looks through a Proxy (and throws for a
+                        // revoked one). Every other brand is an internal slot,
+                        // which a Proxy does not have, so `id` itself is
+                        // inspected and a Proxy is callable or plain.
+                        let id = *id;
+                        if self.is_array(&receiver)? {
                             "Array"
-                        } else if self.heap.is_arguments(branded)? {
+                        } else if self.heap.boxed_string(id)?.is_some() {
+                            "String"
+                        } else if self.heap.is_arguments(id)? {
                             "Arguments"
-                        } else if self.heap.is_date(branded)? {
+                        } else if self.heap.is_date(id)? {
                             "Date"
                         } else if self.is_callable(&receiver)? {
                             "Function"
-                        } else if self.heap.regexp(branded)?.is_some() {
+                        } else if self.heap.regexp(id)?.is_some() {
                             "RegExp"
-                        } else if self.heap.is_error(branded)? {
+                        } else if self.heap.is_error(id)? {
                             "Error"
-                        } else if let Some(value) = self.heap.boxed_primitive(branded)? {
+                        } else if let Some(value) = self.heap.boxed_primitive(id)? {
                             match value {
                                 Value::Number(_) => "Number",
                                 Value::Bool(_) => "Boolean",

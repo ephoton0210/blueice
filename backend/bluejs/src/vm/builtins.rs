@@ -6,6 +6,7 @@ use super::*;
 
 mod array_change_by_copy;
 mod array_from_async;
+mod array_scan;
 mod arrays;
 mod binary_data;
 mod collection_iteration;
@@ -48,15 +49,6 @@ pub(super) struct ClosureCall {
     pub construct: bool,
     pub home: Option<ObjectId>,
     pub class_base: Option<Value>,
-}
-
-fn array_index_below_length(key: &PropertyName, length: u64) -> Option<u32> {
-    let PropertyName::String(name) = key else {
-        return None;
-    };
-    let name = name.to_utf8().ok()?;
-    let index = name.parse::<u32>().ok()?;
-    (name == index.to_string() && u64::from(index) < length).then_some(index)
 }
 
 fn same_value_zero(left: &Value, right: &Value) -> bool {

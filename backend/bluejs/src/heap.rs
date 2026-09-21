@@ -1564,6 +1564,11 @@ pub struct Heap {
     minor_collections: u64,
     major_collections: u64,
     root_registrations: u64,
+    /// Advances whenever any object gains or loses an own property key or
+    /// changes its `[[Prototype]]`, the only ways the set of keys a property
+    /// lookup can find changes. Native loops that skip absent indices compare
+    /// it after each call into user code to know their skip list went stale.
+    structure_epoch: u64,
 }
 
 impl Default for Heap {
