@@ -1167,6 +1167,10 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        // As for `Global`: the realm global object must exist
+                        // before a lazily-materialized standard global can be
+                        // found on it.
+                        self.global("globalThis")?;
                         let value = self.lookup_global_name(&name)?;
                         if instruction.opcode == Opcode::TypeofName {
                             let value = value.unwrap_or(Value::Undefined);
@@ -1189,8 +1193,13 @@ impl Vm {
                             let global = self.global("globalThis")?;
                             let global_id = global.object_id().expect("globalThis is an object");
                             let key: PropertyName = name.as_str().into();
-                            if code.strict && !self.has_property(global_id, &key)? {
-                                return Err(RuntimeError::ReferenceError(name));
+                            if code.strict {
+                                // A standard global that nothing has read yet
+                                // is still an existing property.
+                                self.materialize_global_object_property(global_id, &key)?;
+                                if !self.has_property(global_id, &key)? {
+                                    return Err(RuntimeError::ReferenceError(name));
+                                }
                             }
                             self.set_property(&global, &key, &value)?;
                         }
