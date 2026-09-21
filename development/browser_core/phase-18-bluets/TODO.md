@@ -210,15 +210,22 @@ or second module resolver to bypass them.
   artifact itself, rejects `transpile-only` and caller-supplied ambient
   declarations, and runs each document's inline opted-in declarations once in
   document order after session lifecycle batches. Each declaration has an
-  independent result; an external `src` is reported as a bounded source-free
-  rejection and later declarations still run. The explicit
+  independent result; without further authority, an external `src` is reported
+  as a bounded source-free rejection and later declarations still run.
+  `PageScriptSourceAuthorizer` is now the sole core-owned opt-in source seam:
+  it receives a tab/document/ordinal plus raw document URL and `src`, and can
+  return one already-authorized closed graph with a canonical entry and
+  non-empty resolver fingerprint. The executor copies that exact fingerprint
+  into compiler options and never fetches, resolves, or falls back on its own.
+  Unit and real-session HTTP fixtures cover an authorized external ESM graph
+  with a dependency. The explicit
   `run_session_with_script_requests_and_inline_page_executor` entry point has a
   regression fixture that fetches a real HTTP page through the normal core
   session pipeline and executes both an inline classic and inline module
   declaration. The default `run_session` and `blueice-core` still do not enable
-  it, and no DOM bindings, external source/resolver transport, authorized ESM
-  graph, or launcher-managed BlueJS process exists. The prerequisite
-  consequently remains open.
+  it, and no DOM bindings, concrete fetch/cache/integrity implementation,
+  launcher-managed BlueJS process, or general external graph policy exists.
+  The prerequisite consequently remains open.
 
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering

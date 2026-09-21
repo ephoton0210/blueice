@@ -119,13 +119,24 @@ artifact itself and rejects caller-supplied ambient declarations and
 `transpile-only`. At each session lifecycle observation it synchronizes prior
 realms, then runs a document's inline opted-in declarations at most once in
 document order. A rejection of one declaration MUST NOT prevent a later
-declaration from being considered. External declarations produce a bounded,
-source-free rejection report and MUST NOT fetch, resolve, or reflect their
-page-controlled `src`. Reports contain neither source text nor a BlueJS runtime
-value. `run_session_with_script_requests_and_inline_page_executor` is an
-explicit opt-in; `run_session` and the production core binary do not construct
-an executor. This does not authorize external graph loading, DOM bindings,
-debugger transport, or an out-of-process BlueJS host.
+declaration from being considered. By default, external declarations produce a
+bounded, source-free rejection report and MUST NOT fetch, resolve, or reflect
+their page-controlled `src`.
+
+`PageScriptSourceAuthorizer` is the only exception for an external declaration.
+It is core-owned and receives the document/tab/generation/ordinal context plus
+the raw page URL and `src`; before returning, it MUST apply its own origin,
+policy, integrity, fetch/cache, and resource rules. It returns an
+`AuthorizedPageScriptGraph` containing a closed `AuthorizedModuleLoader`, one
+canonical entry ID, and a non-empty resolver fingerprint. The executor passes
+only those records to direct admission and overwrites its compiler resolver
+fingerprint with the supplied value; it performs no URL resolution, fetch, or
+fallback lookup. Authorizer failures remain source-free in execution reports.
+Reports contain neither source text nor a BlueJS runtime value.
+`run_session_with_script_requests_and_inline_page_executor` is an explicit
+opt-in; `run_session` and the production core binary do not construct an
+executor. This seam does not implement a real fetch/cache/integrity provider,
+DOM bindings, debugger transport, or an out-of-process BlueJS host.
 
 One page realm owns at most one live or previously linked program for each
 canonical ESM module ID. BlueJS retains module cells by that ID, so a second

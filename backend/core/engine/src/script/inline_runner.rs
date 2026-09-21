@@ -8,15 +8,17 @@
 //! It observes parsed, opt-in declarations on a live [`crate::Page`], uses
 //! the selected host profile that it generated itself, and executes each
 //! inline declaration at most once for a tab/document generation. External
-//! declarations remain rejected until an authorized source/resolver transport
-//! exists. The default session loop does not construct this type.
+//! declarations remain rejected unless a core-owned source authorizer supplies
+//! their complete closed graph. The default session loop does not construct
+//! this type.
 
 use super::{
     direct_page::{
         DirectInlinePageScriptRequest, DirectPageScriptError, DirectPageScriptHost,
-        DirectPageScriptKind,
+        DirectPageScriptKind, DirectPageScriptRequest,
     },
     host_typings::{GeneratedHostTypingsV1, HostTypeSurfaceCatalogV1, HostTypingsError},
+    page_source_authorizer::{PageScriptSourceAuthorizer, PageScriptSourceRequest},
     BlueTsPageScriptDeclaration,
 };
 use crate::{TabId, TabManager};
@@ -60,6 +62,7 @@ pub struct DirectPageInlineExecutor {
     compiler_options: CompilerOptions,
     feature_profile: String,
     generated_typings: GeneratedHostTypingsV1,
+    external_source_authorizer: Option<Box<dyn PageScriptSourceAuthorizer>>,
     observed_documents: BTreeMap<TabId, u64>,
     reports: VecDeque<DirectPageScriptExecutionReport>,
 }
@@ -71,6 +74,32 @@ impl DirectPageInlineExecutor {
         profiles: HostTypeSurfaceCatalogV1,
         feature_profile: impl Into<String>,
         compiler_options: CompilerOptions,
+    ) -> Result<Self, DirectPageInlineExecutorError> {
+        Self::new_with_external_source_authorizer(profiles, feature_profile, compiler_options, None)
+    }
+
+    /// Creates an opt-in runner whose external declarations can be resolved
+    /// only by this core-owned authorizer. The executor itself neither fetches
+    /// a URL nor derives an import edge from page text.
+    pub fn with_external_source_authorizer(
+        profiles: HostTypeSurfaceCatalogV1,
+        feature_profile: impl Into<String>,
+        compiler_options: CompilerOptions,
+        authorizer: impl PageScriptSourceAuthorizer + 'static,
+    ) -> Result<Self, DirectPageInlineExecutorError> {
+        Self::new_with_external_source_authorizer(
+            profiles,
+            feature_profile,
+            compiler_options,
+            Some(Box::new(authorizer)),
+        )
+    }
+
+    fn new_with_external_source_authorizer(
+        profiles: HostTypeSurfaceCatalogV1,
+        feature_profile: impl Into<String>,
+        compiler_options: CompilerOptions,
+        external_source_authorizer: Option<Box<dyn PageScriptSourceAuthorizer>>,
     ) -> Result<Self, DirectPageInlineExecutorError> {
         if !compiler_options.ambient_declaration_modules.is_empty() {
             return Err(DirectPageInlineExecutorError::CallerSuppliedAmbientDeclarations);
@@ -90,6 +119,7 @@ impl DirectPageInlineExecutor {
             compiler_options,
             feature_profile,
             generated_typings,
+            external_source_authorizer,
             observed_documents: BTreeMap::new(),
             reports: VecDeque::new(),
         })
@@ -120,11 +150,18 @@ impl DirectPageInlineExecutor {
                 continue;
             }
             let declarations = page.blue_ts_script_declarations();
+            let document_url = page.url().map(str::to_string);
             // Mark before execution, so a rejected document cannot be retried
             // on every unrelated frontend/session event.
             self.observed_documents.insert(tab_id, document_generation);
             for declaration in declarations {
-                self.execute_declaration(tabs, tab_id, document_generation, declaration);
+                self.execute_declaration(
+                    tabs,
+                    tab_id,
+                    document_generation,
+                    document_url.as_deref(),
+                    declaration,
+                );
             }
         }
         Ok(())
@@ -152,23 +189,36 @@ impl DirectPageInlineExecutor {
         tabs: &TabManager,
         tab_id: TabId,
         document_generation: u64,
+        document_url: Option<&str>,
         declaration: BlueTsPageScriptDeclaration,
     ) {
         let (ordinal, kind) = match &declaration {
             BlueTsPageScriptDeclaration::Inline { ordinal, kind, .. }
             | BlueTsPageScriptDeclaration::External { ordinal, kind, .. } => (*ordinal, *kind),
         };
-        if matches!(declaration, BlueTsPageScriptDeclaration::External { .. }) {
-            self.push_report(DirectPageScriptExecutionReport::Rejected {
-                tab_id: tab_id.as_u64(),
-                document_generation,
-                ordinal,
-                kind,
-                message: "external BlueTS declarations require an authorized loader".to_string(),
-            });
+        let BlueTsPageScriptDeclaration::External { src, .. } = declaration else {
+            self.execute_inline_declaration(tabs, tab_id, document_generation, ordinal, kind);
             return;
-        }
+        };
+        self.execute_external_declaration(
+            tabs,
+            tab_id,
+            document_generation,
+            ordinal,
+            kind,
+            document_url,
+            src,
+        );
+    }
 
+    fn execute_inline_declaration(
+        &mut self,
+        tabs: &TabManager,
+        tab_id: TabId,
+        document_generation: u64,
+        ordinal: u32,
+        kind: DirectPageScriptKind,
+    ) {
         let result = self.host.execute_inline(
             tabs,
             DirectInlinePageScriptRequest {
@@ -181,6 +231,97 @@ impl DirectPageInlineExecutor {
                 supplied_runtime_bindings: &self.generated_typings.runtime_bindings,
             },
         );
+        self.record_execution_result(tab_id, document_generation, ordinal, kind, result);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_external_declaration(
+        &mut self,
+        tabs: &TabManager,
+        tab_id: TabId,
+        document_generation: u64,
+        ordinal: u32,
+        kind: DirectPageScriptKind,
+        document_url: Option<&str>,
+        declared_src: String,
+    ) {
+        let Some(document_url) = document_url else {
+            self.reject(
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+                "page document has no supported script origin",
+            );
+            return;
+        };
+        if blueice_net::canonical_http_origin(document_url).is_err() {
+            self.reject(
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+                "page document has no supported script origin",
+            );
+            return;
+        }
+        let Some(authorizer) = self.external_source_authorizer.as_mut() else {
+            self.reject(
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+                "external BlueTS declarations require an authorized loader",
+            );
+            return;
+        };
+        let graph = match authorizer.authorize(&PageScriptSourceRequest {
+            tab_id,
+            document_generation,
+            ordinal,
+            kind,
+            document_url: document_url.to_string(),
+            declared_src,
+        }) {
+            Ok(graph) => graph,
+            Err(_) => {
+                self.reject(
+                    tab_id,
+                    document_generation,
+                    ordinal,
+                    kind,
+                    "external BlueTS source authorization rejected the page script",
+                );
+                return;
+            }
+        };
+        let mut compiler_options = self.compiler_options.clone();
+        compiler_options.resolver_fingerprint = graph.resolver_fingerprint;
+        let result = self.host.execute(
+            tabs,
+            DirectPageScriptRequest {
+                tab_id,
+                kind,
+                entry: graph.entry,
+                loader: &graph.loader,
+                compiler_options,
+                feature_profile: self.feature_profile.clone(),
+                supplied_manifest: &self.generated_typings.manifest,
+                supplied_declaration_source: &self.generated_typings.declaration_source,
+                supplied_runtime_bindings: &self.generated_typings.runtime_bindings,
+            },
+        );
+        self.record_execution_result(tab_id, document_generation, ordinal, kind, result);
+    }
+
+    fn record_execution_result(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        ordinal: u32,
+        kind: DirectPageScriptKind,
+        result: Result<blueice_bluejs::Value, DirectPageScriptError>,
+    ) {
         match result {
             Ok(_) => self.push_report(DirectPageScriptExecutionReport::Executed {
                 tab_id: tab_id.as_u64(),
@@ -196,6 +337,23 @@ impl DirectPageInlineExecutor {
                 message: report_error_message(error).to_string(),
             }),
         }
+    }
+
+    fn reject(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        ordinal: u32,
+        kind: DirectPageScriptKind,
+        message: &'static str,
+    ) {
+        self.push_report(DirectPageScriptExecutionReport::Rejected {
+            tab_id: tab_id.as_u64(),
+            document_generation,
+            ordinal,
+            kind,
+            message: message.to_string(),
+        });
     }
 
     fn push_report(&mut self, report: DirectPageScriptExecutionReport) {
@@ -287,23 +445,64 @@ impl std::error::Error for DirectPageInlineExecutorError {}
 mod tests {
     use super::*;
     use crate::script::host_typings::HostTypeSurfaceV1;
+    use crate::script::page_source_authorizer::{
+        AuthorizedPageScriptGraph, PageScriptSourceAuthorizationError,
+    };
     use crate::Page;
-    use blueice_bluets::LANGUAGE_VERSION;
+    use blueice_bluets::{
+        AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, LANGUAGE_VERSION,
+    };
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
-    fn executor() -> DirectPageInlineExecutor {
-        let profiles = HostTypeSurfaceCatalogV1::new([HostTypeSurfaceV1::new(
+    fn profiles() -> HostTypeSurfaceCatalogV1 {
+        HostTypeSurfaceCatalogV1::new([HostTypeSurfaceV1::new(
             LANGUAGE_VERSION,
             "inline-runner-v1",
             "inline-runner-empty-v1",
             Vec::new(),
         )])
-        .unwrap();
+        .unwrap()
+    }
+
+    fn executor() -> DirectPageInlineExecutor {
         DirectPageInlineExecutor::new(
-            profiles,
+            profiles(),
             "inline-runner-empty-v1",
             CompilerOptions::default(),
         )
         .unwrap()
+    }
+
+    struct StaticExternalAuthorizer {
+        requests: Rc<RefCell<Vec<PageScriptSourceRequest>>>,
+    }
+
+    impl PageScriptSourceAuthorizer for StaticExternalAuthorizer {
+        fn authorize(
+            &mut self,
+            request: &PageScriptSourceRequest,
+        ) -> Result<
+            super::super::page_source_authorizer::AuthorizedPageScriptGraph,
+            PageScriptSourceAuthorizationError,
+        > {
+            self.requests.borrow_mut().push(request.clone());
+            let entry = "https://example.test/assets/main.ts";
+            let value = "https://example.test/assets/value.ts";
+            let loader = AuthorizedModuleLoader::new(
+                [
+                    AuthorizedModule::new(
+                        entry,
+                        "import { value } from './value.ts'; export const answer: number = value + 1; answer;",
+                    ),
+                    AuthorizedModule::new(value, "export const value: number = 41;"),
+                ],
+                [AuthorizedModuleResolution::new(entry, "./value.ts", value)],
+            )
+            .unwrap();
+            AuthorizedPageScriptGraph::new(entry, loader, "external-policy-v1")
+                .map_err(|error| PageScriptSourceAuthorizationError::new(error.to_string()))
+        }
     }
 
     #[test]
@@ -365,6 +564,48 @@ mod tests {
             "external BlueTS declarations require an authorized loader"
         );
         assert!(!message.contains("untrusted"));
+    }
+
+    #[test]
+    fn executes_an_external_module_only_from_a_core_authorized_closed_graph() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script type=\"application/x-blueice-typescript-module\" src=\"/assets/main.ts\"></script>",
+            Some("https://example.test/app/index.html".to_string()),
+        );
+        let requests = Rc::new(RefCell::new(Vec::new()));
+        let mut executor = DirectPageInlineExecutor::with_external_source_authorizer(
+            profiles(),
+            "inline-runner-empty-v1",
+            CompilerOptions::default(),
+            StaticExternalAuthorizer {
+                requests: Rc::clone(&requests),
+            },
+        )
+        .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert_eq!(executor.debug_record_count(), 2);
+        assert!(matches!(
+            executor.reports().front(),
+            Some(DirectPageScriptExecutionReport::Executed {
+                ordinal: 0,
+                kind: DirectPageScriptKind::Module,
+                ..
+            })
+        ));
+        assert_eq!(
+            requests.borrow().as_slice(),
+            &[PageScriptSourceRequest {
+                tab_id,
+                document_generation: 1,
+                ordinal: 0,
+                kind: DirectPageScriptKind::Module,
+                document_url: "https://example.test/app/index.html".to_string(),
+                declared_src: "/assets/main.ts".to_string(),
+            }]
+        );
     }
 
     #[test]
