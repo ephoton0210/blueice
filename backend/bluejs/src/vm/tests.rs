@@ -103,6 +103,11 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
             vm.object_prototype,
         )
         .unwrap();
+    // DefineMethod carries an operand (non-zero: object-literal method).
+    let mut method_code = Bytecode::empty();
+    method_code.code.push(Opcode::DefineMethod as u8);
+    method_code.code.extend(0u32.to_le_bytes());
+    method_code.code.push(Opcode::Halt as u8);
     let mut code = Bytecode::empty();
     code.code
         .extend([Opcode::DefineMethod as u8, Opcode::Halt as u8]);
@@ -114,7 +119,7 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
     ];
     vm.remaining_instructions = vm.config.instruction_budget;
     assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
+        vm.interpret(&method_code, &mut Vec::new(), 0, None, None, None),
         Ok(InterpreterExit::Return(Value::Undefined))
     ));
     vm.stack = vec![
@@ -124,7 +129,7 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
     ];
     vm.remaining_instructions = vm.config.instruction_budget;
     assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
+        vm.interpret(&method_code, &mut Vec::new(), 0, None, None, None),
         Ok(InterpreterExit::Return(Value::Undefined))
     ));
 

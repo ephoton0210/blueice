@@ -830,6 +830,28 @@ impl Heap {
             .expect("take helper is consumed only with a positive remainder");
         Ok(())
     }
+    /// Replaces a RegExp object's [[RegExpMatcher]], [[OriginalSource]] and
+    /// [[OriginalFlags]] in place (Annex B `RegExp.prototype.compile`).
+    pub(crate) fn set_regexp(
+        &mut self,
+        object: ObjectId,
+        regexp: Rc<crate::regexp::RegExp>,
+    ) -> Result<(), HeapError> {
+        let ObjectKind::RegExp(current) = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        let old_bytes = regexp_bytes(current);
+        let new_bytes = regexp_bytes(&regexp);
+        self.ensure_room(new_bytes.saturating_sub(old_bytes), &[object])?;
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        entry.kind = ObjectKind::RegExp(regexp);
+        entry.bytes = entry.bytes - old_bytes + new_bytes;
+        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        Ok(())
+    }
     pub(crate) fn regexp(
         &self,
         object: ObjectId,
@@ -940,6 +962,71 @@ impl Heap {
         Ok(())
     }
 
+    /// Records the with objects a closure created inside `with` closes over.
+    pub(crate) fn set_closure_with_objects(
+        &mut self,
+        object: ObjectId,
+        with_objects: Vec<Value>,
+    ) -> Result<(), HeapError> {
+        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
+            return Err(HeapError::InvalidObject(object));
+        }
+        let targets: Vec<ObjectId> = with_objects.iter().filter_map(Value::object_id).collect();
+        self.ensure_closure_metadata(object, &targets)?;
+        for target in &targets {
+            self.write_barrier(object, Some(*target));
+        }
+        self.closure_metadata
+            .get_mut(&object)
+            .expect("metadata was installed")
+            .with_objects = with_objects;
+        Ok(())
+    }
+
+    /// Records the `new.target` an arrow function closes over.
+    pub(crate) fn set_closure_new_target(
+        &mut self,
+        object: ObjectId,
+        new_target: Value,
+    ) -> Result<(), HeapError> {
+        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
+            return Err(HeapError::InvalidObject(object));
+        }
+        let target = new_target.object_id();
+        self.ensure_closure_metadata(object, target.as_slice())?;
+        self.write_barrier(object, target);
+        self.closure_metadata
+            .get_mut(&object)
+            .expect("metadata was installed")
+            .new_target = Some(new_target);
+        Ok(())
+    }
+
+    /// The `new.target` captured by an arrow closure (`undefined` when none).
+    pub(crate) fn closure_new_target(&self, object: ObjectId) -> Result<Value, HeapError> {
+        match &self.object(object)?.kind {
+            ObjectKind::Closure { .. } => Ok(self
+                .closure_metadata
+                .get(&object)
+                .and_then(|metadata| metadata.new_target.clone())
+                .unwrap_or(Value::Undefined)),
+            _ => Err(HeapError::InvalidObject(object)),
+        }
+    }
+
+    /// The with objects captured by `object`; empty for a closure that was not
+    /// created inside `with`.
+    pub(crate) fn closure_with_objects(&self, object: ObjectId) -> Result<Vec<Value>, HeapError> {
+        match &self.object(object)?.kind {
+            ObjectKind::Closure { .. } => Ok(self
+                .closure_metadata
+                .get(&object)
+                .map(|metadata| metadata.with_objects.clone())
+                .unwrap_or_default()),
+            _ => Err(HeapError::InvalidObject(object)),
+        }
+    }
+
     pub(crate) fn class_base(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
         match &self.object(object)?.kind {
             ObjectKind::Closure { .. } => Ok(self
@@ -1019,4 +1106,15 @@ impl Heap {
     ) -> Result<Option<PropertyDescriptor>, HeapError> {
         self.get_own_property_descriptor_key(object, key.into())
     }
+}
+
+/// Managed bytes a RegExp object's matcher data accounts for.
+pub(super) fn regexp_bytes(regexp: &crate::regexp::RegExp) -> usize {
+    regexp.source.byte_len()
+        + regexp.flags.len()
+        + regexp
+            .capture_names
+            .iter()
+            .map(|(name, _)| name.len() + size_of::<(String, usize)>())
+            .sum::<usize>()
 }

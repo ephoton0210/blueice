@@ -22,10 +22,48 @@ impl Parser {
         }
     }
 
+    /// `YieldExpression` (§15.5): an AssignmentExpression, so it cannot be an
+    /// operand of any operator tier below assignment (`3 + yield 4`), which
+    /// is why it is parsed here and not as a primary expression.
+    fn parse_yield_expression(&mut self) -> Result<Expr, ParseError> {
+        self.advance();
+        // YieldExpression forbids a LineTerminator before `*`. It
+        // cannot instead be parsed as a multiplicative expression:
+        // yield is an AssignmentExpression, not a PrimaryExpression.
+        if self.newline_before() && self.check_punct(Punct::Star) {
+            return Err(self.syntax_error("yield* cannot contain a line terminator"));
+        }
+        let delegate = self.eat_punct(Punct::Star);
+        let value = if !delegate
+            && (self.newline_before()
+                || matches!(
+                    self.peek(),
+                    Token::Punct(
+                        Punct::Semicolon
+                            | Punct::Comma
+                            | Punct::Colon
+                            | Punct::RBrace
+                            | Punct::RBracket
+                            | Punct::RParen
+                    ) | Token::Eof
+                )) {
+            None
+        } else {
+            Some(Box::new(self.parse_assignment()?))
+        };
+        Ok(Expr::Yield { value, delegate })
+    }
+
     pub(super) fn parse_assignment(&mut self) -> Result<Expr, ParseError> {
         let left = if let Some(arrow) = self.try_parse_arrow_function()? {
             arrow
         } else {
+            if self.generator_depth != 0
+                && self.check_identifier("yield")
+                && !self.current_identifier_escaped()
+            {
+                return self.parse_yield_expression();
+            }
             if self.destructuring_assignment_ahead() {
                 let pattern = self.parse_assignment_pattern()?;
                 self.expect_punct(Punct::Assign)?;
@@ -698,6 +736,9 @@ impl Parser {
             && matches!(self.peek_at(1), Token::Punct(Punct::Dot))
             && matches!(self.peek_at(2), Token::Identifier(name) if name == "target")
         {
+            if self.tokens[self.pos + 2].identifier_escaped {
+                return Err(self.syntax_error("new.target cannot contain an escape"));
+            }
             self.advance();
             self.advance();
             self.advance();
@@ -723,7 +764,7 @@ impl Parser {
                     )));
                 }
                 let (property, computed) = if self.eat_punct(Punct::LBracket) {
-                    let property = self.parse_expression()?;
+                    let property = self.with_in_allowed(Self::parse_expression)?;
                     self.expect_punct(Punct::RBracket)?;
                     (property, true)
                 } else {
@@ -746,7 +787,7 @@ impl Parser {
                     computed: false,
                 };
             } else if self.eat_punct(Punct::LBracket) {
-                let prop = self.parse_expression()?;
+                let prop = self.with_in_allowed(Self::parse_expression)?;
                 self.expect_punct(Punct::RBracket)?;
                 expr = Expr::Member {
                     object: Box::new(expr),
@@ -760,30 +801,37 @@ impl Parser {
                     args,
                 };
             } else if self.tokenizer.at_template(self.positions[self.pos]) {
-                if optional_chain_expression(&expr) {
-                    return Err(known_syntax(self.syntax_error(
-                        "an optional chain cannot be used as a template tag",
-                    )));
-                }
-                let (raw, cooked, sources) = self
-                    .tokenizer
-                    .tagged_template_at(self.positions[self.pos])?;
-                self.rescan_suffix();
-                let expressions = sources
-                    .iter()
-                    .map(|source| self.parse_template_placeholder(source))
-                    .collect::<Result<Vec<_>, _>>()?;
-                expr = Expr::TaggedTemplate {
-                    tag: Box::new(expr),
-                    raw,
-                    cooked,
-                    expressions,
-                };
+                expr = self.parse_tagged_template(expr)?;
             } else {
                 break;
             }
         }
         Ok(expr)
+    }
+
+    /// `tag` followed by a template literal: MemberExpression TemplateLiteral.
+    /// The tagged form keeps invalid escapes (their cooked value is
+    /// `undefined`), so the template is re-scanned from source.
+    fn parse_tagged_template(&mut self, tag: Expr) -> Result<Expr, ParseError> {
+        if optional_chain_expression(&tag) {
+            return Err(known_syntax(self.syntax_error(
+                "an optional chain cannot be used as a template tag",
+            )));
+        }
+        let (raw, cooked, sources) = self
+            .tokenizer
+            .tagged_template_at(self.positions[self.pos])?;
+        self.rescan_suffix();
+        let expressions = sources
+            .iter()
+            .map(|source| self.parse_template_placeholder(source))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Expr::TaggedTemplate {
+            tag: Box::new(tag),
+            raw,
+            cooked,
+            expressions,
+        })
     }
 
     /// `new` already consumed by the caller. Real ECMAScript's
@@ -837,6 +885,8 @@ impl Parser {
                     property: Box::new(prop),
                     computed: true,
                 };
+            } else if self.tokenizer.at_template(self.positions[self.pos]) {
+                callee = self.parse_tagged_template(callee)?;
             } else {
                 break;
             }
@@ -960,6 +1010,10 @@ impl Parser {
     }
 
     pub(super) fn parse_arguments(&mut self) -> Result<Vec<Argument>, ParseError> {
+        self.with_in_allowed(Self::parse_arguments_list)
+    }
+
+    fn parse_arguments_list(&mut self) -> Result<Vec<Argument>, ParseError> {
         self.expect_punct(Punct::LParen)?;
         let mut args = Vec::new();
         while !self.check_punct(Punct::RParen) {
@@ -997,6 +1051,7 @@ impl Parser {
             }
             Token::Invalid(message) => Err(self.error(&message)),
             Token::Number(n) => {
+                self.reject_legacy_octal_escape()?;
                 self.advance();
                 Ok(Expr::Number(n))
             }
@@ -1050,34 +1105,6 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Super)
             }
-            Token::Identifier(name) if name == "yield" && self.generator_depth != 0 => {
-                self.advance();
-                // YieldExpression forbids a LineTerminator before `*`. It
-                // cannot instead be parsed as a multiplicative expression:
-                // yield is an AssignmentExpression, not a PrimaryExpression.
-                if self.newline_before() && self.check_punct(Punct::Star) {
-                    return Err(self.syntax_error("yield* cannot contain a line terminator"));
-                }
-                let delegate = self.eat_punct(Punct::Star);
-                let value = if !delegate
-                    && (self.newline_before()
-                        || matches!(
-                            self.peek(),
-                            Token::Punct(
-                                Punct::Semicolon
-                                    | Punct::Comma
-                                    | Punct::Colon
-                                    | Punct::RBrace
-                                    | Punct::RBracket
-                                    | Punct::RParen
-                            ) | Token::Eof
-                        )) {
-                    None
-                } else {
-                    Some(Box::new(self.parse_assignment()?))
-                };
-                Ok(Expr::Yield { value, delegate })
-            }
             Token::Identifier(name) if name == "import" => self.parse_import_expression(),
             Token::Identifier(name)
                 if name == "await"
@@ -1100,6 +1127,11 @@ impl Parser {
                 Err(self.syntax_error("unexpected expression after await identifier"))
             }
             Token::Identifier(name) => {
+                if !self.identifier_reference_name_is_valid(&name) {
+                    return Err(self.syntax_error(
+                        "a reserved word cannot be used as an identifier reference",
+                    ));
+                }
                 self.advance();
                 Ok(Expr::Identifier(name))
             }
@@ -1111,7 +1143,7 @@ impl Parser {
             }
             Token::Punct(Punct::LParen) => {
                 self.advance();
-                let expr = self.parse_expression()?;
+                let expr = self.with_in_allowed(Self::parse_expression)?;
                 self.expect_punct(Punct::RParen).map_err(known_syntax)?;
                 if is_assignment_operator(self.peek()) || optional_chain_expression(&expr) {
                     Ok(Expr::Parenthesized(Box::new(expr)))
@@ -1119,8 +1151,8 @@ impl Parser {
                     Ok(expr)
                 }
             }
-            Token::Punct(Punct::LBracket) => self.parse_array_literal(),
-            Token::Punct(Punct::LBrace) => self.parse_object_literal(),
+            Token::Punct(Punct::LBracket) => self.with_in_allowed(Self::parse_array_literal),
+            Token::Punct(Punct::LBrace) => self.with_in_allowed(Self::parse_object_literal),
             // Tokens no production of the expression grammar can begin with,
             // including the closers/separators that show up when an operand
             // is simply missing (`using [] = x` reads `using[]`, `x = ;`) and
@@ -1195,6 +1227,7 @@ impl Parser {
                     self.advance();
                 }
                 let generator = self.eat_punct(Punct::Star);
+                let key_escaped = self.current_identifier_escaped();
                 let key = self.parse_property_key()?;
                 if self.eat_punct(Punct::Colon) {
                     if is_async || generator {
@@ -1210,9 +1243,10 @@ impl Parser {
                     let name = class_element_name(&key);
                     props.push(ObjectProp::Method {
                         key,
-                        function: self.parse_method_function(Some(name), generator, is_async)?,
+                        function: self.parse_method_definition(Some(name), generator, is_async)?,
                     });
                 } else if matches!(&key, PropertyKey::Identifier(name) if name == "get" || name == "set")
+                    && !key_escaped
                     && !self.check_punct(Punct::Comma)
                     && !self.check_punct(Punct::RBrace)
                 {
@@ -1222,7 +1256,7 @@ impl Parser {
                     let getter = matches!(&key, PropertyKey::Identifier(name) if name == "get");
                     let key = self.parse_property_key()?;
                     let name = class_element_name(&key);
-                    let function = self.parse_method_function(
+                    let function = self.parse_method_definition(
                         Some(format!("{} {}", if getter { "get" } else { "set" }, name)),
                         false,
                         false,
@@ -1245,6 +1279,11 @@ impl Parser {
                         PropertyKey::Identifier(n) => n.clone(),
                         _ => return Err(self.error("expected ':' after object property key")),
                     };
+                    if !self.identifier_reference_name_is_valid(&name) {
+                        return Err(
+                            self.syntax_error("a reserved word cannot be a shorthand property")
+                        );
+                    }
                     props.push(ObjectProp::KeyValue {
                         key: PropertyKey::Identifier(name.clone()),
                         value: Expr::Identifier(name),

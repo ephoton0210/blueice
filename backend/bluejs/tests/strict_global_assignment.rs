@@ -16,7 +16,9 @@ fn check(source: &str) {
 
 #[test]
 fn strict_assignment_overwrites_an_unread_standard_global() {
-    for name in ["Symbol", "Map", "Promise", "Math", "Reflect", "Proxy", "Intl", "BigInt"] {
+    for name in [
+        "Symbol", "Map", "Promise", "Math", "Reflect", "Proxy", "Intl", "BigInt",
+    ] {
         check(&format!(
             "'use strict'; {name} = undefined; typeof {name} === 'undefined' \
              && Object.getOwnPropertyDescriptor(globalThis, '{name}').value === undefined"

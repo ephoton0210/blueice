@@ -335,6 +335,48 @@ impl Vm {
         }
     }
 
+    /// SetFunctionName(F, key, prefix) for a function value created by a
+    /// property definition whose key is only known at run time. `prefix` is
+    /// 0 (none), 1 (`get `) or 2 (`set `). A function that already carries a
+    /// non-empty `name` of its own (a class with a static `name` member) is
+    /// left alone.
+    pub(super) fn set_function_name_from_key(
+        &mut self,
+        function: &Value,
+        key: &Value,
+        prefix: u32,
+    ) -> Result<(), RuntimeError> {
+        let Value::Object(function) = function else {
+            return Ok(());
+        };
+        let prefix_text: JsString = match prefix {
+            1 => "get ".into(),
+            2 => "set ".into(),
+            _ => JsString::default(),
+        };
+        // The parser leaves an anonymous function's name empty, or (for a
+        // computed object-literal accessor) just its prefix.
+        match self.heap.get_own(*function, "name")? {
+            None => {}
+            Some(Value::String(existing))
+                if existing.byte_len() == 0 || existing == prefix_text => {}
+            Some(_) => return Ok(()),
+        }
+        let mut name = prefix_text;
+        match key {
+            Value::Symbol(symbol) => {
+                if let Some(description) = &symbol.description {
+                    name.push_str(&"[".into());
+                    name.push_str(description);
+                    name.push_str(&"]".into());
+                }
+            }
+            Value::String(text) => name.push_str(text),
+            other => name.push_str(&crate::primitive::string(other)?),
+        }
+        self.define_data(*function, "name", Value::String(name), false, false, true)
+    }
+
     pub(super) fn private_set(
         &mut self,
         receiver: &Value,
@@ -569,7 +611,13 @@ impl Vm {
     /// prototype chain. Non-enumerable own keys still suppress an inherited
     /// key with the same name; symbols never participate in `for-in`.
     pub(super) fn for_in_keys(&mut self, source: &Value) -> Result<Value, RuntimeError> {
-        let mut current = Some(self.coerce_object(source)?);
+        // ForIn/OfHeadEvaluation: a `null` or `undefined` subject enumerates
+        // nothing instead of failing ToObject.
+        let mut current = if matches!(source, Value::Null | Value::Undefined) {
+            None
+        } else {
+            Some(self.coerce_object(source)?)
+        };
         let base = self.stack.len();
         let mut seen = HashSet::new();
         let mut visited_objects = HashSet::new();

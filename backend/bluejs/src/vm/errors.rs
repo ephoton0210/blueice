@@ -201,6 +201,22 @@ impl Vm {
                     NativeFunction::ErrorToString,
                 )?;
             }
+            if name == "Error" {
+                self.install_native(
+                    constructor,
+                    function_prototype,
+                    "isError",
+                    1,
+                    NativeFunction::ErrorIsError,
+                )?;
+                self.install_native_accessor(
+                    prototype,
+                    function_prototype,
+                    "stack",
+                    NativeFunction::ErrorStackGetter,
+                    NativeFunction::ErrorStackSetter,
+                )?;
+            }
             Ok(Value::Object(constructor))
         })();
         if result.is_err() {
@@ -240,16 +256,6 @@ impl Vm {
         let result = (|| {
             let aggregate = name == "AggregateError";
             let suppressed_error = name == "SuppressedError";
-            if aggregate {
-                self.define_data(
-                    object,
-                    "errors",
-                    native::argument(args, 0).clone(),
-                    true,
-                    false,
-                    true,
-                )?;
-            }
             // `SuppressedError(error, suppressed, message)` has its own
             // positional shape: `message` is the third argument (installed
             // first, matching Error's own message-before-cause ordering),
@@ -289,6 +295,16 @@ impl Vm {
                     self.define_data(object, "cause", cause, true, false, true)?;
                 }
             }
+            if aggregate {
+                // IteratorToList(GetIterator(errors)) runs after `message`
+                // and `cause` are installed, and its result is a fresh array.
+                let values = self.iterable_to_list(native::argument(args, 0))?;
+                let base = self.stack.len();
+                self.stack.extend(values.iter().cloned());
+                let errors = self.array_from(values);
+                self.stack.truncate(base);
+                self.define_data(object, "errors", errors?, true, false, true)?;
+            }
             Ok(Value::Object(object))
         })();
         self.stack.pop();
@@ -321,5 +337,144 @@ impl Vm {
             native::append(&mut name, &message, self.config.max_string_bytes)?;
         }
         Ok(Value::String(name))
+    }
+
+    /// IteratorToList(GetIterator(value, sync)): every value the iterable
+    /// yields, in order. Values are kept on the VM stack while later
+    /// iterator steps run user code.
+    pub(super) fn iterable_to_list(&mut self, source: &Value) -> Result<Vec<Value>, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.push(source.clone());
+        let result = (|| {
+            let record = self.get_iterator(source)?;
+            self.stack.push(record.clone());
+            let mut values = Vec::new();
+            while let Some(value) = self.iterator_step(&record, true)? {
+                self.stack.push(value.clone());
+                values.push(value);
+            }
+            Ok(values)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// Whether `object` has an [[ErrorData]] internal slot, including an
+    /// error owned by another Test262 realm behind a facade.
+    fn has_error_data(&self, object: ObjectId) -> Result<bool, RuntimeError> {
+        if let Some((realm, target, _, _)) = self.test262_foreign_reference(object) {
+            let realm = self.test262_realms.get(&realm).ok_or_else(|| {
+                RuntimeError::TypeError("foreign Test262 realm is no longer available".into())
+            })?;
+            return Ok(realm.vm.heap.is_error(target)?);
+        }
+        Ok(self.heap.is_error(object)?)
+    }
+
+    /// `Error.isError ( arg )`.
+    pub(super) fn error_is_error(&self, argument: &Value) -> Result<Value, RuntimeError> {
+        Ok(Value::Bool(match argument {
+            Value::Object(object) => self.has_error_data(*object)?,
+            _ => false,
+        }))
+    }
+
+    /// `get Error.prototype.stack`: an implementation-defined string for an
+    /// object with [[ErrorData]], `undefined` for any other object. BlueJS
+    /// tracks no call frames, so the string is the error's header line
+    /// (`name: message`), read without running user code.
+    pub(super) fn error_stack_getter(&mut self, receiver: &Value) -> Result<Value, RuntimeError> {
+        let Value::Object(object) = receiver else {
+            return Err(RuntimeError::TypeError(
+                "Error.prototype.stack getter requires an object receiver".into(),
+            ));
+        };
+        if !self.has_error_data(*object)? {
+            return Ok(Value::Undefined);
+        }
+        let mut header = self
+            .error_header_field(*object, "name")?
+            .unwrap_or("Error".into());
+        if let Some(message) = self.error_header_field(*object, "message")? {
+            if !message.is_empty() {
+                native::append(&mut header, &": ".into(), self.config.max_string_bytes)?;
+                native::append(&mut header, &message, self.config.max_string_bytes)?;
+            }
+        }
+        Ok(Value::String(header))
+    }
+
+    /// The String held by the first data property `key` on `object`'s
+    /// prototype chain; getters, proxies and non-String values are ignored.
+    fn error_header_field(
+        &self,
+        object: ObjectId,
+        key: &str,
+    ) -> Result<Option<JsString>, RuntimeError> {
+        let key = PropertyName::from(key);
+        let mut current = Some(object);
+        while let Some(id) = current {
+            if self.heap.proxy(id)?.is_some() || self.test262_foreign_reference(id).is_some() {
+                return Ok(None);
+            }
+            if let Some(descriptor) = self.heap.get_own_property_descriptor(id, &key)? {
+                return Ok(match descriptor.value {
+                    Some(Value::String(text)) => Some(text),
+                    _ => None,
+                });
+            }
+            current = self.heap.prototype(id)?;
+        }
+        Ok(None)
+    }
+
+    /// `set Error.prototype.stack ( v )`: rejects non-Objects and non-Strings,
+    /// then SetterThatIgnoresPrototypeProperties(this, %Error.prototype%,
+    /// "stack", v).
+    pub(super) fn error_stack_setter(
+        &mut self,
+        receiver: &Value,
+        value: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(object) = receiver else {
+            return Err(RuntimeError::TypeError(
+                "Error.prototype.stack setter requires an object receiver".into(),
+            ));
+        };
+        if !matches!(value, Value::String(_)) {
+            return Err(RuntimeError::TypeError(
+                "Error.prototype.stack must be assigned a string".into(),
+            ));
+        }
+        let error = self.error_global("Error")?;
+        let home = self.get_property(&error, &"prototype".into())?;
+        if home.object_id() == Some(*object) {
+            return Err(RuntimeError::TypeError(
+                "cannot assign Error.prototype.stack".into(),
+            ));
+        }
+        let key: PropertyName = "stack".into();
+        let base = self.stack.len();
+        self.stack.extend([receiver.clone(), value.clone()]);
+        let result = (|| {
+            let succeeded = if self.object_get_own_property(*object, &key)?.is_none() {
+                self.object_define_own_property(
+                    *object,
+                    key.clone(),
+                    PropertyDescriptor::data(value.clone(), true, true, true),
+                )?
+            } else {
+                self.ordinary_set_with_receiver(*object, receiver, &key, value)?
+            };
+            if succeeded {
+                Ok(Value::Undefined)
+            } else {
+                Err(RuntimeError::TypeError(
+                    "cannot assign the stack property".into(),
+                ))
+            }
+        })();
+        self.stack.truncate(base);
+        result
     }
 }

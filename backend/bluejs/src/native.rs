@@ -89,6 +89,8 @@ pub(crate) enum MapMethod {
     Entries,
     ForEach,
     Get,
+    GetOrInsert,
+    GetOrInsertComputed,
     Has,
     Keys,
     Set,
@@ -104,6 +106,13 @@ pub(crate) enum SetMethod {
     ForEach,
     Has,
     Values,
+    Union,
+    Intersection,
+    Difference,
+    SymmetricDifference,
+    IsSubsetOf,
+    IsSupersetOf,
+    IsDisjointFrom,
 }
 
 /// The lazy iterator helpers share one native dispatcher. Keeping the method
@@ -179,6 +188,11 @@ pub(crate) enum NativeFunction {
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.
     AsyncFunction,
+    /// The intrinsic `%GeneratorFunction%` and `%AsyncGeneratorFunction%`
+    /// constructors (no globals): they compile `function*` / `async function*`
+    /// from their arguments.
+    GeneratorFunction,
+    AsyncGeneratorFunction,
     String,
     Array,
     Date,
@@ -377,6 +391,8 @@ pub(crate) enum NativeFunction {
     ProxyRevoker(ObjectId),
     Map,
     MapMethod(MapMethod),
+    /// `Map.groupBy(items, callback)`.
+    MapGroupBy,
     MapSize,
     Set,
     SetMethod(SetMethod),
@@ -404,6 +420,9 @@ pub(crate) enum NativeFunction {
     ArrayFlatMap,
     ArrayOf,
     ArraySpecies,
+    /// The `get [Symbol.species]` accessor of `Map`, `Set` and `Promise`,
+    /// which (like `ArraySpecies`) just returns its receiver.
+    CollectionSpecies,
     ArrayFrom,
     ArrayFromAsync,
     /// A settled Await inside an `Array.fromAsync` run: `state` is the run's
@@ -447,6 +466,10 @@ pub(crate) enum NativeFunction {
     DecodeUri {
         component: bool,
     },
+    /// Annex B.2.1 `escape` (`false`) and `unescape` (`true`).
+    Escape {
+        decode: bool,
+    },
     JsonParse,
     JsonStringify,
     JsonRawJson,
@@ -454,6 +477,11 @@ pub(crate) enum NativeFunction {
     Math(MathMethod),
     Error(&'static str),
     ErrorToString,
+    /// `Error.isError`.
+    ErrorIsError,
+    /// The `get`/`set` halves of the `Error.prototype.stack` accessor.
+    ErrorStackGetter,
+    ErrorStackSetter,
     /// Test262 exposes this otherwise non-global intrinsic through `$262`.
     AbstractModuleSource,
     AbstractModuleSourceToStringTag,
@@ -566,12 +594,13 @@ pub(crate) enum NativeFunction {
     AsyncGeneratorReturn,
     AsyncGeneratorThrow,
     Promise,
-    /// One half of a Promise capability. The target identity is carried by
-    /// the otherwise ordinary native function, so the resolving functions
-    /// can be passed to an executor without exposing VM bookkeeping to JS.
+    /// One half of a promise's resolving-function pair (CreateResolvingFunctions).
+    /// `state` is the heap record holding the pair's shared [[AlreadyResolved]]
+    /// flag, so whichever function runs first disables both.
     PromiseResolvingFunction {
         promise: ObjectId,
         fulfill: bool,
+        state: ObjectId,
     },
     /// The executor supplied while `NewPromiseCapability(C)` invokes a
     /// user-provided constructor. The storage object keeps its resolve/reject
@@ -596,33 +625,30 @@ pub(crate) enum NativeFunction {
     PromiseRace,
     PromiseAny,
     PromiseAllSettled,
-    PromiseAllResolve {
-        target: ObjectId,
+    /// `Promise.allKeyed` (`settled: false`) and `Promise.allSettledKeyed`.
+    PromiseAllKeyed {
+        settled: bool,
+    },
+    PromiseTry,
+    /// A resolve/reject element function of `Promise.all`, `allSettled` or
+    /// `any`. `state` is the heap record shared by one combinator call.
+    PromiseElement {
+        state: ObjectId,
         index: u32,
+        kind: PromiseElementKind,
     },
-    PromiseAllReject {
-        target: ObjectId,
+    /// The `thenFinally` (`catch: false`) / `catchFinally` function that
+    /// `Promise.prototype.finally` passes to `then`; `state` holds the
+    /// `onFinally` callback and the species constructor.
+    PromiseFinallyFunction {
+        state: ObjectId,
+        catch: bool,
     },
-    PromiseRaceFulfill {
-        target: ObjectId,
-    },
-    PromiseRaceReject {
-        target: ObjectId,
-    },
-    PromiseAnyFulfill {
-        target: ObjectId,
-    },
-    PromiseAnyReject {
-        target: ObjectId,
-        index: u32,
-    },
-    PromiseAllSettledFulfill {
-        target: ObjectId,
-        index: u32,
-    },
-    PromiseAllSettledReject {
-        target: ObjectId,
-        index: u32,
+    /// The value thunk (`thrower: false`) or thrower function `finally`
+    /// hands to its inner `then`; `state` holds the value or reason.
+    PromiseValueThunk {
+        state: ObjectId,
+        thrower: bool,
     },
     PromiseWithResolvers,
     Test262Done,
@@ -673,11 +699,16 @@ pub(crate) enum NativeFunction {
     IteratorToStringTagGetter,
     IteratorToStringTagSetter,
     AsyncIteratorSelf,
+    /// `%AsyncIteratorPrototype% [ @@asyncDispose ] ( )`.
+    AsyncIteratorDispose,
     Pattern(PatternMethod),
     RegExp,
     RegExpEscape,
     RegExpMethod(RegExpMethod),
     RegExpGetter(&'static str),
+    /// Annex B legacy static accessors of `%RegExp%`.
+    RegExpLegacyGetter(LegacyRegExpStatic),
+    RegExpLegacySetter(LegacyRegExpStatic),
     RegExpIteratorNext,
     StringMethod(StringMethod),
     /// The `DisposableStack`/`AsyncDisposableStack` constructors (Explicit
@@ -716,6 +747,20 @@ pub(crate) enum NativeFunction {
     ShadowRealmWrappedFunction,
 }
 
+/// Which of a Promise combinator's element functions a
+/// `NativeFunction::PromiseElement` is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PromiseElementKind {
+    /// `Promise.all`'s resolve element: stores the value.
+    AllResolve,
+    /// `Promise.allSettled`'s onFulfilled: stores `{ status: "fulfilled", value }`.
+    AllSettledFulfill,
+    /// `Promise.allSettled`'s onRejected: stores `{ status: "rejected", reason }`.
+    AllSettledReject,
+    /// `Promise.any`'s reject element: stores the reason.
+    AnyReject,
+}
+
 /// Failures particular to the URI encode/decode abstract operations.  The VM
 /// turns malformed input into the realm's `URIError` object, while preserving
 /// its normal resource-limit reporting for an oversized result.
@@ -732,19 +777,14 @@ impl NativeFunction {
     pub(crate) fn references(self) -> Vec<ObjectId> {
         match self {
             Self::ProxyRevoker(proxy) => vec![proxy],
-            Self::PromiseResolvingFunction { promise, .. } => vec![promise],
+            Self::PromiseResolvingFunction { promise, state, .. } => vec![promise, state],
             Self::PromiseCapabilityExecutor { storage } => vec![storage],
             Self::ArrayFromAsyncResume { state, .. } => vec![state],
             Self::AsyncFromSyncFulfill { target, .. } => vec![target],
             Self::AsyncFromSyncReject { target, record } => vec![target, record],
-            Self::PromiseAllResolve { target, .. }
-            | Self::PromiseAllReject { target }
-            | Self::PromiseRaceFulfill { target }
-            | Self::PromiseRaceReject { target }
-            | Self::PromiseAnyFulfill { target }
-            | Self::PromiseAnyReject { target, .. }
-            | Self::PromiseAllSettledFulfill { target, .. }
-            | Self::PromiseAllSettledReject { target, .. } => vec![target],
+            Self::PromiseElement { state, .. }
+            | Self::PromiseFinallyFunction { state, .. }
+            | Self::PromiseValueThunk { state, .. } => vec![state],
             _ => Vec::new(),
         }
     }
@@ -787,6 +827,7 @@ pub(crate) enum MathMethod {
     Tan,
     Tanh,
     Trunc,
+    SumPrecise,
     Clz32,
 }
 
@@ -920,9 +961,23 @@ pub(crate) enum PatternMethod {
     Search,
 }
 
+/// The legacy static RegExp properties, one per internal slot of `%RegExp%`
+/// (`RegExp.$1`-`$9` are `Paren(1)`-`Paren(9)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LegacyRegExpStatic {
+    Input,
+    LastMatch,
+    LastParen,
+    LeftContext,
+    RightContext,
+    Paren(u8),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RegExpMethod {
     Exec,
+    /// Annex B `RegExp.prototype.compile`.
+    Compile,
     Test,
     ToString,
     Match,
@@ -1321,6 +1376,71 @@ pub(crate) fn decode_uri(
             .len();
         uri_append(&mut output, &encoded[..utf16_width], limit)?;
         index = start + octets * 3;
+    }
+    Ok(JsString::from_code_units(output))
+}
+
+/// ECMA-262 §B.2.1.1 `escape`: code units outside the unescaped set become
+/// `%XX` (below 256) or `%uXXXX`, always with upper-case hexadecimal digits.
+pub(crate) fn escape(string: &JsString, limit: usize) -> Result<JsString, UriCodingError> {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut output = Vec::with_capacity(string.as_code_units().len());
+    for &unit in string.as_code_units() {
+        if u8::try_from(unit)
+            .is_ok_and(|byte| byte.is_ascii_alphanumeric() || b"@*_+-./".contains(&byte))
+        {
+            uri_append(&mut output, &[unit], limit)?;
+            continue;
+        }
+        let digit = |shift: u32| u16::from(HEX[usize::from((unit >> shift) & 0xf)]);
+        if unit < 256 {
+            uri_append(&mut output, &[0x25, digit(4), digit(0)], limit)?;
+        } else {
+            uri_append(
+                &mut output,
+                &[0x25, 0x75, digit(12), digit(8), digit(4), digit(0)],
+                limit,
+            )?;
+        }
+    }
+    Ok(JsString::from_code_units(output))
+}
+
+/// ECMA-262 §B.2.1.2 `unescape`: `%uXXXX` and `%XX` sequences decode to one
+/// code unit; a `%` that does not start a complete sequence is kept as is.
+pub(crate) fn unescape(string: &JsString, limit: usize) -> Result<JsString, UriCodingError> {
+    let units = string.as_code_units();
+    let mut output = Vec::with_capacity(units.len());
+    let mut index = 0;
+    while let Some(&unit) = units.get(index) {
+        let decoded = (unit == u16::from(b'%'))
+            .then(|| {
+                let hex = |from: usize, count: usize| -> Option<u16> {
+                    units
+                        .get(from..from + count)?
+                        .iter()
+                        .try_fold(0u16, |value, &digit| {
+                            Some((value << 4) | u16::from(uri_hex(digit)?))
+                        })
+                };
+                if units.get(index + 1) == Some(&u16::from(b'u')) {
+                    if let Some(value) = hex(index + 2, 4) {
+                        return Some((value, 6));
+                    }
+                }
+                hex(index + 1, 2).map(|value| (value, 3))
+            })
+            .flatten();
+        match decoded {
+            Some((value, width)) => {
+                uri_append(&mut output, &[value], limit)?;
+                index += width;
+            }
+            None => {
+                uri_append(&mut output, &[unit], limit)?;
+                index += 1;
+            }
+        }
     }
     Ok(JsString::from_code_units(output))
 }

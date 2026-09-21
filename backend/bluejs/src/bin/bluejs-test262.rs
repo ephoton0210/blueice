@@ -257,17 +257,13 @@ fn evaluate(request: Request) -> Value {
     if request.parse_only {
         return json!({"kind":"ok", "phase":"parse"});
     }
-    // The native host replaces these core helpers. Other includes execute as
-    // separate classic scripts in the same VM realm.
+    // The native host replaces these two core helpers. Every other include,
+    // `propertyHelper.js` and `isConstructor.js` among them, executes as a
+    // separate classic script in the same VM realm.
     let unknown: Vec<_> = request
         .includes
         .iter()
-        .filter(|name| {
-            !matches!(
-                name.as_str(),
-                "sta.js" | "assert.js" | "propertyHelper.js" | "isConstructor.js"
-            )
-        })
+        .filter(|name| !matches!(name.as_str(), "sta.js" | "assert.js"))
         .collect();
     if request.mode != "raw" && !unknown.is_empty() && request.harness_sources.is_empty() {
         return json!({"kind":"unsupported", "reason":"harness includes require persistent script globals", "includes":unknown});

@@ -8,6 +8,15 @@ use super::*;
 /// compiles; it is not a valid identifier, so no source can refer to it.
 const DYNAMIC_FUNCTION_BINDING: &str = "*anonymous*";
 
+/// The four CreateDynamicFunction kinds.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in super::super) enum DynamicFunctionKind {
+    Normal,
+    Async,
+    Generator,
+    AsyncGenerator,
+}
+
 impl Vm {
     /// ECMA-262 Function constructor. Dynamic function source is compiled in
     /// the realm's global environment rather than inheriting the native
@@ -16,26 +25,37 @@ impl Vm {
         &mut self,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        self.dynamic_function_constructor(args, false)
+        self.dynamic_function_constructor(args, DynamicFunctionKind::Normal)
     }
 
-    /// Shared constructor path for `%Function%` and `%AsyncFunction%`. Dynamic
-    /// functions compile against the realm global environment; the async form
-    /// then takes the same Promise/continuation path as a source async
-    /// function. Generators have a separate constructor family and are not
-    /// conflated with this operation.
+    /// Constructor path for `%AsyncFunction%`. Dynamic functions compile
+    /// against the realm global environment; the async form then takes the
+    /// same Promise/continuation path as a source async function.
     pub(in super::super) fn async_function_constructor(
         &mut self,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        self.dynamic_function_constructor(args, true)
+        self.dynamic_function_constructor(args, DynamicFunctionKind::Async)
     }
 
+    /// CreateDynamicFunction ( constructor, newTarget, kind, parameterArgs,
+    /// bodyArg ) for all four kinds: the source text is a wrapper declaration
+    /// of the matching kind, compiled by the ordinary compiler, and the
+    /// resulting closure gets the kind's own prototype and, for generators,
+    /// its own `prototype` object.
     pub(in super::super) fn dynamic_function_constructor(
         &mut self,
         args: &[Value],
-        async_function: bool,
+        kind: DynamicFunctionKind,
     ) -> Result<Value, RuntimeError> {
+        let async_function = matches!(
+            kind,
+            DynamicFunctionKind::Async | DynamicFunctionKind::AsyncGenerator
+        );
+        let generator = matches!(
+            kind,
+            DynamicFunctionKind::Generator | DynamicFunctionKind::AsyncGenerator
+        );
         let mut parameters = String::new();
         for (index, argument) in args.iter().take(args.len().saturating_sub(1)).enumerate() {
             if index != 0 {
@@ -47,10 +67,11 @@ impl Vm {
                 )
             })?);
         }
-        let mut source = String::from(if async_function {
-            "async function anonymous("
-        } else {
-            "function anonymous("
+        let mut source = String::from(match kind {
+            DynamicFunctionKind::Normal => "function anonymous(",
+            DynamicFunctionKind::Async => "async function anonymous(",
+            DynamicFunctionKind::Generator => "function* anonymous(",
+            DynamicFunctionKind::AsyncGenerator => "async function* anonymous(",
         });
         source.push_str(&strip_dynamic_function_html_comments(&parameters));
         // Dynamic parameter text is parsed as its own grammar production.
@@ -83,10 +104,12 @@ impl Vm {
             .expect("Function wrapper compiles one function declaration");
 
         debug_assert_eq!(child.async_function, async_function);
-        let default_prototype = if async_function {
-            self.async_function_prototype()?
-        } else {
-            self.function_prototype()?
+        debug_assert_eq!(child.generator, generator);
+        let default_prototype = match kind {
+            DynamicFunctionKind::Normal => self.function_prototype()?,
+            DynamicFunctionKind::Async => self.async_function_prototype()?,
+            DynamicFunctionKind::Generator => self.generator_function_prototype()?,
+            DynamicFunctionKind::AsyncGenerator => self.async_generator_function_prototype()?,
         };
         // CreateDynamicFunction selects its function object's prototype with
         // GetPrototypeFromConstructor for every dynamic function kind. In
@@ -155,7 +178,24 @@ impl Vm {
             {
                 self.install_legacy_function_properties(function)?;
             }
-            if child.constructible {
+            if generator {
+                // A generator function owns the prototype its instances
+                // inherit from; it has no `constructor` back-link.
+                let base_prototype = if async_function {
+                    self.async_generator_prototype()?
+                } else {
+                    self.generator_prototype()?
+                };
+                let prototype = self.with_roots(|heap| heap.alloc_object(Some(base_prototype)))?;
+                self.define_data(
+                    function,
+                    "prototype",
+                    Value::Object(prototype),
+                    true,
+                    false,
+                    false,
+                )?;
+            } else if child.constructible {
                 let object_prototype = self.object_prototype;
                 let prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;

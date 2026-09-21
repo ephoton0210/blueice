@@ -134,6 +134,8 @@ impl Vm {
         // an as-yet-unread `globalThis.undefined` incorrectly looked like a
         // successful deletion of an absent property.
         self.materialize_global_object_property(object, key)?;
+        // Likewise a lazily installed Iterator helper exists to be deleted.
+        self.materialize_iterator_helper_property(object, key)?;
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_delete(object, key);
         }
@@ -171,6 +173,8 @@ impl Vm {
                 "decodeURIComponent",
                 "encodeURI",
                 "encodeURIComponent",
+                "escape",
+                "unescape",
                 "Object",
                 "Function",
                 "Array",
@@ -723,7 +727,12 @@ impl Vm {
                     | NativeFunction::DisposableStack { .. }
                     | NativeFunction::ShadowRealm
                     | NativeFunction::Promise
+                    // `Symbol` has [[Construct]] (it may head a class `extends`
+                    // clause) but its behavior always throws for `new`.
+                    | NativeFunction::Symbol
                     | NativeFunction::AsyncFunction
+                    | NativeFunction::GeneratorFunction
+                    | NativeFunction::AsyncGeneratorFunction
                     | NativeFunction::Object
                     | NativeFunction::Iterator
                     | NativeFunction::RegExp

@@ -117,7 +117,13 @@ impl Parser {
         } else {
             None
         };
-        if generator && matches!(name.as_deref(), Some("yield")) {
+        // A generator *declaration* names its binding in the enclosing
+        // context, so `yield` is fine there in sloppy non-generator code; a
+        // generator expression's name is parsed with [+Yield].
+        if generator
+            && matches!(name.as_deref(), Some("yield"))
+            && (!is_declaration || self.generator_depth != 0 || self.strict)
+        {
             return Err(self.syntax_error("yield cannot be used as a generator function name"));
         }
         if !self.check_punct(Punct::LParen) {
@@ -132,7 +138,37 @@ impl Parser {
         Ok(function)
     }
 
+    /// A MethodDefinition's function (object literal or class, including
+    /// generator, async and accessor forms). Its parameters are
+    /// UniqueFormalParameters: no name repeats, even in sloppy code.
+    pub(super) fn parse_method_definition(
+        &mut self,
+        name: Option<String>,
+        generator: bool,
+        is_async: bool,
+    ) -> Result<Function, ParseError> {
+        let function = self.parse_method_function(name, generator, is_async)?;
+        let mut names = std::collections::HashSet::new();
+        for param in &function.params {
+            for name in super::module::pattern_bound_names(&param.pattern) {
+                if !names.insert(name) {
+                    return Err(self.syntax_error("duplicate parameter name in a method"));
+                }
+            }
+        }
+        Ok(function)
+    }
+
     pub(super) fn parse_method_function(
+        &mut self,
+        name: Option<String>,
+        generator: bool,
+        is_async: bool,
+    ) -> Result<Function, ParseError> {
+        self.with_in_allowed(|parser| parser.parse_method_function_in(name, generator, is_async))
+    }
+
+    fn parse_method_function_in(
         &mut self,
         name: Option<String>,
         generator: bool,
@@ -153,7 +189,7 @@ impl Parser {
         let params = self
             .parse_params()
             .inspect_err(|_| self.function_depth -= 1)?;
-        let body = self.parse_block();
+        let body = self.parse_function_body();
         self.function_depth -= 1;
         self.generator_depth = outer_generator_depth;
         self.async_depth = outer_async_depth;
@@ -172,7 +208,7 @@ impl Parser {
         let outer_module_await = std::mem::replace(&mut self.module_await, false);
         self.function_depth += 1;
         let body = if self.check_punct(Punct::LBrace) {
-            self.parse_block().map(ArrowBody::Block)
+            self.parse_function_body().map(ArrowBody::Block)
         } else {
             self.parse_assignment()
                 .map(|value| ArrowBody::Expr(Box::new(value)))
@@ -184,6 +220,10 @@ impl Parser {
     }
 
     pub(super) fn parse_class(&mut self) -> Result<Class, ParseError> {
+        self.with_in_allowed(Self::parse_class_strict)
+    }
+
+    fn parse_class_strict(&mut self) -> Result<Class, ParseError> {
         // Every part of a ClassDefinition, including the heritage expression,
         // is parsed in strict mode. Preserve the caller's grammar context so
         // a nested class does not leak strictness into its surrounding script.
@@ -336,7 +376,7 @@ impl Parser {
                 });
                 continue;
             }
-            let function = self.parse_method_function(Some(method_name), generator, is_async)?;
+            let function = self.parse_method_definition(Some(method_name), generator, is_async)?;
             let constructor = accessor.is_none()
                 && !is_static
                 && !matches!(&key, PropertyKey::Computed(_))
@@ -433,6 +473,7 @@ impl Parser {
     /// essential for the class element grammar.
     pub(super) fn class_async_method_follows(&self) -> bool {
         if !matches!(self.peek(), Token::Identifier(name) if name == "async")
+            || self.current_identifier_escaped()
             || self
                 .tokens
                 .get(self.pos + 1)
@@ -598,6 +639,9 @@ impl Parser {
     ) -> Result<Option<Expr>, ParseError> {
         if let Token::Identifier(name) = self.peek().clone() {
             if matches!(self.peek_at(1), Token::Punct(Punct::Arrow)) {
+                if self.tokens[self.pos + 1].newline_before {
+                    return Err(self.syntax_error("no line terminator is allowed before =>"));
+                }
                 if is_async && name == "await" {
                     let detail = if self.current_identifier_escaped() {
                         "the await keyword cannot contain an escape"
@@ -606,6 +650,7 @@ impl Parser {
                     };
                     return Err(self.syntax_error(detail));
                 }
+                self.validate_binding_identifier(&name, self.current_identifier_escaped())?;
                 self.advance();
                 self.advance();
                 let params = vec![Param {
@@ -637,6 +682,9 @@ impl Parser {
                     }
                     let params = self.parse_params()?;
                     self.async_depth = outer_async_depth;
+                    if self.tokens[self.pos].newline_before {
+                        return Err(self.syntax_error("no line terminator is allowed before =>"));
+                    }
                     self.expect_punct(Punct::Arrow)?;
                     let body = self.parse_arrow_body(is_async)?;
                     return Ok(Some(Expr::Arrow {

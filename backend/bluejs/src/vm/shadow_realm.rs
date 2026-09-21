@@ -337,7 +337,11 @@ impl Vm {
             ));
         };
         let promise_constructor = self.global("Promise")?;
-        let (promise, resolve, reject) = self.new_promise_capability(&promise_constructor)?;
+        let PromiseCapability {
+            promise,
+            resolve,
+            reject,
+        } = self.new_promise_capability(&promise_constructor)?;
         let record = self
             .shadow_realms
             .get(&this_id)

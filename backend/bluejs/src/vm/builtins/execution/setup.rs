@@ -113,9 +113,7 @@ impl Vm {
         owner: ObjectId,
         key: &PropertyName,
     ) -> Result<(), RuntimeError> {
-        if self.iterator_base != Some(owner)
-            || self.heap.get_own_property_descriptor(owner, key)?.is_some()
-        {
+        if self.iterator_base != Some(owner) {
             return Ok(());
         }
         let (name, length, method) = if key == &PropertyName::from("flatMap") {
@@ -127,6 +125,13 @@ impl Vm {
         } else {
             return Ok(());
         };
+        // Once offered, the helper is an ordinary property: a script that has
+        // deleted it must not see it come back.
+        if self.iterator_helpers_installed.contains(&name)
+            || self.heap.get_own_property_descriptor(owner, key)?.is_some()
+        {
+            return Ok(());
+        }
         let function_prototype = self.function_prototype()?;
         self.install_native(
             owner,
@@ -134,7 +139,9 @@ impl Vm {
             name,
             length,
             NativeFunction::IteratorHelper(method),
-        )
+        )?;
+        self.iterator_helpers_installed.push(name);
+        Ok(())
     }
 
     pub(in super::super::super) fn install_iterator_to_string_tag_accessor(
@@ -373,6 +380,60 @@ impl Vm {
             self.call_native(return_method, receiver.clone(), Vec::new(), false)?;
         }
         Ok(Value::Undefined)
+    }
+
+    /// `%AsyncIteratorPrototype% [ @@asyncDispose ] ( )`: a promise that
+    /// fulfils with `undefined` once the iterator's `return` (called without
+    /// arguments) has run and whatever it returned has settled. Every failure
+    /// along the way rejects that promise instead of throwing.
+    pub(in super::super::super) fn async_iterator_dispose(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.push(receiver.clone());
+        let result = (|| {
+            let promise = self.new_promise()?;
+            self.stack.push(Value::Object(promise));
+            let outcome: Result<(), RuntimeError> = (|| {
+                let return_method = self.get_method(receiver, &"return".into())?;
+                if return_method == Value::Undefined {
+                    return self.resolve_promise(promise, Value::Undefined);
+                }
+                let returned =
+                    self.call_native(return_method, receiver.clone(), Vec::new(), false)?;
+                self.stack.push(returned.clone());
+                let wrapper = self.promise_resolve(returned)?;
+                self.stack.push(wrapper.clone());
+                let wrapper = wrapper
+                    .object_id()
+                    .expect("PromiseResolve returns a promise object");
+                // The `unwrap` closure: ignore the value, return undefined.
+                let state = self.promise_state()?;
+                self.stack.push(Value::Object(state));
+                let unwrap = self.promise_native_function(
+                    NativeFunction::PromiseValueThunk {
+                        state,
+                        thrower: false,
+                    },
+                    1,
+                )?;
+                self.stack.push(unwrap.clone());
+                self.perform_promise_then(
+                    wrapper,
+                    unwrap,
+                    Value::Undefined,
+                    ReactionTarget::Native(promise),
+                )
+            })();
+            if let Err(error) = outcome {
+                let reason = self.error_value(error)?;
+                self.settle_promise(promise, PromiseStatus::Rejected(reason))?;
+            }
+            Ok(Value::Object(promise))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super::super) fn iterator_close_direct(

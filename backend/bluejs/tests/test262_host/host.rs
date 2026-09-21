@@ -90,8 +90,7 @@ fn object_entries_roots_intermediate_temporal_range_arguments() {
 
 #[test]
 fn property_helper_observes_writes_and_receiver_setters() {
-    let mut vm = Vm::default();
-    vm.install_test262_harness().unwrap();
+    let mut vm = super::harness::property_helper_vm();
     let source = r#"
         let sealed = Object.preventExtensions({});
         let accessor = {};
@@ -115,7 +114,8 @@ fn property_helper_observes_writes_and_receiver_setters() {
         verifyWritable(created, "created", "created");
         verifyWritable([], "length");
         verifyNotWritable(locked, "value");
-        assert.throws(Test262Error, () => verifyWritable({}, "missing"));
+        // No own descriptor to read `writable` from: upstream dereferences it.
+        assert.throws(TypeError, () => verifyWritable({}, "missing"));
         assert.throws(Test262Error, () => verifyWritable(locked, "value"));
         assert.throws(Test262Error, () => verifyNotWritable(existing, "value", "value"));
         assert.throws(Test262Error, () => verifyWritable(throwing, "value", "value"));

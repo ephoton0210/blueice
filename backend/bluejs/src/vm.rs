@@ -403,8 +403,30 @@ impl PromiseStatus {
     }
 }
 
+/// A PromiseCapability Record: a promise together with the functions that
+/// resolve and reject it. For a promise made by a user constructor these are
+/// whatever that constructor handed its executor.
+#[derive(Clone)]
+struct PromiseCapability {
+    promise: Value,
+    resolve: Value,
+    reject: Value,
+}
+
+/// Where a reaction job delivers its result.
+#[derive(Clone)]
+enum ReactionTarget {
+    /// A promise the VM created itself for `%Promise%`-constructed results
+    /// (`then` with the default species): its resolving functions are never
+    /// observable, so the job resolves or rejects it directly.
+    Native(ObjectId),
+    /// The capability of a promise built by another constructor (a subclass
+    /// or a custom species): its resolve/reject functions are called.
+    Capability(PromiseCapability),
+}
+
 struct PromiseThenReaction {
-    target: ObjectId,
+    target: ReactionTarget,
     on_fulfilled: Value,
     on_rejected: Value,
 }
@@ -491,30 +513,9 @@ pub(super) struct DisposeCapabilityState {
     pub(super) disposed: bool,
 }
 
-/// Aggregation bookkeeping for `Promise.all`. Each input observes its own
-/// resolution job; the target is fulfilled only after every indexed slot has
-/// settled, so a pending dependency never becomes a host-level unsupported
-/// condition.
-struct PromiseAllState {
-    values: Vec<Option<Value>>,
-    remaining: usize,
-}
-
-/// Bookkeeping for `Promise.any`: each rejection occupies its input-indexed
-/// slot so the eventual AggregateError preserves iterator order.
-struct PromiseAnyState {
-    errors: Vec<Option<Value>>,
-    remaining: usize,
-}
-
-struct PromiseAllSettledState {
-    results: Vec<Option<(Value, bool)>>,
-    remaining: usize,
-}
-
 enum PromiseJob {
     Reaction {
-        target: ObjectId,
+        target: ReactionTarget,
         handler: Value,
         value: Value,
         fulfilled: bool,
@@ -736,6 +737,8 @@ pub struct Vm {
     /// `%TypedArray%` and `%TypedArray%.prototype`, kept outside the global
     /// object but permanently reachable from every concrete constructor.
     typed_array_intrinsics: Option<(ObjectId, ObjectId)>,
+    /// Annex B legacy static properties of this realm's `%RegExp%`.
+    regexp_legacy: crate::regexp::LegacyStatics,
     result_root: Option<RootId>,
     stack: Vec<Value>,
     // None is a lexical binding's uninitialized state, never JS undefined.
@@ -897,6 +900,11 @@ pub struct Vm {
     // constructor bytecode.
     class_field_initializer_depth: u32,
     iterator_base: Option<ObjectId>,
+    /// The lazily installed `%Iterator.prototype%` helpers (`flatMap`,
+    /// `chunks`, `windows`) that have already been offered to the realm. Each
+    /// is installed at most once, so deleting one never lets a later
+    /// observation put a fresh copy back.
+    iterator_helpers_installed: Vec<&'static str>,
     /// `%WrapForValidIteratorPrototype%`, shared by the iterator wrappers
     /// created by `Iterator.from`.
     iterator_wrapper_prototype: Option<ObjectId>,
@@ -910,6 +918,7 @@ pub struct Vm {
     generator_prototype: Option<ObjectId>,
     async_iterator_base: Option<ObjectId>,
     async_generator_prototype: Option<ObjectId>,
+    async_generator_function_prototype: Option<ObjectId>,
     /// `%AsyncFunction.prototype%`, permanently rooted with the realm once
     /// the first async closure needs it. Its `constructor` property keeps
     /// `%AsyncFunction%` reachable without exposing a global binding.
@@ -961,9 +970,6 @@ pub struct Vm {
     /// boundary and registered by every allocation safepoint.
     kept_weak_objects: Vec<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
-    promise_all: HashMap<ObjectId, PromiseAllState>,
-    promise_any: HashMap<ObjectId, PromiseAnyState>,
-    promise_all_settled: HashMap<ObjectId, PromiseAllSettledState>,
     promise_jobs: VecDeque<PromiseJob>,
     test262_done: Option<Result<(), Value>>,
     /// Test262-only host scheduler state. Ordinary realms never install or
@@ -1023,6 +1029,7 @@ impl Vm {
             array_prototype,
             string_intrinsics: None,
             typed_array_intrinsics: None,
+            regexp_legacy: crate::regexp::LegacyStatics::default(),
             result_root: None,
             stack: Vec::new(),
             bindings: Vec::new(),
@@ -1094,6 +1101,7 @@ impl Vm {
             class_constructor: None,
             class_field_initializer_depth: 0,
             iterator_base: None,
+            iterator_helpers_installed: Vec::new(),
             iterator_wrapper_prototype: None,
             iterator_helper_prototype: None,
             array_iterator_prototype: None,
@@ -1103,6 +1111,7 @@ impl Vm {
             generator_prototype: None,
             async_iterator_base: None,
             async_generator_prototype: None,
+            async_generator_function_prototype: None,
             async_function_prototype: None,
             promise_prototype: None,
             date_prototype: None,
@@ -1121,9 +1130,6 @@ impl Vm {
             dispose_marks: Vec::new(),
             kept_weak_objects: Vec::new(),
             promises: HashMap::new(),
-            promise_all: HashMap::new(),
-            promise_any: HashMap::new(),
-            promise_all_settled: HashMap::new(),
             promise_jobs: VecDeque::new(),
             test262_done: None,
             test262_agent_host: None,
@@ -2032,10 +2038,11 @@ impl Vm {
         } else {
             false
         };
-        let target = if arrow {
-            self.new_target.clone()
-        } else {
-            target
+        // The captured value, not the caller's: an arrow reads the
+        // `new.target` of the function it was created in.
+        let target = match (arrow, callee.object_id()) {
+            (true, Some(id)) => self.heap.closure_new_target(id)?,
+            _ => target,
         };
         self.charge_step()?;
         let base = self.stack.len();
@@ -2126,6 +2133,7 @@ impl Vm {
         if let Value::Object(id) = callee {
             if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
+                let with_objects = self.heap.closure_with_objects(id)?;
                 return self.call_closure(builtins::ClosureCall {
                     code,
                     captures,
@@ -2135,6 +2143,7 @@ impl Vm {
                     construct,
                     home,
                     class_base,
+                    with_objects,
                 });
             }
         }
@@ -2175,6 +2184,8 @@ impl Vm {
                     | NativeFunction::Promise
                     | NativeFunction::Function
                     | NativeFunction::AsyncFunction
+                    | NativeFunction::GeneratorFunction
+                    | NativeFunction::AsyncGeneratorFunction
                     | NativeFunction::Iterator
                     | NativeFunction::PrimitiveConstructor(_)
                     // Reaches native_call so its own NewTarget-is-defined

@@ -21,8 +21,11 @@ impl Vm {
         let base = self.stack.len();
         let result = (|| {
             let host = self.test262_host()?;
-            let prototype = self.object_prototype;
-            let value = self.with_roots(|heap| heap.alloc_html_dda_object(Some(prototype)))?;
+            let string = self.string_intrinsics()?.0;
+            let function_prototype = self.heap.prototype(string)?.unwrap();
+            let value = self.with_roots(|heap| {
+                heap.alloc_html_dda_object(NativeFunction::Test262("IsHTMLDDA"), function_prototype)
+            })?;
             // Keep the host value reachable across the property-definition
             // allocation safepoint below.
             self.stack.push(Value::Object(value));
@@ -104,7 +107,7 @@ impl Vm {
             global,
             prototype,
             "assert",
-            1,
+            2,
             NativeFunction::Test262("assert"),
         )?;
         // A small number of imported legacy conformance fixtures retain a
@@ -130,11 +133,11 @@ impl Vm {
         )?;
         let assert = self.heap.get(global, "assert")?.object_id().unwrap();
         for (name, length) in [
-            ("sameValue", 2),
-            ("notSameValue", 2),
+            ("sameValue", 3),
+            ("notSameValue", 3),
             ("_isSameValue", 2),
-            ("throws", 2),
-            ("compareArray", 2),
+            ("throws", 3),
+            ("compareArray", 3),
         ] {
             self.install_native(
                 assert,
@@ -232,30 +235,6 @@ impl Vm {
             3,
             NativeFunction::Test262("deepEqual"),
         )?;
-        for (name, length) in [
-            ("verifyProperty", 4),
-            ("verifyCallableProperty", 6),
-            ("verifyAccessorProperty", 4),
-            ("verifyEqualTo", 3),
-            ("verifyWritable", 4),
-            ("verifyNotWritable", 4),
-            ("verifyEnumerable", 2),
-            ("verifyNotEnumerable", 2),
-            ("verifyConfigurable", 2),
-            ("verifyNotConfigurable", 2),
-            ("verifyPrimordialProperty", 4),
-            ("verifyPrimordialCallableProperty", 6),
-            ("verifyPrimordialAccessorProperty", 4),
-            ("isConstructor", 1),
-        ] {
-            self.install_native(
-                global,
-                prototype,
-                name,
-                length,
-                NativeFunction::Test262(name),
-            )?;
-        }
         self.install_native(
             global,
             prototype,

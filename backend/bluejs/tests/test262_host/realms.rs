@@ -353,7 +353,7 @@ fn function_intrinsic_graph_and_restricted_properties_follow_the_realm_contract(
           Function.prototype.constructor === Function &&
           Function.prototype.isPrototypeOf(Function) &&
           constructed.constructor === Function && constructed() === 7 &&
-          constructed.caller === undefined && constructed.arguments === null &&
+          constructed.caller === null && constructed.arguments === null &&
           !strict.hasOwnProperty('caller') && !strict.hasOwnProperty('arguments') &&
           !dynamicAsync.hasOwnProperty('caller') && !dynamicAsync.hasOwnProperty('arguments') &&
           !object.method.hasOwnProperty('caller') && !object.method.hasOwnProperty('arguments') &&
