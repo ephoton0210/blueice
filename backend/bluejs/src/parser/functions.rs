@@ -104,7 +104,12 @@ impl Parser {
                 let context_reserves_await = self.async_depth != 0
                     || self.module_await
                     || self.static_block_function_depths.last() == Some(&self.function_depth);
-                if (is_async && !is_declaration) || (is_declaration && context_reserves_await) {
+                // Module code reserves `await` even as a function expression's
+                // own name, which the [~Await] parameter alone would allow.
+                if self.module
+                    || (is_async && !is_declaration)
+                    || (is_declaration && context_reserves_await)
+                {
                     let detail = if self.current_identifier_escaped() {
                         "the await keyword cannot contain an escape"
                     } else {
@@ -154,6 +159,21 @@ impl Parser {
             return Err(self.syntax_error("a normal function cannot contain super"));
         }
         Ok(function)
+    }
+
+    /// A FieldDefinition's Initializer is parsed with `[~Yield, ~Await]`
+    /// whatever surrounds the class: inside an async function or generator
+    /// `await` and `yield` do not become operators there, and in a script
+    /// `await` is an ordinary IdentifierReference.
+    fn parse_field_initializer(&mut self) -> Result<Expr, ParseError> {
+        let outer_async_depth = std::mem::replace(&mut self.async_depth, 0);
+        let outer_module_await = std::mem::replace(&mut self.module_await, false);
+        let outer_generator_depth = std::mem::replace(&mut self.generator_depth, 0);
+        let initializer = self.parse_assignment();
+        self.generator_depth = outer_generator_depth;
+        self.module_await = outer_module_await;
+        self.async_depth = outer_async_depth;
+        initializer
     }
 
     /// The early errors of a function's BindingIdentifier that do not depend
@@ -420,7 +440,7 @@ impl Parser {
                     return Err(self.syntax_error("invalid public class field name"));
                 }
                 let initializer = if self.eat_punct(Punct::Assign) {
-                    Some(self.parse_assignment()?)
+                    Some(self.parse_field_initializer()?)
                 } else {
                     None
                 };

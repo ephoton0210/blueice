@@ -468,9 +468,12 @@ impl Parser {
         if name == "yield" && (self.generator_depth != 0 || self.strict) {
             return false;
         }
+        // Module code reserves `await` at every depth, nested plain functions
+        // included (§13.1.1: the goal symbol is Module).
         if name == "await"
             && (self.async_depth != 0
                 || self.module_await
+                || self.module
                 || self.static_block_function_depths.last() == Some(&self.function_depth))
         {
             return false;

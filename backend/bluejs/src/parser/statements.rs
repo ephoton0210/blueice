@@ -165,7 +165,7 @@ impl Parser {
         if !self.identifier_reference_name_is_valid(&label) {
             return Err(self.syntax_error("a reserved word cannot be used as a label"));
         }
-        if label == "await" && (self.async_depth != 0 || self.module_await) {
+        if label == "await" && (self.async_depth != 0 || self.module_await || self.module) {
             let detail = if identifier_escaped {
                 "the await keyword cannot contain an escape"
             } else {

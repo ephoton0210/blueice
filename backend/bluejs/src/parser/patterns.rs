@@ -22,7 +22,7 @@ impl Parser {
         {
             return Err(self.syntax_error("a reserved word cannot be used as a binding identifier"));
         }
-        if name == "await" && (self.async_depth != 0 || self.module_await) {
+        if name == "await" && (self.async_depth != 0 || self.module_await || self.module) {
             let detail = if escaped {
                 "the await keyword cannot contain an escape"
             } else {
