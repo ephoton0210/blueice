@@ -15,6 +15,7 @@ mod common;
 
 use blueice_ipc::downloads::{DownloadsClient, DownloadsReply, DownloadsRequest, TransferInfo, TransferState, DOWNLOADS_PROTOCOL_VERSION};
 use common::{body, FakeGatekeeper, GateReply, Resource, TempDir, TestServer};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -110,6 +111,14 @@ impl Dirs {
     fn socket(&self) -> PathBuf {
         self.runtime.join("downloads.sock")
     }
+}
+
+#[test]
+fn the_downloads_socket_is_owner_only_before_it_can_receive_credentials() {
+    let dirs = Dirs::new();
+    let gate = FakeGatekeeper::clear_all();
+    let process = Process::spawn(&dirs, &gate.socket);
+    assert_eq!(std::fs::metadata(&process.socket).unwrap().permissions().mode() & 0o777, 0o600);
 }
 
 fn wait_for(client: &mut DownloadsClient<UnixStream>, id: u64, what: &str, mut condition: impl FnMut(&TransferInfo) -> bool) -> TransferInfo {

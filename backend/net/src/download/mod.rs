@@ -16,6 +16,7 @@ use std::time::Duration;
 
 pub mod clearance;
 pub mod backend;
+pub mod credentials;
 pub mod file_name;
 mod http;
 pub mod plan;
@@ -117,6 +118,9 @@ pub enum DownloadError {
     /// SSH authentication could not establish the identity requested by the
     /// URL. This deliberately contains no secret.
     Authentication(String),
+    /// The operating system credential store could not be used. The message
+    /// is safe to show and never includes a secret.
+    Credentials(String),
 }
 
 impl DownloadError {
@@ -147,6 +151,7 @@ impl fmt::Display for DownloadError {
             DownloadError::ClearanceMismatch(what) => write!(f, "gatekeeper clearance does not match this transfer: {what}"),
             DownloadError::HostVerification(what) => write!(f, "SSH host verification failed: {what}"),
             DownloadError::Authentication(what) => write!(f, "authentication failed: {what}"),
+            DownloadError::Credentials(what) => write!(f, "credential error: {what}"),
         }
     }
 }
@@ -225,6 +230,7 @@ mod tests {
             DownloadError::ClearanceMismatch("url".to_string()),
             DownloadError::HostVerification("unknown server".to_string()),
             DownloadError::Authentication("no SSH agent identity".to_string()),
+            DownloadError::Credentials("keychain is locked".to_string()),
         ];
         for e in fatal {
             assert!(!e.is_retryable(), "{e:?}");
@@ -244,5 +250,6 @@ mod tests {
         assert!(DownloadError::ClearanceMismatch("wrong url".to_string()).to_string().contains("wrong url"));
         assert!(DownloadError::HostVerification("unknown server".to_string()).to_string().contains("unknown server"));
         assert!(DownloadError::Authentication("no SSH agent identity".to_string()).to_string().contains("no SSH agent identity"));
+        assert!(DownloadError::Credentials("keychain is locked".to_string()).to_string().contains("keychain is locked"));
     }
 }

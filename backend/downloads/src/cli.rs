@@ -12,6 +12,7 @@ use crate::server::serve;
 use blueice_ipc::downloads::default_downloads_socket_path;
 use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
 use std::io;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -82,6 +83,9 @@ pub fn run(args: Args) -> io::Result<()> {
         std::fs::remove_file(&args.socket)?;
     }
     let listener = UnixListener::bind(&args.socket)?;
+    // Credential-setting requests can carry a password, so do not rely on
+    // the caller's umask: only this user may connect to the socket.
+    std::fs::set_permissions(&args.socket, std::fs::Permissions::from_mode(0o600))?;
     let mut config = ManagerConfig::new(&args.download_dir, &args.data_dir, &args.gatekeeper_socket);
     config.max_concurrent = args.max_concurrent;
     config.options.sftp_known_hosts = args.sftp_known_hosts;

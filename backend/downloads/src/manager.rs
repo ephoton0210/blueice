@@ -29,8 +29,9 @@
 use crate::policy::{resolve_requested, unique_path};
 use crate::store::{Store, StoredTransfer};
 use blueice_ipc::downloads::{BlockedInfo, ErrorCode, TransferEvent, TransferInfo, TransferState};
-use blueice_net::download::clearance::{Blocked, Reviewer};
 use blueice_net::download::backend::validate_url;
+use blueice_net::download::clearance::{Blocked, Reviewer};
+use blueice_net::download::credentials::{delete_sftp_password, save_sftp_password, SftpCredentialRef};
 use blueice_net::download::file_name::choose_file_name;
 use blueice_net::download::probe::probe;
 use blueice_net::download::sidecar::remove_partials;
@@ -304,6 +305,19 @@ impl TransferManager {
         let created = self.shared.commit(&mut state, id, true);
         Shared::schedule(&self.shared, &mut state);
         Ok(created)
+    }
+
+    /// Writes a password to the platform credential store. No transfer state
+    /// carries the password; later SFTP workers derive this reference from
+    /// their `sftp://user@host/path` URL after host-key verification.
+    pub fn set_sftp_password(&self, host: &str, port: u16, username: &str, password: &str) -> Result<(), ManagerError> {
+        let reference = SftpCredentialRef::new(host, port, username).map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        save_sftp_password(&reference, password).map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))
+    }
+
+    pub fn remove_sftp_password(&self, host: &str, port: u16, username: &str) -> Result<(), ManagerError> {
+        let reference = SftpCredentialRef::new(host, port, username).map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
+        delete_sftp_password(&reference).map_err(|error| ManagerError::new(ErrorCode::Internal, error.to_string()))
     }
 
     pub fn list(&self, filter: Option<TransferState>) -> Vec<TransferInfo> {

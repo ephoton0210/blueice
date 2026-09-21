@@ -100,6 +100,29 @@ struct DownloadFileParams {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+struct SetSftpPasswordParams {
+    /// SFTP server host, without a URL scheme or path.
+    host: String,
+    /// SFTP port; defaults to 22.
+    port: Option<u16>,
+    /// The SSH username used in the matching sftp://user@host/path URL.
+    username: String,
+    /// The password to store. It is sent to the local downloads process but
+    /// is never returned, logged, or placed in a transfer record.
+    password: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct RemoveSftpPasswordParams {
+    /// SFTP server host, without a URL scheme or path.
+    host: String,
+    /// SFTP port; defaults to 22.
+    port: Option<u16>,
+    /// The SSH username used in the matching sftp://user@host/path URL.
+    username: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 struct ListTransfersParams {
     /// Only transfers in this state: one of queued, awaiting_clearance,
     /// active, paused, completed, failed, cancelled, blocked. Omit for all.
@@ -303,6 +326,24 @@ impl BlueIceMcpServer {
         // Not idempotent: a `start` whose reply was lost must not be run again.
         let outcome = downloads_call(self.downloads.clone(), false, move |c| c.start(&url, dest.as_deref(), overwrite)).await;
         Ok(transfer_result(outcome))
+    }
+
+    #[tool(description = "Store an SFTP password in this machine's operating-system credential store for a host, port, and username. The secret is sent only to the local downloads process and is never returned, logged, put in a URL, or written into transfer state. Prefer SSH-agent authentication when available.")]
+    async fn set_sftp_password(&self, Parameters(SetSftpPasswordParams { host, port, username, password }): Parameters<SetSftpPasswordParams>) -> Result<CallToolResult, ErrorData> {
+        let port = port.unwrap_or(22);
+        match downloads_call(self.downloads.clone(), false, move |client| client.set_sftp_password(&host, port, &username, &password)).await {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text("SFTP password saved in the local operating-system credential store. It will not be returned or recorded with transfers.")])),
+            Err(error) => Ok(call_error_result(error)),
+        }
+    }
+
+    #[tool(description = "Remove the saved SFTP password for a host, port, and username from this machine's operating-system credential store. This does not alter any downloaded files or transfer history.")]
+    async fn remove_sftp_password(&self, Parameters(RemoveSftpPasswordParams { host, port, username }): Parameters<RemoveSftpPasswordParams>) -> Result<CallToolResult, ErrorData> {
+        let port = port.unwrap_or(22);
+        match downloads_call(self.downloads.clone(), true, move |client| client.remove_sftp_password(&host, port, &username)).await {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text("Saved SFTP password removed from the local operating-system credential store.")])),
+            Err(error) => Ok(call_error_result(error)),
+        }
     }
 
     #[tool(

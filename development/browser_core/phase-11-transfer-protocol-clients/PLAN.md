@@ -49,11 +49,17 @@ HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; S
   implementation exists.
 - **Credential boundary**: URLs may select an endpoint and optional username,
   but never carry a password or private-key material. A normalized
-  `(scheme, host, port, username)` credential reference is persisted with the
-  transfer; the secret itself lives only in the OS credential store. The IPC
-  uses opaque references after a local credential has been saved, so transfer
+  `(scheme, host, port, username)` reference is derived at authentication
+  time; the secret itself lives only in the OS credential store. The IPC uses
+  that opaque reference after a local credential has been saved, so transfer
   records, logs, sidecars, and MCP output never contain a secret. SSH host
   keys must be checked against a known-hosts store before SFTP authentication.
+  `keyring` provides the platform store (macOS Keychain, Windows Credential
+  Manager, and Secret Service where available). The local Unix socket is
+  explicitly mode `0600`; `SetSftpPassword` is the one request that carries a
+  secret and replies only `Ok`, after which workers derive the reference from
+  the URL. The SFTP backend tries SSH agent authentication first and opens the
+  credential store only after host-key verification has succeeded.
 
 ## Checklist
 
@@ -63,5 +69,6 @@ HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; S
 - [x] Define the common transfer-backend interface these protocols implement, shared with Phase 10's HTTP backend (see the `TransferBackend` sketch above)
 - [x] Design the credential storage mechanism for FTP/SFTP auth
 - [x] Implement the SFTP backend, known-host verification, and SSH-agent authentication (no password is accepted in a URL or recorded in transfer state)
-- [ ] Add OS-keychain credential references for SFTP passwords and encrypted private-key passphrases
+- [x] Add OS-keychain credential references for SFTP passwords, with a local MCP/IPC set/remove path that does not echo secrets
+- [ ] Add OS-keychain references for encrypted private-key passphrases
 - [ ] Add a tested, audited explicit-FTPS backend once its dependency risk is resolved

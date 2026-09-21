@@ -339,6 +339,23 @@ pub enum DownloadsRequest {
     Cancel { id: u64 },
     /// Drops a finished transfer from history (never a running one).
     Remove { id: u64 },
+    /// Store an SFTP password in the platform credential store. The password
+    /// is sent only over this user-owned Unix socket, is never persisted in
+    /// the downloads database, and is never included in a reply.
+    SetSftpPassword {
+        host: String,
+        #[serde(default = "default_sftp_port")]
+        port: u16,
+        username: String,
+        password: String,
+    },
+    /// Remove the saved password for this SFTP endpoint and user.
+    RemoveSftpPassword {
+        host: String,
+        #[serde(default = "default_sftp_port")]
+        port: u16,
+        username: String,
+    },
     /// After this, every change to any transfer is pushed as
     /// [`DownloadsReply::Updated`] on this connection.
     Subscribe,
@@ -346,6 +363,10 @@ pub enum DownloadsRequest {
     /// See [`crate::ClientMessage::Unknown`] -- the same fail-soft fallback.
     #[serde(other)]
     Unknown,
+}
+
+fn default_sftp_port() -> u16 {
+    22
 }
 
 /// The downloads process's message to a client.
@@ -560,6 +581,18 @@ impl<S: Read + Write> DownloadsClient<S> {
         Self::ok_reply(self.call(DownloadsRequest::Remove { id })?)
     }
 
+    /// Stores `password` in the local operating system credential store. It
+    /// is deliberately a non-idempotent call: if its reply is lost, a caller
+    /// must decide whether to retry rather than silently repeating a secret
+    /// write.
+    pub fn set_sftp_password(&mut self, host: &str, port: u16, username: &str, password: &str) -> Result<(), ClientError> {
+        Self::ok_reply(self.call(DownloadsRequest::SetSftpPassword { host: host.to_string(), port, username: username.to_string(), password: password.to_string() })?)
+    }
+
+    pub fn remove_sftp_password(&mut self, host: &str, port: u16, username: &str) -> Result<(), ClientError> {
+        Self::ok_reply(self.call(DownloadsRequest::RemoveSftpPassword { host: host.to_string(), port, username: username.to_string() })?)
+    }
+
     pub fn subscribe(&mut self) -> Result<(), ClientError> {
         Self::ok_reply(self.call(DownloadsRequest::Subscribe)?)
     }
@@ -630,6 +663,8 @@ mod tests {
             DownloadsRequest::Resume { id: 3 },
             DownloadsRequest::Cancel { id: 3 },
             DownloadsRequest::Remove { id: 3 },
+            DownloadsRequest::SetSftpPassword { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string(), password: "not-a-real-secret".to_string() },
+            DownloadsRequest::RemoveSftpPassword { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string() },
             DownloadsRequest::Subscribe,
             DownloadsRequest::Shutdown,
         ]
@@ -660,6 +695,18 @@ mod tests {
                 assert_eq!(read_downloads_request(&mut b).unwrap(), (request_id, req.clone()));
             }
         }
+    }
+
+    #[test]
+    fn an_sftp_password_request_without_a_port_uses_ssh_default_port() {
+        let raw = serde_json::json!({
+            "request_id": 1,
+            "message": {"SetSftpPassword": {"host": "files.example.test", "username": "alice", "password": "not-a-real-secret"}}
+        });
+        let bytes = serde_json::to_vec(&raw).unwrap();
+        let envelope: Envelope<DownloadsRequest> = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(envelope.request_id, Some(1));
+        assert_eq!(envelope.message, DownloadsRequest::SetSftpPassword { host: "files.example.test".to_string(), port: 22, username: "alice".to_string(), password: "not-a-real-secret".to_string() });
     }
 
     #[test]
@@ -901,6 +948,23 @@ mod tests {
         assert_eq!(client.start("https://example.com/a.bin", Some("a.bin"), true).unwrap().id, 4);
         assert_eq!(client.list(Some(TransferState::Active)).unwrap().len(), 1);
         assert_eq!(client.get(4).unwrap(), sample_info(4));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn credential_client_calls_send_the_secret_only_in_the_request() {
+        let (stream, server) = serve(|mut s| {
+            answer_hello(&mut s);
+            let (id, request) = read_downloads_request(&mut s).unwrap();
+            assert_eq!(request, DownloadsRequest::SetSftpPassword { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string(), password: "not-a-real-secret".to_string() });
+            write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
+            let (id, request) = read_downloads_request(&mut s).unwrap();
+            assert_eq!(request, DownloadsRequest::RemoveSftpPassword { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string() });
+            write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
+        });
+        let mut client = DownloadsClient::connect(stream).unwrap();
+        client.set_sftp_password("files.example.test", 2222, "alice", "not-a-real-secret").unwrap();
+        client.remove_sftp_password("files.example.test", 2222, "alice").unwrap();
         server.join().unwrap();
     }
 

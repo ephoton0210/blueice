@@ -81,6 +81,8 @@ fn handle_connection(stream: UnixStream, manager: &Arc<TransferManager>, stop: &
             DownloadsRequest::Resume { id } => manager.resume(id).map(DownloadsReply::Transfer).unwrap_or_else(refusal),
             DownloadsRequest::Cancel { id } => manager.cancel(id).map(DownloadsReply::Transfer).unwrap_or_else(refusal),
             DownloadsRequest::Remove { id } => manager.remove(id).map(|()| DownloadsReply::Ok).unwrap_or_else(refusal),
+            DownloadsRequest::SetSftpPassword { host, port, username, password } => manager.set_sftp_password(&host, port, &username, &password).map(|()| DownloadsReply::Ok).unwrap_or_else(refusal),
+            DownloadsRequest::RemoveSftpPassword { host, port, username } => manager.remove_sftp_password(&host, port, &username).map(|()| DownloadsReply::Ok).unwrap_or_else(refusal),
             DownloadsRequest::Subscribe => {
                 if !subscribed {
                     subscribed = true;
