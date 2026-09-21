@@ -213,7 +213,7 @@ fn unsafe_or_pointless_requests_are_refused_up_front_and_create_no_transfer() {
     for dest in ["/etc/passwd", "../escape.bin", "a/../../escape.bin", "bad:name.bin", ""] {
         assert_eq!(remote_code(client.start(&rig.url("/f.bin"), Some(dest), false)), ErrorCode::InvalidRequest, "{dest:?}");
     }
-    for url in ["ftp://example.com/f", "not a url", "file:///etc/passwd", ""] {
+    for url in ["ftp://example.com/f", "not a url", "file:///etc/passwd", "", "sftp://alice:secret@example.com/f"] {
         assert_eq!(remote_code(client.start(url, None, false)), ErrorCode::InvalidRequest, "{url:?}");
     }
     assert!(client.list(None).unwrap().is_empty(), "a refused request must not leave a transfer behind");

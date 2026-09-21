@@ -54,8 +54,24 @@ pub trait TransferBackend: Send + Sync {
 pub(crate) fn for_url(url: &str, options: &DownloadOptions) -> Result<Arc<dyn TransferBackend>, DownloadError> {
     if url.starts_with("http://") || url.starts_with("https://") {
         Ok(Arc::new(HttpBackend { agent: http::agent(options) }))
+    } else if url.starts_with("sftp://") {
+        Ok(Arc::new(crate::download::sftp::SftpBackend::new(options)))
     } else {
-        Err(DownloadError::InvalidUrl(format!("unsupported scheme in {url:?} (supported: http, https)")))
+        Err(DownloadError::InvalidUrl(format!("unsupported scheme in {url:?} (supported: http, https, sftp)")))
+    }
+}
+
+/// Validates a download URL before it is persisted or sent to the
+/// gatekeeper. HTTP(S)'s detailed parsing remains in its client, as before;
+/// SFTP must be parsed here because an embedded password would otherwise be
+/// copied into transfer history and logs before the backend can reject it.
+pub fn validate_url(url: &str) -> Result<(), DownloadError> {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        Ok(())
+    } else if url.starts_with("sftp://") {
+        crate::download::sftp::validate_url(url)
+    } else {
+        Err(DownloadError::InvalidUrl(format!("unsupported scheme in {url:?} (supported: http, https, sftp)")))
     }
 }
 
@@ -133,6 +149,12 @@ mod tests {
     fn only_registered_schemes_select_a_backend() {
         let options = DownloadOptions::default();
         assert!(for_url("https://example.test/file", &options).is_ok());
+        assert!(for_url("sftp://alice@example.test/file", &options).is_ok());
         assert!(matches!(for_url("ftp://example.test/file", &options), Err(DownloadError::InvalidUrl(_))));
+    }
+
+    #[test]
+    fn an_sftp_password_is_rejected_before_a_transfer_can_record_it() {
+        assert!(matches!(validate_url("sftp://alice:secret@example.test/file"), Err(DownloadError::InvalidUrl(_))));
     }
 }

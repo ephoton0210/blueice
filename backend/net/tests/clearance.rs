@@ -25,6 +25,7 @@ fn probe(url: &str) -> Probe {
         last_modified: None,
         content_type: Some("application/x-msdownload".to_string()),
         content_disposition: None,
+        restart_resume_safe: true,
     }
 }
 

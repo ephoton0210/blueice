@@ -87,7 +87,9 @@ struct CloseTabParams {
 
 #[derive(Deserialize, schemars::JsonSchema)]
 struct DownloadFileParams {
-    /// The http:// or https:// URL to download.
+    /// The http://, https://, or sftp://user@host/path URL to download.
+    /// SFTP requires the server in known-hosts and a matching SSH-agent
+    /// identity; passwords in URLs are refused.
     url: String,
     /// Where to save it, as a path *relative to the download directory*
     /// (e.g. "reports/q3.pdf"). Absolute paths and ".." are refused. Omit to
@@ -290,7 +292,7 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
-        description = "Start downloading a file over HTTP(S) with BlueIce's built-in download manager (several connections at once, resumable). \
+        description = "Start downloading a file over HTTP(S), or from SFTP as sftp://user@host/path, with BlueIce's built-in download manager. HTTP(S) uses several connections at once and is resumable when the server supplies a validator; SFTP verifies the host against known-hosts and uses the SSH agent, so passwords in URLs are refused. \
         Returns as soon as the transfer is queued -- it does NOT wait for the download to finish; read progress with get_transfer or list_transfers. \
         Every download is first reviewed by the safety gatekeeper, so a transfer can end up 'blocked' instead of downloading (the result says why). \
         `dest` is an optional path relative to the download directory (absolute paths and '..' are refused); without it the name comes from the server or the URL. \

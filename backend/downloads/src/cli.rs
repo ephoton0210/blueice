@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-pub const USAGE: &str = "usage: blueice-downloads [--socket PATH] [--download-dir DIR] [--data-dir DIR] [--gatekeeper-socket PATH] [--max-concurrent N]";
+pub const USAGE: &str = "usage: blueice-downloads [--socket PATH] [--download-dir DIR] [--data-dir DIR] [--gatekeeper-socket PATH] [--max-concurrent N] [--sftp-known-hosts PATH]";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Args {
@@ -26,6 +26,7 @@ pub struct Args {
     pub data_dir: PathBuf,
     pub gatekeeper_socket: PathBuf,
     pub max_concurrent: usize,
+    pub sftp_known_hosts: Option<PathBuf>,
 }
 
 impl Default for Args {
@@ -36,6 +37,7 @@ impl Default for Args {
             data_dir: default_data_dir(),
             gatekeeper_socket: default_gatekeeper_socket_path(),
             max_concurrent: 3,
+            sftp_known_hosts: None,
         }
     }
 }
@@ -57,6 +59,7 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String
                 let raw = value("--max-concurrent")?;
                 parsed.max_concurrent = raw.parse().ok().filter(|&n| n > 0).ok_or_else(|| format!("--max-concurrent must be a positive number, not {raw:?}"))?;
             }
+            "--sftp-known-hosts" => parsed.sftp_known_hosts = Some(PathBuf::from(value("--sftp-known-hosts")?)),
             "--help" | "-h" => return Err(USAGE.to_string()),
             other => return Err(format!("unknown argument {other:?}\n{USAGE}")),
         }
@@ -81,6 +84,7 @@ pub fn run(args: Args) -> io::Result<()> {
     let listener = UnixListener::bind(&args.socket)?;
     let mut config = ManagerConfig::new(&args.download_dir, &args.data_dir, &args.gatekeeper_socket);
     config.max_concurrent = args.max_concurrent;
+    config.options.sftp_known_hosts = args.sftp_known_hosts;
     let manager = TransferManager::open(config)?;
 
     serve(listener, manager.clone(), Arc::new(AtomicBool::new(false)));
@@ -102,6 +106,7 @@ mod tests {
     fn no_arguments_means_every_default() {
         assert_eq!(parse(&[]).unwrap(), Args::default());
         assert_eq!(Args::default().max_concurrent, 3);
+        assert_eq!(Args::default().sftp_known_hosts, None);
         assert_eq!(Args::default().socket.file_name().unwrap(), "downloads.sock");
     }
 
@@ -110,8 +115,13 @@ mod tests {
         let args = parse(&["--socket", "/s", "--download-dir", "/d", "--data-dir", "/data", "--gatekeeper-socket", "/g", "--max-concurrent", "5"]).unwrap();
         assert_eq!(
             args,
-            Args { socket: "/s".into(), download_dir: "/d".into(), data_dir: "/data".into(), gatekeeper_socket: "/g".into(), max_concurrent: 5 }
+            Args { socket: "/s".into(), download_dir: "/d".into(), data_dir: "/data".into(), gatekeeper_socket: "/g".into(), max_concurrent: 5, sftp_known_hosts: None }
         );
+    }
+
+    #[test]
+    fn an_sftp_known_hosts_file_can_be_selected_explicitly() {
+        assert_eq!(parse(&["--sftp-known-hosts", "/keys/known_hosts"]).unwrap().sftp_known_hosts, Some(PathBuf::from("/keys/known_hosts")));
     }
 
     #[test]

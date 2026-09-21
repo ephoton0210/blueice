@@ -21,6 +21,7 @@ mod http;
 pub mod plan;
 pub mod probe;
 pub mod progress;
+mod sftp;
 pub mod sidecar;
 pub mod transfer;
 
@@ -57,6 +58,10 @@ pub struct DownloadOptions {
     pub tick: Duration,
     /// Whether an existing destination may be replaced.
     pub overwrite: bool,
+    /// An OpenSSH `known_hosts` file used to verify SFTP server identity.
+    /// `None` means the current user's `~/.ssh/known_hosts`; a missing file
+    /// is an error, never a trust-on-first-use prompt.
+    pub sftp_known_hosts: Option<PathBuf>,
 }
 
 impl Default for DownloadOptions {
@@ -74,6 +79,7 @@ impl Default for DownloadOptions {
             checkpoint_interval: Duration::from_secs(1),
             tick: Duration::from_millis(100),
             overwrite: false,
+            sftp_known_hosts: None,
         }
     }
 }
@@ -106,6 +112,11 @@ pub enum DownloadError {
     /// A clearance token was presented for a different URL or file name
     /// than the transfer it was used to begin.
     ClearanceMismatch(String),
+    /// The SSH server was absent from known-hosts or presented another key.
+    HostVerification(String),
+    /// SSH authentication could not establish the identity requested by the
+    /// URL. This deliberately contains no secret.
+    Authentication(String),
 }
 
 impl DownloadError {
@@ -134,6 +145,8 @@ impl fmt::Display for DownloadError {
             DownloadError::Io(what) => write!(f, "file error: {what}"),
             DownloadError::DestinationExists(path) => write!(f, "the destination {} already exists", path.display()),
             DownloadError::ClearanceMismatch(what) => write!(f, "gatekeeper clearance does not match this transfer: {what}"),
+            DownloadError::HostVerification(what) => write!(f, "SSH host verification failed: {what}"),
+            DownloadError::Authentication(what) => write!(f, "authentication failed: {what}"),
         }
     }
 }
@@ -167,6 +180,7 @@ mod tests {
         assert_eq!(o.checkpoint_interval, Duration::from_secs(1));
         assert_eq!(o.tick, Duration::from_millis(100));
         assert!(!o.overwrite);
+        assert_eq!(o.sftp_known_hosts, None);
     }
 
     #[test]
@@ -209,6 +223,8 @@ mod tests {
             DownloadError::Io("disk full".to_string()),
             DownloadError::DestinationExists(PathBuf::from("/d/f")),
             DownloadError::ClearanceMismatch("url".to_string()),
+            DownloadError::HostVerification("unknown server".to_string()),
+            DownloadError::Authentication("no SSH agent identity".to_string()),
         ];
         for e in fatal {
             assert!(!e.is_retryable(), "{e:?}");
@@ -226,5 +242,7 @@ mod tests {
         assert!(DownloadError::Protocol("bad".to_string()).to_string().contains("bad"));
         assert!(DownloadError::InvalidUrl("x".to_string()).to_string().contains("x"));
         assert!(DownloadError::ClearanceMismatch("wrong url".to_string()).to_string().contains("wrong url"));
+        assert!(DownloadError::HostVerification("unknown server".to_string()).to_string().contains("unknown server"));
+        assert!(DownloadError::Authentication("no SSH agent identity".to_string()).to_string().contains("no SSH agent identity"));
     }
 }

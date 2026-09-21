@@ -30,6 +30,10 @@ pub struct Probe {
     pub content_type: Option<String>,
     /// The raw `Content-Disposition` header, for [`crate::download::file_name`].
     pub content_disposition: Option<String>,
+    /// Whether this backend's revision marker is strong enough to retain a
+    /// partial file across a process restart. HTTP validators are; SFTP's
+    /// coarse mtime is only a same-run change detector, not a resume proof.
+    pub restart_resume_safe: bool,
 }
 
 /// What lets a later request confirm it is looking at the same bytes.
@@ -90,7 +94,7 @@ impl Probe {
     /// segmentable *and* there is a validator to prove it hasn't changed
     /// when the transfer resumes.
     pub fn resume_safe(&self) -> bool {
-        self.can_segment() && self.validator().is_some()
+        self.can_segment() && self.restart_resume_safe && self.validator().is_some()
     }
 }
 
@@ -174,6 +178,7 @@ pub(crate) fn probe_http(url: &str, agent: &Agent) -> Result<Probe, DownloadErro
         last_modified: header("last-modified"),
         content_type: header("content-type"),
         content_disposition: header("content-disposition"),
+        restart_resume_safe: true,
     })
 }
 
@@ -191,6 +196,7 @@ mod tests {
             last_modified: Some("Wed, 21 Oct 2015 07:28:00 GMT".to_string()),
             content_type: Some("application/octet-stream".to_string()),
             content_disposition: None,
+            restart_resume_safe: true,
         }
     }
 
@@ -258,6 +264,12 @@ mod tests {
         assert!(probe().resume_safe());
         assert!(!Probe { accepts_ranges: false, ..probe() }.resume_safe());
         assert!(!Probe { etag: None, last_modified: None, ..probe() }.resume_safe());
+    }
+
+    #[test]
+    fn a_backend_can_use_a_revision_for_live_checks_without_claiming_restart_safe_resume() {
+        let sftp_like = Probe { etag: None, last_modified: Some("sftp-mtime:123".to_string()), restart_resume_safe: false, ..probe() };
+        assert!(!sftp_like.resume_safe());
     }
 
     #[test]

@@ -30,6 +30,7 @@ use crate::policy::{resolve_requested, unique_path};
 use crate::store::{Store, StoredTransfer};
 use blueice_ipc::downloads::{BlockedInfo, ErrorCode, TransferEvent, TransferInfo, TransferState};
 use blueice_net::download::clearance::{Blocked, Reviewer};
+use blueice_net::download::backend::validate_url;
 use blueice_net::download::file_name::choose_file_name;
 use blueice_net::download::probe::probe;
 use blueice_net::download::sidecar::remove_partials;
@@ -277,9 +278,7 @@ impl TransferManager {
     /// immediately rather than after a probe; without it, the file name
     /// comes from the server's response or the URL.
     pub fn start(&self, url: &str, dest: Option<&str>, overwrite: bool) -> Result<TransferInfo, ManagerError> {
-        if !(url.starts_with("http://") || url.starts_with("https://")) {
-            return Err(ManagerError::new(ErrorCode::InvalidRequest, format!("unsupported or malformed URL {url:?}: only http:// and https:// are supported")));
-        }
+        validate_url(url).map_err(|error| ManagerError::new(ErrorCode::InvalidRequest, error.to_string()))?;
         let mut state = self.shared.lock();
         if state.shutting_down {
             return Err(ManagerError::new(ErrorCode::Internal, "the downloads process is shutting down"));

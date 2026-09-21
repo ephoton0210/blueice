@@ -60,5 +60,6 @@ HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; S
 - [x] Evaluate candidate Rust crates for each protocol
 - [x] Define the common transfer-backend interface these protocols implement, shared with Phase 10's HTTP backend (see the `TransferBackend` sketch above)
 - [x] Design the credential storage mechanism for FTP/SFTP auth
-- [ ] Implement the SFTP backend, known-host verification, and OS-keychain credential references
+- [x] Implement the SFTP backend, known-host verification, and SSH-agent authentication (no password is accepted in a URL or recorded in transfer state)
+- [ ] Add OS-keychain credential references for SFTP passwords and encrypted private-key passphrases
 - [ ] Add a tested, audited explicit-FTPS backend once its dependency risk is resolved

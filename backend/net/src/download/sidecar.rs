@@ -201,6 +201,7 @@ mod tests {
             last_modified: Some("Wed, 21 Oct 2015 07:28:00 GMT".to_string()),
             content_type: Some("application/octet-stream".to_string()),
             content_disposition: None,
+            restart_resume_safe: true,
         }
     }
 

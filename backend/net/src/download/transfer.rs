@@ -255,7 +255,7 @@ impl Transfer {
             events.push("completed: 0 bytes".to_string());
         } else if segmented {
             let part = part_path(&dest);
-            match inspect_saved(&dest, &probe) {
+            match if resume_safe { inspect_saved(&dest, &probe) } else { Saved::Nothing } {
                 Saved::Usable(saved) => {
                     file = OpenOptions::new().read(true).write(true).open(&part)?;
                     segments = saved.iter().map(|s| fresh_segment(s.start, s.end, s.pos, now)).collect();
@@ -287,7 +287,7 @@ impl Transfer {
             });
         }
         if !resume_safe && !probe.is_empty() {
-            events.push("the server gave no ETag or Last-Modified to confirm the file is unchanged: pausing will restart this download from the beginning".to_string());
+            events.push("the backend gave no revision marker that is safe across a restart: pausing will restart this download from the beginning".to_string());
         }
 
         let mut inner = Inner {
