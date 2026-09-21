@@ -365,6 +365,11 @@ FINITE_STRESS_FIXTURES = frozenset(
         "intl402/Segmenter/prototype/segment/segment-grapheme-iterable.js",
         "intl402/supportedLocalesOf-consistent-with-resolvedOptions.js",
         "intl402/supportedLocalesOf-unicode-extensions-ignored.js",
+        # Compares every pair of the ~446 primary time zone identifiers
+        # (about 99,000 pairs of two constructions, `withTimeZone` and
+        # `equals`). Finite, and each pair is cheap, but the pair count is far
+        # past the ordinary fuel budget and wall deadline.
+        "intl402/Temporal/ZonedDateTime/prototype/equals/canonical-not-equal.js",
     }
 )
 FINITE_STRESS_INSTRUCTION_BUDGET = 10_000_000
@@ -412,24 +417,55 @@ ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES = frozenset(
     }
 )
 ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET = 1_000_000
-# Four intl402 fixtures walk a fixed calendar table through the real
+# Seven intl402 fixtures walk a fixed calendar table through the real
 # `Temporal.*.from` path: hebrew-keviah.js visits 2,101 Hebrew years (two
 # `PlainDate.from` calls plus a symbol lookup each), persian-new-year-dates.js
-# checks 293 Nowruz dates, and the two `roundtrip-from-property-bag.js`
-# fixtures run one `from` + a dozen property assertions per row of a 42-row
-# calendar table. Each is finite and its per-row cost is one ordinary call
-# chain; only the row count exceeds the default. Measured minimums are
-# 500,000 (hebrew-keviah) and 200,000 (the other three); the allowance is 4x
-# the largest.
+# checks 293 Nowruz dates, the two `roundtrip-from-property-bag.js` fixtures
+# run one `from` + a dozen property assertions per row of a 42-row calendar
+# table, and the three `dayOfYear/non-iso-calendar-basic.js` fixtures step
+# through every day of one year in each of 15 calendars (about 5,500 dates,
+# each a `year` read, a `dayOfYear` read, an assertion and an `add`). Each is
+# finite and its per-row cost is one ordinary call chain; only the row count
+# exceeds the default. Measured minimums are 500,000 (hebrew-keviah), 240,000
+# (the dayOfYear walks) and 200,000 (the other two); the allowance is 4x the
+# largest.
 TEMPORAL_CALENDAR_TABLE_FIXTURES = frozenset(
     {
         "intl402/Temporal/PlainDate/from/hebrew-keviah.js",
         "intl402/Temporal/PlainDate/from/persian-new-year-dates.js",
         "intl402/Temporal/PlainDateTime/from/roundtrip-from-property-bag.js",
         "intl402/Temporal/ZonedDateTime/from/roundtrip-from-property-bag.js",
+        "intl402/Temporal/PlainDate/prototype/dayOfYear/non-iso-calendar-basic.js",
+        "intl402/Temporal/PlainDateTime/prototype/dayOfYear/non-iso-calendar-basic.js",
+        "intl402/Temporal/ZonedDateTime/prototype/dayOfYear/non-iso-calendar-basic.js",
     }
 )
 TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET = 2_000_000
+# `ZonedDateTime.from/timezone-case-insensitive.js` builds
+# `[...new Set([...timeZoneIdentifiers, ...Intl.supportedValuesOf('timeZone')])]`
+# (about 600 identifiers) and calls `Temporal.ZonedDateTime.from` three times per
+# identifier (as spelled, lower- and upper-case): finite, one ordinary call chain
+# per row. Until `Set` iteration was implemented that spread was empty, the loop
+# never ran and the fixture passed vacuously; it now does real work. Measured
+# minimum: between 100,000 (the default, which is not enough) and 150,000
+# dispatches; the allowance is ~3x the upper bound.
+TEMPORAL_TIME_ZONE_ID_TABLE_FIXTURES = frozenset(
+    {
+        "intl402/Temporal/ZonedDateTime/from/timezone-case-insensitive.js",
+    }
+)
+TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET = 500_000
+# ZonedDateTime/links.js walks a fixed table of about 120 IANA link names,
+# building two ZonedDateTimes per row and comparing `offsetNanoseconds` at ten
+# epochs for each. It is finite, and its per-row cost is one ordinary call
+# chain; only the row count exceeds the default. Measured minimum is between
+# 110,000 and 125,000; the allowance is 4x the upper bound.
+TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES = frozenset(
+    {
+        "intl402/Temporal/ZonedDateTime/links.js",
+    }
+)
+TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET = 500_000
 TEMPORAL_CALENDAR_MATRIX_TIMEOUT = 360
 # The six upstream Iterator.zip/zipKeyed basic fixtures enumerate every prefix
 # combination through three inputs, then verify descriptor details for every
@@ -776,6 +812,10 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET)
     if relative in TEMPORAL_CALENDAR_TABLE_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET)
+    if relative in TEMPORAL_TIME_ZONE_ID_TABLE_FIXTURES:
+        return max(default, TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET)
+    if relative in TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES:
+        return max(default, TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET)
     if relative in ITERATOR_ZIP_BASIC_MATRIX_FIXTURES:
         return max(default, ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET)
     if relative == NUMBER_FORMAT_NATIVE_PRECISION_MATRIX_FIXTURE:

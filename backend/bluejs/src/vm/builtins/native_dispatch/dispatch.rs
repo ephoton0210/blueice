@@ -57,6 +57,11 @@ impl Vm {
                 return Ok(result);
             }
         }
+        // `RequireInternalSlot(this, ...)` is every Temporal prototype
+        // member's first step, ahead of any argument access.
+        if let Some(kind) = function.temporal_receiver_kind() {
+            self.require_temporal_receiver(&receiver, kind)?;
+        }
         let first = native::argument(&args, 0);
         match function {
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
@@ -265,14 +270,16 @@ impl Vm {
             NativeFunction::TemporalFrom(kind) => {
                 self.temporal_from(kind, first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalWithCalendar => self.temporal_with_calendar(&receiver, first),
-            NativeFunction::TemporalPlainToZonedDateTime => {
+            NativeFunction::TemporalWithCalendar(_) => {
+                self.temporal_with_calendar(&receiver, first)
+            }
+            NativeFunction::TemporalPlainToZonedDateTime(_) => {
                 self.temporal_plain_to_zoned_date_time(&receiver, first, native::argument(&args, 1))
             }
             NativeFunction::TemporalInstantToZonedDateTimeIso => {
                 self.temporal_instant_to_zoned_date_time_iso(&receiver, first)
             }
-            NativeFunction::TemporalGetter(getter) => self.temporal_getter(&receiver, getter),
+            NativeFunction::TemporalGetter(_, getter) => self.temporal_getter(&receiver, getter),
             NativeFunction::TemporalZonedDateTimeToLocaleString => {
                 self.temporal_zoned_date_time_to_locale_string(&receiver, &args)
             }
@@ -392,30 +399,32 @@ impl Vm {
                 self.temporal_duration_to_locale_string(&receiver, &args)
             }
             NativeFunction::TemporalDurationValueOf => self.temporal_duration_value_of(),
-            NativeFunction::TemporalDateWith => {
+            NativeFunction::TemporalDateWith(_) => {
                 self.temporal_date_with(&receiver, first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalDateAdd => {
+            NativeFunction::TemporalDateAdd(_) => {
                 self.temporal_date_add(&receiver, first, native::argument(&args, 1), false)
             }
-            NativeFunction::TemporalDateSubtract => {
+            NativeFunction::TemporalDateSubtract(_) => {
                 self.temporal_date_add(&receiver, first, native::argument(&args, 1), true)
             }
-            NativeFunction::TemporalDateUntil => {
+            NativeFunction::TemporalDateUntil(_) => {
                 self.temporal_date_difference(&receiver, first, native::argument(&args, 1), false)
             }
-            NativeFunction::TemporalDateSince => {
+            NativeFunction::TemporalDateSince(_) => {
                 self.temporal_date_difference(&receiver, first, native::argument(&args, 1), true)
             }
-            NativeFunction::TemporalDateEquals => self.temporal_date_equals(&receiver, first),
+            NativeFunction::TemporalDateEquals(_) => self.temporal_date_equals(&receiver, first),
             NativeFunction::TemporalDateCompare(kind) => {
                 self.temporal_date_compare(kind, first, native::argument(&args, 1))
             }
-            NativeFunction::TemporalDateToString => self.temporal_date_to_string(&receiver, first),
-            NativeFunction::TemporalDateToJson => {
+            NativeFunction::TemporalDateToString(_) => {
+                self.temporal_date_to_string(&receiver, first)
+            }
+            NativeFunction::TemporalDateToJson(_) => {
                 self.temporal_date_to_string(&receiver, &Value::Undefined)
             }
-            NativeFunction::TemporalDateToLocaleString => {
+            NativeFunction::TemporalDateToLocaleString(_) => {
                 self.temporal_date_to_locale_string(&receiver, &args)
             }
             NativeFunction::TemporalDateValueOf => self.temporal_date_value_of(),
@@ -562,17 +571,8 @@ impl Vm {
             NativeFunction::TemporalZonedDateTimeToPlainDateTime => {
                 self.temporal_zoned_date_time_to_plain_date_time(&receiver)
             }
-            NativeFunction::TemporalZonedDateTimeToPlainYearMonth => {
-                self.temporal_zoned_date_time_to_plain_year_month(&receiver)
-            }
-            NativeFunction::TemporalZonedDateTimeToPlainMonthDay => {
-                self.temporal_zoned_date_time_to_plain_month_day(&receiver)
-            }
             NativeFunction::TemporalZonedDateTimeStartOfDay => {
                 self.temporal_zoned_date_time_start_of_day(&receiver)
-            }
-            NativeFunction::TemporalZonedDateTimeGetIsoFields => {
-                self.temporal_zoned_date_time_get_iso_fields(&receiver)
             }
             NativeFunction::TemporalZonedDateTimeGetTimeZoneTransition => {
                 self.temporal_zoned_date_time_get_time_zone_transition(&receiver, first)
@@ -1122,8 +1122,9 @@ impl Vm {
                 };
                 self.iterator_result(value, done)
             }
-            NativeFunction::CollectionIterator { map } => self.collection_iterator(map, &receiver),
-            NativeFunction::CollectionIteratorNext => self.iterator_result(Value::Undefined, true),
+            NativeFunction::CollectionIteratorNext { map } => {
+                self.collection_iterator_next(map, &receiver)
+            }
             NativeFunction::GeneratorNext => {
                 self.generator_next(&receiver, Some(first.clone()), None)
             }

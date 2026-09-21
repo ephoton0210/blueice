@@ -276,13 +276,15 @@ fn from_property_bag_offset_field_and_options() {
         "2020-03-08T01:30:00-05:00[America/New_York]",
     );
     // An offset spelled with sub-minute precision is a bag-level MatchExactly
-    // comparison: Monrovia's real 1970 offset is -00:44:30.
+    // comparison: Monrovia's real 1970 offset is -00:44:30 (so the wall clock
+    // below is read back at that offset), though `toString` prints the offset
+    // rounded to the minute (`FormatDateTimeUTCOffsetRounded`).
     assert_str(
         &z(
             r#"{ year: 1970, month: 1, day: 1, timeZone: "Africa/Monrovia", offset: "-00:44:30" }"#,
             "undefined",
         ),
-        "1970-01-01T00:00:00-00:44:30[Africa/Monrovia]",
+        "1970-01-01T00:00:00-00:45[Africa/Monrovia]",
     );
     // Overflow constrain clamps, reject throws.
     assert_str(

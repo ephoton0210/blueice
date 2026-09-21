@@ -8,6 +8,7 @@ mod array_change_by_copy;
 mod array_from_async;
 mod arrays;
 mod binary_data;
+mod collection_iteration;
 mod execution;
 mod generators;
 mod globals;

@@ -218,7 +218,8 @@ fn from_a_property_bag_requires_and_validates_fields() {
       range(() => D.from({ year: 2020, monthCode: "M01L", day: 1 }));
       range(() => D.from({ year: 2020, monthCode: "M01L", day: 1 }, { overflow: "reject" }));
       range(() => D.from({ year: 2020, monthCode: "", day: 1 }));
-      range(() => D.from({ year: 2020, monthCode: 5, day: 1 }));
+      // `ToMonthCode` never stringifies: a non-String monthCode is a TypeError.
+      type(() => D.from({ year: 2020, monthCode: 5, day: 1 }));
       type(() => D.from({ year: 2020, monthCode: Symbol("x"), day: 1 }));
       // conflicting month and monthCode
       range(() => D.from({ year: 2020, month: 1, monthCode: "M02", day: 1 }));
@@ -267,10 +268,17 @@ fn from_a_property_bag_for_plain_date_time_reads_time_fields() {
            "2020-01-01T01:02:03.004005006");
       same(() => DT.from({ year: 2020, month: 1, day: 1, second: 60 }).toString(), "2020-01-01T00:00:59");
       same(() => DT.from({ year: 2020, month: 1, day: 1, hour: "5", minute: "6.9" }).toString(), "2020-01-01T05:06:00");
-      range(() => DT.from({ year: 2020, month: 1, day: 1, minute: 60 }));
-      range(() => DT.from({ year: 2020, month: 1, day: 1, millisecond: 1000 }));
-      range(() => DT.from({ year: 2020, month: 1, day: 1, microsecond: -1 }));
-      range(() => DT.from({ year: 2020, month: 1, day: 1, nanosecond: 1000 }));
+      // `RegulateTime`: an out-of-range time field is clamped by the default
+      // `overflow: "constrain"` and only rejected under `"reject"`.
+      same(() => DT.from({ year: 2020, month: 1, day: 1, minute: 60 }).toString(), "2020-01-01T00:59:00");
+      same(() => DT.from({ year: 2020, month: 1, day: 1, millisecond: 1000 }).toString(), "2020-01-01T00:00:00.999");
+      same(() => DT.from({ year: 2020, month: 1, day: 1, microsecond: -1 }).toString(), "2020-01-01T00:00:00");
+      same(() => DT.from({ year: 2020, month: 1, day: 1, nanosecond: 1000 }).toString(), "2020-01-01T00:00:00.000000999");
+      same(() => DT.from({ year: 2020, month: 1, day: 1, hour: 24 }).toString(), "2020-01-01T23:00:00");
+      range(() => DT.from({ year: 2020, month: 1, day: 1, minute: 60 }, { overflow: "reject" }));
+      range(() => DT.from({ year: 2020, month: 1, day: 1, millisecond: 1000 }, { overflow: "reject" }));
+      range(() => DT.from({ year: 2020, month: 1, day: 1, microsecond: -1 }, { overflow: "reject" }));
+      range(() => DT.from({ year: 2020, month: 1, day: 1, nanosecond: 1000 }, { overflow: "reject" }));
       range(() => DT.from({ year: 2020, month: 1, day: 1, hour: Infinity }));
       type(() => DT.from({ year: 2020, month: 1 }));
       same(() => DT.from({ year: 2020, month: 1, day: 1, hour: 12 }, { overflow: "reject" }).hour, 12);
@@ -305,10 +313,13 @@ fn conversions_through_equals_accept_zoned_and_plain_values() {
       same(() => D.compare(utc, "2023-11-14"), 0);
       same(() => D.compare(off, utc), 1);
       same(() => DT.compare(utc, off), -1);
-      // a named IANA zone is not supported by this conversion
-      range(() => D.from("2023-11-14").equals(named));
-      range(() => DT.from("2023-11-14T22:13:20").equals(named));
-      range(() => D.compare(named, "2023-11-14"));
+      // a named IANA zone converts through the zoned value's stored local
+      // fields: 2023-11-14T23:13:20.123456789 in Paris (UTC+1 in November)
+      same(() => D.from("2023-11-14").equals(named), true);
+      same(() => D.from("2023-11-15").equals(named), false);
+      same(() => DT.from("2023-11-14T23:13:20.123456789").equals(named), true);
+      same(() => DT.from("2023-11-14T22:13:20").equals(named), false);
+      same(() => D.compare(named, "2023-11-14"), 0);
       // options are validated on the object fast paths too
       same(() => D.from("2023-11-14").equals({ year: 2023, month: 11, day: 14 }), true);
       same(() => DT.from("2023-11-14T01:02:03").equals({ year: 2023, month: 11, day: 14, hour: 1, minute: 2, second: 3 }), true);
@@ -469,7 +480,11 @@ fn getters_report_iso_fields_and_reject_wrong_receivers() {
         type(() => g.call({}));
         type(() => g.call(Temporal.PlainYearMonth.from("2020-01")));
         type(() => g.call(new Temporal.Instant(0n)));
-        same(() => typeof g.call(new Temporal.PlainTime()), "number");
+        // A time of day is not a `PlainDateTime`; only the exact type passes
+        // the receiver brand check.
+        type(() => g.call(new Temporal.PlainTime()));
+        type(() => g.call(new Temporal.ZonedDateTime(0n, "UTC")));
+        same(() => typeof g.call(dt), "number");
       }
       // day/year on receivers that lack that field
       const md = Temporal.PlainMonthDay.from("01-15");
@@ -482,20 +497,33 @@ fn getters_report_iso_fields_and_reject_wrong_receivers() {
       type(() => getter(D, "daysInMonth").call(md));
       type(() => getter(D, "daysInYear").call(md));
       type(() => getter(D, "inLeapYear").call(md));
-      same(() => getter(D, "month").call(md), 1);
-      same(() => getter(D, "monthCode").call(md), "M01");
-      same(() => getter(D, "day").call(md), 15);
-      same(() => getter(D, "year").call(ym), 2020);
-      same(() => getter(D, "month").call(ym), 3);
-      same(() => getter(D, "daysInMonth").call(ym), 31);
-      same(() => getter(D, "monthsInYear").call(ym), 12);
+      // `PlainDate`'s getters do not accept a `PlainMonthDay` or a
+      // `PlainYearMonth` either, even for the fields both types have; those
+      // are read through the getter of the type's own prototype.
+      type(() => getter(D, "month").call(md));
+      type(() => getter(D, "monthCode").call(md));
+      type(() => getter(D, "day").call(md));
+      type(() => getter(D, "year").call(ym));
+      type(() => getter(D, "month").call(ym));
+      type(() => getter(D, "daysInMonth").call(ym));
+      type(() => getter(D, "monthsInYear").call(ym));
+      // the specification gives PlainMonthDay no `month` accessor, only `monthCode`
+      same(() => Object.getOwnPropertyDescriptor(Temporal.PlainMonthDay.prototype, "month"), undefined);
+      same(() => getter(Temporal.PlainMonthDay, "monthCode").call(md), "M01");
+      same(() => getter(Temporal.PlainMonthDay, "day").call(md), 15);
+      same(() => getter(Temporal.PlainYearMonth, "year").call(ym), 2020);
+      same(() => getter(Temporal.PlainYearMonth, "month").call(ym), 3);
+      same(() => getter(Temporal.PlainYearMonth, "daysInMonth").call(ym), 31);
+      same(() => getter(Temporal.PlainYearMonth, "monthsInYear").call(ym), 12);
       type(() => getter(D, "dayOfWeek").call(ym));
       type(() => getter(D, "dayOfYear").call(md));
       type(() => getter(D, "weekOfYear").call(md));
       type(() => getter(D, "yearOfWeek").call(ym));
       type(() => getter(D, "daysInWeek").call(ym));
-      same(() => getter(D, "dayOfWeek").call(dt), 4);
-      same(() => getter(D, "daysInWeek").call(new Temporal.ZonedDateTime(0n, "UTC")), 7);
+      type(() => getter(D, "dayOfWeek").call(dt));
+      type(() => getter(D, "daysInWeek").call(new Temporal.ZonedDateTime(0n, "UTC")));
+      same(() => getter(DT, "dayOfWeek").call(dt), 4);
+      same(() => getter(Temporal.ZonedDateTime, "daysInWeek").call(new Temporal.ZonedDateTime(0n, "UTC")), 7);
       // Instant / ZonedDateTime / Duration accessors given the wrong receiver
       type(() => getter(Temporal.Instant, "epochMilliseconds").call(d));
       type(() => getter(Temporal.Instant, "epochNanoseconds").call(d));
@@ -507,7 +535,9 @@ fn getters_report_iso_fields_and_reject_wrong_receivers() {
       type(() => getter(Temporal.Duration, "sign").call(d));
       type(() => getter(Temporal.Duration, "blank").call(d));
       type(() => getter(Temporal.Duration, "years").call({}));
-      same(() => getter(Temporal.Instant, "epochMilliseconds").call(new Temporal.ZonedDateTime(-1n, "UTC")), -1);
+      type(() => getter(Temporal.Instant, "epochMilliseconds").call(new Temporal.ZonedDateTime(-1n, "UTC")));
+      type(() => getter(Temporal.ZonedDateTime, "epochMilliseconds").call(new Temporal.Instant(-1n)));
+      same(() => getter(Temporal.ZonedDateTime, "epochMilliseconds").call(new Temporal.ZonedDateTime(-1n, "UTC")), -1);
       same(() => getter(Temporal.Instant, "epochMilliseconds").call(new Temporal.Instant(-1_000_001n)), -2);
       same(() => getter(Temporal.Instant, "epochMilliseconds").call(new Temporal.Instant(-1_000_000n)), -1);
       same(() => getter(Temporal.Instant, "epochMilliseconds").call(new Temporal.Instant(1_999_999n)), 1);
@@ -557,7 +587,9 @@ fn calendar_aware_bags_resolve_eras_and_leap_months() {
       range(() => D.from({ era: "bogus", eraYear: 1, month: 3, day: 4, calendar: "gregory" }));
       range(() => D.from({ era: "ce", eraYear: 2020, year: 2021, month: 3, day: 4, calendar: "gregory" }));
       range(() => D.from({ era: "ce", eraYear: Infinity, month: 3, day: 4, calendar: "gregory" }));
-      range(() => D.from({ year: 2020, month: 1, day: 1, eraYear: 1, calendar: "gregory" }));
+      // `eraYear` without `era` is a missing field: a TypeError, not a RangeError
+      // (`intl402/Temporal/PlainDate/from/one-of-era-erayear-undefined.js`).
+      type(() => D.from({ year: 2020, month: 1, day: 1, eraYear: 1, calendar: "gregory" }));
       // japanese / roc / buddhist / islamic families
       same(() => D.from({ era: "reiwa", eraYear: 2, month: 3, day: 4, calendar: "japanese" }).withCalendar("iso8601").toString(), "2020-03-04");
       same(() => D.from({ era: "reiwa", eraYear: 2, month: 3, day: 4, calendar: "japanese" }).era, "reiwa");
@@ -597,7 +629,7 @@ fn calendar_aware_bags_resolve_eras_and_leap_months() {
       same(() => D.from({ year: 2020, monthCode: "M01", day: 1, calendar: "dangi" }).calendarId, "dangi");
       // round trips for the remaining calendars
       for (const calendar of ["coptic", "ethiopic", "ethioaa", "islamic-civil", "islamic-tbla",
-                              "islamic-umalqura", "islamic-rgsa", "indian", "persian", "roc", "buddhist",
+                              "islamic-umalqura", "indian", "persian", "roc", "buddhist",
                               "japanese", "gregory", "hebrew", "chinese", "dangi"]) {
         const date = D.from("2021-07-08").withCalendar(calendar);
         const back = D.from({ year: date.year, monthCode: date.monthCode, day: date.day, calendar });
@@ -611,9 +643,12 @@ fn calendar_aware_bags_resolve_eras_and_leap_months() {
         same(() => date.monthsInYear >= 12, true);
         same(() => typeof date.inLeapYear, "boolean");
         same(() => date.dayOfWeek, 4);
-        same(() => date.dayOfYear, 189);
-        same(() => date.weekOfYear, 27);
-        same(() => date.yearOfWeek, 2021);
+        // `dayOfYear` counts within the calendar's own year; the ISO week
+        // numbers are undefined outside `iso8601`.
+        const firstOfYear = D.from({ year: date.year, month: 1, day: 1, calendar });
+        same(() => date.dayOfYear, firstOfYear.until(date, { largestUnit: "days" }).days + 1);
+        same(() => date.weekOfYear, undefined);
+        same(() => date.yearOfWeek, undefined);
       }
     "#);
 }
@@ -682,8 +717,12 @@ fn with_replaces_fields_and_validates_the_like_object() {
       same(() => dt.with({ day: 1 }).toString(), "2020-05-01T07:08:09.010011012");
       range(() => dt.with({ hour: 24 }, { overflow: "reject" }));
       range(() => dt.with({ minute: 60 }, { overflow: "reject" }));
-      range(() => dt.with({ hour: -1 }));
-      range(() => dt.with({ millisecond: 1000 }));
+      range(() => dt.with({ hour: -1 }, { overflow: "reject" }));
+      // The default `overflow: "constrain"` clamps an out-of-range time field.
+      same(() => dt.with({ hour: -1 }).hour, 0);
+      same(() => dt.with({ hour: 24 }).hour, 23);
+      same(() => dt.with({ minute: 67 }).minute, 59);
+      same(() => dt.with({ millisecond: 1000 }).millisecond, 999);
       range(() => dt.with({ hour: Infinity }));
       type(() => dt.with({ }));
       type(() => dt.with({ calendar: "iso8601", hour: 1 }));

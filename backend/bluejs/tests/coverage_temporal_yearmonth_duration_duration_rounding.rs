@@ -259,7 +259,11 @@ fn zoned_rounding_windows_shift_when_the_time_part_overflows_the_date_part() {
         check("zoned total target out of range", "RangeError", () => new D(0, 0, 0, 100).total({ unit: "day", relativeTo: "+275760-09-12T00:00" + NY }));
         check("zoned nudge out of range", "RangeError", () => new D(0, 0, 0, 0, 10).round({ smallestUnit: "hour", relativeTo: "+275760-09-12T20:00" + NY }));
         check("zoned nudge next day out of range", "RangeError", () => new D(0, 0, 0, 0, 1).round({ smallestUnit: "hour", relativeTo: "+275760-09-13T00:00Z[UTC]" }));
-        check("zoned nudge negative lower limit", "RangeError", () => new D(0, 0, 0, 0, -1).round({ smallestUnit: "hour", relativeTo: "-271821-04-20T00:00" + NY }));
+        // Only a `day`-or-larger `largestUnit` resolves the previous day's start
+        // (`NudgeToZonedTime`), which is not representable here; a time-only
+        // one is a plain instant difference that never looks at the day at all.
+        check("zoned nudge negative lower limit", "RangeError", () => new D(0, 0, 0, 0, -1).round({ smallestUnit: "hour", largestUnit: "day", relativeTo: "-271821-04-20T00:00" + NY }));
+        check("time-only largest unit skips the nudge", "-PT1H", () => new D(0, 0, 0, 0, -1).round({ smallestUnit: "hour", relativeTo: "-271821-04-20T00:00" + NY }));
         check("compare second out of range", "RangeError", () => D.compare(new D(0, 0, 0, 1), new D(0, 0, 0, 200000000), { relativeTo: "+275000-01-01T00:00" + NY }));
         check("compare first out of range", "RangeError", () => D.compare(new D(0, 0, 0, 200000000), new D(0, 0, 0, 1), { relativeTo: "+275000-01-01T00:00" + NY }));
         check("compare equal blank", "0", () => D.compare(new D(), new D(), { relativeTo: jan }));

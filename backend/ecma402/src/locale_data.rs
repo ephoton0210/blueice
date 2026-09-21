@@ -1255,19 +1255,17 @@ impl LocaleDataProvider {
         contains(SUPPORTED_NUMBERING_SYSTEMS, value)
     }
 
-    /// Returns the complete Zone-and-Link registry from the pinned TZDB
-    /// bundle, in ECMA-402 canonical supported-values order.
-    ///
-    /// The UTC-equivalent legacy spellings are folded to `UTC`; all other
-    /// accepted IANA Link identifiers are retained rather than replaced by
-    /// their targets.
+    /// Returns the primary time zone identifiers of the pinned TZDB bundle
+    /// (`AvailablePrimaryTimeZoneIdentifiers`), in ECMA-402 supported-values
+    /// order: every Zone or Link name that is its own primary identifier, so a
+    /// backward-compatibility alias such as `Asia/Calcutta` or `Etc/UTC` is not
+    /// listed but `Africa/Accra` (a `zone.tab` name) is.
     pub fn time_zones(self) -> Vec<String> {
         let mut values = jiff_tzdb::available()
-            .map(canonical_time_zone)
+            .filter(|name| crate::is_primary_time_zone_identifier(name))
             .map(str::to_owned)
             .collect::<Vec<_>>();
         values.sort_unstable();
-        values.dedup();
         values
     }
 

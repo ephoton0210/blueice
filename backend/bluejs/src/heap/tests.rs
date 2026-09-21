@@ -610,3 +610,118 @@ fn float16_bits_round_trip_subnormals_and_min_normal() {
     assert_eq!(binary_data::f64_to_f16_bits(halfway * 0.5), 0x0000);
     assert_eq!(binary_data::f64_to_f16_bits(halfway * 1.5), 0x0001);
 }
+
+#[test]
+fn a_collection_iterator_traces_its_collection_and_releases_it_once_exhausted() {
+    let mut heap = Heap::default();
+    let prototype = heap.alloc_object(None).unwrap();
+    // Neither the set nor its member is rooted: only the iterator reaches them.
+    let set = heap.alloc_set(None).unwrap();
+    let member = heap.alloc_object(None).unwrap();
+    heap.set_add(set, Value::Object(member)).unwrap();
+    let iterator = heap
+        .alloc_collection_iterator(set, false, ArrayIteratorKind::Values, prototype)
+        .unwrap();
+    let iterator_root = heap.root(iterator).unwrap();
+
+    heap.collect_minor();
+    heap.collect_major();
+    assert!(
+        heap.contains(set),
+        "the iterator keeps its collection alive"
+    );
+    assert!(heap.contains(member), "and, through it, the entries");
+
+    // A Map iterator's `next` (and any non-iterator) is not this iterator's.
+    assert_eq!(heap.collection_iterator_next(iterator, true), Ok(None));
+    assert_eq!(heap.collection_iterator_next(set, false), Ok(None));
+
+    let (key, value, kind) = heap
+        .collection_iterator_next(iterator, false)
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(key, Value::Object(member));
+    assert_eq!(
+        value,
+        Value::Undefined,
+        "a Set stores no value beside its key"
+    );
+    assert_eq!(kind, ArrayIteratorKind::Values);
+
+    // Exhaustion is final and drops the reference to the collection.
+    assert_eq!(
+        heap.collection_iterator_next(iterator, false),
+        Ok(Some(None))
+    );
+    heap.set_add(set, Value::Number(1.0)).unwrap();
+    assert_eq!(
+        heap.collection_iterator_next(iterator, false),
+        Ok(Some(None))
+    );
+    heap.collect_major();
+    assert!(!heap.contains(set));
+    assert!(!heap.contains(member));
+    heap.unroot(iterator_root).unwrap();
+}
+
+#[test]
+fn collection_clear_releases_entry_bytes_and_keeps_positions_valid_for_iterators() {
+    let mut heap = Heap::default();
+    let map = heap.alloc_map(None).unwrap();
+    let root = heap.root(map).unwrap();
+    let empty_bytes = heap.managed_bytes;
+    heap.map_set(map, Value::Number(1.0), Value::Number(2.0))
+        .unwrap();
+    heap.map_set(map, Value::Number(3.0), Value::Number(4.0))
+        .unwrap();
+    assert!(heap.managed_bytes > empty_bytes);
+
+    heap.map_delete(map, &Value::Number(1.0)).unwrap();
+    assert!(matches!(
+        heap.collection_entry_at(map, 0),
+        Ok(CollectionEntry::Deleted)
+    ));
+    assert!(matches!(
+        heap.collection_entry_at(map, 1),
+        Ok(CollectionEntry::Present(..))
+    ));
+    assert!(matches!(
+        heap.collection_entry_at(map, 2),
+        Ok(CollectionEntry::End)
+    ));
+
+    heap.collection_clear(map).unwrap();
+    assert_eq!(
+        heap.managed_bytes, empty_bytes,
+        "every entry's bytes are released"
+    );
+    assert_eq!(heap.map_size(map), Ok(0));
+    // The list keeps its length: an iterator positioned inside it stays valid.
+    assert!(matches!(
+        heap.collection_entry_at(map, 1),
+        Ok(CollectionEntry::Deleted)
+    ));
+    assert!(matches!(
+        heap.collection_entry_at(map, 2),
+        Ok(CollectionEntry::End)
+    ));
+    // ... and an entry added afterwards lands past every old position.
+    heap.map_set(map, Value::Number(5.0), Value::Number(6.0))
+        .unwrap();
+    assert!(matches!(
+        heap.collection_entry_at(map, 2),
+        Ok(CollectionEntry::Present(..))
+    ));
+
+    let ordinary = heap.alloc_object(None).unwrap();
+    assert_eq!(
+        heap.collection_clear(ordinary),
+        Err(HeapError::InvalidInternalSlot(ordinary))
+    );
+    assert!(matches!(
+        heap.collection_entry_at(ordinary, 0),
+        Err(HeapError::InvalidInternalSlot(_))
+    ));
+    heap.unroot(root).unwrap();
+}

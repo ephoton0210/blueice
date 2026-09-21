@@ -579,7 +579,7 @@ impl Vm {
             );
             Ok(Value::Object(target))
         })();
-        match &result {
+        match result.as_ref() {
             Err(_) => {
                 self.heap.unroot(source_root)?;
             }

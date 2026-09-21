@@ -907,6 +907,18 @@ impl Heap {
         self.alloc(ObjectKind::Temporal(Box::new(value)), prototype)
     }
 
+    /// The Temporal type of `object`'s internal slot, without cloning the
+    /// value (the receiver brand check runs before every prototype member).
+    pub(crate) fn temporal_kind(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<TemporalKind>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Temporal(value) => Some(value.kind),
+            _ => None,
+        })
+    }
+
     pub(crate) fn temporal_value(
         &self,
         object: ObjectId,

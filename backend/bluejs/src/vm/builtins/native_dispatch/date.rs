@@ -654,6 +654,18 @@ impl Vm {
             native::DateMethod::ToTimeString => Ok(Value::String(date_time_string(
                 self.date_receiver_time(receiver)?,
             ))),
+            native::DateMethod::ToTemporalInstant => {
+                let time = self.date_receiver_time(receiver)?;
+                if time.is_nan() {
+                    return Err(RuntimeError::RangeError(
+                        "an invalid Date has no Temporal.Instant".into(),
+                    ));
+                }
+                // `TimeClip` already made a valid time value an integer within
+                // +/-8.64e15, so `NumberToBigInt` cannot fail and the product
+                // is always inside Temporal's instant range.
+                self.instant_from_epoch_nanoseconds(BigInt::from(time as i64) * 1_000_000_u32)
+            }
             native::DateMethod::ToUtcString => Ok(Value::String(date_utc_string(
                 self.date_receiver_time(receiver)?,
             ))),

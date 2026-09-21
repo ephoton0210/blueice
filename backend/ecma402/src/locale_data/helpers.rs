@@ -344,10 +344,3 @@ pub(super) const fn str_eq(left: &str, right: &str) -> bool {
     }
     true
 }
-
-pub(super) fn canonical_time_zone(identifier: &str) -> &str {
-    match identifier {
-        "Etc/GMT" | "Etc/GMT0" | "Etc/UTC" | "GMT" | "GMT0" => "UTC",
-        _ => identifier,
-    }
-}

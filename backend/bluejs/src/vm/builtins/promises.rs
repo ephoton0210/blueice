@@ -80,13 +80,6 @@ impl Vm {
                 false,
                 true,
             )?;
-            self.install_symbol_native(
-                prototype,
-                function_prototype,
-                "iterator",
-                0,
-                NativeFunction::CollectionIterator { map },
-            )?;
             if map {
                 self.install_native_getter(
                     prototype,
@@ -95,10 +88,15 @@ impl Vm {
                     NativeFunction::MapSize,
                 )?;
                 for (name, length, method) in [
+                    ("clear", 0, MapMethod::Clear),
                     ("delete", 1, MapMethod::Delete),
+                    ("entries", 0, MapMethod::Entries),
+                    ("forEach", 1, MapMethod::ForEach),
                     ("get", 1, MapMethod::Get),
                     ("has", 1, MapMethod::Has),
+                    ("keys", 0, MapMethod::Keys),
                     ("set", 2, MapMethod::Set),
+                    ("values", 0, MapMethod::Values),
                 ] {
                     self.install_native(
                         prototype,
@@ -108,6 +106,17 @@ impl Vm {
                         NativeFunction::MapMethod(method),
                     )?;
                 }
+                // `Map.prototype[@@iterator]` is the same function object as
+                // `Map.prototype.entries`.
+                let entries = self.heap.get(prototype, "entries")?;
+                self.define_data(
+                    prototype,
+                    JsSymbol::well_known("iterator"),
+                    entries,
+                    true,
+                    false,
+                    true,
+                )?;
             } else {
                 self.install_native_getter(
                     prototype,
@@ -117,8 +126,12 @@ impl Vm {
                 )?;
                 for (name, length, method) in [
                     ("add", 1, SetMethod::Add),
+                    ("clear", 0, SetMethod::Clear),
                     ("delete", 1, SetMethod::Delete),
+                    ("entries", 0, SetMethod::Entries),
+                    ("forEach", 1, SetMethod::ForEach),
                     ("has", 1, SetMethod::Has),
+                    ("values", 0, SetMethod::Values),
                 ] {
                     self.install_native(
                         prototype,
@@ -128,6 +141,18 @@ impl Vm {
                         NativeFunction::SetMethod(method),
                     )?;
                 }
+                // `Set.prototype.keys` and `Set.prototype[@@iterator]` are the
+                // same function object as `Set.prototype.values`.
+                let values = self.heap.get(prototype, "values")?;
+                self.define_data(prototype, "keys", values.clone(), true, false, true)?;
+                self.define_data(
+                    prototype,
+                    JsSymbol::well_known("iterator"),
+                    values,
+                    true,
+                    false,
+                    true,
+                )?;
             }
             Ok(())
         })();
@@ -139,69 +164,6 @@ impl Vm {
             self.set_prototype = Some(prototype);
         }
         Ok(prototype)
-    }
-
-    fn collection_iterator_prototype(&mut self, map: bool) -> Result<ObjectId, RuntimeError> {
-        let cached = if map {
-            self.map_iterator_prototype
-        } else {
-            self.set_iterator_prototype
-        };
-        if let Some(prototype) = cached {
-            return Ok(prototype);
-        }
-        let base = self.base_iterator_prototype()?;
-        let function_prototype = self.function_prototype()?;
-        let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self.heap.root(prototype)?;
-        let result = (|| {
-            self.install_native(
-                prototype,
-                function_prototype,
-                "next",
-                0,
-                NativeFunction::CollectionIteratorNext,
-            )?;
-            self.define_data(
-                prototype,
-                JsSymbol::well_known("toStringTag"),
-                Value::String(if map { "Map Iterator" } else { "Set Iterator" }.into()),
-                false,
-                false,
-                true,
-            )?;
-            Ok(prototype)
-        })();
-        match result {
-            Ok(prototype) => {
-                if map {
-                    self.map_iterator_prototype = Some(prototype);
-                } else {
-                    self.set_iterator_prototype = Some(prototype);
-                }
-                Ok(prototype)
-            }
-            Err(error) => {
-                self.heap.unroot(root)?;
-                Err(error)
-            }
-        }
-    }
-
-    pub(in super::super) fn collection_iterator(
-        &mut self,
-        map: bool,
-        receiver: &Value,
-    ) -> Result<Value, RuntimeError> {
-        if !matches!(receiver, Value::Object(_)) {
-            return Err(RuntimeError::TypeError(
-                "collection iterator requires an object receiver".into(),
-            ));
-        }
-        let prototype = self.collection_iterator_prototype(map)?;
-        Ok(Value::Object(
-            self.with_roots(|heap| heap.alloc_object(Some(prototype)))?,
-        ))
     }
 
     pub(in super::super) fn collection_constructor(
@@ -311,15 +273,23 @@ impl Vm {
         }
         let key = native::argument(args, 0);
         match method {
+            MapMethod::Clear => {
+                self.heap.collection_clear(map)?;
+                Ok(Value::Undefined)
+            }
             MapMethod::Delete => Ok(Value::Bool(self.heap.map_delete(map, key)?)),
+            MapMethod::Entries => self.collection_iterator(map, true, ArrayIteratorKind::Entries),
+            MapMethod::ForEach => self.collection_for_each(map, true, args),
             MapMethod::Get => Ok(self.heap.map_get(map, key)?.unwrap_or(Value::Undefined)),
             MapMethod::Has => Ok(Value::Bool(self.heap.map_has(map, key)?)),
+            MapMethod::Keys => self.collection_iterator(map, true, ArrayIteratorKind::Keys),
             MapMethod::Set => {
                 self.with_roots(|heap| {
                     heap.map_set(map, key.clone(), native::argument(args, 1).clone())
                 })?;
                 Ok(Value::Object(map))
             }
+            MapMethod::Values => self.collection_iterator(map, true, ArrayIteratorKind::Values),
         }
     }
 
@@ -345,8 +315,15 @@ impl Vm {
                 self.with_roots(|heap| heap.set_add(set, key.clone()))?;
                 Ok(Value::Object(set))
             }
+            SetMethod::Clear => {
+                self.heap.collection_clear(set)?;
+                Ok(Value::Undefined)
+            }
             SetMethod::Delete => Ok(Value::Bool(self.heap.set_delete(set, key)?)),
+            SetMethod::Entries => self.collection_iterator(set, false, ArrayIteratorKind::Entries),
+            SetMethod::ForEach => self.collection_for_each(set, false, args),
             SetMethod::Has => Ok(Value::Bool(self.heap.set_has(set, key)?)),
+            SetMethod::Values => self.collection_iterator(set, false, ArrayIteratorKind::Values),
         }
     }
 

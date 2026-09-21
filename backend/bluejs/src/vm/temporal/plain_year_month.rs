@@ -58,10 +58,14 @@ pub(crate) fn year_month_from_fields(
     } else {
         date_fields.extended_year = fields.extended_year;
     }
+    // A `monthCode` identifies the month on its own; an ordinal `month`
+    // supplied next to it is only cross-checked below (`icu_calendar` treats
+    // both at once as conflicting even when they agree).
     if let Some(month_code) = fields.month_code {
         date_fields.month_code = Some(month_code.as_bytes());
+    } else {
+        date_fields.ordinal_month = fields.ordinal_month;
     }
-    date_fields.ordinal_month = fields.ordinal_month;
     let mut options = DateFromFieldsOptions::default();
     options.overflow = Some(if reject {
         IcuOverflow::Reject
@@ -71,6 +75,24 @@ pub(crate) fn year_month_from_fields(
     options.missing_fields_strategy = Some(MissingFieldsStrategy::Ecma);
     let date =
         Date::try_from_fields(date_fields, options, AnyCalendar::new(calendar)).map_err(|_| ())?;
+    // Fields that were given but did not drive the resolution must still
+    // agree with its result: an explicit `year` next to `era`/`eraYear`, and
+    // an ordinal `month` next to a `monthCode`. A disagreement is a
+    // `RangeError` (`intl402/Temporal/PlainMonthDay/from/fields-overspecified.js`
+    // pins the same rule for `PlainMonthDay`).
+    if fields
+        .extended_year
+        .is_some_and(|year| year != date.year().extended_year())
+    {
+        return Err(());
+    }
+    if fields.month_code.is_some()
+        && fields
+            .ordinal_month
+            .is_some_and(|month| month != date.month().ordinal)
+    {
+        return Err(());
+    }
     let iso = date.to_calendar(Iso);
     Ok((
         iso.year().extended_year(),
@@ -140,6 +162,49 @@ mod tests {
         };
         assert_eq!(
             year_month_from_fields(AnyCalendarKind::Iso, &fields, true),
+            Err(())
+        );
+    }
+
+    #[test]
+    fn an_explicit_year_must_agree_with_the_era_year() {
+        let mut fields = YearMonthFields {
+            era: Some("ce"),
+            era_year: Some(2024),
+            extended_year: Some(2023),
+            month_code: Some("M01"),
+            ..Default::default()
+        };
+        assert_eq!(
+            year_month_from_fields(AnyCalendarKind::Gregorian, &fields, false),
+            Err(())
+        );
+        fields.extended_year = Some(2024);
+        assert_eq!(
+            year_month_from_fields(AnyCalendarKind::Gregorian, &fields, false),
+            Ok((2024, 1, 1))
+        );
+        // The era pair alone resolves the year.
+        fields.extended_year = None;
+        assert_eq!(
+            year_month_from_fields(AnyCalendarKind::Gregorian, &fields, false),
+            Ok((2024, 1, 1))
+        );
+    }
+
+    #[test]
+    fn an_ordinal_month_next_to_a_month_code_must_agree() {
+        // Chinese 2004 has a leap M02, so M04 is ordinal month 5 in it.
+        let mut fields = YearMonthFields {
+            extended_year: Some(2004),
+            month_code: Some("M04"),
+            ordinal_month: Some(5),
+            ..Default::default()
+        };
+        assert!(year_month_from_fields(AnyCalendarKind::Chinese, &fields, false).is_ok());
+        fields.ordinal_month = Some(4);
+        assert_eq!(
+            year_month_from_fields(AnyCalendarKind::Chinese, &fields, false),
             Err(())
         );
     }
