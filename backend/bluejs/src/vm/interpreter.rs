@@ -1535,9 +1535,14 @@ impl Vm {
                             .pop()
                             .expect("compiler pops its active try handler");
                     }
-                    Opcode::SaveCompletion => self
-                        .completion_saves
-                        .push((self.completion.clone(), self.completion_empty)),
+                    Opcode::EnterFinalizer => {
+                        handlers
+                            .last_mut()
+                            .expect("compiler enters the finalizer of an active try handler")
+                            .state = HandlerState::Finally;
+                        self.completion_saves
+                            .push((self.completion.clone(), self.completion_empty));
+                    }
                     Opcode::ResumeCompletion => return Ok(Some(Completion::Resume(operand))),
                     Opcode::MarkDisposables => {
                         self.dispose_marks.push(self.disposables.len());
@@ -1561,12 +1566,11 @@ impl Vm {
                             .pop()
                             .expect("compiler matches every DisposeResources with a mark");
                         let resources = self.disposables.split_off(mark);
-                        // An abrupt entry leaves this handler's frame on the
-                        // runtime handler stack (in `Finally` state) until
-                        // `ResumeCompletion` runs after this opcode; a
-                        // normal-completion entry already popped it via
-                        // `PopHandler`; see `Opcode::DisposeResources`'s
-                        // definition.
+                        // The handler's frame stays on the runtime handler
+                        // stack (in `Finally` state) until `ResumeCompletion`
+                        // runs after this opcode; only an abrupt entry has a
+                        // pending completion; see
+                        // `Opcode::DisposeResources`'s definition.
                         let prior = match handlers.last() {
                             Some(frame) if frame.metadata == operand => frame
                                 .pending

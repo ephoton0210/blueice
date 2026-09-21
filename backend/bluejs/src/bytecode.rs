@@ -168,7 +168,11 @@ opcodes! {
     PushHandler: 5, 0;
     PopHandler: 1, 0;
     ResumeCompletion: 5, 0;
-    SaveCompletion: 1, 0;
+    // Normal completion of a try or catch block whose statement has a
+    // finalizer: turns the active handler frame into the one that runs the
+    // finalizer (an abrupt completion does the same) and saves the block's
+    // completion value, which `ResumeCompletion` restores afterwards.
+    EnterFinalizer: 1, 0;
     // Explicit Resource Management: `MarkDisposables` records the current
     // depth of the VM's disposable-resource stack when a `using`-declaring
     // block/function body is entered; `AddDisposableResource` (operand 0 =
@@ -196,11 +200,11 @@ opcodes! {
     DrainAsyncDisposables: 5, 0;
     // Operand: the static index (into `Bytecode::handlers`) of the
     // synthetic try/finally this disposal is the finally clause of. Lets
-    // the interpreter tell an abrupt entry (the handler frame is still on
-    // the runtime handler stack, in `Finally` state, with a pending
-    // completion to merge a disposal error into as a `SuppressedError`)
-    // apart from a normal-completion entry (the frame was already popped
-    // by `PopHandler`, so no prior error can exist to merge with).
+    // the interpreter tell an abrupt entry (the handler frame is on the
+    // runtime handler stack, in `Finally` state, with a pending completion to
+    // merge a disposal error into as a `SuppressedError`) apart from a
+    // normal-completion entry (the frame is in `Finally` state too but has no
+    // pending completion, so no prior error can exist to merge with).
     DisposeResources: 5, 0;
     AbruptJump: 5, 0;
     // SetFunctionName from a property key: stack `key, function`, both left

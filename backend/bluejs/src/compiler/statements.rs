@@ -163,8 +163,7 @@ impl Compiler {
         self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
         compile_body(self)?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
-        self.emit(Opcode::PopHandler, 0)?;
-        self.emit(Opcode::SaveCompletion, 0)?;
+        self.emit(Opcode::EnterFinalizer, 0)?;
         let normal_exit = self.emit(Opcode::Jump, 0)?;
         let finally_start = self.offset()?;
         self.bytecode.handlers[handler_index as usize].finally = Some(finally_start);
@@ -1170,10 +1169,14 @@ impl Compiler {
         self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
         self.scoped_statements(block)?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
-        self.emit(Opcode::PopHandler, 0)?;
-        if finalizer.is_some() {
-            self.emit(Opcode::SaveCompletion, 0)?;
-        }
+        self.emit(
+            if finalizer.is_some() {
+                Opcode::EnterFinalizer
+            } else {
+                Opcode::PopHandler
+            },
+            0,
+        )?;
         let normal_exit = self.emit(Opcode::Jump, 0)?;
 
         let catch_exit = if let Some(catch) = handler {
@@ -1231,10 +1234,14 @@ impl Compiler {
                 .expect("catch var override is active");
             self.leave_scope()?;
             self.bytecode.handlers[handler_index as usize].catch_end = Some(self.offset()?);
-            self.emit(Opcode::PopHandler, 0)?;
-            if finalizer.is_some() {
-                self.emit(Opcode::SaveCompletion, 0)?;
-            }
+            self.emit(
+                if finalizer.is_some() {
+                    Opcode::EnterFinalizer
+                } else {
+                    Opcode::PopHandler
+                },
+                0,
+            )?;
             Some(self.emit(Opcode::Jump, 0)?)
         } else {
             None

@@ -844,19 +844,24 @@ impl Vm {
             return Ok(CompletionAction::Return(value));
         }
         if let Completion::Resume(metadata) = completion {
-            if let Some(frame) = handlers.pop_if(|frame| frame.metadata == metadata) {
-                let pending = frame
-                    .pending
-                    .expect("only an abrupt finally resumes a handler");
-                return self.resolve_completion(
+            let frame = handlers
+                .pop_if(|frame| frame.metadata == metadata)
+                .expect("a finalizer runs under its handler frame");
+            // The finalizer completed normally, so the try statement's
+            // completion value is the one the try or catch block produced
+            // (or the abrupt completion carried, such as a `break`), not
+            // whatever the finalizer's own statements produced. It was saved
+            // when the finalizer was entered.
+            self.restore_completion();
+            return match frame.pending {
+                Some(pending) => self.resolve_completion(
                     code,
                     handlers,
                     iterators,
                     self.pending_completions[pending].clone(),
-                );
-            }
-            self.restore_completion();
-            return Ok(CompletionAction::Continue);
+                ),
+                None => Ok(CompletionAction::Continue),
+            };
         }
 
         // Keep a potential thrown/returned object reachable while scope and
@@ -963,6 +968,10 @@ impl Vm {
                 if let Some(target) = finally {
                     let pending = self.pending_completions.len();
                     self.pending_completions.push(completion);
+                    // Save the completion value the abrupt completion carries;
+                    // a normal finalizer restores it (see `Completion::Resume`).
+                    self.completion_saves
+                        .push((self.completion.clone(), self.completion_empty));
                     let frame = handlers.last_mut().expect("handler was inspected above");
                     frame.state = HandlerState::Finally;
                     frame.pending = Some(pending);
@@ -970,6 +979,11 @@ impl Vm {
                 }
             }
             handlers.pop();
+            // A finalizer that completes abruptly replaces the completion that
+            // entered it, so the value saved at its entry is never restored.
+            if state == HandlerState::Finally {
+                self.completion_saves.pop();
+            }
             completion = self
                 .pending_completions
                 .last()
