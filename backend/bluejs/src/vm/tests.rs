@@ -104,8 +104,9 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
         )
         .unwrap();
     let mut code = Bytecode::empty();
-    code.code
-        .extend([Opcode::DefineMethod as u8, Opcode::Halt as u8]);
+    code.code.push(Opcode::DefineMethod as u8);
+    code.code.extend_from_slice(&0_u32.to_le_bytes());
+    code.code.push(Opcode::Halt as u8);
 
     vm.stack = vec![
         Value::Object(target),
