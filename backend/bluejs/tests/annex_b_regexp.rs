@@ -198,3 +198,27 @@ fn non_legacy_regexps_invalidate_the_static_properties_until_the_next_legacy_mat
          /c/.exec('c');only&&RegExp.lastMatch==='c'&&RegExp.input==='c'",
     );
 }
+
+#[test]
+fn legacy_accessor_functions_stringify_as_native_functions() {
+    // NativeFunction can only name an IdentifierName (or a computed name), so a
+    // property such as `$&` has no representable name and is elided.
+    check(
+        "var t=Function.prototype.toString;\
+         var d=function(k){return Object.getOwnPropertyDescriptor(RegExp,k)};\
+         t.call(d('$&').get)==='function () { [native code] }'\
+         &&t.call(d('$+').get)==='function () { [native code] }'\
+         &&t.call(d('$`').get)==='function () { [native code] }'\
+         &&t.call(d(\"$'\").get)==='function () { [native code] }'\
+         &&t.call(d('$1').get)==='function get $1() { [native code] }'\
+         &&t.call(d('$_').set)==='function set $_() { [native code] }'\
+         &&t.call(d('input').get)==='function get input() { [native code] }'",
+    );
+    // Every function reachable from RegExp matches the NativeFunction grammar.
+    check(
+        "var t=Function.prototype.toString;\
+         var shape=/^function (get |set )?([\\w$]+|\\[[^\\]]*\\])?\\(\\) \\{ \\[native code\\] \\}$/;\
+         Reflect.ownKeys(RegExp).every(function(k){var d=Object.getOwnPropertyDescriptor(RegExp,k);\
+         return [d.value,d.get,d.set].every(function(f){return typeof f!=='function'||shape.test(t.call(f))})})",
+    );
+}
