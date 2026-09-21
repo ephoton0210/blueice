@@ -54,7 +54,7 @@ impl Vm {
         // actually observes it. This keeps data-only executions within small
         // heap configurations while preserving script and arrow semantics.
         self.this = Value::Undefined;
-        self.class_field_initializer_depth = 0;
+        self.class_field_initializer = false;
         let result = self.run(code).and_then(|value| {
             if let Value::Object(id) = value {
                 self.result_root = Some(self.heap.root(id)?);
@@ -1347,8 +1347,7 @@ impl Vm {
         let new_target = std::mem::replace(&mut self.new_target, Value::Undefined);
         let new_target_allowed = std::mem::replace(&mut self.new_target_allowed, false);
         let home_object = std::mem::take(&mut self.home_object);
-        let class_field_initializer_depth =
-            std::mem::replace(&mut self.class_field_initializer_depth, 0);
+        let class_field_initializer = std::mem::take(&mut self.class_field_initializer);
         let script_global_slots = std::mem::take(&mut self.script_global_slots);
         let result = self
             .prepare_global_declarations(code)
@@ -1368,7 +1367,7 @@ impl Vm {
         self.new_target = new_target;
         self.new_target_allowed = new_target_allowed;
         self.home_object = home_object;
-        self.class_field_initializer_depth = class_field_initializer_depth;
+        self.class_field_initializer = class_field_initializer;
         self.script_global_slots = script_global_slots;
         self.stack.truncate(base);
         result

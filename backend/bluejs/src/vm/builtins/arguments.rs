@@ -149,10 +149,17 @@ impl Vm {
             .iter()
             .any(|(name, _, _)| name == crate::compiler::DERIVED_CONSTRUCTOR_BINDING);
         if crate::ast::contains_super_call_outside_class(&program)
-            && (self.class_field_initializer_depth != 0 || !derived_constructor)
+            && (self.class_field_initializer || !derived_constructor)
         {
             return Err(RuntimeError::SyntaxError(
                 "super() is not valid in this eval context".into(),
+            ));
+        }
+        // A field initializer has no `arguments` binding, so eval code inside
+        // it (or inside an arrow function it created) may not refer to one.
+        if self.class_field_initializer && crate::ast::statements_contain_arguments(&program.body) {
+            return Err(RuntimeError::SyntaxError(
+                "arguments is not valid in a class field initializer".into(),
             ));
         }
         if crate::ast::contains_super_property_outside_class(&program) && self.home_object.is_none()
@@ -184,9 +191,12 @@ impl Vm {
             &visible,
             &variable_environment_names,
             &lexical_conflicts,
-            self.strict,
-            self.new_target_allowed,
-            self.with_objects.len(),
+            crate::compiler::EvalContext {
+                strict: self.strict,
+                new_target_allowed: self.new_target_allowed,
+                class_field_initializer: self.class_field_initializer,
+                with_depth: self.with_objects.len(),
+            },
         )
         .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let captures = code
@@ -217,8 +227,14 @@ impl Vm {
         })?;
         let program =
             crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0)
-            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        let code = crate::compiler::compile_eval(
+            &program,
+            &[],
+            &[],
+            &[],
+            crate::compiler::EvalContext::default(),
+        )
+        .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let global_this = self.global("globalThis")?;
         let this = std::mem::replace(&mut self.this, global_this);
         let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);

@@ -13,7 +13,7 @@ use crate::bytecode::{
     ModuleRequest as CompiledModuleRequest,
 };
 use crate::*;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 /// Parser-private binding used to represent an anonymous `export default`
 /// declaration.  It can never be spelled by ECMAScript source, which lets
@@ -21,6 +21,11 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// function/class name required by SetFunctionName.
 const MODULE_DEFAULT_BINDING: &str = "\0bluejs_module_default";
 const PRIVATE_OWNER_BINDING_PREFIX: &str = "\0bluejs_private_owner_";
+/// Per-class-evaluation bindings for state a class element carries from
+/// ClassDefinitionEvaluation to a later step: a computed field key (evaluated
+/// once, in element order) and a static field or static block's function
+/// (run only after every element has been defined).
+const CLASS_ELEMENT_BINDING_PREFIX: &str = "\0bluejs_class_element_";
 /// A derived class constructor's `this` binding. Unlike an ordinary function's
 /// receiver it starts uninitialized and is bound by `super()`, possibly from a
 /// nested arrow function or direct eval, so it is a real lexical binding that
@@ -359,6 +364,20 @@ fn compile_with_limit_and_mode(
     Ok(compiler.bytecode)
 }
 
+/// What a direct eval inherits from the function that calls it, other than
+/// its visible bindings.
+#[derive(Default)]
+pub(crate) struct EvalContext {
+    pub(crate) strict: bool,
+    /// Whether `new.target` is valid in the calling function.
+    pub(crate) new_target_allowed: bool,
+    /// The caller is a class field initializer (or an arrow function inside
+    /// one).
+    pub(crate) class_field_initializer: bool,
+    /// The number of `with` environments the eval runs inside.
+    pub(crate) with_depth: usize,
+}
+
 /// Compiles direct-eval source with cells for the caller's visible bindings.
 /// The runtime supplies `visible` from its active lexical environments and
 /// installs the matching cells before running the resulting bytecode.
@@ -367,10 +386,14 @@ pub(crate) fn compile_eval(
     visible: &[(String, Binding, u32)],
     variable_environment_names: &[String],
     lexical_conflicts: &[String],
-    strict: bool,
-    new_target_allowed: bool,
-    with_depth: usize,
+    context: EvalContext,
 ) -> Result<Bytecode, CompileError> {
+    let EvalContext {
+        strict,
+        new_target_allowed,
+        class_field_initializer,
+        with_depth,
+    } = context;
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
         names: vec![HashMap::new()],
@@ -391,6 +414,7 @@ pub(crate) fn compile_eval(
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
     compiler.bytecode.new_target_allowed = new_target_allowed;
+    compiler.bytecode.class_field_initializer = class_field_initializer;
     if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
         return Err(CompileError::InvalidSyntax(
             "strict code cannot assign to eval or arguments",
@@ -528,6 +552,7 @@ struct FunctionCompileOptions {
     derived_constructor: bool,
     default_derived_constructor: bool,
     class_method: bool,
+    class_field_initializer: bool,
 }
 
 impl FunctionCompileOptions {
@@ -539,6 +564,16 @@ impl FunctionCompileOptions {
             derived_constructor: false,
             default_derived_constructor: false,
             class_method: true,
+            class_field_initializer: false,
+        }
+    }
+
+    /// A function that defines class fields on its receiver: a method whose
+    /// direct evals may not see an `arguments` binding.
+    fn class_field_initializer() -> Self {
+        Self {
+            class_field_initializer: true,
+            ..Self::class_method()
         }
     }
 }
@@ -1211,12 +1246,21 @@ fn literal_property_key_name(key: &PropertyKey) -> Option<String> {
     }
 }
 
-fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
-    let (property, computed) = match key {
-        PropertyKey::Identifier(name) => (Expr::Identifier(name.clone()), false),
-        PropertyKey::String(name) => (Expr::String(name.clone()), true),
-        PropertyKey::Number(number) => (Expr::Number(*number), true),
-        PropertyKey::Computed(expression) => ((*expression.clone()), true),
+/// Lowers one class field to `this[key] = initializer`, the shape
+/// `Compiler::class_field` turns into DefineField (or PrivateFieldAdd).
+/// `computed_binding` names the hidden binding that holds a computed key,
+/// which was converted once when the class was defined.
+fn class_field_definition(
+    key: &PropertyKey,
+    computed_binding: Option<&String>,
+    initializer: Option<&Expr>,
+) -> Stmt {
+    let (property, computed) = match (key, computed_binding) {
+        (PropertyKey::Identifier(name), _) => (Expr::Identifier(name.clone()), false),
+        (PropertyKey::String(name), _) => (Expr::String(name.clone()), true),
+        (PropertyKey::Number(number), _) => (Expr::Number(*number), true),
+        (PropertyKey::Computed(_), Some(binding)) => (Expr::Identifier(binding.clone()), true),
+        (PropertyKey::Computed(expression), None) => ((**expression).clone(), true),
     };
     Stmt::ClassField(Box::new(Stmt::Expr(Expr::Assign {
         op: AssignOp::Assign,
@@ -1227,30 +1271,6 @@ fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
         }),
         value: Box::new(initializer.cloned().unwrap_or_else(undefined_expression)),
     })))
-}
-
-/// The VM establishes `this` while executing `super()`. For explicit derived
-/// constructors, fields therefore follow the first direct constructor call.
-/// A direct top-level call gets the exact specified placement. When the call
-/// is nested in a closure or control-flow expression, preserve the constructor
-/// body and defer the field list to its normal completion. This keeps `this`
-/// uninitialized until the nested `super()` actually executes, rather than
-/// rejecting otherwise valid derived class syntax during compilation.
-fn derived_constructor_body(
-    mut body: Vec<Stmt>,
-    fields: Vec<Stmt>,
-) -> Result<Vec<Stmt>, CompileError> {
-    if fields.is_empty() {
-        return Ok(body);
-    }
-    if let Some(index) = body.iter().position(|statement| {
-        matches!(statement, Stmt::Expr(Expr::Call { callee, .. }) if matches!(&**callee, Expr::Super))
-    }) {
-        body.splice(index + 1..index + 1, fields);
-    } else {
-        body.extend(fields);
-    }
-    Ok(body)
 }
 
 fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {

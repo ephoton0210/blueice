@@ -146,30 +146,6 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
         vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
         Err(RuntimeError::TypeError(_))
     ));
-
-    code.code[0] = Opcode::DefineClassStaticField as u8;
-    vm.stack = vec![
-        Value::Undefined,
-        Value::Object(target),
-        Value::String("field".into()),
-        Value::Object(function),
-    ];
-    vm.remaining_instructions = vm.config.instruction_budget;
-    assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
-        Ok(InterpreterExit::Return(Value::Undefined))
-    ));
-    vm.stack = vec![
-        Value::Undefined,
-        Value::Object(target),
-        Value::String("emptyField".into()),
-        Value::Undefined,
-    ];
-    vm.remaining_instructions = vm.config.instruction_budget;
-    assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
-        Err(RuntimeError::TypeError(_))
-    ));
 }
 
 #[test]

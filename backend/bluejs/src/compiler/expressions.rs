@@ -821,12 +821,14 @@ impl Compiler {
                 self.emit(Opcode::SuperGet, 0)?;
             }
             Expr::Member { .. } if private_member_name(expr).is_some() => {
-                let owner = self.private_member_reference(expr)?;
+                let owner = self.private_member_chain_reference(expr, exits)?;
                 self.emit(Opcode::PrivateGet, owner)?;
             }
             Expr::Member { .. } | Expr::OptionalMember { .. } => {
-                self.optional_chain_member_reference(expr, exits)?;
-                self.emit(Opcode::GetProperty, 0)?;
+                match self.optional_chain_member_reference(expr, exits)? {
+                    Some(owner) => self.emit(Opcode::PrivateGet, owner)?,
+                    None => self.emit(Opcode::GetProperty, 0)?,
+                };
             }
             Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
                 let optional_call = matches!(expr, Expr::OptionalCall { .. });
@@ -841,12 +843,17 @@ impl Compiler {
                     self.super_reference(property, *computed)?;
                     self.emit_this()?;
                     self.emit(Opcode::SuperGetMethod, 0)?;
+                } else if private_member_name(callee).is_some() {
+                    let owner = self.private_member_chain_reference(callee, exits)?;
+                    self.emit(Opcode::PrivateGetMethod, owner)?;
                 } else if matches!(
                     callee.as_ref(),
                     Expr::Member { .. } | Expr::OptionalMember { .. }
                 ) {
-                    self.optional_chain_member_reference(callee, exits)?;
-                    self.emit(Opcode::GetMethod, 0)?;
+                    match self.optional_chain_member_reference(callee, exits)? {
+                        Some(owner) => self.emit(Opcode::PrivateGetMethod, owner)?,
+                        None => self.emit(Opcode::GetMethod, 0)?,
+                    };
                 } else if matches!(&**callee, Expr::Parenthesized(inner) if matches!(inner.as_ref(), Expr::Member { .. } | Expr::OptionalMember { .. }))
                 {
                     let Expr::Parenthesized(inner) = callee.as_ref() else {
@@ -903,11 +910,14 @@ impl Compiler {
         Ok(())
     }
 
+    /// Evaluates the `object, key` operands of a member of an optional chain.
+    /// A private name (`?.#x`) leaves the private name as its `key` instead
+    /// and returns the binding slot of its owner.
     pub(super) fn optional_chain_member_reference(
         &mut self,
         expr: &Expr,
         exits: &mut Vec<usize>,
-    ) -> Result<(), CompileError> {
+    ) -> Result<Option<u32>, CompileError> {
         let (object, property, computed, optional) = match expr {
             Expr::Member {
                 object,
@@ -944,6 +954,11 @@ impl Compiler {
         if computed {
             self.expression(property)?;
         } else if let Expr::Identifier(name) = property.as_ref() {
+            if let Some(private) = name.strip_prefix('#') {
+                let owner = self.resolve_private_name(private)?;
+                self.constant(Value::String(private.into()))?;
+                return Ok(Some(owner));
+            }
             self.constant(Value::String(name.clone().into()))?;
         } else {
             return Err(CompileError::InvalidSyntax(
@@ -951,7 +966,38 @@ impl Compiler {
             ));
         }
         self.emit(Opcode::PreparePropertyReference, 0)?;
-        Ok(())
+        Ok(None)
+    }
+
+    /// Like `private_member_reference`, for a private member whose object may
+    /// itself be part of an optional chain: a nullish `o` in `o?.c.#f`
+    /// short-circuits the whole chain instead of reaching the private access.
+    pub(super) fn private_member_chain_reference(
+        &mut self,
+        target: &Expr,
+        exits: &mut Vec<usize>,
+    ) -> Result<u32, CompileError> {
+        let Expr::Member {
+            object,
+            property,
+            computed: false,
+        } = target
+        else {
+            return Err(CompileError::InvalidSyntax("invalid private member AST"));
+        };
+        let name = match property.as_ref() {
+            Expr::Identifier(name) => name.strip_prefix('#'),
+            _ => None,
+        }
+        .ok_or(CompileError::InvalidSyntax("invalid private member name"))?;
+        let owner = self.resolve_private_name(name)?;
+        if optional_chain_root(object) {
+            self.optional_chain_expression(object, exits)?;
+        } else {
+            self.expression(object)?;
+        }
+        self.constant(Value::String(name.into()))?;
+        Ok(owner)
     }
 
     /// A parenthesized OptionalMember ends its own chain but still retains a
@@ -966,6 +1012,11 @@ impl Compiler {
             self.member_reference(expr)?;
             self.emit_this()?;
             self.emit(Opcode::SuperGetMethod, 0)?;
+            return Ok(());
+        }
+        if private_member_name(expr).is_some() {
+            let owner = self.private_member_reference(expr)?;
+            self.emit(Opcode::PrivateGetMethod, owner)?;
             return Ok(());
         }
         if matches!(expr, Expr::Member { .. }) {
@@ -994,6 +1045,13 @@ impl Compiler {
         if *computed {
             self.expression(property)?;
         } else if let Expr::Identifier(name) = property.as_ref() {
+            if let Some(private) = name.strip_prefix('#') {
+                let owner = self.resolve_private_name(private)?;
+                self.constant(Value::String(private.into()))?;
+                self.emit(Opcode::PrivateGetMethod, owner)?;
+                self.patch(end, self.offset()?);
+                return Ok(());
+            }
             self.constant(Value::String(name.clone().into()))?;
         } else {
             return Err(CompileError::InvalidSyntax(
@@ -1551,6 +1609,10 @@ impl Compiler {
             self.member_reference(target)?;
             self.emit_this()?;
             self.emit(Opcode::SuperSet, 1)?;
+        } else if let Some(name) = private_member_name(target) {
+            let owner = self.resolve_private_name(name)?;
+            self.member_reference(target)?;
+            self.emit(Opcode::PrivateSetLeaf, owner)?;
         } else {
             self.member_reference(target)?;
             self.emit(Opcode::SetDestructureProperty, 0)?;
@@ -1574,6 +1636,9 @@ impl Compiler {
         if is_super_member(target) {
             self.emit_this()?;
             self.emit(Opcode::SuperSet, 0)?;
+        } else if let Some(name) = private_member_name(target) {
+            let owner = self.resolve_private_name(name)?;
+            self.emit(Opcode::PrivateSet, owner)?;
         } else {
             self.emit(Opcode::SetDestructurePropertyReference, 0)?;
         }
@@ -1613,6 +1678,12 @@ impl Compiler {
         else {
             return Err(CompileError::InvalidSyntax("invalid assignment/member AST"));
         };
+        if private_member_name(target).is_some() {
+            // A private Reference is `object, name`; its consumer supplies the
+            // owner.
+            self.private_member_reference(target)?;
+            return Ok(());
+        }
         if matches!(&**object, Expr::Super) {
             // A super Reference has the same `base, key` shape; the consumer
             // supplies `this` and uses the Super opcodes.
@@ -1710,8 +1781,9 @@ impl Compiler {
         Ok(())
     }
 
-    /// The start of a `super()` call: GetSuperConstructor of the active
-    /// derived constructor, before the arguments run.
+    /// The start of a `super()` call: leaves the active derived constructor
+    /// `F` on the stack (InitializeInstanceElements needs it afterwards) and
+    /// its GetSuperConstructor above it, before the arguments run.
     pub(super) fn super_call_prologue(&mut self) -> Result<(), CompileError> {
         let slot = self
             .resolve(DERIVED_CONSTRUCTOR_BINDING)
@@ -1719,12 +1791,13 @@ impl Compiler {
                 "super() is only valid in a derived constructor",
             ))?;
         self.emit(Opcode::GetBinding, slot)?;
+        self.emit(Opcode::Dup, 0)?;
         self.emit(Opcode::SuperConstructor, 0)?;
         Ok(())
     }
 
     /// The end of a `super()` call, once `SuperCall` has left the constructed
-    /// value on the stack: BindThisValue.
+    /// value above `F`: BindThisValue, then InitializeInstanceElements.
     pub(super) fn super_call_epilogue(&mut self) -> Result<(), CompileError> {
         let slot = self
             .resolve(DERIVED_THIS_BINDING)
@@ -1732,6 +1805,7 @@ impl Compiler {
                 "super() is only valid in a derived constructor",
             ))?;
         self.emit(Opcode::BindThisValue, slot)?;
+        self.emit(Opcode::InitializeInstanceElements, 0)?;
         Ok(())
     }
 

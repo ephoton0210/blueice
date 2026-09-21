@@ -214,6 +214,9 @@ impl PrivateElement {
 #[derive(Default)]
 struct ClosureMetadata {
     home: Option<ObjectId>,
+    /// A class constructor's `[[Fields]]`: the method-like function that
+    /// defines its instance elements on a newly constructed object.
+    fields: Option<ObjectId>,
     /// An arrow function's lexical `new.target`, captured when the closure is
     /// created. Absent (equivalent to `undefined`) for every other closure.
     new_target: Option<Value>,
@@ -223,6 +226,7 @@ impl ClosureMetadata {
     fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
         self.home
             .into_iter()
+            .chain(self.fields)
             .chain(self.new_target.iter().filter_map(Value::object_id))
     }
 }

@@ -328,7 +328,9 @@ impl Vm {
                 })
             }
             PrivateElement::Method(function) => Ok(function),
-            PrivateElement::Accessor { get: None, .. } => Ok(Value::Undefined),
+            PrivateElement::Accessor { get: None, .. } => Err(RuntimeError::TypeError(
+                "private accessor has no getter".into(),
+            )),
             PrivateElement::Accessor {
                 get: Some(getter), ..
             } => self.call_native(getter, receiver.clone(), Vec::new(), false),
@@ -390,14 +392,10 @@ impl Vm {
         })?;
         match element {
             PrivateElement::Field => {
-                // The first store of a field is its PrivateFieldAdd, which an
-                // object that stopped being extensible in the meantime (say by
-                // an earlier field initializer) rejects.
-                if self.heap.private_slot(object, owner, &name)?.is_none()
-                    && !self.object_is_extensible(object)?
-                {
+                // Assignment updates an initialized field; it never adds one.
+                if self.heap.private_slot(object, owner, &name)?.is_none() {
                     return Err(RuntimeError::TypeError(
-                        "cannot add a private element to a non-extensible object".into(),
+                        "private field has not been initialized".into(),
                     ));
                 }
                 self.with_roots(|heap| heap.set_private_slot(object, owner, name, value))
@@ -456,6 +454,79 @@ impl Vm {
         self.heap.set_prototype(class, constructor_parent)?;
         self.heap.set_prototype(prototype, instance_parent)?;
         self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
+        Ok(())
+    }
+
+    /// PrivateFieldAdd: define a private field on `receiver`. It is a
+    /// TypeError to add the same field twice, or to add one to an object that
+    /// is no longer extensible.
+    pub(super) fn private_field_add(
+        &mut self,
+        receiver: &Value,
+        owner: ObjectId,
+        name: JsString,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        let object = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("private fields require an object receiver".into())
+        })?;
+        if self.heap.private_slot(object, owner, &name)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "private field is already defined on this object".into(),
+            ));
+        }
+        if !self.object_is_extensible(object)? {
+            return Err(RuntimeError::TypeError(
+                "cannot add a private element to a non-extensible object".into(),
+            ));
+        }
+        self.with_roots(|heap| {
+            heap.add_private_brand(object, owner)?;
+            heap.set_private_slot(object, owner, name, value)
+        })
+    }
+
+    /// Installs the initializer function on the class constructor beneath it
+    /// on the stack (`F, initializer` -> `F`). Its home object is the class
+    /// prototype, so `super.x` works in a field initializer.
+    pub(super) fn set_class_fields(&mut self) -> Result<(), RuntimeError> {
+        let initializer = self
+            .stack
+            .last()
+            .and_then(Value::object_id)
+            .expect("compiler emits the class field initializer closure");
+        let class = self.stack[self.stack.len() - 2]
+            .object_id()
+            .expect("compiler emits a class closure before its field initializer");
+        let prototype = self
+            .heap
+            .get(class, "prototype")?
+            .object_id()
+            .expect("class constructors have a prototype object");
+        self.with_roots(|heap| heap.set_closure_home(initializer, prototype))?;
+        self.with_roots(|heap| heap.set_class_fields(class, initializer))?;
+        self.stack.pop();
+        Ok(())
+    }
+
+    /// InitializeInstanceElements: run the class's field initializer (if it
+    /// has one) with the just-constructed object as `this`.
+    pub(super) fn initialize_instance_elements(
+        &mut self,
+        constructor: &Value,
+        instance: &Value,
+    ) -> Result<(), RuntimeError> {
+        let Some(class) = constructor.object_id() else {
+            return Ok(());
+        };
+        if let Some(initializer) = self.heap.class_fields(class)? {
+            self.call_native(
+                Value::Object(initializer),
+                instance.clone(),
+                Vec::new(),
+                false,
+            )?;
+        }
         Ok(())
     }
 

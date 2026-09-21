@@ -201,34 +201,6 @@ impl Vm {
                         )?;
                         self.stack.truncate(base + 1);
                     }
-                    Opcode::DefineClassStaticField => {
-                        let base = self.stack.len() - 4;
-                        let target = self.stack[base + 1].clone();
-                        let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
-                        let initializer = self.stack[base + 3].clone();
-                        if let (Value::Object(target), Value::Object(function)) =
-                            (&target, &initializer)
-                        {
-                            self.with_roots(|heap| heap.set_closure_home(*function, *target))?;
-                        }
-                        let value =
-                            self.call_native(initializer, target.clone(), Vec::new(), false)?;
-                        let Value::Object(target) = target else {
-                            unreachable!("class fields target the constructor")
-                        };
-                        if !self.with_roots(|heap| {
-                            heap.define_own_property(
-                                target,
-                                key,
-                                PropertyDescriptor::data(value, true, true, true),
-                            )
-                        })? {
-                            return Err(RuntimeError::TypeError(
-                                "cannot define class field".into(),
-                            ));
-                        }
-                        self.stack.truncate(base + 1);
-                    }
                     Opcode::DefineInstanceField => {
                         // The receiver and value stay on the operand stack (and
                         // so rooted) until the definition has completed.
@@ -252,34 +224,39 @@ impl Vm {
                         }
                         self.stack.truncate(base);
                     }
-                    Opcode::DefinePrivateStaticField => {
-                        let base = self.stack.len() - 4;
-                        let target = self.stack[base + 1].clone();
-                        let name = match self.stack[base + 2].clone() {
+                    Opcode::PrivateFieldAdd => {
+                        // The receiver, name and value stay rooted on the
+                        // operand stack until the field has been added.
+                        let base = self.stack.len() - 3;
+                        let receiver = self.stack[base].clone();
+                        let name = match self.stack[base + 1].clone() {
                             Value::String(name) => name,
-                            _ => unreachable!("compiler emits a private-name string"),
+                            _ => unreachable!("compiler emits a string private name"),
                         };
-                        let initializer = self.stack[base + 3].clone();
-                        if let (Value::Object(target), Value::Object(function)) =
-                            (&target, &initializer)
-                        {
-                            self.with_roots(|heap| heap.set_closure_home(*function, *target))?;
-                        }
-                        let value =
-                            self.call_native(initializer, target.clone(), Vec::new(), false)?;
-                        let Value::Object(target) = target else {
-                            unreachable!("class fields target the constructor")
-                        };
-                        if !self.object_is_extensible(target)? {
-                            return Err(RuntimeError::TypeError(
-                                "cannot add a private element to a non-extensible object".into(),
-                            ));
-                        }
-                        self.with_roots(|heap| heap.set_private_slot(target, target, name, value))?;
-                        self.stack.truncate(base + 1);
+                        let value = self.stack[base + 2].clone();
+                        let owner = self
+                            .binding_value(operand)?
+                            .and_then(|value| value.object_id())
+                            .ok_or_else(|| {
+                                RuntimeError::TypeError(
+                                    "private elements are not available in this function".into(),
+                                )
+                            })?;
+                        self.private_field_add(&receiver, owner, name, value)?;
+                        self.stack.truncate(base);
                     }
                     Opcode::SetClassHome => self.set_class_home()?,
                     Opcode::SetClassHeritage => self.set_class_heritage()?,
+                    Opcode::SetClassFields => self.set_class_fields()?,
+                    Opcode::InitializeInstanceElements => {
+                        // `F, result`: run F's [[Fields]] against the value
+                        // super() constructed, then drop F beneath it.
+                        let base = self.stack.len() - 2;
+                        let (constructor, result) =
+                            (self.stack[base].clone(), self.stack[base + 1].clone());
+                        self.initialize_instance_elements(&constructor, &result)?;
+                        self.stack.remove(base);
+                    }
                     Opcode::InitializePrivateBrand => {
                         let owner = self
                             .binding_value(operand)?
@@ -294,12 +271,17 @@ impl Vm {
                                 "private fields require an object receiver".into(),
                             )
                         })?;
-                        // PrivateMethodOrAccessorAdd / PrivateFieldAdd: an
-                        // object that is no longer extensible cannot gain a
-                        // private element (`nonextensible-applies-to-private`).
-                        if !self.heap.has_private_brand(receiver, owner)?
-                            && !self.object_is_extensible(receiver)?
-                        {
+                        // PrivateMethodOrAccessorAdd: installing the same
+                        // methods twice (a constructor returning an already
+                        // initialized object) is a TypeError, and so is adding
+                        // one to an object that is no longer extensible
+                        // (`nonextensible-applies-to-private`).
+                        if self.heap.has_private_brand(receiver, owner)? {
+                            return Err(RuntimeError::TypeError(
+                                "private methods are already installed on this object".into(),
+                            ));
+                        }
+                        if !self.object_is_extensible(receiver)? {
                             return Err(RuntimeError::TypeError(
                                 "cannot add a private element to a non-extensible object".into(),
                             ));
@@ -319,6 +301,15 @@ impl Vm {
                         let (receiver, owner, name) = self.private_reference(operand)?;
                         self.private_set(&receiver, owner, name, value.clone())?;
                         self.stack.push(value);
+                    }
+                    Opcode::PrivateSetLeaf => {
+                        let (receiver, owner, name) = self.private_reference(operand)?;
+                        let value = self
+                            .stack
+                            .last()
+                            .expect("the destructured value is on the stack")
+                            .clone();
+                        self.private_set(&receiver, owner, name, value)?;
                     }
                     Opcode::PrivateIn => {
                         let (receiver, owner, _name) = self.private_reference(operand)?;
@@ -442,13 +433,6 @@ impl Vm {
                             ));
                         }
                         self.store_binding(operand, value)?;
-                    }
-                    Opcode::EnterClassFieldInitializer => self.class_field_initializer_depth += 1,
-                    Opcode::LeaveClassFieldInitializer => {
-                        self.class_field_initializer_depth = self
-                            .class_field_initializer_depth
-                            .checked_sub(1)
-                            .expect("compiler balances class field initializers");
                     }
                     Opcode::RegExpLiteral => {
                         let base = self.stack.len() - 2;

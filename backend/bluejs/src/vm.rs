@@ -715,7 +715,7 @@ struct SuspendedModuleExecution {
     new_target: Value,
     new_target_allowed: bool,
     home_object: Option<ObjectId>,
-    class_field_initializer_depth: u32,
+    class_field_initializer: bool,
     active_module_name: Option<String>,
 }
 
@@ -885,10 +885,10 @@ pub struct Vm {
     // The `[[HomeObject]]` of the currently executing method or class
     // constructor. It is runtime frame state because `super` is lexical.
     home_object: Option<ObjectId>,
-    // A direct eval in an instance field is outside a constructor for the
-    // `super()` early-error rules even though fields are lowered into the
-    // constructor bytecode.
-    class_field_initializer_depth: u32,
+    // Running a class field initializer (or an arrow function created in
+    // one): a direct eval there is outside a constructor for the `super()`
+    // early-error rules and may not refer to `arguments`.
+    class_field_initializer: bool,
     iterator_base: Option<ObjectId>,
     /// The lazily installed `%Iterator.prototype%` helpers (`flatMap`,
     /// `chunks`, `windows`) that have already been offered to the realm. Each
@@ -1083,7 +1083,7 @@ impl Vm {
             new_target: Value::Undefined,
             new_target_allowed: false,
             home_object: None,
-            class_field_initializer_depth: 0,
+            class_field_initializer: false,
             iterator_base: None,
             iterator_helpers_installed: Vec::new(),
             iterator_wrapper_prototype: None,

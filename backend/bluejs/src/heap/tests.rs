@@ -35,6 +35,17 @@ fn closure_metadata_validates_its_receiver_and_is_reclaimed_with_a_young_closure
     );
     heap.set_closure_new_target(closure, Value::Null).unwrap();
     assert_eq!(heap.closure_new_target(closure).unwrap(), Some(Value::Null));
+    assert_eq!(
+        heap.set_class_fields(ordinary, closure),
+        Err(HeapError::InvalidObject(ordinary))
+    );
+    assert_eq!(
+        heap.class_fields(ordinary),
+        Err(HeapError::InvalidObject(ordinary))
+    );
+    assert_eq!(heap.class_fields(closure).unwrap(), None);
+    heap.set_class_fields(closure, closure).unwrap();
+    assert_eq!(heap.class_fields(closure).unwrap(), Some(closure));
     heap.collect_minor();
     assert!(!heap.contains(closure));
 }

@@ -940,6 +940,36 @@ impl Heap {
         Ok(())
     }
 
+    /// Install a class constructor's `[[Fields]]` initializer.
+    pub(crate) fn set_class_fields(
+        &mut self,
+        object: ObjectId,
+        initializer: ObjectId,
+    ) -> Result<(), HeapError> {
+        self.object(initializer)?;
+        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
+            return Err(HeapError::InvalidObject(object));
+        }
+        self.ensure_closure_metadata(object, &[initializer])?;
+        self.write_barrier(object, Some(initializer));
+        self.closure_metadata
+            .get_mut(&object)
+            .expect("metadata was installed")
+            .fields = Some(initializer);
+        Ok(())
+    }
+
+    /// The initializer installed by [`Self::set_class_fields`], if any.
+    pub(crate) fn class_fields(&self, object: ObjectId) -> Result<Option<ObjectId>, HeapError> {
+        match &self.object(object)?.kind {
+            ObjectKind::Closure { .. } => Ok(self
+                .closure_metadata
+                .get(&object)
+                .and_then(|metadata| metadata.fields)),
+            _ => Err(HeapError::InvalidObject(object)),
+        }
+    }
+
     /// Record the `new.target` an arrow function closes over.
     pub(crate) fn set_closure_new_target(
         &mut self,
