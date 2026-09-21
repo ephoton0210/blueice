@@ -581,7 +581,19 @@ impl Vm {
                 }
             }
         };
-        self.heap.set_generator_state(*generator, next_state)?;
+        // Storing the suspended frame grows the generator's managed bytes and
+        // can trigger a major collection. Everything this call still holds
+        // outside the heap (the caller's frame copied onto the stack above,
+        // and the value about to be yielded or thrown) must be visible to it.
+        match &result {
+            Ok((value, _)) | Err(RuntimeError::Thrown(value)) => self.stack.push(value.clone()),
+            Err(_) => {}
+        }
+        let stored = self.with_roots(|heap| heap.set_generator_state(*generator, next_state));
+        // A failed store must still hand the caller's frame back: leaving the
+        // swapped-out execution state in place would unbalance the interpreter
+        // (for example an empty `dynamic_eval_outer_bindings` stack) on the
+        // very next call return.
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
@@ -604,6 +616,7 @@ impl Vm {
         self.remaining_instructions = remaining_instructions;
         self.active_module_name = active_module_name;
         self.stack.truncate(base);
+        stored?;
         if let Some((state, promise)) = suspended_async {
             self.suspend_async_await(state, promise)?;
             return Ok(Value::Undefined);

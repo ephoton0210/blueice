@@ -153,7 +153,10 @@ impl Vm {
                 .object_id()
                 .unwrap_or(default_prototype);
             self.heap.set_prototype(generator, Some(prototype))?;
-            self.heap.set_generator_state(generator, state)?;
+            self.stack.push(Value::Object(generator));
+            let stored = self.with_roots(|heap| heap.set_generator_state(generator, state));
+            self.stack.pop();
+            stored?;
             return Ok(Value::Object(generator));
         }
         self.stack.push(receiver.clone());
