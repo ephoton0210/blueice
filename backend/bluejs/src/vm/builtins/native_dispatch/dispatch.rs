@@ -108,6 +108,9 @@ impl Vm {
             NativeFunction::AsyncFunction => self.async_function_constructor(&args),
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
+            NativeFunction::ErrorIsError => self.error_is_error(first),
+            NativeFunction::ErrorStackGetter => self.error_stack_getter(&receiver),
+            NativeFunction::ErrorStackSetter => self.error_stack_setter(&receiver, first),
             NativeFunction::Test262(name) => self.test262_call(name, &args),
             NativeFunction::Test262Done => {
                 self.test262_done = Some(if matches!(first, Value::Undefined) {
@@ -869,6 +872,9 @@ impl Vm {
             }
             NativeFunction::Map => self.collection_constructor(true, &args, construct),
             NativeFunction::MapMethod(method) => self.map_method(method, &receiver, &args),
+            NativeFunction::MapGroupBy => {
+                self.map_group_by_method(first, native::argument(&args, 1))
+            }
             NativeFunction::MapSize => {
                 let Some(map) = receiver.object_id() else {
                     return Err(RuntimeError::TypeError(
@@ -968,7 +974,7 @@ impl Vm {
                 self.array_flat_map(&receiver, first, native::argument(&args, 1))
             }
             NativeFunction::ArrayOf => self.array_of_method(&receiver, &args),
-            NativeFunction::ArraySpecies => Ok(receiver),
+            NativeFunction::ArraySpecies | NativeFunction::CollectionSpecies => Ok(receiver),
             NativeFunction::ArrayFrom => self.array_from_method(&receiver, &args),
             NativeFunction::ArrayFromAsync => self.array_from_async(&receiver, &args),
             NativeFunction::ArrayFromAsyncResume { state, rejected } => {
@@ -1678,6 +1684,9 @@ impl Vm {
             }
             NativeFunction::ArrayConcat => self.array_concat(&receiver, &args),
             NativeFunction::ArrayJoin => self.array_join(&receiver, first),
+            NativeFunction::Symbol if construct => Err(RuntimeError::TypeError(
+                "Symbol is not a constructor".into(),
+            )),
             NativeFunction::Symbol => Ok(Value::Symbol(JsSymbol::new(
                 if matches!(first, Value::Undefined) {
                     None

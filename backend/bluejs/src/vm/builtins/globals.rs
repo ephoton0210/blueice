@@ -123,7 +123,7 @@ impl Vm {
                         "Iterator" => 0.0,
                         "Proxy" => 2.0,
                         "Date" => 7.0,
-                        "WeakMap" | "WeakSet" => 0.0,
+                        "Map" | "Set" | "WeakMap" | "WeakSet" => 0.0,
                         "FinalizationRegistry" => 1.0,
                         "DisposableStack" | "AsyncDisposableStack" => 0.0,
                         "ShadowRealm" => 0.0,
@@ -231,6 +231,12 @@ impl Vm {
                     true,
                     false,
                     true,
+                )?;
+                self.install_symbol_native_getter(
+                    id,
+                    prototype,
+                    "species",
+                    NativeFunction::CollectionSpecies,
                 )?;
                 self.install_native(id, prototype, "resolve", 1, NativeFunction::PromiseResolve)?;
                 self.install_native(id, prototype, "reject", 1, NativeFunction::PromiseReject)?;
@@ -773,6 +779,15 @@ impl Vm {
                     true,
                     false,
                     true,
+                )?;
+                if name == "Map" {
+                    self.install_native(id, prototype, "groupBy", 2, NativeFunction::MapGroupBy)?;
+                }
+                self.install_symbol_native_getter(
+                    id,
+                    prototype,
+                    "species",
+                    NativeFunction::CollectionSpecies,
                 )?;
             } else if matches!(name, "WeakMap" | "WeakSet") {
                 let collection_prototype = self.weak_collection_prototype(name == "WeakMap")?;

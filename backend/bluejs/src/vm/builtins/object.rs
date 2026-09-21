@@ -712,6 +712,9 @@ impl Vm {
                     | NativeFunction::DisposableStack { .. }
                     | NativeFunction::ShadowRealm
                     | NativeFunction::Promise
+                    // `Symbol` has [[Construct]] (it may head a class `extends`
+                    // clause) but its behavior always throws for `new`.
+                    | NativeFunction::Symbol
                     | NativeFunction::AsyncFunction
                     | NativeFunction::Object
                     | NativeFunction::Iterator

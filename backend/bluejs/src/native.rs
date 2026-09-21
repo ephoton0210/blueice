@@ -89,6 +89,8 @@ pub(crate) enum MapMethod {
     Entries,
     ForEach,
     Get,
+    GetOrInsert,
+    GetOrInsertComputed,
     Has,
     Keys,
     Set,
@@ -104,6 +106,13 @@ pub(crate) enum SetMethod {
     ForEach,
     Has,
     Values,
+    Union,
+    Intersection,
+    Difference,
+    SymmetricDifference,
+    IsSubsetOf,
+    IsSupersetOf,
+    IsDisjointFrom,
 }
 
 /// The lazy iterator helpers share one native dispatcher. Keeping the method
@@ -377,6 +386,8 @@ pub(crate) enum NativeFunction {
     ProxyRevoker(ObjectId),
     Map,
     MapMethod(MapMethod),
+    /// `Map.groupBy(items, callback)`.
+    MapGroupBy,
     MapSize,
     Set,
     SetMethod(SetMethod),
@@ -404,6 +415,9 @@ pub(crate) enum NativeFunction {
     ArrayFlatMap,
     ArrayOf,
     ArraySpecies,
+    /// The `get [Symbol.species]` accessor of `Map`, `Set` and `Promise`,
+    /// which (like `ArraySpecies`) just returns its receiver.
+    CollectionSpecies,
     ArrayFrom,
     ArrayFromAsync,
     /// A settled Await inside an `Array.fromAsync` run: `state` is the run's
@@ -454,6 +468,11 @@ pub(crate) enum NativeFunction {
     Math(MathMethod),
     Error(&'static str),
     ErrorToString,
+    /// `Error.isError`.
+    ErrorIsError,
+    /// The `get`/`set` halves of the `Error.prototype.stack` accessor.
+    ErrorStackGetter,
+    ErrorStackSetter,
     /// Test262 exposes this otherwise non-global intrinsic through `$262`.
     AbstractModuleSource,
     AbstractModuleSourceToStringTag,

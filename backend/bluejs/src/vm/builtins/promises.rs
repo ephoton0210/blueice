@@ -93,6 +93,8 @@ impl Vm {
                     ("entries", 0, MapMethod::Entries),
                     ("forEach", 1, MapMethod::ForEach),
                     ("get", 1, MapMethod::Get),
+                    ("getOrInsert", 2, MapMethod::GetOrInsert),
+                    ("getOrInsertComputed", 2, MapMethod::GetOrInsertComputed),
                     ("has", 1, MapMethod::Has),
                     ("keys", 0, MapMethod::Keys),
                     ("set", 2, MapMethod::Set),
@@ -132,6 +134,13 @@ impl Vm {
                     ("forEach", 1, SetMethod::ForEach),
                     ("has", 1, SetMethod::Has),
                     ("values", 0, SetMethod::Values),
+                    ("union", 1, SetMethod::Union),
+                    ("intersection", 1, SetMethod::Intersection),
+                    ("difference", 1, SetMethod::Difference),
+                    ("symmetricDifference", 1, SetMethod::SymmetricDifference),
+                    ("isSubsetOf", 1, SetMethod::IsSubsetOf),
+                    ("isSupersetOf", 1, SetMethod::IsSupersetOf),
+                    ("isDisjointFrom", 1, SetMethod::IsDisjointFrom),
                 ] {
                     self.install_native(
                         prototype,
@@ -281,6 +290,45 @@ impl Vm {
             MapMethod::Entries => self.collection_iterator(map, true, ArrayIteratorKind::Entries),
             MapMethod::ForEach => self.collection_for_each(map, true, args),
             MapMethod::Get => Ok(self.heap.map_get(map, key)?.unwrap_or(Value::Undefined)),
+            MapMethod::GetOrInsert => {
+                if let Some(value) = self.heap.map_get(map, key)? {
+                    return Ok(value);
+                }
+                let value = native::argument(args, 1).clone();
+                self.with_roots(|heap| heap.map_set(map, key.clone(), value.clone()))?;
+                Ok(value)
+            }
+            MapMethod::GetOrInsertComputed => {
+                let callback = native::argument(args, 1).clone();
+                if !self.is_callable(&callback)? {
+                    return Err(RuntimeError::TypeError(
+                        "Map getOrInsertComputed callback must be callable".into(),
+                    ));
+                }
+                if let Some(value) = self.heap.map_get(map, key)? {
+                    return Ok(value);
+                }
+                // CanonicalizeKeyedCollectionKey: the callback observes +0
+                // where the caller passed -0.
+                let key = match key {
+                    Value::Number(number) if *number == 0.0 => Value::Number(0.0),
+                    other => other.clone(),
+                };
+                // The callback may allocate or mutate this very map. Keep
+                // every input rooted, then overwrite whatever the callback
+                // stored under the same key, as the upsert algorithm requires.
+                let base = self.stack.len();
+                self.stack
+                    .extend([Value::Object(map), key.clone(), callback.clone()]);
+                let value = self.call_native(callback, Value::Undefined, vec![key.clone()], false);
+                let stored = value.and_then(|value| {
+                    self.stack.push(value.clone());
+                    self.with_roots(|heap| heap.map_set(map, key, value.clone()))?;
+                    Ok(value)
+                });
+                self.stack.truncate(base);
+                stored
+            }
             MapMethod::Has => Ok(Value::Bool(self.heap.map_has(map, key)?)),
             MapMethod::Keys => self.collection_iterator(map, true, ArrayIteratorKind::Keys),
             MapMethod::Set => {
@@ -324,6 +372,13 @@ impl Vm {
             SetMethod::ForEach => self.collection_for_each(set, false, args),
             SetMethod::Has => Ok(Value::Bool(self.heap.set_has(set, key)?)),
             SetMethod::Values => self.collection_iterator(set, false, ArrayIteratorKind::Values),
+            SetMethod::Union
+            | SetMethod::Intersection
+            | SetMethod::Difference
+            | SetMethod::SymmetricDifference
+            | SetMethod::IsSubsetOf
+            | SetMethod::IsSupersetOf
+            | SetMethod::IsDisjointFrom => self.set_algebra_method(method, set, key),
         }
     }
 
