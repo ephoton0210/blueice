@@ -129,7 +129,8 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
         Ok(InterpreterExit::Return(Value::Undefined))
     ));
 
-    code.code[0] = Opcode::CallClassStaticBlock as u8;
+    // DefineMethod carries an operand; the one-byte opcodes below do not.
+    code.code = vec![Opcode::CallClassStaticBlock as u8, Opcode::Halt as u8];
     vm.stack = vec![Value::Object(target), Value::Object(function)];
     vm.remaining_instructions = vm.config.instruction_budget;
     assert!(matches!(
