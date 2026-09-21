@@ -456,6 +456,31 @@ impl Compiler {
         statement: &Stmt,
         declarations_allowed: bool,
     ) -> Result<(), CompileError> {
+        if !declarations_allowed {
+            // The body of an `if`, loop, `with` or label is a Statement, not a
+            // StatementListItem: no class, function or generator/async
+            // declaration (Annex B's sloppy `if (x) function f() {}` is
+            // rewritten to a block before reaching here), and no labelled
+            // function either.
+            match statement {
+                Stmt::ClassDecl(_) => {
+                    return Err(CompileError::InvalidSyntax(
+                        "a class declaration is not allowed in statement position",
+                    ))
+                }
+                Stmt::FunctionDecl(_) => {
+                    return Err(CompileError::InvalidSyntax(
+                        "a function declaration is not allowed in statement position",
+                    ))
+                }
+                Stmt::Labelled { .. } if is_labelled_function(statement) => {
+                    return Err(CompileError::InvalidSyntax(
+                        "a labelled function declaration is not allowed in statement position",
+                    ))
+                }
+                _ => {}
+            }
+        }
         match statement {
             Stmt::Throw(value) => {
                 self.expression(value)?;
@@ -672,7 +697,10 @@ impl Compiler {
     /// a synthetic block whose lexical function binding is then copied to the
     /// Annex B outer var binding when that clause executes.
     pub(super) fn if_clause_statement(&mut self, statement: &Stmt) -> Result<(), CompileError> {
-        if !self.bytecode.strict && matches!(statement, Stmt::FunctionDecl(_)) {
+        if !self.bytecode.strict
+            && matches!(statement, Stmt::FunctionDecl(function)
+                if !function.generator && !function.is_async)
+        {
             self.enter_scope(
                 block_lexical_names(std::slice::from_ref(statement))?,
                 &BTreeSet::new(),
@@ -1415,4 +1443,14 @@ impl Compiler {
         }
         Ok(())
     }
+}
+
+/// `IsLabelledFunction`: a label (or chain of labels) on a function
+/// declaration.
+fn is_labelled_function(statement: &Stmt) -> bool {
+    let mut item = statement;
+    while let Stmt::Labelled { item: inner, .. } = item {
+        item = inner;
+    }
+    matches!(item, Stmt::FunctionDecl(_))
 }

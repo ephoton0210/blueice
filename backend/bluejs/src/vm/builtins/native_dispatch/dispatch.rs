@@ -1126,10 +1126,17 @@ impl Vm {
                 self.collection_iterator_next(map, &receiver)
             }
             NativeFunction::GeneratorNext => {
+                self.generator_validate(&receiver)?;
                 self.generator_next(&receiver, Some(first.clone()), None)
             }
-            NativeFunction::GeneratorReturn => self.generator_return(&receiver, first.clone()),
-            NativeFunction::GeneratorThrow => self.generator_throw(&receiver, first.clone()),
+            NativeFunction::GeneratorReturn => {
+                self.generator_validate(&receiver)?;
+                self.generator_return(&receiver, first.clone())
+            }
+            NativeFunction::GeneratorThrow => {
+                self.generator_validate(&receiver)?;
+                self.generator_throw(&receiver, first.clone())
+            }
             NativeFunction::AsyncGeneratorNext
             | NativeFunction::AsyncGeneratorReturn
             | NativeFunction::AsyncGeneratorThrow => {

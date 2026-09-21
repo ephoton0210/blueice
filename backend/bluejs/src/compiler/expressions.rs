@@ -994,7 +994,9 @@ impl Compiler {
                     .map(|name| (name, kind.unwrap())),
             );
         }
-        self.enter_scope(declarations, &BTreeSet::new(), false)?;
+        // A lexical head name may not also be a `var` declared in the body
+        // (BoundNames of ForDeclaration vs. VarDeclaredNames of Statement).
+        self.enter_scope(declarations, &var_names(std::slice::from_ref(body))?, false)?;
         let iterator = self.resolve("*iterator*").unwrap();
         if let Some(initializer) = annex_b_initializer {
             self.expression(initializer)?;

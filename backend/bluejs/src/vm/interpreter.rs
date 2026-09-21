@@ -403,8 +403,11 @@ impl Vm {
                         self.stack.push(result);
                     }
                     Opcode::IteratorStepValue => {
-                        // Synchronous yield* needs the completed iterator
-                        // result's value as its own expression result.
+                        // Synchronous yield*: a finished delegate's value is
+                        // the expression's result. Otherwise the delegate's
+                        // own result object is what the generator yields
+                        // (GeneratorYield(innerResult)), and its `value` is
+                        // not read.
                         let base = self.stack.len() - 2;
                         let record = self.stack[base].clone();
                         let result = self.stack[base + 1].clone();
@@ -418,16 +421,15 @@ impl Vm {
                             ));
                         }
                         let done = self.get_property(&result, &"done".into())?;
-                        let value = self.get_property(&result, &"value".into())?;
-                        self.stack.truncate(base);
                         if self.to_boolean(&done)? {
+                            let value = self.get_property(&result, &"value".into())?;
+                            self.stack.truncate(base);
                             self.with_roots(|heap| heap.set(record_id, "done", Value::Bool(true)))?;
                             self.stack.push(value);
                             pc = operand;
                         } else {
                             iterators.push(Value::Object(record_id));
-                            self.stack.push(Value::Object(record_id));
-                            self.stack.push(value);
+                            // The record stays beneath the yielded result.
                         }
                     }
                     Opcode::GetAsyncIterator => {

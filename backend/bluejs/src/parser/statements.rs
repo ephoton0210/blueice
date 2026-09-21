@@ -97,6 +97,27 @@ impl Parser {
         }
     }
 
+    /// A `Statement` in the position of an `if`, loop or `with` body, as
+    /// opposed to a `StatementListItem`. The one difference the parser sees is
+    /// that `let` there is never the start of a declaration when a line
+    /// terminator follows it: the ExpressionStatement lookahead only excludes
+    /// `let [`, so `for (;;) let` newline `{}` is the identifier `let` ended
+    /// by automatic semicolon insertion (declarations themselves are refused
+    /// by the compiler, which knows the statement position).
+    pub(super) fn parse_embedded_statement(&mut self) -> Result<Stmt, ParseError> {
+        if !self.strict
+            && self.check_keyword(Keyword::Let)
+            && self.tokens.get(self.pos + 1).is_some_and(|next| {
+                next.newline_before && next.token != Token::Punct(Punct::LBracket)
+            })
+        {
+            self.advance();
+            self.consume_semicolon()?;
+            return Ok(Stmt::Expr(Expr::Identifier("let".to_string())));
+        }
+        self.parse_statement()
+    }
+
     pub(super) fn parse_break_or_continue(
         &mut self,
         is_continue: bool,
@@ -239,9 +260,9 @@ impl Parser {
         self.expect_punct(Punct::LParen)?;
         let test = self.parse_expression()?;
         self.expect_punct(Punct::RParen)?;
-        let consequent = Box::new(self.parse_statement()?);
+        let consequent = Box::new(self.parse_embedded_statement()?);
         let alternate = if self.eat_keyword(Keyword::Else) {
-            Some(Box::new(self.parse_statement()?))
+            Some(Box::new(self.parse_embedded_statement()?))
         } else {
             None
         };
@@ -257,13 +278,13 @@ impl Parser {
         self.expect_punct(Punct::LParen)?;
         let test = self.parse_expression()?;
         self.expect_punct(Punct::RParen)?;
-        let body = Box::new(self.parse_statement()?);
+        let body = Box::new(self.parse_embedded_statement()?);
         Ok(Stmt::While { test, body })
     }
 
     pub(super) fn parse_do_while_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.advance();
-        let body = Box::new(self.parse_statement()?);
+        let body = Box::new(self.parse_embedded_statement()?);
         self.expect_keyword(Keyword::While)?;
         self.expect_punct(Punct::LParen)?;
         let test = self.parse_expression()?;
@@ -323,8 +344,8 @@ impl Parser {
             if self.is_contextual_of() {
                 self.advance();
                 let right = self.parse_assignment()?;
-                self.expect_punct(Punct::RParen)?;
-                let body = Box::new(self.parse_statement()?);
+                self.expect_punct(Punct::RParen).map_err(known_syntax)?;
+                let body = Box::new(self.parse_embedded_statement()?);
                 return Ok(Stmt::ForOf {
                     left: ForHead::Decl(kind, pattern),
                     right,
@@ -353,7 +374,7 @@ impl Parser {
                 }
                 declarators.push(VarDeclarator { pattern, init });
             }
-            self.expect_punct(Punct::Semicolon)?;
+            self.expect_punct(Punct::Semicolon).map_err(known_syntax)?;
             return self.parse_for_rest(Some(ForInit::VarDecl(kind, declarators)));
         }
 
@@ -373,8 +394,8 @@ impl Parser {
                     return Err(self.syntax_error("for await requires an of clause"));
                 }
                 let right = self.parse_expression()?;
-                self.expect_punct(Punct::RParen)?;
-                let body = Box::new(self.parse_statement()?);
+                self.expect_punct(Punct::RParen).map_err(known_syntax)?;
+                let body = Box::new(self.parse_embedded_statement()?);
                 return Ok(Stmt::ForIn {
                     left: ForHead::Decl(decl_kind, pattern),
                     right,
@@ -384,8 +405,8 @@ impl Parser {
             if self.is_contextual_of() {
                 self.advance();
                 let right = self.parse_assignment()?;
-                self.expect_punct(Punct::RParen)?;
-                let body = Box::new(self.parse_statement()?);
+                self.expect_punct(Punct::RParen).map_err(known_syntax)?;
+                let body = Box::new(self.parse_embedded_statement()?);
                 return Ok(Stmt::ForOf {
                     left: ForHead::Decl(decl_kind, pattern),
                     right,
@@ -400,8 +421,8 @@ impl Parser {
                     if decl_kind == DeclKind::Var && matches!(pattern, Pattern::Identifier(_)) {
                         self.advance();
                         let right = self.parse_expression()?;
-                        self.expect_punct(Punct::RParen)?;
-                        let body = Box::new(self.parse_statement()?);
+                        self.expect_punct(Punct::RParen).map_err(known_syntax)?;
+                        let body = Box::new(self.parse_embedded_statement()?);
                         return Ok(Stmt::ForIn {
                             left: ForHead::AnnexBVarInit(pattern, initializer),
                             right,
@@ -439,10 +460,22 @@ impl Parser {
                     "for-in/of declaration heads cannot have initializers",
                 )));
             }
-            self.expect_punct(Punct::Semicolon)?;
+            self.expect_punct(Punct::Semicolon).map_err(known_syntax)?;
             return self.parse_for_rest(Some(ForInit::VarDecl(decl_kind, declarators)));
         }
 
+        // ForInOfStatement: `for ( [lookahead != async of] LeftHandSideExpression
+        // of ...` -- `for (async of => {};;)` is still a classic head.
+        if !is_await
+            && self.check_identifier("async")
+            && !self.current_identifier_escaped()
+            && matches!(self.peek_at(1), Token::Identifier(name) if name == "of")
+            && !matches!(self.peek_at(2), Token::Punct(Punct::Arrow))
+        {
+            return Err(known_syntax(self.syntax_error(
+                "the head of a for-of statement cannot begin with `async of`",
+            )));
+        }
         self.no_in = true;
         // Array and object heads are cover grammar. If their matching
         // delimiter is followed immediately by an iteration separator, parse
@@ -472,8 +505,8 @@ impl Parser {
                 _ => unreachable!("for head is parsed as exactly one form"),
             };
             let right = self.parse_expression()?;
-            self.expect_punct(Punct::RParen)?;
-            let body = Box::new(self.parse_statement()?);
+            self.expect_punct(Punct::RParen).map_err(known_syntax)?;
+            let body = Box::new(self.parse_embedded_statement()?);
             return Ok(Stmt::ForIn { left, right, body });
         }
         if self.is_contextual_of() {
@@ -484,8 +517,8 @@ impl Parser {
                 _ => unreachable!("for head is parsed as exactly one form"),
             };
             let right = self.parse_assignment()?;
-            self.expect_punct(Punct::RParen)?;
-            let body = Box::new(self.parse_statement()?);
+            self.expect_punct(Punct::RParen).map_err(known_syntax)?;
+            let body = Box::new(self.parse_embedded_statement()?);
             return Ok(Stmt::ForOf {
                 left,
                 right,
@@ -496,7 +529,7 @@ impl Parser {
         if is_await {
             return Err(self.syntax_error("for await requires an of clause"));
         }
-        self.expect_punct(Punct::Semicolon)?;
+        self.expect_punct(Punct::Semicolon).map_err(known_syntax)?;
         let expr = expr.expect("classic for heads are expressions");
         self.parse_for_rest(Some(ForInit::Expr(expr)))
     }
@@ -560,7 +593,7 @@ impl Parser {
             Some(self.parse_expression()?)
         };
         self.expect_punct(Punct::RParen)?;
-        let body = Box::new(self.parse_statement()?);
+        let body = Box::new(self.parse_embedded_statement()?);
         Ok(Stmt::For {
             init,
             test,
@@ -704,7 +737,7 @@ impl Parser {
         self.expect_punct(Punct::LParen)?;
         let object = self.parse_expression()?;
         self.expect_punct(Punct::RParen)?;
-        let body = self.parse_statement()?;
+        let body = self.parse_embedded_statement()?;
         Ok(Stmt::With {
             object,
             body: Box::new(body),

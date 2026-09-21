@@ -172,6 +172,17 @@ impl Parser {
         false
     }
 
+    /// An AssignmentExpression with `in` permitted again: inside a
+    /// destructuring pattern's brackets the no-in restriction of an
+    /// enclosing `for` head does not apply (`for ([x = 'a' in {}] of y)`).
+    fn parse_assignment_allowing_in(&mut self) -> Result<Expr, ParseError> {
+        let saved_no_in = self.no_in;
+        self.no_in = false;
+        let expression = self.parse_assignment();
+        self.no_in = saved_no_in;
+        expression
+    }
+
     pub(super) fn parse_array_assignment_pattern(
         &mut self,
     ) -> Result<AssignmentPattern, ParseError> {
@@ -187,7 +198,7 @@ impl Parser {
             let default = if rest {
                 None
             } else if self.eat_punct(Punct::Assign) {
-                Some(self.parse_assignment()?)
+                Some(self.parse_assignment_allowing_in()?)
             } else {
                 None
             };
@@ -231,7 +242,7 @@ impl Parser {
                 let (value, default) = if self.eat_punct(Punct::Colon) {
                     let value = self.parse_assignment_pattern()?;
                     let default = if self.eat_punct(Punct::Assign) {
-                        Some(self.parse_assignment()?)
+                        Some(self.parse_assignment_allowing_in()?)
                     } else {
                         None
                     };
@@ -248,7 +259,7 @@ impl Parser {
                         );
                     };
                     let default = if self.eat_punct(Punct::Assign) {
-                        Some(self.parse_assignment()?)
+                        Some(self.parse_assignment_allowing_in()?)
                     } else {
                         None
                     };
@@ -760,7 +771,7 @@ impl Parser {
                 self.rescan_suffix();
                 let expressions = sources
                     .iter()
-                    .map(|source| parse_expression_from_source(source))
+                    .map(|source| self.parse_template_placeholder(source))
                     .collect::<Result<Vec<_>, _>>()?;
                 expr = Expr::TaggedTemplate {
                     tag: Box::new(expr),
@@ -998,7 +1009,7 @@ impl Parser {
                 raw_expressions,
             } => {
                 self.advance();
-                parse_template(quasis, raw_expressions)
+                self.parse_template(quasis, raw_expressions)
             }
             Token::Keyword(Keyword::True) => {
                 self.advance();
@@ -1050,6 +1061,7 @@ impl Parser {
                             Token::Punct(
                                 Punct::Semicolon
                                     | Punct::Comma
+                                    | Punct::Colon
                                     | Punct::RBrace
                                     | Punct::RBracket
                                     | Punct::RParen

@@ -33,10 +33,11 @@
 //! **Template literal placeholders are parsed by recursion, not by
 //! consuming a pre-built token stream**: [`crate::token::Token::Template`]
 //! carries each `${...}` placeholder as raw source text (see
-//! `token.rs`'s own doc comment for why), and [`parse_template`] below
-//! re-tokenizes/re-parses each one independently via
-//! [`parse_expression_from_source`] -- a fresh [`Parser`] over just that
-//! substring, required to consume it entirely as one expression.
+//! `token.rs`'s own doc comment for why), and [`Parser::parse_template`]
+//! below re-tokenizes/re-parses each one independently via
+//! [`Parser::parse_template_placeholder`] -- a fresh [`Parser`] over just that
+//! substring (inheriting the enclosing function's generator/async/strict
+//! context), required to consume it entirely as one expression.
 
 use crate::ast::*;
 use crate::token::{Keyword, LexError, Punct, SpannedToken, Token, Tokenizer};
@@ -148,9 +149,9 @@ fn tokenize_all(tokenizer: &mut Tokenizer) -> (Vec<SpannedToken>, Vec<usize>) {
     }
 }
 
-/// Parses `source` as one standalone expression -- used both by
-/// [`parse_template`] for placeholder text and, in tests, to exercise
-/// expression parsing without wrapping every fixture in a statement.
+/// Parses `source` as one standalone expression, to exercise expression
+/// parsing in tests without wrapping every fixture in a statement.
+#[cfg(test)]
 fn parse_expression_from_source(source: &str) -> Result<Expr, ParseError> {
     let mut parser = Parser::new(source);
     let expr = parser.parse_expression()?;
@@ -161,8 +162,17 @@ fn parse_expression_from_source(source: &str) -> Result<Expr, ParseError> {
 }
 
 pub(crate) fn closes_template_placeholder(source: &str) -> bool {
-    let mut parser = Parser::new(source);
-    parser.parse_expression().is_ok() && parser.eat_punct(Punct::RBrace) && parser.at_eof()
+    // The placeholder is parsed again inside its enclosing function, where
+    // `yield` and `await` may be operators. Its closing brace is the same in
+    // every such context, so accept a candidate that parses in any of them.
+    [(0, 0), (1, 0), (0, 1)]
+        .into_iter()
+        .any(|(generator_depth, async_depth)| {
+            let mut parser = Parser::new(source);
+            parser.generator_depth = generator_depth;
+            parser.async_depth = async_depth;
+            parser.parse_expression().is_ok() && parser.eat_punct(Punct::RBrace) && parser.at_eof()
+        })
 }
 
 fn keyword_as_str(k: Keyword) -> &'static str {
@@ -583,8 +593,11 @@ impl Parser {
         }
     }
 
+    /// `of` written without an escape: the contextual keyword cannot be spelled
+    /// `o\u0066`.
     fn is_contextual_of(&self) -> bool {
         matches!(self.peek(), Token::Identifier(name) if name == "of")
+            && !self.current_identifier_escaped()
     }
 }
 
@@ -597,16 +610,36 @@ fn class_element_name(key: &PropertyKey) -> String {
     }
 }
 
-fn parse_template(
-    quasis: Vec<crate::JsString>,
-    raw_expressions: Vec<String>,
-) -> Result<Expr, ParseError> {
-    let expressions = raw_expressions
-        .iter()
-        .map(|src| parse_expression_from_source(src))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(Expr::Template {
-        quasis,
-        expressions,
-    })
+impl Parser {
+    /// Parses a template placeholder's source text. It is a fresh parser over
+    /// just that text, but it inherits the enclosing function's context so
+    /// that `yield`, `await` and strict-only restrictions mean inside the
+    /// placeholder what they mean around the template.
+    fn parse_template_placeholder(&self, source: &str) -> Result<Expr, ParseError> {
+        let mut parser = Parser::new(source);
+        parser.generator_depth = self.generator_depth;
+        parser.async_depth = self.async_depth;
+        parser.module_await = self.module_await;
+        parser.strict = self.strict;
+        let expr = parser.parse_expression()?;
+        if !parser.at_eof() {
+            return Err(parser.error("unexpected trailing tokens after expression"));
+        }
+        Ok(expr)
+    }
+
+    fn parse_template(
+        &self,
+        quasis: Vec<crate::JsString>,
+        raw_expressions: Vec<String>,
+    ) -> Result<Expr, ParseError> {
+        let expressions = raw_expressions
+            .iter()
+            .map(|src| self.parse_template_placeholder(src))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Expr::Template {
+            quasis,
+            expressions,
+        })
+    }
 }

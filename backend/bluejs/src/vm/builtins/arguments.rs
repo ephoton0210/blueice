@@ -311,9 +311,68 @@ impl Vm {
     pub(in super::super) fn generator_function_prototype(
         &mut self,
     ) -> Result<ObjectId, RuntimeError> {
-        if let Some(prototype) = self.generator_function_prototype {
-            return Ok(prototype);
+        if self.generator_function_prototype.is_none() {
+            self.generator_intrinsics()?;
         }
+        Ok(self
+            .generator_function_prototype
+            .expect("generator intrinsics install both prototypes"))
+    }
+
+    /// Creates `%GeneratorFunction.prototype%` and `%GeneratorPrototype%`
+    /// together and links them: each is the other's `constructor` /
+    /// `prototype` (both non-writable, non-enumerable, configurable), which
+    /// is how `Object.getPrototypeOf(function* () {}).prototype` reaches the
+    /// prototype shared by every generator object. On failure neither is
+    /// installed and both temporary roots are released.
+    fn generator_intrinsics(&mut self) -> Result<(), RuntimeError> {
+        let (function_side, function_root) = self.build_generator_function_prototype()?;
+        let (generator_side, generator_root) = match self.build_generator_prototype() {
+            Ok(built) => built,
+            Err(error) => {
+                self.heap.unroot(function_root)?;
+                return Err(error);
+            }
+        };
+        let base = self.stack.len();
+        self.stack.push(Value::Object(function_side));
+        self.stack.push(Value::Object(generator_side));
+        let linked = (|| {
+            self.define_data(
+                function_side,
+                "prototype",
+                Value::Object(generator_side),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                generator_side,
+                "constructor",
+                Value::Object(function_side),
+                false,
+                false,
+                true,
+            )
+        })();
+        self.stack.truncate(base);
+        match linked {
+            Ok(()) => {
+                self.generator_function_prototype = Some(function_side);
+                self.generator_prototype = Some(generator_side);
+                Ok(())
+            }
+            Err(error) => {
+                self.heap.unroot(function_root)?;
+                self.heap.unroot(generator_root)?;
+                Err(error)
+            }
+        }
+    }
+
+    fn build_generator_function_prototype(
+        &mut self,
+    ) -> Result<(ObjectId, crate::heap::RootId), RuntimeError> {
         let function_prototype = self.function_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
         let root = self.heap.root(prototype)?;
@@ -371,10 +430,7 @@ impl Vm {
         })();
         self.stack.truncate(base);
         match result {
-            Ok(()) => {
-                self.generator_function_prototype = Some(prototype);
-                Ok(prototype)
-            }
+            Ok(()) => Ok((prototype, root)),
             Err(error) => {
                 self.heap.unroot(root)?;
                 Err(error)
@@ -383,9 +439,17 @@ impl Vm {
     }
 
     pub(in super::super) fn generator_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
-        if let Some(prototype) = self.generator_prototype {
-            return Ok(prototype);
+        if self.generator_prototype.is_none() {
+            self.generator_intrinsics()?;
         }
+        Ok(self
+            .generator_prototype
+            .expect("generator intrinsics install both prototypes"))
+    }
+
+    fn build_generator_prototype(
+        &mut self,
+    ) -> Result<(ObjectId, crate::heap::RootId), RuntimeError> {
         let constructor = self.string_intrinsics()?.0;
         let function_prototype = self.heap.prototype(constructor)?.unwrap();
         let base = self.base_iterator_prototype()?;
@@ -421,14 +485,15 @@ impl Vm {
                 false,
                 true,
             )?;
-            Ok(prototype)
+            Ok(())
         })();
-        if result.is_err() {
-            self.heap.unroot(root)?;
-        } else {
-            self.generator_prototype = Some(prototype);
+        match result {
+            Ok(()) => Ok((prototype, root)),
+            Err(error) => {
+                self.heap.unroot(root)?;
+                Err(error)
+            }
         }
-        result
     }
 
     /// `%AsyncIteratorPrototype%` has no global binding. It is the common

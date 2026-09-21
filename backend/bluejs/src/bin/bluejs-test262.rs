@@ -287,6 +287,12 @@ fn evaluate(request: Request) -> Value {
     {
         config.heap.nursery_capacity = capacity;
     }
+    if let Some(bytes) = std::env::var("BLUEJS_TEST262_MAJOR_THRESHOLD")
+        .ok()
+        .and_then(|value| value.parse().ok())
+    {
+        config.heap.major_threshold_bytes = bytes;
+    }
     if let Some(limit) = request.heap_limit {
         config.heap.max_heap_bytes = limit;
         config.heap.major_threshold_bytes = config.heap.major_threshold_bytes.min(limit);

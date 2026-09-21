@@ -1115,7 +1115,7 @@ fn generators_delegate_yield_star_return_runs_outer_finally_before_completing() 
                 let first = iterator.next();
                 let duringFinally = iterator.return(9);
                 let complete = iterator.next();
-                first.value === 1 && !first.done && duringFinally.value === 'outer-finally' && !duringFinally.done && complete.value === 9 && complete.done
+                first.value === 1 && !first.done && duringFinally.value === 'outer-finally' && !duringFinally.done && complete.value === 'delegate:9' && complete.done
             ",
         ),
         Ok(Value::Bool(true))

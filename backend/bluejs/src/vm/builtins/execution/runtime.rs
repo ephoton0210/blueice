@@ -391,8 +391,12 @@ impl Vm {
                 } else {
                     self.iterator_zip_keyed_results(state.record, values)?
                 };
-                self.with_roots(|heap| heap.set(state.record, "zipStarted", Value::Bool(true)))?;
+                // Adding the marker property grows the helper's state, which
+                // can run a major collection: root the result array first.
+                // Adding the marker property grows the helper's state, which
+                // can run a major collection: root the result first.
                 self.stack.push(values.clone());
+                self.with_roots(|heap| heap.set(state.record, "zipStarted", Value::Bool(true)))?;
                 let result = self.iterator_result(values, false);
                 self.stack.pop();
                 result
@@ -412,6 +416,10 @@ impl Vm {
                 Ok(value)
             }
             Err(error) => {
+                // The thrown value is referenced only by this Rust local,
+                // while finishing the helper and closing every source run
+                // JavaScript and may collect.
+                self.root_thrown(&error);
                 self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
                 let _ = self.iterator_zip_close_records(
                     state.record,
@@ -477,6 +485,7 @@ impl Vm {
         count: u64,
     ) -> Result<(), RuntimeError> {
         let mut completion = None;
+        let base = self.stack.len();
         for index in (0..count).rev() {
             let record = self
                 .heap
@@ -488,14 +497,42 @@ impl Vm {
             if let Err(error) = close {
                 // IteratorCloseAll continues after an abrupt `return`. The
                 // first such error becomes the completion; later close errors
-                // cannot replace it, but their `return` methods still run.
-                completion.get_or_insert(error);
+                // cannot replace it, but their `return` methods still run,
+                // so the retained error must stay rooted meanwhile.
+                if completion.is_none() {
+                    self.root_thrown(&error);
+                    completion = Some(error);
+                }
             }
         }
+        self.stack.truncate(base);
         if let Some(error) = completion {
             return Err(error);
         }
         Ok(())
+    }
+
+    /// Like [`Self::iterator_zip_close_records`] for a completion that is
+    /// already a throw: the in-flight error stays rooted while every `return`
+    /// method runs, and an error from one of them is discarded.
+    pub(in super::super::super) fn iterator_zip_close_records_after(
+        &mut self,
+        metadata: ObjectId,
+        count: u64,
+        error: &RuntimeError,
+    ) {
+        let base = self.stack.len();
+        self.root_thrown(error);
+        let _ = self.iterator_zip_close_records(metadata, count);
+        self.stack.truncate(base);
+    }
+
+    /// Keeps the value of a throw completion alive on the VM stack. The
+    /// caller truncates the stack once the error has been handed onward.
+    pub(in super::super::super) fn root_thrown(&mut self, error: &RuntimeError) {
+        if let RuntimeError::Thrown(value) = error {
+            self.stack.push(value.clone());
+        }
     }
 
     pub(in super::super::super) fn iterator_chunks_next(
@@ -981,6 +1018,9 @@ impl Vm {
                     state.record,
                     self.iterator_zip_count(state.record)?,
                 );
+                if let Err(error) = &close {
+                    self.root_thrown(error);
+                }
                 self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
                 close?;
             } else {
