@@ -146,3 +146,22 @@ fn untagged_templates_reject_legacy_octal_escapes() {
         Value::Bool(true)
     );
 }
+
+#[test]
+fn a_tagged_template_is_part_of_a_new_expressions_callee() {
+    // `new tag`t`` is `new (tag`t`)`: the tagged template is a MemberExpression.
+    assert_eq!(
+        evaluate(
+            "function C(x) { this.x = x; }
+             var tag = function (s) { return C; };
+             var a = new tag`first`;
+             var b = new tag`second`('arg');
+             (a instanceof C) + '|' + a.x + '|' + b.x"
+        ),
+        Value::String("true|undefined|arg".into())
+    );
+    assert_eq!(
+        evaluate("var o = { tag(s) { return function () { this.k = s[0]; }; } }; (new o.tag`z`).k"),
+        Value::String("z".into())
+    );
+}

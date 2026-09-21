@@ -229,6 +229,21 @@ impl Compiler {
                                 "cannot delete a binding in strict mode",
                             ));
                         }
+                        // Inside `with` the with objects are consulted first.
+                        // A hit deletes the property; otherwise the fallback
+                        // below handles the enclosing binding.
+                        let with_end = if self.with_depth != 0
+                            && self.resolve_inside_innermost_with(name).is_none()
+                        {
+                            let index = self.name_constant(name)?;
+                            self.emit(Opcode::DeleteWithBinding, index)?;
+                            self.emit(Opcode::Dup, 0)?;
+                            let found = self.emit(Opcode::JumpIfNotNullish, 0)?;
+                            self.emit(Opcode::Pop, 0)?;
+                            Some(found)
+                        } else {
+                            None
+                        };
                         if let Some(slot) = self.resolve(name) {
                             if self.bytecode.dynamic_eval_slots.contains(&slot) {
                                 self.emit(Opcode::DeleteDynamicBinding, slot)?;
@@ -242,6 +257,9 @@ impl Compiler {
                                 .constants
                                 .push(Value::String(name.clone().into()));
                             self.emit(Opcode::DeleteUnboundName, index)?;
+                        }
+                        if let Some(found) = with_end {
+                            self.patch(found, self.offset()?);
                         }
                     } else {
                         self.expression(arg)?;
@@ -385,7 +403,13 @@ impl Compiler {
                     {
                         self.emit(Opcode::Dup, 0)?;
                         self.property_key(key)?;
-                        self.function(function, false)?;
+                        self.function_named_with(
+                            function,
+                            false,
+                            None,
+                            false,
+                            FunctionCompileOptions::object_method(),
+                        )?;
                         std::rc::Rc::get_mut(self.bytecode.functions.last_mut().unwrap())
                             .unwrap()
                             .constructible = false;
@@ -494,6 +518,15 @@ impl Compiler {
             }
             Expr::Update { op, arg, prefix } => {
                 if let Expr::Identifier(name) = &**arg {
+                    if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
+                        let index = self.name_constant(name)?;
+                        self.emit(Opcode::ResolveWithReference, index)?;
+                        self.emit(
+                            Opcode::UpdateWithReference,
+                            u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1),
+                        )?;
+                        return Ok(());
+                    }
                     let binding = self.resolve(name);
                     let name_index = if binding.is_none() {
                         Some(self.name_constant(name)?)
@@ -642,6 +675,17 @@ impl Compiler {
                         self.member_reference(callee)?;
                         self.emit(Opcode::GetMethod, 0)?;
                     }
+                } else if !construct
+                    && self.with_depth != 0
+                    && matches!(&**callee, Expr::Identifier(name) if self.resolve_inside_innermost_with(name).is_none())
+                {
+                    // `f()` inside `with`: a function found on a with object
+                    // is called with that object as `this` (WithBaseObject).
+                    let Expr::Identifier(name) = &**callee else {
+                        unreachable!()
+                    };
+                    let index = self.name_constant(name)?;
+                    self.emit(Opcode::WithGetMethod, index)?;
                 } else {
                     self.expression(callee)?;
                     self.constant(Value::Undefined)?;

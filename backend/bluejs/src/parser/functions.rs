@@ -117,7 +117,13 @@ impl Parser {
         } else {
             None
         };
-        if generator && matches!(name.as_deref(), Some("yield")) {
+        // A generator *declaration* names its binding in the enclosing
+        // context, so `yield` is fine there in sloppy non-generator code; a
+        // generator expression's name is parsed with [+Yield].
+        if generator
+            && matches!(name.as_deref(), Some("yield"))
+            && (!is_declaration || self.generator_depth != 0 || self.strict)
+        {
             return Err(self.syntax_error("yield cannot be used as a generator function name"));
         }
         if !self.check_punct(Punct::LParen) {
@@ -154,6 +160,15 @@ impl Parser {
     }
 
     pub(super) fn parse_method_function(
+        &mut self,
+        name: Option<String>,
+        generator: bool,
+        is_async: bool,
+    ) -> Result<Function, ParseError> {
+        self.with_in_allowed(|parser| parser.parse_method_function_in(name, generator, is_async))
+    }
+
+    fn parse_method_function_in(
         &mut self,
         name: Option<String>,
         generator: bool,
@@ -205,15 +220,15 @@ impl Parser {
     }
 
     pub(super) fn parse_class(&mut self) -> Result<Class, ParseError> {
+        self.with_in_allowed(Self::parse_class_strict)
+    }
+
+    fn parse_class_strict(&mut self) -> Result<Class, ParseError> {
         // Every part of a ClassDefinition, including the heritage expression,
         // is parsed in strict mode. Preserve the caller's grammar context so
         // a nested class does not leak strictness into its surrounding script.
         let outer_strict = std::mem::replace(&mut self.strict, true);
-        // A class body (and heritage) is parsed with the `in` operator
-        // available even inside the head of a `for` statement.
-        let outer_no_in = std::mem::replace(&mut self.no_in, false);
         let class = self.parse_class_definition();
-        self.no_in = outer_no_in;
         self.strict = outer_strict;
         class
     }

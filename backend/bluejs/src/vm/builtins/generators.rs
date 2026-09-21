@@ -361,6 +361,9 @@ impl Vm {
         let dynamic_eval_bindings =
             std::mem::replace(&mut self.dynamic_eval_bindings, frame_dynamic_bindings);
         let eval_dynamic_slots = std::mem::take(&mut self.eval_dynamic_slots);
+        // The caller's script-level slot -> global-property map names slots of
+        // *its* frame; a resumed generator body has its own slot numbering.
+        let script_global_slots = std::mem::take(&mut self.script_global_slots);
         let this = std::mem::replace(&mut self.this, frame_this);
         let arguments = std::mem::replace(&mut self.arguments, frame_args);
         let completion = std::mem::replace(&mut self.completion, frame_completion);
@@ -611,6 +614,7 @@ impl Vm {
         self.dynamic_eval_bindings = dynamic_eval_bindings;
         self.dynamic_eval_outer_bindings = dynamic_eval_outer_bindings;
         self.eval_dynamic_slots = eval_dynamic_slots;
+        self.script_global_slots = script_global_slots;
         self.this = this;
         self.arguments = arguments;
         self.completion = completion;
@@ -1036,7 +1040,12 @@ impl Vm {
                         PromiseStatus::Fulfilled(self.iterator_result(Value::Undefined, true)?)
                     }
                     AsyncGeneratorCompletion::Return(value) => {
-                        PromiseStatus::Fulfilled(self.iterator_result(value, true)?)
+                        // AsyncGeneratorAwaitReturn: even a completed
+                        // generator awaits the value it is asked to return
+                        // (a rejection or a broken `constructor` rejects
+                        // this request), so it settles on a later turn.
+                        let result = self.iterator_result(value, true)?;
+                        return self.await_async_generator_yield(generator, request.target, result);
                     }
                     AsyncGeneratorCompletion::Throw(value) => PromiseStatus::Rejected(value),
                 };
@@ -1125,9 +1134,24 @@ impl Vm {
         value: Value,
         kind: NativeFunction,
     ) -> Result<Value, RuntimeError> {
-        let generator = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("AsyncGenerator request requires an async generator".into())
-        })?;
+        // AsyncGeneratorValidate failing is not a throw: the method returns a
+        // promise rejected with the TypeError.
+        let generator = match receiver.object_id() {
+            // Anything but a live async generator (including any other kind of
+            // heap object) fails the brand check.
+            Some(generator)
+                if matches!(self.heap.async_generator_control(generator), Ok(Some(_))) =>
+            {
+                generator
+            }
+            _ => {
+                let error = self.error_object(
+                    "TypeError",
+                    "AsyncGenerator request requires an async generator".into(),
+                )?;
+                return self.promise_reject(error);
+            }
+        };
         let base = self.stack.len();
         self.stack.extend([receiver.clone(), value.clone()]);
         let result = (|| {
@@ -1190,7 +1214,16 @@ impl Vm {
             self.set_async_generator_status(generator, AsyncGeneratorStatus::Awaiting)?;
             let value = self.get_property(&Value::Object(result), &"value".into())?;
             self.stack.push(value.clone());
-            let awaited = self.promise_resolve(value)?;
+            // A value whose PromiseResolve throws (a hostile `constructor`
+            // getter) is awaited as an already rejected promise.
+            let awaited = match self.promise_resolve(value) {
+                Ok(promise) => promise,
+                Err(error) => {
+                    let error = self.error_value(error)?;
+                    self.promise_reject(error)?
+                }
+            };
+            self.stack.push(awaited.clone());
             let awaited = awaited
                 .object_id()
                 .expect("Promise.resolve always returns a Promise");

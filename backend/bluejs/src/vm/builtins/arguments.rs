@@ -398,7 +398,7 @@ impl Vm {
         let result = (|| {
             let constructor = self.with_roots(|heap| {
                 heap.alloc_native_function(
-                    NativeFunction::Function,
+                    NativeFunction::GeneratorFunction,
                     "GeneratorFunction",
                     function_prototype,
                 )
@@ -524,13 +524,23 @@ impl Vm {
         let function_prototype = self.function_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(prototype)?;
-        let result = self.install_symbol_native(
-            prototype,
-            function_prototype,
-            "asyncIterator",
-            0,
-            NativeFunction::AsyncIteratorSelf,
-        );
+        let result = self
+            .install_symbol_native(
+                prototype,
+                function_prototype,
+                "asyncIterator",
+                0,
+                NativeFunction::AsyncIteratorSelf,
+            )
+            .and_then(|()| {
+                self.install_symbol_native(
+                    prototype,
+                    function_prototype,
+                    "asyncDispose",
+                    0,
+                    NativeFunction::AsyncIteratorDispose,
+                )
+            });
         if let Err(error) = result {
             self.heap.unroot(root)?;
             Err(error)
@@ -588,6 +598,107 @@ impl Vm {
         } else {
             self.async_generator_prototype = Some(prototype);
             Ok(prototype)
+        }
+    }
+
+    /// `%AsyncGeneratorFunction.prototype%`, the prototype of async generator
+    /// function objects (which is neither `%AsyncFunction.prototype%` nor
+    /// `%GeneratorFunction.prototype%`). It is built together with
+    /// `%AsyncGeneratorFunction%` and linked to `%AsyncGeneratorPrototype%`
+    /// exactly as the synchronous pair is: each is the other's
+    /// `prototype` / `constructor`, both non-writable and configurable.
+    pub(in super::super) fn async_generator_function_prototype(
+        &mut self,
+    ) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.async_generator_function_prototype {
+            return Ok(prototype);
+        }
+        let generator_side = self.async_generator_prototype()?;
+        let function_prototype = self.function_prototype()?;
+        let function_constructor = self
+            .global("Function")?
+            .object_id()
+            .expect("Function is callable");
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
+        let root = self.heap.root(prototype)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(prototype));
+        let result: Result<(), RuntimeError> = (|| {
+            let constructor = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::AsyncGeneratorFunction,
+                    "AsyncGeneratorFunction",
+                    function_constructor,
+                )
+            })?;
+            self.stack.push(Value::Object(constructor));
+            self.define_data(
+                constructor,
+                "length",
+                Value::Number(1.0),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "name",
+                Value::String("AsyncGeneratorFunction".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "prototype",
+                Value::Object(prototype),
+                false,
+                false,
+                false,
+            )?;
+            self.define_data(
+                prototype,
+                "constructor",
+                Value::Object(constructor),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                prototype,
+                "prototype",
+                Value::Object(generator_side),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                generator_side,
+                "constructor",
+                Value::Object(prototype),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("AsyncGeneratorFunction".into()),
+                false,
+                false,
+                true,
+            )
+        })();
+        self.stack.truncate(base);
+        match result {
+            Ok(()) => {
+                self.async_generator_function_prototype = Some(prototype);
+                Ok(prototype)
+            }
+            Err(error) => {
+                self.heap.unroot(root)?;
+                Err(error)
+            }
         }
     }
 

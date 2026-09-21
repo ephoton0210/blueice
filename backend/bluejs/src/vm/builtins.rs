@@ -17,6 +17,8 @@ mod immutable_arraybuffer;
 mod math;
 mod native_dispatch;
 mod object;
+mod promise_combinators;
+mod promise_core;
 mod promises;
 mod resource_management;
 mod set_methods;
@@ -49,6 +51,8 @@ pub(super) struct ClosureCall {
     pub args: Vec<Value>,
     pub construct: bool,
     pub home: Option<ObjectId>,
+    /// The with objects the function closes over (empty outside `with`).
+    pub with_objects: Vec<Value>,
 }
 
 fn same_value_zero(left: &Value, right: &Value) -> bool {

@@ -403,8 +403,30 @@ impl PromiseStatus {
     }
 }
 
+/// A PromiseCapability Record: a promise together with the functions that
+/// resolve and reject it. For a promise made by a user constructor these are
+/// whatever that constructor handed its executor.
+#[derive(Clone)]
+struct PromiseCapability {
+    promise: Value,
+    resolve: Value,
+    reject: Value,
+}
+
+/// Where a reaction job delivers its result.
+#[derive(Clone)]
+enum ReactionTarget {
+    /// A promise the VM created itself for `%Promise%`-constructed results
+    /// (`then` with the default species): its resolving functions are never
+    /// observable, so the job resolves or rejects it directly.
+    Native(ObjectId),
+    /// The capability of a promise built by another constructor (a subclass
+    /// or a custom species): its resolve/reject functions are called.
+    Capability(PromiseCapability),
+}
+
 struct PromiseThenReaction {
-    target: ObjectId,
+    target: ReactionTarget,
     on_fulfilled: Value,
     on_rejected: Value,
 }
@@ -474,6 +496,10 @@ pub(super) struct DisposableResource {
     // depends on this field and this implementation's does not).
     #[allow(dead_code)]
     pub(super) hint: DisposeHint,
+    /// An `async-dispose` resource whose method is the sync `@@dispose`
+    /// fallback: `Dispose` still awaits, but the method's result is
+    /// discarded rather than awaited (its promise may never settle).
+    pub(super) sync_fallback: bool,
 }
 
 /// The DisposeCapability Record backing one `DisposableStack`/
@@ -487,30 +513,9 @@ pub(super) struct DisposeCapabilityState {
     pub(super) disposed: bool,
 }
 
-/// Aggregation bookkeeping for `Promise.all`. Each input observes its own
-/// resolution job; the target is fulfilled only after every indexed slot has
-/// settled, so a pending dependency never becomes a host-level unsupported
-/// condition.
-struct PromiseAllState {
-    values: Vec<Option<Value>>,
-    remaining: usize,
-}
-
-/// Bookkeeping for `Promise.any`: each rejection occupies its input-indexed
-/// slot so the eventual AggregateError preserves iterator order.
-struct PromiseAnyState {
-    errors: Vec<Option<Value>>,
-    remaining: usize,
-}
-
-struct PromiseAllSettledState {
-    results: Vec<Option<(Value, bool)>>,
-    remaining: usize,
-}
-
 enum PromiseJob {
     Reaction {
-        target: ObjectId,
+        target: ReactionTarget,
         handler: Value,
         value: Value,
         fulfilled: bool,
@@ -908,6 +913,7 @@ pub struct Vm {
     generator_prototype: Option<ObjectId>,
     async_iterator_base: Option<ObjectId>,
     async_generator_prototype: Option<ObjectId>,
+    async_generator_function_prototype: Option<ObjectId>,
     /// `%AsyncFunction.prototype%`, permanently rooted with the realm once
     /// the first async closure needs it. Its `constructor` property keeps
     /// `%AsyncFunction%` reachable without exposing a global binding.
@@ -959,9 +965,6 @@ pub struct Vm {
     /// boundary and registered by every allocation safepoint.
     kept_weak_objects: Vec<ObjectId>,
     promises: HashMap<ObjectId, PromiseRecord>,
-    promise_all: HashMap<ObjectId, PromiseAllState>,
-    promise_any: HashMap<ObjectId, PromiseAnyState>,
-    promise_all_settled: HashMap<ObjectId, PromiseAllSettledState>,
     promise_jobs: VecDeque<PromiseJob>,
     test262_done: Option<Result<(), Value>>,
     /// Test262-only host scheduler state. Ordinary realms never install or
@@ -1095,6 +1098,7 @@ impl Vm {
             generator_prototype: None,
             async_iterator_base: None,
             async_generator_prototype: None,
+            async_generator_function_prototype: None,
             async_function_prototype: None,
             promise_prototype: None,
             date_prototype: None,
@@ -1113,9 +1117,6 @@ impl Vm {
             dispose_marks: Vec::new(),
             kept_weak_objects: Vec::new(),
             promises: HashMap::new(),
-            promise_all: HashMap::new(),
-            promise_any: HashMap::new(),
-            promise_all_settled: HashMap::new(),
             promise_jobs: VecDeque::new(),
             test262_done: None,
             test262_agent_host: None,
@@ -2018,11 +2019,8 @@ impl Vm {
             None => None,
         };
         let arrow = !construct && closure_code.as_ref().is_some_and(|code| code.arrow);
-        let target = match callee.object_id() {
-            Some(id) if arrow => self
-                .heap
-                .closure_new_target(id)?
-                .unwrap_or(Value::Undefined),
+        let target = match (arrow, callee.object_id()) {
+            (true, Some(id)) => self.heap.closure_new_target(id)?,
             _ => target,
         };
         self.charge_step()?;
@@ -2111,6 +2109,7 @@ impl Vm {
         if let Value::Object(id) = callee {
             if let Some((code, captures, lexical_this, home)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
+                let with_objects = self.heap.closure_with_objects(id)?;
                 return self.call_closure(builtins::ClosureCall {
                     code,
                     captures,
@@ -2119,6 +2118,7 @@ impl Vm {
                     args,
                     construct,
                     home,
+                    with_objects,
                 });
             }
         }
@@ -2159,6 +2159,8 @@ impl Vm {
                     | NativeFunction::Promise
                     | NativeFunction::Function
                     | NativeFunction::AsyncFunction
+                    | NativeFunction::GeneratorFunction
+                    | NativeFunction::AsyncGeneratorFunction
                     | NativeFunction::Iterator
                     | NativeFunction::PrimitiveConstructor(_)
                     // Reaches native_call so its own NewTarget-is-defined

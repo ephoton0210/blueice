@@ -633,6 +633,10 @@ impl Parser {
     /// statement list with its own Directive Prologue, whose strictness ends
     /// with the body.
     pub(super) fn parse_function_body(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        self.with_in_allowed(Self::parse_function_body_in)
+    }
+
+    fn parse_function_body_in(&mut self) -> Result<Vec<Stmt>, ParseError> {
         self.expect_punct(Punct::LBrace)?;
         let outer_strict = self.strict;
         let mut prologue = DirectivePrologue::default();
@@ -651,6 +655,20 @@ impl Parser {
         };
         self.strict = outer_strict;
         result.map(|()| statements)
+    }
+
+    /// Runs `parse` with the `in` operator enabled again. A `for` head parses
+    /// its init with `in` disabled only at its own top level (`[~In]`);
+    /// parentheses, brackets, argument lists, object literals and function
+    /// bodies nested inside it restore `[+In]`.
+    fn with_in_allowed<T>(
+        &mut self,
+        parse: impl FnOnce(&mut Self) -> Result<T, ParseError>,
+    ) -> Result<T, ParseError> {
+        let saved_no_in = std::mem::replace(&mut self.no_in, false);
+        let result = parse(self);
+        self.no_in = saved_no_in;
+        result
     }
 
     fn syntax_error(&self, message: impl Into<String>) -> ParseError {

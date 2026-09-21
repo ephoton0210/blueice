@@ -764,7 +764,7 @@ impl Parser {
                     )));
                 }
                 let (property, computed) = if self.eat_punct(Punct::LBracket) {
-                    let property = self.parse_expression()?;
+                    let property = self.with_in_allowed(Self::parse_expression)?;
                     self.expect_punct(Punct::RBracket)?;
                     (property, true)
                 } else {
@@ -788,7 +788,7 @@ impl Parser {
                     computed: false,
                 };
             } else if self.eat_punct(Punct::LBracket) {
-                let prop = self.parse_expression()?;
+                let prop = self.with_in_allowed(Self::parse_expression)?;
                 self.expect_punct(Punct::RBracket)?;
                 expr = Expr::Member {
                     object: Box::new(expr),
@@ -802,30 +802,37 @@ impl Parser {
                     args,
                 };
             } else if self.tokenizer.at_template(self.positions[self.pos]) {
-                if optional_chain_expression(&expr) {
-                    return Err(known_syntax(self.syntax_error(
-                        "an optional chain cannot be used as a template tag",
-                    )));
-                }
-                let (raw, cooked, sources) = self
-                    .tokenizer
-                    .tagged_template_at(self.positions[self.pos])?;
-                self.rescan_suffix();
-                let expressions = sources
-                    .iter()
-                    .map(|source| self.parse_template_placeholder(source))
-                    .collect::<Result<Vec<_>, _>>()?;
-                expr = Expr::TaggedTemplate {
-                    tag: Box::new(expr),
-                    raw,
-                    cooked,
-                    expressions,
-                };
+                expr = self.parse_tagged_template(expr)?;
             } else {
                 break;
             }
         }
         Ok(expr)
+    }
+
+    /// `tag` followed by a template literal: MemberExpression TemplateLiteral.
+    /// The tagged form keeps invalid escapes (their cooked value is
+    /// `undefined`), so the template is re-scanned from source.
+    fn parse_tagged_template(&mut self, tag: Expr) -> Result<Expr, ParseError> {
+        if optional_chain_expression(&tag) {
+            return Err(known_syntax(self.syntax_error(
+                "an optional chain cannot be used as a template tag",
+            )));
+        }
+        let (raw, cooked, sources) = self
+            .tokenizer
+            .tagged_template_at(self.positions[self.pos])?;
+        self.rescan_suffix();
+        let expressions = sources
+            .iter()
+            .map(|source| self.parse_template_placeholder(source))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Expr::TaggedTemplate {
+            tag: Box::new(tag),
+            raw,
+            cooked,
+            expressions,
+        })
     }
 
     /// `new` already consumed by the caller. Real ECMAScript's
@@ -879,6 +886,8 @@ impl Parser {
                     property: Box::new(prop),
                     computed: true,
                 };
+            } else if self.tokenizer.at_template(self.positions[self.pos]) {
+                callee = self.parse_tagged_template(callee)?;
             } else {
                 break;
             }
@@ -997,6 +1006,10 @@ impl Parser {
     }
 
     pub(super) fn parse_arguments(&mut self) -> Result<Vec<Argument>, ParseError> {
+        self.with_in_allowed(Self::parse_arguments_list)
+    }
+
+    fn parse_arguments_list(&mut self) -> Result<Vec<Argument>, ParseError> {
         self.expect_punct(Punct::LParen)?;
         let mut args = Vec::new();
         while !self.check_punct(Punct::RParen) {
@@ -1126,7 +1139,7 @@ impl Parser {
             }
             Token::Punct(Punct::LParen) => {
                 self.advance();
-                let expr = self.parse_expression()?;
+                let expr = self.with_in_allowed(Self::parse_expression)?;
                 self.expect_punct(Punct::RParen).map_err(known_syntax)?;
                 if is_assignment_operator(self.peek()) || optional_chain_expression(&expr) {
                     Ok(Expr::Parenthesized(Box::new(expr)))
@@ -1134,8 +1147,8 @@ impl Parser {
                     Ok(expr)
                 }
             }
-            Token::Punct(Punct::LBracket) => self.parse_array_literal(),
-            Token::Punct(Punct::LBrace) => self.parse_object_literal(),
+            Token::Punct(Punct::LBracket) => self.with_in_allowed(Self::parse_array_literal),
+            Token::Punct(Punct::LBrace) => self.with_in_allowed(Self::parse_object_literal),
             // Tokens no production of the expression grammar can begin with,
             // including the closers/separators that show up when an operand
             // is simply missing (`using [] = x` reads `using[]`, `x = ;`) and

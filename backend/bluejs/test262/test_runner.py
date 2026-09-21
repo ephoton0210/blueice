@@ -21,6 +21,8 @@ from run import (
     TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET,
     TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES,
     TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET,
+    STRING_SUBSTR_NUMBER_MATRIX_FIXTURES,
+    STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET,
     WALL_CLOCK_BUSY_WAIT_FIXTURES,
     WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET,
     ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES,
@@ -171,6 +173,34 @@ class RunnerTests(unittest.TestCase):
         sibling = "built-ins/TypedArray/prototype/copyWithin/coerced-values-target-detached.js"
         self.assertEqual(instruction_budget(data, 100_000, sibling), 10_000_000)
         self.assertEqual(case_timeout(data, 2, sibling), 60)
+
+    def test_substr_number_matrix_gets_an_exact_path_dispatch_allowance(self):
+        # annexB/.../substr/start-and-length-as-numbers.js checks
+        # String.prototype.substr against a reference implementation for
+        # 4 strings x 35 starts x 36 lengths = 5,040 finite calls, each with a
+        # per-character comparison loop. Measured minimum: 1,496,386
+        # dispatches (identically in both modes), about 15x the default. The
+        # allowance is exact-path and leaves the 2 s wall deadline untouched.
+        relative = "annexB/built-ins/String/prototype/substr/start-and-length-as-numbers.js"
+        self.assertEqual(STRING_SUBSTR_NUMBER_MATRIX_FIXTURES, frozenset({relative}))
+        self.assertEqual(STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET, 6_000_000)
+        self.assertEqual(instruction_budget({}, 100_000, relative), 6_000_000)
+        self.assertEqual(case_timeout({}, 2, relative), 2)
+        # A sibling fixture keeps the default, and so does an unrelated path
+        # whose name merely resembles this one.
+        for sibling in (
+            "annexB/built-ins/String/prototype/substr/length-negative.js",
+            "annexB/built-ins/String/prototype/substr/start-and-length-as-numbers-2.js",
+            "built-ins/String/prototype/substring/start-and-length-as-numbers.js",
+        ):
+            self.assertNotIn(sibling, STRING_SUBSTR_NUMBER_MATRIX_FIXTURES)
+            self.assertEqual(instruction_budget({}, 100_000, sibling), 100_000)
+            self.assertEqual(case_timeout({}, 2, sibling), 2)
+        # The allowance raises the floor only: a larger default is kept, so a
+        # caller asking for more dispatches is never reduced.
+        self.assertEqual(
+            instruction_budget({}, 20_000_000, relative), 20_000_000
+        )
 
     def test_wall_clock_busy_wait_fixture_gets_an_exact_path_dispatch_allowance(self):
         # await-import-evaluation_FIXTURE.js spins `while (true)` until

@@ -256,6 +256,21 @@ impl Vm {
                 self.install_native(
                     id,
                     prototype,
+                    "allKeyed",
+                    1,
+                    NativeFunction::PromiseAllKeyed { settled: false },
+                )?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "allSettledKeyed",
+                    1,
+                    NativeFunction::PromiseAllKeyed { settled: true },
+                )?;
+                self.install_native(id, prototype, "try", 1, NativeFunction::PromiseTry)?;
+                self.install_native(
+                    id,
+                    prototype,
                     "withResolvers",
                     0,
                     NativeFunction::PromiseWithResolvers,

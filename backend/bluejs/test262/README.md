@@ -49,7 +49,17 @@ and keeps the ordinary two-second wall deadline: its fixture spins until
 `Date.now()` has advanced 100 ms, which costs about 0.3M-1M dispatches here
 and proportionally more on a faster host, so no fixed default fits it; the
 allowance is an order of magnitude over the measurement and applies to no
-other path. The exact
+other path.
+`annexB/built-ins/String/prototype/substr/start-and-length-as-numbers.js`
+(`STRING_SUBSTR_NUMBER_MATRIX_FIXTURES`) checks `substr` against a reference
+implementation for a fixed matrix of 4 strings x 35 starts x 36 lengths
+(5,040 calls, each with a per-character comparison loop and several
+assertions). It needs 1,496,386 dispatches, identically in both modes, so it
+gets an exact-path 6,000,000-dispatch allowance (4x the measurement, the
+factor the Temporal table fixtures use) while keeping the ordinary two-second
+wall deadline (it takes under a second at that cost); `test_runner.py` pins
+that a sibling `substr` path and a same-named path elsewhere keep the
+default. The exact
 `Function/prototype/toString/built-in-function-object.js` graph traversal has
 its separately measured 180-second bound, and the two exact RegExp
 match-indices warm-up fixtures have 30 seconds; neither broadens the ordinary

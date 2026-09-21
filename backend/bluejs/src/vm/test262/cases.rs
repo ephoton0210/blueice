@@ -61,6 +61,13 @@ impl Vm {
             self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
             return Ok(Value::Undefined);
         }
+        if name == "gc" {
+            self.with_roots(|heap| {
+                heap.collect_major();
+                Ok(())
+            })?;
+            return Ok(Value::Undefined);
+        }
         if name == "evalScript" {
             return self.test262_eval_script(first);
         }

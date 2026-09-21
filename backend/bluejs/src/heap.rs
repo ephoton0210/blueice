@@ -217,8 +217,11 @@ struct ClosureMetadata {
     /// A class constructor's `[[Fields]]`: the method-like function that
     /// defines its instance elements on a newly constructed object.
     fields: Option<ObjectId>,
-    /// An arrow function's lexical `new.target`, captured when the closure is
-    /// created. Absent (equivalent to `undefined`) for every other closure.
+    /// The with objects (outermost first) that were active where a function
+    /// created inside `with` was created.
+    with_objects: Vec<Value>,
+    /// The `new.target` an arrow function inherits from the function it was
+    /// created in (unset when that was `undefined`).
     new_target: Option<Value>,
 }
 
@@ -227,6 +230,7 @@ impl ClosureMetadata {
         self.home
             .into_iter()
             .chain(self.fields)
+            .chain(self.with_objects.iter().filter_map(Value::object_id))
             .chain(self.new_target.iter().filter_map(Value::object_id))
     }
 }

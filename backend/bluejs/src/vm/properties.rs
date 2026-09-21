@@ -703,7 +703,13 @@ impl Vm {
     /// prototype chain. Non-enumerable own keys still suppress an inherited
     /// key with the same name; symbols never participate in `for-in`.
     pub(super) fn for_in_keys(&mut self, source: &Value) -> Result<Value, RuntimeError> {
-        let mut current = Some(self.coerce_object(source)?);
+        // ForIn/OfHeadEvaluation: a `null` or `undefined` subject enumerates
+        // nothing instead of failing ToObject.
+        let mut current = if matches!(source, Value::Null | Value::Undefined) {
+            None
+        } else {
+            Some(self.coerce_object(source)?)
+        };
         let base = self.stack.len();
         let mut seen = HashSet::new();
         let mut visited_objects = HashSet::new();

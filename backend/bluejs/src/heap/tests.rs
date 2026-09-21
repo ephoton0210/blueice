@@ -34,7 +34,7 @@ fn closure_metadata_validates_its_receiver_and_is_reclaimed_with_a_young_closure
         Err(HeapError::InvalidObject(ordinary))
     );
     heap.set_closure_new_target(closure, Value::Null).unwrap();
-    assert_eq!(heap.closure_new_target(closure).unwrap(), Some(Value::Null));
+    assert_eq!(heap.closure_new_target(closure).unwrap(), Value::Null);
     assert_eq!(
         heap.set_class_fields(ordinary, closure),
         Err(HeapError::InvalidObject(ordinary))

@@ -628,3 +628,19 @@ fn agent_helpers_are_reachable_from_the_main_realm_without_starting_an_agent() {
     // Only a started agent may announce that it is leaving.
     expect_type_error("$262.agent.leaving()");
 }
+
+#[test]
+fn host_gc_hook_runs_a_major_collection_and_keeps_live_values() {
+    let mut vm = harness_vm();
+    let before = vm.heap().stats().major_collections;
+    assert_eq!(
+        run(
+            &mut vm,
+            "var live = {kept: [1, 2, 3]}; \
+             typeof $262.gc === 'function' && $262.gc.length === 0 \
+               && $262.gc() === undefined && live.kept.length === 3"
+        ),
+        Ok(Value::Bool(true))
+    );
+    assert!(vm.heap().stats().major_collections > before);
+}

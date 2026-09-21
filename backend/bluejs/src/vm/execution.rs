@@ -7,6 +7,17 @@
 use super::*;
 
 /// Appends the object ids among `values`, skipping every primitive.
+/// The heap values a reaction target keeps alive. A native target's promise is
+/// already rooted through `Vm::promises`, so only a capability adds any.
+fn reaction_target_values(target: &ReactionTarget) -> Vec<&Value> {
+    match target {
+        ReactionTarget::Native(_) => Vec::new(),
+        ReactionTarget::Capability(capability) => {
+            vec![&capability.promise, &capability.resolve, &capability.reject]
+        }
+    }
+}
+
 fn push_object_roots<'a>(roots: &mut Vec<ObjectId>, values: impl IntoIterator<Item = &'a Value>) {
     for value in values {
         if let Value::Object(id) = value {
@@ -525,15 +536,72 @@ impl Vm {
         self.heap.delete(binding.cell, "value").map_err(Into::into)
     }
 
+    /// `delete name` for a name that no function or block binding resolves:
+    /// the reference is looked up in eval-created bindings, then the global
+    /// Environment Record (§9.1.1.4.7 DeleteBinding). A declarative (`let`,
+    /// `const`, `class`) global binding cannot be deleted; a property of the
+    /// global object is deleted when it is configurable, and a name that
+    /// resolves nowhere deletes "successfully".
+    pub(super) fn delete_unbound_name(&mut self, name: &str) -> Result<bool, RuntimeError> {
+        let in_eval_binding = self.dynamic_eval_bindings.contains_key(name)
+            || self
+                .dynamic_eval_outer_bindings
+                .iter()
+                .any(|bindings| bindings.contains_key(name));
+        if in_eval_binding {
+            return self.delete_dynamic_eval_binding(name);
+        }
+        if self
+            .global_bindings
+            .get(name)
+            .is_some_and(|binding| !binding.property)
+        {
+            return Ok(false);
+        }
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is an object");
+        let deleted = self.object_delete(global, &name.into())?;
+        if deleted {
+            if let Some(binding) = self.global_bindings.remove(name) {
+                self.heap.unroot(binding._root)?;
+            }
+        }
+        Ok(deleted)
+    }
+
     pub(super) fn store_global_cell(
         &mut self,
         cell: ObjectId,
         value: Value,
     ) -> Result<(), RuntimeError> {
-        self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
         let property = self.global_bindings.iter().find_map(|(name, binding)| {
             (binding.cell == cell && binding.property).then(|| name.clone())
         });
+        // SetMutableBinding of the global Environment Record: a binding backed
+        // by a non-writable global property (`NaN`, `undefined`) rejects the
+        // write, silently in sloppy code and with a TypeError in strict code.
+        if let Some(name) = &property {
+            let global = self
+                .global("globalThis")?
+                .object_id()
+                .expect("globalThis is an object");
+            if self
+                .heap
+                .get_own_property_descriptor(global, name.as_str())?
+                .is_some_and(|descriptor| descriptor.writable == Some(false))
+            {
+                return if self.strict {
+                    Err(RuntimeError::TypeError(format!(
+                        "cannot assign to read-only global {name}"
+                    )))
+                } else {
+                    Ok(())
+                };
+            }
+        }
+        self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
         if let Some(name) = property {
             let global = self
                 .global("globalThis")?
@@ -988,9 +1056,12 @@ impl Vm {
                         .reactions
                         .iter()
                         .filter_map(|reaction| match reaction {
-                            PromiseReaction::Then(reaction) => {
-                                Some([&reaction.on_fulfilled, &reaction.on_rejected])
-                            }
+                            PromiseReaction::Then(reaction) => Some(
+                                [&reaction.on_fulfilled, &reaction.on_rejected]
+                                    .into_iter()
+                                    .chain(reaction_target_values(&reaction.target))
+                                    .collect::<Vec<_>>(),
+                            ),
                             PromiseReaction::ModuleAwait { .. }
                             | PromiseReaction::AsyncAwait { .. }
                             | PromiseReaction::AsyncGeneratorYield { .. }
@@ -1003,27 +1074,6 @@ impl Vm {
                     }
                 };
                 for value in values {
-                    if let Value::Object(id) = value {
-                        roots.push(*id);
-                    }
-                }
-            }
-            for state in self.promise_all.values() {
-                for value in state.values.iter().flatten() {
-                    if let Value::Object(id) = value {
-                        roots.push(*id);
-                    }
-                }
-            }
-            for state in self.promise_any.values() {
-                for value in state.errors.iter().flatten() {
-                    if let Value::Object(id) = value {
-                        roots.push(*id);
-                    }
-                }
-            }
-            for state in self.promise_all_settled.values() {
-                for (value, _) in state.results.iter().flatten() {
                     if let Value::Object(id) = value {
                         roots.push(*id);
                     }
@@ -1057,11 +1107,16 @@ impl Vm {
                         value,
                         ..
                     } => {
-                        roots.push(*target);
-                        for value in [handler, value] {
+                        for value in [handler, value]
+                            .into_iter()
+                            .chain(reaction_target_values(target))
+                        {
                             if let Value::Object(id) = value {
                                 roots.push(*id);
                             }
+                        }
+                        if let ReactionTarget::Native(id) = target {
+                            roots.push(*id);
                         }
                     }
                     PromiseJob::Thenable {
@@ -1473,7 +1528,11 @@ impl Vm {
             .active_scopes
             .iter()
             .position(|scope| *scope == self.variable_scope);
-        let start = variable_scope_position.map_or(0, |index| index + 1);
+        // The variable scope's own lexical declarations conflict too: this
+        // engine keeps a function body's top-level `let`/`const`/`class`
+        // beside its vars, where the specification uses a separate lexical
+        // environment precisely so that a direct eval can see them.
+        let start = variable_scope_position.unwrap_or(0);
         let mut conflicts = self.active_scope_slots[start..]
             .iter()
             .flat_map(|slots| slots.iter().copied())

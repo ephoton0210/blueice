@@ -99,6 +99,9 @@ impl Vm {
             1,
             NativeFunction::Test262("detachArrayBuffer"),
         )?;
+        // The optional host GC hook: tests that observe weak references or
+        // collector-sensitive code paths (`$262.gc()`) request a collection.
+        self.install_native(host, prototype, "gc", 0, NativeFunction::Test262("gc"))?;
         self.install_test262_agent(host, prototype)?;
         self.install_native(
             global,
