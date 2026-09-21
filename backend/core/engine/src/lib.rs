@@ -9,6 +9,7 @@
 //! binary (`src/bin/blueice-core.rs`) drives from IPC messages.
 
 mod ai_snapshot;
+pub mod compiler_service;
 pub mod credits;
 mod gatekeeper_client;
 mod page;

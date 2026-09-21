@@ -412,6 +412,22 @@ or second module resolver to bypass them.
   output roots; a client may not extend them using a path, import map, plugin,
   or compiler option.
 
+  Foundation delivered: `blueice_engine::compiler_service` now provides the
+  core-owned in-memory `RegisteredProjectCompilerService`. Registration accepts
+  one closed `AuthorizedModuleLoader`, fixed `CompilerOptions`, and the
+  core-selected canonical project/config/output identities exactly once. Its
+  opaque project and generation handles leave later check/build callers no
+  path, resolver, plugin, source-graph, or compiler-option parameter to
+  extend. `check` returns capped diagnostics, observable incremental-cache
+  sets, a successful artifact fingerprint, and source-text-free static debug
+  metadata; static type/symbol lookup requires the exact latest generation.
+  `build` returns only bounded in-memory `BuildOutput` and preserves no output
+  on compiler errors, so this layer performs no filesystem writes. Registration,
+  static metadata, and build-response limits fail closed. It does not yet
+  register projects through IPC, accept controlled project updates, retain
+  contract/provenance query records, write an authorized output transaction, or
+  expose the service through the debugger/MCP capability layer.
+
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
   no-emit-on-error guarantee; responses are generation/fingerprint bound,
   capped, redacted where needed, and reject stale project state.

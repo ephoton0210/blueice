@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress. `backend/bluets` provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix. `backend/bluets-bluejs` now also proves direct, host-neutral classic-script and resolver-preserving ESM-module-graph paths: it checks caller-supplied BlueTS, lowers a deliberately small runtime subset to the public BlueJS program AST, and compiles it to BlueJS bytecode without reparsing BlueTSC's emitted JavaScript. It does **not** yet execute a TypeScript page: the page-script host, bytecode safe-point map, debugger IPC and MCP project-registration boundary remain prerequisites.
+**Status**: In progress. `backend/bluets` provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix. `backend/bluets-bluejs` now also proves direct, host-neutral classic-script and resolver-preserving ESM-module-graph paths: it checks caller-supplied BlueTS, lowers a deliberately small runtime subset to the public BlueJS program AST, and compiles it to BlueJS bytecode without reparsing BlueTSC's emitted JavaScript. `blueice_engine::compiler_service` provides a core-owned in-memory registered-project check/build boundary with fixed closed inputs and generation-bound static metadata, but it has no IPC or MCP adapter. The product does **not** yet execute a TypeScript page through its production host: the launcher-managed page-script host, bytecode safe-point map aggregation, debugger IPC, and negotiated MCP boundary remain prerequisites.
 
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
@@ -294,7 +294,7 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 - [x] Implement the independent initial parser/binder/closed-module resolver/checker/type-erasure ESM emitter with atomic compile failures
 - [x] Implement `bluetsc check`/staged `build`, ESM/column-provenance-source-map/declaration emission and reproducible artifact fingerprints for the initial matrix
 - [x] Implement VM-independent `BlueTsDebugInfo` (source hashes, symbols, static types and spans); bytecode source mapping and controlled debugger retention remain pending
-- [ ] Expose TypeScript diagnostics, symbols, types, contracts, lowering provenance and BlueTSC check/build through Phase 12's negotiated MCP debug interface
+- [ ] Expose TypeScript diagnostics, symbols, types, contracts, lowering provenance and BlueTSC check/build through Phase 12's negotiated MCP debug interface. The core-owned registered-project service now supplies an in-memory fixed-input check/build and generation-bound static type/symbol foundation, but has no Phase 12 transport, negotiation, authorization, contract/provenance records, or output-write elevation.
 - [x] Implement the pure runtime-contract IR and bounded JSON-like validator; host-boundary discovery, JSON Schema delegation and page enforcement remain pending
 - [x] Implement host-neutral dependency-aware incremental parser/checker cache invalidation; cache reuse is refused across compiler-policy changes and failed compilations preserve the last successful entry
 - [x] Support root-confined, type-only local `.d.ts` modules without runtime emission or package/remote declaration acquisition
