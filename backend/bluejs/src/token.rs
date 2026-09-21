@@ -234,6 +234,10 @@ pub struct SpannedToken {
     /// escape. These escapes are accepted only by non-strict script code;
     /// retain the lexical fact so the parser can enforce that early error.
     pub legacy_octal_escape: bool,
+    /// Whether this token's string literal contained any escape sequence or
+    /// line continuation. A Use Strict Directive must be spelled exactly
+    /// `"use strict"` or `'use strict'`, so an escaped spelling never counts.
+    pub string_escaped: bool,
 }
 
 pub(crate) type TaggedTemplateData = (Vec<JsString>, Vec<Option<JsString>>, Vec<String>);
@@ -247,6 +251,7 @@ pub struct Tokenizer {
     line_start: bool,
     identifier_escaped: bool,
     legacy_octal_escape: bool,
+    string_escaped: bool,
     html_comments_enabled: bool,
 }
 
@@ -388,6 +393,7 @@ impl Tokenizer {
             line_start: true,
             identifier_escaped: false,
             legacy_octal_escape: false,
+            string_escaped: false,
             html_comments_enabled: true,
         }
     }
@@ -537,12 +543,14 @@ impl Tokenizer {
         let newline_before = self.skip_trivia()?;
         self.identifier_escaped = false;
         self.legacy_octal_escape = false;
+        self.string_escaped = false;
         let token = self.next_token()?;
         Ok(SpannedToken {
             token,
             newline_before,
             identifier_escaped: self.identifier_escaped,
             legacy_octal_escape: self.legacy_octal_escape,
+            string_escaped: self.string_escaped,
         })
     }
 
@@ -595,6 +603,12 @@ impl Tokenizer {
             }
         }
         let mut text = self.scan_digits(10, !leading_zero)?;
+        // A LegacyOctalIntegerLiteral (`010`) or NonOctalDecimalIntegerLiteral
+        // (`08`, `019`) is an Annex B extension that strict code rejects, so
+        // the parser must learn that this token used one.
+        if leading_zero && text.len() > 1 {
+            self.legacy_octal_escape = true;
+        }
         if self.peek() == Some('n') {
             self.advance();
             if leading_zero && text.len() > 1 {
@@ -709,8 +723,10 @@ impl Tokenizer {
                     consumed_extra += 1;
                 }
                 // A bare `\\0` is the ordinary NullEscape. Every other
-                // form here is legacy-only and invalid in strict code.
-                self.legacy_octal_escape = first != 0 || consumed_extra != 0;
+                // form here is legacy-only and invalid in strict code,
+                // including `\\0` directly followed by `8` or `9`.
+                self.legacy_octal_escape =
+                    first != 0 || consumed_extra != 0 || matches!(self.peek(), Some('8' | '9'));
                 value
             }
             // NonOctalDecimalEscapeSequence is likewise prohibited in
@@ -790,6 +806,7 @@ impl Tokenizer {
                 }
                 Some('\\') => {
                     self.advance();
+                    self.string_escaped = true;
                     if let Some(c) = self.scan_escape()? {
                         out.push_code_point(c);
                     }

@@ -995,6 +995,7 @@ impl Parser {
             }
             Token::Invalid(message) => Err(self.error(&message)),
             Token::Number(n) => {
+                self.reject_legacy_octal_escape()?;
                 self.advance();
                 Ok(Expr::Number(n))
             }

@@ -141,7 +141,7 @@ impl Vm {
             RuntimeError::SyntaxError("eval source contains an unpaired surrogate".into())
         })?;
         let program =
-            crate::parse_eval(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+            crate::parse_eval(&source, self.strict).map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let derived_constructor = match self.class_constructor {
             Some(constructor) => self.heap.class_base(constructor)?.is_some(),
             None => false,

@@ -220,6 +220,7 @@ impl Parser {
                 Ok(PropertyKey::String(s))
             }
             Token::Number(n) => {
+                self.reject_legacy_octal_escape()?;
                 self.advance();
                 Ok(PropertyKey::Number(n))
             }

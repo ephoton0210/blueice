@@ -153,7 +153,7 @@ impl Parser {
         let params = self
             .parse_params()
             .inspect_err(|_| self.function_depth -= 1)?;
-        let body = self.parse_block();
+        let body = self.parse_function_body();
         self.function_depth -= 1;
         self.generator_depth = outer_generator_depth;
         self.async_depth = outer_async_depth;
@@ -172,7 +172,7 @@ impl Parser {
         let outer_module_await = std::mem::replace(&mut self.module_await, false);
         self.function_depth += 1;
         let body = if self.check_punct(Punct::LBrace) {
-            self.parse_block().map(ArrowBody::Block)
+            self.parse_function_body().map(ArrowBody::Block)
         } else {
             self.parse_assignment()
                 .map(|value| ArrowBody::Expr(Box::new(value)))
