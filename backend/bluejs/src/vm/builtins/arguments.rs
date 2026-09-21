@@ -123,17 +123,154 @@ impl Vm {
 
     /// Annex B legacy own properties on a non-strict ordinary, constructible
     /// function hide the restricted accessors inherited from
-    /// `%Function.prototype%`. Until call-chain tracking exists, `caller`
-    /// remains `undefined`, which preserves the standard compatibility
-    /// fallback instead of falsely advertising an active caller extension.
+    /// `%Function.prototype%`. They are own accessors sharing one getter pair
+    /// (no setter, so assignment is ignored or, in strict code, throws): see
+    /// `legacy_function_caller` and `legacy_function_arguments`.
     pub(in super::super) fn install_legacy_function_properties(
         &mut self,
         function: ObjectId,
     ) -> Result<(), RuntimeError> {
-        for (name, value) in [("arguments", Value::Null), ("caller", Value::Undefined)] {
-            self.define_data(function, name, value, false, false, false)?;
+        let (caller, arguments) = self.legacy_function_getters()?;
+        for (name, getter) in [("arguments", arguments), ("caller", caller)] {
+            let descriptor = PropertyDescriptor {
+                get: Some(Value::Object(getter)),
+                set: Some(Value::Undefined),
+                enumerable: Some(false),
+                configurable: Some(false),
+                ..PropertyDescriptor::default()
+            };
+            let defined =
+                self.with_roots(|heap| heap.define_own_property(function, name, descriptor))?;
+            if !defined {
+                return Err(RuntimeError::TypeError(
+                    "cannot define a legacy function property".into(),
+                ));
+            }
         }
         Ok(())
+    }
+
+    fn legacy_function_getters(&mut self) -> Result<(ObjectId, ObjectId), RuntimeError> {
+        if let Some(getters) = self.legacy_function_getters {
+            return Ok(getters);
+        }
+        let constructor = self.string_intrinsics()?.0;
+        let prototype = self
+            .heap
+            .prototype(constructor)?
+            .expect("String constructor has Function.prototype");
+        let mut created = Vec::new();
+        let result = (|| {
+            for native in [
+                NativeFunction::LegacyFunctionCaller,
+                NativeFunction::LegacyFunctionArguments,
+            ] {
+                let function =
+                    self.with_roots(|heap| heap.alloc_native_function(native, "", prototype))?;
+                created.push((function, self.heap.root(function)?));
+                self.define_data(
+                    function,
+                    "name",
+                    Value::String("".into()),
+                    false,
+                    false,
+                    true,
+                )?;
+                self.define_data(function, "length", Value::Number(0.0), false, false, true)?;
+            }
+            Ok((created[0].0, created[1].0))
+        })();
+        match result {
+            Ok(getters) => {
+                self.legacy_function_getters = Some(getters);
+                Ok(getters)
+            }
+            Err(error) => {
+                for (_, root) in created {
+                    self.heap.unroot(root)?;
+                }
+                Err(error)
+            }
+        }
+    }
+
+    /// `f.caller`: the sloppy function that is currently running `f`, or
+    /// `null` when `f` is not running, was called from outside any function,
+    /// or was called by a function the legacy reflection proposal censors
+    /// (strict, generator, async, class constructor).
+    pub(in super::super) fn legacy_function_caller(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(function) = receiver else {
+            return Ok(Value::Null);
+        };
+        let Some(caller) = self
+            .call_stack
+            .iter()
+            .rposition(|running| running == function)
+            .and_then(|position| position.checked_sub(1))
+            .and_then(|position| self.call_stack.get(position).copied())
+        else {
+            return Ok(Value::Null);
+        };
+        let Some((code, ..)) = self.heap.closure(caller)? else {
+            return Ok(Value::Null);
+        };
+        if code.strict || code.generator || code.async_function || code.class_constructor {
+            return Ok(Value::Null);
+        }
+        Ok(Value::Object(caller))
+    }
+
+    /// `f.arguments`: a copy of the running call's arguments while `f`'s own
+    /// body reads it, `null` otherwise. Outer activations of `f` are not
+    /// reachable from here, so they also report `null`.
+    pub(in super::super) fn legacy_function_arguments(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(function) = receiver else {
+            return Ok(Value::Null);
+        };
+        if self.call_stack.last() != Some(function) || self.callee != *receiver {
+            return Ok(Value::Null);
+        }
+        let base = self.stack.len();
+        self.stack.extend(self.arguments.iter().cloned());
+        let result = (|| {
+            let object_prototype = self.object_prototype;
+            let object =
+                self.with_roots(|heap| heap.alloc_arguments(HashMap::new(), object_prototype))?;
+            self.stack.push(Value::Object(object));
+            self.define_data(
+                object,
+                "length",
+                Value::Number(self.arguments.len() as f64),
+                true,
+                false,
+                true,
+            )?;
+            for (index, value) in self.arguments.clone().into_iter().enumerate() {
+                self.define_data(object, index.to_string(), value, true, true, true)?;
+            }
+            let array = self.global("Array")?;
+            let array_prototype = self.get_property(&array, &"prototype".into())?;
+            let iterator =
+                self.get_property(&array_prototype, &JsSymbol::well_known("iterator").into())?;
+            self.define_data(
+                object,
+                JsSymbol::well_known("iterator"),
+                iterator,
+                true,
+                false,
+                true,
+            )?;
+            self.define_data(object, "callee", receiver.clone(), true, false, true)?;
+            Ok(Value::Object(object))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super) fn direct_eval(&mut self, value: &Value) -> Result<Value, RuntimeError> {
@@ -188,7 +325,10 @@ impl Vm {
             &lexical_conflicts,
             self.strict,
             self.new_target_allowed,
-            self.with_objects.len(),
+            crate::compiler::EvalWithScopes {
+                depth: self.with_objects.len(),
+                inherited: self.inherited_with_depth,
+            },
         )
         .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let captures = code
@@ -219,8 +359,16 @@ impl Vm {
         })?;
         let program =
             crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0)
-            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        let code = crate::compiler::compile_eval(
+            &program,
+            &[],
+            &[],
+            &[],
+            false,
+            false,
+            Default::default(),
+        )
+        .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let global_this = self.global("globalThis")?;
         let this = std::mem::replace(&mut self.this, global_this);
         let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);

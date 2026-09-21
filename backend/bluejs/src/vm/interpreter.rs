@@ -1162,6 +1162,10 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        // As for `Global`: the realm global object must exist
+                        // before a lazily-materialized standard global can be
+                        // found on it.
+                        self.global("globalThis")?;
                         let value = self.lookup_global_name(&name)?;
                         if instruction.opcode == Opcode::TypeofName {
                             let value = value.unwrap_or(Value::Undefined);

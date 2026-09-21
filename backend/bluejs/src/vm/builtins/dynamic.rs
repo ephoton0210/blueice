@@ -4,6 +4,10 @@
 
 use super::*;
 
+/// Internal name of the wrapper declaration `dynamic_function_constructor`
+/// compiles; it is not a valid identifier, so no source can refer to it.
+const DYNAMIC_FUNCTION_BINDING: &str = "*anonymous*";
+
 /// The four CreateDynamicFunction kinds.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in super::super) enum DynamicFunctionKind {
@@ -82,8 +86,15 @@ impl Vm {
         }
         source.push_str("\n}");
 
-        let program =
+        let mut program =
             crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        // The wrapper declaration only gives the function its `name` property.
+        // CreateDynamicFunction binds no such name in the function's scope, so
+        // rename the declaration to an internal identifier no source can spell:
+        // `anonymous` in the body then resolves like any free identifier.
+        if let Some(crate::ast::Stmt::FunctionDecl(function)) = program.body.first_mut() {
+            function.name = Some(DYNAMIC_FUNCTION_BINDING.into());
+        }
         let code = crate::compile(&program)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let child = code
@@ -130,7 +141,7 @@ impl Vm {
             })?;
             self.stack.push(Value::Object(function));
             for (&slot, &cell) in child.captures.iter().zip(&captures) {
-                let value = if code.bindings[slot as usize].name == "anonymous" {
+                let value = if code.bindings[slot as usize].name == DYNAMIC_FUNCTION_BINDING {
                     Value::Object(function)
                 } else {
                     Value::Undefined
