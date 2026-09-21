@@ -526,8 +526,17 @@ impl Vm {
             ));
         }
         let (mode, padding_option) = self.iterator_zip_options(options)?;
-        let metadata = self.with_roots(|heap| heap.alloc_object(None))?;
+        // `padding_option` came from a getter, so nothing else references it:
+        // root it before the metadata allocation can collect.
         let base = self.stack.len();
+        self.stack.push(padding_option.clone());
+        let metadata = match self.with_roots(|heap| heap.alloc_object(None)) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                self.stack.truncate(base);
+                return Err(error);
+            }
+        };
         self.stack.push(Value::Object(metadata));
         self.stack.push(iterables.clone());
         let result = (|| {
@@ -559,7 +568,7 @@ impl Vm {
                     // iterables iterator's own step already produced this
                     // completion, so it must not be closed again.
                     Err(error) => {
-                        let _ = self.iterator_zip_close_records(metadata, count);
+                        self.iterator_zip_close_records_after(metadata, count, &error);
                         return Err(error);
                     }
                 };
@@ -572,9 +581,8 @@ impl Vm {
                     // iterables iterator itself.
                     Err(error) => {
                         self.stack.pop();
-                        let _ = self.iterator_zip_close_records(metadata, count);
-                        let _ = self.iterator_close(&outer_record);
-                        return Err(error);
+                        self.iterator_zip_close_records_after(metadata, count, &error);
+                        return self.close_iterator_on_error(&outer_record, Err(error));
                     }
                 };
                 self.stack.pop();
@@ -589,7 +597,7 @@ impl Vm {
                 if let Err(error) =
                     self.iterator_zip_collect_padding(metadata, count, &padding_option)
                 {
-                    let _ = self.iterator_zip_close_records(metadata, count);
+                    self.iterator_zip_close_records_after(metadata, count, &error);
                     return Err(error);
                 }
             }
@@ -665,8 +673,17 @@ impl Vm {
             ));
         };
         let (mode, padding_option) = self.iterator_zip_options(options)?;
-        let metadata = self.with_roots(|heap| heap.alloc_object(None))?;
+        // `padding_option` came from a getter, so nothing else references it:
+        // root it before the metadata allocation can collect.
         let base = self.stack.len();
+        self.stack.push(padding_option.clone());
+        let metadata = match self.with_roots(|heap| heap.alloc_object(None)) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                self.stack.truncate(base);
+                return Err(error);
+            }
+        };
         self.stack.push(Value::Object(metadata));
         self.stack.push(iterables.clone());
         let result = (|| {
@@ -720,7 +737,7 @@ impl Vm {
                 // A construction failure is already a throw completion, so
                 // IteratorCloseAll observes every remaining record but cannot
                 // replace the original error with one raised by `return`.
-                let _ = self.iterator_zip_close_records(metadata, count);
+                self.iterator_zip_close_records_after(metadata, count, &error);
                 return Err(error);
             }
             collected
