@@ -63,6 +63,9 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_define_own_property(object, key, descriptor);
         }
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_define_own_property(object, key, descriptor);
+        }
         if let Some(numeric) = self.heap.typed_array_numeric_key(object, &key)? {
             return self.typed_array_define_own_property(object, numeric, descriptor);
         }
