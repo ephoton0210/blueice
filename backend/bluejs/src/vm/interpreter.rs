@@ -1155,6 +1155,9 @@ impl Vm {
                             let global = self.global("globalThis")?;
                             let global_id = global.object_id().expect("globalThis is an object");
                             let key: PropertyName = name.as_str().into();
+                            // Standard globals (`NaN`, `undefined`, ...) are
+                            // created lazily; the name resolves once made.
+                            self.materialize_lexical_global(global_id, &name)?;
                             if code.strict && !self.has_property(global_id, &key)? {
                                 return Err(RuntimeError::ReferenceError(name));
                             }

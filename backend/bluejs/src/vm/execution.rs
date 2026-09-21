@@ -563,10 +563,32 @@ impl Vm {
         cell: ObjectId,
         value: Value,
     ) -> Result<(), RuntimeError> {
-        self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
         let property = self.global_bindings.iter().find_map(|(name, binding)| {
             (binding.cell == cell && binding.property).then(|| name.clone())
         });
+        // SetMutableBinding of the global Environment Record: a binding backed
+        // by a non-writable global property (`NaN`, `undefined`) rejects the
+        // write, silently in sloppy code and with a TypeError in strict code.
+        if let Some(name) = &property {
+            let global = self
+                .global("globalThis")?
+                .object_id()
+                .expect("globalThis is an object");
+            if self
+                .heap
+                .get_own_property_descriptor(global, name.as_str())?
+                .is_some_and(|descriptor| descriptor.writable == Some(false))
+            {
+                return if self.strict {
+                    Err(RuntimeError::TypeError(format!(
+                        "cannot assign to read-only global {name}"
+                    )))
+                } else {
+                    Ok(())
+                };
+            }
+        }
+        self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
         if let Some(name) = property {
             let global = self
                 .global("globalThis")?
