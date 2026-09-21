@@ -172,6 +172,18 @@ TYPED_ARRAY_DETACH_COERCION_FIXTURES = frozenset(
     }
 )
 TYPED_ARRAY_DETACH_COERCION_TIMEOUT = 120
+# `dynamic-import/await-import-evaluation_FIXTURE.js` waits by spinning
+# `while (true)` until `Date.now()` has advanced 100 ms, and its test asserts
+# that the import promise settled only after that wait. How many dispatches
+# 100 ms takes is a property of the host machine, not of the test (about
+# 0.3M-1M here; a faster host needs proportionally more), so no fixed default
+# budget is right for it. Grant this exact path an order-of-magnitude margin
+# over the measurement; the ordinary two-second wall deadline still bounds it,
+# and an unbounded loop in any other test keeps the 100,000-dispatch default.
+WALL_CLOCK_BUSY_WAIT_FIXTURES = frozenset(
+    {"language/expressions/dynamic-import/await-import-evaluation.js"}
+)
+WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET = 10_000_000
 TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET = 50_000_000
 # `testIntl.js` runs every asserted result through a finite locale and
 # numbering-system matrix. Debug interpreter dispatch exceeds the ordinary
@@ -928,6 +940,8 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, URI_GLOBAL_INSTRUCTION_BUDGET)
     if relative in TYPED_ARRAY_DETACH_COERCION_FIXTURES:
         return max(default, TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET)
+    if relative in WALL_CLOCK_BUSY_WAIT_FIXTURES:
+        return max(default, WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET)
     if relative in FINITE_STRESS_FIXTURES:
         return max(default, FINITE_STRESS_INSTRUCTION_BUDGET)
     if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):

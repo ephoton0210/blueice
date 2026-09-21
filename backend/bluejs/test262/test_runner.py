@@ -21,6 +21,8 @@ from run import (
     TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET,
     TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES,
     TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET,
+    WALL_CLOCK_BUSY_WAIT_FIXTURES,
+    WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET,
     ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES,
     ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET,
     Worker,
@@ -153,6 +155,24 @@ class RunnerTests(unittest.TestCase):
         sibling = "built-ins/TypedArray/prototype/copyWithin/coerced-values-target-detached.js"
         self.assertEqual(instruction_budget(data, 100_000, sibling), 10_000_000)
         self.assertEqual(case_timeout(data, 2, sibling), 60)
+
+    def test_wall_clock_busy_wait_fixture_gets_an_exact_path_dispatch_allowance(self):
+        # await-import-evaluation_FIXTURE.js spins `while (true)` until
+        # Date.now() has advanced 100 ms, so its dispatch count is a property
+        # of the machine (about 0.3M-1M dispatches here), not of the test. The
+        # allowance is exact-path, leaves the 2 s wall deadline untouched, and
+        # a sibling keeps the default budget.
+        relative = "language/expressions/dynamic-import/await-import-evaluation.js"
+        self.assertEqual(WALL_CLOCK_BUSY_WAIT_FIXTURES, frozenset({relative}))
+        self.assertEqual(WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET, 10_000_000)
+        self.assertEqual(
+            instruction_budget({}, 100_000, relative),
+            WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET,
+        )
+        self.assertEqual(instruction_budget({}, 50_000_000, relative), 50_000_000)
+        self.assertEqual(case_timeout({}, 2, relative), 2)
+        sibling = "language/expressions/dynamic-import/await-import-evaluation-2.js"
+        self.assertEqual(instruction_budget({}, 100_000, sibling), 100_000)
 
     def test_typed_array_harness_receives_a_bounded_extended_wall_deadline(self):
         self.assertEqual(case_timeout({"includes": []}, 2), 2)
