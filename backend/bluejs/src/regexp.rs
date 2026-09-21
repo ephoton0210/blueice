@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{JsString, RuntimeError};
+use std::rc::Rc;
 
 pub(crate) struct RegExp {
     pub source: JsString,
@@ -83,7 +84,7 @@ impl RegExp {
 /// copy of that input rather than one substring per property.
 pub(crate) struct LegacyStatics {
     /// [[RegExpInput]]; `None` is the proposal's "empty" (getter throws).
-    input: Option<JsString>,
+    input: Option<Rc<JsString>>,
     matched: LegacyMatch,
 }
 
@@ -93,7 +94,7 @@ enum LegacyMatch {
     /// InvalidateLegacyRegExpStaticProperties: every slot is empty.
     Invalidated,
     Matched {
-        input: JsString,
+        input: Rc<JsString>,
         start: usize,
         end: usize,
         /// Capture groups 1..n; unmatched groups read as the empty String.
@@ -104,7 +105,7 @@ enum LegacyMatch {
 impl Default for LegacyStatics {
     fn default() -> Self {
         Self {
-            input: Some(JsString::default()),
+            input: Some(Rc::new(JsString::default())),
             matched: LegacyMatch::Initial,
         }
     }
@@ -119,9 +120,10 @@ impl LegacyStatics {
         end: usize,
         groups: Vec<Option<std::ops::Range<usize>>>,
     ) {
-        self.input = Some(input.clone());
+        let input = Rc::new(input.clone());
+        self.input = Some(Rc::clone(&input));
         self.matched = LegacyMatch::Matched {
-            input: input.clone(),
+            input,
             start,
             end,
             groups,
@@ -136,14 +138,14 @@ impl LegacyStatics {
 
     /// SetLegacyRegExpStaticProperty for `RegExp.input`.
     pub fn set_input(&mut self, input: JsString) {
-        self.input = Some(input);
+        self.input = Some(Rc::new(input));
     }
 
     /// The slot's current String, or `None` when it is empty (invalidated).
     pub fn get(&self, which: crate::native::LegacyRegExpStatic) -> Option<JsString> {
         use crate::native::LegacyRegExpStatic::*;
         if which == Input {
-            return self.input.clone();
+            return self.input.as_deref().cloned();
         }
         let slice = |input: &JsString, range: std::ops::Range<usize>| {
             JsString::from_code_units(input.as_code_units()[range].to_vec())
