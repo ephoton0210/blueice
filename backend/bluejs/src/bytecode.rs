@@ -345,6 +345,8 @@ pub(crate) struct Handler {
     pub catch: Option<u32>,
     pub catch_end: Option<u32>,
     pub finally: Option<u32>,
+    /// One past the finalizer's closing `ResumeCompletion`.
+    pub finally_end: Option<u32>,
 }
 
 /// One control-transfer continuation. `cleanup` runs after every enclosing
