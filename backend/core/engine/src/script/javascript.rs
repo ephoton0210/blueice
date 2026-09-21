@@ -12,12 +12,15 @@
 //! authorizer supplies a complete canonical module graph and every static
 //! resolution record. The default core session does not construct this type.
 
-use super::{BlueJsPageScriptDeclaration, BlueJsPageScriptKind};
+use super::{
+    contracts::{core_script_binding_contract, CoreScriptBindingContractLimits},
+    BlueJsPageScriptDeclaration, BlueJsPageScriptKind,
+};
 use crate::{Page, TabId, TabManager};
 use blueice_bluejs::{
     parse, parse_module, BlueJsPageOrigin, BlueJsPageRuntime, BlueJsPageRuntimeConfig,
     BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1, BlueJsSourceIdentity,
-    CompileError, ParseError, RuntimeError, Value,
+    CompileError, HostFunctionError, HostValue, ParseError, RuntimeError, Value,
 };
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
@@ -34,6 +37,9 @@ pub struct JavaScriptPageExecutorConfig {
     pub max_source_bytes_per_module: usize,
     /// Maximum modules in one caller-authorized ESM graph.
     pub max_modules_per_graph: usize,
+    /// Fixed validation budgets for the installed immutable host-to-script
+    /// snapshot. Page code cannot widen these contract limits.
+    pub binding_contract_limits: CoreScriptBindingContractLimits,
 }
 
 impl Default for JavaScriptPageExecutorConfig {
@@ -42,6 +48,7 @@ impl Default for JavaScriptPageExecutorConfig {
             runtime: BlueJsPageRuntimeConfig::default(),
             max_source_bytes_per_module: 1024 * 1024,
             max_modules_per_graph: 128,
+            binding_contract_limits: CoreScriptBindingContractLimits::default(),
         }
     }
 }
@@ -419,7 +426,20 @@ impl JavaScriptPageExecutor {
                     continue;
                 }
             };
-            self.activate_document(tab_id, identity)?;
+            let document_text = page.script_document_text_content();
+            if self.validate_document_text(&document_text).is_err() {
+                self.close_page(tab_id);
+                for declaration in declarations {
+                    self.reject_declaration(
+                        tab_id,
+                        document_generation,
+                        declaration,
+                        "host binding contract rejected the page script",
+                    );
+                }
+                continue;
+            }
+            self.activate_document(tab_id, identity, document_text)?;
             let document_url = page
                 .url()
                 .expect("a live page identity has a URL")
@@ -479,6 +499,7 @@ impl JavaScriptPageExecutor {
         &mut self,
         tab_id: TabId,
         identity: LivePageIdentity,
+        document_text: String,
     ) -> Result<(), JavaScriptPageExecutorError> {
         match self.live_documents.get(&tab_id) {
             Some(current) if current == &identity => {}
@@ -491,8 +512,30 @@ impl JavaScriptPageExecutor {
                 .open_realm(tab_id.as_u64(), identity.origin.clone())
                 .map_err(JavaScriptPageExecutorError::PageRuntime)?,
         }
+        self.runtime
+            .configure_realm_bindings(tab_id.as_u64(), move |bindings| {
+                bindings.install_global_function(
+                    "blueiceDocumentText",
+                    0,
+                    move |arguments: &[HostValue]| {
+                        require_no_arguments(arguments, "blueiceDocumentText")?;
+                        Ok(HostValue::String(document_text.clone().into()))
+                    },
+                )
+            })
+            .map_err(JavaScriptPageExecutorError::PageRuntime)?;
         self.live_documents.insert(tab_id, identity);
         Ok(())
+    }
+
+    fn validate_document_text(&self, document_text: &str) -> Result<(), ()> {
+        core_script_binding_contract("dom.document-text")
+            .expect("the installed document-text binding has a contract inventory entry")
+            .validate_string(
+                document_text,
+                self.config.binding_contract_limits.document_text,
+            )
+            .map_err(|_| ())
     }
 
     fn execute_declaration(
@@ -785,6 +828,16 @@ fn source_hash(source: &str) -> String {
     format!("fnv1a64:{hash:016x}")
 }
 
+fn require_no_arguments(arguments: &[HostValue], function: &str) -> Result<(), HostFunctionError> {
+    if arguments.is_empty() {
+        Ok(())
+    } else {
+        Err(HostFunctionError::new(format!(
+            "{function} requires no arguments"
+        )))
+    }
+}
+
 fn source_identity(module: &AuthorizedJavaScriptModule) -> BlueJsSourceIdentity {
     BlueJsSourceIdentity::new(module.canonical_module_id(), module.source_hash())
         .expect("an authorized JavaScript module has a valid canonical identity and hash")
@@ -930,6 +983,56 @@ mod tests {
                 JavaScriptPageExecutionReport::Executed { .. }
             ]
         ));
+    }
+
+    #[test]
+    fn copied_document_text_binding_executes_and_rejects_arguments() {
+        let (tabs, tab_id) = loaded_tabs(
+            concat!(
+                "<main>current document</main>",
+                "<script>const text = blueiceDocumentText(); text;</script>",
+                "<script>blueiceDocumentText(1);</script>"
+            ),
+            "https://example.test/app/index.html",
+        );
+        let mut executor = JavaScriptPageExecutor::default();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert!(matches!(
+            reports(&mut executor, tab_id).as_slice(),
+            [
+                JavaScriptPageExecutionReport::Executed {
+                    kind: BlueJsPageScriptKind::Classic,
+                    ..
+                },
+                JavaScriptPageExecutionReport::Rejected {
+                    category: "BlueJS page execution failed",
+                    ..
+                }
+            ]
+        ));
+    }
+
+    #[test]
+    fn document_text_contract_rejects_before_javascript_program_admission() {
+        let oversized = "x".repeat(1_048_577);
+        let (tabs, tab_id) = loaded_tabs(
+            &format!("<main>{oversized}</main><script>blueiceDocumentText();</script>"),
+            "https://example.test/app/index.html",
+        );
+        let mut executor = JavaScriptPageExecutor::default();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert!(matches!(
+            reports(&mut executor, tab_id).as_slice(),
+            [JavaScriptPageExecutionReport::Rejected {
+                category: "host binding contract rejected the page script",
+                ..
+            }]
+        ));
+        assert!(executor.realm_stats(tab_id).is_err());
     }
 
     #[test]
