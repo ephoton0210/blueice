@@ -1309,9 +1309,17 @@ impl Vm {
     }
 
     pub(in super::super) fn promise_reject(&mut self, value: Value) -> Result<Value, RuntimeError> {
-        let promise = self.new_promise()?;
-        self.settle_promise(promise, PromiseStatus::Rejected(value))?;
-        Ok(Value::Object(promise))
+        // Allocating the promise can collect, and `value` (typically a freshly
+        // built error object) is not stored anywhere until it is settled.
+        let base = self.stack.len();
+        self.stack.push(value.clone());
+        let promise = self.new_promise();
+        let settled = promise.and_then(|promise| {
+            self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+            Ok(Value::Object(promise))
+        });
+        self.stack.truncate(base);
+        settled
     }
 
     pub(in super::super) fn promise_all_handler(

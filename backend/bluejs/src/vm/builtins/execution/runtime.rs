@@ -1438,8 +1438,12 @@ impl Vm {
                 target,
                 done: self.to_boolean(&done)?,
             })?;
+            // Each later allocation (the other handler, then_promise's derived
+            // promise) can collect, so both handlers stay stack-rooted.
+            self.stack.push(fulfilled.clone());
             let rejected = self
                 .async_from_sync_handler(NativeFunction::AsyncFromSyncReject { target, record })?;
+            self.stack.push(rejected.clone());
             self.promise_then(&value_wrapper, &[fulfilled, rejected])?;
             Ok(Value::Object(target))
         })();
