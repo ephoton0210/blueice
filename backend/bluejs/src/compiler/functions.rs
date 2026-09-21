@@ -501,9 +501,14 @@ impl Compiler {
         // fresh binding unless a formal or a function-body lexical declaration
         // already occupies that name.  A `var arguments` declaration shares
         // this function binding rather than creating another one.
+        //
+        // A body lexical `arguments` suppresses the object only when there are
+        // no parameter expressions (FunctionDeclarationInstantiation step 22):
+        // otherwise the parameter initializers still see it and the body's own
+        // declaration shadows it afterwards.
         let arguments_needed = !arrow
             && !parameters.contains("arguments")
-            && !lexical.iter().any(|(name, _)| name == "arguments");
+            && (parameter_expressions || !lexical.iter().any(|(name, _)| name == "arguments"));
         if parameter_expressions {
             // Parameter expressions must not resolve into body declarations.
             // All parameter cells exist, uninitialized, before the first

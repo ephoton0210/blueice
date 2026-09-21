@@ -1121,3 +1121,27 @@ fn generators_delegate_yield_star_return_runs_outer_finally_before_completing() 
         Ok(Value::Bool(true))
     );
 }
+
+#[test]
+fn parameter_expressions_see_arguments_even_when_the_body_declares_it_lexically() {
+    // FunctionDeclarationInstantiation: a body lexical `arguments` only
+    // suppresses the arguments object when there are no parameter expressions.
+    let mut vm = Vm::default();
+    let run = |vm: &mut Vm, source: &str| vm.execute(&compile(&parse(source).unwrap()).unwrap());
+    assert_eq!(
+        run(&mut vm, "var args; function f(x = args = arguments) { let arguments; } f(); typeof args + args.length"),
+        Ok(Value::String("object0".into()))
+    );
+    assert_eq!(
+        run(&mut vm, "function g(x = arguments.length) { let arguments = 'body'; return x + arguments; } g(undefined, 1, 2)"),
+        Ok(Value::String("3body".into()))
+    );
+    // Without parameter expressions a lexical `arguments` still wins.
+    assert_eq!(
+        run(
+            &mut vm,
+            "function h(a) { let arguments = 'lex'; return arguments; } h(1)"
+        ),
+        Ok(Value::String("lex".into()))
+    );
+}
