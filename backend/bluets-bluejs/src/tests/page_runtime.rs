@@ -81,6 +81,35 @@ fn direct_script_uses_the_page_realms_exact_generation_and_static_metadata() {
 }
 
 #[test]
+fn realm_owner_prunes_classic_script_metadata_as_part_of_navigation() {
+    let artifact = artifact();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    assert_eq!(owner.debug_record_count(), 1);
+    assert_eq!(
+        owner.execute_program(7, &attachment).unwrap(),
+        bluejs::Value::Number(42.0)
+    );
+
+    owner.navigate(7, origin()).unwrap();
+    assert_eq!(owner.debug_record_count(), 0);
+    assert!(matches!(
+        owner.debug_metadata(attachment.handle),
+        Err(DirectDebugAttachmentError::BlueJsProgram(
+            bluejs::BlueJsProgramDebugError::UnknownProgram
+        ))
+    ));
+    assert!(matches!(
+        owner.execute_program(7, &attachment),
+        Err(BridgeError::PageRuntime(
+            bluejs::BlueJsPageRuntimeError::ProgramNotOwnedByRealm { .. }
+        ))
+    ));
+}
+
+#[test]
 fn provenance_mismatch_discards_the_just_installed_page_program() {
     let mut artifact = artifact();
     artifact.bytecode = bluejs::BlueJsProgramV1::Script(bluejs::Program {
@@ -150,6 +179,29 @@ fn direct_module_graph_retains_exact_static_metadata_for_every_page_generation()
     runtime.navigate(7, origin()).unwrap();
     assert_eq!(debug.prune_invalid(runtime.program_registry()), 2);
     assert!(debug.is_empty());
+}
+
+#[test]
+fn realm_owner_prunes_every_graph_record_as_part_of_close() {
+    let graph = module_graph();
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+
+    let attachment = owner.attach_module_graph(&graph, 7, &origin()).unwrap();
+    assert_eq!(owner.debug_record_count(), 2);
+    assert_eq!(
+        owner.execute_module_graph(7, &attachment).unwrap(),
+        bluejs::Value::Number(42.0)
+    );
+
+    assert!(owner.close_realm(7));
+    assert_eq!(owner.debug_record_count(), 0);
+    assert!(matches!(
+        owner.execute_module_graph(7, &attachment),
+        Err(BridgeError::PageRuntime(
+            bluejs::BlueJsPageRuntimeError::UnknownRealm(7)
+        ))
+    ));
 }
 
 #[test]

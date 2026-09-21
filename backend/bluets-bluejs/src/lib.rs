@@ -26,7 +26,7 @@ pub use debug_attachment::{
     DirectDebugAttachmentError, DirectDebugRegistry, DirectDebugRetentionLimits,
     RetainedDirectDebugInfo,
 };
-pub use page_runtime::DirectPageModuleGraphAttachment;
+pub use page_runtime::{DirectPageModuleGraphAttachment, DirectPageRealmOwner};
 
 /// The first directly executable BlueTS-to-BlueJS bridge ABI.
 pub const BLUE_TS_BLUEJS_BRIDGE_ABI_V1: &str = "blue-ts-bluejs-bridge-v1";

@@ -13,6 +13,146 @@
 use super::*;
 use std::collections::BTreeMap;
 
+/// Language-side owner for BlueJS page realms and their static BlueTS debug
+/// records. A host still supplies every tab, origin, source graph, and script
+/// kind, but navigation and close always prune metadata for invalidated
+/// generations together with the realm.
+pub struct DirectPageRealmOwner {
+    runtime: bluejs::BlueJsPageRuntime,
+    debug_registry: DirectDebugRegistry,
+}
+
+impl Default for DirectPageRealmOwner {
+    fn default() -> Self {
+        Self::new(
+            bluejs::BlueJsPageRuntimeConfig::default(),
+            DirectDebugRetentionLimits::default(),
+        )
+        .expect("the default BlueTS page realm owner configuration is valid")
+    }
+}
+
+impl DirectPageRealmOwner {
+    /// Creates an empty owner with explicit page-runtime and static-debug
+    /// limits. It exposes no DOM, IPC, network, or capability bindings.
+    pub fn new(
+        runtime_config: bluejs::BlueJsPageRuntimeConfig,
+        debug_limits: DirectDebugRetentionLimits,
+    ) -> Result<Self, BridgeError> {
+        Ok(Self {
+            runtime: bluejs::BlueJsPageRuntime::new(runtime_config)
+                .map_err(BridgeError::PageRuntime)?,
+            debug_registry: DirectDebugRegistry::new(debug_limits),
+        })
+    }
+
+    /// Opens one caller-authorized page realm.
+    pub fn open_realm(
+        &mut self,
+        tab_id: u64,
+        origin: bluejs::BlueJsPageOrigin,
+    ) -> Result<(), BridgeError> {
+        self.runtime
+            .open_realm(tab_id, origin)
+            .map_err(BridgeError::PageRuntime)
+    }
+
+    /// Replaces one realm after a caller-authorized navigation or reload and
+    /// immediately prunes every invalidated static metadata record.
+    pub fn navigate(
+        &mut self,
+        tab_id: u64,
+        origin: bluejs::BlueJsPageOrigin,
+    ) -> Result<(), BridgeError> {
+        self.runtime
+            .navigate(tab_id, origin)
+            .map_err(BridgeError::PageRuntime)?;
+        self.debug_registry
+            .prune_invalid(self.runtime.program_registry());
+        Ok(())
+    }
+
+    /// Closes a caller-selected realm and prunes static metadata for the
+    /// invalidated generations. Returns false only when the realm was absent.
+    pub fn close_realm(&mut self, tab_id: u64) -> bool {
+        let closed = self.runtime.close_realm(tab_id);
+        self.debug_registry
+            .prune_invalid(self.runtime.program_registry());
+        closed
+    }
+
+    /// Admits one checked classic script and its static metadata together.
+    pub fn attach_script(
+        &mut self,
+        script: &DirectScript,
+        tab_id: u64,
+        origin: &bluejs::BlueJsPageOrigin,
+    ) -> Result<DirectProgramAttachment, BridgeError> {
+        script.attach_debug_in_page_realm(
+            &mut self.runtime,
+            tab_id,
+            origin,
+            &mut self.debug_registry,
+        )
+    }
+
+    /// Admits every checked ESM graph module and its static metadata together.
+    pub fn attach_module_graph(
+        &mut self,
+        graph: &DirectModuleGraph,
+        tab_id: u64,
+        origin: &bluejs::BlueJsPageOrigin,
+    ) -> Result<DirectPageModuleGraphAttachment, BridgeError> {
+        graph.attach_debug_in_page_realm(
+            &mut self.runtime,
+            tab_id,
+            origin,
+            &mut self.debug_registry,
+        )
+    }
+
+    /// Executes one generation that was admitted by this owner.
+    pub fn execute_program(
+        &mut self,
+        tab_id: u64,
+        attachment: &DirectProgramAttachment,
+    ) -> Result<bluejs::Value, BridgeError> {
+        self.runtime
+            .execute_program(tab_id, attachment.handle)
+            .map_err(BridgeError::PageRuntime)
+    }
+
+    /// Executes a graph that was admitted by this owner.
+    pub fn execute_module_graph(
+        &mut self,
+        tab_id: u64,
+        attachment: &DirectPageModuleGraphAttachment,
+    ) -> Result<bluejs::Value, BridgeError> {
+        attachment.execute_in_page_realm(&mut self.runtime, tab_id)
+    }
+
+    /// Returns static metadata only for an exact, currently live generation.
+    pub fn debug_metadata(
+        &self,
+        handle: bluejs::BlueJsProgramHandle,
+    ) -> Result<&RetainedDirectDebugInfo, DirectDebugAttachmentError> {
+        self.debug_registry
+            .get(self.runtime.program_registry(), handle)
+    }
+
+    /// Number of static metadata records whose generations remain live.
+    pub fn debug_record_count(&self) -> usize {
+        self.debug_registry.len()
+    }
+
+    /// Returns bounded resource accounting for one live realm.
+    pub fn realm_stats(&self, tab_id: u64) -> Result<bluejs::BlueJsPageRealmStats, BridgeError> {
+        self.runtime
+            .realm_stats(tab_id)
+            .map_err(BridgeError::PageRuntime)
+    }
+}
+
 /// One direct TypeScript module graph attached to exact live programs in a
 /// single page realm. These are compilation/provenance records, not runtime
 /// module namespaces or debugger scopes.

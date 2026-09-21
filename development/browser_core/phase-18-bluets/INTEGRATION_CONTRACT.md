@@ -64,7 +64,11 @@ creates one module-local `BlueTsDebugInfo` record per live generation: the
 record's source, symbols, and referenced type IDs match that module's
 single-source safe-point map. A rejected record forgets every earlier graph
 record and discards every graph program; it never leaves a partially
-debuggable ESM graph.
+debuggable ESM graph. `DirectPageRealmOwner` owns both the page runtime and
+static registry for a language-side host adapter, and prunes invalid records
+after its navigation/reload and close operations. It has no page discovery,
+DOM binding, transport, cache, or hibernation authority; a real host must
+route those lifecycle events through this owner or enforce the same rule.
 
 ## AST/IR hand-off
 

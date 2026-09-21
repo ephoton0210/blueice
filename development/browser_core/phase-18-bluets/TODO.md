@@ -164,9 +164,11 @@ or second module resolver to bypass them.
   and returns its bytecode charge before it can execute. `DirectModuleGraph`
   now applies the same all-or-cleaned-up admission rule to every closed runtime
   ESM module and executes only those attached canonical module IDs in the tab
-  realm; navigation makes its handles unusable. A host caller for either seam,
-  host-typing enforcement, and lifecycle-driven debug invalidation remain
-  required.
+  realm; navigation makes its handles unusable. `DirectPageRealmOwner` now
+  combines either seam with its static metadata registry and prunes invalid
+  records after its own navigation/reload or close operation. A core/page-host
+  caller must still adopt this owner (or preserve the same invariant), enforce
+  host typings, and drive actual page lifecycle events.
 
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering
@@ -215,9 +217,11 @@ or second module resolver to bypass them.
   `DirectModuleGraph::attach_debug_in_page_realm` now derives a module-local
   static subset (one source, that module's symbols, and their referenced type
   IDs) for every graph generation and rolls back all retained records/programs
-  if any module fails the limit or identity checks. The page host still must
-  call pruning at navigation/reload/cache/hibernation boundaries and add source
-  policy, diagnostics/contracts, debugger IPC, stack locations, and
+  if any module fails the limit or identity checks. `DirectPageRealmOwner`
+  prunes the registry automatically after its navigation/reload and close
+  operations. The page host still must route all actual lifecycle/cache/
+  hibernation events through that owner (or an equivalent invariant) and add
+  source policy, diagnostics/contracts, debugger IPC, stack locations, and
   runtime-value inspection before this item can close.
 
   Acceptance: TS breakpoints, stack locations, scopes, symbol navigation, and
