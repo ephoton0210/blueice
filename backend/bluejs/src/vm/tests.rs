@@ -5,6 +5,46 @@
 use super::*;
 
 #[test]
+fn an_import_that_joins_a_running_graph_leaves_its_roots_with_that_graph() {
+    // While module code runs, its graph's records are parked in
+    // `evaluating_linked` and its root list lives in the evaluation's own
+    // frame, out of an `import()`'s reach. `dep.js` is compiled and linked
+    // only by such a nested import: every root it registers (its two binding
+    // cells and its namespace) must be handed to the graph once the running
+    // evaluation stores it, where a teardown would unroot them, not dropped.
+    let mut vm = Vm::default();
+    vm.set_dynamic_module_sources(HashMap::from([(
+        "t/dep.js".to_string(),
+        "export var x = 1; export var y = 2;".to_string(),
+    )]));
+    vm.evaluating_linked = Some(HashMap::new());
+    vm.execute_module_graph_inner(
+        "t/dep.js",
+        &HashMap::new(),
+        false,
+        true,
+        ImportPhase::Evaluation,
+    )
+    .unwrap();
+    assert!(
+        vm.nested_module_roots.len() >= 3,
+        "the nested load's roots wait for the running graph: {}",
+        vm.nested_module_roots.len()
+    );
+    let linked = vm.evaluating_linked.take().expect("still parked");
+    assert!(linked.contains_key("t/dep.js"));
+    vm.store_module_graph(
+        ModuleGraphState {
+            linked,
+            roots: Vec::new(),
+        },
+        false,
+    );
+    assert!(vm.nested_module_roots.is_empty());
+    assert!(vm.module_graph.as_ref().unwrap().roots.len() >= 3);
+}
+
+#[test]
 fn interpreter_converts_catchable_errors_and_rejects_a_top_level_yield() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();

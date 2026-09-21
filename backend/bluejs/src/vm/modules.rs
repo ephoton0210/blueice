@@ -816,12 +816,19 @@ impl Vm {
     /// Hands the module records back to where `execute_module_graph_inner`
     /// found them: the installed graph, or -- for an import that started
     /// while module code was running -- the parking spot of that evaluation.
-    /// (Roots created for a nested load stay registered for the realm's
-    /// lifetime; only the graph's own list is ever unrooted.)
-    fn store_module_graph(&mut self, state: ModuleGraphState, nested_in_evaluation: bool) {
+    /// A nested load cannot reach the root list of the evaluation it joined,
+    /// so its roots wait in `nested_module_roots` until the graph is next
+    /// installed, which then owns them like every other root of its modules.
+    pub(super) fn store_module_graph(
+        &mut self,
+        mut state: ModuleGraphState,
+        nested_in_evaluation: bool,
+    ) {
         if nested_in_evaluation {
             self.evaluating_linked = Some(state.linked);
+            self.nested_module_roots.append(&mut state.roots);
         } else {
+            state.roots.append(&mut self.nested_module_roots);
             self.module_graph = Some(state);
         }
     }

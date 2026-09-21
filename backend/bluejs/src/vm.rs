@@ -803,6 +803,12 @@ pub struct Vm {
     /// they are parked here so a deferred namespace observed by that code
     /// (or an `import()` it starts) can evaluate a module of the same graph.
     evaluating_linked: Option<HashMap<String, LinkedModule>>,
+    /// Roots registered by an import that joined the graph whose module code
+    /// is running (see `evaluating_linked`). The importing call cannot reach
+    /// that graph's own root list, which the outer evaluation holds, so it
+    /// parks them here; `store_module_graph` hands them to the installed
+    /// graph, which owns every root of its modules.
+    nested_module_roots: Vec<RootId>,
     deferred_import_waiters: Vec<DeferredImportWaiter>,
     /// The asynchronous dependency frontier the last `import.defer()` graph
     /// load evaluated (see `gather_async_dependencies`).
@@ -1033,6 +1039,7 @@ impl Vm {
             module_deferred_namespace_roots: HashMap::new(),
             module_graph: None,
             evaluating_linked: None,
+            nested_module_roots: Vec::new(),
             deferred_import_waiters: Vec::new(),
             last_deferred_dependencies: Vec::new(),
             module_continuations: HashMap::new(),
