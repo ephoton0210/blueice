@@ -607,6 +607,131 @@ fn real_subprocess_keeps_opted_in_inline_bluets_reports_isolated_by_tab() {
 }
 
 #[test]
+fn real_subprocess_reexecutes_opted_in_inline_bluets_for_a_replacement_document() {
+    // A replacement must receive a new page generation and a fresh execution
+    // observation. Drive that lifecycle through the binary so it covers the
+    // fetch, gatekeeper, session, realm-owner, and frontend IPC boundaries.
+    // Keep the Unix-domain socket leaf short enough for macOS's
+    // `sockaddr_un::sun_path` limit.
+    let socket_path = unique_socket_path("ib-repl");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-inline-bluets-replacement-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("ibr-gk");
+
+    let listener_one = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr_one = listener_one.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener_one.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = concat!(
+            "<main>first replacement document</main>",
+            "<script type=\"application/x-blueice-typescript\">",
+            "const text: string = blueiceDocumentText(); text;",
+            "</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    let listener_two = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr_two = listener_two.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener_two.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = concat!(
+            "<main>second replacement document</main>",
+            "<script type=\"application/x-blueice-typescript\">",
+            "const text: string = blueiceDocumentText(); text;",
+            "</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+            "--inline-bluets-profile",
+            "core-script-document-text-v1",
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn blueice-core");
+
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut stream).unwrap();
+
+    for (expected_generation, address) in [(1, addr_one), (2, addr_two)] {
+        blueice_ipc::write_client_message(
+            &mut stream,
+            &blueice_ipc::ClientMessage::Navigate {
+                url: format!("http://{address}"),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut stream).unwrap(),
+            blueice_ipc::ServerMessage::Navigated { .. }
+        ));
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut stream).unwrap(),
+            blueice_ipc::ServerMessage::FrameReady {
+                generation,
+                ..
+            } if generation == expected_generation
+        ));
+
+        blueice_ipc::write_client_message(
+            &mut stream,
+            &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
+        )
+        .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut stream).unwrap(),
+            blueice_ipc::ServerMessage::BlueTsScriptReports(vec![
+                blueice_ipc::BlueTsScriptExecutionReport {
+                    tab_id: 1,
+                    document_generation: expected_generation,
+                    ordinal: 0,
+                    kind: blueice_ipc::BlueTsScriptKind::Classic,
+                    outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
+                },
+            ])
+        );
+    }
+
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(!socket_path.exists());
+    assert!(!frame_dir.exists());
+}
+
+#[test]
 fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contamination() {
     // `phase-16-multi-tab-and-tab-groups/PLAN.md`'s minimal-first-slice
     // proof, one layer up from `session.rs`'s own in-process tests: the

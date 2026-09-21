@@ -526,9 +526,11 @@ or second module resolver to bypass them.
   source-free outcome records after navigation. A second fixture opens and
   navigates a second tab in that same core process, drains each tab's reports
   through tab-addressed IPC, and proves the first drain neither leaks nor
-  discards the second tab's record. Debugger, contracts beyond the two
-  immutable snapshots, resource/policy isolation, reload, and additional
-  multi-tab cases remain required before this item can close.
+  discards the second tab's record. A third fixture replaces one tab's document
+  through two real navigations and observes one newly executed report at each
+  distinct document generation. Full stale-handle invalidation, debugger,
+  contracts beyond the two immutable snapshots, resource/policy isolation, and
+  additional multi-tab cases remain required before this item can close.
 
 - [x] **Make the TypeScript 5.9.3 compatibility oracle a reproducible CI
   gate.** The `typescript-oracle` CI job provisions the exact pinned compiler
