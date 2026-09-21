@@ -1298,6 +1298,17 @@ fn auto_accessor_functions(index: usize, name: Option<&str>) -> (Function, Funct
     (getter, setter)
 }
 
+/// The reference inside a parenthesized destructuring target: `(a)` and `(o.p)`
+/// assign like `a` and `o.p`. The parser keeps the parentheses on a target that
+/// has a default because they switch off anonymous-function naming, which
+/// [`Compiler::assignment_pattern_default`] observes on the unstripped pattern.
+fn strip_target_parentheses(target: &Expr) -> &Expr {
+    match target {
+        Expr::Parenthesized(inner) => strip_target_parentheses(inner),
+        target => target,
+    }
+}
+
 fn is_super_member(expr: &Expr) -> bool {
     matches!(expr, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
 }
