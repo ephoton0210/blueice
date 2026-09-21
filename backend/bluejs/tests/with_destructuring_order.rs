@@ -11,20 +11,27 @@
 
 use blueice_bluejs::{compile, parse, Value, Vm, VmConfig};
 
-fn text(source: &str) -> String {
+fn run(source: &str, nursery_capacity: Option<usize>) -> String {
     let mut config = VmConfig::default();
-    config.heap.nursery_capacity = 1;
-    for config in [VmConfig::default(), config] {
-        let value = Vm::new(config)
-            .unwrap()
-            .execute(&compile(&parse(source).unwrap()).unwrap())
-            .unwrap();
-        match value {
-            Value::String(text) => return text.to_utf8().unwrap(),
-            other => panic!("{source}: expected a string, got {other:?}"),
-        }
+    if let Some(capacity) = nursery_capacity {
+        config.heap.nursery_capacity = capacity;
     }
-    unreachable!()
+    let value = Vm::new(config)
+        .unwrap()
+        .execute(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    match value {
+        Value::String(text) => text.to_utf8().unwrap(),
+        other => panic!("{source}: expected a string, got {other:?}"),
+    }
+}
+
+/// The result of running `source` normally; a one-object nursery (a collection
+/// on nearly every allocation) must agree.
+fn text(source: &str) -> String {
+    let normal = run(source, None);
+    assert_eq!(run(source, Some(1)), normal, "GC-stress mode: {source}");
+    normal
 }
 
 const TRACE: &str = "var log = [];
