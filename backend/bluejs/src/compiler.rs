@@ -1332,25 +1332,42 @@ pub(super) fn has_await_using_declaration(statements: &[Stmt]) -> bool {
         .any(|statement| matches!(statement, Stmt::VarDecl(DeclKind::AwaitUsing, _)))
 }
 
-fn block_lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
+/// The lexical names of a Block. Annex B.3.2.4 lets sloppy code repeat a name
+/// that only ordinary FunctionDeclarations bind (the later declaration
+/// supplies the value); every other repeat stays a duplicate for the caller's
+/// scope to reject.
+fn block_lexical_names(
+    statements: &[Stmt],
+    strict: bool,
+) -> Result<Vec<(String, DeclKind)>, CompileError> {
     let mut names = lexical_names(statements)?;
+    let mut repeatable = BTreeSet::new();
     for statement in statements {
         if let Stmt::FunctionDecl(function) = statement {
-            names.push((
-                function
-                    .name
-                    .clone()
-                    .expect("function declaration has a name"),
-                DeclKind::Let,
-            ));
+            let name = function
+                .name
+                .clone()
+                .expect("function declaration has a name");
+            if !strict && is_annex_b_function(function) && !repeatable.insert(name.clone()) {
+                continue;
+            }
+            names.push((name, DeclKind::Let));
         }
     }
     Ok(names)
 }
 
-fn switch_lexical_names(cases: &[SwitchCase]) -> Result<Vec<(String, DeclKind)>, CompileError> {
+/// The lexical names of a CaseBlock. `validate_switch_case_declarations` has
+/// already rejected every duplicate except Annex B.3.2.5's sloppy repeats of
+/// ordinary function declarations, which share one binding.
+fn switch_lexical_names(
+    cases: &[SwitchCase],
+    strict: bool,
+) -> Result<Vec<(String, DeclKind)>, CompileError> {
+    let mut seen = BTreeSet::new();
     Ok(switch_case_lexical_declarations(cases)?
         .into_iter()
+        .filter(|(name, _, _)| strict || seen.insert(name.clone()))
         .map(|(name, kind, _)| (name, kind))
         .collect())
 }
