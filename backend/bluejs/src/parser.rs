@@ -593,8 +593,11 @@ impl Parser {
         }
     }
 
+    /// `of` written without an escape: the contextual keyword cannot be spelled
+    /// `o\u0066`.
     fn is_contextual_of(&self) -> bool {
         matches!(self.peek(), Token::Identifier(name) if name == "of")
+            && !self.current_identifier_escaped()
     }
 }
 
