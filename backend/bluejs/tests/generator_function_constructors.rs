@@ -3,8 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `%GeneratorFunction%` and `%AsyncGeneratorFunction%` (ECMA-262 27.3, 27.4):
-//! the intrinsic constructors and the prototype objects that link them to
-//! `%GeneratorPrototype%` / `%AsyncGeneratorPrototype%`.
+//! the intrinsic constructors, the prototype objects that link them to
+//! `%GeneratorPrototype%` / `%AsyncGeneratorPrototype%`, and the async
+//! generator methods' handling of a bad receiver or a value whose
+//! PromiseResolve throws.
 
 use blueice_bluejs::{compile, parse, Value, Vm, VmConfig};
 
@@ -136,6 +138,58 @@ fn async_generator_functions_have_their_own_intrinsics() {
           check(seen.join() === "41,42" && r.done, "iteration: " + seen.join());
           finish();
         });
+        "#,
+    );
+}
+
+#[test]
+fn async_generator_methods_reject_instead_of_throwing_for_a_bad_receiver() {
+    check(
+        r#"
+        async function* g() {}
+        var proto = Object.getPrototypeOf(g).prototype;
+        function* sync() {}
+        var pending = [];
+        for (var name of ["next", "return", "throw"]) {
+          for (var bad of [undefined, null, 1, "s", {}, [], function() {}, g, g.prototype, sync(), proto]) {
+            var promise;
+            try { promise = proto[name].call(bad, 1); } catch (e) { check(false, name + " threw synchronously"); continue; }
+            check(promise instanceof Promise, name + " did not return a promise");
+            pending.push(promise.then(function() { check(false, "fulfilled"); }, function(e) { check(e instanceof TypeError, "rejected with a TypeError"); }));
+          }
+        }
+        Promise.all(pending).then(finish);
+        "#,
+    );
+}
+
+#[test]
+fn return_awaits_its_operand_even_for_a_completed_generator() {
+    check(
+        r#"
+        var hostile = Promise.resolve(42);
+        Object.defineProperty(hostile, "constructor", { get() { throw new EvalError("broken promise"); } });
+        var order = [];
+        async function* g() { yield 1; }
+        var done = g();
+        done.next().then(() => done.next()).then(function() {
+          // The generator is completed now.
+          var value = done.return(Promise.resolve("awaited"));
+          order.push("returned");
+          return value.then(function(r) {
+            check(r.value === "awaited" && r.done === true, "completed generator awaits the operand: " + String(r.value));
+            return done.return(hostile);
+          });
+        }).then(function() { check(false, "hostile constructor fulfilled"); }, function(e) {
+          check(e instanceof EvalError, "hostile constructor rejects the request");
+        }).then(function() {
+          // A generator that never started rejects the same way, without running its body.
+          var body = 0;
+          var fresh = (async function*() { body++; })();
+          return fresh.return(hostile).then(() => check(false, "fresh fulfilled"), function(e) {
+            check(e instanceof EvalError && body === 0, "fresh generator: " + body);
+          });
+        }).then(finish);
         "#,
     );
 }

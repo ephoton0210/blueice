@@ -1014,7 +1014,12 @@ impl Vm {
                         PromiseStatus::Fulfilled(self.iterator_result(Value::Undefined, true)?)
                     }
                     AsyncGeneratorCompletion::Return(value) => {
-                        PromiseStatus::Fulfilled(self.iterator_result(value, true)?)
+                        // AsyncGeneratorAwaitReturn: even a completed
+                        // generator awaits the value it is asked to return
+                        // (a rejection or a broken `constructor` rejects
+                        // this request), so it settles on a later turn.
+                        let result = self.iterator_result(value, true)?;
+                        return self.await_async_generator_yield(generator, request.target, result);
                     }
                     AsyncGeneratorCompletion::Throw(value) => PromiseStatus::Rejected(value),
                 };
@@ -1103,9 +1108,24 @@ impl Vm {
         value: Value,
         kind: NativeFunction,
     ) -> Result<Value, RuntimeError> {
-        let generator = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("AsyncGenerator request requires an async generator".into())
-        })?;
+        // AsyncGeneratorValidate failing is not a throw: the method returns a
+        // promise rejected with the TypeError.
+        let generator = match receiver.object_id() {
+            // Anything but a live async generator (including any other kind of
+            // heap object) fails the brand check.
+            Some(generator)
+                if matches!(self.heap.async_generator_control(generator), Ok(Some(_))) =>
+            {
+                generator
+            }
+            _ => {
+                let error = self.error_object(
+                    "TypeError",
+                    "AsyncGenerator request requires an async generator".into(),
+                )?;
+                return self.promise_reject(error);
+            }
+        };
         let base = self.stack.len();
         self.stack.extend([receiver.clone(), value.clone()]);
         let result = (|| {
@@ -1168,7 +1188,16 @@ impl Vm {
             self.set_async_generator_status(generator, AsyncGeneratorStatus::Awaiting)?;
             let value = self.get_property(&Value::Object(result), &"value".into())?;
             self.stack.push(value.clone());
-            let awaited = self.promise_resolve(value)?;
+            // A value whose PromiseResolve throws (a hostile `constructor`
+            // getter) is awaited as an already rejected promise.
+            let awaited = match self.promise_resolve(value) {
+                Ok(promise) => promise,
+                Err(error) => {
+                    let error = self.error_value(error)?;
+                    self.promise_reject(error)?
+                }
+            };
+            self.stack.push(awaited.clone());
             let awaited = awaited
                 .object_id()
                 .expect("Promise.resolve always returns a Promise");
