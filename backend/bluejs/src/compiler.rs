@@ -579,6 +579,7 @@ impl Compiler {
                     name.as_str(),
                     "implements"
                         | "interface"
+                        | "let"
                         | "package"
                         | "private"
                         | "protected"
@@ -1160,6 +1161,31 @@ fn undefined_expression() -> Expr {
     Expr::Unary {
         op: UnaryOp::Void,
         arg: Box::new(Expr::Number(0.0)),
+    }
+}
+
+/// IsAnonymousFunctionDefinition: a function, arrow function or class
+/// expression without its own name, possibly parenthesized.
+fn is_anonymous_function_definition(expression: &Expr) -> bool {
+    match expression {
+        Expr::Parenthesized(inner) => is_anonymous_function_definition(inner),
+        Expr::Function(function) => function.name.is_none(),
+        Expr::Class(class) => class.name.is_none(),
+        Expr::Arrow { .. } => true,
+        _ => false,
+    }
+}
+
+/// The name a literal (non-computed) property key gives an anonymous
+/// function, when it is representable as UTF-8 text.
+fn literal_property_key_name(key: &PropertyKey) -> Option<String> {
+    match key {
+        PropertyKey::Identifier(name) => Some(name.clone()),
+        PropertyKey::String(name) => name.to_utf8().ok(),
+        PropertyKey::Number(number) => crate::primitive::string(&Value::Number(*number))
+            .ok()
+            .and_then(|text| text.to_utf8().ok()),
+        PropertyKey::Computed(_) => None,
     }
 }
 
