@@ -108,3 +108,19 @@ fn delete_of_an_unqualified_global_name_deletes_the_global_property() {
     truthy("let l=1;var r=delete l;r===false&&l===1");
     truthy("var r=delete neverDefined;r===true");
 }
+
+#[test]
+fn a_var_initializer_inside_with_assigns_through_the_with_object() {
+    // §14.3.2.1: the declared name is resolved as a reference before the
+    // initializer runs, so a with object that has the property receives it.
+    truthy("var o={v:'a'};with(o){var v='b'}o.v==='b'&&v===undefined");
+    truthy("var o={};with(o){var w='b'}!('w' in o)&&w==='b'");
+    truthy("var o={v:'a'};with(o){var v}o.v==='a'&&v===undefined");
+    truthy(
+        "var o={x:1,y:2};with(o){var x=10,y=20}o.x===10&&o.y===20&&x===undefined&&y===undefined",
+    );
+    truthy("var o={v:1};with(o){var f=function(){}}f.name==='f'&&!('f' in o)");
+    truthy("var o={f:0};with(o){var f=function(){}}o.f.name==='f'");
+    // The reference is resolved before the initializer can add the property.
+    truthy("var o={};with(o){var z=(o.z='inner',1)}o.z==='inner'&&z===1");
+}

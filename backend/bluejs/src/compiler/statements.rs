@@ -1135,6 +1135,21 @@ impl Compiler {
             {
                 continue;
             }
+            // `var name = init` inside `with`: ResolveBinding(name) runs before
+            // the initializer, so a with object that has the property gets the
+            // assignment and the function-level binding stays untouched.
+            if let (DeclKind::Var, Pattern::Identifier(name), Some(value)) =
+                (kind, &declaration.pattern, &declaration.init)
+            {
+                if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
+                    let index = self.name_constant(name)?;
+                    self.emit(Opcode::ResolveWithReference, index)?;
+                    self.expression_with_name(value, Some(name.as_str()))?;
+                    self.emit(Opcode::StoreWithReference, 0)?;
+                    self.emit(Opcode::Pop, 0)?;
+                    continue;
+                }
+            }
             if let Some(value) = &declaration.init {
                 // "IsAnonymousFunctionDefinition(Initializer)" NamedEvaluation
                 // applies to any `var`/`let`/`const`/`using`/`await using`
