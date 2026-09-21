@@ -304,6 +304,7 @@ fn suspended_generator_references_keep_every_saved_object_visible_to_gc() {
     let pending = heap.alloc_object(None).unwrap();
     let saved = heap.alloc_object(None).unwrap();
     let delegate = heap.alloc_object(None).unwrap();
+    let with_object = heap.alloc_object(None).unwrap();
     let state = GeneratorState::Suspended {
         code: Rc::new(Bytecode::empty()),
         pc: 0,
@@ -330,11 +331,23 @@ fn suspended_generator_references_keep_every_saved_object_visible_to_gc() {
         }),
         home: Some(home),
         callee: Value::Undefined,
+        with_objects: vec![Value::Object(with_object)],
     };
     let references = state.references();
     for object in [
-        stack, binding, this, argument, completion, cell, dynamic, home, iterator, pending, saved,
+        stack,
+        binding,
+        this,
+        argument,
+        completion,
+        cell,
+        dynamic,
+        home,
+        iterator,
+        pending,
+        saved,
         delegate,
+        with_object,
     ] {
         assert!(references.contains(&object));
     }
@@ -356,6 +369,7 @@ fn start_and_completed_generator_states_expose_their_gc_edges() {
         receiver: Value::Object(receiver),
         args: vec![Value::Object(argument)],
         home: Some(home),
+        with_objects: Vec::new(),
     };
     let references = state.references();
     for object in [capture, callee, receiver, argument, home] {
@@ -383,6 +397,7 @@ fn restoring_generator_state_updates_its_managed_byte_charge() {
             receiver: Value::Undefined,
             args: Vec::new(),
             home: None,
+            with_objects: Vec::new(),
         },
     )
     .unwrap();
@@ -489,6 +504,7 @@ fn restoring_generator_state_respects_the_heap_limit() {
                 receiver: Value::Undefined,
                 args: Vec::new(),
                 home: None,
+                with_objects: Vec::new(),
             },
         ),
         Err(HeapError::HeapLimitExceeded { limit: 4_096 })

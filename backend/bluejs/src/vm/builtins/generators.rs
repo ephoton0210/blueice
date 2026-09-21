@@ -17,6 +17,7 @@ impl Vm {
     /// then suspends immediately before body evaluation. This makes a direct
     /// eval in a default parameter observable (including its early errors)
     /// at `generatorFunction()` rather than at the first `.next()`.
+    #[allow(clippy::too_many_arguments)]
     pub(in super::super) fn initialize_generator(
         &mut self,
         code: Rc<Bytecode>,
@@ -25,6 +26,7 @@ impl Vm {
         receiver: Value,
         args: Vec<Value>,
         home: Option<ObjectId>,
+        closure_with_objects: Vec<Value>,
     ) -> Result<GeneratorState, RuntimeError> {
         self.stack.push(receiver.clone());
         let base = self.stack.len();
@@ -34,6 +36,10 @@ impl Vm {
         self.stack.push(self.completion.clone());
         self.stack.push(self.this.clone());
         self.stack.extend(self.arguments.iter().cloned());
+        // The caller's `with` objects stay rooted while the generator's own
+        // (the ones its function closed over) are in scope.
+        self.stack.extend(self.with_objects.iter().cloned());
+        self.stack.extend(closure_with_objects.iter().cloned());
         let frame_base = self.stack.len();
 
         let mut frame_bindings = vec![None; code.bindings.len()];
@@ -75,16 +81,35 @@ impl Vm {
                 })
                 .collect(),
         );
+        let with_objects = std::mem::replace(&mut self.with_objects, closure_with_objects);
+        let inherited_with_depth =
+            std::mem::replace(&mut self.inherited_with_depth, self.with_objects.len());
+        let parameter_eval_env = self.parameter_eval_env.take();
+        let mut entry_error = None;
+        if code.parameter_eval_scope {
+            match self.new_parameter_eval_env() {
+                Ok(env) => {
+                    self.with_objects.push(Value::Object(env));
+                    self.inherited_with_depth = self.with_objects.len();
+                    self.parameter_eval_env = Some(env);
+                }
+                Err(error) => entry_error = Some(error),
+            }
+        }
 
         let mut iterators = Vec::new();
-        let outcome = self.interpret(
-            &code,
-            &mut iterators,
-            0,
-            None,
-            Some(code.generator_entry as usize),
-            None,
-        );
+        let outcome = if let Some(error) = entry_error {
+            Err(error)
+        } else {
+            self.interpret(
+                &code,
+                &mut iterators,
+                0,
+                None,
+                Some(code.generator_entry as usize),
+                None,
+            )
+        };
         let state = match outcome {
             Ok(InterpreterExit::Suspend { pc }) => {
                 debug_assert_eq!(pc, code.generator_entry as usize);
@@ -112,6 +137,7 @@ impl Vm {
                         .collect(),
                     home: std::mem::take(&mut self.home_object),
                     callee: std::mem::replace(&mut self.callee, Value::Undefined),
+                    with_objects: std::mem::take(&mut self.with_objects),
                 })
             }
             Ok(InterpreterExit::Return(_)) | Ok(InterpreterExit::Yield { .. }) => {
@@ -123,6 +149,9 @@ impl Vm {
             Err(error) => Err(error),
         };
 
+        self.with_objects = with_objects;
+        self.inherited_with_depth = inherited_with_depth;
+        self.parameter_eval_env = parameter_eval_env;
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;
@@ -208,6 +237,7 @@ impl Vm {
             frame_variable_scope,
             frame_variable_scope_lexicals,
             frame_dynamic_bindings,
+            frame_with_objects,
         ) = match state {
             GeneratorState::Running => {
                 self.heap
@@ -234,6 +264,7 @@ impl Vm {
                 receiver,
                 args,
                 home,
+                with_objects,
             } => {
                 let mut bindings = vec![None; code.bindings.len()];
                 let variable_scope = code.variable_scope;
@@ -271,6 +302,7 @@ impl Vm {
                     variable_scope,
                     variable_scope_lexicals,
                     HashMap::new(),
+                    with_objects,
                 )
             }
             GeneratorState::Suspended {
@@ -293,6 +325,7 @@ impl Vm {
                 dynamic_bindings,
                 home,
                 callee,
+                with_objects,
             } => {
                 let variable_scope = code.variable_scope;
                 let variable_scope_lexicals = code
@@ -337,6 +370,7 @@ impl Vm {
                             )
                         })
                         .collect(),
+                    with_objects,
                 )
             }
         };
@@ -351,9 +385,22 @@ impl Vm {
         self.stack.push(self.completion.clone());
         self.stack.push(self.this.clone());
         self.stack.extend(self.arguments.iter().cloned());
+        // The resumer's `with` objects stay rooted while the generator's own
+        // are in scope; the frame's stack roots the ones it is resuming with.
+        self.stack.extend(self.with_objects.iter().cloned());
         let frame_base = self.stack.len();
         self.stack.extend(frame_stack.iter().cloned());
+        self.stack.extend(frame_with_objects.iter().cloned());
 
+        let with_objects = std::mem::replace(&mut self.with_objects, frame_with_objects);
+        // The objects the function itself closed over (and its parameter
+        // environment) are inherited; a `with` statement the body is inside
+        // of is not.
+        let inherited_with_depth = std::mem::replace(
+            &mut self.inherited_with_depth,
+            (code.with_depth as usize + usize::from(code.parameter_eval_scope))
+                .min(self.with_objects.len()),
+        );
         let bindings = std::mem::replace(&mut self.bindings, frame_bindings);
         let binding_metadata = std::mem::replace(&mut self.binding_metadata, code.bindings.clone());
         let cells = std::mem::replace(&mut self.cells, frame_cells);
@@ -539,6 +586,7 @@ impl Vm {
                         .collect(),
                     home: std::mem::take(&mut self.home_object),
                     callee: std::mem::replace(&mut self.callee, Value::Undefined),
+                    with_objects: std::mem::take(&mut self.with_objects),
                 };
                 (state, Ok((value, false)))
             }
@@ -610,6 +658,8 @@ impl Vm {
         // swapped-out execution state in place would unbalance the interpreter
         // (for example an empty `dynamic_eval_outer_bindings` stack) on the
         // very next call return.
+        self.with_objects = with_objects;
+        self.inherited_with_depth = inherited_with_depth;
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
         self.cells = cells;

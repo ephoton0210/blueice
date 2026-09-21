@@ -1634,6 +1634,7 @@ impl Vm {
                         .collect(),
                     home: std::mem::take(&mut self.home_object),
                     callee: std::mem::replace(&mut self.callee, Value::Undefined),
+                    with_objects: std::mem::take(&mut self.with_objects),
                 };
                 self.heap.set_generator_state(generator, state)?;
                 ambient.templates.extend(self.templates.clone());

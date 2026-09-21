@@ -558,7 +558,6 @@ impl Compiler {
         // object at call time, so every closure made in the parameters or the
         // body captures it and sees those vars whenever it runs.
         let parameter_eval_scope = !child.bytecode.strict
-            && !function.generator
             && !function.is_async
             && !function.params.iter().all(|param| {
                 !param.rest

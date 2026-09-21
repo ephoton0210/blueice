@@ -99,3 +99,27 @@ fn a_function_called_by_name_inside_with_gets_the_with_object_as_this() {
     truthy("var o={sum(a,b){return a+b}};var r;with(o){r=sum(1,2)}r===3");
     truthy("var x=(function(){return 5});var r;with({}){r=x()}r===5");
 }
+
+#[test]
+fn a_generator_resumes_with_its_own_with_objects_and_leaks_none() {
+    // `with` inside a generator body: the object stays in scope across yields
+    // for the generator only, whoever resumes it.
+    truthy(
+        "var o = { a: 5 }; function* g() { with (o) { yield 0; return a; } }
+         var it = g(); it.next(); var r; with ({ a: 99 }) { r = it.next().value; } r === 5",
+    );
+    truthy(
+        "var seen = []; function* g() { with ({ v: 1 }) { yield v; seen.push(typeof v); yield v + 1; } }
+         var it = g(); var a = it.next().value; var b = it.next().value;
+         a === 1 && b === 2 && typeof v === 'undefined'",
+    );
+    // A generator created inside `with` resolves the object when it runs.
+    truthy(
+        "var o = { v: 'obj' }; var g; with (o) { g = function* () { yield v; }; }
+         g().next().value === 'obj'",
+    );
+    truthy(
+        "var o = { v: 'param' }; var g; with (o) { g = function* (x = v) { yield x; }; }
+         g().next().value === 'param'",
+    );
+}

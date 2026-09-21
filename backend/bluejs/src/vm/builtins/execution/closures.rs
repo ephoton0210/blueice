@@ -119,6 +119,7 @@ impl Vm {
                     receiver,
                     args,
                     home,
+                    with_objects: closure_with_objects,
                 };
                 let generator = self.with_roots(|heap| heap.alloc_generator(state, prototype))?;
                 if async_generator {
@@ -138,6 +139,7 @@ impl Vm {
                         receiver: receiver.clone(),
                         args: args.clone(),
                         home,
+                        with_objects: closure_with_objects.clone(),
                     },
                     prototype,
                 )
@@ -147,8 +149,15 @@ impl Vm {
             }
             let base = self.stack.len();
             self.stack.push(Value::Object(generator));
-            let state =
-                self.initialize_generator(code, captures, callee.clone(), receiver, args, home);
+            let state = self.initialize_generator(
+                code,
+                captures,
+                callee.clone(),
+                receiver,
+                args,
+                home,
+                closure_with_objects,
+            );
             self.stack.truncate(base);
             let state = state?;
             // FunctionDeclarationInstantiation is observable to a parameter

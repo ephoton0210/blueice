@@ -116,3 +116,38 @@ fn strict_code_and_plain_evals_keep_their_behavior() {
     );
     truthy("function f(a = eval('1 + 1')) { return a; } f() === 2");
 }
+
+#[test]
+fn generator_functions_get_the_same_environment() {
+    truthy(
+        "var x = 'outside'; var probe1, probe2, probeBody;
+         function* g(_ = (eval('var x = \"inside\";'), probe1 = function() { return x; }),
+                     __ = probe2 = function() { return x; }) {
+           probeBody = function() { return x; };
+         }
+         g().next();
+         probe1() === 'inside' && probe2() === 'inside' && probeBody() === 'inside'",
+    );
+    truthy(
+        "var x = 'outside'; var probe1, probe2;
+         var g = function*(_ = probe1 = function() { return x; },
+                           ...[__ = (eval('var x = \"inside\";'), probe2 = function() { return x; })]) {};
+         g().next();
+         probe1() === 'inside' && probe2() === 'inside'",
+    );
+    truthy(
+        "var x = 'outside'; var p;
+         var o = { *m(_ = (eval('var x = 5'), p = () => x)) { yield x; } };
+         var it = o.m(); var first = it.next().value; first === 5 && p() === 5",
+    );
+}
+
+#[test]
+fn a_generator_body_keeps_seeing_the_environment_across_yields() {
+    truthy(
+        "var seen = [];
+         function* g(a = eval('var v = 7')) { seen.push(v); yield 1; seen.push(v + 1); yield 2; seen.push(v + 2); }
+         var it = g(); it.next(); it.next(); it.next();
+         seen.join() === '7,8,9'",
+    );
+}
