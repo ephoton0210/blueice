@@ -44,6 +44,21 @@ impl Compiler {
         inferred_name: Option<&str>,
         binding: Option<u32>,
     ) -> Result<(), CompileError> {
+        // Every part of a class, its heritage and computed keys included, is
+        // strict mode code: a function written there is strict even when the
+        // class sits in sloppy code.
+        let outer_strict = std::mem::replace(&mut self.bytecode.strict, true);
+        let result = self.class_definition(class, inferred_name, binding);
+        self.bytecode.strict = outer_strict;
+        result
+    }
+
+    fn class_definition(
+        &mut self,
+        class: &Class,
+        inferred_name: Option<&str>,
+        binding: Option<u32>,
+    ) -> Result<(), CompileError> {
         let private_declarations = class_private_declarations(class)?;
         let private_scope_id = self.next_private_scope;
         self.next_private_scope = self.next_private_scope.saturating_add(1);

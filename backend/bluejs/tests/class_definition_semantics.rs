@@ -260,3 +260,19 @@ fn a_generator_body_sees_undefined_new_target_and_may_eval_it() {
          it.next().value === undefined && it.next().value === undefined && it.next().value === undefined",
     );
 }
+
+#[test]
+fn functions_in_a_class_heritage_or_computed_key_are_strict() {
+    // The class is defined in sloppy code, but all of it is strict code.
+    assert_true(
+        "var D = class extends function() { arguments.callee; } {};
+         let heritageThrows = false, constructThrows = false;
+         try { Object.getPrototypeOf(D).arguments; } catch (e) { heritageThrows = e instanceof TypeError; }
+         try { new D; } catch (e) { constructThrows = e instanceof TypeError; }
+         heritageThrows && constructThrows",
+    );
+    assert_true(
+        "class C { [(function() { return typeof this; })()]() {} }
+         Object.getOwnPropertyNames(C.prototype).includes('undefined')",
+    );
+}
