@@ -912,7 +912,10 @@ impl Vm {
             // GetMethod already observed the delegate's `return` property.
             // The abrupt completion still crosses the outer generator's
             // finally records.  `generator_resume` owns both that cleanup
-            // and the completed-start special case.
+            // and the completed-start special case. The delegate itself is
+            // not closed: unwinding the generator would otherwise ask it for
+            // `return` a second time.
+            self.with_roots(|heap| heap.set(record, "done", Value::Bool(true)))?;
             return self
                 .generator_resume(
                     &Value::Object(generator),

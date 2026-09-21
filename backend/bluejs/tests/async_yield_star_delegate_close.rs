@@ -103,3 +103,36 @@ fn a_throwing_result_getter_is_thrown_at_the_yield_star_site() {
         }
     }
 }
+
+#[test]
+fn a_delegate_without_a_return_method_is_asked_for_it_once() {
+    // GetMethod(iterator, "return") is `undefined` (or null): the return
+    // request unwinds the generator without touching the delegate again.
+    for missing in ["null", "undefined"] {
+        run_both(&format!(
+            "var gets = 0;
+             var inner = {{ [Symbol.asyncIterator]() {{ return this; }},
+               next() {{ return {{ value: 1, done: false }}; }},
+               get return() {{ gets++; return {missing}; }} }};
+             async function* g() {{ yield* inner; }}
+             var it = g();
+             it.next().then(() => it.return(2)).then(r => {{
+               finish(r.value === 2 && r.done === true && gets === 1);
+             }}, () => finish(false));"
+        ));
+    }
+}
+
+#[test]
+fn a_finally_block_still_runs_when_the_delegate_has_no_return_method() {
+    run_both(
+        "var log = [];
+         var inner = { [Symbol.asyncIterator]() { return this; },
+           next() { return { value: 1, done: false }; } };
+         async function* g() { try { yield* inner; } finally { log.push('finally'); } }
+         var it = g();
+         it.next().then(() => it.return('r')).then(r => {
+           finish(r.value === 'r' && r.done === true && log.join() === 'finally');
+         }, () => finish(false));",
+    );
+}
