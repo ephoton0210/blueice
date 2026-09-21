@@ -680,6 +680,12 @@ impl Compiler {
                 }
                 if let Some(value) = value {
                     self.expression(value)?;
+                    if self.bytecode.generator && self.bytecode.async_function {
+                        // In an async generator `return value` awaits `value`
+                        // before completing (§14.10.1); a bare `return` does
+                        // not.
+                        self.emit(Opcode::Await, 0)?;
+                    }
                 } else {
                     self.constant(Value::Undefined)?;
                 }
