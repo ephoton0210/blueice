@@ -242,6 +242,48 @@ impl BlueJsPageRuntime {
         Ok(handle)
     }
 
+    /// Drops one installed program before it executes. The runtime verifies
+    /// tab ownership, releases its root-bytecode charge, and invalidates the
+    /// generation together so a failed higher-level attachment cannot leave an
+    /// unpaired program runnable in a page realm.
+    pub fn discard_program(
+        &mut self,
+        tab_id: u64,
+        handle: BlueJsProgramHandle,
+    ) -> Result<(), BlueJsPageRuntimeError> {
+        let owned = self
+            .realms
+            .get(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+            .programs
+            .contains(&handle);
+        if !owned {
+            return Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id, handle });
+        }
+        let bytecode_bytes = self
+            .registry
+            .get(handle)
+            .map_err(BlueJsPageRuntimeError::ProgramRegistry)?
+            .bytecode()
+            .bytes()
+            .len();
+        let realm = self
+            .realms
+            .get_mut(&tab_id)
+            .expect("the checked realm remains live during one synchronous discard");
+        realm.programs.remove(&handle);
+        realm.bytecode_bytes = realm
+            .bytecode_bytes
+            .checked_sub(bytecode_bytes)
+            .expect("every retained handle has exactly one accounted bytecode charge");
+        let invalidated = self.registry.invalidate(handle);
+        debug_assert!(
+            invalidated,
+            "a realm-owned handle must be live in its registry"
+        );
+        Ok(())
+    }
+
     /// Executes one retained script or module in its owning tab realm. The
     /// program's structured root selects classic-script or module evaluation;
     /// a handle from another tab can never be executed here.
@@ -537,6 +579,33 @@ mod tests {
             })
         );
         assert_eq!(runtime.realm_stats(1).unwrap().program_count, 0);
+    }
+
+    #[test]
+    fn discarding_a_program_releases_ownership_and_bytecode_accounting() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(1, origin()).unwrap();
+        let handle = runtime
+            .install_program(
+                1,
+                &origin(),
+                source("page:///discard.js"),
+                &BlueJsProgramV1::Script(parse("42").unwrap()),
+            )
+            .unwrap();
+        assert!(runtime.realm_stats(1).unwrap().bytecode_bytes > 0);
+
+        runtime.discard_program(1, handle).unwrap();
+        assert_eq!(runtime.realm_stats(1).unwrap().program_count, 0);
+        assert_eq!(runtime.realm_stats(1).unwrap().bytecode_bytes, 0);
+        assert!(matches!(
+            runtime.program_registry().get(handle),
+            Err(BlueJsProgramDebugError::UnknownProgram)
+        ));
+        assert_eq!(
+            runtime.execute_program(1, handle),
+            Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id: 1, handle })
+        );
     }
 
     #[test]

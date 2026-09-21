@@ -45,6 +45,17 @@ those records, enforcing origin and capability policy, and placing its own
 resolver identity in `CompilerOptions::resolver_fingerprint`; the loader does
 not claim that an arbitrary map is an authorized page load.
 
+For the initial direct classic-script slice,
+`DirectScript::attach_in_page_realm` submits the already-lowered
+`BlueJsProgramV1` to `BlueJsPageRuntime` under one caller-authorized tab and
+origin. It then verifies that the live generation has the direct artifact's
+sole canonical source identity and bytecode before publishing provenance or a
+safe-point map. A failed provenance or static-debug attachment MUST discard
+that generation through the page runtime, including its bytecode accounting;
+it MUST NOT leave an executable but unpaired direct program behind. This is a
+host-neutral admission seam only: it neither discovers a page script nor
+activates ESM module graphs, host bindings, or page lifetime automation.
+
 ## AST/IR hand-off
 
 The bridge lowers `new Identifier(args)` directly to BlueJS `New` data, including normal and spread arguments. Constructor members and omitted parentheses remain excluded.

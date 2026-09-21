@@ -155,6 +155,16 @@ or second module resolver to bypass them.
   resolver and compiler fingerprints, submit to the page realm, and invalidate
   it at lifecycle boundaries, so this item remains open.
 
+  The first classic-script realm seam is now available as
+  `DirectScript::attach_in_page_realm` (or its static-metadata variant): it
+  submits the existing `BlueJsProgramV1` to the owned `BlueJsPageRuntime`,
+  checks that the resulting live generation retains the artifact's exact source
+  identity and bytecode, then attaches lowering provenance and verified safe
+  points. A provenance or metadata failure discards the just-installed program
+  and returns its bytecode charge before it can execute. ESM graph admission,
+  a host caller for this seam, host-typing enforcement, and lifecycle-driven
+  invalidation remain required.
+
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering
   failures execute neither the entry nor an affected dependent module; a
