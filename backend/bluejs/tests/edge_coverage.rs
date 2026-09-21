@@ -197,7 +197,8 @@ fn compiler_reports_public_ast_boundaries_without_panicking() {
         body: vec![Stmt::Expr(Expr::Class(blueice_bluejs::Class {
             name: None,
             extends: None,
-            elements: Vec::new()
+            elements: Vec::new(),
+            decorators: Vec::new(),
         }))]
     })
     .is_ok());

@@ -47,7 +47,11 @@ impl AstNodeVisitor {
     fn statement(&mut self, statement: &Stmt, top_level: bool) {
         self.push(BlueJsAstNodeKind::Statement, top_level);
         match statement {
-            Stmt::Empty | Stmt::Break(_) | Stmt::Continue(_) | Stmt::ClassPrivateBrand(_) => {}
+            Stmt::Empty
+            | Stmt::Break(_)
+            | Stmt::Continue(_)
+            | Stmt::ClassPrivateBrand(_)
+            | Stmt::ClassExtraInitializers(_) => {}
             Stmt::Expr(expression) | Stmt::Throw(expression) => self.expression(expression),
             Stmt::Block(statements) => self.statements(statements, false),
             Stmt::VarDecl(_, declarations) => {
@@ -114,7 +118,9 @@ impl AstNodeVisitor {
                     self.statements(&case.consequent, false);
                 }
             }
-            Stmt::Labelled { item, .. } | Stmt::ClassField(item) => self.statement(item, false),
+            Stmt::Labelled { item, .. }
+            | Stmt::ClassField(item)
+            | Stmt::ClassDecoratedField { field: item, .. } => self.statement(item, false),
             Stmt::Return(value) => {
                 if let Some(value) = value {
                     self.expression(value);
@@ -273,19 +279,41 @@ impl AstNodeVisitor {
     }
 
     fn class(&mut self, class: &Class) {
+        for decorator in &class.decorators {
+            self.expression(decorator);
+        }
         if let Some(extends) = &class.extends {
             self.expression(extends);
         }
         for element in &class.elements {
             match element {
-                ClassElement::Method { key, function, .. }
-                | ClassElement::Accessor { key, function, .. } => {
+                ClassElement::Method {
+                    key,
+                    function,
+                    decorators,
+                    ..
+                }
+                | ClassElement::Accessor {
+                    key,
+                    function,
+                    decorators,
+                    ..
+                } => {
+                    for decorator in decorators {
+                        self.expression(decorator);
+                    }
                     self.property_key(key);
                     self.function(function);
                 }
                 ClassElement::Field {
-                    key, initializer, ..
+                    key,
+                    initializer,
+                    decorators,
+                    ..
                 } => {
+                    for decorator in decorators {
+                        self.expression(decorator);
+                    }
                     self.property_key(key);
                     if let Some(initializer) = initializer {
                         self.expression(initializer);

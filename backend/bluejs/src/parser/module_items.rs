@@ -184,14 +184,51 @@ impl Parser {
             .collect())
     }
 
+    /// The class of an `export [default] class` declaration, decorated by
+    /// `leading` (written before `export`) or by decorators right here, but
+    /// not both.
+    fn parse_exported_class(&mut self, leading: Vec<Expr>) -> Result<Class, ParseError> {
+        let mut decorators = leading;
+        if self.check_punct(Punct::At) {
+            if !decorators.is_empty() {
+                return Err(self
+                    .syntax_error("class decorators cannot appear both before and after export"));
+            }
+            decorators = self.parse_decorators()?;
+        }
+        if decorators.is_empty() {
+            self.advance(); // `class`
+            self.parse_class()
+        } else {
+            self.parse_decorated_class(decorators)
+        }
+    }
+
+    /// Whether the export declaration after `export` (with `default` already
+    /// consumed or not) declares a class, the only thing decorators can
+    /// decorate there.
+    fn export_declares_class(&self, after_default: usize) -> bool {
+        let at = |offset: usize| self.peek_at(offset);
+        matches!(at(after_default), Token::Punct(Punct::At))
+            || matches!(at(after_default), Token::Identifier(name) if name == "class")
+    }
+
     pub(super) fn parse_export_declaration(
         &mut self,
+        decorators: Vec<Expr>,
         body: &mut Vec<Stmt>,
         exports: &mut Vec<ExportEntry>,
     ) -> Result<Option<(String, ModuleType)>, ParseError> {
         debug_assert!(self.check_identifier("export"));
         if self.current_identifier_escaped() {
             return Err(self.syntax_error("the export keyword cannot contain an escape"));
+        }
+        if !decorators.is_empty() {
+            let is_default = matches!(self.peek_at(1), Token::Identifier(name) if name == "default")
+                || matches!(self.peek_at(1), Token::Keyword(Keyword::Default));
+            if !self.export_declares_class(if is_default { 2 } else { 1 }) {
+                return Err(self.syntax_error("only a class can be decorated"));
+            }
         }
         self.advance();
         if self.eat_punct(Punct::Star) {
@@ -249,9 +286,8 @@ impl Parser {
                     });
                     (binding, false)
                 }
-                Token::Identifier(name) if name == "class" => {
-                    self.advance();
-                    let class = self.parse_class()?;
+                Token::Identifier(_) | Token::Punct(Punct::At) if self.export_declares_class(0) => {
+                    let class = self.parse_exported_class(decorators)?;
                     if let Some(binding) = class.name.clone() {
                         body.push(Stmt::ClassDecl(class));
                         (binding, false)
@@ -354,9 +390,8 @@ impl Parser {
                 }
                 Stmt::FunctionDecl(function)
             }
-            Token::Identifier(name) if name == "class" => {
-                self.advance();
-                let class = self.parse_class()?;
+            Token::Identifier(_) | Token::Punct(Punct::At) if self.export_declares_class(0) => {
+                let class = self.parse_exported_class(decorators)?;
                 if class.name.is_none() {
                     return Err(self.syntax_error("class declarations require a name"));
                 }

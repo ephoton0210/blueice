@@ -228,12 +228,19 @@ pub struct Function {
 
 /// A class definition with the executable elements currently supported by the
 /// compiler. Private keys share the ordinary key representation with a
-/// `#` prefix; decorators remain outside this AST subset.
+/// `#` prefix.
+///
+/// Decorators (the Stage 3 decorators proposal) are kept as the expressions
+/// written after each `@`, in source order: a `DecoratorMemberExpression`, a
+/// `DecoratorCallExpression` or the inside of a `DecoratorParenthesizedExpression`
+/// (the value the decorator expression produces is what is later called).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     pub name: Option<String>,
     pub extends: Option<Box<Expr>>,
     pub elements: Vec<ClassElement>,
+    /// Decorators before `class`, in source order.
+    pub decorators: Vec<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -242,12 +249,15 @@ pub enum ClassElement {
         key: PropertyKey,
         function: Function,
         is_static: bool,
+        /// Decorators before the element, in source order.
+        decorators: Vec<Expr>,
     },
     Accessor {
         key: PropertyKey,
         function: Function,
         getter: bool,
         is_static: bool,
+        decorators: Vec<Expr>,
     },
     Field {
         key: PropertyKey,
@@ -256,7 +266,9 @@ pub enum ClassElement {
         /// An auto-accessor (`accessor x = 1`): a getter/setter pair backed
         /// by a hidden private field that holds the initializer's value.
         accessor: bool,
+        decorators: Vec<Expr>,
     },
+    /// A static block cannot be decorated.
     StaticBlock(Vec<Stmt>),
 }
 
@@ -449,6 +461,21 @@ pub enum Stmt {
     /// names the hidden lexical binding that holds the declaring class's
     /// private-brand owner.
     ClassPrivateBrand(String),
+    /// Compiler-internal wrapper for a decorated class field (or an
+    /// auto-accessor's hidden storage field). The inner `ClassField` defines
+    /// the field; its initial value first passes through the decorators'
+    /// initializer functions, and the extra initializers the decorators added
+    /// run right after the definition. `record` names the hidden lexical
+    /// binding holding the `[extraInitializers, initializers, ...]` record
+    /// the decorators produced.
+    ClassDecoratedField {
+        field: Box<Stmt>,
+        record: String,
+    },
+    /// Compiler-internal: calls the extra initializers (`record[0]`) the
+    /// decorators of a method or accessor added, with `this` the instance
+    /// being initialized. The string names the hidden record binding.
+    ClassExtraInitializers(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -745,11 +772,67 @@ pub(crate) fn statements_contain_arguments(statements: &[Stmt]) -> bool {
     stmts_contain_super(statements, SuperSearch::Arguments)
 }
 
+/// Whether a direct `eval(...)` call belongs to these parameters' own
+/// evaluation: in a default or a computed key, but not inside a nested
+/// function or arrow, which have environments of their own.
+pub(crate) fn params_contain_direct_eval(params: &[Param]) -> bool {
+    params.iter().any(|param| {
+        pattern_contains_super(&param.pattern, SuperSearch::DirectEval)
+            || param
+                .default
+                .as_ref()
+                .is_some_and(|expr| expr_contains_super(expr, SuperSearch::DirectEval))
+    })
+}
+
+/// Whether an ordinary function's parameters or body can observe the
+/// function's own `arguments` object: a lexical reference to the name (arrow
+/// functions inside it share the object; nested ordinary functions have their
+/// own and are not entered) or a direct `eval`, which can read it by name from
+/// source that only exists at run time. When neither is present the object is
+/// unobservable, so the compiler need not build it on every call.
+pub(crate) fn function_may_observe_arguments(function: &Function) -> bool {
+    let search = SuperSearch::ArgumentsOrEval;
+    function.params.iter().any(|param| {
+        pattern_contains_super(&param.pattern, search)
+            || param
+                .default
+                .as_ref()
+                .is_some_and(|expr| expr_contains_super(expr, search))
+    }) || stmts_contain_super(&function.body, search)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SuperSearch {
     Call,
     Property,
+    /// A lexical `arguments` reference, for the class-field and static-block
+    /// early errors.
     Arguments,
+    /// A direct `eval` call in this function's own parameter list (not in a
+    /// nested function or arrow).
+    DirectEval,
+    /// A lexical `arguments` reference or a direct `eval` call: everything
+    /// that can reach the enclosing function's `arguments` object.
+    ArgumentsOrEval,
+}
+
+impl SuperSearch {
+    /// The searches that look for `arguments` and therefore stop at an
+    /// ordinary function boundary, which has its own binding.
+    fn looks_for_arguments(self) -> bool {
+        matches!(self, Self::Arguments | Self::ArgumentsOrEval)
+    }
+}
+
+/// `eval` written as the callee of a call, possibly parenthesized: the forms
+/// that are direct evals when they name the intrinsic.
+fn is_eval_reference(expr: &Expr) -> bool {
+    match expr {
+        Expr::Identifier(name) => name == "eval",
+        Expr::Parenthesized(expr) => is_eval_reference(expr),
+        _ => false,
+    }
 }
 
 fn stmts_contain_super_call(statements: &[Stmt]) -> bool {
@@ -846,13 +929,14 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
         }
         Stmt::Labelled { item, .. } => stmt_contains_super(item, search),
         Stmt::FunctionDecl(function) | Stmt::ModuleDefaultFunction { function, .. } => {
-            search != SuperSearch::Arguments && function_contains_super(function, search)
+            !search.looks_for_arguments() && function_contains_super(function, search)
         }
         Stmt::ClassDecl(class) => {
-            search == SuperSearch::Arguments && class_contains_arguments(class)
+            search.looks_for_arguments() && class_contains_arguments(class, search)
         }
         Stmt::ClassField(statement) => stmt_contains_super(statement, search),
-        Stmt::ClassPrivateBrand(_) => false,
+        Stmt::ClassDecoratedField { field, .. } => stmt_contains_super(field, search),
+        Stmt::ClassPrivateBrand(_) | Stmt::ClassExtraInitializers(_) => false,
     }
 }
 
@@ -881,7 +965,7 @@ fn for_head_contains_super(head: &ForHead, search: SuperSearch) -> bool {
 }
 
 fn function_contains_super(function: &Function, search: SuperSearch) -> bool {
-    if search == SuperSearch::Arguments {
+    if search.looks_for_arguments() || search == SuperSearch::DirectEval {
         return false;
     }
     function.params.iter().any(|param| {
@@ -977,7 +1061,7 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         | Expr::Super
         | Expr::NewTarget
         | Expr::ImportMeta => false,
-        Expr::Identifier(name) => search == SuperSearch::Arguments && name == "arguments",
+        Expr::Identifier(name) => search.looks_for_arguments() && name == "arguments",
         Expr::Parenthesized(expr) => expr_contains_super(expr, search),
         Expr::Template { expressions, .. } => expressions
             .iter()
@@ -1006,7 +1090,9 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
             }
         }),
         Expr::Function(function) => function_contains_super(function, search),
-        Expr::Class(class) => search == SuperSearch::Arguments && class_contains_arguments(class),
+        Expr::Class(class) => {
+            search.looks_for_arguments() && class_contains_arguments(class, search)
+        }
         Expr::Yield { value, .. } => value
             .as_deref()
             .is_some_and(|expr| expr_contains_super(expr, search)),
@@ -1021,6 +1107,9 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
                     .as_deref()
                     .is_some_and(|expr| expr_contains_super(expr, search))
         }
+        // An arrow function's parameters and body are evaluated in its own
+        // call, so a direct eval there is not this function's.
+        Expr::Arrow { .. } if search == SuperSearch::DirectEval => false,
         Expr::Arrow { params, body, .. } => {
             params.iter().any(|param| {
                 pattern_contains_super(&param.pattern, search)
@@ -1056,6 +1145,10 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         }
         Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
             (search == SuperSearch::Call && matches!(callee.as_ref(), Expr::Super))
+                || (matches!(
+                    search,
+                    SuperSearch::DirectEval | SuperSearch::ArgumentsOrEval
+                ) && is_eval_reference(callee))
                 || expr_contains_super(callee, search)
                 || args.iter().any(|argument| match argument {
                     Argument::Normal(expr) | Argument::Spread(expr) => {
@@ -1085,16 +1178,29 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
     }
 }
 
-fn class_contains_arguments(class: &Class) -> bool {
+fn class_contains_arguments(class: &Class, search: SuperSearch) -> bool {
     class
         .extends
         .as_deref()
-        .is_some_and(expr_contains_arguments)
+        .is_some_and(|expr| expr_contains_super(expr, search))
+        || class
+            .decorators
+            .iter()
+            .any(|expr| expr_contains_super(expr, search))
         || class.elements.iter().any(|element| match element {
-            ClassElement::Method { key, .. }
-            | ClassElement::Accessor { key, .. }
-            | ClassElement::Field { key, .. } => {
-                matches!(key, PropertyKey::Computed(expr) if expr_contains_arguments(expr))
+            ClassElement::Method {
+                key, decorators, ..
+            }
+            | ClassElement::Accessor {
+                key, decorators, ..
+            }
+            | ClassElement::Field {
+                key, decorators, ..
+            } => {
+                decorators
+                    .iter()
+                    .any(|expr| expr_contains_super(expr, search))
+                    || matches!(key, PropertyKey::Computed(expr) if expr_contains_super(expr, search))
             }
             ClassElement::StaticBlock(_) => false,
         })
@@ -1207,7 +1313,8 @@ mod tests {
             &Expr::Class(Class {
                 name: None,
                 extends: None,
-                elements: Vec::new()
+                elements: Vec::new(),
+                decorators: Vec::new(),
             }),
             SuperSearch::Property
         ));
@@ -1521,7 +1628,8 @@ mod tests {
             Class {
                 name: None,
                 extends: None,
-                elements: Vec::new()
+                elements: Vec::new(),
+                decorators: Vec::new(),
             }
         )));
         let property = Expr::Member {

@@ -1614,6 +1614,9 @@ impl Vm {
         if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
             return Ok(None);
         }
+        if self.is_for_in_record(*record)? {
+            return self.for_in_step(*record);
+        }
         let outcome = (|| {
             let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
             let next = self.get_property(&Value::Object(*record), &"next".into())?;
@@ -1658,6 +1661,10 @@ impl Vm {
             return Ok(());
         }
         self.with_roots(|heap| heap.set(id, "done", Value::Bool(true)))?;
+        if self.is_for_in_record(id)? {
+            // A for-in record has no ECMAScript iterator to return.
+            return Ok(());
+        }
         let iterator = self.get_property(record, &"iterator".into())?;
         let close = self.get_method(&iterator, &"return".into())?;
         if close != Value::Undefined {

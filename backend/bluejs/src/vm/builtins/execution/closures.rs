@@ -119,6 +119,7 @@ impl Vm {
                     receiver,
                     args,
                     home,
+                    with_objects: closure_with_objects,
                 };
                 let generator = self.with_roots(|heap| heap.alloc_generator(state, prototype))?;
                 if async_generator {
@@ -138,6 +139,7 @@ impl Vm {
                         receiver: receiver.clone(),
                         args: args.clone(),
                         home,
+                        with_objects: closure_with_objects.clone(),
                     },
                     prototype,
                 )
@@ -147,8 +149,15 @@ impl Vm {
             }
             let base = self.stack.len();
             self.stack.push(Value::Object(generator));
-            let state =
-                self.initialize_generator(code, captures, callee.clone(), receiver, args, home);
+            let state = self.initialize_generator(
+                code,
+                captures,
+                callee.clone(),
+                receiver,
+                args,
+                home,
+                closure_with_objects,
+            );
             self.stack.truncate(base);
             let state = state?;
             // FunctionDeclarationInstantiation is observable to a parameter
@@ -222,6 +231,26 @@ impl Vm {
         let with_objects = std::mem::replace(&mut self.with_objects, closure_with_objects);
         let inherited_with_depth =
             std::mem::replace(&mut self.inherited_with_depth, self.with_objects.len());
+        let parameter_eval_env = self.parameter_eval_env.take();
+        if code.parameter_eval_scope {
+            // Roots: `with_objects` is a root, and so is the callee frame's
+            // stack, which holds the caller's copy until the call returns.
+            let env = match self.new_parameter_eval_env() {
+                Ok(env) => env,
+                Err(error) => {
+                    self.with_objects = with_objects;
+                    self.inherited_with_depth = inherited_with_depth;
+                    self.parameter_eval_env = parameter_eval_env;
+                    self.stack.truncate(base - 1);
+                    return Err(error);
+                }
+            };
+            self.with_objects.push(Value::Object(env));
+            // The environment is nested inside the objects the function was
+            // created in, and the function's own bindings inside it.
+            self.inherited_with_depth = self.with_objects.len();
+            self.parameter_eval_env = Some(env);
+        }
         let frame_dynamic_eval_outer_bindings = self.dynamic_eval_outer_bindings.clone();
         let top_level_module = self.top_level_module;
         let remaining_instructions = self.remaining_instructions;
@@ -305,6 +334,7 @@ impl Vm {
             self.completion_saves = completion_saves;
             self.with_objects = with_objects;
             self.inherited_with_depth = inherited_with_depth;
+            self.parameter_eval_env = parameter_eval_env;
             self.dynamic_eval_outer_bindings = frame_dynamic_eval_outer_bindings;
             self.top_level_module = top_level_module;
             self.remaining_instructions = remaining_instructions;
@@ -315,6 +345,7 @@ impl Vm {
             self.result_root = result_root;
             self.with_objects = with_objects;
             self.inherited_with_depth = inherited_with_depth;
+            self.parameter_eval_env = parameter_eval_env;
         }
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
@@ -342,9 +373,11 @@ impl Vm {
         if let Some((state, awaited)) = suspended_async {
             self.suspend_async_await(state, awaited)?;
         }
+        let mut completion_check_failed = false;
         let result = result.and_then(|value| {
             if construct && !matches!(value, Value::Object(_)) {
                 if code.derived_constructor && value != Value::Undefined {
+                    completion_check_failed = true;
                     return Err(RuntimeError::TypeError(
                         "derived constructor returned a non-object value".into(),
                     ));
@@ -352,6 +385,7 @@ impl Vm {
                 if matches!(constructed, Value::Object(_)) {
                     Ok(constructed)
                 } else {
+                    completion_check_failed = true;
                     Err(RuntimeError::ReferenceError(
                         "derived constructor did not call super()".into(),
                     ))
@@ -360,6 +394,7 @@ impl Vm {
                 Ok(value)
             }
         });
+        self.construct_completion_check_failed = completion_check_failed;
         if !async_function {
             return result;
         }

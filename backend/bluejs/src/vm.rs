@@ -154,8 +154,13 @@ enum Completion {
     Throw(RuntimeError),
     Return(Value),
     TailRecur(Vec<Value>),
+    /// `[callee, this, arguments...]` of a call that replaces this frame.
+    TailCall(Vec<Value>),
     Yield(Value),
-    Jump { cleanup: usize, target: usize },
+    Jump {
+        cleanup: usize,
+        target: usize,
+    },
     Resume(usize),
     Halt(Value),
 }
@@ -190,9 +195,9 @@ impl Completion {
                 Ok(GeneratorPendingCompletion::Jump { cleanup, target })
             }
             Self::Throw(error) => Err(error),
-            Self::Yield(_) | Self::Resume(_) | Self::Halt(_) => Err(RuntimeError::Unsupported(
-                "cannot suspend a generator with an internal completion",
-            )),
+            Self::TailCall(_) | Self::Yield(_) | Self::Resume(_) | Self::Halt(_) => Err(
+                RuntimeError::Unsupported("cannot suspend a generator with an internal completion"),
+            ),
         }
     }
 
@@ -229,6 +234,7 @@ enum CompletionAction {
     Jump(usize),
     Return(Value),
     TailRecur(Vec<Value>),
+    TailCall(Vec<Value>),
     Throw(RuntimeError),
 }
 
@@ -759,6 +765,17 @@ pub struct Vm {
     // Values in suspended finally paths live here rather than in Rust-only
     // handler records, so VM safepoints root them during allocations.
     pending_completions: Vec<Completion>,
+    /// The parameter environment of the running sloppy function while its
+    /// parameter list is being evaluated: the object that receives the `var`s
+    /// a direct eval there declares (`Vm::call_closure` creates it).
+    parameter_eval_env: Option<ObjectId>,
+    /// Set when the async generator run that just yielded did so from a
+    /// `yield*` delegation: the yielded value is forwarded as is instead of
+    /// being awaited like a plain `yield` operand.
+    async_delegated_yield: bool,
+    /// A `TailCall` whose frame has been torn down: `[callee, this, args...]`,
+    /// consumed by the `call_with_target` that ran that frame.
+    pending_tail_call: Option<Vec<Value>>,
     completion_saves: Vec<(Value, bool)>,
     remaining_instructions: u64,
     cells: HashMap<usize, ObjectId>,
@@ -988,6 +1005,19 @@ pub struct Vm {
     /// but `ShadowRealm` needs the callable bit locally when it applies
     /// `GetWrappedValue` before any call can cross its own boundary.
     test262_imported_callables: HashSet<ObjectId>,
+    /// Whether the most recent function [[Construct]] this realm finished
+    /// failed one of the completion checks the specification performs after
+    /// the callee's execution context has been removed (a derived
+    /// constructor returning a non-object or never initializing `this`).
+    /// Those errors belong to the *caller's* realm; a Test262 membrane reads
+    /// the flag to tell them apart from errors raised by the callee's body.
+    construct_completion_check_failed: bool,
+    /// The Test262 realm (a key of `test262_realms`) whose built-in function
+    /// is running in this `Vm` on its behalf, because the function's
+    /// operands live here rather than in its own realm. Fresh objects and
+    /// errors the function creates belong to that realm. Cleared while any
+    /// nested call runs, so callbacks and getters are unaffected.
+    acting_realm: Option<ObjectId>,
     shadow_realm_prototype: Option<ObjectId>,
     shadow_realms: HashMap<ObjectId, ShadowRealmRecord>,
     /// Reverse index from a `ShadowRealm` child's own heap tag back to the
@@ -1046,6 +1076,9 @@ impl Vm {
             active_scope_slots: Vec::new(),
             with_objects: Vec::new(),
             pending_completions: Vec::new(),
+            pending_tail_call: None,
+            async_delegated_yield: false,
+            parameter_eval_env: None,
             completion_saves: Vec::new(),
             remaining_instructions: 0,
             cells: HashMap::new(),
@@ -1144,6 +1177,8 @@ impl Vm {
             test262_foreign_values: HashMap::new(),
             test262_foreign_buffer_mirrors: HashMap::new(),
             test262_imported_callables: HashSet::new(),
+            construct_completion_check_failed: false,
+            acting_realm: None,
             shadow_realm_prototype: None,
             shadow_realms: HashMap::new(),
             shadow_realm_by_heap: HashMap::new(),
@@ -1360,6 +1395,16 @@ impl Vm {
                 "hasInstance",
                 1,
                 NativeFunction::HasInstance,
+            )?;
+            // The decorator-metadata proposal: a class nothing decorated has
+            // `null` metadata, inherited from here.
+            self.define_data(
+                function_prototype,
+                JsSymbol::well_known("metadata"),
+                Value::Null,
+                false,
+                false,
+                false,
             )?;
             self.install_native(
                 function_prototype,
@@ -2033,6 +2078,26 @@ impl Vm {
         construct: bool,
         target: Value,
     ) -> Result<Value, RuntimeError> {
+        let mut result = self.enter_call(callee, receiver, args, construct, target);
+        // A frame that ended in a `TailCall` has already been torn down; its
+        // callee runs here, at the same depth, instead of nesting under it.
+        while let Some(mut call) = self.pending_tail_call.take() {
+            let args = call.split_off(2);
+            let receiver = call.pop().expect("a tail call carries its receiver");
+            let callee = call.pop().expect("a tail call carries its callee");
+            result = self.enter_call(callee, receiver, args, false, Value::Undefined);
+        }
+        result
+    }
+
+    fn enter_call(
+        &mut self,
+        callee: Value,
+        receiver: Value,
+        args: Vec<Value>,
+        construct: bool,
+        target: Value,
+    ) -> Result<Value, RuntimeError> {
         if self.call_depth >= MAX_RECURSIVE_CALL_DEPTH {
             return Err(RuntimeError::RangeError(
                 "maximum call depth exceeded".into(),
@@ -2072,12 +2137,30 @@ impl Vm {
                 .map(|module| self.active_module_name.replace(module))
         });
         self.call_depth += 1;
+        // Whatever this call runs belongs to its own realm, not to the realm a
+        // running native is acting for (see `acting_realm`).
+        let acting_realm = self.acting_realm.take();
         let result = self
             .dispatch_call(callee, receiver, args, construct)
             .and_then(|value| {
                 self.check_string(&value)?;
                 Ok(value)
             });
+        self.acting_realm = acting_realm;
+        // The acting native turns its own unmaterialized language errors into
+        // the acting realm's; create the callee's here so they are not
+        // mistaken for that.
+        let result = match result {
+            Err(
+                error @ (RuntimeError::TypeError(_)
+                | RuntimeError::RangeError(_)
+                | RuntimeError::ReferenceError(_)
+                | RuntimeError::SyntaxError(_)),
+            ) if acting_realm.is_some() => self
+                .error_value(error)
+                .and_then(|value| Err(RuntimeError::Thrown(value))),
+            result => result,
+        };
         self.new_target = previous_target;
         self.new_target_allowed = previous_new_target_allowed;
         if let Some(module) = previous_module {

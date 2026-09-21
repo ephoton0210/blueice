@@ -561,6 +561,49 @@ impl Vm {
         self.heap.delete(binding.cell, "value").map_err(Into::into)
     }
 
+    /// The environment object of a sloppy function whose parameter list has a
+    /// direct eval. It is an ordinary object without prototype, entered like a
+    /// `with` object; the marker property is not a valid identifier, so no
+    /// `var` an eval declares can collide with it. Each own property maps a
+    /// declared name to the cell that holds its value.
+    pub(super) fn new_parameter_eval_env(&mut self) -> Result<ObjectId, RuntimeError> {
+        let env = self.with_roots(|heap| heap.alloc_object(None))?;
+        self.stack.push(Value::Object(env));
+        let marked = self.with_roots(|heap| heap.set(env, "#eval-env", Value::Bool(true)));
+        self.stack.pop();
+        marked?;
+        Ok(env)
+    }
+
+    /// Whether `object` is such an environment (as opposed to a `with` object).
+    pub(super) fn is_parameter_eval_env(&self, object: ObjectId) -> bool {
+        matches!(
+            self.heap.get_own(object, "#eval-env"),
+            Ok(Some(Value::Bool(true)))
+        )
+    }
+
+    /// Whether `name`, which no function or block binding resolves, resolves
+    /// to an eval-created binding, a global binding or a property of the
+    /// global object (the standard globals are created lazily).
+    pub(super) fn unbound_name_resolves(&mut self, name: &str) -> Result<bool, RuntimeError> {
+        if self.dynamic_eval_bindings.contains_key(name)
+            || self
+                .dynamic_eval_outer_bindings
+                .iter()
+                .any(|bindings| bindings.contains_key(name))
+            || self.global_bindings.contains_key(name)
+        {
+            return Ok(true);
+        }
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is an object");
+        self.materialize_lexical_global(global, name)?;
+        self.has_property(global, &name.into())
+    }
+
     /// `delete name` for a name that no function or block binding resolves:
     /// the reference is looked up in eval-created bindings, then the global
     /// Environment Record (§9.1.1.4.7 DeleteBinding). A declarative (`let`,
@@ -833,6 +876,14 @@ impl Vm {
         self.completion_empty = empty;
     }
 
+    /// Whether the running function frame can be replaced by a tail call: it
+    /// is an ordinary (not construct) call made through `call_with_target`,
+    /// which runs the callee once this frame is gone. An arrow is never a
+    /// construct call (its `new.target` is only the one it captured).
+    pub(super) fn frame_can_be_replaced(&self, code: &Bytecode) -> bool {
+        self.call_depth != 0 && (code.arrow || self.new_target == Value::Undefined)
+    }
+
     pub(super) fn resolve_completion(
         &mut self,
         code: &Bytecode,
@@ -884,6 +935,7 @@ impl Vm {
                         }
                     }
                     Completion::TailRecur(args) => CompletionAction::TailRecur(args),
+                    Completion::TailCall(values) => CompletionAction::TailCall(values),
                     Completion::Jump { cleanup, .. } => CompletionAction::Jump(cleanup),
                     Completion::Resume(_) | Completion::Halt(_) | Completion::Yield(_) => {
                         unreachable!("handled above")
@@ -1039,7 +1091,7 @@ impl Vm {
                     Completion::Return(value)
                     | Completion::Yield(value)
                     | Completion::Throw(RuntimeError::Thrown(value)) => std::slice::from_ref(value),
-                    Completion::TailRecur(args) => args,
+                    Completion::TailRecur(args) | Completion::TailCall(args) => args,
                     Completion::Throw(_)
                     | Completion::Jump { .. }
                     | Completion::Resume(_)
@@ -1052,6 +1104,9 @@ impl Vm {
                 self.completion_saves.iter().map(|(value, _)| value),
             );
             push_object_roots(&mut roots, &self.with_objects);
+            if let Some(call) = &self.pending_tail_call {
+                push_object_roots(&mut roots, call);
+            }
             for object in &self.kept_weak_objects {
                 roots.push(*object);
             }
@@ -1342,6 +1397,16 @@ impl Vm {
                 .collect();
             if !self.dynamic_eval_bindings.contains_key(&binding.name) {
                 let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+                if let Some(env) = self.parameter_eval_env {
+                    // Closures made in this function's parameter list or
+                    // body reach the variable through the environment.
+                    self.stack.push(Value::Object(cell));
+                    let recorded = self.with_roots(|heap| {
+                        heap.set(env, binding.name.as_str(), Value::Object(cell))
+                    });
+                    self.stack.pop();
+                    recorded?;
+                }
                 self.dynamic_eval_bindings.insert(
                     binding.name.clone(),
                     DynamicEvalBinding {

@@ -38,6 +38,11 @@ opcodes! {
     UnboundName: 5, 0;
     SetUnboundName: 5, 0;
     DeleteUnboundName: 5, 0;
+    // Strict `name = value` for a name that no binding resolves: resolves the
+    // reference before the right-hand side runs (pushes whether it resolved),
+    // and SetResolvedUnboundName stores through it (stack: flag, value).
+    ResolveUnboundName: 5, 0;
+    SetResolvedUnboundName: 5, 0;
     // `delete name` inside `with`: deletes the property of the innermost with
     // object that has the binding and pushes the result, or pushes `undefined`
     // when no with object has it (the caller then falls back to the binding).
@@ -108,6 +113,11 @@ opcodes! {
     GlobalString: 1, 0;
     GetMethod: 1, MAY_USE_INLINE_CACHE;
     Call: 5, 0;
+    // `return callee(args)` in tail position (§15.10.2). Same stack layout as
+    // Call. Operand: argument count << 1, plus 1 when the callee is spelled
+    // `eval` (a direct eval candidate). The frame is replaced by the callee's
+    // when the current call can be replaced; otherwise it is an ordinary call.
+    TailCall: 5, 0;
     DirectEval: 5, 0;
     Construct: 5, 0;
     Closure: 5, 0;
@@ -136,6 +146,9 @@ opcodes! {
     // `name++` etc. on a `ResolveWithReference` pair. Operand bit 0:
     // decrement; bit 1: prefix.
     UpdateWithReference: 5, 0;
+    // The parameter list has been evaluated: later direct evals declare their
+    // `var`s in the function body's own environment again.
+    EndParameterEvalScope: 1, 0;
     Global: 5, 0;
     ToPropertyKey: 1, 0;
     PreparePropertyReference: 1, MAY_USE_INLINE_CACHE;
@@ -284,6 +297,35 @@ opcodes! {
     BindThisValue: 5, 0;
     // `F, result` -> `result` after InitializeInstanceElements(result, F).
     InitializeInstanceElements: 1, 0;
+    // Decorators. `F` -> `F, metadata`: a fresh metadata object whose
+    // prototype is the superclass's `Symbol.metadata` (or null).
+    CreateMetadata: 1, 0;
+    // `class, metadata` -> nothing: defines `class[Symbol.metadata]`.
+    DefineMetadata: 1, 0;
+    // `list, decorator, receiver` -> `list`: appends the value of one decorator
+    // expression and the `this` value it is called with to a decorator list.
+    PushDecorator: 1, 0;
+    // `F, receiver, function` -> `F`: runs a static field's or static block's
+    // function with `this` = receiver (the decorated class) while its home
+    // object stays F.
+    CallDecoratedStaticElement: 1, 0;
+    // `decorators, name, owner, privateName, value, value2, metadata` ->
+    // `record`: applies one class element's decorators, last to first, and
+    // returns `[extraInitializers, ...]` (the operand encodes the element
+    // kind, `static` and `private`; see `vm/builtins/decorators.rs`).
+    DecorateElement: 5, 0;
+    // `F, decorators, name, metadata` -> `[extraInitializers, F']`.
+    DecorateClass: 1, 0;
+    // `target, key, original, replacement` -> nothing: puts a decorated
+    // method or accessor half back on its class (or private owner) unless a
+    // later element already replaced it. The operand encodes the kind and
+    // whether the name is private.
+    ReplaceClassElement: 5, 0;
+    // `receiver, initializers` -> nothing: calls each with `this` = receiver.
+    RunInitializers: 1, 0;
+    // `value, receiver, initializers` -> `value'`: threads a field's initial
+    // value through each initializer with `this` = receiver.
+    ApplyInitializers: 1, 0;
     DeleteProperty: 1, 0;
     Instanceof: 1, 0;
     In: 1, 0;
@@ -297,6 +339,19 @@ opcodes! {
     // Drop a retained Reference beneath the assignment's expression value.
     // The operand gives the number of stack values encoding that Reference.
     DiscardReference: 5, 0;
+}
+
+/// The operand encoding shared by `DecorateElement` and `ReplaceClassElement`:
+/// bits 0-2 are the element kind, bit 3 is `static` and bit 4 is `private`.
+pub(crate) mod decoration {
+    pub const METHOD: u32 = 0;
+    pub const GETTER: u32 = 1;
+    pub const SETTER: u32 = 2;
+    pub const FIELD: u32 = 3;
+    pub const ACCESSOR: u32 = 4;
+    pub const KIND_MASK: u32 = 7;
+    pub const STATIC: u32 = 8;
+    pub const PRIVATE: u32 = 16;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -461,6 +516,10 @@ pub struct Bytecode {
     /// A closure over such a function captures the with objects that are
     /// active when it is created.
     pub(crate) with_depth: u32,
+    /// A sloppy function whose parameter list contains a direct eval: its
+    /// calls get an environment of their own, outside the parameters, for the
+    /// `var`s such an eval declares (see `Vm::call_closure`).
+    pub(crate) parameter_eval_scope: bool,
     pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
     pub(crate) captures: Vec<u32>,
     /// The immutable name environment binding of a named function expression.
@@ -546,6 +605,7 @@ impl Bytecode {
             new_target_allowed: false,
             import_meta_allowed: false,
             with_depth: 0,
+            parameter_eval_scope: false,
             functions: Vec::new(),
             captures: Vec::new(),
             self_slot: None,

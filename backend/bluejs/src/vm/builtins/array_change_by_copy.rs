@@ -46,7 +46,7 @@ impl Vm {
         if length > MAX_ARRAY_LENGTH {
             return Err(RuntimeError::RangeError("invalid Array length".into()));
         }
-        let prototype = self.array_prototype;
+        let prototype = self.array_create_prototype()?;
         self.with_roots(|heap| heap.alloc_array(length as u32, Some(prototype)))
     }
 

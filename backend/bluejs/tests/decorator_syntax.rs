@@ -1,0 +1,266 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! The decorators grammar (`@` before classes and class elements): what is
+//! accepted, what shape the parser gives it, and what is a SyntaxError.
+
+use blueice_bluejs::{parse, ClassElement, Expr, Stmt};
+
+fn class_of(source: &str) -> blueice_bluejs::Class {
+    let program = parse(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+    match program.body.into_iter().next() {
+        Some(Stmt::ClassDecl(class)) => class,
+        Some(Stmt::Expr(Expr::Class(class))) => class,
+        other => panic!("{source}: expected a class, found {other:?}"),
+    }
+}
+
+fn accepts(source: &str) {
+    parse(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+}
+
+fn rejects(source: &str) {
+    assert!(parse(source).is_err(), "{source} should be a SyntaxError");
+}
+
+#[test]
+fn a_class_declaration_keeps_its_decorators_in_source_order() {
+    let class = class_of("@a @b.c @d(1, 2) @(e + f) class C {}");
+    assert_eq!(class.decorators.len(), 4);
+    assert_eq!(class.decorators[0], Expr::Identifier("a".into()));
+    assert!(matches!(&class.decorators[1], Expr::Member { .. }));
+    assert!(matches!(&class.decorators[2], Expr::Call { args, .. } if args.len() == 2));
+    assert!(matches!(&class.decorators[3], Expr::Parenthesized(_)));
+}
+
+#[test]
+fn a_class_expression_can_be_decorated() {
+    accepts("var C = @dec class {};");
+    accepts("var C = @dec class Named {};");
+    accepts("(@dec class {});");
+    accepts("var f = () => @dec class {};");
+    accepts("var C = @dec1 @dec2 class extends Base {};");
+}
+
+#[test]
+fn class_elements_keep_their_decorators() {
+    let class = class_of(
+        "class C { @a m() {} @b static get g() {} @c set s(v) {} @d f = 1; @e static #p; \
+         @f accessor x; @g static accessor #y = 1; @h @i [k]() {} }",
+    );
+    let counts: Vec<usize> = class
+        .elements
+        .iter()
+        .map(|element| match element {
+            ClassElement::Method { decorators, .. }
+            | ClassElement::Accessor { decorators, .. }
+            | ClassElement::Field { decorators, .. } => decorators.len(),
+            ClassElement::StaticBlock(_) => 0,
+        })
+        .collect();
+    assert_eq!(counts, [1, 1, 1, 1, 1, 1, 1, 2]);
+}
+
+#[test]
+fn decorators_may_share_a_line_with_or_precede_the_element_on_the_next() {
+    accepts("class C { @a @b m() {} }");
+    accepts("class C {\n  @a\n  @b\n  m() {}\n}");
+    accepts("class C { @a\n static\n m() {} }");
+}
+
+#[test]
+fn a_decorator_expression_is_a_member_chain_a_call_or_a_parenthesized_expression() {
+    accepts("class C { @a.b.c.d m() {} }");
+    // Only one argument list: a second `(...)` cannot continue the decorator.
+    rejects("class C { @a.b.c(1)(2) m() {} }");
+}
+
+#[test]
+fn a_decorator_cannot_be_an_arbitrary_expression() {
+    // `@a[b]` is not a member decorator: `[b]` is a computed method key.
+    let class = class_of("class C { @a [b]() {} }");
+    assert!(matches!(
+        &class.elements[0],
+        ClassElement::Method { decorators, .. } if decorators.len() == 1
+    ));
+    rejects("class C { @a?.b m() {} }");
+    rejects("@a`template` class C {}");
+    rejects("@a + b class C {}");
+    rejects("@new A class C {}");
+    rejects("@this.a class C {}");
+    rejects("@1 class C {}");
+    rejects("@ class C {}");
+    rejects("class C { @ m() {} }");
+}
+
+#[test]
+fn a_private_name_is_allowed_after_a_dot_in_a_decorator() {
+    accepts("class C { static #d() {} static { @C.#d class D {} } }");
+    accepts("class C { static #d() {} @C.#d m() {} }");
+}
+
+#[test]
+fn decorators_must_precede_something_decoratable() {
+    rejects("@dec");
+    rejects("@dec;");
+    rejects("@dec function f() {}");
+    rejects("@dec var x;");
+    rejects("@dec {}");
+    rejects("class C { @dec }");
+    rejects("class C { @dec; m() {} }");
+    rejects("class C { @dec static {} }");
+    rejects("class C { @dec constructor() {} }");
+    rejects("class C { @dec 'constructor'() {} }");
+    // A decorated anonymous class is not a declaration.
+    rejects("@dec class {}");
+}
+
+#[test]
+fn the_constructor_can_be_decorated_only_through_the_class() {
+    accepts("@dec class C { constructor() {} }");
+    // A computed key named constructor is an ordinary method.
+    accepts("class C { @dec ['constructor']() {} }");
+}
+
+#[test]
+fn accessor_and_other_contextual_words_are_valid_decorator_names_and_element_names() {
+    accepts("class C { @accessor @get @set @async @await m() {} }");
+    accepts("var yield = () => {}; @yield class C {}");
+    accepts("class C { @a accessor accessor; @a static accessor static; }");
+}
+
+#[test]
+fn yield_and_await_follow_the_surrounding_context_in_a_decorator() {
+    // `yield` is an ordinary identifier in sloppy code but an operator's
+    // keyword in a generator, where `@yield` is not an IdentifierReference.
+    accepts("var yield = () => {}; @yield() class C {}");
+    rejects("function* g() { @yield class C {} }");
+    accepts("function* g() { @(yield) class C {} }");
+    accepts("async function f() { @(await 1) class C {} }");
+}
+
+#[test]
+fn a_class_decorator_list_is_outside_the_strict_class_body() {
+    // The decorator list is outside the class body, so it is sloppy code in a
+    // sloppy script (`yield` and `let` are identifiers there).
+    accepts("@yield class C {}");
+    rejects("'use strict'; @yield class C {}");
+}
+
+#[test]
+fn a_decorated_class_declaration_needs_a_class_after_the_decorators() {
+    rejects("@dec export");
+    rejects("@dec let x");
+}
+
+// ---- Modules: decorators around `export` ----
+
+fn accepts_module(source: &str) {
+    blueice_bluejs::parse_module(source).unwrap_or_else(|error| panic!("{source}: {error:?}"));
+}
+
+fn rejects_module(source: &str) {
+    let error = blueice_bluejs::parse_module(source).expect_err(source);
+    assert!(error.known_syntax, "{source}: {error:?}");
+}
+
+#[test]
+fn decorators_may_come_before_or_after_export() {
+    accepts_module("@dec export class C {}");
+    accepts_module("export @dec class C {}");
+    accepts_module("@dec export default class C {}");
+    accepts_module("@dec export default class {}");
+    accepts_module("export default @dec class C {}");
+    accepts_module("export default @dec class {}");
+    accepts_module("@a @b(1) @(c) export class C {}");
+    accepts_module("@dec class C {} export { C }");
+}
+
+#[test]
+fn exported_decorated_classes_keep_their_decorators() {
+    let module =
+        blueice_bluejs::parse_module("@a export class C {} export default @b @c class {}").unwrap();
+    let decorated: Vec<usize> = module
+        .body
+        .iter()
+        .filter_map(|statement| match statement {
+            Stmt::ClassDecl(class) => Some(class.decorators.len()),
+            Stmt::VarDecl(_, declarations) => match &declarations[0].init {
+                Some(Expr::Class(class)) => Some(class.decorators.len()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(decorated, [1, 2]);
+}
+
+#[test]
+fn decorators_cannot_appear_on_both_sides_of_export() {
+    rejects_module("@a export @b class C {}");
+    rejects_module("@a export default @b class C {}");
+    rejects_module("@a export default @b class {}");
+}
+
+#[test]
+fn only_a_class_can_be_decorated_in_an_export() {
+    rejects_module("@dec export function f() {}");
+    rejects_module("@dec export var x;");
+    rejects_module("@dec export default function f() {}");
+    rejects_module("@dec export default 1;");
+    rejects_module("@dec export { x }; var x;");
+    rejects_module("@dec export * from './m.js';");
+    rejects_module("export @dec function f() {}");
+    rejects_module("export @dec var x;");
+    rejects_module("export default @dec function f() {}");
+    rejects_module("@dec export");
+}
+
+#[test]
+fn a_decorated_exported_class_declaration_needs_a_name_unless_it_is_the_default() {
+    rejects_module("@dec export class {}");
+    rejects_module("export @dec class {}");
+    accepts_module("@dec export default class {}");
+}
+
+#[test]
+fn a_module_level_decorated_class_declaration_needs_a_name() {
+    accepts_module("@dec class C {}");
+    rejects_module("@dec class {}");
+    rejects_module("@dec function f() {}");
+}
+
+#[test]
+fn a_decorator_inside_a_field_initializer_cannot_name_arguments() {
+    // A decorator expression is part of the enclosing class element, so a
+    // class nested in a field initializer keeps `arguments` out of its own.
+    rejects("class C { x = class { @arguments m() {} }; }");
+    rejects("class C { x = @arguments class {}; }");
+    accepts("class C { x = class { @a m() {} }; }");
+    accepts("function f() { class C { @arguments m() {} } }");
+}
+
+#[test]
+fn decorators_come_before_every_modifier_of_the_element() {
+    rejects("class C { static @dec m() {} }");
+    rejects("class C { async @dec m() {} }");
+    rejects("class C { get @dec x() {} }");
+    rejects("class C { set @dec x(v) {} }");
+    rejects("class C { accessor @dec x; }");
+    rejects("class C { * @dec g() {} }");
+    accepts("class C { @dec static async *g() {} }");
+    accepts("class C { @dec static accessor x; }");
+    accepts("class C { @dec get x() { return 1; } @dec set x(v) {} }");
+}
+
+#[test]
+fn a_decorated_element_named_accessor_is_an_ordinary_field() {
+    let class = class_of("class C { @dec accessor\n x; }");
+    // `accessor` followed by a line break is a field of that name, then `x`.
+    assert_eq!(class.elements.len(), 2);
+    assert!(matches!(
+        &class.elements[0],
+        ClassElement::Field { accessor: false, decorators, .. } if decorators.len() == 1
+    ));
+}

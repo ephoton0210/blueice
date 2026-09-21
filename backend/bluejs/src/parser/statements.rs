@@ -60,6 +60,15 @@ impl Parser {
                 }
                 Ok(Stmt::ClassDecl(class))
             }
+            // A decorated class declaration.
+            Token::Punct(Punct::At) => {
+                let decorators = self.parse_decorators()?;
+                let class = self.parse_decorated_class(decorators)?;
+                if class.name.is_none() {
+                    return Err(self.syntax_error("class declarations require a name"));
+                }
+                Ok(Stmt::ClassDecl(class))
+            }
             Token::Identifier(name) if name == "using" && self.using_declaration_follows() => {
                 self.parse_var_decl_stmt(DeclKind::Using)
             }
