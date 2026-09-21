@@ -14,6 +14,7 @@ from run import (
     FINITE_STRESS_FIXTURES,
     FINITE_STRESS_INSTRUCTION_BUDGET,
     FINITE_STRESS_TIMEOUT,
+    LARGE_FIXTURE_RESOURCES,
     ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT,
     TEMPORAL_CALENDAR_TABLE_FIXTURES,
     TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET,
@@ -31,6 +32,7 @@ from run import (
     case_timeout,
     classify,
     default_jobs,
+    large_fixture_limits,
     execution_source,
     format_progress,
     instruction_budget,
@@ -201,6 +203,72 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(
             instruction_budget({}, 20_000_000, relative), 20_000_000
         )
+
+    def test_large_finite_fixtures_get_exact_path_resource_allowances(self):
+        # Each of these fixtures is finite but bigger than the default 1 MiB
+        # string, 16 MiB heap (which also caps an ArrayBuffer), dispatch or
+        # wall-clock ceiling. The allowances are about 3-4x the measured
+        # minimum, exact-path only and never unlimited.
+        mib = 1024 * 1024
+        self.assertEqual(
+            LARGE_FIXTURE_RESOURCES,
+            {
+                "staging/sm/extensions/dataview.js": {"heap_limit": 64 * mib},
+                "staging/sm/String/unicode-braced.js": {"string_limit": 128 * mib},
+                "staging/sm/RegExp/unicode-braced.js": {
+                    "string_limit": 128 * mib,
+                    "heap_limit": 128 * mib,
+                    "timeout": 20,
+                },
+                "staging/sm/RegExp/unicode-class-braced.js": {
+                    "string_limit": 128 * mib,
+                    "heap_limit": 128 * mib,
+                    "timeout": 20,
+                },
+                "staging/sm/regress/regress-610026.js": {
+                    "string_limit": 64 * mib,
+                    "heap_limit": 128 * mib,
+                    "instruction_budget": 100_000_000,
+                    "timeout": 90,
+                },
+            },
+        )
+        # Dispatch budget and wall deadline follow the table, and only for
+        # the entries that name them.
+        long_running = "staging/sm/regress/regress-610026.js"
+        self.assertEqual(instruction_budget({}, 100_000, long_running), 100_000_000)
+        self.assertEqual(case_timeout({}, 2, long_running), 90)
+        braced = "staging/sm/RegExp/unicode-braced.js"
+        self.assertEqual(instruction_budget({}, 100_000, braced), 100_000)
+        self.assertEqual(case_timeout({}, 2, braced), 20)
+        dataview = "staging/sm/extensions/dataview.js"
+        self.assertEqual(instruction_budget({}, 100_000, dataview), 100_000)
+        self.assertEqual(case_timeout({}, 2, dataview), 2)
+        # The byte limits go to the adapter with the request.
+        self.assertEqual(large_fixture_limits(dataview), {"heap_limit": 64 * mib})
+        self.assertEqual(
+            large_fixture_limits("staging/sm/String/unicode-braced.js"),
+            {"string_limit": 128 * mib},
+        )
+        self.assertEqual(
+            large_fixture_limits(long_running),
+            {"string_limit": 64 * mib, "heap_limit": 128 * mib},
+        )
+        self.assertEqual(large_fixture_limits("staging/sm/regress/regress-610025.js"), {})
+        # A larger default is never reduced.
+        self.assertEqual(instruction_budget({}, 200_000_000, long_running), 200_000_000)
+        self.assertEqual(case_timeout({}, 120, long_running), 120)
+        # Neighbouring and same-named paths keep every default.
+        for sibling in (
+            "staging/sm/regress/regress-610025.js",
+            "staging/sm/RegExp/unicode-lead-trail.js",
+            "staging/sm/extensions/dataview2.js",
+            "built-ins/DataView/extensions/dataview.js",
+            "test/staging/sm/regress/regress-610026.js",
+        ):
+            self.assertNotIn(sibling, LARGE_FIXTURE_RESOURCES)
+            self.assertEqual(instruction_budget({}, 100_000, sibling), 100_000)
+            self.assertEqual(case_timeout({}, 2, sibling), 2)
 
     def test_wall_clock_busy_wait_fixture_gets_an_exact_path_dispatch_allowance(self):
         # await-import-evaluation_FIXTURE.js spins `while (true)` until
