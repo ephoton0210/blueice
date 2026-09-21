@@ -55,6 +55,7 @@ mod compiler;
 mod heap;
 mod intl;
 mod native;
+mod page_runtime;
 mod parser;
 mod primitive;
 mod program_abi;
@@ -74,6 +75,10 @@ pub use compiler::{
     compile, compile_module, compile_module_with_limit, compile_with_limit, CompileError,
 };
 pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
+pub use page_runtime::{
+    BlueJsPageOrigin, BlueJsPageRealmStats, BlueJsPageRuntime, BlueJsPageRuntimeConfig,
+    BlueJsPageRuntimeError, BLUEJS_PAGE_RUNTIME_ABI_V1,
+};
 pub(crate) use parser::parse_eval;
 pub use parser::{parse, parse_module, ParseError};
 pub use program_abi::{BlueJsProgramV1, BLUEJS_PROGRAM_ABI_V1};

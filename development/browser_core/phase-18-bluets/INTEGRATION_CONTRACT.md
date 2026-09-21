@@ -16,6 +16,7 @@ The keywords **MUST**, **MUST NOT**, **SHOULD**, and **MAY** express the contrac
 | Lowered program hand-off | `bluejs-program-v1` | BlueJS ABI, BlueTS lowering adapter | Major/version mismatch rejects before VM compilation. |
 | BlueTS static debug metadata | `blue-ts-debug-v1` | BlueTS | May be consumed without a VM; it has no bytecode offsets. |
 | Bytecode safe-point map | `bluejs-safe-point-map-v1` | BlueJS ABI, bridge | It is valid only for the exact generated program. |
+| Page-realm lifecycle | `bluejs-page-runtime-v1` | BlueJS host foundation | A handle belongs to one caller-authorized tab/origin realm and expires on navigation/reload/close. |
 | Host typings manifest | `blueice-host-typings-v1` | Page-script host | Compiler and host schema hashes MUST match in direct-page mode. |
 
 Every direct-page compile request MUST carry all of the following:
@@ -200,7 +201,7 @@ Adding a host API is additive only when it preserves existing binding IDs and de
 
 The first structured classic-script and resolver-preserving module-graph bridge has landed. Direct-page activation remains gated on its owner providing:
 
-1. Public, tested BlueJS node IDs, code-unit IDs and safe-point validation APIs for the page/module AST surface.
+1. Integrate the shipped public, tested BlueJS node IDs, code-unit IDs, and safe-point validation APIs into the process-owned page host and native debugger channel. `BlueJsPageRuntime` already validates them for the exact live tab-owned generation, but it does not expose a debugger wire protocol or pause execution.
 2. Bridge conformance fixtures extending the shipped no-emitted-JavaScript-reparse proof to exact origin/module preservation and deterministic bytecode-map ordering.
 3. A host schema generator proving each generated `lib.blueice.d.ts` binding exists in the corresponding feature profile and that an absent binding is rejected by both checker and host. The generator, profile catalog, byte-exact manifest validator, and deliberately empty initial fixture are shipped; matching BlueJS bindings and direct-page compiler enforcement are still required.
 4. Debugger tests for breakpoint binding, step/exception locations, stale-map rejection and the distinction between a static TypeScript type and a runtime BlueJS value.
