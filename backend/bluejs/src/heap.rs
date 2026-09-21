@@ -370,6 +370,10 @@ pub(crate) enum GeneratorState {
         home: Option<ObjectId>,
         callee: Value,
     },
+    /// The frame is executing: its state has moved into the interpreter, and
+    /// GeneratorValidate makes a re-entrant `next`/`return`/`throw` a
+    /// TypeError. Whatever the run ends with (yield or completion) replaces it.
+    Running,
     Done,
 }
 
@@ -489,7 +493,7 @@ impl GeneratorState {
             Self::Start { args, .. } => {
                 reference_bytes + args.iter().map(Value::payload_bytes).sum::<usize>()
             }
-            Self::Done => reference_bytes,
+            Self::Done | Self::Running => reference_bytes,
         }
     }
 
@@ -552,7 +556,7 @@ impl GeneratorState {
                 );
                 references
             }
-            Self::Done => Vec::new(),
+            Self::Done | Self::Running => Vec::new(),
         }
     }
 }

@@ -186,6 +186,14 @@ impl Heap {
         Ok(*std::mem::replace(state, Box::new(GeneratorState::Done)))
     }
 
+    /// Whether `object` carries generator internal slots (sync or async).
+    pub(crate) fn is_generator(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(
+            self.object(object)?.kind,
+            ObjectKind::Generator { .. }
+        ))
+    }
+
     pub(crate) fn generator_state_is_done(&self, object: ObjectId) -> Result<bool, HeapError> {
         let ObjectKind::Generator { state, .. } = &self.object(object)?.kind else {
             return Err(HeapError::InvalidObject(object));

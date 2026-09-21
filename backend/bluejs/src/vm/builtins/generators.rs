@@ -4,6 +4,14 @@
 
 use super::*;
 
+/// How a synchronous `yield*` delegate answered `next`, `throw` or `return`.
+enum SyncDelegateStep {
+    /// The delegate is not finished: its own result object is yielded as is.
+    Yield(Value),
+    /// The delegate finished with this value.
+    Done(Value),
+}
+
 impl Vm {
     /// Generator function invocation performs parameter initialization now,
     /// then suspends immediately before body evaluation. This makes a direct
@@ -131,6 +139,20 @@ impl Vm {
         state
     }
 
+    /// GeneratorValidate's brand check: the receiver of `next`, `return` and
+    /// `throw` must be a generator object.
+    pub(in super::super) fn generator_validate(
+        &self,
+        receiver: &Value,
+    ) -> Result<(), RuntimeError> {
+        match receiver {
+            Value::Object(id) if self.heap.is_generator(*id)? => Ok(()),
+            _ => Err(RuntimeError::TypeError(
+                "Generator method called on an incompatible receiver".into(),
+            )),
+        }
+    }
+
     pub(in super::super) fn generator_next(
         &mut self,
         receiver: &Value,
@@ -179,6 +201,13 @@ impl Vm {
             frame_variable_scope_lexicals,
             frame_dynamic_bindings,
         ) = match state {
+            GeneratorState::Running => {
+                self.heap
+                    .set_generator_state(*generator, GeneratorState::Running)?;
+                return Err(RuntimeError::TypeError(
+                    "Generator is already running".into(),
+                ));
+            }
             GeneratorState::Done => {
                 self.heap
                     .set_generator_state(*generator, GeneratorState::Done)?;
@@ -303,6 +332,8 @@ impl Vm {
                 )
             }
         };
+        self.heap
+            .set_generator_state(*generator, GeneratorState::Running)?;
 
         let base = self.stack.len();
         let remaining_instructions = self.remaining_instructions;
@@ -413,6 +444,9 @@ impl Vm {
             )
         };
         let mut suspended_async = None;
+        // A `yield*` over a synchronous delegate yields the delegate's own
+        // result object, which is returned without wrapping it again.
+        let mut yielded_delegate_result = false;
 
         let (next_state, result) = match outcome {
             Ok(InterpreterExit::Return(value)) => {
@@ -458,6 +492,7 @@ impl Vm {
                                 exit_pc: *exit_pc as usize,
                             })
                     });
+                yielded_delegate_result = delegate.is_some();
                 let state = GeneratorState::Suspended {
                     code,
                     pc,
@@ -574,6 +609,9 @@ impl Vm {
             return Ok(Value::Undefined);
         }
         let (value, done) = result?;
+        if yielded_delegate_result {
+            return Ok(value);
+        }
         self.iterator_result(value, done)
     }
 
@@ -603,33 +641,43 @@ impl Vm {
         Some((delegate.record.clone(), delegate.exit_pc))
     }
 
-    /// Finish a delegate method that returned an iterator result. A live
-    /// result is exposed directly; a completed result resumes the outer frame
-    /// after its compiler-recorded `yield*` loop.
-    pub(in super::super) fn finish_sync_generator_delegate(
-        &mut self,
-        receiver: &Value,
-        result: Value,
-        return_completion: Option<Value>,
-    ) -> Result<Value, RuntimeError> {
-        let Value::Object(generator) = receiver else {
-            return Err(RuntimeError::TypeError(
-                "Generator request requires a generator".into(),
-            ));
-        };
+    /// Classifies the result a synchronous `yield*` delegate returned from
+    /// `next`, `throw` or `return`: `IteratorComplete`, then `IteratorValue`
+    /// only for a finished delegate. A live result is handed on unchanged (the
+    /// spec's `GeneratorYield(innerResult)`), so its own `value` is never read
+    /// and the caller of the outer generator sees the delegate's own object.
+    fn sync_delegate_step(&mut self, result: Value) -> Result<SyncDelegateStep, RuntimeError> {
         if !matches!(result, Value::Object(_)) {
-            let error =
-                RuntimeError::TypeError("yield* delegate method must return an object".into());
-            return self.generator_resume(receiver, None, None, Some(Completion::Throw(error)));
+            return Err(RuntimeError::TypeError(
+                "yield* delegate method must return an object".into(),
+            ));
         }
-        let done = self.get_property(&result, &"done".into())?;
-        let value = self.get_property(&result, &"value".into())?;
-        if !self.to_boolean(&done)? {
-            return self.iterator_result(value, false);
-        }
-        let mut state = self.heap.take_generator_state(*generator)?;
-        let Some((_, exit)) = Self::sync_yield_star_delegate(&state) else {
-            self.heap.set_generator_state(*generator, state)?;
+        self.stack.push(result.clone());
+        let step = (|| {
+            let done = self.get_property(&result, &"done".into())?;
+            if self.to_boolean(&done)? {
+                self.get_property(&result, &"value".into())
+                    .map(SyncDelegateStep::Done)
+            } else {
+                Ok(SyncDelegateStep::Yield(result.clone()))
+            }
+        })();
+        self.stack.pop();
+        step
+    }
+
+    /// Completes the delegation after a finished delegate: the outer frame
+    /// resumes after its compiler-recorded `yield*` loop with the delegate's
+    /// final value as the expression's result, and the delegate is no longer
+    /// an active iterator to close.
+    fn finish_sync_delegation(
+        &mut self,
+        generator: ObjectId,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        let mut state = self.heap.take_generator_state(generator)?;
+        let Some((record, exit)) = Self::sync_yield_star_delegate(&state) else {
+            self.heap.set_generator_state(generator, state)?;
             return Err(RuntimeError::Unsupported(
                 "lost synchronous yield* delegation state",
             ));
@@ -638,6 +686,7 @@ impl Vm {
             pc,
             stack,
             delegate,
+            iterators,
             ..
         } = &mut state
         else {
@@ -645,19 +694,22 @@ impl Vm {
         };
         *pc = exit;
         *delegate = None;
+        iterators.retain(|active| active != &record);
         *stack
             .last_mut()
             .expect("yield* delegation keeps its iterator record") = value;
-        self.heap.set_generator_state(*generator, state)?;
-        if let Some(value) = return_completion {
-            self.generator_resume(receiver, None, None, Some(Completion::Return(value)))
-        } else {
-            self.generator_next(receiver, None, None)
+        self.heap.set_generator_state(generator, state)?;
+        if let Value::Object(record) = record {
+            self.with_roots(|heap| heap.set(record, "done", Value::Bool(true)))?;
         }
+        Ok(())
     }
 
     /// Forward an ordinary generator's `return()` through a suspended `yield*`
-    /// delegate. `None` means that this is an ordinary yield boundary.
+    /// delegate. `None` means that this is an ordinary yield boundary (or that
+    /// the delegate has no `return` method). Every abrupt step of the delegate
+    /// protocol is thrown inside the generator, where its own handlers can
+    /// observe it, rather than out of the `return()` call.
     pub(in super::super) fn generator_delegate_return(
         &mut self,
         receiver: &Value,
@@ -672,18 +724,61 @@ impl Vm {
             return Ok(None);
         };
         self.heap.set_generator_state(generator, state)?;
-        let iterator = self.get_property(&record, &"iterator".into())?;
-        let method = self.get_method(&iterator, &"return".into())?;
-        if method == Value::Undefined {
-            return Ok(None);
-        }
-        let result = self.call_native(method, iterator, vec![value.clone()], false);
-        Ok(Some(match result {
-            Ok(result) => self.finish_sync_generator_delegate(receiver, result, Some(value)),
-            Err(error) => {
-                self.generator_resume(receiver, None, None, Some(Completion::Throw(error)))
+        let base = self.stack.len();
+        self.stack.push(value.clone());
+        let step = (|| {
+            let iterator = self.get_property(&record, &"iterator".into())?;
+            self.stack.push(iterator.clone());
+            let method = self.get_method(&iterator, &"return".into())?;
+            if method == Value::Undefined {
+                return Ok(None);
             }
-        }))
+            let result = self.call_native(method, iterator, vec![value.clone()], false)?;
+            self.sync_delegate_step(result).map(Some)
+        })();
+        self.stack.truncate(base);
+        Ok(match step {
+            Ok(None) => {
+                // The return completion leaves the generator directly, so
+                // the frame must not close the delegate a second time.
+                if let Value::Object(record) = record {
+                    self.with_roots(|heap| heap.set(record, "done", Value::Bool(true)))?;
+                }
+                None
+            }
+            Ok(Some(SyncDelegateStep::Yield(result))) => Some(Ok(result)),
+            Ok(Some(SyncDelegateStep::Done(inner))) => {
+                self.stack.push(inner.clone());
+                self.finish_sync_delegation(generator, inner.clone())?;
+                let result =
+                    self.generator_resume(receiver, None, None, Some(Completion::Return(inner)));
+                self.stack.pop();
+                Some(result)
+            }
+            Err(error) => Some(self.throw_into_generator(receiver, &record, error)),
+        })
+    }
+
+    /// Resumes a suspended generator with the throw completion an abrupt step
+    /// of its `yield*` delegate protocol produced. The delegate is not closed
+    /// again by the unwinding frame, and the thrown value stays rooted while
+    /// the generator's handlers run.
+    fn throw_into_generator(
+        &mut self,
+        receiver: &Value,
+        record: &Value,
+        error: RuntimeError,
+    ) -> Result<Value, RuntimeError> {
+        let base = self.stack.len();
+        self.root_thrown(&error);
+        let result = (|| {
+            if let Value::Object(record) = record {
+                self.with_roots(|heap| heap.set(*record, "done", Value::Bool(true)))?;
+            }
+            self.generator_resume(receiver, None, None, Some(Completion::Throw(error)))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super) fn generator_throw(
@@ -705,23 +800,34 @@ impl Vm {
             );
         };
         self.heap.set_generator_state(generator, state)?;
-        let iterator = self.get_property(&record, &"iterator".into())?;
-        let method = self.get_method(&iterator, &"throw".into())?;
-        if method == Value::Undefined {
-            return self.generator_resume(
-                receiver,
-                None,
-                None,
-                Some(Completion::Throw(RuntimeError::TypeError(
+        let base = self.stack.len();
+        self.stack.push(value.clone());
+        let step = (|| {
+            let iterator = self.get_property(&record, &"iterator".into())?;
+            self.stack.push(iterator.clone());
+            let method = self.get_method(&iterator, &"throw".into())?;
+            if method == Value::Undefined {
+                // A delegate that cannot take the throw still gets to clean
+                // up; the protocol violation is thrown once it has.
+                self.iterator_close(&record)?;
+                return Err(RuntimeError::TypeError(
                     "yield* iterator does not provide a throw method".into(),
-                ))),
-            );
-        }
-        match self.call_native(method, iterator, vec![value], false) {
-            Ok(result) => self.finish_sync_generator_delegate(receiver, result, None),
-            Err(error) => {
-                self.generator_resume(receiver, None, None, Some(Completion::Throw(error)))
+                ));
             }
+            let result = self.call_native(method, iterator, vec![value.clone()], false)?;
+            self.sync_delegate_step(result)
+        })();
+        self.stack.truncate(base);
+        match step {
+            Ok(SyncDelegateStep::Yield(result)) => Ok(result),
+            Ok(SyncDelegateStep::Done(inner)) => {
+                self.stack.push(inner.clone());
+                self.finish_sync_delegation(generator, inner)?;
+                let result = self.generator_next(receiver, None, None);
+                self.stack.pop();
+                result
+            }
+            Err(error) => self.throw_into_generator(receiver, &record, error),
         }
     }
 
@@ -1263,7 +1369,9 @@ impl Vm {
         let state = self.heap.take_generator_state(generator)?;
         let iterators = match state {
             GeneratorState::Suspended { iterators, .. } => iterators,
-            GeneratorState::Start { .. } | GeneratorState::Done => Vec::new(),
+            GeneratorState::Start { .. } | GeneratorState::Running | GeneratorState::Done => {
+                Vec::new()
+            }
         };
         self.heap
             .set_generator_state(generator, GeneratorState::Done)?;
