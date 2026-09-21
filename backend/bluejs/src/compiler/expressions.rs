@@ -362,6 +362,15 @@ impl Compiler {
                         std::rc::Rc::get_mut(self.bytecode.functions.last_mut().unwrap())
                             .unwrap()
                             .constructible = false;
+                        if matches!(key, PropertyKey::Computed(_)) {
+                            // The parser could only name a literal key.
+                            let prefix = match property {
+                                ObjectProp::Accessor { getter: true, .. } => 1,
+                                ObjectProp::Accessor { .. } => 2,
+                                _ => 0,
+                            };
+                            self.emit(Opcode::SetFunctionName, prefix)?;
+                        }
                         if let ObjectProp::Accessor { getter, .. } = property {
                             self.emit(Opcode::DefineAccessor, u32::from(!getter))?;
                         } else {
@@ -397,7 +406,22 @@ impl Compiler {
                         self.emit(Opcode::SetLiteralPrototype, 0)?;
                     } else {
                         self.property_key(key)?;
-                        self.expression(value)?;
+                        match key {
+                            // PropertyDefinition : PropertyName : AssignmentExpression
+                            // names an anonymous function definition after
+                            // its key: statically for a literal key, at run
+                            // time for a computed one.
+                            PropertyKey::Computed(_) => {
+                                self.expression(value)?;
+                                if is_anonymous_function_definition(value) {
+                                    self.emit(Opcode::SetFunctionName, 0)?;
+                                }
+                            }
+                            literal => {
+                                let name = literal_property_key_name(literal);
+                                self.expression_with_name(value, name.as_deref())?;
+                            }
+                        }
                         self.emit(Opcode::DefineData, 0)?;
                         self.emit(Opcode::Pop, 0)?;
                     }

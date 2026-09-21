@@ -192,6 +192,9 @@ opcodes! {
     // by `PopHandler`, so no prior error can exist to merge with).
     DisposeResources: 5, 0;
     AbruptJump: 5, 0;
+    // SetFunctionName from a property key: stack `key, function`, both left
+    // in place. Operand: 0 plain, 1 `get ` prefix, 2 `set ` prefix.
+    SetFunctionName: 5, 0;
     DefineData: 1, 0;
     DefineAccessor: 5, 0;
     // Operand: non-zero for an object-literal method (enumerable), zero for a

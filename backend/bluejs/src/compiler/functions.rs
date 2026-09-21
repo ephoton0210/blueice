@@ -230,6 +230,9 @@ impl Compiler {
                         false,
                         FunctionCompileOptions::class_method(),
                     )?;
+                    if matches!(key, PropertyKey::Computed(_)) {
+                        self.emit(Opcode::SetFunctionName, 0)?;
+                    }
                     if private_class_name(key).is_some() {
                         self.emit(Opcode::DefinePrivateMethod, u32::from(*is_static))?;
                     } else {
@@ -256,6 +259,9 @@ impl Compiler {
                         false,
                         FunctionCompileOptions::class_method(),
                     )?;
+                    if matches!(key, PropertyKey::Computed(_)) {
+                        self.emit(Opcode::SetFunctionName, if *getter { 1 } else { 2 })?;
+                    }
                     if private_class_name(key).is_some() {
                         self.emit(
                             Opcode::DefinePrivateAccessor,
