@@ -478,6 +478,30 @@ impl Vm {
         self.constructor_prototype_for(default, None)
     }
 
+    /// This realm's `%Intrinsic.prototype%` for the constructor named
+    /// `intrinsic`: a global constructor's name, `Intl.X`, or one of the
+    /// function-kind constructors that have no global binding.
+    pub(in super::super) fn intrinsic_prototype(
+        &mut self,
+        intrinsic: &str,
+    ) -> Result<Value, RuntimeError> {
+        let constructor = match intrinsic {
+            "AsyncFunction" => return Ok(Value::Object(self.async_function_prototype()?)),
+            "GeneratorFunction" => {
+                return Ok(Value::Object(self.generator_function_prototype()?));
+            }
+            "AsyncGeneratorFunction" => {
+                return Ok(Value::Object(self.async_generator_function_prototype()?));
+            }
+            name if name.starts_with("Intl.") => {
+                self.intl_global()?;
+                Value::Object(self.globals[&format!("%{name}%")])
+            }
+            name => self.global(name)?,
+        };
+        self.get_property(&constructor, &"prototype".into())
+    }
+
     /// `GetPrototypeFromConstructor` with the fallback intrinsic named by the
     /// caller. A constructor that knows which intrinsic `default` is (the
     /// Error family, whose prototypes carry no distinguishing identity here)
@@ -563,6 +587,12 @@ impl Vm {
                 .get("%Intl.Segmenter%")
                 .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
                 .and_then(|value| value.object_id());
+            let string_prototype = self.string_intrinsics()?.1;
+            let promise_prototype = self.promise_prototype()?;
+            let regexp_prototype = {
+                let regexp = self.regexp_global()?;
+                self.get_property(&regexp, &"prototype".into())?.object_id()
+            };
             let mut typed_array_intrinsic = None;
             for kind in [
                 TypedArrayKind::Int8,
@@ -641,6 +671,18 @@ impl Vm {
                 Some("Date")
             } else if default == self.base_iterator_prototype()? {
                 Some("Iterator")
+            } else if default == string_prototype {
+                Some("String")
+            } else if default == promise_prototype {
+                Some("Promise")
+            } else if regexp_prototype == Some(default) {
+                Some("RegExp")
+            } else if self.async_function_prototype == Some(default) {
+                Some("AsyncFunction")
+            } else if self.generator_function_prototype == Some(default) {
+                Some("GeneratorFunction")
+            } else if self.async_generator_function_prototype == Some(default) {
+                Some("AsyncGeneratorFunction")
             } else {
                 None
             };

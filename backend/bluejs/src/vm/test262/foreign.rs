@@ -253,6 +253,9 @@ impl Vm {
             .map(|prototype| prototype.and_then(|prototype| prototype.object_id()))
     }
 
+    /// The `%Intrinsic.prototype%` of a foreign Realm, as a facade in this
+    /// Realm: what `GetPrototypeFromConstructor` yields when the new target
+    /// belongs to that Realm and its `prototype` is not an object.
     pub(in super::super) fn test262_foreign_default_prototype(
         &mut self,
         realm_id: ObjectId,
@@ -263,50 +266,7 @@ impl Vm {
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            let constructor = match intrinsic {
-                "Intl.Collator" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.Collator%"])
-                }
-                "Intl.DateTimeFormat" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.DateTimeFormat%"])
-                }
-                "Intl.NumberFormat" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.NumberFormat%"])
-                }
-                "Intl.Locale" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.Locale%"])
-                }
-                "Intl.DisplayNames" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.DisplayNames%"])
-                }
-                "Intl.DurationFormat" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.DurationFormat%"])
-                }
-                "Intl.ListFormat" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.ListFormat%"])
-                }
-                "Intl.PluralRules" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.PluralRules%"])
-                }
-                "Intl.RelativeTimeFormat" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.RelativeTimeFormat%"])
-                }
-                "Intl.Segmenter" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.Segmenter%"])
-                }
-                _ => realm.vm.global(intrinsic)?,
-            };
-            realm.vm.get_property(&constructor, &"prototype".into())?
+            realm.vm.intrinsic_prototype(intrinsic)?
         };
         self.test262_import_foreign_value(realm_id, prototype)?
             .object_id()
@@ -1511,15 +1471,28 @@ impl Vm {
         };
         self.test262_sync_imported_data_properties(realm_id)?;
         let result = self.test262_import_foreign_result(realm_id, result)?;
-        if construct && foreign_native == Some(NativeFunction::Function) {
-            // CreateDynamicFunction uses `newTarget` only to select the
-            // function object's [[Prototype]].  Its body and own
-            // `prototype` object remain in the callee realm.  Preserve that
-            // cross-realm edge on the caller-side facade.
-            let default = self.function_prototype()?;
-            let prototype = self.constructor_prototype(default)?;
-            if let Some(wrapper) = result.object_id() {
-                self.test262_set_foreign_prototype_override(wrapper, prototype);
+        // OrdinaryCreateFromConstructor consulted `newTarget` only through
+        // its `prototype`, and the child ran with the callee itself as
+        // `newTarget`. When the caller's new target is another function, the
+        // created object's [[Prototype]] must come from that function (or
+        // from its Realm's matching intrinsic), so preserve that edge on the
+        // caller-side facade. For CreateDynamicFunction the body and own
+        // `prototype` object stay in the callee realm.
+        if construct && self.new_target != Value::Object(wrapper) {
+            if let (Some(intrinsic), Some(created)) = (
+                foreign_native.and_then(foreign_constructor_intrinsic),
+                result
+                    .object_id()
+                    .filter(|created| self.test262_foreign_reference(*created).is_some()),
+            ) {
+                // `default` is this Realm's intrinsic of the same name: the
+                // right fallback when the new target belongs to this Realm.
+                let default = self
+                    .intrinsic_prototype(intrinsic)?
+                    .object_id()
+                    .expect("intrinsic prototype is an object");
+                let prototype = self.constructor_prototype_for(default, Some(intrinsic))?;
+                self.test262_set_foreign_prototype_override(created, prototype);
             }
         }
         Ok(result)
@@ -1609,4 +1582,33 @@ impl Vm {
         self.stack.truncate(base);
         result
     }
+}
+
+/// The intrinsic whose `%X.prototype%` a built-in constructor consults, through
+/// `OrdinaryCreateFromConstructor`, when `newTarget.prototype` is not an
+/// object. Constructors whose result does not depend on a new target's
+/// prototype (Symbol, BigInt, Proxy, ...), and those the membrane already
+/// runs in the caller's Realm, have none.
+fn foreign_constructor_intrinsic(function: NativeFunction) -> Option<&'static str> {
+    Some(match function {
+        NativeFunction::Function => "Function",
+        NativeFunction::AsyncFunction => "AsyncFunction",
+        NativeFunction::GeneratorFunction => "GeneratorFunction",
+        NativeFunction::AsyncGeneratorFunction => "AsyncGeneratorFunction",
+        NativeFunction::Date => "Date",
+        NativeFunction::Promise => "Promise",
+        NativeFunction::RegExp => "RegExp",
+        NativeFunction::Map => "Map",
+        NativeFunction::Set => "Set",
+        NativeFunction::WeakMap => "WeakMap",
+        NativeFunction::WeakSet => "WeakSet",
+        NativeFunction::WeakRef => "WeakRef",
+        NativeFunction::FinalizationRegistry => "FinalizationRegistry",
+        NativeFunction::ArrayBuffer => "ArrayBuffer",
+        NativeFunction::SharedArrayBuffer => "SharedArrayBuffer",
+        NativeFunction::DataView => "DataView",
+        NativeFunction::TypedArray(kind) => kind.name(),
+        NativeFunction::Error(name) => name,
+        _ => return None,
+    })
 }
