@@ -550,7 +550,12 @@ impl Vm {
         }
         let target = native::argument(args, 0).clone();
         let holdings = native::argument(args, 1).clone();
-        let unregister_token = args.get(2).cloned();
+        // An explicit `undefined` unregister token means "none", exactly like
+        // an omitted one; only another value is checked for weak holdability.
+        let unregister_token = args
+            .get(2)
+            .cloned()
+            .filter(|token| *token != Value::Undefined);
         if !self.can_hold_weakly(&target)
             || unregister_token
                 .as_ref()

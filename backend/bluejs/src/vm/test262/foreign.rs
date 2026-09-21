@@ -304,6 +304,18 @@ impl Vm {
                     realm.vm.intl_global()?;
                     Value::Object(realm.vm.globals["%Intl.Segmenter%"])
                 }
+                // The function-kind constructors have no globals: reach each
+                // through its prototype's `constructor`.
+                "GeneratorFunction" | "AsyncFunction" | "AsyncGeneratorFunction" => {
+                    let prototype = match intrinsic {
+                        "GeneratorFunction" => realm.vm.generator_function_prototype()?,
+                        "AsyncFunction" => realm.vm.async_function_prototype()?,
+                        _ => realm.vm.async_generator_function_prototype()?,
+                    };
+                    realm
+                        .vm
+                        .get_property(&Value::Object(prototype), &"constructor".into())?
+                }
                 _ => realm.vm.global(intrinsic)?,
             };
             realm.vm.get_property(&constructor, &"prototype".into())?
@@ -634,6 +646,86 @@ impl Vm {
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
         let result = realm.vm.get_object_property(target, &receiver, key);
         self.test262_import_foreign_result(realm_id, result)
+    }
+
+    /// Forwards a foreign facade's [[GetOwnProperty]] into its Realm and
+    /// imports the descriptor's value / accessor functions back across the
+    /// membrane, so the descriptor APIs see the properties of the facaded
+    /// object rather than those of its empty local stand-in.
+    pub(in super::super) fn test262_foreign_get_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: &PropertyName,
+    ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign getOwnProperty has a membrane record");
+        let descriptor = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            realm.vm.object_get_own_property(target, key)
+        };
+        let Some(mut descriptor) = descriptor? else {
+            return Ok(None);
+        };
+        for field in [
+            &mut descriptor.value,
+            &mut descriptor.get,
+            &mut descriptor.set,
+        ] {
+            if let Some(value) = field.take() {
+                *field = Some(self.test262_import_foreign_value(realm_id, value)?);
+            }
+        }
+        Ok(Some(descriptor))
+    }
+
+    /// Forwards a foreign facade's [[DefineOwnProperty]] into its Realm, with
+    /// the descriptor's value / accessor functions exported across the
+    /// membrane (a facaded TypedArray keeps its buffer mirrors in step, as
+    /// [[Set]] does), so a detached or out-of-range element is judged by the
+    /// owning realm's internal method rather than by the empty local record.
+    pub(in super::super) fn test262_foreign_define_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: PropertyName,
+        mut descriptor: PropertyDescriptor,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign defineOwnProperty has a membrane record");
+        let typed_buffer = self
+            .test262_realms
+            .get(&realm_id)
+            .and_then(|realm| realm.vm.heap.typed_array_info(target).ok())
+            .map(|(buffer, _, _, _)| buffer);
+        if typed_buffer.is_some() {
+            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        }
+        for field in [
+            &mut descriptor.value,
+            &mut descriptor.get,
+            &mut descriptor.set,
+        ] {
+            if let Some(value) = field.take() {
+                *field = Some(self.test262_export_foreign_value(realm_id, &value)?);
+            }
+        }
+        let result = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            realm.vm.object_define_own_property(target, key, descriptor)
+        };
+        if let Some(buffer) = typed_buffer {
+            self.test262_refresh_foreign_buffer_mirrors(realm_id, buffer)?;
+        }
+        result
     }
 
     /// Forwards a foreign facade's [[OwnPropertyKeys]] into its Realm. Keys
@@ -1511,12 +1603,27 @@ impl Vm {
         };
         self.test262_sync_imported_data_properties(realm_id)?;
         let result = self.test262_import_foreign_result(realm_id, result)?;
-        if construct && foreign_native == Some(NativeFunction::Function) {
-            // CreateDynamicFunction uses `newTarget` only to select the
-            // function object's [[Prototype]].  Its body and own
-            // `prototype` object remain in the callee realm.  Preserve that
-            // cross-realm edge on the caller-side facade.
-            let default = self.function_prototype()?;
+        // CreateDynamicFunction uses `newTarget` only to select the function
+        // object's [[Prototype]] (the kind's own intrinsic prototype, taken
+        // from newTarget's realm when its `prototype` is not an object).
+        // Its body and own `prototype` object remain in the callee realm.
+        // Preserve that cross-realm edge on the caller-side facade.
+        let dynamic_default = if construct {
+            match foreign_native {
+                Some(NativeFunction::Function) => Some(self.function_prototype()?),
+                Some(NativeFunction::AsyncFunction) => Some(self.async_function_prototype()?),
+                Some(NativeFunction::GeneratorFunction) => {
+                    Some(self.generator_function_prototype()?)
+                }
+                Some(NativeFunction::AsyncGeneratorFunction) => {
+                    Some(self.async_generator_function_prototype()?)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if let Some(default) = dynamic_default {
             let prototype = self.constructor_prototype(default)?;
             if let Some(wrapper) = result.object_id() {
                 self.test262_set_foreign_prototype_override(wrapper, prototype);

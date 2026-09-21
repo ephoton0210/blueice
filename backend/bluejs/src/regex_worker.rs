@@ -376,14 +376,7 @@ fn cache_pattern(
     if same {
         return Ok(());
     }
-    let unicode = flags.contains(['u', 'v']);
-    let points: Vec<u32> = if unicode {
-        char::decode_utf16(source.iter().copied())
-            .map(|c| c.map_or_else(|e| u32::from(e.unpaired_surrogate()), |c| c as u32))
-            .collect()
-    } else {
-        source.iter().map(|&c| u32::from(c)).collect()
-    };
+    let points = crate::regex_group_names::regress_points(&source, &flags);
     let regex =
         regress::Regex::from_unicode(points.into_iter(), regress::Flags::from(flags.as_str()))
             .map_err(|error| error.to_string())?;

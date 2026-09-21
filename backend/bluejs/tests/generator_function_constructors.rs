@@ -193,3 +193,30 @@ fn return_awaits_its_operand_even_for_a_completed_generator() {
         "#,
     );
 }
+
+#[test]
+fn return_at_a_yield_throws_a_broken_operand_into_the_generator() {
+    check(
+        r#"
+        var caught;
+        var g = async function*() {
+          try { yield; return "never returned"; }
+          catch (err) { caught = err; return 1; }
+        };
+        var hostile = Promise.resolve(42);
+        Object.defineProperty(hostile, "constructor", { get() { throw new EvalError("broken promise"); } });
+        var it = g();
+        it.next().then(function() { return it.return(hostile); }).then(function(r) {
+          check(caught instanceof EvalError && caught.message === "broken promise", "the body did not catch the error");
+          check(r.value === 1 && r.done === true, "result " + r.value + " " + r.done);
+          // An ordinary operand still finishes with its awaited value; a finally block still runs.
+          var ran = [];
+          var h = async function*() { try { yield 1; } finally { ran.push("finally"); } };
+          var it2 = h();
+          return it2.next().then(function() { return it2.return(Promise.resolve("plain")); }).then(function(r2) {
+            check(r2.value === "plain" && r2.done === true && ran.join() === "finally", "plain return " + r2.value + " " + ran.join());
+          });
+        }).then(finish);
+        "#,
+    );
+}
