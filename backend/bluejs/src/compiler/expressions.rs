@@ -1195,7 +1195,13 @@ impl Compiler {
         self.enter_scope(declarations, &var_names(std::slice::from_ref(body))?, false)?;
         let iterator = self.resolve("*iterator*").unwrap();
         if let Some(initializer) = annex_b_initializer {
-            self.expression(initializer)?;
+            // `for (var x = init in ...)` names an anonymous function or class
+            // initializer after `x`, as `var x = init` does.
+            let inferred_name = match pattern {
+                Some(Pattern::Identifier(name)) => Some(name.as_str()),
+                _ => None,
+            };
+            self.expression_with_name(initializer, inferred_name)?;
             self.bind_pattern(
                 pattern.expect("Annex B initializer has a declaration pattern"),
                 DeclKind::Var,
