@@ -115,6 +115,7 @@ fn compile_with_limit_and_mode(
         local_scope: 0,
         with_depth: 0,
         with_scope_depths: Vec::new(),
+        annex_b_parameter_names: BTreeSet::new(),
     };
     compiler.bytecode.strict = module || strict_body(&program.body);
     compiler.bytecode.module = module;
@@ -377,6 +378,7 @@ pub(crate) fn compile_eval(
         // eval. Any inherited `with` environments occur after it, while the
         // eval's own declaration scope is entered below.
         with_scope_depths: vec![1; with_depth],
+        annex_b_parameter_names: BTreeSet::new(),
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
     compiler.bytecode.new_target_allowed = new_target_allowed;
@@ -503,6 +505,10 @@ struct Compiler {
     /// environment was inserted. A binding declared after the innermost
     /// entry wins before that object environment during name resolution.
     with_scope_depths: Vec<usize>,
+    /// The enclosing function's `parameterNames` (with `arguments` when an
+    /// arguments object is created). Annex B.3.2.1 gives a block function
+    /// no legacy var binding, and no copy into one, for these names.
+    annex_b_parameter_names: BTreeSet<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -674,6 +680,9 @@ impl Compiler {
             return None;
         }
         let name = &self.bytecode.bindings[slot as usize].name;
+        if self.annex_b_parameter_names.contains(name) {
+            return None;
+        }
         for scope in self.names[..self.names.len() - 1].iter().rev() {
             let Some(&candidate) = scope.get(name) else {
                 continue;
