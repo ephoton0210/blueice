@@ -173,22 +173,37 @@ impl Vm {
         let result = (|| {
             let iterator = self.get_method(&source, &JsSymbol::well_known("iterator").into())?;
             if iterator == Value::Undefined {
+                // Each element is read, mapped and stored before the next
+                // one is read (spec order), so a mapper result is reachable
+                // from the rooted result array before any later mapper call
+                // can allocate and collect.
                 let object = self.coerce_object(&source)?;
-                self.stack.push(Value::Object(object));
-                let values = self.array_like_values(&Value::Object(object));
-                self.stack.pop();
-                let mut values = values?;
-                if mapper != Value::Undefined {
-                    for (index, value) in values.iter_mut().enumerate() {
-                        *value = self.call_native(
+                let object_value = Value::Object(object);
+                self.stack.push(object_value.clone());
+                let length = self.get_property(&object_value, &"length".into())?;
+                let length = self.coerce_length(&length)? as u64;
+                let array = self.array_from(Vec::new())?;
+                self.stack.push(array.clone());
+                let mark = self.stack.len();
+                for index in 0..length {
+                    self.charge_step()?;
+                    let value = self.get_property(&object_value, &index.to_string().into())?;
+                    let value = if mapper == Value::Undefined {
+                        value
+                    } else {
+                        self.stack.push(value.clone());
+                        self.call_native(
                             mapper.clone(),
                             this_arg.clone(),
-                            vec![value.clone(), Value::Number(index as f64)],
+                            vec![value, Value::Number(index as f64)],
                             false,
-                        )?;
-                    }
+                        )?
+                    };
+                    self.stack.push(value.clone());
+                    self.array_push(&array, &value, 0)?;
+                    self.stack.truncate(mark);
                 }
-                return self.array_from(values);
+                return Ok(array);
             }
 
             // Array.from maps one iterator value at a time. Collecting the
@@ -224,7 +239,14 @@ impl Vm {
                 // IteratorClose retains an existing abrupt completion. The
                 // original mapper/iterator error must win over a return()
                 // failure, so close only for its required side effect here.
+                // The thrown value is only reachable from `outcome`, and
+                // return() runs user code that can allocate and collect.
+                let error_base = self.stack.len();
+                if let Err(RuntimeError::Thrown(value)) = &outcome {
+                    self.stack.push(value.clone());
+                }
                 let _ = self.iterator_close(&record);
+                self.stack.truncate(error_base);
             }
             outcome
         })();

@@ -11,6 +11,15 @@ fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
 }
 
+/// Run with a tiny nursery so a collection happens on nearly every allocation.
+fn evaluate_with_nursery(source: &str, nursery_capacity: usize) -> Result<Value, RuntimeError> {
+    let mut config = VmConfig::default();
+    config.heap.nursery_capacity = nursery_capacity;
+    Vm::new(config)
+        .unwrap()
+        .execute(&compile(&parse(source).unwrap()).unwrap())
+}
+
 #[test]
 fn sparse_arrays_distinguish_holes_and_length_from_ordinary_properties() {
     let mut heap = Heap::default();
@@ -771,4 +780,88 @@ fn array_push_on_a_frozen_or_length_locked_array_throws_a_type_error() {
         // A sealed (non-extensible) array cannot grow either.
         "let a=Object.preventExtensions([1]);let caught;try{a.push(2)}catch(e){caught=e instanceof TypeError}caught===true&&a.length===1",
     ]);
+}
+
+#[test]
+fn array_from_keeps_mapped_values_alive_across_collections() {
+    // Every mapper result is only reachable from Array.from's own state while
+    // later mapper calls allocate; a collection in between must not free it.
+    let source = "let a=Array.from({length:300},(_,i)=>({i}));\
+                  a.length===300&&a[0].i===0&&a[299].i===299";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+    assert_eq!(evaluate_with_nursery(source, 1).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn push_on_a_real_array_honours_inherited_index_setters() {
+    // The first element store reaches an inherited setter; whatever it does
+    // to the array must be observed by the strict Set of "length".
+    for freeze in [
+        "Object.freeze(array)",
+        "Object.defineProperty(array,'length',{writable:false})",
+    ] {
+        let source = format!(
+            "var array=[];var calls=0;\
+             Object.defineProperty(Array.prototype,'0',{{set(_v){{{freeze};calls++;}}}});\
+             var threw=false;try{{array.push(1)}}catch(e){{threw=e instanceof TypeError}}\
+             threw&&!array.hasOwnProperty(0)&&array.length===0&&calls===1"
+        );
+        assert_eq!(evaluate(&source).unwrap(), Value::Bool(true), "{freeze}");
+    }
+}
+
+#[test]
+fn push_on_a_real_array_runs_an_inherited_setter_instead_of_defining() {
+    let source = "var seen=[];\
+        Object.defineProperty(Array.prototype,'1',{set(v){seen.push(v)},configurable:true});\
+        var a=[7];var n=a.push(8,9);\
+        n===3&&a.length===3&&!a.hasOwnProperty(1)&&a[2]===9&&seen.length===1&&seen[0]===8";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn push_on_a_real_array_rejects_an_inherited_read_only_element() {
+    let source = "Object.defineProperty(Object.prototype,'0',{value:1,writable:false});\
+        var a=[];var threw=false;try{a.push(2)}catch(e){threw=e instanceof TypeError}\
+        threw&&!a.hasOwnProperty(0)";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn push_on_a_real_array_with_a_proxy_prototype_uses_its_set_trap() {
+    let source = "var log=[];\
+        var a=[];Object.setPrototypeOf(a,new Proxy(Array.prototype,{\
+          set(t,k,v,r){log.push(k);return Reflect.set(t,k,v,r)}}));\
+        a.push(5);a[0]===5&&a.length===1&&log.join()==='0'";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn push_keeps_working_and_stays_correct_for_plain_arrays() {
+    let source = "var a=[1];var n=a.push(2,3);n===3&&a.join()==='1,2,3'&&a.push()===3";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn array_from_keeps_a_thrown_mapper_error_alive_while_the_iterator_closes() {
+    // The mapper's Error is reachable only from Array.from's pending
+    // completion while the iterator's return() runs user code.
+    let source = "var closed=0;var items={};\
+        items[Symbol.iterator]=function(){return{\
+          return:function(){closed+=1},\
+          next:function(){return{done:false}}}};\
+        var caught;try{Array.from(items,function(){throw new Error('boom')})}catch(e){caught=e}\
+        closed===1&&caught instanceof Error&&caught.message==='boom'";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+    assert_eq!(evaluate_with_nursery(source, 1).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn sort_keeps_collected_values_alive_when_the_comparator_empties_the_array() {
+    // After the first comparison the receiver no longer holds any element;
+    // the values being sorted are reachable only from sort's own state.
+    let source = "var a=[];for(var i=0;i<20;i++)a.push({i});\
+        var n=0;a.sort(function(x,y){if(n++===0){a.length=0}var junk=[{},{},{},{}];return x.i-y.i});\
+        a.length===20&&a.every((v,k)=>v.i===k)";
+    assert_eq!(evaluate_with_nursery(source, 1).unwrap(), Value::Bool(true));
 }

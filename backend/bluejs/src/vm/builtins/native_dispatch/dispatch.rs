@@ -1005,6 +1005,9 @@ impl Vm {
                 // Every other receiver, including a frozen array or one with a
                 // locked `length`, goes through the generic algorithm so its
                 // strict Sets can throw.
+                // The direct stores also require an unobservable prototype
+                // chain: an inherited index setter or read-only property must
+                // see the strict Set the generic algorithm performs.
                 let direct = matches!(self.heap.is_array(object), Ok(true))
                     && matches!(self.heap.get(object, "length"), Ok(Value::Number(_)))
                     && matches!(self.heap.is_extensible(object), Ok(true))
@@ -1014,7 +1017,8 @@ impl Vm {
                             writable: Some(true),
                             ..
                         }))
-                    );
+                    )
+                    && self.array_push_is_unobservable(object, args.len())?;
                 if direct {
                     let array = Value::Object(object);
                     self.stack.push(array.clone());

@@ -91,6 +91,48 @@ impl Vm {
         Ok(index as u64)
     }
 
+    /// Whether `Array.prototype.push` may store `count` elements at a real
+    /// array's end with the raw element/length stores. `Set(O, key, E, true)`
+    /// consults the prototype chain: an inherited setter, a read-only inherited
+    /// data property, or a Proxy/exotic prototype (all of which can run user
+    /// code or refuse the store) must be observed, so any of them selects the
+    /// generic algorithm instead. Without one, nothing observable can happen
+    /// between the stores, and the direct path is equivalent.
+    pub(in super::super) fn array_push_is_unobservable(
+        &mut self,
+        object: ObjectId,
+        count: usize,
+    ) -> Result<bool, RuntimeError> {
+        let Value::Number(length) = self.heap.get(object, "length")? else {
+            return Ok(false);
+        };
+        let mut current = self.heap.prototype(object)?;
+        while let Some(prototype) = current {
+            if self.heap.proxy(prototype)?.is_some()
+                || self.test262_foreign_reference(prototype).is_some()
+                || self.heap.is_module_namespace(prototype)?
+            {
+                return Ok(false);
+            }
+            for offset in 0..count {
+                let key: PropertyName = ((length as u64) + offset as u64).to_string().into();
+                if self
+                    .heap
+                    .typed_array_numeric_key(prototype, &key)?
+                    .is_some()
+                    || self
+                        .heap
+                        .get_own_property_descriptor(prototype, key)?
+                        .is_some()
+                {
+                    return Ok(false);
+                }
+            }
+            current = self.heap.prototype(prototype)?;
+        }
+        Ok(true)
+    }
+
     /// `Array.prototype.push` for a receiver whose `length` is not a plain
     /// Number (an array-like, a proxy, a TypedArray): ToLength(Get(O,
     /// "length")), one strict Set per argument, then a strict Set of the new
@@ -1309,6 +1351,7 @@ impl Vm {
             ));
         }
         let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
             let length = self.get_property(&Value::Object(object), &"length".into())?;
@@ -1323,48 +1366,15 @@ impl Vm {
                     if value == Value::Undefined {
                         undefined += 1;
                     } else {
+                        // The comparator may empty or replace the receiver's
+                        // elements, so the collected values must stay
+                        // reachable from the VM stack, not just this Vec.
+                        self.stack.push(value.clone());
                         values.push(value);
                     }
                 }
             }
-            // Bottom-up merge sorting remains stable while bounding observable
-            // user comparator calls to O(n log n). The 513- and 2048-element
-            // stable-array-sort conformance cases exercise this exact path.
-            let mut scratch = values.to_vec();
-            let mut width = 1usize;
-            while width < values.len() {
-                let mut start = 0usize;
-                while start < values.len() {
-                    let middle = start.saturating_add(width).min(values.len());
-                    let end = middle.saturating_add(width).min(values.len());
-                    let (mut left, mut right, mut target) = (start, middle, start);
-                    while left < middle && right < end {
-                        if self.array_sort_order(compare, &values[right], &values[left])?
-                            == std::cmp::Ordering::Less
-                        {
-                            scratch[target] = values[right].clone();
-                            right += 1;
-                        } else {
-                            scratch[target] = values[left].clone();
-                            left += 1;
-                        }
-                        target += 1;
-                    }
-                    while left < middle {
-                        scratch[target] = values[left].clone();
-                        target += 1;
-                        left += 1;
-                    }
-                    while right < end {
-                        scratch[target] = values[right].clone();
-                        target += 1;
-                        right += 1;
-                    }
-                    values[start..end].clone_from_slice(&scratch[start..end]);
-                    start = end;
-                }
-                width = width.saturating_mul(2);
-            }
+            let values = self.array_sort_values(values, compare)?;
             let mut index = 0usize;
             for value in values {
                 self.set_property_value(&Value::Object(object), &index.to_string().into(), &value)?;
@@ -1384,8 +1394,57 @@ impl Vm {
             }
             Ok(receiver.clone())
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
+    }
+
+    /// Stable bottom-up merge sort of already-collected values with the
+    /// user (or default string) comparator. Merge sorting bounds observable
+    /// comparator calls to O(n log n); the 513- and 2048-element
+    /// stable-array-sort conformance cases exercise this exact path. The
+    /// result is a permutation of the input, so a caller that keeps the input
+    /// values reachable keeps every result value reachable too.
+    pub(super) fn array_sort_values(
+        &mut self,
+        mut values: Vec<Value>,
+        compare: &Value,
+    ) -> Result<Vec<Value>, RuntimeError> {
+        let mut scratch = values.to_vec();
+        let mut width = 1usize;
+        while width < values.len() {
+            let mut start = 0usize;
+            while start < values.len() {
+                let middle = start.saturating_add(width).min(values.len());
+                let end = middle.saturating_add(width).min(values.len());
+                let (mut left, mut right, mut target) = (start, middle, start);
+                while left < middle && right < end {
+                    if self.array_sort_order(compare, &values[right], &values[left])?
+                        == std::cmp::Ordering::Less
+                    {
+                        scratch[target] = values[right].clone();
+                        right += 1;
+                    } else {
+                        scratch[target] = values[left].clone();
+                        left += 1;
+                    }
+                    target += 1;
+                }
+                while left < middle {
+                    scratch[target] = values[left].clone();
+                    target += 1;
+                    left += 1;
+                }
+                while right < end {
+                    scratch[target] = values[right].clone();
+                    target += 1;
+                    right += 1;
+                }
+                values[start..end].clone_from_slice(&scratch[start..end]);
+                start = end;
+            }
+            width = width.saturating_mul(2);
+        }
+        Ok(values)
     }
 
     fn array_sort_order(
