@@ -889,8 +889,8 @@ impl Vm {
         let method = match self.get_method(&iterator, &name.into()) {
             Ok(method) => method,
             Err(error) => {
-                // A throwing `return`/`throw` getter fails the request like
-                // any other abrupt delegate call.
+                // A throwing `return`/`throw` getter is an abrupt completion
+                // of the `yield*` like any other failed delegate call.
                 let error = self.error_value(error)?;
                 self.finish_async_generator_delegate(generator, target, kind, error, false)?;
                 return Ok(Some(Value::Undefined));
@@ -917,8 +917,8 @@ impl Vm {
                 .map(Some);
         }
         // A delegate method that throws (or whose result cannot be turned
-        // into a promise) fails the request exactly as a rejected result
-        // does: the generator is closed and the request rejected.
+        // into a promise) is an abrupt completion of the `yield*`: like a
+        // rejected result it is thrown at the `yield*` site.
         let async_from_sync = matches!(
             self.heap.get_own(record, "asyncFromSync")?,
             Some(Value::Bool(true))
