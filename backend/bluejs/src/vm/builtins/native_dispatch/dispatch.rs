@@ -1808,6 +1808,7 @@ impl Vm {
             NativeFunction::IteratorHelperNext => self.iterator_helper_next(&receiver),
             NativeFunction::IteratorHelperReturn => self.iterator_helper_return(&receiver),
             NativeFunction::IteratorDispose => self.iterator_dispose(&receiver),
+            NativeFunction::AsyncIteratorDispose => self.async_iterator_dispose(&receiver),
             NativeFunction::IteratorConstructorGetter => self.global("Iterator"),
             NativeFunction::IteratorConstructorSetter => {
                 self.iterator_constructor_setter(&receiver, first)

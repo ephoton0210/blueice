@@ -691,6 +691,8 @@ pub(crate) enum NativeFunction {
     IteratorToStringTagGetter,
     IteratorToStringTagSetter,
     AsyncIteratorSelf,
+    /// `%AsyncIteratorPrototype% [ @@asyncDispose ] ( )`.
+    AsyncIteratorDispose,
     Pattern(PatternMethod),
     RegExp,
     RegExpEscape,

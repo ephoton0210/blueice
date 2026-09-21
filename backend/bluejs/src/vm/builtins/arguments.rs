@@ -507,13 +507,23 @@ impl Vm {
         let function_prototype = self.function_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(prototype)?;
-        let result = self.install_symbol_native(
-            prototype,
-            function_prototype,
-            "asyncIterator",
-            0,
-            NativeFunction::AsyncIteratorSelf,
-        );
+        let result = self
+            .install_symbol_native(
+                prototype,
+                function_prototype,
+                "asyncIterator",
+                0,
+                NativeFunction::AsyncIteratorSelf,
+            )
+            .and_then(|()| {
+                self.install_symbol_native(
+                    prototype,
+                    function_prototype,
+                    "asyncDispose",
+                    0,
+                    NativeFunction::AsyncIteratorDispose,
+                )
+            });
         if let Err(error) = result {
             self.heap.unroot(root)?;
             Err(error)
