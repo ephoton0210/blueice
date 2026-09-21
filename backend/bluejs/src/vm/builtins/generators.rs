@@ -1051,11 +1051,27 @@ impl Vm {
                     target,
                     kind,
                 }),
+            // Await always crosses a job boundary, including for an answer
+            // that is not a promise or is already settled.
             PromiseAwaitStatus::Fulfilled(value) => {
-                self.finish_async_generator_delegate(generator, target, kind, value, true)?
+                self.promise_jobs
+                    .push_back(PromiseJob::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        kind,
+                        value,
+                        fulfilled: true,
+                    });
             }
             PromiseAwaitStatus::Rejected(value) => {
-                self.finish_async_generator_delegate(generator, target, kind, value, false)?
+                self.promise_jobs
+                    .push_back(PromiseJob::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        kind,
+                        value,
+                        fulfilled: false,
+                    });
             }
         }
         Ok(Some(Value::Undefined))

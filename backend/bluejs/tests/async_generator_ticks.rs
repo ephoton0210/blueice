@@ -224,3 +224,49 @@ fn a_throw_request_needs_no_await() {
          expect(['caught t', 'after']);",
     );
 }
+
+#[test]
+fn a_delegates_return_answer_is_awaited_in_a_later_job_even_when_it_is_not_a_promise() {
+    // Await(innerReturnResult) always takes a turn, whether the answer is a
+    // plain object, a promise that is already fulfilled or one that is not.
+    run_both(
+        "var inner = { [Symbol.asyncIterator]() { return this; },
+           next() { return { value: 1, done: false }; },
+           return(v) { return { value: 'r', done: true }; } };
+         async function* g() { yield* inner; }
+         var it = g();
+         it.next().then(() => {
+           ticks(3);
+           it.return('x').then(v => log.push('returned ' + v.value));
+         });
+         expect(['tick 1', 'tick 2', 'tick 3', 'returned r']);",
+    );
+    run_both(
+        "var inner = { [Symbol.asyncIterator]() { return this; },
+           next() { return { value: 1, done: false }; },
+           return(v) { return Promise.resolve({ value: 'r', done: true }); } };
+         async function* g() { yield* inner; }
+         var it = g();
+         it.next().then(() => {
+           ticks(3);
+           it.return('x').then(v => log.push('returned ' + v.value));
+         });
+         expect(['tick 1', 'tick 2', 'tick 3', 'returned r']);",
+    );
+}
+
+#[test]
+fn a_delegates_throw_answer_is_awaited_in_a_later_job() {
+    run_both(
+        "var inner = { [Symbol.asyncIterator]() { return this; },
+           next() { return { value: 1, done: false }; },
+           throw(e) { return { value: 'handled', done: true }; } };
+         async function* g() { var r = yield* inner; return r; }
+         var it = g();
+         it.next().then(() => {
+           ticks(3);
+           it.throw('x').then(v => log.push('threw ' + v.value));
+         });
+         expect(['tick 1', 'tick 2', 'tick 3', 'threw handled']);",
+    );
+}
