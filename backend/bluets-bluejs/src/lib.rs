@@ -20,6 +20,12 @@ use blueice_bluets::{
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
+mod debug_attachment;
+pub use debug_attachment::{
+    DirectDebugAttachmentError, DirectDebugRegistry, DirectDebugRetentionLimits,
+    RetainedDirectDebugInfo,
+};
+
 /// The first directly executable BlueTS-to-BlueJS bridge ABI.
 pub const BLUE_TS_BLUEJS_BRIDGE_ABI_V1: &str = "blue-ts-bluejs-bridge-v1";
 
@@ -63,6 +69,9 @@ pub struct DirectScript {
     pub compiler_options_fingerprint: String,
     pub sources: Vec<BridgeSource>,
     pub provenance: Vec<LoweringProvenance>,
+    /// Static BlueTS source/type/symbol metadata for this exact compilation.
+    /// It contains no runtime BlueJS values or source text.
+    pub debug_info: BlueTsDebugInfo,
 }
 
 /// A checked, direct BlueJS compilation of one TypeScript source module.
@@ -75,6 +84,8 @@ pub struct DirectModule {
     pub compiler_options_fingerprint: String,
     pub sources: Vec<BridgeSource>,
     pub provenance: Vec<LoweringProvenance>,
+    /// Static BlueTS source/type/symbol metadata for this exact compilation.
+    pub debug_info: BlueTsDebugInfo,
 }
 
 /// A checked, direct BlueJS compilation of a closed TypeScript module graph.
@@ -86,14 +97,12 @@ pub struct DirectModuleGraph {
     pub language_version: String,
     pub compiler_options_fingerprint: String,
     pub sources: Vec<BridgeSource>,
+    /// Static metadata for the caller-authorized closed source graph.
+    pub debug_info: BlueTsDebugInfo,
 }
 
-/// A live direct-program attachment with exact source-to-AST provenance.
-///
-/// This is intentionally not yet a bytecode safe-point map: the attached
-/// node identifies the direct structured statement supplied by BlueTS, while
-/// BlueJS remains responsible for subsequently associating that node with a
-/// verified executable instruction boundary.
+/// A live direct-program attachment with exact source-to-AST provenance and
+/// a verified generation-bound safe-point map.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirectProgramAttachment {
     /// The live generation-bound BlueJS program handle.
@@ -174,6 +183,7 @@ pub enum BridgeError {
     BlueJsDebug(bluejs::BlueJsProgramDebugError),
     InvalidSourceIdentity(String),
     ProvenanceAttachment(String),
+    DebugAttachment(DirectDebugAttachmentError),
 }
 
 impl fmt::Display for BridgeError {
@@ -210,6 +220,12 @@ impl fmt::Display for BridgeError {
                     "cannot attach direct lowering provenance: {message}"
                 )
             }
+            Self::DebugAttachment(error) => {
+                write!(
+                    formatter,
+                    "cannot attach direct static debug metadata: {error}"
+                )
+            }
         }
     }
 }
@@ -242,6 +258,30 @@ impl DirectScript {
             &self.compiler_options_fingerprint,
         )
     }
+
+    /// Installs the program and retains its static BlueTS metadata only for
+    /// the resulting live BlueJS generation. If retention rejects an identity
+    /// mismatch or limit, the just-installed generation is invalidated so a
+    /// caller cannot execute an unpaired direct program accidentally.
+    pub fn attach_debug_in(
+        &self,
+        registry: &mut bluejs::BlueJsProgramRegistry,
+        debug_registry: &mut DirectDebugRegistry,
+    ) -> Result<DirectProgramAttachment, BridgeError> {
+        let attachment = self.attach_in(registry)?;
+        if let Err(error) = debug_registry.retain(
+            registry,
+            &attachment,
+            &self.language_version,
+            &self.compiler_options_fingerprint,
+            &self.sources,
+            &self.debug_info,
+        ) {
+            registry.invalidate(attachment.handle);
+            return Err(BridgeError::DebugAttachment(error));
+        }
+        Ok(attachment)
+    }
 }
 
 impl DirectModule {
@@ -267,6 +307,29 @@ impl DirectModule {
             &self.provenance,
             &self.compiler_options_fingerprint,
         )
+    }
+
+    /// Equivalent to [`DirectScript::attach_debug_in`] for one direct ESM
+    /// module. The retained object is static metadata, not a runtime scope or
+    /// BlueJS value inspector.
+    pub fn attach_debug_in(
+        &self,
+        registry: &mut bluejs::BlueJsProgramRegistry,
+        debug_registry: &mut DirectDebugRegistry,
+    ) -> Result<DirectProgramAttachment, BridgeError> {
+        let attachment = self.attach_in(registry)?;
+        if let Err(error) = debug_registry.retain(
+            registry,
+            &attachment,
+            &self.language_version,
+            &self.compiler_options_fingerprint,
+            &self.sources,
+            &self.debug_info,
+        ) {
+            registry.invalidate(attachment.handle);
+            return Err(BridgeError::DebugAttachment(error));
+        }
+        Ok(attachment)
     }
 }
 
@@ -309,9 +372,10 @@ pub fn compile_direct_script(
         program,
         bytecode,
         language_version: LANGUAGE_VERSION.to_string(),
-        compiler_options_fingerprint: debug_info.compiler_options_hash,
+        compiler_options_fingerprint: debug_info.compiler_options_hash.clone(),
         sources,
         provenance,
+        debug_info,
     })
 }
 
@@ -337,9 +401,10 @@ pub fn compile_direct_module(
         program,
         bytecode,
         language_version: LANGUAGE_VERSION.to_string(),
-        compiler_options_fingerprint: debug_info.compiler_options_hash,
+        compiler_options_fingerprint: debug_info.compiler_options_hash.clone(),
         sources,
         provenance,
+        debug_info,
     })
 }
 
@@ -392,6 +457,7 @@ pub fn compile_direct_module_graph(
                 compiler_options_fingerprint: debug_info.compiler_options_hash.clone(),
                 sources,
                 provenance,
+                debug_info: debug_info.clone(),
             },
         );
     }
@@ -407,8 +473,9 @@ pub fn compile_direct_module_graph(
         entry: entry.to_string(),
         modules,
         language_version: LANGUAGE_VERSION.to_string(),
-        compiler_options_fingerprint: debug_info.compiler_options_hash,
+        compiler_options_fingerprint: debug_info.compiler_options_hash.clone(),
         sources,
+        debug_info,
     })
 }
 

@@ -167,6 +167,17 @@ or second module resolver to bypass them.
   policy and bounded retention; static types must always be distinguished from
   a BlueJS runtime value.
 
+  Foundation delivered: direct scripts/modules now preserve their compiler
+  produced `BlueTsDebugInfo`, and `DirectDebugRegistry` attaches it only after
+  validating the exact live BlueJS generation, safe-point map, language
+  version, compiler-options fingerprint, and canonical source hash set. It
+  retains no source text or runtime values, bounds programs/sources/symbols/
+  types, rejects mismatched or over-limit attachments before exposing metadata,
+  and can prune records after the owning BlueJS generation is invalidated.
+  The page host still must call this at navigation/reload/cache/hibernation
+  boundaries and add source policy, diagnostics/contracts, debugger IPC, stack
+  locations, and runtime-value inspection before this item can close.
+
   Acceptance: TS breakpoints, stack locations, scopes, symbol navigation, and
   static type display point to original source; navigation, reload, cache
   eviction, and hibernation make old metadata unavailable rather than

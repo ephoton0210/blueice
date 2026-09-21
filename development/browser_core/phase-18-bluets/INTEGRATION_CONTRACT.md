@@ -184,6 +184,16 @@ and schema drift, binding-inventory drift, and declaration-byte drift without
 fallback. Direct-page compilation has not yet consumed this validator, so the
 profile remains a foundation rather than an advertised page API.
 
+The direct bridge also retains `BlueTsDebugInfo` only through its exact live
+BlueJS generation when a caller opts into `DirectDebugRegistry`. Retention
+validates the safe-point map, language version, compiler-options fingerprint,
+and canonical source hashes; it has explicit program/source/symbol/type limits
+and stores no TypeScript source text or BlueJS runtime values. A host prunes
+the record after BlueJS invalidation. This is static metadata only: it does
+not provide page-lifetime automation, diagnostics/contracts retention, source
+authorization, stack locations, scopes, runtime type inspection, pause
+mechanics, or debugger IPC.
+
 Adding a host API is additive only when it preserves existing binding IDs and declaration meanings. Removing or changing a public declaration requires a new host API major version and a new compatible feature profile. A compiler may target a declared older profile only when the host explicitly supplies its matching generated manifest; it may never infer API availability from the installed BlueJS version.
 
 ## Remaining implementation gate
