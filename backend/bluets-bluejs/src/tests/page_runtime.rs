@@ -156,6 +156,30 @@ fn direct_module_graph_executes_only_its_attached_page_realm_generations() {
 }
 
 #[test]
+fn direct_module_graph_cannot_replace_a_realms_live_canonical_modules() {
+    let graph = module_graph();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let attachment = graph
+        .attach_in_page_realm(&mut runtime, 7, &origin())
+        .unwrap();
+    attachment.execute_in_page_realm(&mut runtime, 7).unwrap();
+
+    assert!(matches!(
+        graph.attach_in_page_realm(&mut runtime, 7, &origin()),
+        Err(BridgeError::PageRuntime(
+            bluejs::BlueJsPageRuntimeError::DuplicateModuleIdentity(module)
+        )) if module == "page:///app/dependency.ts"
+    ));
+    assert_eq!(runtime.realm_stats(7).unwrap().program_count, 2);
+
+    runtime.navigate(7, origin()).unwrap();
+    assert!(graph
+        .attach_in_page_realm(&mut runtime, 7, &origin())
+        .is_ok());
+}
+
+#[test]
 fn direct_module_graph_retains_exact_static_metadata_for_every_page_generation() {
     let graph = module_graph();
     let mut runtime = bluejs::BlueJsPageRuntime::default();

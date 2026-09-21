@@ -168,9 +168,12 @@ or second module resolver to bypass them.
   ESM module and executes only those attached canonical module IDs in the tab
   realm; navigation makes its handles unusable. `DirectPageRealmOwner` now
   combines either seam with its static metadata registry and prunes invalid
-  records after its own navigation/reload or close operation. A core/page-host
-  caller must still adopt this owner (or preserve the same invariant), enforce
-  host typings, and drive actual page lifecycle events.
+  records after its own navigation/reload or close operation. A realm reserves
+  a canonical ESM ID after its first execution attempt, so no later artifact
+  can reuse BlueJS's linked module cells until navigation/reload creates a
+  replacement realm. A core/page-host caller must still adopt this owner (or
+  preserve the same invariant), enforce host typings, and drive actual page
+  lifecycle events.
 
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering

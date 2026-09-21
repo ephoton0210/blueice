@@ -70,6 +70,13 @@ after its navigation/reload and close operations. It has no page discovery,
 DOM binding, transport, cache, or hibernation authority; a real host must
 route those lifecycle events through this owner or enforce the same rule.
 
+One page realm owns at most one live or previously linked program for each
+canonical ESM module ID. BlueJS retains module cells by that ID, so a second
+artifact with the same identity is rejected even after its original handle was
+discarded; only navigation/reload produces a fresh module identity set. This
+prevents a newly attached artifact from executing against cells linked from an
+older graph.
+
 ## AST/IR hand-off
 
 The bridge lowers `new Identifier(args)` directly to BlueJS `New` data, including normal and spread arguments. Constructor members and omitted parentheses remain excluded.

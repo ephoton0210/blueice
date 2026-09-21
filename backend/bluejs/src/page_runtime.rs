@@ -82,6 +82,8 @@ struct PageRealm {
     origin: BlueJsPageOrigin,
     vm: Vm,
     programs: BTreeSet<BlueJsProgramHandle>,
+    module_programs: BTreeMap<String, BlueJsProgramHandle>,
+    linked_module_ids: BTreeSet<String>,
     bytecode_bytes: usize,
 }
 
@@ -141,6 +143,8 @@ impl BlueJsPageRuntime {
                 origin,
                 vm,
                 programs: BTreeSet::new(),
+                module_programs: BTreeMap::new(),
+                linked_module_ids: BTreeSet::new(),
                 bytecode_bytes: 0,
             },
         );
@@ -167,6 +171,8 @@ impl BlueJsPageRuntime {
                     origin,
                     vm,
                     programs: BTreeSet::new(),
+                    module_programs: BTreeMap::new(),
+                    linked_module_ids: BTreeSet::new(),
                     bytecode_bytes: 0,
                 },
             )
@@ -211,6 +217,17 @@ impl BlueJsPageRuntime {
                 limit: self.config.max_programs_per_realm,
             });
         }
+        let module_id = matches!(program, BlueJsProgramV1::Module(_))
+            .then(|| source.canonical_module_id().to_string());
+        if let Some(module_id) = module_id.as_deref() {
+            if realm.module_programs.contains_key(module_id)
+                || realm.linked_module_ids.contains(module_id)
+            {
+                return Err(BlueJsPageRuntimeError::DuplicateModuleIdentity(
+                    module_id.to_string(),
+                ));
+            }
+        }
         let handle = self
             .registry
             .install(source, program)
@@ -238,6 +255,13 @@ impl BlueJsPageRuntime {
             .get_mut(&tab_id)
             .expect("the realm remains live during one synchronous install");
         realm.programs.insert(handle);
+        if let Some(module_id) = module_id {
+            let previous = realm.module_programs.insert(module_id, handle);
+            debug_assert!(
+                previous.is_none(),
+                "duplicate page module was checked before install"
+            );
+        }
         realm.bytecode_bytes += bytecode_bytes;
         Ok(handle)
     }
@@ -260,18 +284,25 @@ impl BlueJsPageRuntime {
         if !owned {
             return Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id, handle });
         }
-        let bytecode_bytes = self
+        let compiled = self
             .registry
             .get(handle)
-            .map_err(BlueJsPageRuntimeError::ProgramRegistry)?
-            .bytecode()
-            .bytes()
-            .len();
+            .map_err(BlueJsPageRuntimeError::ProgramRegistry)?;
+        let bytecode_bytes = compiled.bytecode().bytes().len();
+        let module_id = matches!(
+            compiled.ast_nodes().first().map(|node| node.kind()),
+            Some(BlueJsAstNodeKind::Module)
+        )
+        .then(|| compiled.source().canonical_module_id().to_string());
         let realm = self
             .realms
             .get_mut(&tab_id)
             .expect("the checked realm remains live during one synchronous discard");
         realm.programs.remove(&handle);
+        if let Some(module_id) = module_id {
+            let removed = realm.module_programs.remove(&module_id);
+            debug_assert_eq!(removed, Some(handle));
+        }
         realm.bytecode_bytes = realm
             .bytecode_bytes
             .checked_sub(bytecode_bytes)
@@ -377,9 +408,18 @@ impl BlueJsPageRuntime {
             tab_id,
             handle: entry,
         })?;
-        self.realms
+        let realm = self
+            .realms
             .get_mut(&tab_id)
-            .expect("every graph module was checked against this live realm")
+            .expect("every graph module was checked against this live realm");
+        // BlueJS retains linked module cells by canonical ID. Once evaluation
+        // is attempted, reserve every ID for the realm lifetime even if it
+        // later fails, so a replacement artifact cannot be paired with the
+        // previous graph's cells. Navigation/reload creates a fresh set.
+        realm
+            .linked_module_ids
+            .extend(module_bytecode.keys().cloned());
+        realm
             .vm
             .execute_module_graph(&entry_module, &module_bytecode)
             .map_err(BlueJsPageRuntimeError::Runtime)
@@ -492,7 +532,7 @@ impl fmt::Display for BlueJsPageRuntimeError {
             Self::DuplicateModuleIdentity(module) => {
                 write!(
                     formatter,
-                    "page module graph repeats canonical module `{module}`"
+                    "page realm already owns or linked canonical module `{module}`"
                 )
             }
             Self::VmInitialization(error) => {
@@ -561,6 +601,37 @@ mod tests {
             Value::Undefined
         );
         assert_eq!(runtime.realm_stats(7).unwrap().program_count, 2);
+    }
+
+    #[test]
+    fn a_linked_module_identity_cannot_be_replaced_before_navigation() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        let module_id = "page:///module.js";
+        let first = runtime
+            .install_program(
+                7,
+                &origin(),
+                source(module_id),
+                &BlueJsProgramV1::Module(parse_module("export const answer = 41;").unwrap()),
+            )
+            .unwrap();
+        runtime.execute_module_graph(7, first, [first]).unwrap();
+        runtime.discard_program(7, first).unwrap();
+
+        let replacement =
+            BlueJsProgramV1::Module(parse_module("export const answer = 42;").unwrap());
+        assert_eq!(
+            runtime.install_program(7, &origin(), source(module_id), &replacement),
+            Err(BlueJsPageRuntimeError::DuplicateModuleIdentity(
+                module_id.to_string()
+            ))
+        );
+
+        runtime.navigate(7, origin()).unwrap();
+        assert!(runtime
+            .install_program(7, &origin(), source(module_id), &replacement)
+            .is_ok());
     }
 
     #[test]
