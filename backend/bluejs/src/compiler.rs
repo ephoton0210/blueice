@@ -225,7 +225,7 @@ fn compile_with_limit_and_mode(
                         ImportName::Source => CompiledModuleImportName::Source,
                     },
                     local_slot,
-                    json: import.json,
+                    module_type: import.module_type,
                 }
             })
             .collect();
@@ -255,33 +255,33 @@ fn compile_with_limit_and_mode(
                     Some(ImportEntry {
                         module_request,
                         import_name: ImportName::Named(import_name),
-                        json,
+                        module_type,
                         ..
                     }) => Ok(CompiledModuleExport::Indirect {
                         export_name: export_name.clone(),
                         module_request: module_request.clone(),
                         import_name: import_name.clone(),
-                        json: *json,
+                        module_type: *module_type,
                     }),
                     Some(ImportEntry {
                         module_request,
                         import_name: ImportName::Namespace,
-                        json,
+                        module_type,
                         ..
                     }) => Ok(CompiledModuleExport::Namespace {
                         export_name: export_name.clone(),
                         module_request: module_request.clone(),
-                        json: *json,
+                        module_type: *module_type,
                     }),
                     Some(ImportEntry {
                         module_request,
                         import_name: ImportName::DeferredNamespace,
-                        json,
+                        module_type,
                         ..
                     }) => Ok(CompiledModuleExport::DeferredNamespace {
                         export_name: export_name.clone(),
                         module_request: module_request.clone(),
-                        json: *json,
+                        module_type: *module_type,
                     }),
                     Some(ImportEntry {
                         module_request,
@@ -304,28 +304,28 @@ fn compile_with_limit_and_mode(
                     export_name,
                     module_request,
                     import_name,
-                    json,
+                    module_type,
                 } => Ok(CompiledModuleExport::Indirect {
                     export_name: export_name.clone(),
                     module_request: module_request.clone(),
                     import_name: import_name.clone(),
-                    json: *json,
+                    module_type: *module_type,
                 }),
                 ExportEntry::Star {
                     module_request,
-                    json,
+                    module_type,
                 } => Ok(CompiledModuleExport::Star {
                     module_request: module_request.clone(),
-                    json: *json,
+                    module_type: *module_type,
                 }),
                 ExportEntry::Namespace {
                     export_name,
                     module_request,
-                    json,
+                    module_type,
                 } => Ok(CompiledModuleExport::Namespace {
                     export_name: export_name.clone(),
                     module_request: module_request.clone(),
-                    json: *json,
+                    module_type: *module_type,
                 }),
             })
             .collect::<Result<Vec<_>, CompileError>>()?;
@@ -335,11 +335,13 @@ fn compile_with_limit_and_mode(
             .filter(|request| {
                 seen.insert((
                     request.specifier.as_str(),
+                    request.module_type,
                     request.phase == ImportPhase::Defer,
                 ))
             })
             .map(|request| CompiledModuleRequest {
                 module_request: request.specifier.clone(),
+                module_type: request.module_type,
                 deferred: request.phase == ImportPhase::Defer,
             })
             .collect();

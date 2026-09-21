@@ -32,8 +32,16 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 SNAPSHOT = json.loads(Path(__file__).with_name("snapshot.json").read_text())
 FRONTMATTER = re.compile(r"/\*---(.*?)---\*/", re.DOTALL)
+# The optional trailing `with { type: "..." }` import-attributes clause of a
+# static module request; its capture group is the `type` value. A request's
+# `type` selects how the host loads the resource (`json`, `text`, `bytes`),
+# so it decides which of the adapter's source maps the resource goes into.
+IMPORT_ATTRIBUTE_TYPE = r'''(?:\s*with\s*\{[^}]*?\btype\s*:\s*["']([^"']*)["'][^}]*\})?'''
 MODULE_REQUEST = re.compile(
-    r'''\bimport\s+(?:[^;]*?\bfrom\s+)?["']([^"']+)["']|\bexport\s+(?:\*\s*(?:as\s+(?:[\w$]+|"[^"]*"|'[^']*')\s*)?|\{[^}]*\}\s+)from\s*["']([^"']+)["']''',
+    r'''\bimport\s+(?:[^;]*?\bfrom\s+)?["']([^"']+)["']'''
+    + IMPORT_ATTRIBUTE_TYPE
+    + r'''|\bexport\s+(?:\*\s*(?:as\s+(?:[\w$]+|"[^"]*"|'[^']*')\s*)?|\{[^}]*\}\s+)from\s*["']([^"']+)["']'''
+    + IMPORT_ATTRIBUTE_TYPE,
     re.DOTALL,
 )
 # A plain `import(...)` reference is safe to classify as a "dynamic" edge in
@@ -43,7 +51,12 @@ MODULE_REQUEST = re.compile(
 # dynamic import specifically resolves by checking whether the target is
 # *already* a compiled Source Text Module -- so a reference through either
 # of those must still be treated as a "static" (eagerly compiled) edge.
-DYNAMIC_IMPORT_PLAIN_REQUEST = re.compile(r'''\bimport\s*\(\s*["']([^"']+)["']\s*\)''')
+# `import("./x")` and `import("./x", { with: { type: "..." } })` (an optional
+# trailing comma is allowed); the second capture group is the `type` value.
+DYNAMIC_IMPORT_PLAIN_REQUEST = re.compile(
+    r'''\bimport\s*\(\s*["']([^"']+)["']\s*'''
+    r'''(?:,\s*\{\s*with\s*:\s*\{[^}]*?\btype\s*:\s*["']([^"']*)["'][^}]*\}\s*,?\s*\}\s*)?,?\s*\)'''
+)
 DYNAMIC_IMPORT_SOURCE_OR_DEFER_REQUEST = re.compile(
     r'''\bimport\s*\.\s*(?:source|defer)\s*\(\s*["']([^"']+)["']\s*\)'''
 )
@@ -573,6 +586,47 @@ def modes(data):
     return ["sloppy", "strict"]
 
 
+class ModuleSources(collections.namedtuple(
+    "ModuleSources",
+    "sources dynamic_sources json_sources text_sources bytes_sources",
+)):
+    """The resources one test's module graph needs, split by how the host loads them.
+
+    `sources` and `dynamic_sources` are JavaScript module text (eagerly linked
+    versus compiled lazily); `json_sources` and `text_sources` are decoded
+    text; `bytes_sources` maps a path to its raw bytes as a list of ints (the
+    adapter's JSON transport).
+    """
+
+    __slots__ = ()
+
+
+# Resource kinds a module request can load. `js` is a Source Text Module; the
+# others are the synthetic modules selected by `with { type }`.
+SYNTHETIC_MODULE_TYPES = ("json", "text", "bytes")
+
+
+def utf8_decode(data):
+    """WHATWG "UTF-8 decode": strip one leading BOM, replace malformed bytes."""
+    return data.decode("utf-8-sig", errors="replace")
+
+
+def request_kind(candidate, attribute_type):
+    """Which loader a request for `candidate` selects.
+
+    An explicit `type` attribute always wins. Without one, a `.json` fixture
+    keeps its historical JSON classification (an untyped reference through a
+    variable specifier may still be an import that carries the attribute at
+    runtime); every other suffix-less/odd fixture is left to the adapter's
+    normal module-resolution result.
+    """
+    if attribute_type in SYNTHETIC_MODULE_TYPES:
+        return attribute_type
+    if candidate.suffix == ".json":
+        return "json"
+    return "js"
+
+
 def module_sources(
     entry,
     test_root,
@@ -586,7 +640,8 @@ def module_sources(
     the test source, so a caller may opt into supplying existing sibling
     files without making unrelated ordinary module tests over-inclusive.
 
-    Returns `(sources, dynamic_sources, json_sources)`. `.js` fixtures
+    Returns a `ModuleSources`: `(sources, dynamic_sources, json_sources,
+    text_sources, bytes_sources)`. `.js` fixtures
     reached by at least one static edge (an `import`/`export ... from`, from
     `entry` or transitively) are parser input for the adapter's own eagerly
     linked JavaScript module graph, in `sources`. A `.js` fixture reached
@@ -616,39 +671,49 @@ def module_sources(
     own heuristic trigger), so the adapter's lazy per-import rejection
     applies instead of an eager hard failure.
 
-    `.json` fixtures are always raw text for the adapter's separate
-    `type: "json"` module-record path (neither a parser input nor
-    decoded/validated here), regardless of which kind of edge reaches them.
-    Other import-attribute-named fixture kinds (Wasm, binary text) are left
-    to the adapter's normal module-resolution result, per this function's
-    original scope.
+    A request's `with { type: "json" | "text" | "bytes" }` attribute (on a
+    static declaration or a literal dynamic `import()`) selects the adapter's
+    separate synthetic-module path for its target, which is raw data -- never
+    a parser input nor traversed for further requests -- and is keyed by the
+    resource path *and* type, so one file can be both a JavaScript module and
+    (say) its own text (`import-attributes/text-self.js`). `json` and `text`
+    resources are decoded as UTF-8 text (`text` per WHATWG "UTF-8 decode");
+    `bytes` resources are kept as raw byte lists. An untyped request for a
+    `.json` fixture stays a JSON resource. Other fixture kinds reached with no
+    such attribute (Wasm, binary text) are left to the adapter's normal
+    module-resolution result, per this function's original scope.
     """
     test_root = test_root.resolve()
     text = {}
+    raw = {}
     discovery = {}
-    pending = [(entry.resolve(), "static")]
+    resources = {kind: set() for kind in SYNTHETIC_MODULE_TYPES}
+    pending = [(entry.resolve(), "js", "static")]
     while pending:
-        path, reason = pending.pop()
+        path, kind, reason = pending.pop()
         relative = path.relative_to(test_root).as_posix()
+        if kind != "js":
+            resources[kind].add(relative)
+            if relative not in raw:
+                raw[relative] = path.read_bytes()
+            continue
         previous = discovery.get(relative)
         if previous == "static" or previous == reason:
             continue
         discovery[relative] = "static" if reason == "static" else previous or reason
         if relative not in text:
             text[relative] = path.read_text(encoding="utf-8")
-        if path.suffix == ".json":
-            continue
         source = text[relative]
         requests = [
-            (match.group(1) or match.group(2), "static")
+            (match.group(1) or match.group(3), match.group(2) or match.group(4), "static")
             for match in MODULE_REQUEST.finditer(source)
         ]
         requests.extend(
-            (match.group(1), "dynamic")
+            (match.group(1), match.group(2), "dynamic")
             for match in DYNAMIC_IMPORT_PLAIN_REQUEST.finditer(source)
         )
         requests.extend(
-            (match.group(1), "static")
+            (match.group(1), None, "static")
             for match in DYNAMIC_IMPORT_SOURCE_OR_DEFER_REQUEST.finditer(source)
         )
         if include_dynamic_string_roots:
@@ -663,12 +728,13 @@ def module_sources(
             requests.extend(
                 (
                     match.group(1),
+                    None,
                     "dynamic" if speculative_relative_strings else "static",
                 )
                 for match in RELATIVE_STRING.finditer(source)
                 if match.span(1) not in literal_dynamic_spans
             )
-        for request, sub_reason in requests:
+        for request, attribute_type, sub_reason in requests:
             if not request or not request.startswith("."):
                 continue
             candidate = (path.parent / request).resolve()
@@ -676,23 +742,31 @@ def module_sources(
                 candidate.relative_to(test_root)
             except ValueError:
                 continue
+            candidate_kind = request_kind(candidate, attribute_type)
             # Other import-attribute-named fixture kinds (Wasm, binary text)
             # are not parser inputs and must be left to the adapter's normal
             # module-resolution result rather than making the inventory
-            # runner attempt UTF-8 decoding and abort the whole run.
-            if candidate.is_file() and candidate.suffix in (".js", ".json"):
-                pending.append((candidate, sub_reason))
+            # runner attempt UTF-8 decoding and abort the whole run. Only a
+            # request that names a synthetic module type may load one.
+            if not candidate.is_file():
+                continue
+            if candidate_kind == "js" and candidate.suffix != ".js":
+                continue
+            pending.append((candidate, candidate_kind, sub_reason))
     sources = {}
     dynamic_sources = {}
-    json_sources = {}
     for relative, reason in discovery.items():
-        if relative.endswith(".json"):
-            json_sources[relative] = text[relative]
-        elif reason == "static":
+        if reason == "static":
             sources[relative] = text[relative]
         else:
             dynamic_sources[relative] = text[relative]
-    return sources, dynamic_sources, json_sources
+    return ModuleSources(
+        sources,
+        dynamic_sources,
+        {relative: utf8_decode(raw[relative]) for relative in sorted(resources["json"])},
+        {relative: utf8_decode(raw[relative]) for relative in sorted(resources["text"])},
+        {relative: list(raw[relative]) for relative in sorted(resources["bytes"])},
+    )
 
 
 def selected_files(all_files, corpus, pattern, excluded=""):
@@ -1175,7 +1249,7 @@ def main():
                     has_dynamic_import_expression or has_shadow_realm_import_value
                 )
                 if mode == "module" or needs_dynamic_string_roots:
-                    sources, dynamic_sources, json_sources = module_sources(
+                    sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(
                         path,
                         args.corpus / "test",
                         include_dynamic_string_roots=needs_dynamic_string_roots,
@@ -1197,6 +1271,8 @@ def main():
                     request["module_sources"] = sources
                     request["module_dynamic_sources"] = dynamic_sources
                     request["module_json_sources"] = json_sources
+                    request["module_text_sources"] = text_sources
+                    request["module_bytes_sources"] = bytes_sources
                     request["module_source_requests"] = sorted(
                         {
                             match.group(1)

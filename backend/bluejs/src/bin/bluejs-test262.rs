@@ -30,6 +30,15 @@ struct Request {
     /// parsed as JavaScript module source unconditionally.
     #[serde(default)]
     module_json_sources: HashMap<String, String>,
+    /// Decoded text (UTF-8) for resources imported with `type: "text"`,
+    /// keyed like `module_json_sources`. A resource may appear here and in
+    /// `module_sources` at once: the attribute is part of a request's identity.
+    #[serde(default)]
+    module_text_sources: HashMap<String, String>,
+    /// Raw bytes for resources imported with `type: "bytes"`, keyed like
+    /// `module_json_sources`.
+    #[serde(default)]
+    module_bytes_sources: HashMap<String, Vec<u8>>,
     /// Paths in `module_sources` reached only through a relative-string
     /// heuristic (e.g. a `ShadowRealm.prototype.importValue` specifier
     /// argument), never through an actual `import`/dynamic-`import()`
@@ -294,6 +303,8 @@ fn evaluate(request: Request) -> Value {
     };
     vm.set_module_source_loader_context(request.module_source_requests);
     vm.set_json_module_sources(request.module_json_sources.clone());
+    vm.set_text_module_sources(request.module_text_sources.clone());
+    vm.set_bytes_module_sources(request.module_bytes_sources.clone());
     vm.set_dynamic_module_sources(dynamic_sources);
     if request.mode != "raw" {
         if let Err(error) = vm.install_test262_harness() {

@@ -29,6 +29,7 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
             {
                 requests.push(RequestedModule {
                     specifier: request.module_request.clone(),
+                    module_type: request.module_type,
                     phase: if request.import_name == ImportName::DeferredNamespace {
                         ImportPhase::Defer
                     } else {
@@ -38,9 +39,12 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
             }
             imports.extend(declaration);
         } else if parser.check_identifier("export") {
-            if let Some(request) = parser.parse_export_declaration(&mut body, &mut exports)? {
+            if let Some((request, module_type)) =
+                parser.parse_export_declaration(&mut body, &mut exports)?
+            {
                 requests.push(RequestedModule {
                     specifier: request,
+                    module_type,
                     phase: ImportPhase::Evaluation,
                 });
             }

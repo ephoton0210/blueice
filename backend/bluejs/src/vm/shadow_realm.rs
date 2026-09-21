@@ -354,8 +354,16 @@ impl Vm {
                     // Do not copy module_graph/source-object caches; their
                     // ObjectIds belong to the caller heap.
                     child.module_registry = self.module_registry.clone();
+                    // A synthetic module the caller already built (JSON, bytes)
+                    // carries a value living in the *caller's* heap; the child
+                    // rebuilds its own from the host sources copied below.
+                    child.module_registry.retain(|_, code| {
+                        !matches!(code.synthetic_default_export, Some(Value::Object(_)))
+                    });
                     child.dynamic_module_sources = self.dynamic_module_sources.clone();
                     child.json_module_sources = self.json_module_sources.clone();
+                    child.text_module_sources = self.text_module_sources.clone();
+                    child.bytes_module_sources = self.bytes_module_sources.clone();
                     child.module_source_registry = self.module_source_registry.clone();
                     child.active_module_name = self.active_module_name.clone();
                     child.remaining_instructions = child.config.instruction_budget;

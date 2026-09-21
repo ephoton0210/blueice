@@ -484,7 +484,7 @@ class RunnerTests(unittest.TestCase):
             # path has no lazy-compile counterpart to
             # `ensure_dynamic_module_compiled` (see `module_sources`'s own
             # docstring), so it must still be eagerly compiled.
-            sources, dynamic_sources, json_sources = module_sources(entry, test)
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(entry, test)
             self.assertEqual(
                 set(sources),
                 {
@@ -498,7 +498,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(json_sources, {})
 
             entry.write_text("import './bytes_FIXTURE.bin';")
-            sources, dynamic_sources, json_sources = module_sources(entry, test)
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(entry, test)
             self.assertEqual(set(sources), {"modules/entry.js"})
             self.assertEqual(dynamic_sources, {})
             self.assertEqual(json_sources, {})
@@ -513,7 +513,7 @@ class RunnerTests(unittest.TestCase):
             )
             (test / "modules" / "both.js").write_text("export const value = true;")
 
-            sources, dynamic_sources, json_sources = module_sources(entry, test)
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(entry, test)
             self.assertEqual(set(sources), {"modules/entry.js", "modules/both.js"})
             self.assertEqual(dynamic_sources, {})
             self.assertEqual(json_sources, {})
@@ -536,7 +536,7 @@ class RunnerTests(unittest.TestCase):
             # even though its string also looks like a relative-string root;
             # a bare relative string (the variable candidate) and a string
             # that also appears outside an import call stay static.
-            sources, dynamic_sources, json_sources = module_sources(
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(
                 entry, test, include_dynamic_string_roots=True
             )
             self.assertEqual(
@@ -556,7 +556,7 @@ class RunnerTests(unittest.TestCase):
             )
             (test / "modules" / "data.json").write_text('{"a": 1}')
 
-            sources, dynamic_sources, json_sources = module_sources(entry, test)
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(entry, test)
             self.assertEqual(set(sources), {"modules/entry.js"})
             self.assertEqual(dynamic_sources, {})
             self.assertEqual(json_sources, {"modules/data.json": '{"a": 1}'})
@@ -569,12 +569,119 @@ class RunnerTests(unittest.TestCase):
             entry.write_text("import('./data.json', {with: {type: 'json'}});")
             (test / "modules" / "data.json").write_text('{"a": 1}')
 
-            sources, dynamic_sources, json_sources = module_sources(
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(
                 entry, test, include_dynamic_string_roots=True
             )
             self.assertEqual(set(sources), {"modules/entry.js"})
             self.assertEqual(dynamic_sources, {})
             self.assertEqual(json_sources, {"modules/data.json": '{"a": 1}'})
+
+    def test_module_sources_classifies_text_and_bytes_fixtures_by_their_type_attribute(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text(
+                "import text from './plain_FIXTURE' with { type: 'text' };\n"
+                "import bytes from './image_FIXTURE.png' with { type: \"bytes\" };\n"
+                "import json from './data_FIXTURE.json' with { type: 'json' };\n"
+                "export { default as again } from './plain_FIXTURE' with { type: 'text' };\n"
+                "export * as ns from './note_FIXTURE.txt' with { type: 'text' };\n"
+            )
+            (test / "modules" / "plain_FIXTURE").write_text("plain\n")
+            (test / "modules" / "image_FIXTURE.png").write_bytes(b"\x89PNG\x00\xff")
+            (test / "modules" / "data_FIXTURE.json").write_text('{"a": 1}')
+            (test / "modules" / "note_FIXTURE.txt").write_text("note")
+
+            found = module_sources(entry, test)
+            self.assertEqual(set(found.sources), {"modules/entry.js"})
+            self.assertEqual(
+                found.text_sources,
+                {"modules/plain_FIXTURE": "plain\n", "modules/note_FIXTURE.txt": "note"},
+            )
+            self.assertEqual(
+                found.bytes_sources, {"modules/image_FIXTURE.png": [0x89, 0x50, 0x4E, 0x47, 0, 0xFF]}
+            )
+            self.assertEqual(found.json_sources, {"modules/data_FIXTURE.json": '{"a": 1}'})
+
+    def test_module_sources_type_attribute_wins_over_the_file_extension(self):
+        # A `.json` fixture imported as bytes is bytes, not JSON, and a `.js`
+        # fixture imported as text is never parsed as a module.
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text(
+                "import a from './data.json' with { type: 'bytes' };\n"
+                "import b from './invalid.js' with { type: 'text' };\n"
+            )
+            (test / "modules" / "data.json").write_text('{"a": 1}')
+            (test / "modules" / "invalid.js").write_text("invalid { javascript")
+
+            found = module_sources(entry, test)
+            self.assertEqual(set(found.sources), {"modules/entry.js"})
+            self.assertEqual(found.dynamic_sources, {})
+            self.assertEqual(found.json_sources, {})
+            self.assertEqual(found.text_sources, {"modules/invalid.js": "invalid { javascript"})
+            self.assertEqual(found.bytes_sources, {"modules/data.json": list(b'{"a": 1}')})
+
+    def test_module_sources_supplies_a_module_that_imports_itself_as_text(self):
+        # One path, two request identities: the entry module and its text.
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "self.js"
+            entry.parent.mkdir(parents=True)
+            source = "import value from './self.js' with { type: 'text' };"
+            entry.write_text(source)
+
+            found = module_sources(entry, test)
+            self.assertEqual(found.sources, {"modules/self.js": source})
+            self.assertEqual(found.text_sources, {"modules/self.js": source})
+
+    def test_module_sources_decodes_text_as_utf8_and_drops_a_leading_bom(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text("import a from './a.txt' with { type: 'text' };")
+            (test / "modules" / "a.txt").write_bytes(b"\xef\xbb\xbfcaf\xc3\xa9 \xff")
+
+            found = module_sources(entry, test)
+            # UTF-8 decode: BOM removed, malformed byte becomes U+FFFD.
+            self.assertEqual(found.text_sources, {"modules/a.txt": "caf\u00e9 \ufffd"})
+
+    def test_module_sources_reads_a_type_attribute_on_a_dynamic_import(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text(
+                "import('./fixture.json', { with: { type: 'text' } });\n"
+                "import('./other.bin', {\n  with: { type: 'bytes' },\n});\n"
+                "import('./plain.js');\n"
+            )
+            (test / "modules" / "fixture.json").write_text("{}")
+            (test / "modules" / "other.bin").write_bytes(b"\x00\x01")
+            (test / "modules" / "plain.js").write_text("export {};")
+
+            found = module_sources(entry, test)
+            self.assertEqual(found.text_sources, {"modules/fixture.json": "{}"})
+            self.assertEqual(found.bytes_sources, {"modules/other.bin": [0, 1]})
+            self.assertEqual(found.json_sources, {})
+            self.assertEqual(set(found.dynamic_sources), {"modules/plain.js"})
+
+    def test_module_sources_untyped_relative_string_to_a_json_fixture_stays_json(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text("const specifier = './data.json'; import(specifier);")
+            (test / "modules" / "data.json").write_text("[]")
+
+            found = module_sources(entry, test, include_dynamic_string_roots=True)
+            self.assertEqual(found.json_sources, {"modules/data.json": "[]"})
+            self.assertEqual(found.text_sources, {})
+            self.assertEqual(found.bytes_sources, {})
 
     def test_supervisor_terminates_and_restarts_a_stalled_process(self):
         with tempfile.TemporaryDirectory() as temporary:

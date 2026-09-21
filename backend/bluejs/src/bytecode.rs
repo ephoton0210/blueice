@@ -8,7 +8,7 @@
 //! Jumps use byte offsets. No public deserializer accepts arbitrary code:
 //! serialization/versioning and hostile-bytecode validation are future work.
 
-use crate::Value;
+use crate::{ModuleType, Value};
 
 /// Reserved opcode metadata for later inline-cache tiers. No cache is
 /// allocated or consulted by the first interpreter.
@@ -272,11 +272,11 @@ pub(crate) struct ModuleImport {
     pub module_request: String,
     pub import_name: ModuleImportName,
     pub local_slot: Option<u32>,
-    /// Whether this request's `with` clause specified `type: "json"`.
-    /// Drives ParseJSONModule routing instead of ordinary Source Text
+    /// This request's `with { type }` attribute. Drives the synthetic
+    /// module (JSON, text, bytes) routing instead of ordinary Source Text
     /// Module linking; other attribute keys/values are accepted but not
-    /// yet otherwise acted on (see `parser/module_items.rs`).
-    pub json: bool,
+    /// otherwise acted on (see `parser/module_items.rs`).
+    pub module_type: ModuleType,
 }
 
 /// One executable [[RequestedModules]] entry, in source-text order.
@@ -287,6 +287,7 @@ pub(crate) struct ModuleImport {
 #[derive(Clone)]
 pub(crate) struct ModuleRequest {
     pub module_request: String,
+    pub module_type: ModuleType,
     pub deferred: bool,
 }
 
@@ -300,16 +301,16 @@ pub(crate) enum ModuleExport {
         export_name: String,
         module_request: String,
         import_name: String,
-        json: bool,
+        module_type: ModuleType,
     },
     Star {
         module_request: String,
-        json: bool,
+        module_type: ModuleType,
     },
     Namespace {
         export_name: String,
         module_request: String,
-        json: bool,
+        module_type: ModuleType,
     },
     /// A re-export of a deferred namespace import (`import defer * as ns`
     /// then `export { ns }`): the export resolves to the target's deferred
@@ -317,7 +318,7 @@ pub(crate) enum ModuleExport {
     DeferredNamespace {
         export_name: String,
         module_request: String,
-        json: bool,
+        module_type: ModuleType,
     },
     /// A local re-export of a source-phase import. It resolves to the
     /// source record's Module Source Object rather than a lexical cell.
@@ -439,15 +440,16 @@ pub struct Bytecode {
     pub(crate) module_imports: Vec<ModuleImport>,
     pub(crate) module_exports: Vec<ModuleExport>,
     pub(crate) module_requests: Vec<ModuleRequest>,
-    /// Set only for a host-synthesized JSON module (`ParseJSONModule` /
-    /// `CreateDefaultExportSyntheticModule`): the already-parsed value of
-    /// its sole `default` export. This is a deliberate, narrow exception to
-    /// "runtime object handles are never stored in its constant pool" above
-    /// -- a JSON module's Bytecode is synthesized fresh per-`Vm` by
-    /// `vm/modules.rs::ensure_json_module` from host-supplied raw JSON text,
-    /// never shared across independent VMs, so a live heap value tied to
-    /// this realm is safe to carry here (never in `constants`).
-    pub(crate) json_module_value: Option<Value>,
+    /// Set only for a host-synthesized module (`ParseJSONModule`,
+    /// `CreateTextModule`, `CreateBytesModule`, each ending in
+    /// `CreateDefaultExportSyntheticModule`): the value of its sole
+    /// `default` export. This is a deliberate, narrow exception to "runtime
+    /// object handles are never stored in its constant pool" above -- a
+    /// synthetic module's Bytecode is synthesized fresh per-`Vm` by
+    /// `vm/modules.rs::ensure_synthetic_module` from host-supplied resource
+    /// data, never shared across independent VMs, so a live heap value tied
+    /// to this realm is safe to carry here (never in `constants`).
+    pub(crate) synthetic_default_export: Option<Value>,
 }
 
 impl Bytecode {
@@ -490,7 +492,7 @@ impl Bytecode {
             module_imports: Vec::new(),
             module_exports: Vec::new(),
             module_requests: Vec::new(),
-            json_module_value: None,
+            synthetic_default_export: None,
         }
     }
 

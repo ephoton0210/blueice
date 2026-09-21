@@ -51,10 +51,9 @@ impl Vm {
     pub(super) fn dynamic_import_defer_job(
         &mut self,
         entry: &str,
-        json: bool,
     ) -> Result<DynamicImportResult, RuntimeError> {
         let modules = self.module_registry.clone();
-        self.execute_module_graph_inner(entry, &modules, false, true, json, ImportPhase::Defer)?;
+        self.execute_module_graph_inner(entry, &modules, false, true, ImportPhase::Defer)?;
         let namespace = self
             .last_module_namespace
             .ok_or(RuntimeError::ModuleResolution(format!(
@@ -129,9 +128,10 @@ impl Vm {
                 ))
             })?;
             for request in &code.module_requests {
-                pending.push(Self::resolve_module_request(
+                pending.push(Self::resolve_module_target(
                     &name,
                     &request.module_request,
+                    request.module_type,
                 )?);
             }
         }
@@ -168,7 +168,8 @@ impl Vm {
             return Ok(result);
         }
         for request in &code.module_requests {
-            let target = Self::resolve_module_request(module, &request.module_request)?;
+            let target =
+                Self::resolve_module_target(module, &request.module_request, request.module_type)?;
             for additional in Self::gather_async_dependencies(&target, modules, linked, seen)? {
                 if !result.contains(&additional) {
                     result.push(additional);
@@ -200,7 +201,8 @@ impl Vm {
             return Ok(false);
         }
         for request in &code.module_requests {
-            let target = Self::resolve_module_request(module, &request.module_request)?;
+            let target =
+                Self::resolve_module_target(module, &request.module_request, request.module_type)?;
             if !Self::ready_for_sync_execution(&target, modules, linked, seen)? {
                 return Ok(false);
             }

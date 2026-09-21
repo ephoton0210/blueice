@@ -15,6 +15,41 @@
 use super::*;
 
 impl Vm {
+    /// CreateBytesModule's value (import-bytes proposal): `Construct(
+    /// %Uint8Array%, « AllocateImmutableArrayBuffer(%ArrayBuffer%, bytes) »)`,
+    /// a length-fixed `Uint8Array` viewing the whole immutable buffer.
+    pub(in super::super) fn create_bytes_module_value(
+        &mut self,
+        bytes: Vec<u8>,
+    ) -> Result<Value, RuntimeError> {
+        if bytes.len() > self.heap.max_array_buffer_byte_length() {
+            return Err(RuntimeError::RangeError(
+                "immutable ArrayBuffer length is too large".into(),
+            ));
+        }
+        let length = bytes.len();
+        let buffer_prototype = self.buffer_prototype("ArrayBuffer")?;
+        let view_prototype = self.buffer_prototype("Uint8Array")?;
+        let buffer = self
+            .with_roots(|heap| heap.alloc_immutable_array_buffer(bytes, Some(buffer_prototype)))?;
+        // The buffer is only in this Rust local until the view holds it; the
+        // operand stack keeps it alive across the view's allocation.
+        let base = self.stack.len();
+        self.stack.push(Value::Object(buffer));
+        let view = self.with_roots(|heap| {
+            heap.alloc_typed_array(
+                buffer,
+                0,
+                length,
+                false,
+                TypedArrayKind::Uint8,
+                Some(view_prototype),
+            )
+        });
+        self.stack.truncate(base);
+        Ok(Value::Object(view?))
+    }
+
     /// `get ArrayBuffer.prototype.immutable`.
     pub(super) fn array_buffer_immutable(&self, receiver: &Value) -> Result<Value, RuntimeError> {
         // RequireInternalSlot([[ArrayBufferData]]) plus the SharedArrayBuffer

@@ -291,6 +291,39 @@ fn import_value_resolves_a_lazily_supplied_module_export() {
 }
 
 #[test]
+fn import_value_gives_the_child_realm_its_own_bytes_module_objects() {
+    // `leaf.js` statically imports a bytes resource. The parent realm imports
+    // it first, synthesizing a Uint8Array in *its* heap; the ShadowRealm must
+    // build its own from the host's bytes rather than inherit a handle into
+    // the parent's heap (which would name an unrelated or dead object there).
+    let leaf = "import bytes from './data.bin' with { type: 'bytes' }; \
+                export var parts = \
+                [bytes instanceof Uint8Array, bytes.buffer.immutable, bytes.join()].join('|');";
+    let modules = HashMap::from([(
+        "shadow/leaf.js".to_string(),
+        compile_module(&parse_module(leaf).unwrap()).unwrap(),
+    )]);
+    let mut vm = Vm::default();
+    vm.install_test262_done().unwrap();
+    vm.set_module_loader_context("shadow/main.js", modules);
+    vm.set_bytes_module_sources(HashMap::from([(
+        "shadow/data.bin".to_string(),
+        vec![3, 1, 4],
+    )]));
+    let source = "import('./leaf.js').then(parent => { \
+            const r = new ShadowRealm(); \
+            return r.importValue('./leaf.js', 'parts').then(parts => { \
+                if (parts === 'true|true|3,1,4' && parent.parts === parts) $DONE(); \
+                else $DONE(new Error('unexpected ' + parts)); \
+            }); \
+        }).catch($DONE);";
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+#[test]
 fn import_value_rejects_with_a_typeerror_when_the_export_does_not_exist() {
     let modules = HashMap::from([(
         "shadow/mod.js".to_string(),
