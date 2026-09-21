@@ -1591,6 +1591,16 @@ impl Compiler {
             }
             None => {}
         }
+        // CreatePerIterationEnvironment also runs once before the first test
+        // (ForBodyEvaluation step 2): closures made by the initializer keep
+        // the initial bindings, which the loop never writes again.
+        if own_scope {
+            let scope = *self
+                .scopes
+                .last()
+                .expect("lexical for scope remains active");
+            self.emit(Opcode::CloneScope, scope)?;
+        }
         let start = self.offset()?;
         let mut exit = None;
         if !do_first {
