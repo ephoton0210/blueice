@@ -635,6 +635,35 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_module_evaluation_still_reserves_its_identity_until_navigation() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        let module_id = "page:///failed-module.js";
+        let failed = runtime
+            .install_program(
+                7,
+                &origin(),
+                source(module_id),
+                &BlueJsProgramV1::Module(parse_module("throw 1;").unwrap()),
+            )
+            .unwrap();
+        assert!(matches!(
+            runtime.execute_module_graph(7, failed, [failed]),
+            Err(BlueJsPageRuntimeError::Runtime(_))
+        ));
+        runtime.discard_program(7, failed).unwrap();
+
+        let replacement =
+            BlueJsProgramV1::Module(parse_module("export const answer = 42;").unwrap());
+        assert_eq!(
+            runtime.install_program(7, &origin(), source(module_id), &replacement),
+            Err(BlueJsPageRuntimeError::DuplicateModuleIdentity(
+                module_id.to_string()
+            ))
+        );
+    }
+
+    #[test]
     fn navigation_invalidates_old_handles_before_the_replacement_realm_runs() {
         let mut runtime = BlueJsPageRuntime::default();
         runtime.open_realm(3, origin()).unwrap();
