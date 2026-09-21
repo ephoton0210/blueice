@@ -36,15 +36,17 @@ HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; S
   additional backend. FTP is a legacy compatibility protocol, while explicit
   FTPS is the only password-bearing FTP mode that BlueIce will offer. Plain
   FTP is restricted to anonymous downloads; WebDAV is deferred.
-- **SFTP candidate**: use the synchronous `ssh2` binding. Its blocking
-  `Read + Seek` SFTP files fit the transfer workers directly; a Tokio-only
-  client would add a second scheduler just to bridge to this engine.
+- **SFTP candidate**: use the synchronous `ssh2` binding (MIT licensed,
+  binding to libssh2). Its blocking `Read + Seek` SFTP files fit the transfer
+  workers directly; a Tokio-only client would add a second scheduler just to
+  bridge to this engine.
 - **FTP candidate**: do **not** use `suppaftp` at this time. Its currently
-  unpatched RustSec advisory RUSTSEC-2026-0271 permits CRLF command injection
-  when a caller supplies credentials or paths. `ftp` is unmaintained and
-  `async-ftp` has no advantage for this synchronous engine. This is a safety
-  gate, not a waiver: the FTP/FTPS backend stays unavailable until a patched
-  dependency is available or a narrowly audited implementation exists.
+  unpatched [RustSec advisory RUSTSEC-2026-0271](https://rustsec.org/advisories/RUSTSEC-2026-0271.html)
+  permits CRLF command injection when a caller supplies credentials or paths.
+  `ftp` is unmaintained and `async-ftp` has no advantage for this synchronous
+  engine. This is a safety gate, not a waiver: the FTP/FTPS backend stays
+  unavailable until a patched dependency is available or a narrowly audited
+  implementation exists.
 - **Credential boundary**: URLs may select an endpoint and optional username,
   but never carry a password or private-key material. A normalized
   `(scheme, host, port, username)` credential reference is persisted with the
