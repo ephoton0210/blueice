@@ -412,6 +412,10 @@ fn report_error_message(error: DirectPageScriptError) -> &'static str {
         DirectPageScriptError::LanguageVersionMismatch { .. } => {
             "host language version rejected the page script"
         }
+        DirectPageScriptError::RuntimeBindingProfileUnavailable
+        | DirectPageScriptError::BindingProfileAlreadySelected => {
+            "host binding profile rejected the page script"
+        }
         DirectPageScriptError::UnknownTab { .. } => "page tab is no longer available",
         DirectPageScriptError::PageHasNoUrl { .. }
         | DirectPageScriptError::InvalidPageUrl { .. } => {
@@ -454,7 +458,9 @@ impl std::error::Error for DirectPageInlineExecutorError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::script::host_typings::HostTypeSurfaceV1;
+    use crate::script::host_typings::{
+        core_script_host_type_catalog, HostTypeSurfaceV1, CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+    };
     use crate::script::page_source_authorizer::{
         AuthorizedPageScriptGraph, PageScriptSourceAuthorizationError,
     };
@@ -551,6 +557,37 @@ mod tests {
 
         executor.synchronize_and_execute(&tabs).unwrap();
         assert_eq!(executor.reports().len(), 2, "the document runs only once");
+    }
+
+    #[test]
+    fn inline_executor_runs_the_document_text_profile_through_page_lifecycle() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            concat!(
+                "<main>current document</main>",
+                "<script type=\"application/x-blueice-typescript\">",
+                "const text: string = blueiceDocumentText(); text;",
+                "</script>"
+            ),
+            Some("https://example.test/app/index.html".to_string()),
+        );
+        let mut executor = DirectPageInlineExecutor::new(
+            core_script_host_type_catalog(),
+            CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+            CompilerOptions::default(),
+        )
+        .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.reports(),
+            &VecDeque::from([DirectPageScriptExecutionReport::Executed {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                ordinal: 0,
+                kind: DirectPageScriptKind::Classic,
+            }])
+        );
     }
 
     #[test]

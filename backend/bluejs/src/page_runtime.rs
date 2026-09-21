@@ -97,6 +97,17 @@ pub struct BlueJsHostBindingRegistrar<'vm> {
 }
 
 impl BlueJsHostBindingRegistrar<'_> {
+    /// Installs one non-constructable host function as a global in this
+    /// realm.
+    pub fn install_global_function(
+        &mut self,
+        name: &str,
+        length: u32,
+        function: impl HostFunction,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_function(name, length, function)
+    }
+
     /// Installs one opaque host object as a global in this realm.
     pub fn install_global_object(&mut self, name: &str) -> Result<HostObject, RuntimeError> {
         self.vm.install_host_object(name)

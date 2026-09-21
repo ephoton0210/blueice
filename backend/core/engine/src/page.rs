@@ -311,6 +311,14 @@ impl Page {
         Ok(node_text_content(&self.doc, self.script_node(node)?))
     }
 
+    /// Returns a snapshot of the current document's recursive text content for
+    /// the first read-only BlueJS page binding. The value is copied into the
+    /// realm callback at binding installation, so it grants neither a DOM
+    /// reference nor a cross-document handle to the VM.
+    pub(crate) fn script_document_text_content(&self) -> String {
+        node_text_content(&self.doc, self.doc.root())
+    }
+
     /// Implements the narrow page-script `textContent` setter. Existing child
     /// subtrees are removed before a non-empty replacement text node is
     /// attached, matching the DOM operation's observable tree replacement.

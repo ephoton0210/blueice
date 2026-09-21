@@ -267,11 +267,12 @@ Source locations use UTF-8 byte offsets at this boundary. BlueTSC's Source Map v
 ## BlueJS host callback boundary
 
 `blueice_bluejs::Vm` supplies the low-level, realm-local callback mechanism
-that a future page host may use to install bindings. `install_host_object`
-creates an opaque global host object, and `install_host_method` adds a
-non-constructable callback to that object. The VM retains callbacks privately;
-native function objects retain only a registry index. An object handle from a
-different realm, an invalid name, or a property collision is rejected.
+used to install bindings. `install_host_function` creates a non-constructable
+global callback; `install_host_object` creates an opaque global host object;
+and `install_host_method` adds a non-constructable callback to that object.
+The VM retains callbacks privately; native function objects retain only a
+registry index. An object handle from a different realm, an invalid name, or a
+property collision is rejected.
 
 `HostFunction` receives and returns only `HostValue::Undefined`, `Null`,
 `Bool`, `Number`, or `String`. Objects, `Symbol`, and `BigInt` are rejected
@@ -282,17 +283,27 @@ reflect page-controlled data without the host's own disclosure policy.
 
 `BlueJsPageRuntime::configure_realm_bindings` provides the only page-runtime
 path to this mechanism. It lends a `BlueJsHostBindingRegistrar` for a single
-live tab realm; that registrar can install only host objects and methods, not
-execute bytecode, inspect source, access the heap, or retrieve VM objects.
+live tab realm; that registrar can install only global functions, host objects,
+and methods, not execute bytecode, inspect source, access the heap, or retrieve
+VM objects.
 Bindings belong to that realm VM and are discarded on navigation, reload, or
 close. An unknown realm and a failed installation reject without an implicit
 realm allocation or a partial program execution.
 
-This is a binding mechanism, not a page API. `DirectPageScriptHost` and
-`DirectPageInlineExecutor` currently install no callback or DOM global. A
-future binding profile MUST pair every installed value with the generated
-typing inventory, a stable binding ID, and its declared capability/origin
-policy before it can be advertised in `lib.blueice.d.ts`.
+This is a binding mechanism, not a general page API. `DirectPageScriptHost`
+currently recognizes one canonical non-empty profile:
+`core-script-document-text-v1` installs `blueiceDocumentText(): string` as the
+stable `dom.document-text` `dom-read` binding. It captures one document's
+recursive text when the profile is installed, accepts no arguments, and returns
+the copied string; it does not expose a DOM reference, node identity, mutable
+operation, or event. A profile switch in one realm is rejected, and navigation
+must install a fresh snapshot in its replacement realm. Every other non-empty
+profile is rejected unless the host adds its matching runtime installer. The
+inline executor may select this same verified profile through its owned direct
+host; the default production session still constructs no executor. A future
+binding profile MUST pair every installed value with the generated typing
+inventory, a stable binding ID, and its declared capability/origin policy
+before it can be advertised in `lib.blueice.d.ts`.
 
 ## Host-generated `lib.blueice.d.ts`
 
@@ -328,9 +339,11 @@ The manifest is emitted with a stable field order, normalized LF text and no tim
 The current `core-script-empty-v1` profile provides a checked-in,
 byte-for-byte reproducible empty declaration root and manifest. Core's narrow
 script IPC dispatcher is not a BlueJS object binding, so this profile MUST NOT
-declare `document`, DOM node types, or any other global until the long-lived
-BlueJS host installs it from the same runtime-binding inventory. The profile
-catalog and artifact validator already reject unknown profiles, ABI/identity
+declare `document`, DOM node types, or any other global. The additional
+`core-script-document-text-v1` checked-in artifact declares exactly
+`blueiceDocumentText(): string`; the direct host verifies this canonical
+artifact and inventory before installing the matching snapshot callback. The
+profile catalog and artifact validator reject unknown profiles, ABI/identity
 and schema drift, binding-inventory drift, and declaration-byte drift without
 fallback. The generated artifact additionally verifies that a host's installed
 runtime registration records equal the schema-derived inventory regardless of
@@ -341,9 +354,9 @@ checks before producing one canonical `.d.ts` `ModuleSource` for
 the normal source/module limits, includes its bytes in compiler fingerprints
 and static metadata, forbids imports/re-exports from it, and exposes only its
 static declarations; it produces no JavaScript or host capability. The
-standalone `bluetsc` leaves this host-only input empty. This establishes direct
-compiler consumption without advertising a page API before the BlueJS host has
-installed matching bindings.
+standalone `bluetsc` leaves this host-only input empty. This establishes one
+truthful page capability without advertising a broad DOM API before matching
+runtime bindings exist.
 
 The direct bridge also retains `BlueTsDebugInfo` only through its exact live
 BlueJS generation when a caller opts into `DirectDebugRegistry`. Retention

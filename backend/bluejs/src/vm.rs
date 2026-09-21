@@ -1208,6 +1208,27 @@ impl Vm {
         &self.heap
     }
 
+    /// Installs one non-constructable host function as an own property of
+    /// `globalThis`. The name is rejected when a global property already
+    /// exists, so an embedder cannot silently replace an ECMAScript global.
+    pub fn install_host_function(
+        &mut self,
+        name: &str,
+        length: u32,
+        function: impl HostFunction,
+    ) -> Result<(), RuntimeError> {
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is always an object");
+        if !host_property_name_is_valid(name) || self.heap.get_own(global, name)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "host global name is invalid or already defined".into(),
+            ));
+        }
+        self.install_host_callable(global, name, length, function)
+    }
+
     /// Installs one non-callable host object as an own property of
     /// `globalThis`. The name is rejected when a property already exists, so
     /// an embedder cannot silently replace an ECMAScript global.
@@ -1250,6 +1271,16 @@ impl Vm {
                 "host method is already defined".into(),
             ));
         }
+        self.install_host_callable(owner.0, name, length, function)
+    }
+
+    fn install_host_callable(
+        &mut self,
+        owner: ObjectId,
+        name: &str,
+        length: u32,
+        function: impl HostFunction,
+    ) -> Result<(), RuntimeError> {
         let index = u32::try_from(self.host_functions.len())
             .map_err(|_| RuntimeError::RangeError("too many host functions".into()))?;
         let prototype = self.function_prototype()?;
@@ -1267,7 +1298,7 @@ impl Vm {
                 true,
             )?;
             self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
-            self.define_data(owner.0, name, Value::Object(id), true, false, true)
+            self.define_data(owner, name, Value::Object(id), true, false, true)
         })();
         self.stack.pop();
         result?;

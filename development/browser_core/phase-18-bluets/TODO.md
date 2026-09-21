@@ -83,17 +83,32 @@ or second module resolver to bypass them.
   `JsString`; object identities, `Symbol`, and `BigInt` fail before a callback
   can retain them outside the garbage collector. Callback failures become a
   host-controlled JavaScript `TypeError`, and installation rejects invalid or
-  colliding global/member names. This makes a future DOM bridge possible
-  without exposing a VM or heap reference, but no DOM/event binding, capability
-  policy, stable binding ID, or direct-page host installation exists yet, so
-  this item remains open.
+  colliding global/member names. The ABI can install a global function as well
+  as an object member, without exposing a VM or heap reference.
+
+  The first actual binding is deliberately read-only and non-standard:
+  `core-script-document-text-v1` declares exactly
+  `blueiceDocumentText(): string`, with stable ID `dom.document-text`, runtime
+  ID `global.blueiceDocumentText`, and `dom-read` capability. The direct page
+  host accepts this non-empty profile only when it byte-for-byte matches the
+  built-in typing artifact and runtime inventory. It snapshots the current
+  document's recursive text into the realm-local callback; no DOM reference,
+  node handle, mutable operation, event API, network API, or general
+  `document` object enters BlueJS. A replacement document gets a replacement
+  realm and snapshot. A non-empty profile with no matching installer fails
+  closed before compilation/admission, and a realm cannot switch profiles.
 
   The page runtime now exposes this substrate only through a temporary,
-  realm-scoped registrar. It permits object/method registration but not VM
-  execution, heap access, source inspection, or object inspection, and its
-  callbacks disappear with navigation/reload/close when the realm VM is
-  replaced. `DirectPageScriptHost` has not selected or installed a binding
-  profile through this registrar yet.
+  realm-scoped registrar. It permits global-function/object/method registration
+  but not VM execution, heap access, source inspection, or object inspection,
+  and its callbacks disappear with navigation/reload/close when the realm VM
+  is replaced. Direct-page tests prove the declared function returns the
+  current document snapshot, rebinds after a same-origin document replacement,
+  and rejects an uninstalled non-empty profile; an opt-in inline-executor
+  lifecycle fixture executes the profile through discovered page declarations.
+  The first binding does not yet satisfy the full DOM/event surface or the
+  absent-global static-diagnostic acceptance criteria, so this item remains
+  open.
 
   Acceptance: each initial binding has an implementation, capability policy,
   stable binding ID, and JavaScript page-level behavior test; an unimplemented
@@ -150,9 +165,12 @@ or second module resolver to bypass them.
   or declaration bytes is rejected without fallback. The generated artifact
   also validates a host's runtime registrations as an order-independent but
   exact inventory, rejecting missing, duplicate, extra, or drifted bindings.
-  The checked-in `core-script-empty-v1` fixture is deliberately empty: core
-  has an IPC dispatcher but no BlueJS DOM globals, so declaring `document`
-  would be dishonest. `GeneratedHostTypingsV1::verify_for_direct_compiler`
+  The checked-in `core-script-empty-v1` fixture remains deliberately empty:
+  core's narrow IPC dispatcher alone is not a BlueJS object binding. The
+  checked-in `core-script-document-text-v1` fixture is the first non-empty
+  artifact; it declares only `blueiceDocumentText(): string` and matches the
+  direct host's `dom.document-text` snapshot binding. No broad `document` or
+  DOM node type is claimed. `GeneratedHostTypingsV1::verify_for_direct_compiler`
   now checks the selected manifest, exact declaration bytes, and complete
   runtime registration inventory before returning the one `.d.ts` source that
   a direct compiler may place in `CompilerOptions::ambient_declaration_modules`.
@@ -160,8 +178,9 @@ or second module resolver to bypass them.
   includes its exact bytes in the compiler fingerprint and static source
   metadata, exposes its declarations only as static ambient names, and emits
   no declaration code. The standalone `bluetsc` intentionally cannot set this
-  host-only option. Actual bindings, their matching BlueJS installation, and
-  page-host request adoption remain required before this item can close.
+  host-only option. Other bindings, their matching BlueJS installation, and
+  full absent-binding static/runtime coverage remain required before this item
+  can close.
 
   Acceptance: a checked-in fixture generates byte-identical typing artifacts;
   every declared binding can be invoked in the matching host profile; an absent

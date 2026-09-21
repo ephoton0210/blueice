@@ -13,8 +13,9 @@
 //! runtime did not verify.
 
 use super::host_typings::{
-    GeneratedHostTypingsV1, HostRuntimeBindingV1, HostTypeSurfaceCatalogV1, HostTypingsError,
-    HostTypingsManifestV1,
+    core_script_host_type_catalog, GeneratedHostTypingsV1, HostRuntimeBindingV1,
+    HostTypeSurfaceCatalogV1, HostTypingsError, HostTypingsManifestV1,
+    CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
 };
 use crate::{Page, TabId, TabManager};
 use blueice_bluets::{
@@ -70,6 +71,7 @@ pub struct DirectPageScriptHost {
     profiles: HostTypeSurfaceCatalogV1,
     realms: DirectPageRealmOwner,
     live_documents: BTreeMap<TabId, LivePageIdentity>,
+    bound_profiles: BTreeMap<TabId, String>,
 }
 
 /// The core-visible portion of a live page document needed to keep a BlueJS
@@ -86,6 +88,7 @@ impl DirectPageScriptHost {
             profiles,
             realms: DirectPageRealmOwner::default(),
             live_documents: BTreeMap::new(),
+            bound_profiles: BTreeMap::new(),
         }
     }
 
@@ -142,6 +145,7 @@ impl DirectPageScriptHost {
     /// same condition when a batch observer is available.
     pub fn close_page(&mut self, tab_id: TabId) -> bool {
         self.live_documents.remove(&tab_id);
+        self.bound_profiles.remove(&tab_id);
         self.realms.close_realm(tab_id.as_u64())
     }
 
@@ -174,6 +178,7 @@ impl DirectPageScriptHost {
             .generate(&request.feature_profile)
             .map_err(DirectPageScriptError::HostTypings)?;
         let declaration = verified_declaration(&artifact, &request)?;
+        self.configure_profile_bindings(tabs, request.tab_id, &request.feature_profile, &artifact)?;
         let mut options = request.compiler_options;
         options.ambient_declaration_modules = vec![declaration];
         let origin = self
@@ -294,18 +299,82 @@ impl DirectPageScriptHost {
         tab_id: TabId,
         target: LivePageIdentity,
     ) -> Result<(), DirectPageScriptError> {
-        match self.live_documents.get(&tab_id) {
-            Some(current) if current == &target => Ok(()),
-            Some(_) => self
-                .realms
-                .navigate(tab_id.as_u64(), target.origin.clone())
-                .map_err(DirectPageScriptError::Bridge),
-            None => self
-                .realms
-                .open_realm(tab_id.as_u64(), target.origin.clone())
-                .map_err(DirectPageScriptError::Bridge),
-        }?;
+        let replaced = match self.live_documents.get(&tab_id) {
+            Some(current) if current == &target => false,
+            Some(_) => {
+                self.realms
+                    .navigate(tab_id.as_u64(), target.origin.clone())
+                    .map_err(DirectPageScriptError::Bridge)?;
+                true
+            }
+            None => {
+                self.realms
+                    .open_realm(tab_id.as_u64(), target.origin.clone())
+                    .map_err(DirectPageScriptError::Bridge)?;
+                true
+            }
+        };
+        if replaced {
+            self.bound_profiles.remove(&tab_id);
+        }
         self.live_documents.insert(tab_id, target);
+        Ok(())
+    }
+
+    fn configure_profile_bindings(
+        &mut self,
+        tabs: &TabManager,
+        tab_id: TabId,
+        profile: &str,
+        artifact: &GeneratedHostTypingsV1,
+    ) -> Result<(), DirectPageScriptError> {
+        if let Some(active) = self.bound_profiles.get(&tab_id) {
+            return if active == profile {
+                Ok(())
+            } else {
+                Err(DirectPageScriptError::BindingProfileAlreadySelected)
+            };
+        }
+        if artifact.runtime_bindings.is_empty() {
+            self.bound_profiles.insert(tab_id, profile.to_string());
+            return Ok(());
+        }
+
+        let expected = core_script_host_type_catalog()
+            .generate(CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1)
+            .expect("the checked-in document-text host profile is valid");
+        if profile != CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1
+            || artifact.manifest != expected.manifest
+            || artifact.declaration_source != expected.declaration_source
+            || artifact.runtime_bindings != expected.runtime_bindings
+        {
+            return Err(DirectPageScriptError::RuntimeBindingProfileUnavailable);
+        }
+        let document_text = tabs
+            .get(tab_id)
+            .ok_or(DirectPageScriptError::UnknownTab {
+                tab_id: tab_id.as_u64(),
+            })?
+            .script_document_text_content();
+        self.realms
+            .configure_realm_bindings(tab_id.as_u64(), move |bindings| {
+                bindings.install_global_function(
+                    "blueiceDocumentText",
+                    0,
+                    move |args: &[blueice_bluejs::HostValue]| {
+                        if !args.is_empty() {
+                            return Err(blueice_bluejs::HostFunctionError::new(
+                                "blueiceDocumentText requires no arguments",
+                            ));
+                        }
+                        Ok(blueice_bluejs::HostValue::String(
+                            document_text.clone().into(),
+                        ))
+                    },
+                )
+            })
+            .map_err(DirectPageScriptError::Bridge)?;
+        self.bound_profiles.insert(tab_id, profile.to_string());
         Ok(())
     }
 }
@@ -371,6 +440,8 @@ pub enum DirectPageScriptError {
     LanguageVersionMismatch {
         profile: String,
     },
+    RuntimeBindingProfileUnavailable,
+    BindingProfileAlreadySelected,
     UnknownTab {
         tab_id: u64,
     },
@@ -414,6 +485,12 @@ impl fmt::Display for DirectPageScriptError {
                 formatter,
                 "host typing profile targets unsupported BlueTS language version `{profile}`"
             ),
+            Self::RuntimeBindingProfileUnavailable => {
+                formatter.write_str("host typing profile has no matching runtime binding installer")
+            }
+            Self::BindingProfileAlreadySelected => {
+                formatter.write_str("page realm already selected a different host binding profile")
+            }
             Self::UnknownTab { tab_id } => write!(formatter, "unknown page tab {tab_id}"),
             Self::PageHasNoUrl { tab_id } => {
                 write!(formatter, "page tab {tab_id} has no loaded document URL")
@@ -446,7 +523,10 @@ impl std::error::Error for DirectPageScriptError {}
 
 #[cfg(test)]
 mod tests {
-    use super::super::host_typings::HostTypeSurfaceV1;
+    use super::super::host_typings::{
+        core_script_host_type_catalog, HostTypeSurfaceV1, CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+        CORE_SCRIPT_EMPTY_PROFILE_V1,
+    };
     use super::*;
     use blueice_bluets::{AuthorizedModule, AuthorizedModuleResolution};
 
@@ -512,6 +592,191 @@ mod tests {
         assert_eq!(stats.tab_id, tab_id.as_u64());
         assert_eq!(stats.program_count, 1);
         assert!(stats.bytecode_bytes > 0);
+    }
+
+    #[test]
+    fn document_text_profile_executes_against_the_current_document_only() {
+        let profiles = core_script_host_type_catalog();
+        let artifact = profiles
+            .generate(CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1)
+            .unwrap();
+        let loader = AuthorizedModuleLoader::new(
+            [AuthorizedModule::new(
+                "page:///app/main.ts",
+                "const text: string = blueiceDocumentText(); text;",
+            )],
+            [],
+        )
+        .unwrap();
+        let (mut tabs, tab_id) = loaded_tabs();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<main>first <strong>document</strong></main>",
+            Some("https://example.test/app/index.html".to_string()),
+        );
+        let mut host = DirectPageScriptHost::new(profiles);
+        assert_eq!(
+            host.execute(
+                &tabs,
+                DirectPageScriptRequest {
+                    tab_id,
+                    kind: DirectPageScriptKind::Classic,
+                    entry: "page:///app/main.ts".to_string(),
+                    loader: &loader,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1.to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            )
+            .unwrap(),
+            blueice_bluejs::Value::String("first document".into())
+        );
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<main>replacement document</main>",
+            Some("https://example.test/app/next.html".to_string()),
+        );
+        assert_eq!(
+            host.execute(
+                &tabs,
+                DirectPageScriptRequest {
+                    tab_id,
+                    kind: DirectPageScriptKind::Classic,
+                    entry: "page:///app/main.ts".to_string(),
+                    loader: &loader,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1.to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            )
+            .unwrap(),
+            blueice_bluejs::Value::String("replacement document".into())
+        );
+    }
+
+    #[test]
+    fn non_empty_profiles_require_a_matching_runtime_installer() {
+        let profiles = HostTypeSurfaceCatalogV1::new([HostTypeSurfaceV1::new(
+            LANGUAGE_VERSION,
+            "test-page-v1",
+            "uninstalled-binding-v1",
+            vec![super::super::host_typings::HostTypeBindingV1::new(
+                "test.uninstalled",
+                "declare function unavailable(): number;",
+                super::super::host_typings::HostBindingRoleV1::Value,
+                "global.unavailable",
+                "test",
+                "test",
+                "test-page-v1",
+            )],
+        )])
+        .unwrap();
+        let artifact = profiles.generate("uninstalled-binding-v1").unwrap();
+        let loader = AuthorizedModuleLoader::new(
+            [AuthorizedModule::new(
+                "page:///app/main.ts",
+                "unavailable();",
+            )],
+            [],
+        )
+        .unwrap();
+        let (tabs, tab_id) = loaded_tabs();
+        let mut host = DirectPageScriptHost::new(profiles);
+        assert!(matches!(
+            host.execute(
+                &tabs,
+                DirectPageScriptRequest {
+                    tab_id,
+                    kind: DirectPageScriptKind::Classic,
+                    entry: "page:///app/main.ts".to_string(),
+                    loader: &loader,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: "uninstalled-binding-v1".to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            ),
+            Err(DirectPageScriptError::RuntimeBindingProfileUnavailable)
+        ));
+    }
+
+    #[test]
+    fn document_text_profile_rejects_arguments_at_its_runtime_boundary() {
+        let profiles = core_script_host_type_catalog();
+        let artifact = profiles
+            .generate(CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1)
+            .unwrap();
+        let loader = AuthorizedModuleLoader::new(
+            [AuthorizedModule::new(
+                "page:///app/main.ts",
+                "blueiceDocumentText(1);",
+            )],
+            [],
+        )
+        .unwrap();
+        let (tabs, tab_id) = loaded_tabs();
+        let mut host = DirectPageScriptHost::new(profiles);
+        assert!(matches!(
+            host.execute(
+                &tabs,
+                DirectPageScriptRequest {
+                    tab_id,
+                    kind: DirectPageScriptKind::Classic,
+                    entry: "page:///app/main.ts".to_string(),
+                    loader: &loader,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1.to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            ),
+            Err(DirectPageScriptError::Bridge(BridgeError::PageRuntime(
+                blueice_bluejs::BlueJsPageRuntimeError::Runtime(
+                    blueice_bluejs::RuntimeError::TypeError(message)
+                )
+            ))) if message == "blueiceDocumentText requires no arguments"
+        ));
+    }
+
+    #[test]
+    fn a_page_realm_cannot_switch_binding_profiles_before_navigation() {
+        let profiles = core_script_host_type_catalog();
+        let empty = profiles.generate(CORE_SCRIPT_EMPTY_PROFILE_V1).unwrap();
+        let document_text = profiles
+            .generate(CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1)
+            .unwrap();
+        let (mut tabs, tab_id) = loaded_tabs();
+        let mut host = DirectPageScriptHost::new(profiles);
+        host.synchronize_tab(&tabs, tab_id).unwrap();
+        host.configure_profile_bindings(&tabs, tab_id, CORE_SCRIPT_EMPTY_PROFILE_V1, &empty)
+            .unwrap();
+        assert!(matches!(
+            host.configure_profile_bindings(
+                &tabs,
+                tab_id,
+                CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+                &document_text,
+            ),
+            Err(DirectPageScriptError::BindingProfileAlreadySelected)
+        ));
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<main>replacement</main>",
+            Some("https://example.test/app/next.html".to_string()),
+        );
+        host.synchronize_tab(&tabs, tab_id).unwrap();
+        host.configure_profile_bindings(
+            &tabs,
+            tab_id,
+            CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+            &document_text,
+        )
+        .unwrap();
     }
 
     #[test]

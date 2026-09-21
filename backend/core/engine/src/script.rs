@@ -21,8 +21,9 @@ const MAX_SCRIPT_REQUESTS_PER_SESSION_TICK: usize = 64;
 mod declarations;
 pub mod direct_page;
 /// Deterministic host typing artifacts derived from the core-owned binding
-/// surface. The initial profile deliberately exposes no JavaScript globals:
-/// core's narrow IPC dispatcher is not itself a BlueJS DOM binding.
+/// surface. The empty profile deliberately exposes no JavaScript globals;
+/// `core-script-document-text-v1` is the one checked-in profile with a
+/// matching direct-page runtime binding.
 pub mod host_typings;
 pub mod inline_runner;
 pub mod page_source_authorizer;

@@ -244,6 +244,16 @@ fn compiler_owned_bytecode_invariants_fail_loudly() {
 #[test]
 fn host_object_methods_are_realm_local_callable_globals() {
     let mut vm = Vm::default();
+    vm.install_host_function("double", 1, |args: &[HostValue]| {
+        let Some(HostValue::Number(value)) = args.first() else {
+            return Err(HostFunctionError::new("double requires a number"));
+        };
+        Ok(HostValue::Number(value * 2.0))
+    })
+    .unwrap();
+    let code = crate::compile(&crate::parse("double(21);").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&code).unwrap(), Value::Number(42.0));
+
     let host = vm.install_host_object("blueice").unwrap();
     vm.install_host_method(host, "increment", 1, |args: &[HostValue]| {
         let Some(HostValue::Number(value)) = args.first() else {
