@@ -7,6 +7,17 @@
 use super::*;
 
 /// Appends the object ids among `values`, skipping every primitive.
+/// The heap values a reaction target keeps alive. A native target's promise is
+/// already rooted through `Vm::promises`, so only a capability adds any.
+fn reaction_target_values(target: &ReactionTarget) -> Vec<&Value> {
+    match target {
+        ReactionTarget::Native(_) => Vec::new(),
+        ReactionTarget::Capability(capability) => {
+            vec![&capability.promise, &capability.resolve, &capability.reject]
+        }
+    }
+}
+
 fn push_object_roots<'a>(roots: &mut Vec<ObjectId>, values: impl IntoIterator<Item = &'a Value>) {
     for value in values {
         if let Value::Object(id) = value {
@@ -981,9 +992,12 @@ impl Vm {
                         .reactions
                         .iter()
                         .filter_map(|reaction| match reaction {
-                            PromiseReaction::Then(reaction) => {
-                                Some([&reaction.on_fulfilled, &reaction.on_rejected])
-                            }
+                            PromiseReaction::Then(reaction) => Some(
+                                [&reaction.on_fulfilled, &reaction.on_rejected]
+                                    .into_iter()
+                                    .chain(reaction_target_values(&reaction.target))
+                                    .collect::<Vec<_>>(),
+                            ),
                             PromiseReaction::ModuleAwait { .. }
                             | PromiseReaction::AsyncAwait { .. }
                             | PromiseReaction::AsyncGeneratorYield { .. }
@@ -996,27 +1010,6 @@ impl Vm {
                     }
                 };
                 for value in values {
-                    if let Value::Object(id) = value {
-                        roots.push(*id);
-                    }
-                }
-            }
-            for state in self.promise_all.values() {
-                for value in state.values.iter().flatten() {
-                    if let Value::Object(id) = value {
-                        roots.push(*id);
-                    }
-                }
-            }
-            for state in self.promise_any.values() {
-                for value in state.errors.iter().flatten() {
-                    if let Value::Object(id) = value {
-                        roots.push(*id);
-                    }
-                }
-            }
-            for state in self.promise_all_settled.values() {
-                for (value, _) in state.results.iter().flatten() {
                     if let Value::Object(id) = value {
                         roots.push(*id);
                     }
@@ -1050,11 +1043,16 @@ impl Vm {
                         value,
                         ..
                     } => {
-                        roots.push(*target);
-                        for value in [handler, value] {
+                        for value in [handler, value]
+                            .into_iter()
+                            .chain(reaction_target_values(target))
+                        {
                             if let Value::Object(id) = value {
                                 roots.push(*id);
                             }
+                        }
+                        if let ReactionTarget::Native(id) = target {
+                            roots.push(*id);
                         }
                     }
                     PromiseJob::Thenable {

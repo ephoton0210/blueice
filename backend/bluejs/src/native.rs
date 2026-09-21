@@ -581,12 +581,13 @@ pub(crate) enum NativeFunction {
     AsyncGeneratorReturn,
     AsyncGeneratorThrow,
     Promise,
-    /// One half of a Promise capability. The target identity is carried by
-    /// the otherwise ordinary native function, so the resolving functions
-    /// can be passed to an executor without exposing VM bookkeeping to JS.
+    /// One half of a promise's resolving-function pair (CreateResolvingFunctions).
+    /// `state` is the heap record holding the pair's shared [[AlreadyResolved]]
+    /// flag, so whichever function runs first disables both.
     PromiseResolvingFunction {
         promise: ObjectId,
         fulfill: bool,
+        state: ObjectId,
     },
     /// The executor supplied while `NewPromiseCapability(C)` invokes a
     /// user-provided constructor. The storage object keeps its resolve/reject
@@ -611,33 +612,30 @@ pub(crate) enum NativeFunction {
     PromiseRace,
     PromiseAny,
     PromiseAllSettled,
-    PromiseAllResolve {
-        target: ObjectId,
+    /// `Promise.allKeyed` (`settled: false`) and `Promise.allSettledKeyed`.
+    PromiseAllKeyed {
+        settled: bool,
+    },
+    PromiseTry,
+    /// A resolve/reject element function of `Promise.all`, `allSettled` or
+    /// `any`. `state` is the heap record shared by one combinator call.
+    PromiseElement {
+        state: ObjectId,
         index: u32,
+        kind: PromiseElementKind,
     },
-    PromiseAllReject {
-        target: ObjectId,
+    /// The `thenFinally` (`catch: false`) / `catchFinally` function that
+    /// `Promise.prototype.finally` passes to `then`; `state` holds the
+    /// `onFinally` callback and the species constructor.
+    PromiseFinallyFunction {
+        state: ObjectId,
+        catch: bool,
     },
-    PromiseRaceFulfill {
-        target: ObjectId,
-    },
-    PromiseRaceReject {
-        target: ObjectId,
-    },
-    PromiseAnyFulfill {
-        target: ObjectId,
-    },
-    PromiseAnyReject {
-        target: ObjectId,
-        index: u32,
-    },
-    PromiseAllSettledFulfill {
-        target: ObjectId,
-        index: u32,
-    },
-    PromiseAllSettledReject {
-        target: ObjectId,
-        index: u32,
+    /// The value thunk (`thrower: false`) or thrower function `finally`
+    /// hands to its inner `then`; `state` holds the value or reason.
+    PromiseValueThunk {
+        state: ObjectId,
+        thrower: bool,
     },
     PromiseWithResolvers,
     Test262Done,
@@ -731,6 +729,20 @@ pub(crate) enum NativeFunction {
     ShadowRealmWrappedFunction,
 }
 
+/// Which of a Promise combinator's element functions a
+/// `NativeFunction::PromiseElement` is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PromiseElementKind {
+    /// `Promise.all`'s resolve element: stores the value.
+    AllResolve,
+    /// `Promise.allSettled`'s onFulfilled: stores `{ status: "fulfilled", value }`.
+    AllSettledFulfill,
+    /// `Promise.allSettled`'s onRejected: stores `{ status: "rejected", reason }`.
+    AllSettledReject,
+    /// `Promise.any`'s reject element: stores the reason.
+    AnyReject,
+}
+
 /// Failures particular to the URI encode/decode abstract operations.  The VM
 /// turns malformed input into the realm's `URIError` object, while preserving
 /// its normal resource-limit reporting for an oversized result.
@@ -747,19 +759,14 @@ impl NativeFunction {
     pub(crate) fn references(self) -> Vec<ObjectId> {
         match self {
             Self::ProxyRevoker(proxy) => vec![proxy],
-            Self::PromiseResolvingFunction { promise, .. } => vec![promise],
+            Self::PromiseResolvingFunction { promise, state, .. } => vec![promise, state],
             Self::PromiseCapabilityExecutor { storage } => vec![storage],
             Self::ArrayFromAsyncResume { state, .. } => vec![state],
             Self::AsyncFromSyncFulfill { target, .. } => vec![target],
             Self::AsyncFromSyncReject { target, record } => vec![target, record],
-            Self::PromiseAllResolve { target, .. }
-            | Self::PromiseAllReject { target }
-            | Self::PromiseRaceFulfill { target }
-            | Self::PromiseRaceReject { target }
-            | Self::PromiseAnyFulfill { target }
-            | Self::PromiseAnyReject { target, .. }
-            | Self::PromiseAllSettledFulfill { target, .. }
-            | Self::PromiseAllSettledReject { target, .. } => vec![target],
+            Self::PromiseElement { state, .. }
+            | Self::PromiseFinallyFunction { state, .. }
+            | Self::PromiseValueThunk { state, .. } => vec![state],
             _ => Vec::new(),
         }
     }
