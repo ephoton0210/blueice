@@ -21,8 +21,11 @@ impl Vm {
         let base = self.stack.len();
         let result = (|| {
             let host = self.test262_host()?;
-            let prototype = self.object_prototype;
-            let value = self.with_roots(|heap| heap.alloc_html_dda_object(Some(prototype)))?;
+            let string = self.string_intrinsics()?.0;
+            let function_prototype = self.heap.prototype(string)?.unwrap();
+            let value = self.with_roots(|heap| {
+                heap.alloc_html_dda_object(NativeFunction::Test262("IsHTMLDDA"), function_prototype)
+            })?;
             // Keep the host value reachable across the property-definition
             // allocation safepoint below.
             self.stack.push(Value::Object(value));

@@ -98,6 +98,8 @@ impl Vm {
             "encodeURIComponent" => NativeFunction::EncodeUri { component: true },
             "decodeURI" => NativeFunction::DecodeUri { component: false },
             "decodeURIComponent" => NativeFunction::DecodeUri { component: true },
+            "escape" => NativeFunction::Escape { decode: false },
+            "unescape" => NativeFunction::Escape { decode: true },
             // The remaining compiler-recognized globals are namespace objects.
             _ => NativeFunction::Empty,
         };

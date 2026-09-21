@@ -345,15 +345,7 @@ impl Heap {
                 | ObjectKind::StringIterator { string, .. }
                 | ObjectKind::RegExpIterator { string, .. } => string.byte_len(),
                 ObjectKind::ArrayBuffer { bytes, .. } => bytes.len(),
-                ObjectKind::RegExp(regexp) => {
-                    regexp.source.byte_len()
-                        + regexp.flags.len()
-                        + regexp
-                            .capture_names
-                            .iter()
-                            .map(|(name, _)| name.len() + size_of::<(String, usize)>())
-                            .sum::<usize>()
-                }
+                ObjectKind::RegExp(regexp) => exotic::regexp_bytes(regexp),
                 ObjectKind::Collator { data, .. } => data.bytes(),
                 ObjectKind::NumberFormat { data, .. } => data.bytes(),
                 ObjectKind::DateTimeFormat { data, .. } => data.bytes(),

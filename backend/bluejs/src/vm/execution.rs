@@ -258,6 +258,8 @@ impl Vm {
                 | "encodeURIComponent"
                 | "decodeURI"
                 | "decodeURIComponent"
+                | "escape"
+                | "unescape"
                 | "JSON"
         ) {
             self.global(name)?;

@@ -830,6 +830,28 @@ impl Heap {
             .expect("take helper is consumed only with a positive remainder");
         Ok(())
     }
+    /// Replaces a RegExp object's [[RegExpMatcher]], [[OriginalSource]] and
+    /// [[OriginalFlags]] in place (Annex B `RegExp.prototype.compile`).
+    pub(crate) fn set_regexp(
+        &mut self,
+        object: ObjectId,
+        regexp: Rc<crate::regexp::RegExp>,
+    ) -> Result<(), HeapError> {
+        let ObjectKind::RegExp(current) = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        let old_bytes = regexp_bytes(current);
+        let new_bytes = regexp_bytes(&regexp);
+        self.ensure_room(new_bytes.saturating_sub(old_bytes), &[object])?;
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        entry.kind = ObjectKind::RegExp(regexp);
+        entry.bytes = entry.bytes - old_bytes + new_bytes;
+        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        Ok(())
+    }
     pub(crate) fn regexp(
         &self,
         object: ObjectId,
@@ -1019,4 +1041,15 @@ impl Heap {
     ) -> Result<Option<PropertyDescriptor>, HeapError> {
         self.get_own_property_descriptor_key(object, key.into())
     }
+}
+
+/// Managed bytes a RegExp object's matcher data accounts for.
+pub(super) fn regexp_bytes(regexp: &crate::regexp::RegExp) -> usize {
+    regexp.source.byte_len()
+        + regexp.flags.len()
+        + regexp
+            .capture_names
+            .iter()
+            .map(|(name, _)| name.len() + size_of::<(String, usize)>())
+            .sum::<usize>()
 }
