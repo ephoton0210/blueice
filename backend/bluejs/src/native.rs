@@ -923,6 +923,8 @@ pub(crate) enum PatternMethod {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RegExpMethod {
     Exec,
+    /// Annex B `RegExp.prototype.compile`.
+    Compile,
     Test,
     ToString,
     Match,

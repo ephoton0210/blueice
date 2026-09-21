@@ -64,15 +64,16 @@ impl Vm {
                 ("exec", RegExpMethod::Exec),
                 ("test", RegExpMethod::Test),
                 ("toString", RegExpMethod::ToString),
+                ("compile", RegExpMethod::Compile),
             ] {
                 self.install_native(
                     prototype,
                     function_prototype,
                     name,
-                    if method == RegExpMethod::ToString {
-                        0
-                    } else {
-                        1
+                    match method {
+                        RegExpMethod::ToString => 0,
+                        RegExpMethod::Compile => 2,
+                        _ => 1,
                     },
                     NativeFunction::RegExpMethod(method),
                 )?;
@@ -190,20 +191,59 @@ impl Vm {
         Ok(())
     }
 
+    /// RegExpCreate and regular expression literals: an ordinary `%RegExp%`
+    /// allocation that is never a construction on behalf of some `new.target`.
     pub(super) fn regexp_create(
         &mut self,
         pattern: &Value,
         flags: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = if let Value::Object(id) = pattern {
-            self.heap
-                .regexp(*id)?
-                .map(|regexp| (regexp.source.clone(), regexp.flags.clone()))
-                .or(self.test262_foreign_regexp_data(*id)?)
-        } else {
-            None
+        let pattern_is_regexp = self.is_regexp(pattern)?;
+        self.regexp_allocate(pattern, pattern_is_regexp, flags, false)
+    }
+
+    /// ECMA-262 §22.2.4.1 RegExp ( pattern, flags ), called or constructed.
+    pub(super) fn regexp_constructor(
+        &mut self,
+        pattern: &Value,
+        flags: &Value,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        let pattern_is_regexp = self.is_regexp(pattern)?;
+        if !construct && *flags == Value::Undefined && pattern_is_regexp {
+            let constructor = self.get_property(pattern, &"constructor".into())?;
+            if constructor == self.regexp_global()? {
+                return Ok(pattern.clone());
+            }
+        }
+        self.regexp_allocate(pattern, pattern_is_regexp, flags, construct)
+    }
+
+    /// The (source, flags) of a pattern that has a [[RegExpMatcher]] slot,
+    /// including one living in a Test262 child realm.
+    fn regexp_slots(&self, pattern: &Value) -> Result<Option<(JsString, String)>, RuntimeError> {
+        let Value::Object(id) = pattern else {
+            return Ok(None);
         };
-        let (source, flags) = if let Some((source, existing_flags)) = existing {
+        Ok(self
+            .heap
+            .regexp(*id)?
+            .map(|regexp| (regexp.source.clone(), regexp.flags.clone()))
+            .or(self.test262_foreign_regexp_data(*id)?))
+    }
+
+    /// RegExpAlloc + RegExpInitialize for the constructor's steps 3-10.
+    /// `construct` selects `self.new_target` as NewTarget; otherwise NewTarget
+    /// is `%RegExp%` itself. `pattern_is_regexp` must already have been
+    /// computed (IsRegExp is observable and precedes the slot reads).
+    fn regexp_allocate(
+        &mut self,
+        pattern: &Value,
+        pattern_is_regexp: bool,
+        flags: &Value,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        let (source, flags) = if let Some((source, existing_flags)) = self.regexp_slots(pattern)? {
             (
                 source,
                 if *flags == Value::Undefined {
@@ -212,7 +252,7 @@ impl Vm {
                     self.coerce_string(flags)?
                 },
             )
-        } else if self.is_regexp(pattern)? {
+        } else if pattern_is_regexp {
             let source = self.get_property(pattern, &"source".into())?;
             self.stack.push(source.clone());
             let flags = if *flags == Value::Undefined {
@@ -236,26 +276,76 @@ impl Vm {
             )
         };
         self.check_string(&Value::String(source.clone()))?;
-        let regexp = Rc::new(RegExp::compile_with_timeout(
-            source,
-            &flags,
-            self.config.regex_timeout,
-        )?);
+        let mut regexp = RegExp::compile_with_timeout(source, &flags, self.config.regex_timeout)?;
         let constructor = self.regexp_global()?;
+        regexp.legacy_features = !construct || self.new_target == constructor;
         let prototype = self
             .get_property(&constructor, &"prototype".into())?
             .object_id()
             .unwrap();
-        let prototype = if self.new_target != Value::Undefined {
+        let prototype = if construct {
             self.constructor_prototype(prototype)?
         } else {
             prototype
         };
-        let object = self.with_roots(|heap| heap.alloc_regexp(regexp, prototype))?;
+        let object = self.with_roots(|heap| heap.alloc_regexp(Rc::new(regexp), prototype))?;
         self.stack.push(Value::Object(object));
         self.define_data(object, "lastIndex", Value::Number(0.0), true, false, false)?;
         self.stack.pop();
         Ok(Value::Object(object))
+    }
+
+    /// B.2.4.1 RegExp.prototype.compile ( pattern, flags ). A RegExp object
+    /// always lives in the realm whose VM runs this method (a foreign
+    /// receiver is an opaque facade without a matcher slot), so the
+    /// specification's realm comparison holds by construction.
+    fn regexp_compile(
+        &mut self,
+        receiver: &Value,
+        pattern: &Value,
+        flags: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(id) = receiver else {
+            return Err(RuntimeError::TypeError(
+                "RegExp.prototype.compile requires a RegExp".into(),
+            ));
+        };
+        let Some(current) = self.heap.regexp(*id)? else {
+            return Err(RuntimeError::TypeError(
+                "RegExp.prototype.compile requires a RegExp".into(),
+            ));
+        };
+        if !current.legacy_features {
+            return Err(RuntimeError::TypeError(
+                "RegExp.prototype.compile is unavailable on a RegExp subclass instance".into(),
+            ));
+        }
+        let (source, flags) = if let Some((source, existing_flags)) = self.regexp_slots(pattern)? {
+            if *flags != Value::Undefined {
+                return Err(RuntimeError::TypeError(
+                    "RegExp.prototype.compile cannot take flags with a RegExp pattern".into(),
+                ));
+            }
+            (source, existing_flags.into())
+        } else {
+            (
+                if *pattern == Value::Undefined {
+                    JsString::default()
+                } else {
+                    self.coerce_string(pattern)?
+                },
+                if *flags == Value::Undefined {
+                    JsString::default()
+                } else {
+                    self.coerce_string(flags)?
+                },
+            )
+        };
+        self.check_string(&Value::String(source.clone()))?;
+        let regexp = RegExp::compile_with_timeout(source, &flags, self.config.regex_timeout)?;
+        self.heap.set_regexp(*id, Rc::new(regexp))?;
+        self.set_required(receiver, "lastIndex", Value::Number(0.0))?;
+        Ok(receiver.clone())
     }
 
     pub(super) fn regexp_getter(
@@ -516,6 +606,13 @@ impl Vm {
                 "RegExp method requires an object".into(),
             ));
         }
+        if method == Compile {
+            return self.regexp_compile(
+                receiver,
+                native::argument(args, 0),
+                native::argument(args, 1),
+            );
+        }
         if method == Exec && self.heap.regexp(receiver.object_id().unwrap())?.is_none() {
             return Err(RuntimeError::TypeError(
                 "RegExp exec requires a RegExp".into(),
@@ -527,6 +624,7 @@ impl Vm {
             self.coerce_string(native::argument(args, 0))?
         };
         match method {
+            Compile => unreachable!("compile returns before the string argument is coerced"),
             Exec => self.regexp_exec(receiver, &string, true),
             Test => Ok(Value::Bool(
                 self.regexp_exec(receiver, &string, false)? != Value::Null,

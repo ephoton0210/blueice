@@ -8,6 +8,9 @@ pub(crate) struct RegExp {
     pub source: JsString,
     pub flags: String,
     pub capture_names: Vec<(String, usize)>,
+    /// [[LegacyFeaturesEnabled]] (Annex B legacy RegExp features): true unless
+    /// the object was allocated for a `new.target` other than `%RegExp%`.
+    pub legacy_features: bool,
 }
 
 impl RegExp {
@@ -50,6 +53,7 @@ impl RegExp {
             source,
             flags,
             capture_names,
+            legacy_features: true,
         })
     }
 
