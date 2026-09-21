@@ -395,6 +395,8 @@ impl Vm {
                     if let Some(object) = value.object_id() {
                         if let Ok(time) = self.heap.date_value(object) {
                             time
+                        } else if let Some(time) = self.test262_foreign_date_value(object)? {
+                            time
                         } else {
                             let primitive = self.coerce_primitive(value, "default")?;
                             if let Value::String(string) = primitive {

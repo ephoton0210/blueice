@@ -81,6 +81,21 @@ impl Vm {
             .map(|regexp| (regexp.source.clone(), regexp.flags.clone())))
     }
 
+    /// The [[DateValue]] of a Date that lives in another Test262 Realm, or
+    /// `None` when `wrapper` is not a facade for a Date.
+    pub(in super::super) fn test262_foreign_date_value(
+        &self,
+        wrapper: ObjectId,
+    ) -> Result<Option<f64>, RuntimeError> {
+        let Some((realm_id, target, _, _)) = self.test262_foreign_reference(wrapper) else {
+            return Ok(None);
+        };
+        let realm = self.test262_realms.get(&realm_id).ok_or_else(|| {
+            RuntimeError::TypeError("foreign Test262 realm is no longer available".into())
+        })?;
+        Ok(realm.vm.heap.date_value(target).ok())
+    }
+
     pub(in super::super) fn test262_foreign_boxed_primitive(
         &self,
         wrapper: ObjectId,

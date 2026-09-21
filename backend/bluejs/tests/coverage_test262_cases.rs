@@ -665,3 +665,14 @@ fn host_gc_hook_runs_a_major_collection_and_keeps_live_values() {
     );
     assert!(vm.heap().stats().major_collections > before);
 }
+
+#[test]
+fn date_constructor_copies_the_time_value_of_a_date_from_another_realm() {
+    expect_true(
+        "var OtherDate = $262.createRealm().global.Date; \
+         var foreign = new OtherDate(3141592654); \
+         OtherDate.prototype.toString = OtherDate.prototype.valueOf = null; \
+         new Date(foreign).getTime() === 3141592654 \
+           && Object.getPrototypeOf(new Date(foreign)) === Date.prototype",
+    );
+}
