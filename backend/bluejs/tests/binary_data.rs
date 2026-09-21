@@ -51,6 +51,12 @@ fn native_getter_to_string_uses_its_immutable_accessor_initial_name() {
 }
 
 #[test]
+fn uint8array_hex_decoding_and_base64_encoding_round_trip() {
+    let source = "let bytes=Uint8Array.fromHex('0a0B');bytes.length===2&&bytes[0]===10&&bytes[1]===11&&bytes.toBase64()==='Cgs='";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
 fn typed_array_from_constructs_an_array_like_target_before_reading_elements() {
     let source = "let log='';let marker={};function C(length){log+='C';return new Uint8Array(length)}let source={get length(){log+='l';return 1},get 0(){log+='0';return 7}};try{Uint8Array.from.call(C,source,function(){throw marker})}catch(error){}log==='lC0'";
     assert_eq!(evaluate(source).unwrap(), Value::Bool(true));

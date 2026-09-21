@@ -30,7 +30,7 @@ fn check_and_build_use_the_same_closed_project_and_preserve_output_on_error() {
     let entry = source.join("main.ts");
     fs::write(
         &entry,
-        "import type { User } from './model.ts';\nexport function label(_user: User): string { const name: string = 'Ada'; return name; }\n",
+        "import type { User } from './model.ts';\nconst label: User = { id: 'Ada' };\nexport default label;\n",
     )
     .unwrap();
 
@@ -60,9 +60,14 @@ fn check_and_build_use_the_same_closed_project_and_preserve_output_on_error() {
         .unwrap();
     assert!(built.success());
     let javascript = fs::read_to_string(output.join("src/main.js")).unwrap();
-    assert!(javascript.contains("function label(_user)"));
+    assert!(javascript.contains("const label"));
+    assert!(javascript.contains("export default label"));
     assert!(output.join("src/main.js.map").is_file());
-    assert!(output.join("src/main.d.ts").is_file());
+    let declaration = fs::read_to_string(output.join("src/main.d.ts")).unwrap();
+    assert_eq!(
+        declaration,
+        "import type { User } from './model.ts';\ndeclare const label: User;\nexport default label;\n"
+    );
 
     fs::write(&entry, "export const broken: number = 'wrong';\n").unwrap();
     let failed = Command::new(env!("CARGO_BIN_EXE_bluetsc"))

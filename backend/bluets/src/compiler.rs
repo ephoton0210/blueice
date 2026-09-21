@@ -172,6 +172,17 @@ pub struct Project {
     pub(crate) resolutions: BTreeMap<(String, String), String>,
 }
 
+impl Project {
+    /// Returns the caller-authorized canonical target selected for one source
+    /// module request. Runtime bridges use this rather than independently
+    /// resolving a TypeScript specifier under a potentially different policy.
+    pub fn resolved_module(&self, from_module: &str, specifier: &str) -> Option<&str> {
+        self.resolutions
+            .get(&(from_module.to_string(), specifier.to_string()))
+            .map(String::as_str)
+    }
+}
+
 /// The result of one [`IncrementalCompiler`] invocation. The sets describe
 /// work selected by the host-neutral front end, making cache behavior
 /// observable to a future page host without exposing any runtime state.

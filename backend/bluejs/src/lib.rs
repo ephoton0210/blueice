@@ -57,6 +57,8 @@ mod intl;
 mod native;
 mod parser;
 mod primitive;
+mod program_abi;
+mod program_debug;
 mod property;
 #[doc(hidden)]
 pub mod regex_worker;
@@ -74,6 +76,12 @@ pub use compiler::{
 pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
 pub(crate) use parser::parse_eval;
 pub use parser::{parse, parse_module, ParseError};
+pub use program_abi::{BlueJsProgramV1, BLUEJS_PROGRAM_ABI_V1};
+pub use program_debug::{
+    BlueJsAstNodeId, BlueJsAstNodeInfo, BlueJsAstNodeKind, BlueJsCodeUnitId, BlueJsCodeUnitInfo,
+    BlueJsCompiledProgram, BlueJsProgramDebugError, BlueJsProgramGeneration, BlueJsProgramHandle,
+    BlueJsProgramRegistry, BlueJsSafePoint, BlueJsSourceIdentity, BLUEJS_PROGRAM_DEBUG_ABI_V1,
+};
 pub use property::{JsSymbol, PropertyDescriptor, PropertyName};
 pub use string::JsString;
 pub use value::{ObjectId, Value};

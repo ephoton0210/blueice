@@ -361,6 +361,10 @@ pub(crate) struct AbruptJump {
 #[derive(Clone)]
 pub struct Bytecode {
     pub(crate) code: Vec<u8>,
+    /// Compiler-recorded instruction starts for the root program's source
+    /// order statements. `None` means the statement emits no root-code-unit
+    /// instruction and therefore has no executable safe point.
+    pub(crate) root_statement_offsets: Vec<Option<u32>>,
     pub(crate) constants: Vec<Value>,
     pub(crate) bindings: Vec<Binding>,
     pub(crate) scopes: Vec<Vec<u32>>,
@@ -450,6 +454,7 @@ impl Bytecode {
     pub(crate) fn empty() -> Self {
         Self {
             code: Vec::new(),
+            root_statement_offsets: Vec::new(),
             constants: Vec::new(),
             bindings: Vec::new(),
             scopes: Vec::new(),
@@ -493,6 +498,15 @@ impl Bytecode {
         &self.code
     }
 
+    /// Root-program statement instruction starts in source order.
+    ///
+    /// This is compiler-produced provenance metadata, not a heuristic based
+    /// on source text or bytecode scanning. A `None` entry is an explicit
+    /// unbound result for a statement that contributes no root instruction.
+    pub fn root_statement_offsets(&self) -> &[Option<u32>] {
+        &self.root_statement_offsets
+    }
+
     pub fn constants(&self) -> &[Value] {
         &self.constants
     }
@@ -504,6 +518,16 @@ impl Bytecode {
             offset += instruction.opcode.width();
             Some(instruction)
         })
+    }
+
+    /// Nested executable code units created for local function closures.
+    ///
+    /// The returned order is the compiler's stable closure-table order. A
+    /// host that needs generation-bound code-unit identifiers must traverse
+    /// this tree deterministically rather than deriving an identity from a
+    /// byte offset or a heap object address.
+    pub fn child_code_units(&self) -> impl Iterator<Item = &Bytecode> {
+        self.functions.iter().map(std::rc::Rc::as_ref)
     }
 
     pub(crate) fn instruction(&self, offset: usize) -> Option<Instruction> {

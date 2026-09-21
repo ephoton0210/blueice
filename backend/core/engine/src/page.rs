@@ -254,6 +254,90 @@ impl Page {
         blueice_dom::dump(&self.doc)
     }
 
+    /// Resolves the first element whose literal `id` attribute matches the
+    /// page-script request. This is crate-visible only: script authority must
+    /// enter through the core-owned IPC dispatcher rather than letting an
+    /// arbitrary caller mutate a page's DOM directly.
+    pub(crate) fn script_get_element_by_id(&self, id: &str) -> Option<NodeId> {
+        find_element_by_id(&self.doc, self.doc.root(), id)
+    }
+
+    /// Creates a detached element for the page-script IPC surface.
+    pub(crate) fn script_create_element(&mut self, tag_name: String) -> Result<NodeId, String> {
+        if tag_name.is_empty() {
+            return Err("element tag name must not be empty".to_string());
+        }
+        Ok(self.doc.create_node(NodeData::Element {
+            tag_name,
+            attributes: Vec::new(),
+        }))
+    }
+
+    /// Creates a detached text node for the page-script IPC surface.
+    pub(crate) fn script_create_text_node(&mut self, data: String) -> NodeId {
+        self.doc.create_node(NodeData::Text { data })
+    }
+
+    /// Appends a detached child after validating that both raw IPC handles
+    /// belong to this document and cannot produce a malformed DOM tree.
+    pub(crate) fn script_append_child(&mut self, parent: u64, child: u64) -> Result<(), String> {
+        let parent = self.script_node(parent)?;
+        let child = self.script_node(child)?;
+        if parent == child {
+            return Err("a node cannot be appended to itself".to_string());
+        }
+        if child == self.doc.root() {
+            return Err("the document root cannot be appended".to_string());
+        }
+        if matches!(self.doc.data(parent), NodeData::Text { .. }) {
+            return Err("a text node cannot have children".to_string());
+        }
+        if self.doc.parent(child).is_some() {
+            return Err("the child node is already attached".to_string());
+        }
+        self.doc.append_child(parent, child);
+        self.relayout();
+        Ok(())
+    }
+
+    /// Returns the recursive text content for one live page-script node.
+    pub(crate) fn script_text_content(&self, node: u64) -> Result<String, String> {
+        Ok(node_text_content(&self.doc, self.script_node(node)?))
+    }
+
+    /// Implements the narrow page-script `textContent` setter. Existing child
+    /// subtrees are removed before a non-empty replacement text node is
+    /// attached, matching the DOM operation's observable tree replacement.
+    pub(crate) fn script_set_text_content(
+        &mut self,
+        node: u64,
+        value: String,
+    ) -> Result<(), String> {
+        let node = self.script_node(node)?;
+        if let NodeData::Text { data } = self.doc.data_mut(node) {
+            *data = value;
+        } else {
+            let children = self.doc.children(node).collect::<Vec<_>>();
+            for child in children {
+                self.doc.remove_subtree(child);
+            }
+            if !value.is_empty() {
+                let text = self.doc.create_node(NodeData::Text { data: value });
+                self.doc.append_child(node, text);
+            }
+        }
+        self.relayout();
+        Ok(())
+    }
+
+    fn script_node(&self, raw: u64) -> Result<NodeId, String> {
+        let node = NodeId::from_u64(raw);
+        self.doc
+            .contains(node)
+            .then_some(node)
+            .ok_or_else(|| format!("unknown node {raw}"))
+    }
+
     pub(crate) fn doc(&self) -> &Document {
         &self.doc
     }
@@ -307,6 +391,29 @@ impl Page {
             self.viewport_width,
             self.viewport_height,
         )
+    }
+}
+
+fn find_element_by_id(document: &Document, node: NodeId, id: &str) -> Option<NodeId> {
+    if matches!(
+        document.data(node),
+        NodeData::Element { attributes, .. }
+            if attributes.iter().any(|(name, value)| name == "id" && value == id)
+    ) {
+        return Some(node);
+    }
+    document
+        .children(node)
+        .find_map(|child| find_element_by_id(document, child, id))
+}
+
+fn node_text_content(document: &Document, node: NodeId) -> String {
+    match document.data(node) {
+        NodeData::Text { data } => data.clone(),
+        NodeData::Document | NodeData::Element { .. } => document
+            .children(node)
+            .map(|child| node_text_content(document, child))
+            .collect(),
     }
 }
 

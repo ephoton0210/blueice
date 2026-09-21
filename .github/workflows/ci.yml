@@ -236,7 +236,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   typescript-oracle:
-    name: BlueTS TypeScript oracle
+    name: BlueTSC TypeScript compatibility oracle
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -245,10 +245,10 @@ jobs:
         with:
           node-version: 24
       - uses: Swatinem/rust-cache@v2
-      - name: Run the pinned TypeScript 5.9.3 fixture matrix
+      - name: Run the pinned TypeScript 5.9.3 BlueTSC compatibility matrix
         run: >-
           npm exec --yes --package typescript@5.9.3 --
-          env BLUEICE_TSC=tsc
+          env BLUEICE_BLUETSC_ORACLE=tsc
           cargo test -p blueice-bluets --test typescript_oracle -- --ignored
 
   # The single check branch protection requires. It depends on every other

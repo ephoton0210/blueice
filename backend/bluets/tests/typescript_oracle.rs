@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Opt-in compatibility checks against a pinned external TypeScript compiler.
+//! Opt-in BlueTSC compatibility checks against a pinned external TypeScript
+//! compiler.
 //!
 //! The fixtures are deliberately narrow: each one is already part of BlueTS's
 //! documented language matrix. The oracle never makes a new syntax supported.
@@ -51,8 +52,26 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "optional-parameter-expression",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/optional-parameter-expression/main.ts"),
+        )],
+        expected_stdout: Some("guest:guest:Ada\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "default-parameter-expression",
+        modules: &[(
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/default-parameter-expression/main.ts"),
+        )],
+        expected_stdout: Some("42\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "optional-record",
-        modules: &[ (
+        modules: &[(
             "memory:///main.ts",
             include_str!("fixtures/typescript_oracle/optional-record/main.ts"),
         )],
@@ -151,6 +170,430 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "default-function-export",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/default-function-export/main.ts"),
+        )],
+        expected_stdout: Some("Hello, Ada\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "default-value-export",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/default-value-export/main.ts"),
+        )],
+        expected_stdout: Some("Hello, Ada\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "named-value-export",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/named-value-export/main.ts"),
+        )],
+        expected_stdout: Some("Hello, Ada\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "boolean-conditional-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/boolean-conditional-expression/main.ts"),
+        )],
+        expected_stdout: Some("true:true:42:false:-41:-42:41:41\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "typeof-void-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/typeof-void-expression/main.ts"),
+        )],
+        expected_stdout: Some("number:undefined\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "nullish-coalescing-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/nullish-coalescing-expression/main.ts"),
+        )],
+        expected_stdout: Some("guest:42\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "bitwise-shift-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/bitwise-shift-expression/main.ts"),
+        )],
+        expected_stdout: Some("34:10:10\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "exponentiation-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/exponentiation-expression/main.ts"),
+        )],
+        expected_stdout: Some("512:0.125:4\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "compound-assignment-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/compound-assignment-expression/main.ts"),
+        )],
+        expected_stdout: Some("1:42:5:2\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "update-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/update-expression/main.ts"),
+        )],
+        expected_stdout: Some("1:3:2:2:1\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "comma-sequence-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/comma-sequence-expression/main.ts"),
+        )],
+        expected_stdout: Some("3\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "array-literal-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/array-literal-expression/main.ts"),
+        )],
+        expected_stdout: Some("object:3:2\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "array-spread-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/array-spread-expression/main.ts"),
+        )],
+        expected_stdout: Some("4:3\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "object-literal-property-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/object-literal-property-expression/main.ts"),
+        )],
+        expected_stdout: Some("Ada:42\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "object-spread-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/object-spread-expression/main.ts"),
+        )],
+        expected_stdout: Some("Grace:Countess\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "template-literal-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/template-literal-expression/main.ts"),
+        )],
+        expected_stdout: Some("BlueTS!\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "template-substitution-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/template-substitution-expression/main.ts"),
+        )],
+        expected_stdout: Some("BlueTSC: 42\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "property-assignment-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/property-assignment-expression/main.ts"),
+        )],
+        expected_stdout: Some("Grace\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "function-expression-statement",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-expression-statement/main.ts"),
+        )],
+        expected_stdout: Some("5:5\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "function-throw-statement",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-throw-statement/main.ts"),
+        )],
+        expected_stdout: Some("ok\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "function-braced-if-statement",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-braced-if-statement/main.ts"),
+        )],
+        expected_stdout: Some("positive:other\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "function-braced-else-if-statement",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-braced-else-if-statement/main.ts"),
+        )],
+        expected_stdout: Some("many:one:none\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "object-shorthand-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/object-shorthand-expression/main.ts"),
+        )],
+        expected_stdout: Some("Ada\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "string-escape-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/string-escape-expression/main.ts"),
+        )],
+        expected_stdout: Some("Ada\\Grace\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "template-escape-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/template-escape-expression/main.ts"),
+        )],
+        expected_stdout: Some("Ada\\Grace\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "template-identifier-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/template-identifier-expression/main.ts"),
+        )],
+        expected_stdout: Some("Hello, Ada!\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "object-literal-key-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/object-literal-key-expression/main.ts"),
+        )],
+        expected_stdout: Some("Ada:answer\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "computed-object-property-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/computed-object-property-expression/main.ts"),
+        )],
+        expected_stdout: Some("Ada:42\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "member-call-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/member-call-expression/main.ts"),
+        )],
+        expected_stdout: Some("ADA\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "constructor-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/constructor-expression/main.ts"),
+        )],
+        expected_stdout: Some("object\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "spread-argument-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/spread-argument-expression/main.ts"),
+        )],
+        expected_stdout: Some("42:object\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "rest-parameter-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/rest-parameter-expression/main.ts"),
+        )],
+        expected_stdout: Some("42\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "property-delete-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/property-delete-expression/main.ts"),
+        )],
+        expected_stdout: Some("true\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "property-update-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/property-update-expression/main.ts"),
+        )],
+        expected_stdout: Some("1:2:3:3\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "relational-membership-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/relational-membership-expression/main.ts"),
+        )],
+        expected_stdout: Some("true\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "generic-arithmetic-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/generic-arithmetic-expression/main.ts"),
+        )],
+        expected_stdout: Some("42:40:84:20.5:1:Ada Lovelace\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
+        name: "arithmetic-operand-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/arithmetic-operand-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 5,
+        }],
+    },
+    OracleCase {
+        name: "bitwise-operand-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/bitwise-operand-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 5,
+        }],
+    },
+    OracleCase {
+        name: "exponentiation-operand-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/exponentiation-operand-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 5,
+        }],
+    },
+    OracleCase {
+        name: "unary-exponentiation-base-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/unary-exponentiation-base-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::ParseError,
+            line: 5,
+        }],
+    },
+    OracleCase {
+        name: "strict-equality-disjoint-primitive-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/strict-equality-disjoint-primitive-error/main.ts"
+            ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 5,
+        }],
+    },
+    OracleCase {
+        name: "typeof-assignment-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/typeof-assignment-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 5,
+        }],
+    },
+    OracleCase {
+        name: "nullish-coalescing-assignment-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/nullish-coalescing-assignment-error/main.ts"
+            ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 6,
+        }],
+    },
+    OracleCase {
+        name: "nullish-logical-mixing-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/nullish-logical-mixing-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::ParseError,
+            line: 5,
+        }],
+    },
+    OracleCase {
         name: "assignment-error",
         modules: &[(
             "memory:///main.ts",
@@ -172,6 +615,60 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[ExpectedDiagnostic {
             code: DiagnosticCode::TypeMismatch,
             line: 6,
+        }],
+    },
+    OracleCase {
+        name: "function-expression-statement-call-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/function-expression-statement-call-error/main.ts"
+            ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 8,
+        }],
+    },
+    OracleCase {
+        name: "function-throw-statement-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/function-throw-statement-error/main.ts"),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::ParseError,
+            line: 6,
+        }],
+    },
+    OracleCase {
+        name: "function-braced-if-statement-call-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/function-braced-if-statement-call-error/main.ts"
+            ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 8,
+        }],
+    },
+    OracleCase {
+        name: "function-braced-else-if-statement-call-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/function-braced-else-if-statement-call-error/main.ts"
+            ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::TypeMismatch,
+            line: 10,
         }],
     },
     OracleCase {
@@ -255,11 +752,11 @@ const CASES: &[OracleCase] = &[
 ];
 
 /// This test is ignored in ordinary Rust builds because the reference compiler
-/// is an explicitly provisioned test tool, not a BlueTS dependency.
+/// is an explicitly provisioned test tool, not a BlueTSC or BlueTS dependency.
 #[test]
-#[ignore = "requires BLUEICE_TSC to point to the pinned TypeScript compiler"]
-fn pinned_typescript_oracle_matches_the_supported_fixture_matrix() {
-    let tsc = pinned_tsc();
+#[ignore = "requires BLUEICE_BLUETSC_ORACLE to point to the pinned TypeScript compiler"]
+fn pinned_bluetsc_oracle_matches_the_supported_fixture_matrix() {
+    let tsc = pinned_bluetsc_oracle();
     assert_pinned_version(&tsc);
     let node = env::var_os("BLUEICE_NODE").unwrap_or_else(|| "node".into());
     for case in CASES {
@@ -269,6 +766,7 @@ fn pinned_typescript_oracle_matches_the_supported_fixture_matrix() {
 
 fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
     let temporary = TestDirectory::new();
+    write_esm_package(temporary.path());
     let sources = case
         .modules
         .iter()
@@ -279,18 +777,23 @@ fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, text).unwrap();
     }
+    let expected_declaration = expected_declaration(case);
     let options = CompilerOptions {
         source_map: true,
+        declaration: expected_declaration.is_some(),
         ..CompilerOptions::default()
     };
     let compilation = compile("memory:///main.ts", &MapLoader::from(sources), options);
     let typescript_output = temporary.path().join("typescript");
+    fs::create_dir_all(&typescript_output).unwrap();
+    write_esm_package(&typescript_output);
     let input = temporary.path().join("main.ts");
     let tsc_output = run_tsc(
         tsc,
         &input,
         &typescript_output,
         case.expected_stdout.is_none(),
+        expected_declaration.is_some(),
     );
 
     match case.expected_stdout {
@@ -321,6 +824,20 @@ fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
                 &fs::read_to_string(typescript_output.join("main.js.map")).unwrap(),
                 "TypeScript",
             );
+            if let Some(expected_declaration) = expected_declaration {
+                assert_eq!(
+                    artifact.declaration.as_deref(),
+                    Some(expected_declaration),
+                    "{} BlueTSC declaration",
+                    case.name
+                );
+                assert_eq!(
+                    fs::read_to_string(typescript_output.join("main.d.ts")).unwrap(),
+                    expected_declaration,
+                    "{} TypeScript declaration",
+                    case.name
+                );
+            }
             let blueice_result = run_node(node, &blueice_output);
             let typescript_result = run_node(node, &typescript_output.join("main.js"));
             assert_success(&blueice_result, "Node could not execute BlueTSC output");
@@ -363,6 +880,21 @@ fn run_case(case: &OracleCase, tsc: &Path, node: &std::ffi::OsStr) {
                 case.name
             );
         }
+    }
+}
+
+fn expected_declaration(case: &OracleCase) -> Option<&'static str> {
+    match case.name {
+        "default-function-export" => {
+            Some("export default function greeting(name: string): string;\n")
+        }
+        "default-value-export" => {
+            Some("declare const greeting: string;\nexport default greeting;\n")
+        }
+        "named-value-export" => {
+            Some("declare const label: string;\nexport { label as greeting };\n")
+        }
+        _ => None,
     }
 }
 
@@ -443,10 +975,10 @@ fn assert_source_map(source_map: &str, producer: &str) {
         .is_some_and(|value| !value.is_empty()));
 }
 
-fn pinned_tsc() -> PathBuf {
-    env::var_os("BLUEICE_TSC")
+fn pinned_bluetsc_oracle() -> PathBuf {
+    env::var_os("BLUEICE_BLUETSC_ORACLE")
         .map(PathBuf::from)
-        .expect("set BLUEICE_TSC to the TypeScript 5.9.3 tsc executable")
+        .expect("set BLUEICE_BLUETSC_ORACLE to the TypeScript 5.9.3 tsc executable")
 }
 
 fn assert_pinned_version(tsc: &Path) {
@@ -455,17 +987,17 @@ fn assert_pinned_version(tsc: &Path) {
     assert_eq!(
         String::from_utf8(output.stdout).unwrap().trim(),
         format!("Version {PINNED_TYPESCRIPT_VERSION}"),
-        "BLUEICE_TSC must be the pinned oracle compiler"
+        "BLUEICE_BLUETSC_ORACLE must be the pinned BlueTSC oracle compiler"
     );
 }
 
-fn run_tsc(tsc: &Path, input: &Path, output: &Path, no_emit: bool) -> Output {
+fn run_tsc(tsc: &Path, input: &Path, output: &Path, no_emit: bool, declaration: bool) -> Output {
     let mut command = Command::new(tsc);
     command.args([
         "--target",
         "ES2022",
         "--module",
-        "none",
+        "ES2022",
         "--strict",
         "--pretty",
         "false",
@@ -476,7 +1008,14 @@ fn run_tsc(tsc: &Path, input: &Path, output: &Path, no_emit: bool) -> Output {
     } else {
         command.arg("--outDir").arg(output);
     }
+    if declaration {
+        command.arg("--declaration");
+    }
     command.arg(input).output().unwrap()
+}
+
+fn write_esm_package(directory: &Path) {
+    fs::write(directory.join("package.json"), "{\"type\":\"module\"}\n").unwrap();
 }
 
 fn run_node(node: &std::ffi::OsStr, input: &Path) -> Output {

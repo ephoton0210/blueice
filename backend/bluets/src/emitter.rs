@@ -275,8 +275,19 @@ fn emit_declaration(module: &Module) -> String {
                 }
                 output.push_str("}\n");
             }
-            Declaration::Variable(variable) if variable.exported && !variable.declared => {
-                output.push_str("export declare const ");
+            Declaration::Variable(variable)
+                if !variable.declared
+                    && (variable.exported
+                        || is_default_export_name(module, &variable.name)
+                        || is_value_export_name(module, &variable.name)) =>
+            {
+                if variable.exported {
+                    output.push_str("export declare ");
+                } else {
+                    output.push_str("declare ");
+                }
+                output.push_str(variable.kind.as_str());
+                output.push(' ');
                 output.push_str(&variable.name);
                 output.push_str(": ");
                 output.push_str(
@@ -289,7 +300,9 @@ fn emit_declaration(module: &Module) -> String {
                 output.push_str(";\n");
             }
             Declaration::Function(function)
-                if function.exported
+                if (function.exported
+                    || is_default_export_name(module, &function.name)
+                    || is_value_export_name(module, &function.name))
                     && (function.overload
                         || !module.declarations.iter().any(|declaration| {
                             matches!(
@@ -299,7 +312,13 @@ fn emit_declaration(module: &Module) -> String {
                             )
                         })) =>
             {
-                output.push_str("export declare function ");
+                if function.default_export {
+                    output.push_str("export default function ");
+                } else if function.exported {
+                    output.push_str("export declare function ");
+                } else {
+                    output.push_str("declare function ");
+                }
                 output.push_str(&function.name);
                 emit_type_parameters(&mut output, &function.type_parameters);
                 output.push('(');
@@ -345,10 +364,41 @@ fn emit_declaration(module: &Module) -> String {
                 }
                 output.push_str(";\n");
             }
+            Declaration::DefaultExport(export) => {
+                output.push_str("export default ");
+                output.push_str(&export.name);
+                output.push_str(";\n");
+            }
+            Declaration::ValueExport(export) => {
+                output.push_str("export { ");
+                for (index, binding) in export.bindings.iter().enumerate() {
+                    if index > 0 {
+                        output.push_str(", ");
+                    }
+                    output.push_str(&binding.local);
+                    if binding.local != binding.exported {
+                        output.push_str(" as ");
+                        output.push_str(&binding.exported);
+                    }
+                }
+                output.push_str(" };\n");
+            }
             _ => {}
         }
     }
     output
+}
+
+fn is_default_export_name(module: &Module, name: &str) -> bool {
+    module.declarations.iter().any(|declaration| {
+        matches!(declaration, Declaration::DefaultExport(export) if export.name == name)
+    })
+}
+
+fn is_value_export_name(module: &Module, name: &str) -> bool {
+    module.declarations.iter().any(|declaration| {
+        matches!(declaration, Declaration::ValueExport(export) if export.bindings.iter().any(|binding| binding.local == name))
+    })
 }
 
 fn emit_type_parameters(output: &mut String, parameters: &[TypeParameter]) {
@@ -774,18 +824,18 @@ mod tests {
         let loader = MapLoader::from([ModuleSource::new(
             "memory:///generic.ts",
             "export interface Box<T extends string = string> { value: T }\n\
-             export function echo<T extends string = string>(value?: T): T { return value; }",
+             export function echo<T extends string = string>(value?: T): string { return ''; }",
         )]);
-        let output = compile(
+        let result = compile(
             "memory:///generic.ts",
             &loader,
             CompilerOptions {
                 declaration: true,
                 ..CompilerOptions::default()
             },
-        )
-        .output
-        .unwrap();
+        );
+        assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+        let output = result.output.unwrap();
         let artifact = &output.artifacts["memory:///generic.ts"];
         assert!(
             artifact.javascript.contains("function echo(value)"),
@@ -797,7 +847,7 @@ mod tests {
             artifact.declaration.as_deref(),
             Some(
                 "export interface Box<T extends string = string> {\n  value: T;\n}\n\
-                 export declare function echo<T extends string = string>(value?: T): T;\n"
+                 export declare function echo<T extends string = string>(value?: T): string;\n"
             )
         );
     }
