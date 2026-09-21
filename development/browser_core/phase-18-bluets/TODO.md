@@ -44,6 +44,14 @@ or second module resolver to bypass them.
   resolver records rather than granting BlueTS filesystem, network, DOM, or
   capability authority.
 
+  Foundation delivered: `blueice_engine::script::handle_script_request` is the
+  core-owned dispatcher for the existing narrow script IPC vocabulary. It
+  scopes DOM lookup/mutation to one live tab, validates raw node IDs before
+  mutation, relayouts after changes, and rejects stale/cross-tab handles after
+  navigation. The core listener, long-lived out-of-process BlueJS host,
+  authorized script submission, realm lifecycle, and resource accounting are
+  still absent, so this prerequisite remains open.
+
   Acceptance: a page fixture can run a supported JavaScript classic script and
   module in its own realm; navigation/reload invalidates old program handles;
   an over-budget compilation fails without executing a partial program.
