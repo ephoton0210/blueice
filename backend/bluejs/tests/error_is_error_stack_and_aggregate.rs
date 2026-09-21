@@ -2,7 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! `Error.isError` and the `Error.prototype.stack` accessor pair.
+//! `Error.isError`, the `Error.prototype.stack` accessor pair and the
+//! `AggregateError` constructor's IterableToList handling of its `errors`
+//! argument.
 
 use blueice_bluejs::{compile, parse, Value, Vm};
 
@@ -138,6 +140,36 @@ fn the_stack_setter_ignores_the_prototype_property() {
           if (log.join() !== "gopd stack,define stack via proxy") return "proxy traps: " + log.join();
           try { set.call(new Proxy({}, { defineProperty() { return false; } }), "v"); return "rejecting proxy accepted"; }
           catch (e) { if (!(e instanceof TypeError)) return "wrong error"; }
+          return true;
+        })()"#,
+    );
+}
+
+#[test]
+fn aggregate_error_collects_errors_with_iterable_to_list_after_message_and_cause() {
+    assert_true(
+        r#"(function() {
+          const log = [];
+          const errors = { [Symbol.iterator]() { log.push("iterate"); return [1, 2][Symbol.iterator](); } };
+          const message = { toString() { log.push("message"); return "m"; } };
+          const options = { get cause() { log.push("cause"); return "c"; } };
+          const e = new AggregateError(errors, message, options);
+          if (log.join() !== "message,cause,iterate") return "order " + log.join();
+          if (!Array.isArray(e.errors) || e.errors.join() !== "1,2") return "errors is not an array copy";
+          const d = Object.getOwnPropertyDescriptor(e, "errors");
+          if (d.enumerable || !d.writable || !d.configurable) return "errors attributes";
+          if (Object.getOwnPropertyNames(e).join() !== "message,cause,errors") return "own key order " + Object.getOwnPropertyNames(e).join();
+          // A Set (or any iterable) is accepted; a non-iterable is a TypeError.
+          if (new AggregateError(new Set([3])).errors.join() !== "3") return "set";
+          if (AggregateError("s".split("")).errors.length !== 1) return "call without new";
+          for (const bad of [undefined, null, 1, {}, { [Symbol.iterator]: 1 }, { [Symbol.iterator]() { return 1; } }]) {
+            try { new AggregateError(bad); return "non-iterable accepted"; } catch (err) { if (!(err instanceof TypeError)) return "wrong error"; }
+          }
+          let closed = false;
+          try {
+            new AggregateError({ [Symbol.iterator]() { return { next() { throw new RangeError("x"); }, return() { closed = true; return {}; } }; } });
+            return "no throw";
+          } catch (err) { if (!(err instanceof RangeError) || closed) return "abrupt next"; }
           return true;
         })()"#,
     );

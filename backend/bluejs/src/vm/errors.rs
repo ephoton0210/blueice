@@ -256,16 +256,6 @@ impl Vm {
         let result = (|| {
             let aggregate = name == "AggregateError";
             let suppressed_error = name == "SuppressedError";
-            if aggregate {
-                self.define_data(
-                    object,
-                    "errors",
-                    native::argument(args, 0).clone(),
-                    true,
-                    false,
-                    true,
-                )?;
-            }
             // `SuppressedError(error, suppressed, message)` has its own
             // positional shape: `message` is the third argument (installed
             // first, matching Error's own message-before-cause ordering),
@@ -305,6 +295,16 @@ impl Vm {
                     self.define_data(object, "cause", cause, true, false, true)?;
                 }
             }
+            if aggregate {
+                // IteratorToList(GetIterator(errors)) runs after `message`
+                // and `cause` are installed, and its result is a fresh array.
+                let values = self.iterable_to_list(native::argument(args, 0))?;
+                let base = self.stack.len();
+                self.stack.extend(values.iter().cloned());
+                let errors = self.array_from(values);
+                self.stack.truncate(base);
+                self.define_data(object, "errors", errors?, true, false, true)?;
+            }
             Ok(Value::Object(object))
         })();
         self.stack.pop();
@@ -337,6 +337,26 @@ impl Vm {
             native::append(&mut name, &message, self.config.max_string_bytes)?;
         }
         Ok(Value::String(name))
+    }
+
+    /// IteratorToList(GetIterator(value, sync)): every value the iterable
+    /// yields, in order. Values are kept on the VM stack while later
+    /// iterator steps run user code.
+    pub(super) fn iterable_to_list(&mut self, source: &Value) -> Result<Vec<Value>, RuntimeError> {
+        let base = self.stack.len();
+        self.stack.push(source.clone());
+        let result = (|| {
+            let record = self.get_iterator(source)?;
+            self.stack.push(record.clone());
+            let mut values = Vec::new();
+            while let Some(value) = self.iterator_step(&record, true)? {
+                self.stack.push(value.clone());
+                values.push(value);
+            }
+            Ok(values)
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     /// Whether `object` has an [[ErrorData]] internal slot, including an
