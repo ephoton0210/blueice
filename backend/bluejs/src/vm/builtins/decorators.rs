@@ -27,11 +27,10 @@
 //! through `Array.prototype`, so user code cannot observe or interfere.
 
 use super::*;
-use crate::native::DecoratorAccessOp;
-
 use crate::bytecode::decoration::{
     ACCESSOR, FIELD, GETTER, KIND_MASK, METHOD, PRIVATE, SETTER, STATIC,
 };
+use crate::native::DecoratorAccessOp;
 
 /// The kind of class element a decorator is applied to (the low bits of a
 /// `DecorateElement` / `ReplaceClassElement` operand).
@@ -226,9 +225,10 @@ impl Vm {
 
     /// Builds the context object of one decorator application and leaves it on
     /// the stack. `state` is that application's `finished`/initializers record.
-    /// `element` is the operand base of a `DecorateElement`; `None` builds a
-    /// class decorator's context, which has neither `static`, `private` nor
-    /// `access`.
+    /// `element` describes a class element (its kind, the `DecorateElement`
+    /// operand, the private-name owner and the key `access` reaches); `None`
+    /// builds a class decorator's context, which has neither `static`,
+    /// `private` nor `access`.
     fn decorator_context(
         &mut self,
         name: Value,
