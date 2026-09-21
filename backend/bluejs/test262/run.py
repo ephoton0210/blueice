@@ -207,6 +207,26 @@ STRING_SUBSTR_NUMBER_MATRIX_FIXTURES = frozenset(
     {"annexB/built-ins/String/prototype/substr/start-and-length-as-numbers.js"}
 )
 STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET = 6_000_000
+# Fixed, finite staging fixtures whose size only just exceeds the default: each
+# is straight-line or a bounded loop (a few hundred iterations, or a run of
+# assertions that build their failure message eagerly), and each finishes in a
+# small fraction of a second. Every entry is an exact path with an allowance of
+# 4x its measured minimum, which is identical in sloppy and strict mode; the
+# ordinary two-second wall deadline still bounds them.
+#   with-dense.js                          178,125  (63 receivers x 13 indices)
+#   parse-reviver-array-delete.js          185,937  (about 4,100 reviver calls)
+#   log2-approx.js                         325,000  (2,097 assertNear checks)
+#   es5ish-defineGetter-defineSetter.js    110,156  (about 60 descriptor checks)
+# A fixture that is too slow for that deadline even with fuel is deliberately
+# not listed (staging/sm/Array/toSpliced-dense.js needs 19.6M dispatches and
+# about 7 s; each staging/sm/Date/dst-offset-caching-N-of-8.js part runs for
+# more than a minute).
+FINITE_FIXTURE_INSTRUCTION_BUDGETS = {
+    "staging/sm/Array/with-dense.js": 750_000,
+    "staging/sm/JSON/parse-reviver-array-delete.js": 750_000,
+    "staging/sm/Math/log2-approx.js": 1_300_000,
+    "staging/sm/extensions/es5ish-defineGetter-defineSetter.js": 450_000,
+}
 TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET = 50_000_000
 # `testIntl.js` runs every asserted result through a finite locale and
 # numbering-system matrix. Debug interpreter dispatch exceeds the ordinary
@@ -967,6 +987,8 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET)
     if relative in STRING_SUBSTR_NUMBER_MATRIX_FIXTURES:
         return max(default, STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET)
+    if relative in FINITE_FIXTURE_INSTRUCTION_BUDGETS:
+        return max(default, FINITE_FIXTURE_INSTRUCTION_BUDGETS[relative])
     if relative in FINITE_STRESS_FIXTURES:
         return max(default, FINITE_STRESS_INSTRUCTION_BUDGET)
     if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):

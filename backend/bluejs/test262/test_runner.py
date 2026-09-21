@@ -21,6 +21,7 @@ from run import (
     TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET,
     TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES,
     TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET,
+    FINITE_FIXTURE_INSTRUCTION_BUDGETS,
     STRING_SUBSTR_NUMBER_MATRIX_FIXTURES,
     STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET,
     WALL_CLOCK_BUSY_WAIT_FIXTURES,
@@ -201,6 +202,38 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(
             instruction_budget({}, 20_000_000, relative), 20_000_000
         )
+
+    def test_finite_staging_fixtures_get_exact_path_dispatch_allowances(self):
+        # Each of these fixtures is a fixed, finite loop or a run of eagerly
+        # message-building assertions whose size only just exceeds the
+        # 100,000-dispatch default. The allowance is 4x the measured minimum
+        # (identical in sloppy and strict mode), applies to the exact path
+        # only, and leaves the ordinary 2 s wall deadline untouched. Fixtures
+        # that are too slow for that deadline even with fuel (the
+        # dst-offset-caching parts, toSpliced-dense) must NOT be listed.
+        self.assertEqual(
+            FINITE_FIXTURE_INSTRUCTION_BUDGETS,
+            {
+                "staging/sm/Array/with-dense.js": 750_000,
+                "staging/sm/JSON/parse-reviver-array-delete.js": 750_000,
+                "staging/sm/Math/log2-approx.js": 1_300_000,
+                "staging/sm/extensions/es5ish-defineGetter-defineSetter.js": 450_000,
+            },
+        )
+        for relative, budget in FINITE_FIXTURE_INSTRUCTION_BUDGETS.items():
+            self.assertEqual(instruction_budget({}, 100_000, relative), budget, relative)
+            self.assertEqual(case_timeout({}, 2, relative), 2, relative)
+            # Raises the floor only: a larger default is never reduced.
+            self.assertEqual(instruction_budget({}, budget * 10, relative), budget * 10)
+        for other in (
+            "staging/sm/Array/toSpliced-dense.js",
+            "staging/sm/Array/with-dense-2.js",
+            "staging/sm/Date/dst-offset-caching-1-of-8.js",
+            "built-ins/Array/prototype/with/index-bigger-or-eq-than-length.js",
+        ):
+            self.assertNotIn(other, FINITE_FIXTURE_INSTRUCTION_BUDGETS)
+            self.assertEqual(instruction_budget({}, 100_000, other), 100_000, other)
+            self.assertEqual(case_timeout({}, 2, other), 2, other)
 
     def test_wall_clock_busy_wait_fixture_gets_an_exact_path_dispatch_allowance(self):
         # await-import-evaluation_FIXTURE.js spins `while (true)` until
