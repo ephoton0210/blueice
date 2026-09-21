@@ -1002,6 +1002,35 @@ mod tests {
         assert_eq!(executor.realm_stats(tab_id).unwrap().program_count, 0);
     }
 
+    #[test]
+    fn bytecode_budget_rejects_without_retaining_a_partial_program() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>const answer = 40 + 2; answer;</script>",
+            "https://example.test/app/index.html",
+        );
+        let mut executor = JavaScriptPageExecutor::with_config(JavaScriptPageExecutorConfig {
+            runtime: BlueJsPageRuntimeConfig {
+                max_bytecode_bytes_per_realm: 1,
+                ..BlueJsPageRuntimeConfig::default()
+            },
+            ..JavaScriptPageExecutorConfig::default()
+        })
+        .unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert!(matches!(
+            reports(&mut executor, tab_id).as_slice(),
+            [JavaScriptPageExecutionReport::Rejected {
+                category: "JavaScript page resource policy rejected the page script",
+                ..
+            }]
+        ));
+        let stats = executor.realm_stats(tab_id).unwrap();
+        assert_eq!(stats.program_count, 0);
+        assert_eq!(stats.bytecode_bytes, 0);
+    }
+
     struct FixedAuthorizer {
         graph: AuthorizedJavaScriptModuleGraph,
     }
