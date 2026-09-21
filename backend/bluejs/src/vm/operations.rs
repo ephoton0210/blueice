@@ -510,23 +510,53 @@ impl Vm {
         result
     }
 
+    /// Resolve `name` through the active `with` objects, then the enclosing
+    /// binding (`fallback`: `Some(Some(v))` initialized, `Some(None)` still
+    /// in its temporal dead zone) and finally the global object. `None` means
+    /// the name is unresolvable everywhere.
+    fn with_lookup(
+        &mut self,
+        name: &str,
+        fallback: Option<Option<Value>>,
+    ) -> Result<Option<Value>, RuntimeError> {
+        for object in self.with_objects.clone().into_iter().rev() {
+            if self.with_has_binding(&object, name)? {
+                return self.get_property(&object, &name.into()).map(Some);
+            }
+        }
+        match fallback {
+            Some(Some(value)) => Ok(Some(value)),
+            Some(None) => Err(RuntimeError::ReferenceError(name.into())),
+            None => {
+                // Standard globals (`Math`, `Array`, `undefined`, ...) are
+                // installed lazily and only materialize through the global
+                // object; outside `with` the compiler emits a dedicated
+                // opcode for them, so make sure that object exists first.
+                self.global("globalThis")?;
+                self.lookup_global_name(name)
+            }
+        }
+    }
+
     pub(super) fn with_get(
         &mut self,
         name: &str,
         fallback: Option<Option<Value>>,
     ) -> Result<Value, RuntimeError> {
-        for object in self.with_objects.clone().into_iter().rev() {
-            if self.with_has_binding(&object, name)? {
-                return self.get_property(&object, &name.into());
-            }
-        }
-        match fallback {
-            Some(Some(value)) => Ok(value),
-            Some(None) => Err(RuntimeError::ReferenceError(name.into())),
-            None => self
-                .lookup_global_name(name)?
-                .ok_or_else(|| RuntimeError::ReferenceError(name.into())),
-        }
+        self.with_lookup(name, fallback)?
+            .ok_or_else(|| RuntimeError::ReferenceError(name.into()))
+    }
+
+    /// The operand of `typeof name` inside `with`: an unresolvable name is
+    /// `undefined` instead of a ReferenceError (a TDZ binding still throws).
+    pub(super) fn with_get_or_undefined(
+        &mut self,
+        name: &str,
+        fallback: Option<Option<Value>>,
+    ) -> Result<Value, RuntimeError> {
+        Ok(self
+            .with_lookup(name, fallback)?
+            .unwrap_or(Value::Undefined))
     }
 
     pub(super) fn with_set(&mut self, name: &str, value: Value) -> Result<(), RuntimeError> {

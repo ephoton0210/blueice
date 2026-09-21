@@ -117,6 +117,7 @@ opcodes! {
     EnterWith: 1, 0;
     LeaveWith: 1, 0;
     WithGet: 5, 0;
+    WithGetOrUndefined: 5, 0;
     WithSet: 5, 0;
     ResolveWithReference: 5, 0;
     LoadWithReference: 1, 0;
