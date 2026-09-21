@@ -1207,6 +1207,53 @@ fn json_module_missing_host_source_is_a_type_error() {
     assert_eq!(vm.take_test262_done(), Some(Ok(())));
 }
 
+/// A host-provided Module Source object's [[Prototype]]'s [[Prototype]] is
+/// %AbstractModuleSource%.prototype (staging/source-phase-imports/
+/// module-source-prototype-chain.js): the host's concrete source class sits
+/// between the object and the abstract intrinsic, and every source object of
+/// one host shares that class prototype.
+#[test]
+fn a_host_module_source_inherits_from_a_host_class_whose_parent_is_abstract_module_source() {
+    assert_host_module_source_chain(Vm::default());
+}
+
+/// The same chain under a one-object nursery, where every allocation may
+/// collect: the host class prototype exists only until the first (rooted)
+/// source object points at it.
+#[test]
+fn the_host_module_source_chain_survives_collection_at_every_allocation() {
+    let mut config = blueice_bluejs::VmConfig::default();
+    config.heap.nursery_capacity = 1;
+    assert_host_module_source_chain(Vm::new(config).unwrap());
+}
+
+fn assert_host_module_source_chain(mut vm: Vm) {
+    vm.install_test262_harness().unwrap();
+    vm.install_test262_done().unwrap();
+    vm.set_module_source_loader_context(vec![
+        "<module source>".to_string(),
+        "<another source>".to_string(),
+    ]);
+    vm.set_module_loader_context("source-chain/main.js", HashMap::new());
+    let source = "(async () => {
+        const a = await import.source('<module source>');
+        const b = await import.source('<another source>');
+        const proto = Object.getPrototypeOf(a);
+        if (typeof a !== 'object' || proto === null) throw new Error('not an object with a class');
+        if (Object.getPrototypeOf(proto) !== $262.AbstractModuleSource.prototype)
+            throw new Error('the class does not inherit from %AbstractModuleSource%.prototype');
+        if (proto === $262.AbstractModuleSource.prototype)
+            throw new Error('the class must be a distinct prototype');
+        if (Object.getPrototypeOf(b) !== proto) throw new Error('one class per host');
+        if (!(a instanceof $262.AbstractModuleSource)) throw new Error('instanceof');
+        if (a !== await import.source('<module source>')) throw new Error('identity');
+    })().then($DONE, $DONE);";
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
 #[test]
 fn module_graph_links_source_phase_imports_without_evaluating_the_source_record() {
     let sources = [

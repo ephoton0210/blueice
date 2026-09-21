@@ -1924,10 +1924,10 @@ impl Vm {
                     target,
                     referrer,
                     specifier,
-                    json,
+                    module_type,
                     phase,
                 } => {
-                    let result = self.dynamic_import_job(&referrer, &specifier, json, phase);
+                    let result = self.dynamic_import_job(&referrer, &specifier, module_type, phase);
                     match result {
                         Ok(DynamicImportResult::Fulfilled(namespace)) => {
                             self.settle_promise(target, PromiseStatus::Fulfilled(namespace))?

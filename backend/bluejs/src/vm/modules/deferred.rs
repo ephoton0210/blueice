@@ -13,13 +13,21 @@ impl Vm {
     /// Source-phase dynamic import has the same promise and argument
     /// boundary as ordinary import(), but asks the host for a Module Source
     /// object. A source-text module therefore rejects with SyntaxError instead
-    /// of linking or evaluating it as an ordinary dynamic import would.
+    /// of linking or evaluating it as an ordinary dynamic import would, and
+    /// so does a Synthetic Module Record (`type: "json" | "text" | "bytes"`),
+    /// whose GetModuleSource likewise throws a SyntaxError.
     pub(super) fn dynamic_import_source(
         &mut self,
         promise: ObjectId,
         specifier: &str,
+        module_type: ModuleType,
     ) -> Result<(), RuntimeError> {
         let result = (|| {
+            if module_type != ModuleType::JavaScript {
+                return Err(RuntimeError::SyntaxError(
+                    "a synthetic module has no source-phase representation".into(),
+                ));
+            }
             let referrer = self
                 .active_module_name
                 .clone()
@@ -51,10 +59,9 @@ impl Vm {
     pub(super) fn dynamic_import_defer_job(
         &mut self,
         entry: &str,
-        json: bool,
     ) -> Result<DynamicImportResult, RuntimeError> {
         let modules = self.module_registry.clone();
-        self.execute_module_graph_inner(entry, &modules, false, true, json, ImportPhase::Defer)?;
+        self.execute_module_graph_inner(entry, &modules, false, true, ImportPhase::Defer)?;
         let namespace = self
             .last_module_namespace
             .ok_or(RuntimeError::ModuleResolution(format!(
@@ -129,9 +136,10 @@ impl Vm {
                 ))
             })?;
             for request in &code.module_requests {
-                pending.push(Self::resolve_module_request(
+                pending.push(Self::resolve_module_target(
                     &name,
                     &request.module_request,
+                    request.module_type,
                 )?);
             }
         }
@@ -168,7 +176,8 @@ impl Vm {
             return Ok(result);
         }
         for request in &code.module_requests {
-            let target = Self::resolve_module_request(module, &request.module_request)?;
+            let target =
+                Self::resolve_module_target(module, &request.module_request, request.module_type)?;
             for additional in Self::gather_async_dependencies(&target, modules, linked, seen)? {
                 if !result.contains(&additional) {
                     result.push(additional);
@@ -200,7 +209,8 @@ impl Vm {
             return Ok(false);
         }
         for request in &code.module_requests {
-            let target = Self::resolve_module_request(module, &request.module_request)?;
+            let target =
+                Self::resolve_module_target(module, &request.module_request, request.module_type)?;
             if !Self::ready_for_sync_execution(&target, modules, linked, seen)? {
                 return Ok(false);
             }
@@ -351,13 +361,36 @@ impl Vm {
                 "host did not provide a source-phase representation for {module}"
             )));
         }
-        let prototype = self
-            .abstract_module_source_prototype
-            .unwrap_or(self.object_prototype);
-        let source = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        let prototype = self.host_module_source_prototype()?;
+        // A freshly made prototype is reachable from nothing until the (rooted)
+        // source object below points at it; keep it on the operand stack
+        // while that source is allocated.
+        self.stack.push(Value::Object(prototype));
+        let source = self.with_roots(|heap| heap.alloc_object(Some(prototype)));
+        self.stack.pop();
+        let source = source?;
         let root = self.heap.root(source)?;
         self.module_source_cache.insert(module.to_string(), source);
         self.module_source_roots.insert(module.to_string(), root);
         Ok(source)
+    }
+
+    /// The [[Prototype]] of every Module Source object this host creates.
+    /// A Module Source Record's source object must inherit from an object
+    /// whose own [[Prototype]] is %AbstractModuleSource%.prototype (the
+    /// abstract-module-records table's [[ModuleSource]] field), so the host's
+    /// concrete source class is an intermediate prototype rather than the
+    /// abstract one itself. Without the abstract intrinsic (only Test262's
+    /// `$262` exposes it) the class simply inherits from Object.prototype.
+    fn host_module_source_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.host_module_source_prototype {
+            return Ok(prototype);
+        }
+        let parent = self
+            .abstract_module_source_prototype
+            .unwrap_or(self.object_prototype);
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(parent)))?;
+        self.host_module_source_prototype = Some(prototype);
+        Ok(prototype)
     }
 }

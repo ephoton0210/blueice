@@ -40,27 +40,36 @@ impl Vm {
                         export_name: name,
                         module_request,
                         import_name,
-                        ..
+                        module_type,
                     } if name == export_name => {
-                        let target = Self::resolve_module_request(module, module_request)?;
+                        let target =
+                            Self::resolve_module_target(module, module_request, *module_type)?;
                         return Self::resolve_export(modules, &target, import_name, resolve_set);
                     }
                     ModuleExport::Namespace {
                         export_name: name,
                         module_request,
-                        ..
+                        module_type,
                     } if name == export_name => {
                         return Ok(ExportResolution::Namespace {
-                            module: Self::resolve_module_request(module, module_request)?,
+                            module: Self::resolve_module_target(
+                                module,
+                                module_request,
+                                *module_type,
+                            )?,
                         });
                     }
                     ModuleExport::DeferredNamespace {
                         export_name: name,
                         module_request,
-                        ..
+                        module_type,
                     } if name == export_name => {
                         return Ok(ExportResolution::DeferredNamespace {
-                            module: Self::resolve_module_request(module, module_request)?,
+                            module: Self::resolve_module_target(
+                                module,
+                                module_request,
+                                *module_type,
+                            )?,
                         });
                     }
                     ModuleExport::Source {
@@ -79,10 +88,14 @@ impl Vm {
             }
             let mut candidate = ExportResolution::Missing;
             for export in &code.module_exports {
-                let ModuleExport::Star { module_request, .. } = export else {
+                let ModuleExport::Star {
+                    module_request,
+                    module_type,
+                } = export
+                else {
                     continue;
                 };
-                let target = Self::resolve_module_request(module, module_request)?;
+                let target = Self::resolve_module_target(module, module_request, *module_type)?;
                 match Self::resolve_export(modules, &target, export_name, resolve_set)? {
                     ExportResolution::Missing => {}
                     ExportResolution::Ambiguous => return Ok(ExportResolution::Ambiguous),
@@ -128,8 +141,12 @@ impl Vm {
                     | ModuleExport::Source { export_name, .. } => {
                         names.insert(export_name.clone());
                     }
-                    ModuleExport::Star { module_request, .. } => {
-                        let target = Self::resolve_module_request(module, module_request)?;
+                    ModuleExport::Star {
+                        module_request,
+                        module_type,
+                    } => {
+                        let target =
+                            Self::resolve_module_target(module, module_request, *module_type)?;
                         names.extend(
                             Self::exported_names(modules, &target, star_set)?
                                 .into_iter()

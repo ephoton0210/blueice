@@ -172,3 +172,87 @@ fn phase_import_calls_reject_every_malformed_form() {
     // `new import.meta` is a MetaProperty, so it remains a valid callee.
     parse_module("new import.meta();").unwrap();
 }
+
+#[test]
+fn the_type_import_attribute_selects_the_module_type_of_every_request_form() {
+    use blueice_bluejs::{ExportEntry, ModuleType};
+    let module = parse_module(
+        "import a from './a' with { type: 'text' };
+         import b from './b' with { type: \"bytes\", };
+         import c from './c' with { type: 'json' };
+         import d from './d' with { type: 'css' };
+         import e from './e' with { other: 'text' };
+         import f from './f';
+         import './g' with { type: 'text' };
+         export { default as h } from './h' with { type: 'bytes' };
+         export * from './i' with { type: 'text' };
+         export * as j from './j' with { type: 'json' };",
+    )
+    .unwrap();
+    let import_types: Vec<_> = module
+        .imports
+        .iter()
+        .map(|import| (import.module_request.as_str(), import.module_type))
+        .collect();
+    assert_eq!(
+        import_types,
+        [
+            ("./a", ModuleType::Text),
+            ("./b", ModuleType::Bytes),
+            ("./c", ModuleType::Json),
+            // Unrecognized attribute values and keys leave a Source Text Module.
+            ("./d", ModuleType::JavaScript),
+            ("./e", ModuleType::JavaScript),
+            ("./f", ModuleType::JavaScript),
+            ("./g", ModuleType::Text),
+        ]
+    );
+    let export_types: Vec<_> = module
+        .exports
+        .iter()
+        .map(|export| match export {
+            ExportEntry::Indirect {
+                module_request,
+                module_type,
+                ..
+            }
+            | ExportEntry::Star {
+                module_request,
+                module_type,
+            }
+            | ExportEntry::Namespace {
+                module_request,
+                module_type,
+                ..
+            } => (module_request.as_str(), *module_type),
+            ExportEntry::Local { .. } => unreachable!("only re-exports here"),
+        })
+        .collect();
+    assert_eq!(
+        export_types,
+        [
+            ("./h", ModuleType::Bytes),
+            ("./i", ModuleType::Text),
+            ("./j", ModuleType::Json),
+        ]
+    );
+    // A request's identity is its specifier and type: the same specifier
+    // requested as text and as JavaScript is two requested modules.
+    let module = parse_module(
+        "import './x' with { type: 'text' }; import './x'; import './x' with { type: 'text' };",
+    )
+    .unwrap();
+    let requests: Vec<_> = module
+        .requests
+        .iter()
+        .map(|request| (request.specifier.as_str(), request.module_type))
+        .collect();
+    assert_eq!(
+        requests,
+        [
+            ("./x", ModuleType::Text),
+            ("./x", ModuleType::JavaScript),
+            ("./x", ModuleType::Text),
+        ]
+    );
+}

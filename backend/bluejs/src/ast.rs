@@ -40,9 +40,82 @@ pub struct Module {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestedModule {
     pub specifier: String,
+    /// The `with { type }` attribute the request carries; a request is
+    /// identified by its specifier *and* its module type.
+    pub module_type: ModuleType,
     /// `Evaluation` or `Defer`; source-phase imports never evaluate, so they
     /// are not requested modules at all.
     pub phase: ImportPhase,
+}
+
+/// The `type` import attribute of a ModuleRequest, which selects how the
+/// host turns the resolved resource into a module record: as a Source Text
+/// Module (no attribute), or as a synthetic module whose only export is its
+/// `default` (JSON modules, and the import-text and import-bytes proposals).
+/// The attribute is part of a request's identity: `import "./m" with { type:
+/// "text" }` and `import "./m"` name two distinct module records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ModuleType {
+    /// No (recognized) `type` attribute: a Source Text Module.
+    #[default]
+    JavaScript,
+    /// `type: "json"`: ParseJSONModule.
+    Json,
+    /// `type: "text"`: the resource decoded as UTF-8 into a String.
+    Text,
+    /// `type: "bytes"`: the resource as a `Uint8Array` over an immutable
+    /// `ArrayBuffer`.
+    Bytes,
+}
+
+impl ModuleType {
+    /// The module type a `type` attribute value selects. Other attribute
+    /// values are accepted and ignored, as every other attribute key is.
+    pub fn from_attribute_value(value: &str) -> ModuleType {
+        match value {
+            "json" => ModuleType::Json,
+            "text" => ModuleType::Text,
+            "bytes" => ModuleType::Bytes,
+            _ => ModuleType::JavaScript,
+        }
+    }
+
+    fn key_suffix(self) -> Option<&'static str> {
+        match self {
+            ModuleType::JavaScript => None,
+            ModuleType::Json => Some("json"),
+            ModuleType::Text => Some("text"),
+            ModuleType::Bytes => Some("bytes"),
+        }
+    }
+
+    /// The module-registry key of `resolved_path` loaded as this type. A
+    /// Source Text Module keeps its plain resolved path; every synthetic
+    /// module gets a distinct key, so one resource imported under two types
+    /// (or a module importing itself as text) yields two module records.
+    pub(crate) fn module_key(self, resolved_path: &str) -> String {
+        match self.key_suffix() {
+            None => resolved_path.to_string(),
+            Some(suffix) => format!("{resolved_path}\0{suffix}"),
+        }
+    }
+
+    /// Splits a registry key made by [`Self::module_key`] back into the
+    /// resource path the host knows it by and its module type.
+    pub(crate) fn split_module_key(key: &str) -> (&str, ModuleType) {
+        for module_type in [ModuleType::Json, ModuleType::Text, ModuleType::Bytes] {
+            let suffix = module_type
+                .key_suffix()
+                .expect("synthetic types have a suffix");
+            if let Some(path) = key
+                .strip_suffix(suffix)
+                .and_then(|prefix| prefix.strip_suffix('\0'))
+            {
+                return (path, module_type);
+            }
+        }
+        (key, ModuleType::JavaScript)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,9 +167,9 @@ pub struct ImportEntry {
     /// `None` represents `import "specifier";`, which participates in
     /// dependency evaluation but creates no local binding.
     pub local_name: Option<String>,
-    /// Whether this request's `with` clause specified `type: "json"`,
-    /// routing it to ParseJSONModule instead of ordinary module linking.
-    pub json: bool,
+    /// This request's `with { type }` attribute, routing it to a synthetic
+    /// module (JSON, text, bytes) instead of ordinary module linking.
+    pub module_type: ModuleType,
 }
 
 /// One declarative export.  Local entries point at a binding in this module;
@@ -111,16 +184,16 @@ pub enum ExportEntry {
         export_name: String,
         module_request: String,
         import_name: String,
-        json: bool,
+        module_type: ModuleType,
     },
     Star {
         module_request: String,
-        json: bool,
+        module_type: ModuleType,
     },
     Namespace {
         export_name: String,
         module_request: String,
-        json: bool,
+        module_type: ModuleType,
     },
 }
 

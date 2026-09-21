@@ -865,7 +865,7 @@ fn lower_module(
                         module_request: request,
                         import_name: bluejs::ImportName::Named("default".to_string()),
                         local_name: None,
-                        json: false,
+                        module_type: bluejs::ModuleType::JavaScript,
                     });
                 } else {
                     imports.extend(import.bindings.iter().map(|binding| bluejs::ImportEntry {
@@ -876,7 +876,7 @@ fn lower_module(
                             bluejs::ImportName::Named(binding.imported.clone())
                         },
                         local_name: Some(binding.local.clone()),
-                        json: false,
+                        module_type: bluejs::ModuleType::JavaScript,
                     }));
                 }
             }
@@ -905,6 +905,7 @@ fn lower_module(
                 .into_iter()
                 .map(|specifier| bluejs::RequestedModule {
                     specifier,
+                    module_type: bluejs::ModuleType::JavaScript,
                     phase: bluejs::ImportPhase::Evaluation,
                 })
                 .collect(),

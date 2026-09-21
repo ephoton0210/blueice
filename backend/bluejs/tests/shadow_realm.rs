@@ -11,7 +11,9 @@
 //! `development/browser_core/phase-13-bluejs-engine/ECMASCRIPT_2026.md` --
 //! implemented here per an explicit request regardless of that status.
 
-use blueice_bluejs::{compile, compile_module, parse, parse_module, RuntimeError, Value, Vm};
+use blueice_bluejs::{
+    compile, compile_module, parse, parse_module, RuntimeError, Value, Vm, VmConfig,
+};
 use std::collections::HashMap;
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
@@ -159,6 +161,27 @@ fn multiple_shadow_realms_can_exchange_wrapped_functions_across_a_gc_boundary() 
 }
 
 #[test]
+fn wrapped_arguments_survive_collection_in_the_target_realm_until_the_call() {
+    // Every argument (and `this`) becomes a fresh facade allocated in the
+    // *target* realm before the call starts; with a one-object nursery each
+    // allocation collects there, so an earlier facade held only by a Rust
+    // local would be reclaimed while the next one is built.
+    let mut config = VmConfig::default();
+    config.heap.nursery_capacity = 1;
+    let mut vm = Vm::new(config).unwrap();
+    let source = "(() => { \
+        const r = new ShadowRealm(); \
+        const f = r.evaluate('(a, b, c) => typeof a + typeof b + typeof c + (a === b) + (a.x === undefined)'); \
+        return f(() => 1, () => 2, () => 3) === 'functionfunctionfunctionfalsetrue'; \
+    })()";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
 fn evaluate_gives_each_call_a_fresh_lexical_scope_that_does_not_conflict_with_earlier_ones() {
     // GetShadowRealmContext ( shadowRealmRecord, strictEval ): "1. Let
     // lexEnv be NewDeclarativeEnvironment(shadowRealmRecord.[[GlobalEnv]])."
@@ -284,6 +307,39 @@ fn import_value_resolves_a_lazily_supplied_module_export() {
             v => { if (v === 42) $DONE(); else $DONE(new Error('wrong value: ' + v)); }, \
             $DONE, \
         );";
+    vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+        .unwrap();
+    vm.run_promise_jobs().unwrap();
+    assert_eq!(vm.take_test262_done(), Some(Ok(())));
+}
+
+#[test]
+fn import_value_gives_the_child_realm_its_own_bytes_module_objects() {
+    // `leaf.js` statically imports a bytes resource. The parent realm imports
+    // it first, synthesizing a Uint8Array in *its* heap; the ShadowRealm must
+    // build its own from the host's bytes rather than inherit a handle into
+    // the parent's heap (which would name an unrelated or dead object there).
+    let leaf = "import bytes from './data.bin' with { type: 'bytes' }; \
+                export var parts = \
+                [bytes instanceof Uint8Array, bytes.buffer.immutable, bytes.join()].join('|');";
+    let modules = HashMap::from([(
+        "shadow/leaf.js".to_string(),
+        compile_module(&parse_module(leaf).unwrap()).unwrap(),
+    )]);
+    let mut vm = Vm::default();
+    vm.install_test262_done().unwrap();
+    vm.set_module_loader_context("shadow/main.js", modules);
+    vm.set_bytes_module_sources(HashMap::from([(
+        "shadow/data.bin".to_string(),
+        vec![3, 1, 4],
+    )]));
+    let source = "import('./leaf.js').then(parent => { \
+            const r = new ShadowRealm(); \
+            return r.importValue('./leaf.js', 'parts').then(parts => { \
+                if (parts === 'true|true|3,1,4' && parent.parts === parts) $DONE(); \
+                else $DONE(new Error('unexpected ' + parts)); \
+            }); \
+        }).catch($DONE);";
     vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
         .unwrap();
     vm.run_promise_jobs().unwrap();

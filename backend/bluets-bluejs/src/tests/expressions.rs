@@ -563,7 +563,7 @@ fn preserves_bluets_resolved_targets_in_a_direct_module_graph() {
             module_request: "graph/dep.ts".to_string(),
             import_name: bluejs::ImportName::Named("value".to_string()),
             local_name: Some("value".to_string()),
-            json: false,
+            module_type: bluejs::ModuleType::JavaScript,
         }]
     );
     assert_eq!(

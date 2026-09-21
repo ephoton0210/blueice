@@ -14,8 +14,8 @@ use crate::heap::{
 use crate::native::{self, NativeFunction};
 use crate::primitive;
 use crate::{
-    Bytecode, Heap, HeapConfig, HeapError, ImportPhase, JsString, JsSymbol, ObjectId, Opcode,
-    PropertyDescriptor, PropertyName, RootId, Value,
+    Bytecode, Heap, HeapConfig, HeapError, ImportPhase, JsString, JsSymbol, ModuleType, ObjectId,
+    Opcode, PropertyDescriptor, PropertyName, RootId, Value,
 };
 use num_bigint::{BigInt, Sign};
 use num_traits::{One, ToPrimitive, Zero};
@@ -531,9 +531,9 @@ enum PromiseJob {
         target: ObjectId,
         referrer: String,
         specifier: String,
-        /// Whether `import(specifier, { with: { type: "json" } })` was
-        /// requested, routing resolution to `ensure_json_module`.
-        json: bool,
+        /// The module type `import(specifier, { with: { type } })`
+        /// requested, routing a synthetic one to `ensure_synthetic_module`.
+        module_type: ModuleType,
         /// `import()` (`Evaluation`) or `import.defer()` (`Defer`).
         phase: ImportPhase,
     },
@@ -754,9 +754,15 @@ pub struct Vm {
     /// Dynamic imports resolve only inside this explicit registry.
     module_registry: HashMap<String, Bytecode>,
     /// Host-provided raw JSON text for `type: "json"` module requests, keyed
-    /// by resolved module name. `ensure_json_module` (`vm/modules.rs`) reads
-    /// this lazily, on the first request for a given resolved path.
+    /// by resolved module name. `ensure_synthetic_module` (`vm/modules.rs`)
+    /// reads this lazily, on the first request for a given resolved path.
     json_module_sources: HashMap<String, String>,
+    /// Host-provided, already UTF-8-decoded text for `type: "text"` module
+    /// requests, keyed by resolved module name; read like `json_module_sources`.
+    text_module_sources: HashMap<String, String>,
+    /// Host-provided raw bytes for `type: "bytes"` module requests, keyed by
+    /// resolved module name; read like `json_module_sources`.
+    bytes_module_sources: HashMap<String, Vec<u8>>,
     /// Host-provided raw JavaScript text for modules the host did not (or,
     /// per `ensure_dynamic_module_compiled`'s own reason for existing,
     /// deliberately did not) pre-compile, keyed by resolved module name.
@@ -774,6 +780,12 @@ pub struct Vm {
     module_import_meta: HashMap<String, ObjectId>,
     module_import_meta_roots: HashMap<String, RootId>,
     abstract_module_source_prototype: Option<ObjectId>,
+    /// The prototype shared by every Module Source object this host makes:
+    /// the host's own concrete source "class" (as `WebAssembly.Module.prototype`
+    /// is for Wasm), whose [[Prototype]] is %AbstractModuleSource%.prototype
+    /// when that intrinsic exists. Created with the first source object,
+    /// which is rooted for the realm's lifetime and so keeps this alive.
+    host_module_source_prototype: Option<ObjectId>,
     /// Retains the entry namespace until a dynamic-import job has handed it
     /// to its promise.  The next graph evaluation replaces this cache.
     last_module_namespace: Option<ObjectId>,
@@ -797,6 +809,12 @@ pub struct Vm {
     /// they are parked here so a deferred namespace observed by that code
     /// (or an `import()` it starts) can evaluate a module of the same graph.
     evaluating_linked: Option<HashMap<String, LinkedModule>>,
+    /// Roots registered by an import that joined the graph whose module code
+    /// is running (see `evaluating_linked`). The importing call cannot reach
+    /// that graph's own root list, which the outer evaluation holds, so it
+    /// parks them here; `store_module_graph` hands them to the installed
+    /// graph, which owns every root of its modules.
+    nested_module_roots: Vec<RootId>,
     deferred_import_waiters: Vec<DeferredImportWaiter>,
     /// The asynchronous dependency frontier the last `import.defer()` graph
     /// load evaluated (see `gather_async_dependencies`).
@@ -1009,6 +1027,8 @@ impl Vm {
             cells: HashMap::new(),
             module_registry: HashMap::new(),
             json_module_sources: HashMap::new(),
+            text_module_sources: HashMap::new(),
+            bytes_module_sources: HashMap::new(),
             dynamic_module_sources: HashMap::new(),
             module_source_registry: HashSet::new(),
             module_source_cache: HashMap::new(),
@@ -1016,6 +1036,7 @@ impl Vm {
             module_import_meta: HashMap::new(),
             module_import_meta_roots: HashMap::new(),
             abstract_module_source_prototype: None,
+            host_module_source_prototype: None,
             last_module_namespace: None,
             last_module_namespace_root: None,
             module_namespace_cache: HashMap::new(),
@@ -1025,6 +1046,7 @@ impl Vm {
             module_deferred_namespace_roots: HashMap::new(),
             module_graph: None,
             evaluating_linked: None,
+            nested_module_roots: Vec::new(),
             deferred_import_waiters: Vec::new(),
             last_deferred_dependencies: Vec::new(),
             module_continuations: HashMap::new(),
@@ -1158,11 +1180,26 @@ impl Vm {
 
     /// Installs the host's raw JSON text for `type: "json"` module requests,
     /// keyed by resolved module name (the same resolution `set_module_loader_context`'s
-    /// `modules` map keys use). `ensure_json_module` (`vm/modules.rs`) parses
-    /// and synthesizes a Synthetic Module Record from this text the first
-    /// time each resolved path is actually requested.
+    /// `modules` map keys use). `ensure_synthetic_module` (`vm/modules.rs`)
+    /// parses and synthesizes a Synthetic Module Record from this text the
+    /// first time each resolved path is actually requested.
     pub fn set_json_module_sources(&mut self, sources: HashMap<String, String>) {
         self.json_module_sources = sources;
+    }
+
+    /// Installs the host's text for `type: "text"` module requests, keyed by
+    /// resolved module name. The host has already decoded the resource as
+    /// UTF-8 (import-text's HostLoadImportedModule step); the module's
+    /// `default` export is exactly this string.
+    pub fn set_text_module_sources(&mut self, sources: HashMap<String, String>) {
+        self.text_module_sources = sources;
+    }
+
+    /// Installs the host's raw bytes for `type: "bytes"` module requests,
+    /// keyed by resolved module name. The module's `default` export is a
+    /// `Uint8Array` over an immutable `ArrayBuffer` holding these bytes.
+    pub fn set_bytes_module_sources(&mut self, sources: HashMap<String, Vec<u8>>) {
+        self.bytes_module_sources = sources;
     }
 
     /// Installs the host's raw JavaScript text for modules it did not
@@ -1192,7 +1229,7 @@ impl Vm {
         entry: &str,
         modules: &HashMap<String, Bytecode>,
     ) -> Result<Value, RuntimeError> {
-        self.execute_module_graph_inner(entry, modules, true, false, false, ImportPhase::Evaluation)
+        self.execute_module_graph_inner(entry, modules, true, false, ImportPhase::Evaluation)
     }
 }
 
