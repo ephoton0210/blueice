@@ -124,6 +124,7 @@ impl Vm {
                         "Proxy" => 2.0,
                         "Date" => 7.0,
                         "Map" | "Set" | "WeakMap" | "WeakSet" => 0.0,
+                        "parseInt" => 2.0,
                         "FinalizationRegistry" => 1.0,
                         "DisposableStack" | "AsyncDisposableStack" => 0.0,
                         "ShadowRealm" => 0.0,
@@ -1060,7 +1061,12 @@ impl Vm {
                         1,
                         NativeFunction::NumberIsSafeInteger,
                     )?;
-                    self.install_native(id, prototype, "parseInt", 2, NativeFunction::ParseInt)?;
+                    // `Number.parseInt` and `Number.parseFloat` are the very
+                    // function objects of the corresponding globals.
+                    for parser in ["parseInt", "parseFloat"] {
+                        let function = self.global(parser)?;
+                        self.define_data(id, parser, function, true, false, true)?;
+                    }
                 }
             } else if name == "globalThis" {
                 self.define_data(id, "String", Value::Object(constructor), true, false, true)?;
