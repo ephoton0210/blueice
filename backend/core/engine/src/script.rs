@@ -18,6 +18,7 @@ use std::sync::mpsc;
 /// navigation completions in one session-loop turn.
 const MAX_SCRIPT_REQUESTS_PER_SESSION_TICK: usize = 64;
 
+pub mod direct_page;
 /// Deterministic host typing artifacts derived from the core-owned binding
 /// surface. The initial profile deliberately exposes no JavaScript globals:
 /// core's narrow IPC dispatcher is not itself a BlueJS DOM binding.

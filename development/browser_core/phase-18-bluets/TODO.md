@@ -179,9 +179,15 @@ or second module resolver to bypass them.
   records after its own navigation/reload or close operation. A realm reserves
   a canonical ESM ID after its first execution attempt, so no later artifact
   can reuse BlueJS's linked module cells until navigation/reload creates a
-  replacement realm. A core/page-host caller must still adopt this owner (or
-  preserve the same invariant), enforce host typings, and drive actual page
-  lifecycle events.
+  replacement realm. `blueice_engine::script::direct_page::DirectPageScriptHost`
+  now gives a core/page-host caller one admission boundary: it requires an
+  explicitly selected verified host profile, accepts only an
+  `AuthorizedModuleLoader`, rejects caller-supplied ambient declarations and
+  `transpile-only`, injects only the verified host declaration, and drives the
+  owned realm admission/execution path for opted-in classic/module kinds. It
+  remains an in-process core API, not the launcher-managed BlueJS process or
+  normal page pipeline; core still must connect actual tab lifecycle and
+  policy events to this owner before the item can close.
 
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering
