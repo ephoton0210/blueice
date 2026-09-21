@@ -533,6 +533,12 @@ impl Vm {
     fn build_generator_function_prototype(
         &mut self,
     ) -> Result<(ObjectId, crate::heap::RootId), RuntimeError> {
+        // %GeneratorFunction% inherits from the %Function% constructor, not
+        // from %Function.prototype%.
+        let function_constructor = self
+            .global("Function")?
+            .object_id()
+            .expect("Function is callable");
         let function_prototype = self.function_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
         let root = self.heap.root(prototype)?;
@@ -543,7 +549,7 @@ impl Vm {
                 heap.alloc_native_function(
                     NativeFunction::GeneratorFunction,
                     "GeneratorFunction",
-                    function_prototype,
+                    function_constructor,
                 )
             })?;
             self.stack.push(Value::Object(constructor));
