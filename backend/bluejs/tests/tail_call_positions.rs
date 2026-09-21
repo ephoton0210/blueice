@@ -305,3 +305,15 @@ fn a_tail_call_inside_a_generator_or_async_function_is_an_ordinary_call() {
         Value::String("pending".into())
     );
 }
+
+#[test]
+fn a_call_in_an_optional_chain_is_an_ordinary_call() {
+    assert_eq!(
+        run("'use strict'; function g() { return 4; } var o = { g }; function f(o) { return o?.g(); } f(o) + (f(null) === undefined ? 10 : 0)"),
+        Value::Number(14.0)
+    );
+    assert_eq!(
+        run("'use strict'; var o = { m() { return 6; } }; function f(o) { return (o?.m)(); } f(o)"),
+        Value::Number(6.0)
+    );
+}

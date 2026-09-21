@@ -883,6 +883,9 @@ impl Compiler {
             return false;
         }
         match call {
+            // An optional chain is compiled by its own path (a short-circuit
+            // exit skips the call), which has no tail form.
+            Expr::Call { .. } if optional_chain_root(call) => false,
             Expr::Call { callee, args } => {
                 !matches!(&**callee, Expr::Super)
                     && args
