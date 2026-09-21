@@ -215,6 +215,7 @@ impl Vm {
                 "Generator next requires a generator".into(),
             ));
         };
+        self.async_delegated_yield = false;
         let state = self.heap.take_generator_state(*generator)?;
         let (
             code,
@@ -556,6 +557,7 @@ impl Vm {
                             })
                     });
                 yielded_delegate_result = delegate.is_some();
+                self.async_delegated_yield = async_delegate.is_some();
                 let state = GeneratorState::Suspended {
                     code,
                     pc,
@@ -1212,7 +1214,7 @@ impl Vm {
                 }
                 Ok(Value::Undefined) => return Ok(()),
                 Ok(result) => {
-                    return self.await_async_generator_yield(generator, request.target, result);
+                    return self.finish_async_generator_run(generator, request.target, result);
                 }
                 Err(error) => {
                     let value = self.error_value(error)?;
@@ -1319,6 +1321,27 @@ impl Vm {
         })();
         self.stack.truncate(base);
         result
+    }
+
+    /// Completes the request whose generator run just produced `result`: a
+    /// value yielded through `yield*` is delivered as is (AsyncGeneratorYield
+    /// of IteratorValue(innerResult) has no Await), everything else awaits
+    /// its value first.
+    pub(in super::super) fn finish_async_generator_run(
+        &mut self,
+        generator: ObjectId,
+        target: ObjectId,
+        result: Value,
+    ) -> Result<(), RuntimeError> {
+        if std::mem::take(&mut self.async_delegated_yield) {
+            self.complete_async_generator_request(
+                generator,
+                target,
+                PromiseStatus::Fulfilled(result),
+            )?;
+            return self.resume_async_generator_next(generator);
+        }
+        self.await_async_generator_yield(generator, target, result)
     }
 
     /// Implements the Await in AsyncGeneratorYield. The generator is already
@@ -1466,8 +1489,14 @@ impl Vm {
             }
         };
         if !done {
+            // The delegate's answer is forwarded without an Await.
             let iterator_result = self.iterator_result(value, false)?;
-            return self.await_async_generator_yield(generator, target, iterator_result);
+            self.complete_async_generator_request(
+                generator,
+                target,
+                PromiseStatus::Fulfilled(iterator_result),
+            )?;
+            return self.resume_async_generator_next(generator);
         }
         match kind {
             AsyncGeneratorDelegateKind::Return => {
@@ -1507,7 +1536,7 @@ impl Vm {
                 );
                 match result {
                     Ok(Value::Undefined) => Ok(()),
-                    Ok(result) => self.await_async_generator_yield(generator, target, result),
+                    Ok(result) => self.finish_async_generator_run(generator, target, result),
                     Err(error) => {
                         let error = self.error_value(error)?;
                         self.complete_async_generator_request(
@@ -1546,7 +1575,7 @@ impl Vm {
                 let result = self.generator_next(&Value::Object(generator), None, Some(target));
                 match result {
                     Ok(Value::Undefined) => Ok(()),
-                    Ok(result) => self.await_async_generator_yield(generator, target, result),
+                    Ok(result) => self.finish_async_generator_run(generator, target, result),
                     Err(error) => {
                         let error = self.error_value(error)?;
                         self.complete_async_generator_request(
@@ -1602,7 +1631,7 @@ impl Vm {
         );
         match result {
             Ok(Value::Undefined) => Ok(()),
-            Ok(result) => self.await_async_generator_yield(generator, target, result),
+            Ok(result) => self.finish_async_generator_run(generator, target, result),
             Err(error) => {
                 let error = self.error_value(error)?;
                 self.complete_async_generator_request(

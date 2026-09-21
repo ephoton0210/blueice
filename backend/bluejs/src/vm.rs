@@ -763,6 +763,10 @@ pub struct Vm {
     /// parameter list is being evaluated: the object that receives the `var`s
     /// a direct eval there declares (`Vm::call_closure` creates it).
     parameter_eval_env: Option<ObjectId>,
+    /// Set when the async generator run that just yielded did so from a
+    /// `yield*` delegation: the yielded value is forwarded as is instead of
+    /// being awaited like a plain `yield` operand.
+    async_delegated_yield: bool,
     /// A `TailCall` whose frame has been torn down: `[callee, this, args...]`,
     /// consumed by the `call_with_target` that ran that frame.
     pending_tail_call: Option<Vec<Value>>,
@@ -1052,6 +1056,7 @@ impl Vm {
             with_objects: Vec::new(),
             pending_completions: Vec::new(),
             pending_tail_call: None,
+            async_delegated_yield: false,
             parameter_eval_env: None,
             completion_saves: Vec::new(),
             remaining_instructions: 0,

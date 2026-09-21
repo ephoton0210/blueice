@@ -136,3 +136,31 @@ fn a_finally_block_still_runs_when_the_delegate_has_no_return_method() {
          }, () => finish(false));",
     );
 }
+
+#[test]
+fn a_value_yielded_through_yield_star_is_not_unwrapped() {
+    // AsyncGeneratorYield receives IteratorValue(innerResult) as is: only a
+    // plain `yield` awaits its operand, so a promise from a hand-written async
+    // iterator reaches the consumer as a promise.
+    run_both(
+        "var inner = Promise.resolve('unwrapped');
+         var iter = { [Symbol.asyncIterator]() { return this; },
+           next() { return { done: false, value: inner }; } };
+         async function* g() { yield* iter; }
+         g().next().then(v => finish(v.value === inner && v.done === false), () => finish(false));",
+    );
+    // ... while an ordinary yield still unwraps its operand.
+    run_both(
+        "async function* g() { yield Promise.resolve('unwrapped'); }
+         g().next().then(v => finish(v.value === 'unwrapped' && v.done === false), () => finish(false));",
+    );
+    // A delegated return()/throw() answer is forwarded the same way.
+    run_both(
+        "var inner = Promise.resolve(1);
+         var iter = { [Symbol.asyncIterator]() { return this; },
+           next() { return { done: false, value: 0 }; },
+           return() { return { done: false, value: inner }; } };
+         async function* g() { yield* iter; }
+         var it = g(); it.next().then(() => it.return('x')).then(v => finish(v.value === inner && v.done === false), () => finish(false));",
+    );
+}
