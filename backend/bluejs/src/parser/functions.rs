@@ -159,6 +159,15 @@ impl Parser {
         generator: bool,
         is_async: bool,
     ) -> Result<Function, ParseError> {
+        self.with_in_allowed(|parser| parser.parse_method_function_in(name, generator, is_async))
+    }
+
+    fn parse_method_function_in(
+        &mut self,
+        name: Option<String>,
+        generator: bool,
+        is_async: bool,
+    ) -> Result<Function, ParseError> {
         let outer_async_depth = std::mem::replace(&mut self.async_depth, u32::from(is_async));
         let outer_module_await = std::mem::replace(&mut self.module_await, false);
         let outer_generator_depth =
@@ -205,6 +214,10 @@ impl Parser {
     }
 
     pub(super) fn parse_class(&mut self) -> Result<Class, ParseError> {
+        self.with_in_allowed(Self::parse_class_strict)
+    }
+
+    fn parse_class_strict(&mut self) -> Result<Class, ParseError> {
         // Every part of a ClassDefinition, including the heritage expression,
         // is parsed in strict mode. Preserve the caller's grammar context so
         // a nested class does not leak strictness into its surrounding script.

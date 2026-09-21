@@ -764,7 +764,7 @@ impl Parser {
                     )));
                 }
                 let (property, computed) = if self.eat_punct(Punct::LBracket) {
-                    let property = self.parse_expression()?;
+                    let property = self.with_in_allowed(Self::parse_expression)?;
                     self.expect_punct(Punct::RBracket)?;
                     (property, true)
                 } else {
@@ -787,7 +787,7 @@ impl Parser {
                     computed: false,
                 };
             } else if self.eat_punct(Punct::LBracket) {
-                let prop = self.parse_expression()?;
+                let prop = self.with_in_allowed(Self::parse_expression)?;
                 self.expect_punct(Punct::RBracket)?;
                 expr = Expr::Member {
                     object: Box::new(expr),
@@ -996,6 +996,10 @@ impl Parser {
     }
 
     pub(super) fn parse_arguments(&mut self) -> Result<Vec<Argument>, ParseError> {
+        self.with_in_allowed(Self::parse_arguments_list)
+    }
+
+    fn parse_arguments_list(&mut self) -> Result<Vec<Argument>, ParseError> {
         self.expect_punct(Punct::LParen)?;
         let mut args = Vec::new();
         while !self.check_punct(Punct::RParen) {
@@ -1125,7 +1129,7 @@ impl Parser {
             }
             Token::Punct(Punct::LParen) => {
                 self.advance();
-                let expr = self.parse_expression()?;
+                let expr = self.with_in_allowed(Self::parse_expression)?;
                 self.expect_punct(Punct::RParen).map_err(known_syntax)?;
                 if is_assignment_operator(self.peek()) || optional_chain_expression(&expr) {
                     Ok(Expr::Parenthesized(Box::new(expr)))
@@ -1133,8 +1137,8 @@ impl Parser {
                     Ok(expr)
                 }
             }
-            Token::Punct(Punct::LBracket) => self.parse_array_literal(),
-            Token::Punct(Punct::LBrace) => self.parse_object_literal(),
+            Token::Punct(Punct::LBracket) => self.with_in_allowed(Self::parse_array_literal),
+            Token::Punct(Punct::LBrace) => self.with_in_allowed(Self::parse_object_literal),
             // Tokens no production of the expression grammar can begin with,
             // including the closers/separators that show up when an operand
             // is simply missing (`using [] = x` reads `using[]`, `x = ;`) and

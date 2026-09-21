@@ -234,7 +234,7 @@ impl Parser {
             }
             Token::Punct(Punct::LBracket) => {
                 self.advance();
-                let expr = self.parse_assignment()?;
+                let expr = self.with_in_allowed(Self::parse_assignment)?;
                 self.expect_punct(Punct::RBracket)?;
                 Ok(PropertyKey::Computed(Box::new(expr)))
             }
