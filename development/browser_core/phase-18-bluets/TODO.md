@@ -512,7 +512,9 @@ or second module resolver to bypass them.
   BlueTS/BlueJS program admission, retains no program/bytecode/debug record,
   and becomes a source-free inline-executor result. The JavaScript executor
   likewise validates both snapshots before opening a realm or admitting any
-  script, and rejects an oversized copied document. This covers only immutable
+  script, and rejects an oversized copied document or a canonical origin when
+  its core-selected origin budget is tightened below the tuple string size.
+  Both rejection fixtures retain no JavaScript realm. This covers only immutable
   primitive host results; it
   does not yet provide declared boundary source
   spans, strict-runtime coverage checks, validator/cache/debug allocation

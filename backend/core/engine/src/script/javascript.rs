@@ -1089,6 +1089,31 @@ mod tests {
     }
 
     #[test]
+    fn document_origin_contract_rejects_before_javascript_program_admission() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>blueiceDocumentOrigin();</script>",
+            "https://example.test/app/index.html",
+        );
+        let mut config = JavaScriptPageExecutorConfig::default();
+        config
+            .binding_contract_limits
+            .document_origin
+            .max_string_bytes = 1;
+        let mut executor = JavaScriptPageExecutor::with_config(config).unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert!(matches!(
+            reports(&mut executor, tab_id).as_slice(),
+            [JavaScriptPageExecutionReport::Rejected {
+                category: "host binding contract rejected the page script",
+                ..
+            }]
+        ));
+        assert!(executor.realm_stats(tab_id).is_err());
+    }
+
+    #[test]
     fn external_declaration_fails_closed_without_an_authorizer() {
         let (tabs, tab_id) = loaded_tabs(
             "<script src=\"/assets/app.js\"></script>",
