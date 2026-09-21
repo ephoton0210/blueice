@@ -593,7 +593,8 @@ impl Vm {
             .expect("foreign realm remains live");
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
         let result = realm.vm.get_object_property(target, &receiver, key);
-        self.test262_import_foreign_result(realm_id, result)
+        let value = self.test262_foreign_completion(realm_id, result)?;
+        self.test262_import_foreign_value(realm_id, value)
     }
 
     /// Forwards a foreign facade's [[OwnPropertyKeys]] into its Realm. Keys
@@ -611,7 +612,8 @@ impl Vm {
             .get_mut(&realm_id)
             .expect("foreign realm remains live");
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        realm.vm.object_own_property_keys(target)
+        let result = realm.vm.object_own_property_keys(target);
+        self.test262_foreign_completion(realm_id, result)
     }
 
     /// Materializes an abrupt completion of an operation run in a foreign
@@ -793,9 +795,10 @@ impl Vm {
             .get_mut(&realm_id)
             .expect("foreign realm remains live");
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        realm
+        let result = realm
             .vm
-            .ordinary_set_with_receiver(target, &receiver, key, &value)
+            .ordinary_set_with_receiver(target, &receiver, key, &value);
+        self.test262_foreign_completion(realm_id, result)
     }
 
     pub(in super::super) fn test262_foreign_set(
@@ -859,7 +862,7 @@ impl Vm {
         if let Some(buffer) = typed_buffer {
             self.test262_refresh_foreign_buffer_mirrors(realm_id, buffer)?;
         }
-        result
+        self.test262_foreign_completion(realm_id, result)
     }
 
     /// Runs one of `%TypedArray%`'s generic native methods against a facade
@@ -1699,7 +1702,8 @@ impl Vm {
             let next = realm.vm.get_property(&receiver, &"next".into())?;
             realm.vm.call_native(next, receiver, args, false)
         };
-        self.test262_import_foreign_result(realm_id, result)
+        let value = self.test262_foreign_completion(realm_id, result)?;
+        self.test262_import_foreign_value(realm_id, value)
     }
 
     /// Test262's realm hook needs the callee's realm even when `eval` is

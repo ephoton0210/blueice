@@ -116,3 +116,26 @@ fn derived_constructor_completion_checks_are_created_in_the_callers_realm() {
     );
     assert_no_failures(&source);
 }
+
+#[test]
+fn errors_raised_while_running_foreign_code_are_created_in_its_realm() {
+    let source = format!(
+        r#"{HELPERS}
+        const holder = other.eval('({{ get g() {{ null.x; }}, set s(v) {{ undefined.y; }} }})');
+        expectThrown('foreign getter body', other.TypeError, () => holder.g);
+        expectThrown('foreign setter body', other.TypeError, () => {{ holder.s = 1; }});
+        expectThrown('Reflect.set through a setter', other.TypeError, () => Reflect.set(holder, 's', 1));
+        expectThrown('Reflect.get through a getter', other.TypeError, () => Reflect.get(holder, 'g'));
+        const thrower = other.eval('(0, function () {{ null.x; }})');
+        expectThrown('foreign function body', other.TypeError, () => thrower());
+
+        // A local accessor delegating to a foreign object's own setter: the
+        // error belongs to the realm whose setter threw it.
+        const setA = Object.getOwnPropertyDescriptor(Error.prototype, 'stack').set;
+        expectThrown('cross-realm stack setter', other.TypeError, () => setA.call(other.Error.prototype, 'x'));
+        expectThrown('same-realm stack setter', TypeError, () => setA.call(Error.prototype, 'x'));
+        failures.join('; ')
+        "#
+    );
+    assert_no_failures(&source);
+}
