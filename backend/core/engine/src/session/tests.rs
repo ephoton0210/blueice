@@ -293,6 +293,13 @@ fn script_reports_query_does_not_enable_the_default_session_executor() {
             message: "inline BlueTS execution is not enabled".to_string(),
         }
     );
+    blueice_ipc::write_client_message(&mut client, &ClientMessage::GetBlueJsScriptReports).unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut client).unwrap(),
+        ServerMessage::Error {
+            message: "inline JavaScript execution is not enabled".to_string(),
+        }
+    );
     blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
 
     handle.join().unwrap();

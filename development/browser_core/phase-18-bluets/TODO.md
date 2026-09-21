@@ -113,7 +113,9 @@ or second module resolver to bypass them.
   relative resolution. `blueice-core --inline-bluejs` is disabled by default,
   cannot be combined with the separate experimental BlueTS executor (so one
   page cannot receive two independent VMs), and exposes a tab-addressed drain
-  of bounded source-free `GetBlueJsScriptReports` records. A real subprocess
+  of bounded source-free `GetBlueJsScriptReports` records; a normal session
+  rejects that query without an enabled executor, so observation cannot enable
+  JavaScript execution. A real subprocess
   HTTP fixture proves classic and module scripts execute in document order and
   that a parse rejection is redacted. A separate two-navigation subprocess
   fixture makes each document assert its own canonical origin snapshot and
