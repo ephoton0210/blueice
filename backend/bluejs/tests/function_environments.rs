@@ -1121,3 +1121,75 @@ fn generators_delegate_yield_star_return_runs_outer_finally_before_completing() 
         Ok(Value::Bool(true))
     );
 }
+
+#[test]
+fn parameter_expressions_see_arguments_even_when_the_body_declares_it_lexically() {
+    // FunctionDeclarationInstantiation: a body lexical `arguments` only
+    // suppresses the arguments object when there are no parameter expressions.
+    let mut vm = Vm::default();
+    let run = |vm: &mut Vm, source: &str| vm.execute(&compile(&parse(source).unwrap()).unwrap());
+    assert_eq!(
+        run(&mut vm, "var args; function f(x = args = arguments) { let arguments; } f(); typeof args + args.length"),
+        Ok(Value::String("object0".into()))
+    );
+    assert_eq!(
+        run(&mut vm, "function g(x = arguments.length) { let arguments = 'body'; return x + arguments; } g(undefined, 1, 2)"),
+        Ok(Value::String("3body".into()))
+    );
+    // Without parameter expressions a lexical `arguments` still wins.
+    assert_eq!(
+        run(
+            &mut vm,
+            "function h(a) { let arguments = 'lex'; return arguments; } h(1)"
+        ),
+        Ok(Value::String("lex".into()))
+    );
+}
+
+#[test]
+fn a_sloppy_direct_eval_var_conflicts_with_a_top_level_lexical_of_the_function() {
+    // The function body's top-level lexical declarations live in a separate
+    // environment from its var scope precisely so that eval can see this
+    // conflict (FunctionDeclarationInstantiation NOTE).
+    let mut vm = Vm::default();
+    let outcome = |vm: &mut Vm, source: &str| {
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap()
+    };
+    for body in [
+        "let x; eval('var x;');",
+        "const x = 1; eval('var x;');",
+        "class x {} eval('var x;');",
+        "let x; { eval('var x;'); }",
+    ] {
+        for wrapper in [
+            "function f() { %BODY% }",
+            "var f = () => { %BODY% };",
+            "var f = { m() { %BODY% } }.m;",
+        ] {
+            let source = format!(
+                "{}; var r; try {{ f(); r = 'no throw'; }} catch (e) {{ r = e instanceof SyntaxError ? 'SyntaxError' : 'other'; }} r",
+                wrapper.replace("%BODY%", body)
+            );
+            assert_eq!(
+                outcome(&mut vm, &source),
+                Value::String("SyntaxError".into()),
+                "{source}"
+            );
+        }
+    }
+    // Vars and functions do not conflict with an eval var; neither does a
+    // strict function (its eval has its own variable environment).
+    for source in [
+        "function f() { var x; eval('var x;'); return 'ok'; } f()",
+        "function f() { function x() {} eval('var x;'); return 'ok'; } f()",
+        "function f() { 'use strict'; let x; eval('var x;'); return 'ok'; } f()",
+        "function f(x) { eval('var x;'); return 'ok'; } f()",
+    ] {
+        assert_eq!(
+            outcome(&mut vm, source),
+            Value::String("ok".into()),
+            "{source}"
+        );
+    }
+}

@@ -2029,10 +2029,11 @@ impl Vm {
         } else {
             false
         };
-        let target = if arrow {
-            self.new_target.clone()
-        } else {
-            target
+        // The captured value, not the caller's: an arrow reads the
+        // `new.target` of the function it was created in.
+        let target = match (arrow, callee.object_id()) {
+            (true, Some(id)) => self.heap.closure_new_target(id)?,
+            _ => target,
         };
         self.charge_step()?;
         let base = self.stack.len();
@@ -2123,6 +2124,7 @@ impl Vm {
         if let Value::Object(id) = callee {
             if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
+                let with_objects = self.heap.closure_with_objects(id)?;
                 return self.call_closure(builtins::ClosureCall {
                     code,
                     captures,
@@ -2132,6 +2134,7 @@ impl Vm {
                     construct,
                     home,
                     class_base,
+                    with_objects,
                 });
             }
         }

@@ -57,6 +57,7 @@ impl Vm {
             construct,
             home,
             class_base,
+            with_objects: closure_with_objects,
         } = call;
         if code.class_constructor && !construct {
             // §10.2.1.1's class-constructor rejection is created in the
@@ -167,6 +168,9 @@ impl Vm {
         self.stack.push(self.completion.clone());
         self.stack.push(self.this.clone());
         self.stack.extend(self.arguments.iter().cloned());
+        // The callee sees only the with objects it closed over, not the
+        // caller's; keep the caller's rooted on the stack meanwhile.
+        self.stack.extend(self.with_objects.iter().cloned());
         let frame_base = self.stack.len();
         let mut frame_bindings = vec![None; code.bindings.len()];
         if let Some(slot) = code.self_slot {
@@ -223,7 +227,7 @@ impl Vm {
         );
         let pending_completions = self.pending_completions.clone();
         let completion_saves = self.completion_saves.clone();
-        let with_objects = self.with_objects.clone();
+        let with_objects = std::mem::replace(&mut self.with_objects, closure_with_objects);
         let frame_dynamic_eval_outer_bindings = self.dynamic_eval_outer_bindings.clone();
         let top_level_module = self.top_level_module;
         let remaining_instructions = self.remaining_instructions;
@@ -299,6 +303,7 @@ impl Vm {
             self.active_module_name = active_module_name;
         } else {
             self.result_root = result_root;
+            self.with_objects = with_objects;
         }
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;

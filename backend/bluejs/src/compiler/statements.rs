@@ -513,6 +513,9 @@ impl Compiler {
                 }
                 self.expression(object)?;
                 self.emit(Opcode::EnterWith, 0)?;
+                // UpdateEmpty(stmtResult, undefined): an empty body leaves
+                // `undefined`, not the previous statement's value.
+                self.emit(Opcode::ClearCompletion, 0)?;
                 self.with_depth += 1;
                 self.with_scope_depths.push(self.names.len());
                 let result = self.statement(body, false);
@@ -570,31 +573,10 @@ impl Compiler {
                 if !self.function {
                     return Err(CompileError::InvalidSyntax("return requires a function"));
                 }
-                if let Some(args) = value
-                    .as_ref()
-                    .and_then(|value| self.self_tail_call_args(value))
-                {
-                    for argument in args {
-                        let Argument::Normal(value) = argument else {
-                            unreachable!("self tail calls exclude spread arguments")
-                        };
-                        self.expression(value)?;
+                if let Some(value) = value.as_ref().filter(|_| self.bytecode.self_slot.is_some()) {
+                    if self.tail_position_return(value)? {
+                        return Ok(());
                     }
-                    let iterators: Vec<_> = self
-                        .loops
-                        .iter()
-                        .rev()
-                        .filter_map(|context| context.iterator)
-                        .collect();
-                    for iterator in iterators {
-                        self.emit(Opcode::GetBinding, iterator)?;
-                        self.emit(Opcode::IteratorClose, 0)?;
-                    }
-                    self.emit(
-                        Opcode::TailRecur,
-                        u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
-                    )?;
-                    return Ok(());
                 }
                 if let Some(value) = value {
                     self.expression(value)?;
@@ -709,6 +691,130 @@ impl Compiler {
             Stmt::Continue(label) => self.control_transfer(label.as_deref(), true)?,
         }
         Ok(())
+    }
+
+    /// Closes the iterators of the loops being left, then returns the value
+    /// on top of the stack.
+    fn emit_return_epilogue(&mut self) -> Result<(), CompileError> {
+        let iterators: Vec<_> = self
+            .loops
+            .iter()
+            .rev()
+            .filter_map(|context| context.iterator)
+            .collect();
+        for iterator in iterators {
+            self.emit(Opcode::GetBinding, iterator)?;
+            self.emit(Opcode::IteratorClose, 0)?;
+        }
+        self.emit(Opcode::Return, 0)?;
+        Ok(())
+    }
+
+    /// Compiles `return value` when `value` contains a self tail call in a
+    /// tail position: the call itself, or through the branches of `?:`, the
+    /// right operand of `&&`/`||`/`??`, the last operand of a comma
+    /// expression, or parentheses (§15.10.2 HasCallInTailPosition). Every
+    /// path ends in a `TailRecur` or a `Return`. `Ok(false)` means `value`
+    /// has no such call and nothing was emitted.
+    fn tail_position_return(&mut self, value: &Expr) -> Result<bool, CompileError> {
+        if !self.contains_self_tail_call(value) {
+            return Ok(false);
+        }
+        match value {
+            Expr::Parenthesized(inner) => return self.tail_position_return(inner),
+            Expr::Conditional {
+                test,
+                consequent,
+                alternate,
+            } => {
+                self.expression(test)?;
+                let no = self.emit(Opcode::JumpIfFalse, 0)?;
+                self.tail_position_return_or_value(consequent)?;
+                self.patch(no, self.offset()?);
+                self.tail_position_return_or_value(alternate)?;
+            }
+            Expr::Logical { op, left, right } => {
+                self.expression(left)?;
+                self.emit(Opcode::Dup, 0)?;
+                let short_circuit = self.emit(
+                    match op {
+                        LogicalOp::And => Opcode::JumpIfFalse,
+                        LogicalOp::Or => Opcode::JumpIfTrue,
+                        LogicalOp::Nullish => Opcode::JumpIfNotNullish,
+                    },
+                    0,
+                )?;
+                self.emit(Opcode::Pop, 0)?;
+                self.tail_position_return_or_value(right)?;
+                self.patch(short_circuit, self.offset()?);
+                self.emit_return_epilogue()?;
+            }
+            Expr::Sequence(expressions) => {
+                let (last, rest) = expressions
+                    .split_last()
+                    .expect("a sequence expression has operands");
+                for expression in rest {
+                    self.expression(expression)?;
+                    self.emit(Opcode::Pop, 0)?;
+                }
+                self.tail_position_return_or_value(last)?;
+            }
+            call => {
+                let args = self
+                    .self_tail_call_args(call)
+                    .expect("contains_self_tail_call found a self tail call");
+                for argument in args {
+                    let Argument::Normal(value) = argument else {
+                        unreachable!("self tail calls exclude spread arguments")
+                    };
+                    self.expression(value)?;
+                }
+                let iterators: Vec<_> = self
+                    .loops
+                    .iter()
+                    .rev()
+                    .filter_map(|context| context.iterator)
+                    .collect();
+                for iterator in iterators {
+                    self.emit(Opcode::GetBinding, iterator)?;
+                    self.emit(Opcode::IteratorClose, 0)?;
+                }
+                self.emit(
+                    Opcode::TailRecur,
+                    u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
+                )?;
+            }
+        }
+        Ok(true)
+    }
+
+    /// One operand of a tail position: another tail position when it holds a
+    /// self tail call, otherwise an ordinary `return operand`.
+    fn tail_position_return_or_value(&mut self, value: &Expr) -> Result<(), CompileError> {
+        if !self.tail_position_return(value)? {
+            self.expression(value)?;
+            self.emit_return_epilogue()?;
+        }
+        Ok(())
+    }
+
+    /// Whether `value`, read as a tail position, holds a self tail call.
+    fn contains_self_tail_call(&self, value: &Expr) -> bool {
+        match value {
+            Expr::Parenthesized(inner) => self.contains_self_tail_call(inner),
+            Expr::Conditional {
+                consequent,
+                alternate,
+                ..
+            } => {
+                self.contains_self_tail_call(consequent) || self.contains_self_tail_call(alternate)
+            }
+            Expr::Logical { right, .. } => self.contains_self_tail_call(right),
+            Expr::Sequence(expressions) => expressions
+                .last()
+                .is_some_and(|last| self.contains_self_tail_call(last)),
+            call => self.self_tail_call_args(call).is_some(),
+        }
     }
 
     /// Annex B.3.3 parses a sloppy FunctionDeclaration in an `if` clause as

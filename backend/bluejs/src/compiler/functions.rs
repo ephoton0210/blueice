@@ -403,10 +403,14 @@ impl Compiler {
             max_bytecode_bytes: child_budget,
             function: true,
             local_scope: 1,
-            with_depth: 0,
-            with_scope_depths: Vec::new(),
+            // A function created inside `with` resolves its free names
+            // through the same with objects (captured when it is created);
+            // its own parameters and locals sit inside that with scope.
+            with_depth: self.with_depth,
+            with_scope_depths: vec![1; self.with_depth],
             annex_b_parameter_names: BTreeSet::new(),
         };
+        child.bytecode.with_depth = self.with_depth as u32;
         child.bytecode.strict =
             options.force_strict || self.bytecode.strict || strict_body(&function.body);
         validate_function_early_errors(
@@ -504,9 +508,14 @@ impl Compiler {
         // fresh binding unless a formal or a function-body lexical declaration
         // already occupies that name.  A `var arguments` declaration shares
         // this function binding rather than creating another one.
+        //
+        // A body lexical `arguments` suppresses the object only when there are
+        // no parameter expressions (FunctionDeclarationInstantiation step 22):
+        // otherwise the parameter initializers still see it and the body's own
+        // declaration shadows it afterwards.
         let arguments_needed = !arrow
             && !parameters.contains("arguments")
-            && !lexical.iter().any(|(name, _)| name == "arguments");
+            && (parameter_expressions || !lexical.iter().any(|(name, _)| name == "arguments"));
         if parameter_expressions {
             // Parameter expressions must not resolve into body declarations.
             // All parameter cells exist, uninitialized, before the first

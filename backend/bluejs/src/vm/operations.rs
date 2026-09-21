@@ -505,19 +505,21 @@ impl Vm {
     /// Resolve `name` through the active `with` objects, then the enclosing
     /// binding (`fallback`: `Some(Some(v))` initialized, `Some(None)` still
     /// in its temporal dead zone) and finally the global object. `None` means
-    /// the name is unresolvable everywhere.
+    /// the name is unresolvable everywhere. The second element is the with
+    /// object the name was found on (WithBaseObject), `undefined` otherwise.
     fn with_lookup(
         &mut self,
         name: &str,
         fallback: Option<Option<Value>>,
-    ) -> Result<Option<Value>, RuntimeError> {
+    ) -> Result<Option<(Value, Value)>, RuntimeError> {
         for object in self.with_objects.clone().into_iter().rev() {
             if self.with_has_binding(&object, name)? {
-                return self.get_property(&object, &name.into()).map(Some);
+                let value = self.object_environment_get(&object, name)?;
+                return Ok(Some((value, object)));
             }
         }
         match fallback {
-            Some(Some(value)) => Ok(Some(value)),
+            Some(Some(value)) => Ok(Some((value, Value::Undefined))),
             Some(None) => Err(RuntimeError::ReferenceError(name.into())),
             None => {
                 // Standard globals (`Math`, `Array`, `undefined`, ...) are
@@ -525,9 +527,31 @@ impl Vm {
                 // object; outside `with` the compiler emits a dedicated
                 // opcode for them, so make sure that object exists first.
                 self.global("globalThis")?;
-                self.lookup_global_name(name)
+                Ok(self
+                    .lookup_global_name(name)?
+                    .map(|value| (value, Value::Undefined)))
             }
         }
+    }
+
+    /// GetBindingValue of an object Environment Record (§9.1.1.2.6): the
+    /// binding is probed again with HasProperty (observable through a Proxy
+    /// or an @@unscopables getter that deleted it); a vanished binding reads
+    /// as `undefined` in sloppy code and is a ReferenceError in strict code.
+    pub(super) fn object_environment_get(
+        &mut self,
+        object: &Value,
+        name: &str,
+    ) -> Result<Value, RuntimeError> {
+        let id = object.object_id().expect("with objects are objects");
+        if !self.has_property(id, &name.into())? {
+            return if self.strict {
+                Err(RuntimeError::ReferenceError(name.into()))
+            } else {
+                Ok(Value::Undefined)
+            };
+        }
+        self.get_property(object, &name.into())
     }
 
     pub(super) fn with_get(
@@ -535,6 +559,18 @@ impl Vm {
         name: &str,
         fallback: Option<Option<Value>>,
     ) -> Result<Value, RuntimeError> {
+        self.with_lookup(name, fallback)?
+            .map(|(value, _)| value)
+            .ok_or_else(|| RuntimeError::ReferenceError(name.into()))
+    }
+
+    /// The callee of `name(...)` inside `with`: the function together with
+    /// its `this` value, which is the with object the name was found on.
+    pub(super) fn with_get_method(
+        &mut self,
+        name: &str,
+        fallback: Option<Option<Value>>,
+    ) -> Result<(Value, Value), RuntimeError> {
         self.with_lookup(name, fallback)?
             .ok_or_else(|| RuntimeError::ReferenceError(name.into()))
     }
@@ -548,16 +584,108 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         Ok(self
             .with_lookup(name, fallback)?
-            .unwrap_or(Value::Undefined))
+            .map_or(Value::Undefined, |(value, _)| value))
     }
 
     pub(super) fn with_set(&mut self, name: &str, value: Value) -> Result<(), RuntimeError> {
         for object in self.with_objects.clone().into_iter().rev() {
             if self.with_has_binding(&object, name)? {
+                let id = object.object_id().expect("with objects are objects");
+                let still_exists = self.has_property(id, &name.into())?;
+                if self.strict && !still_exists {
+                    return Err(RuntimeError::ReferenceError(name.into()));
+                }
                 return self.set_property(&object, &name.into(), &value);
             }
         }
         Err(RuntimeError::ReferenceError(name.into()))
+    }
+
+    /// GetValue for a Reference produced by `ResolveWithReference`: an object
+    /// environment's property, an enclosing binding slot, or an unresolvable
+    /// name (a ReferenceError).
+    pub(super) fn load_with_reference(
+        &mut self,
+        code: &Bytecode,
+        target: &Value,
+        marker: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let value = match (&target, &marker) {
+            (Value::Object(object), Value::String(name)) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                self.object_environment_get(&Value::Object(*object), &name)?
+            }
+            (Value::Number(slot), Value::Null)
+                if slot.is_finite()
+                    && *slot >= 0.0
+                    && slot.fract() == 0.0
+                    && (*slot as usize) < code.bindings.len() =>
+            {
+                let slot = *slot as usize;
+                self.eval_aware_binding_value(slot, &code.bindings[slot].name)?
+                    .ok_or_else(|| RuntimeError::ReferenceError(code.bindings[slot].name.clone()))?
+            }
+            (Value::Undefined, Value::String(name)) => {
+                return Err(RuntimeError::ReferenceError(
+                    name.to_utf8().expect("compiler emits a UTF-8 identifier"),
+                ));
+            }
+            _ => unreachable!("compiler emits a valid with reference"),
+        };
+        Ok(value)
+    }
+
+    /// PutValue for a Reference produced by `ResolveWithReference`.
+    pub(super) fn store_with_reference(
+        &mut self,
+        code: &Bytecode,
+        target: Value,
+        marker: Value,
+        value: &Value,
+    ) -> Result<(), RuntimeError> {
+        match (target, marker) {
+            (Value::Object(object), Value::String(name)) => {
+                // SetMutableBinding of an object Environment Record: the
+                // binding is probed again, and a strict reference to one that
+                // has disappeared since it was resolved is a ReferenceError
+                // (§9.1.1.2.5).
+                let still_exists = self.has_property(object, &name.clone().into())?;
+                if code.strict && !still_exists {
+                    return Err(RuntimeError::ReferenceError(
+                        name.to_utf8().expect("compiler emits a UTF-8 identifier"),
+                    ));
+                }
+                self.set_property(&Value::Object(object), &name.into(), value)?;
+            }
+            (Value::Number(slot), Value::Null)
+                if slot.is_finite()
+                    && slot >= 0.0
+                    && slot.fract() == 0.0
+                    && (slot as usize) < code.bindings.len() =>
+            {
+                let slot = slot as usize;
+                let name = &code.bindings[slot].name;
+                if !self.store_dynamic_eval_shadowing_binding(slot, name, value.clone())? {
+                    if self.binding_value(slot)?.is_none() {
+                        return Err(RuntimeError::ReferenceError(name.clone()));
+                    }
+                    if binding_allows_assignment(&code.bindings[slot], code.strict)? {
+                        self.store_binding(slot, value.clone())?;
+                    }
+                }
+            }
+            (Value::Undefined, Value::String(name)) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                if !self.set_dynamic_eval_binding(&name, value.clone())?
+                    && !self.set_global_binding(&name, value.clone())?
+                {
+                    let global = self.global("globalThis")?;
+                    self.set_property(&global, &name.into(), value)?;
+                }
+            }
+            _ => unreachable!("compiler emits a valid with reference"),
+        }
+        Ok(())
     }
 
     pub(super) fn add(&mut self, left: Value, right: Value) -> Result<Value, RuntimeError> {

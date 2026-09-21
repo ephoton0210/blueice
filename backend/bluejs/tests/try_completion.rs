@@ -40,7 +40,11 @@ fn direct_eval_uses_the_callers_bindings_completion_and_strictness() {
         "eval('2;try{throw null}catch(error){3}')===3",
         "eval('for(var i=0;i<2;i++){if(i){try{throw null}catch(error){break}}\"ignored\";}')===undefined",
         "var value=1;eval('var value=3');value===3",
-        "let value=1;let read;try{throw []}catch([_=(eval('var value=3'),read=()=>value)]){}read()===3&&value===3",
+        // The eval `var` lands in the enclosing variable environment. (With a
+        // top-level `let value` it would instead conflict with that lexical
+        // declaration and throw a SyntaxError, as in every engine.)
+        "var value=1;let read;try{throw []}catch([_=(eval('var value=3'),read=()=>value)]){}read()===3&&value===3",
+        "let value=1;let caught=false;try{eval('var value=3')}catch(error){caught=error instanceof SyntaxError}caught&&value===1",
         "eval('var evalGlobalFromDirectEval=7');evalGlobalFromDirectEval===7&&globalThis.evalGlobalFromDirectEval===7",
         "eval('var evalDescriptorFromDirectEval');let descriptor=Object.getOwnPropertyDescriptor(globalThis,'evalDescriptorFromDirectEval');descriptor.writable&&descriptor.enumerable&&descriptor.configurable",
         "eval('{ function evalAnnexBFromDirectEval() {} }');typeof evalAnnexBFromDirectEval==='function'",

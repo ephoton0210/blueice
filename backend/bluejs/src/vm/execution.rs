@@ -576,10 +576,32 @@ impl Vm {
         cell: ObjectId,
         value: Value,
     ) -> Result<(), RuntimeError> {
-        self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
         let property = self.global_bindings.iter().find_map(|(name, binding)| {
             (binding.cell == cell && binding.property).then(|| name.clone())
         });
+        // SetMutableBinding of the global Environment Record: a binding backed
+        // by a non-writable global property (`NaN`, `undefined`) rejects the
+        // write, silently in sloppy code and with a TypeError in strict code.
+        if let Some(name) = &property {
+            let global = self
+                .global("globalThis")?
+                .object_id()
+                .expect("globalThis is an object");
+            if self
+                .heap
+                .get_own_property_descriptor(global, name.as_str())?
+                .is_some_and(|descriptor| descriptor.writable == Some(false))
+            {
+                return if self.strict {
+                    Err(RuntimeError::TypeError(format!(
+                        "cannot assign to read-only global {name}"
+                    )))
+                } else {
+                    Ok(())
+                };
+            }
+        }
+        self.with_roots(|heap| heap.set(cell, "value", value.clone()))?;
         if let Some(name) = property {
             let global = self
                 .global("globalThis")?
@@ -1510,7 +1532,11 @@ impl Vm {
             .active_scopes
             .iter()
             .position(|scope| *scope == self.variable_scope);
-        let start = variable_scope_position.map_or(0, |index| index + 1);
+        // The variable scope's own lexical declarations conflict too: this
+        // engine keeps a function body's top-level `let`/`const`/`class`
+        // beside its vars, where the specification uses a separate lexical
+        // environment precisely so that a direct eval can see them.
+        let start = variable_scope_position.unwrap_or(0);
         let mut conflicts = self.active_scope_slots[start..]
             .iter()
             .flat_map(|slots| slots.iter().copied())

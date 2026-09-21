@@ -124,3 +124,62 @@ fn a_var_initializer_inside_with_assigns_through_the_with_object() {
     // The reference is resolved before the initializer can add the property.
     truthy("var o={};with(o){var z=(o.z='inner',1)}o.z==='inner'&&z===1");
 }
+
+#[test]
+fn the_completion_value_of_with_is_the_body_value_or_undefined() {
+    // §14.11.2: UpdateEmpty(C, undefined), so an empty body leaves undefined
+    // even after an earlier statement produced a value.
+    truthy("eval('1; with({}) { }') === undefined");
+    truthy("eval('2; with({}) { 3; }') === 3");
+    truthy("eval('1; do { 2; with({}) { 3; break; } 4; } while (false);') === 3");
+    truthy("eval('5; do { 6; with({}) { break; } 7; } while (false);') === undefined");
+    truthy("eval('8; do { 9; with({}) { 10; continue; } 11; } while (false)') === 10");
+    truthy("eval('12; do { 13; with({}) { continue; } 14; } while (false)') === undefined");
+}
+
+#[test]
+fn object_environment_reads_and_writes_probe_the_binding_again() {
+    // HasBinding (has + @@unscopables) resolves the name; GetBindingValue and
+    // SetMutableBinding then run HasProperty once more before Get/Set.
+    let trace = |body: &str| -> String {
+        let source = format!(
+            "var log = []; var env = {{ p: 0 }};
+             var proxy = new Proxy(env, {{
+               has(t, k) {{ log.push('has:' + String(k)); return Reflect.has(t, k); }},
+               get(t, k, r) {{ log.push('get:' + String(k)); return Reflect.get(t, k, r); }},
+               set(t, k, v, r) {{ log.push('set:' + String(k)); return Reflect.set(t, k, v, r); }},
+             }});
+             with (proxy) {{ {body} }}
+             log.join()"
+        );
+        match evaluate(&source).unwrap() {
+            Value::String(text) => text.to_utf8().unwrap(),
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(
+        trace("p;"),
+        "has:p,get:Symbol(Symbol.unscopables),has:p,get:p"
+    );
+    assert_eq!(
+        trace("p = 1;"),
+        "has:p,get:Symbol(Symbol.unscopables),has:p,set:p"
+    );
+    assert_eq!(
+        trace("p += 1;"),
+        "has:p,get:Symbol(Symbol.unscopables),has:p,get:p,has:p,set:p"
+    );
+}
+
+#[test]
+fn a_binding_that_vanishes_during_resolution_reads_as_undefined_or_throws_when_strict() {
+    // The @@unscopables getter deletes the property after HasBinding saw it.
+    truthy(
+        "var env = { p: 1, get [Symbol.unscopables]() { delete env.p; return {}; } };
+         var r; with (env) { r = p; } r === undefined",
+    );
+    truthy(
+        "var env = { p: 1, get [Symbol.unscopables]() { delete env.p; return {}; } };
+         var r; with (env) { r = (function() { 'use strict'; try { return p; } catch (e) { return e instanceof ReferenceError; } })(); } r === true",
+    );
+}
