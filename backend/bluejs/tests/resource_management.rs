@@ -621,3 +621,43 @@ fn using_declarations_complete_with_an_empty_completion() {
         assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
     }
 }
+
+#[test]
+fn async_disposal_discards_the_result_of_a_sync_dispose_fallback() {
+    // An async-dispose hint that falls back to `@@dispose` calls it and
+    // discards its return value: a promise that never settles must not stall
+    // `await using` or `AsyncDisposableStack.prototype.disposeAsync`.
+    let mut vm = Vm::default();
+    let setup = r#"
+        var result = 'pending';
+        var log = [];
+        async function run() {
+            let stack = new AsyncDisposableStack();
+            const neverResolves = Promise.withResolvers().promise;
+            stack.use({ [Symbol.dispose]() { log.push('stack'); return neverResolves; } });
+            await stack.disposeAsync();
+            log.push('after-stack');
+            await using x = { [Symbol.dispose]() { log.push('using'); return neverResolves; } };
+            log.push('body');
+        }
+        run().then(function () { result = log.join(','); });
+    "#;
+    assert_eq!(
+        run_async(&mut vm, setup),
+        Value::String("stack,after-stack,body,using".into())
+    );
+}
+
+#[test]
+fn async_disposal_still_awaits_a_sync_dispose_fallback_that_throws() {
+    let mut vm = Vm::default();
+    let setup = r#"
+        var result = 'pending';
+        async function run() {
+            await using x = { [Symbol.dispose]() { throw new Error('sync-fail'); } };
+        }
+        run().then(function () { result = 'resolved'; },
+                   function (error) { result = error.message; });
+    "#;
+    assert_eq!(run_async(&mut vm, setup), Value::String("sync-fail".into()));
+}

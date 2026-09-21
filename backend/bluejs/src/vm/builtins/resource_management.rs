@@ -19,25 +19,32 @@ impl Vm {
     /// `GetDisposeMethod ( V, hint )`. `V` must already be known to be an
     /// Object; callers that also need to handle nullish `V` do so in
     /// `create_disposable_resource` below, mirroring the spec's own split
-    /// between the two operations.
+    /// between the two operations. The flag reports that an async-dispose
+    /// hint fell back to the sync `@@dispose` method.
     pub(in super::super) fn get_dispose_method(
         &mut self,
         value: &Value,
         hint: DisposeHint,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<(Value, bool), RuntimeError> {
         if hint == DisposeHint::Async {
             let method = self.get_method(value, &JsSymbol::well_known("asyncDispose").into())?;
             if method != Value::Undefined {
-                return Ok(method);
+                return Ok((method, false));
             }
             // The spec wraps a sync `@@dispose` fallback in a fresh Abstract
-            // Closure that calls it and returns its result for `Dispose` to
-            // await. Calling the raw sync method with the same receiver
-            // produces the same observable result, since that wrapper is
-            // never itself exposed to script.
-            return self.get_method(value, &JsSymbol::well_known("dispose").into());
+            // Closure that calls it and resolves a promise with `undefined`:
+            // the sync method's own return value is discarded, never awaited.
+            // Calling the raw sync method with the same receiver produces the
+            // same observable calls, since that wrapper is never itself
+            // exposed to script; `sync_fallback` makes `Dispose` discard the
+            // result.
+            let method = self.get_method(value, &JsSymbol::well_known("dispose").into())?;
+            return Ok((method, true));
         }
-        self.get_method(value, &JsSymbol::well_known("dispose").into())
+        Ok((
+            self.get_method(value, &JsSymbol::well_known("dispose").into())?,
+            false,
+        ))
     }
 
     /// `CreateDisposableResource ( V, hint [, method ] )`.
@@ -51,6 +58,7 @@ impl Vm {
         hint: DisposeHint,
         method: Option<Value>,
     ) -> Result<Option<DisposableResource>, RuntimeError> {
+        let mut sync_fallback = false;
         let method = match method {
             None => {
                 if matches!(value, Value::Null | Value::Undefined) {
@@ -66,6 +74,7 @@ impl Vm {
                         argument: None,
                         method: None,
                         hint,
+                        sync_fallback: false,
                     }));
                 }
                 if !matches!(value, Value::Object(_)) {
@@ -73,12 +82,13 @@ impl Vm {
                         "using declaration value must be an object, null, or undefined".into(),
                     ));
                 }
-                let method = self.get_dispose_method(&value, hint)?;
+                let (method, fallback) = self.get_dispose_method(&value, hint)?;
                 if method == Value::Undefined {
                     return Err(RuntimeError::TypeError(
                         "resource has no Symbol.dispose/Symbol.asyncDispose method".into(),
                     ));
                 }
+                sync_fallback = fallback;
                 method
             }
             Some(method) => {
@@ -95,6 +105,7 @@ impl Vm {
             argument: None,
             method: Some(method),
             hint,
+            sync_fallback,
         }))
     }
 
@@ -220,8 +231,8 @@ impl Vm {
     /// the plain JS value `[hasError, pendingError, entries]` that
     /// `Compiler::compile_async_dispose_finally`'s synthesized `while`/
     /// `try`/`catch` loop destructures and iterates. `entries` is a real
-    /// Array of `[receiver, method, hasArgument, argument, isAsync]`
-    /// records, one per resource, in declaration order (the loop walks it
+    /// Array of `[receiver, method, hasArgument, argument, isAsync,
+    /// syncFallback]` records, one per resource, in declaration order (the loop walks it
     /// back to front, i.e. reverse declaration order).
     pub(in super::super) fn build_async_dispose_state(
         &mut self,
@@ -253,8 +264,8 @@ impl Vm {
     }
 
     /// The `entries` half of `build_async_dispose_state`'s return value:
-    /// a real Array of `[receiver, method, hasArgument, argument, isAsync]`
-    /// records, one per resource, in declaration order.
+    /// a real Array of `[receiver, method, hasArgument, argument, isAsync,
+    /// syncFallback]` records, one per resource, in declaration order.
     fn entries_array_from_resources(
         &mut self,
         resources: Vec<DisposableResource>,
@@ -270,6 +281,7 @@ impl Vm {
                     Value::Bool(resource.argument.is_some()),
                     resource.argument.unwrap_or(Value::Undefined),
                     Value::Bool(resource.hint == DisposeHint::Async),
+                    Value::Bool(resource.sync_fallback),
                 ])?;
                 // Keep every already-built entry array reachable while
                 // building the rest: each is otherwise held only by this
@@ -306,7 +318,7 @@ impl Vm {
                 try {
                     if (entry[1] !== undefined) {
                         let result = entry[2] ? entry[1].call(entry[0], entry[3]) : entry[1].call(entry[0]);
-                        if (entry[4]) { await result; }
+                        if (entry[4]) { await (entry[5] ? undefined : result); }
                     } else if (entry[4]) {
                         await undefined;
                     }
@@ -570,6 +582,7 @@ impl Vm {
             argument: Some(value.clone()),
             method: Some(on_dispose),
             hint,
+            sync_fallback: false,
         });
         Ok(value)
     }
@@ -612,6 +625,7 @@ impl Vm {
             argument: None,
             method: Some(on_dispose),
             hint,
+            sync_fallback: false,
         });
         Ok(Value::Undefined)
     }

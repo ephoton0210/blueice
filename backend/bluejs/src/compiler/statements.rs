@@ -153,7 +153,7 @@ impl Compiler {
     ///             let *result* = *entry*[2]
     ///                 ? *entry*[1].call(*entry*[0], *entry*[3])
     ///                 : *entry*[1].call(*entry*[0]);
-    ///             if (*entry*[4]) { await *result*; }
+    ///             if (*entry*[4]) { await (*entry*[5] ? undefined : *result*); }
     ///         } else if (*entry*[4]) {
     ///             await undefined;
     ///         }
@@ -268,7 +268,11 @@ impl Compiler {
                 ),
                 Stmt::If {
                     test: is_async_test.clone(),
-                    consequent: Box::new(await_stmt(ident("*result*"))),
+                    consequent: Box::new(await_stmt(Expr::Conditional {
+                        test: Box::new(index("*entry*", 5.0)),
+                        consequent: Box::new(ident("undefined")),
+                        alternate: Box::new(ident("*result*")),
+                    })),
                     alternate: None,
                 },
             ])),

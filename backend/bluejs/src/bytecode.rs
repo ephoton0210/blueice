@@ -178,8 +178,9 @@ opcodes! {
     // `await using`-capable disposal: drains this block's disposable-resource
     // stack (the same runtime state `DisposeResources` drains) into a plain
     // JS value `[hasError, pendingError, entries]` where `entries` is a real
-    // Array of `[receiver, method, hasArgument, argument, isAsync]` records,
-    // one per resource in declaration order. The compiler then compiles an
+    // Array of `[receiver, method, hasArgument, argument, isAsync,
+    // syncFallback]` records, one per resource in declaration order. The
+    // compiler then compiles an
     // ordinary (synthesized) `while`/`try`/`catch` loop over that value using
     // its normal statement/expression compiling -- `Await` included -- so a
     // dispose call that needs awaiting uses the same suspend/resume path as
