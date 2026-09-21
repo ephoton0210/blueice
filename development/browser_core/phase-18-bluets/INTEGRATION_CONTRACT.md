@@ -118,7 +118,9 @@ selected profile, and compiler options; it generates the matching typing
 artifact itself and rejects caller-supplied ambient declarations and
 `transpile-only`. At each session lifecycle observation it synchronizes prior
 realms, then runs a document's inline opted-in declarations at most once in
-document order. A rejection of one declaration MUST NOT prevent a later
+document order. On a successful fetched navigation this happens after the new
+document is applied but before its success reply and first frame, so a future
+DOM binding cannot make the initial frame stale. A rejection of one declaration MUST NOT prevent a later
 declaration from being considered. By default, external declarations produce a
 bounded, source-free rejection report and MUST NOT fetch, resolve, or reflect
 their page-controlled `src`.

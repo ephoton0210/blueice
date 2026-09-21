@@ -474,6 +474,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                 generation,
                 &pending_nav_seq,
                 completion,
+                &mut inline_page_executor,
             )?;
         }
         if let Some(script_requests) = script_requests {
@@ -495,6 +496,14 @@ fn synchronize_page_script_runtime(
             ))
         })?;
     }
+    synchronize_inline_page_executor(inline_page_executor, tabs)?;
+    Ok(())
+}
+
+fn synchronize_inline_page_executor(
+    inline_page_executor: &mut Option<&mut DirectPageInlineExecutor>,
+    tabs: &TabManager,
+) -> io::Result<()> {
     if let Some(inline_page_executor) = inline_page_executor.as_deref_mut() {
         inline_page_executor
             .synchronize_and_execute(tabs)
@@ -648,6 +657,7 @@ fn apply_completion<S: Write>(
     generation: &mut u64,
     pending_nav_seq: &HashMap<TabId, u64>,
     completion: Completion,
+    inline_page_executor: &mut Option<&mut DirectPageInlineExecutor>,
 ) -> io::Result<()> {
     let Completion {
         tab_id,
@@ -659,9 +669,9 @@ fn apply_completion<S: Write>(
     if pending_nav_seq.get(&tab_id) != Some(&seq) {
         return Ok(()); // superseded by a later navigation to this tab
     }
-    let Some(page) = tabs.get_mut(tab_id) else {
+    if tabs.get(tab_id).is_none() {
         return Ok(()); // the tab closed while this navigation was pending
-    };
+    }
     let reply_tab = Some(tab_id.as_u64());
     match outcome {
         NavOutcome::Cleared {
@@ -669,7 +679,16 @@ fn apply_completion<S: Write>(
             final_url,
             html,
         } => {
-            page.apply_fetched(clearance, &final_url, &html);
+            tabs.get_mut(tab_id)
+                .expect("the checked live tab must remain available on this session thread")
+                .apply_fetched(clearance, &final_url, &html);
+            // A configured runner observes the loaded document before its
+            // first success reply/frame. This preserves future DOM script
+            // semantics while the default session has no runner at all.
+            synchronize_inline_page_executor(inline_page_executor, tabs)?;
+            let page = tabs
+                .get(tab_id)
+                .expect("the session thread exclusively owns the checked tab");
             reply_success(
                 page,
                 stream,

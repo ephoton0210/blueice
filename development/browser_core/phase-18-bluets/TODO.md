@@ -209,7 +209,8 @@ or second module resolver to bypass them.
   profile and compiler options once, the executor generates that profile's
   artifact itself, rejects `transpile-only` and caller-supplied ambient
   declarations, and runs each document's inline opted-in declarations once in
-  document order after session lifecycle batches. Each declaration has an
+  document order after session lifecycle batches; a successfully fetched
+  document runs them before its success reply and first frame. Each declaration has an
   independent result; without further authority, an external `src` is reported
   as a bounded source-free rejection and later declarations still run.
   `PageScriptSourceAuthorizer` is now the sole core-owned opt-in source seam:
