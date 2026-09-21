@@ -271,9 +271,6 @@ impl Vm {
                 "RegExp getter requires an object".into(),
             ));
         };
-        if self.test262_foreign_reference(*id).is_some() {
-            return self.test262_foreign_get(*id, receiver, &name.into());
-        }
         if name == "flags" {
             let mut flags = String::new();
             for (property, flag) in [
@@ -293,7 +290,18 @@ impl Vm {
             }
             return Ok(Value::String(flags.into()));
         }
-        let Some(regexp) = self.heap.regexp(*id)? else {
+        // A RegExp owned by another realm still has [[OriginalSource]] and
+        // [[OriginalFlags]]; any other foreign object (including that
+        // realm's own %RegExp.prototype%) is not a RegExp of this getter's
+        // realm and takes the same TypeError path as a local one.
+        let data = if self.test262_foreign_reference(*id).is_some() {
+            self.test262_foreign_regexp_data(*id)?
+        } else {
+            self.heap
+                .regexp(*id)?
+                .map(|regexp| (regexp.source.clone(), regexp.flags.clone()))
+        };
+        let Some((regexp_source, regexp_flags)) = data else {
             let constructor = self.globals["RegExp"];
             if self.heap.get(constructor, "prototype")? == *receiver {
                 return Ok(if name == "source" {
@@ -307,12 +315,12 @@ impl Vm {
             ));
         };
         if name == "source" {
-            if regexp.source.is_empty() {
+            if regexp_source.is_empty() {
                 return Ok(Value::String("(?:)".into()));
             }
             let mut source = JsString::default();
             let mut escaped = false;
-            for &unit in regexp.source.as_code_units() {
+            for &unit in regexp_source.as_code_units() {
                 let part = match unit {
                     0x2f if !escaped => "\\/".into(),
                     0x0a => "\\n".into(),
@@ -336,7 +344,7 @@ impl Vm {
             "sticky" => 'y',
             _ => 'd',
         };
-        Ok(Value::Bool(regexp.flags.contains(flag)))
+        Ok(Value::Bool(regexp_flags.contains(flag)))
     }
 
     pub(super) fn set_required(
