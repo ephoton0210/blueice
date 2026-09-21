@@ -193,6 +193,32 @@ pub(crate) fn closes_template_placeholder(source: &str) -> bool {
         })
 }
 
+/// The words reserved only in strict mode code (§13.1.1), which the tokenizer
+/// keeps as plain identifiers.
+fn is_strict_reserved_word(name: &str) -> bool {
+    matches!(
+        name,
+        "implements"
+            | "interface"
+            | "let"
+            | "package"
+            | "private"
+            | "protected"
+            | "public"
+            | "static"
+            | "yield"
+    )
+}
+
+/// Whether a function body's Directive Prologue holds a Use Strict Directive.
+/// Only a bare string statement is a directive: the parser wraps a
+/// `use strict`-valued statement that is not one in `Expr::Parenthesized`.
+fn function_body_has_use_strict(body: &[Stmt]) -> bool {
+    body.iter()
+        .take_while(|stmt| matches!(stmt, Stmt::Expr(Expr::String(_))))
+        .any(|stmt| matches!(stmt, Stmt::Expr(Expr::String(value)) if value == "use strict"))
+}
+
 fn keyword_as_str(k: Keyword) -> &'static str {
     match k {
         Keyword::Var => "var",
@@ -467,10 +493,12 @@ impl Parser {
     /// assignment target. The token retains whether its spelling was escaped
     /// so a decoded reserved word is rejected too.
     fn assignment_property_is_identifier_reference(&self) -> bool {
-        let Token::Identifier(name) = self.peek() else {
-            return false;
-        };
-        self.identifier_reference_name_is_valid(name)
+        match self.peek() {
+            Token::Identifier(name) => self.identifier_reference_name_is_valid(name),
+            // `let` stays a valid IdentifierReference in sloppy code.
+            Token::Keyword(Keyword::Let) => self.identifier_reference_name_is_valid("let"),
+            _ => false,
+        }
     }
 
     /// Whether `name` may be an IdentifierReference here (§13.1.1). Besides
@@ -491,26 +519,17 @@ impl Parser {
         if name == "yield" && (self.generator_depth != 0 || self.strict) {
             return false;
         }
+        // Module code reserves `await` at every depth, nested plain functions
+        // included (§13.1.1: the goal symbol is Module).
         if name == "await"
             && (self.async_depth != 0
                 || self.module_await
+                || self.module
                 || self.static_block_function_depths.last() == Some(&self.function_depth))
         {
             return false;
         }
-        !(self.strict
-            && matches!(
-                name,
-                "implements"
-                    | "interface"
-                    | "let"
-                    | "package"
-                    | "private"
-                    | "protected"
-                    | "public"
-                    | "static"
-                    | "yield"
-            ))
+        !(self.strict && is_strict_reserved_word(name))
     }
 
     fn at_eof(&self) -> bool {

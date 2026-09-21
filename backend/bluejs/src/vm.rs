@@ -738,6 +738,12 @@ pub struct Vm {
     heap: Heap,
     object_prototype: ObjectId,
     array_prototype: ObjectId,
+    /// Whether `%Object.prototype%.hasOwnProperty` / `.propertyIsEnumerable`
+    /// have been installed. Both are created on first use, so absence of the
+    /// property alone cannot mean "not installed yet": after a script deletes
+    /// one, the next lookup must not silently create it again.
+    has_own_property_installed: bool,
+    property_is_enumerable_installed: bool,
     string_intrinsics: Option<(ObjectId, ObjectId)>,
     /// `%TypedArray%` and `%TypedArray%.prototype`, kept outside the global
     /// object but permanently reachable from every concrete constructor.
@@ -1055,6 +1061,8 @@ impl Vm {
             heap,
             object_prototype,
             array_prototype,
+            has_own_property_installed: false,
+            property_is_enumerable_installed: false,
             string_intrinsics: None,
             typed_array_intrinsics: None,
             regexp_legacy: crate::regexp::LegacyStatics::default(),
@@ -2004,39 +2012,47 @@ impl Vm {
     }
 
     fn property_is_enumerable_intrinsic(&mut self) -> Result<(), RuntimeError> {
+        if self.property_is_enumerable_installed {
+            return Ok(());
+        }
         if self
             .heap
             .get_own_property_descriptor(self.object_prototype, "propertyIsEnumerable")?
-            .is_some()
+            .is_none()
         {
-            return Ok(());
+            let function_prototype = self.function_prototype()?;
+            self.install_native(
+                self.object_prototype,
+                function_prototype,
+                "propertyIsEnumerable",
+                1,
+                NativeFunction::ObjectMethod(native::ObjectMethod::PropertyIsEnumerable),
+            )?;
         }
-        let function_prototype = self.function_prototype()?;
-        self.install_native(
-            self.object_prototype,
-            function_prototype,
-            "propertyIsEnumerable",
-            1,
-            NativeFunction::ObjectMethod(native::ObjectMethod::PropertyIsEnumerable),
-        )
+        self.property_is_enumerable_installed = true;
+        Ok(())
     }
 
     fn has_own_property_intrinsic(&mut self) -> Result<(), RuntimeError> {
+        if self.has_own_property_installed {
+            return Ok(());
+        }
         if self
             .heap
             .get_own_property_descriptor(self.object_prototype, "hasOwnProperty")?
-            .is_some()
+            .is_none()
         {
-            return Ok(());
+            let function_prototype = self.function_prototype()?;
+            self.install_native(
+                self.object_prototype,
+                function_prototype,
+                "hasOwnProperty",
+                1,
+                NativeFunction::ObjectMethod(native::ObjectMethod::HasOwnProperty),
+            )?;
         }
-        let function_prototype = self.function_prototype()?;
-        self.install_native(
-            self.object_prototype,
-            function_prototype,
-            "hasOwnProperty",
-            1,
-            NativeFunction::ObjectMethod(native::ObjectMethod::HasOwnProperty),
-        )
+        self.has_own_property_installed = true;
+        Ok(())
     }
 
     fn call_native(

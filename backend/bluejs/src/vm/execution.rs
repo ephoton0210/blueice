@@ -238,18 +238,38 @@ impl Vm {
 
         for &slot in &slots {
             let binding = &code.bindings[slot as usize];
+            let function = code.global_function_names.contains(&binding.name);
             if !self.global_bindings.contains_key(&binding.name) {
-                self.create_global_binding(
-                    global,
-                    binding,
-                    code.global_function_names.contains(&binding.name),
-                    false,
-                )?;
+                if self.global_var_is_accessor(global, binding, function)? {
+                    continue;
+                }
+                self.create_global_binding(global, binding, function, false)?;
             }
             self.script_global_slots
                 .insert(slot as usize, binding.name.clone());
         }
         Ok(())
+    }
+
+    /// Whether a `var` declaration names an existing accessor property of the
+    /// global object. CreateGlobalVarBinding leaves an existing own property
+    /// untouched, but a cell-backed global binding mirrors a *data* property,
+    /// so it can neither read through the getter nor forward to the setter:
+    /// such a `var` gets no global binding at all. Name lookups and
+    /// assignments then reach the accessor through the global object itself.
+    fn global_var_is_accessor(
+        &self,
+        global: ObjectId,
+        binding: &Binding,
+        function: bool,
+    ) -> Result<bool, RuntimeError> {
+        if function || binding.lexical {
+            return Ok(false);
+        }
+        Ok(self
+            .heap
+            .get_own_property_descriptor(global, binding.name.as_str())?
+            .is_some_and(|descriptor| descriptor.accessor()))
     }
 
     /// Standard global properties exist independently of a script lexical
@@ -875,19 +895,24 @@ impl Vm {
             return Ok(CompletionAction::Return(value));
         }
         if let Completion::Resume(metadata) = completion {
-            if let Some(frame) = handlers.pop_if(|frame| frame.metadata == metadata) {
-                let pending = frame
-                    .pending
-                    .expect("only an abrupt finally resumes a handler");
-                return self.resolve_completion(
+            let frame = handlers
+                .pop_if(|frame| frame.metadata == metadata)
+                .expect("a finalizer runs under its handler frame");
+            // The finalizer completed normally, so the try statement's
+            // completion value is the one the try or catch block produced
+            // (or the abrupt completion carried, such as a `break`), not
+            // whatever the finalizer's own statements produced. It was saved
+            // when the finalizer was entered.
+            self.restore_completion();
+            return match frame.pending {
+                Some(pending) => self.resolve_completion(
                     code,
                     handlers,
                     iterators,
                     self.pending_completions[pending].clone(),
-                );
-            }
-            self.restore_completion();
-            return Ok(CompletionAction::Continue);
+                ),
+                None => Ok(CompletionAction::Continue),
+            };
         }
 
         // Keep a potential thrown/returned object reachable while scope and
@@ -898,7 +923,17 @@ impl Vm {
             let Some(frame) = handlers.last() else {
                 return Ok(match completion {
                     Completion::Throw(error) => CompletionAction::Throw(error),
-                    Completion::Return(value) => CompletionAction::Return(value),
+                    // Every finalizer has run, so the for-of iterators still
+                    // open are closed now, innermost first. A failing
+                    // `return()` replaces the return with its own throw,
+                    // which no handler of this function can catch anymore.
+                    Completion::Return(value) => {
+                        match self.close_iterators_to_first_error(iterators, 0) {
+                            None => CompletionAction::Return(value),
+                            Some(error) if error.is_catchable() => CompletionAction::Throw(error),
+                            Some(error) => return Err(error),
+                        }
+                    }
                     Completion::TailRecur(args) => CompletionAction::TailRecur(args),
                     Completion::TailCall(values) => CompletionAction::TailCall(values),
                     Completion::Jump { cleanup, .. } => CompletionAction::Jump(cleanup),
@@ -982,6 +1017,9 @@ impl Vm {
                         .expect("handler was inspected above")
                         .state = HandlerState::Catch;
                     self.stack.push(value);
+                    // A class's heritage or computed key may have thrown while
+                    // the function was running as strict code.
+                    self.strict = code.strict;
                     // `value` is now a stack root owned by the catch entry.
                     // The temporary completion root protected the original
                     // throw while Error construction and scope cleanup could
@@ -995,13 +1033,23 @@ impl Vm {
                 if let Some(target) = finally {
                     let pending = self.pending_completions.len();
                     self.pending_completions.push(completion);
+                    // Save the completion value the abrupt completion carries;
+                    // a normal finalizer restores it (see `Completion::Resume`).
+                    self.completion_saves
+                        .push((self.completion.clone(), self.completion_empty));
                     let frame = handlers.last_mut().expect("handler was inspected above");
                     frame.state = HandlerState::Finally;
                     frame.pending = Some(pending);
+                    self.strict = code.strict;
                     return Ok(CompletionAction::Jump(target as usize));
                 }
             }
             handlers.pop();
+            // A finalizer that completes abruptly replaces the completion that
+            // entered it, so the value saved at its entry is never restored.
+            if state == HandlerState::Finally {
+                self.completion_saves.pop();
+            }
             completion = self
                 .pending_completions
                 .last()
@@ -1430,13 +1478,12 @@ impl Vm {
             if binding.lexical {
                 continue;
             }
+            let function = code.global_function_names.contains(&binding.name);
             if !self.global_bindings.contains_key(&binding.name) {
-                self.create_global_binding(
-                    global,
-                    binding,
-                    code.global_function_names.contains(&binding.name),
-                    true,
-                )?;
+                if self.global_var_is_accessor(global, binding, function)? {
+                    continue;
+                }
+                self.create_global_binding(global, binding, function, true)?;
             }
             self.script_global_slots
                 .insert(slot as usize, binding.name.clone());

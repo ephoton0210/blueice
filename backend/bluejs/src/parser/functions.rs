@@ -106,7 +106,12 @@ impl Parser {
                 let context_reserves_await = self.async_depth != 0
                     || self.module_await
                     || self.static_block_function_depths.last() == Some(&self.function_depth);
-                if (is_async && !is_declaration) || (is_declaration && context_reserves_await) {
+                // Module code reserves `await` even as a function expression's
+                // own name, which the [~Await] parameter alone would allow.
+                if self.module
+                    || (is_async && !is_declaration)
+                    || (is_declaration && context_reserves_await)
+                {
                     let detail = if self.current_identifier_escaped() {
                         "the await keyword cannot contain an escape"
                     } else {
@@ -116,9 +121,16 @@ impl Parser {
                 }
             }
             Some(self.expect_identifier_name()?)
+        } else if !self.strict && self.check_keyword(Keyword::Let) {
+            // `let` is an ordinary identifier in sloppy code.
+            self.advance();
+            Some("let".to_string())
         } else {
             None
         };
+        if let Some(name) = &name {
+            self.validate_function_name(name, is_declaration)?;
+        }
         // A generator *declaration* names its binding in the enclosing
         // context, so `yield` is fine there in sloppy non-generator code; a
         // generator expression's name is parsed with [+Yield].
@@ -132,6 +144,17 @@ impl Parser {
             return Err(self.syntax_error("a function parameter list must begin with '('"));
         }
         let mut function = self.parse_method_function(name, generator, is_async)?;
+        // The BindingIdentifier belongs to the function code, so a Use Strict
+        // Directive in the body makes the name strict retroactively.
+        if !self.strict
+            && function
+                .name
+                .as_deref()
+                .is_some_and(is_strict_reserved_word)
+            && function_body_has_use_strict(&function.body)
+        {
+            return Err(self.syntax_error("a strict function cannot be named with a reserved word"));
+        }
         if function_contains_super_call_outside_class(&function)
             || function_contains_super_property_outside_class(&function)
         {
@@ -139,6 +162,43 @@ impl Parser {
         }
         function.source_text = self.source_text_from(start);
         Ok(function)
+    }
+
+    /// A FieldDefinition's Initializer is parsed with `[~Yield, ~Await]`
+    /// whatever surrounds the class: inside an async function or generator
+    /// `await` and `yield` do not become operators there, and in a script
+    /// `await` is an ordinary IdentifierReference.
+    fn parse_field_initializer(&mut self) -> Result<Expr, ParseError> {
+        let outer_async_depth = std::mem::replace(&mut self.async_depth, 0);
+        let outer_module_await = std::mem::replace(&mut self.module_await, false);
+        let outer_generator_depth = std::mem::replace(&mut self.generator_depth, 0);
+        let initializer = self.parse_assignment();
+        self.generator_depth = outer_generator_depth;
+        self.module_await = outer_module_await;
+        self.async_depth = outer_async_depth;
+        initializer
+    }
+
+    /// The early errors of a function's BindingIdentifier that do not depend
+    /// on its own body: ReservedWords, the strict-mode reserved words in
+    /// strict code, and `yield` in a generator body for a declaration (whose
+    /// name is a binding of the enclosing context; `await` is handled by the
+    /// caller).
+    fn validate_function_name(&self, name: &str, is_declaration: bool) -> Result<(), ParseError> {
+        if matches!(
+            name,
+            "class" | "debugger" | "enum" | "export" | "extends" | "import" | "super" | "with"
+        ) || Keyword::from_str(name).is_some_and(|keyword| keyword != Keyword::Let)
+        {
+            return Err(self.syntax_error("a reserved word cannot be a function name"));
+        }
+        if self.strict && is_strict_reserved_word(name) {
+            return Err(self.syntax_error("a strict mode reserved word cannot be a function name"));
+        }
+        if is_declaration && name == "yield" && self.generator_depth != 0 {
+            return Err(self.syntax_error("yield cannot be used as a function name here"));
+        }
+        Ok(())
     }
 
     /// A MethodDefinition's function (object literal or class, including
@@ -338,6 +398,7 @@ impl Parser {
             let accessor = match self.peek() {
                 Token::Identifier(keyword)
                     if (keyword == "get" || keyword == "set")
+                        && !self.current_identifier_escaped()
                         && matches!(
                             self.peek_at(1),
                             Token::Identifier(_)
@@ -397,7 +458,7 @@ impl Parser {
                     return Err(self.syntax_error("invalid public class field name"));
                 }
                 let initializer = if self.eat_punct(Punct::Assign) {
-                    Some(self.parse_assignment()?)
+                    Some(self.parse_field_initializer()?)
                 } else {
                     None
                 };

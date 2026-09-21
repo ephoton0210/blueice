@@ -104,6 +104,10 @@ opcodes! {
     SetLiteralPrototype: 1, 0;
     SetCompletion: 1, 0;
     ClearCompletion: 1, 0;
+    // Sets the VM's runtime strictness flag (operand 1 strict, 0 sloppy) for
+    // code that is strict inside an otherwise sloppy function: a class's
+    // heritage and computed keys.
+    SetStrictMode: 5, 0;
     Halt: 1, 0;
     NewArray: 5, 0;
     GlobalString: 1, 0;
@@ -181,7 +185,11 @@ opcodes! {
     PushHandler: 5, 0;
     PopHandler: 1, 0;
     ResumeCompletion: 5, 0;
-    SaveCompletion: 1, 0;
+    // Normal completion of a try or catch block whose statement has a
+    // finalizer: turns the active handler frame into the one that runs the
+    // finalizer (an abrupt completion does the same) and saves the block's
+    // completion value, which `ResumeCompletion` restores afterwards.
+    EnterFinalizer: 1, 0;
     // Explicit Resource Management: `MarkDisposables` records the current
     // depth of the VM's disposable-resource stack when a `using`-declaring
     // block/function body is entered; `AddDisposableResource` (operand 0 =
@@ -209,11 +217,11 @@ opcodes! {
     DrainAsyncDisposables: 5, 0;
     // Operand: the static index (into `Bytecode::handlers`) of the
     // synthetic try/finally this disposal is the finally clause of. Lets
-    // the interpreter tell an abrupt entry (the handler frame is still on
-    // the runtime handler stack, in `Finally` state, with a pending
-    // completion to merge a disposal error into as a `SuppressedError`)
-    // apart from a normal-completion entry (the frame was already popped
-    // by `PopHandler`, so no prior error can exist to merge with).
+    // the interpreter tell an abrupt entry (the handler frame is on the
+    // runtime handler stack, in `Finally` state, with a pending completion to
+    // merge a disposal error into as a `SuppressedError`) apart from a
+    // normal-completion entry (the frame is in `Finally` state too but has no
+    // pending completion, so no prior error can exist to merge with).
     DisposeResources: 5, 0;
     AbruptJump: 5, 0;
     // SetFunctionName from a property key: stack `key, function`, both left
@@ -246,6 +254,9 @@ opcodes! {
     PrivateSet: 5, MAY_USE_INLINE_CACHE;
     // A destructuring leaf's PrivateSet: `value, receiver, name` -> `value`.
     PrivateSetLeaf: 5, 0;
+    // `++`/`--` on a private member: `receiver, name` -> the old or new
+    // number. The operand is `owner_slot << 2 | prefix << 1 | decrement`.
+    PrivateUpdate: 5, MAY_USE_INLINE_CACHE;
     PrivateIn: 5, MAY_USE_INLINE_CACHE;
     // A super property Reference is the operand pair `base, key` (like any
     // other property Reference) with the `this` value pushed on top just

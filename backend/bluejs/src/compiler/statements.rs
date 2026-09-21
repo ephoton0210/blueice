@@ -213,8 +213,7 @@ impl Compiler {
         self.tail_call_blockers -= 1;
         body?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
-        self.emit(Opcode::PopHandler, 0)?;
-        self.emit(Opcode::SaveCompletion, 0)?;
+        self.emit(Opcode::EnterFinalizer, 0)?;
         let normal_exit = self.emit(Opcode::Jump, 0)?;
         let finally_start = self.offset()?;
         self.bytecode.handlers[handler_index as usize].finally = Some(finally_start);
@@ -683,16 +682,10 @@ impl Compiler {
                 } else {
                     self.constant(Value::Undefined)?;
                 }
-                let iterators: Vec<_> = self
-                    .loops
-                    .iter()
-                    .rev()
-                    .filter_map(|context| context.iterator)
-                    .collect();
-                for iterator in iterators {
-                    self.emit(Opcode::GetBinding, iterator)?;
-                    self.emit(Opcode::IteratorClose, 0)?;
-                }
+                // The Return completion unwinds the enclosing handlers first
+                // (their finalizers run before an outer loop's iterator is
+                // closed); the VM closes the iterators still open once no
+                // handler is left.
                 self.emit(Opcode::Return, 0)?;
             }
             Stmt::Empty => {}
@@ -793,19 +786,9 @@ impl Compiler {
         Ok(())
     }
 
-    /// Closes the iterators of the loops being left, then returns the value
-    /// on top of the stack.
+    /// Returns the value on top of the stack; the Return completion unwinds
+    /// the handlers and closes the iterators of the loops being left.
     fn emit_return_epilogue(&mut self) -> Result<(), CompileError> {
-        let iterators: Vec<_> = self
-            .loops
-            .iter()
-            .rev()
-            .filter_map(|context| context.iterator)
-            .collect();
-        for iterator in iterators {
-            self.emit(Opcode::GetBinding, iterator)?;
-            self.emit(Opcode::IteratorClose, 0)?;
-        }
         self.emit(Opcode::Return, 0)?;
         Ok(())
     }
@@ -1281,10 +1264,14 @@ impl Compiler {
         self.tail_call_blockers -= 1;
         try_block?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
-        self.emit(Opcode::PopHandler, 0)?;
-        if finalizer.is_some() {
-            self.emit(Opcode::SaveCompletion, 0)?;
-        }
+        self.emit(
+            if finalizer.is_some() {
+                Opcode::EnterFinalizer
+            } else {
+                Opcode::PopHandler
+            },
+            0,
+        )?;
         let normal_exit = self.emit(Opcode::Jump, 0)?;
 
         let catch_exit = if let Some(catch) = handler {
@@ -1348,10 +1335,14 @@ impl Compiler {
                 .expect("catch var override is active");
             self.leave_scope()?;
             self.bytecode.handlers[handler_index as usize].catch_end = Some(self.offset()?);
-            self.emit(Opcode::PopHandler, 0)?;
-            if finalizer.is_some() {
-                self.emit(Opcode::SaveCompletion, 0)?;
-            }
+            self.emit(
+                if finalizer.is_some() {
+                    Opcode::EnterFinalizer
+                } else {
+                    Opcode::PopHandler
+                },
+                0,
+            )?;
             Some(self.emit(Opcode::Jump, 0)?)
         } else {
             None

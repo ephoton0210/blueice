@@ -320,6 +320,20 @@ impl Vm {
                             .clone();
                         self.private_set(&receiver, owner, name, value)?;
                     }
+                    Opcode::PrivateUpdate => {
+                        let (receiver, owner, name) = self.private_reference(operand >> 2)?;
+                        // The private Reference is evaluated once: PrivateGet
+                        // then PrivateSet on the same receiver and name.
+                        // Keep the receiver rooted across a getter or setter.
+                        self.stack.push(receiver.clone());
+                        let old_value = self.private_get(&receiver, owner, &name)?;
+                        let (old, new) = self.numeric_step(&old_value, operand & 1 != 0)?;
+                        self.stack.push(new.clone());
+                        self.private_set(&receiver, owner, name, new.clone())?;
+                        self.stack.pop();
+                        self.stack.pop();
+                        self.stack.push(if operand & 2 == 0 { old } else { new });
+                    }
                     Opcode::PrivateIn => {
                         let (receiver, owner, _name) = self.private_reference(operand)?;
                         let object = receiver.object_id().ok_or_else(|| {
@@ -1564,6 +1578,7 @@ impl Vm {
                         self.completion = self.pop();
                         self.completion_empty = false;
                     }
+                    Opcode::SetStrictMode => self.strict = operand != 0,
                     Opcode::ClearCompletion => {
                         self.completion = Value::Undefined;
                         self.completion_empty = true;
@@ -1585,9 +1600,14 @@ impl Vm {
                             .pop()
                             .expect("compiler pops its active try handler");
                     }
-                    Opcode::SaveCompletion => self
-                        .completion_saves
-                        .push((self.completion.clone(), self.completion_empty)),
+                    Opcode::EnterFinalizer => {
+                        handlers
+                            .last_mut()
+                            .expect("compiler enters the finalizer of an active try handler")
+                            .state = HandlerState::Finally;
+                        self.completion_saves
+                            .push((self.completion.clone(), self.completion_empty));
+                    }
                     Opcode::ResumeCompletion => return Ok(Some(Completion::Resume(operand))),
                     Opcode::MarkDisposables => {
                         self.dispose_marks.push(self.disposables.len());
@@ -1611,12 +1631,11 @@ impl Vm {
                             .pop()
                             .expect("compiler matches every DisposeResources with a mark");
                         let resources = self.disposables.split_off(mark);
-                        // An abrupt entry leaves this handler's frame on the
-                        // runtime handler stack (in `Finally` state) until
-                        // `ResumeCompletion` runs after this opcode; a
-                        // normal-completion entry already popped it via
-                        // `PopHandler`; see `Opcode::DisposeResources`'s
-                        // definition.
+                        // The handler's frame stays on the runtime handler
+                        // stack (in `Finally` state) until `ResumeCompletion`
+                        // runs after this opcode; only an abrupt entry has a
+                        // pending completion; see
+                        // `Opcode::DisposeResources`'s definition.
                         let prior = match handlers.last() {
                             Some(frame) if frame.metadata == operand => frame
                                 .pending

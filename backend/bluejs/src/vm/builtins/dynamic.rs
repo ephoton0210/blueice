@@ -83,12 +83,33 @@ impl Vm {
         // Preserve that boundary in the generated wrapper: a trailing
         // single-line comment belongs to the parameters, not to the closing
         // parenthesis that follows them.
-        let wrapper = |parameters: &str| format!("{prefix}{parameters}\n) {{\n{body}\n}}");
+        let wrapper =
+            |parameters: &str, body: &str| format!("{prefix}{parameters}\n) {{\n{body}\n}}");
+        // Annex B HTML-like comments are removed from the parameters for
+        // parsing; the text of the function keeps them (see below).
         let parsed_parameters = strip_dynamic_function_html_comments(&parameters);
-        let source = wrapper(&parsed_parameters);
-
-        let mut program =
-            crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        // The parameters must parse as FormalParameters and the body as a
+        // FunctionBody, each on its own. Only the joined wrapper is compiled,
+        // but text that leaves a comment, template or bracket open across the
+        // boundary can still make the joined source parse (`Function("/*",
+        // "*/) {")`), so each side is also checked against an empty other side.
+        let parse_wrapper = |source: &str| -> Result<crate::ast::Program, RuntimeError> {
+            let program =
+                crate::parse(source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+            // Anything but the one wrapper declaration means the text closed
+            // the function early (`Function("} function f() {")`).
+            match program.body.as_slice() {
+                [crate::ast::Stmt::FunctionDecl(_)] => Ok(program),
+                _ => Err(RuntimeError::SyntaxError(
+                    "Function source must be exactly one function".into(),
+                )),
+            }
+        };
+        parse_wrapper(&wrapper(&parsed_parameters, ""))?;
+        if !parsed_parameters.is_empty() {
+            parse_wrapper(&wrapper("", &body))?;
+        }
+        let mut program = parse_wrapper(&wrapper(&parsed_parameters, &body))?;
         if let Some(crate::ast::Stmt::FunctionDecl(function)) = program.body.first_mut() {
             // The wrapper declaration only gives the function its `name`
             // property. CreateDynamicFunction binds no such name in the
@@ -100,7 +121,7 @@ impl Vm {
             // prescribes, except that the parsed parameters had their Annex B
             // HTML-like comments removed: the function's text keeps them.
             if parsed_parameters != parameters {
-                function.source_text = crate::ast::SourceText::whole(wrapper(&parameters));
+                function.source_text = crate::ast::SourceText::whole(wrapper(&parameters, &body));
             }
         }
         let code = crate::compile(&program)

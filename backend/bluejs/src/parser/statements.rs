@@ -106,6 +106,13 @@ impl Parser {
             Token::Identifier(_) if matches!(self.peek_at(1), Token::Punct(Punct::Colon)) => {
                 self.parse_labelled_stmt()
             }
+            // `let` is a valid label in sloppy code (`let: 1`); strict code
+            // reserves it, which `parse_labelled_stmt` rejects.
+            Token::Keyword(Keyword::Let)
+                if matches!(self.peek_at(1), Token::Punct(Punct::Colon)) =>
+            {
+                self.parse_labelled_stmt()
+            }
             _ => {
                 let expr = self.parse_expression()?;
                 self.consume_semicolon()?;
@@ -168,7 +175,7 @@ impl Parser {
         if !self.identifier_reference_name_is_valid(&label) {
             return Err(self.syntax_error("a reserved word cannot be used as a label"));
         }
-        if label == "await" && (self.async_depth != 0 || self.module_await) {
+        if label == "await" && (self.async_depth != 0 || self.module_await || self.module) {
             let detail = if identifier_escaped {
                 "the await keyword cannot contain an escape"
             } else {

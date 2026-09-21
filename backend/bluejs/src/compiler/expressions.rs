@@ -602,7 +602,13 @@ impl Compiler {
                     computed,
                 } = arg.as_ref()
                 {
-                    if matches!(&**object, Expr::Super) {
+                    if private_member_name(arg).is_some() {
+                        let owner = self.private_member_reference(arg)?;
+                        let operand = owner.checked_mul(4).ok_or(CompileError::ProgramTooLarge)?
+                            | u32::from(*op == UpdateOp::Dec)
+                            | (u32::from(*prefix) << 1);
+                        self.emit(Opcode::PrivateUpdate, operand)?;
+                    } else if matches!(&**object, Expr::Super) {
                         self.super_reference(property, *computed)?;
                         // GetValue converts the key immediately; the later
                         // PutValue must not convert it again.
@@ -1208,7 +1214,13 @@ impl Compiler {
         self.enter_scope(declarations, &var_names(std::slice::from_ref(body))?, false)?;
         let iterator = self.resolve("*iterator*").unwrap();
         if let Some(initializer) = annex_b_initializer {
-            self.expression(initializer)?;
+            // `for (var x = init in ...)` names an anonymous function or class
+            // initializer after `x`, as `var x = init` does.
+            let inferred_name = match pattern {
+                Some(Pattern::Identifier(name)) => Some(name.as_str()),
+                _ => None,
+            };
+            self.expression_with_name(initializer, inferred_name)?;
             self.bind_pattern(
                 pattern.expect("Annex B initializer has a declaration pattern"),
                 DeclKind::Var,
@@ -1593,7 +1605,9 @@ impl Compiler {
         pattern: &AssignmentPattern,
     ) -> Result<(), CompileError> {
         match pattern {
-            AssignmentPattern::Target(target) => self.assign_pattern_target(target)?,
+            AssignmentPattern::Target(target) => {
+                self.assign_pattern_target(strip_target_parentheses(target))?
+            }
             AssignmentPattern::Array(elements) => {
                 self.emit(Opcode::GetIterator, 0)?;
                 for element in elements {
@@ -1604,8 +1618,12 @@ impl Compiler {
                     if element.rest {
                         match &element.pattern {
                             AssignmentPattern::Target(target)
-                                if matches!(&**target, Expr::Member { .. }) =>
+                                if matches!(
+                                    strip_target_parentheses(target),
+                                    Expr::Member { .. }
+                                ) =>
                             {
+                                let target = strip_target_parentheses(target);
                                 self.emit(Opcode::Dup, 0)?;
                                 self.member_reference_uncoerced(target)?;
                                 self.emit(Opcode::IteratorRestReference, 0)?;
@@ -1625,12 +1643,13 @@ impl Compiler {
                     }
                     let prepared_member_target = match &element.pattern {
                         AssignmentPattern::Target(target)
-                            if matches!(&**target, Expr::Member { .. }) =>
+                            if matches!(strip_target_parentheses(target), Expr::Member { .. }) =>
                         {
+                            let target = strip_target_parentheses(target);
                             self.emit(Opcode::Dup, 0)?;
                             self.member_reference_uncoerced(target)?;
                             self.array_pattern_reference_value()?;
-                            Some(target.as_ref())
+                            Some(target)
                         }
                         _ => {
                             self.array_pattern_value()?;
@@ -1659,8 +1678,12 @@ impl Compiler {
                             self.property_key(key)?;
                             let prepared_member_target = match value {
                                 AssignmentPattern::Target(target)
-                                    if matches!(&**target, Expr::Member { .. }) =>
+                                    if matches!(
+                                        strip_target_parentheses(target),
+                                        Expr::Member { .. }
+                                    ) =>
                                 {
+                                    let target = strip_target_parentheses(target);
                                     // Preserve the already-coerced source
                                     // key while evaluating the assignment
                                     // target reference before GetV(source,
@@ -1669,7 +1692,7 @@ impl Compiler {
                                     self.emit(Opcode::Dup, 0)?;
                                     self.member_reference_uncoerced(target)?;
                                     self.emit(Opcode::DestructurePropertyReference, 0)?;
-                                    Some(target.as_ref())
+                                    Some(target)
                                 }
                                 _ => {
                                     self.emit(Opcode::DestructureProperty, 0)?;
