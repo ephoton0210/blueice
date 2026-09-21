@@ -368,6 +368,10 @@ impl Tokenizer {
                 while let Some(c) = lexer.advance() {
                     if c == '\\' {
                         match lexer.scan_escape() {
+                            // Legacy octal and `\8`/`\9` escapes are
+                            // NotEscapeSequences in a template: the cooked
+                            // value of that string is undefined.
+                            Ok(Some(_)) if lexer.legacy_octal_escape => return None,
                             Ok(Some(c)) => result.push_code_point(c),
                             Ok(None) => {}
                             Err(_) => return None,
@@ -856,6 +860,14 @@ impl Tokenizer {
                     self.advance();
                     if let Some(c) = self.scan_escape()? {
                         current.push_code_point(c);
+                    }
+                    // A tagged template re-scans its own text and may carry
+                    // such an escape (cooked value `undefined`); an untagged
+                    // template may not (§13.2.8.1, NotEscapeSequence).
+                    if self.legacy_octal_escape {
+                        return Err(LexError::syntax(
+                            "octal escape sequences are not allowed in template literals",
+                        ));
                     }
                 }
                 Some('\r') => {

@@ -132,6 +132,27 @@ impl Parser {
         Ok(function)
     }
 
+    /// A MethodDefinition's function (object literal or class, including
+    /// generator, async and accessor forms). Its parameters are
+    /// UniqueFormalParameters: no name repeats, even in sloppy code.
+    pub(super) fn parse_method_definition(
+        &mut self,
+        name: Option<String>,
+        generator: bool,
+        is_async: bool,
+    ) -> Result<Function, ParseError> {
+        let function = self.parse_method_function(name, generator, is_async)?;
+        let mut names = std::collections::HashSet::new();
+        for param in &function.params {
+            for name in super::module::pattern_bound_names(&param.pattern) {
+                if !names.insert(name) {
+                    return Err(self.syntax_error("duplicate parameter name in a method"));
+                }
+            }
+        }
+        Ok(function)
+    }
+
     pub(super) fn parse_method_function(
         &mut self,
         name: Option<String>,
@@ -336,7 +357,7 @@ impl Parser {
                 });
                 continue;
             }
-            let function = self.parse_method_function(Some(method_name), generator, is_async)?;
+            let function = self.parse_method_definition(Some(method_name), generator, is_async)?;
             let constructor = accessor.is_none()
                 && !is_static
                 && !matches!(&key, PropertyKey::Computed(_))
@@ -433,6 +454,7 @@ impl Parser {
     /// essential for the class element grammar.
     pub(super) fn class_async_method_follows(&self) -> bool {
         if !matches!(self.peek(), Token::Identifier(name) if name == "async")
+            || self.current_identifier_escaped()
             || self
                 .tokens
                 .get(self.pos + 1)
@@ -598,6 +620,9 @@ impl Parser {
     ) -> Result<Option<Expr>, ParseError> {
         if let Token::Identifier(name) = self.peek().clone() {
             if matches!(self.peek_at(1), Token::Punct(Punct::Arrow)) {
+                if self.tokens[self.pos + 1].newline_before {
+                    return Err(self.syntax_error("no line terminator is allowed before =>"));
+                }
                 if is_async && name == "await" {
                     let detail = if self.current_identifier_escaped() {
                         "the await keyword cannot contain an escape"
@@ -638,6 +663,9 @@ impl Parser {
                     }
                     let params = self.parse_params()?;
                     self.async_depth = outer_async_depth;
+                    if self.tokens[self.pos].newline_before {
+                        return Err(self.syntax_error("no line terminator is allowed before =>"));
+                    }
                     self.expect_punct(Punct::Arrow)?;
                     let body = self.parse_arrow_body(is_async)?;
                     return Ok(Some(Expr::Arrow {
