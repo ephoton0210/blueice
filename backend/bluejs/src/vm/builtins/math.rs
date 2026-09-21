@@ -214,11 +214,11 @@ impl Vm {
                 value.abs()
             }
             MathMethod::Acos => number(first, self)?.acos(),
-            MathMethod::Acosh => number(first, self)?.acosh(),
+            MathMethod::Acosh => acosh(number(first, self)?),
             MathMethod::Asin => number(first, self)?.asin(),
             MathMethod::Asinh => number(first, self)?.asinh(),
             MathMethod::Atan => number(first, self)?.atan(),
-            MathMethod::Atanh => number(first, self)?.atanh(),
+            MathMethod::Atanh => atanh(number(first, self)?),
             MathMethod::Ceil => number(first, self)?.ceil(),
             MathMethod::Cbrt => number(first, self)?.cbrt(),
             MathMethod::Cos => number(first, self)?.cos(),
@@ -393,4 +393,52 @@ fn scaled_integer_to_f64(scaled: &BigInt) -> f64 {
     } else {
         value
     }
+}
+
+/// `Math.acosh` after fdlibm's `e_acosh.c`. `f64::acosh` evaluates
+/// `ln(x + sqrt(x*x - 1))`, which for `x` just above 1 adds a tiny square root
+/// to 1 and keeps almost none of its digits; the fdlibm ranges below use
+/// `ln_1p` there instead.
+fn acosh(x: f64) -> f64 {
+    if x.is_nan() || x < 1.0 {
+        f64::NAN
+    } else if x >= 268_435_456.0 {
+        // 2**28: acosh(x) = ln(2x), and x + x can overflow.
+        if x.is_infinite() {
+            x
+        } else {
+            x.ln() + std::f64::consts::LN_2
+        }
+    } else if x == 1.0 {
+        0.0
+    } else if x > 2.0 {
+        (2.0 * x - 1.0 / (x + (x * x - 1.0).sqrt())).ln()
+    } else {
+        let t = x - 1.0;
+        (t + (2.0 * t + t * t).sqrt()).ln_1p()
+    }
+}
+
+/// `Math.atanh` after fdlibm's `e_atanh.c`. It works on `|x|` and restores the
+/// sign at the end: `ln_1p(2x / (1 - x))` for a negative `x` near -1 subtracts
+/// nearly equal numbers inside `ln_1p` and loses thousands of ulps.
+fn atanh(x: f64) -> f64 {
+    let magnitude = x.abs();
+    if x.is_nan() || magnitude > 1.0 {
+        return f64::NAN;
+    }
+    if magnitude == 1.0 {
+        return x / 0.0;
+    }
+    if magnitude < 3.725_290_298_461_914e-9 {
+        // 2**-28: atanh(x) == x to double precision (and keeps -0).
+        return x;
+    }
+    let half = if magnitude < 0.5 {
+        let doubled = magnitude + magnitude;
+        0.5 * (doubled + doubled * magnitude / (1.0 - magnitude)).ln_1p()
+    } else {
+        0.5 * ((magnitude + magnitude) / (1.0 - magnitude)).ln_1p()
+    };
+    half.copysign(x)
 }
