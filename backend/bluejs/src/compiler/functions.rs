@@ -59,6 +59,16 @@ impl Compiler {
         inferred_name: Option<&str>,
         binding: Option<u32>,
     ) -> Result<(), CompileError> {
+        if !class.decorators.is_empty()
+            || class.elements.iter().any(|element| match element {
+                ClassElement::Method { decorators, .. }
+                | ClassElement::Accessor { decorators, .. }
+                | ClassElement::Field { decorators, .. } => !decorators.is_empty(),
+                ClassElement::StaticBlock(_) => false,
+            })
+        {
+            return Err(CompileError::Unsupported("decorators"));
+        }
         let private_declarations = class_private_declarations(class)?;
         let private_scope_id = self.next_private_scope;
         self.next_private_scope = self.next_private_scope.saturating_add(1);
@@ -152,6 +162,7 @@ impl Compiler {
                 key,
                 function,
                 is_static: false,
+                ..
             } if class_property_name(key).is_some_and(|name| name == "constructor") => {
                 Some(function.clone())
             }
@@ -216,6 +227,7 @@ impl Compiler {
                     key,
                     function,
                     is_static,
+                    ..
                 } => {
                     if !is_static
                         && class_property_name(key).is_some_and(|name| name == "constructor")
@@ -250,6 +262,7 @@ impl Compiler {
                     function,
                     getter,
                     is_static,
+                    ..
                 } => {
                     self.class_accessor_definition(key, None, function, *getter, *is_static)?;
                 }
@@ -258,6 +271,7 @@ impl Compiler {
                     initializer,
                     is_static,
                     accessor,
+                    ..
                 } => {
                     // What gets initialized per instance (or once for a
                     // static): the field itself, or an auto-accessor's hidden
@@ -355,6 +369,7 @@ impl Compiler {
                 initializer,
                 is_static: false,
                 accessor,
+                ..
             } = element
             {
                 let storage_key =

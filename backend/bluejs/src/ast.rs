@@ -228,12 +228,19 @@ pub struct Function {
 
 /// A class definition with the executable elements currently supported by the
 /// compiler. Private keys share the ordinary key representation with a
-/// `#` prefix; decorators remain outside this AST subset.
+/// `#` prefix.
+///
+/// Decorators (the Stage 3 decorators proposal) are kept as the expressions
+/// written after each `@`, in source order: a `DecoratorMemberExpression`, a
+/// `DecoratorCallExpression` or the inside of a `DecoratorParenthesizedExpression`
+/// (the value the decorator expression produces is what is later called).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     pub name: Option<String>,
     pub extends: Option<Box<Expr>>,
     pub elements: Vec<ClassElement>,
+    /// Decorators before `class`, in source order.
+    pub decorators: Vec<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -242,12 +249,15 @@ pub enum ClassElement {
         key: PropertyKey,
         function: Function,
         is_static: bool,
+        /// Decorators before the element, in source order.
+        decorators: Vec<Expr>,
     },
     Accessor {
         key: PropertyKey,
         function: Function,
         getter: bool,
         is_static: bool,
+        decorators: Vec<Expr>,
     },
     Field {
         key: PropertyKey,
@@ -256,7 +266,9 @@ pub enum ClassElement {
         /// An auto-accessor (`accessor x = 1`): a getter/setter pair backed
         /// by a hidden private field that holds the initializer's value.
         accessor: bool,
+        decorators: Vec<Expr>,
     },
+    /// A static block cannot be decorated.
     StaticBlock(Vec<Stmt>),
 }
 
@@ -1207,7 +1219,8 @@ mod tests {
             &Expr::Class(Class {
                 name: None,
                 extends: None,
-                elements: Vec::new()
+                elements: Vec::new(),
+                decorators: Vec::new(),
             }),
             SuperSearch::Property
         ));
@@ -1521,7 +1534,8 @@ mod tests {
             Class {
                 name: None,
                 extends: None,
-                elements: Vec::new()
+                elements: Vec::new(),
+                decorators: Vec::new(),
             }
         )));
         let property = Expr::Member {
