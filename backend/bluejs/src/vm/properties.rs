@@ -328,7 +328,9 @@ impl Vm {
                 })
             }
             PrivateElement::Method(function) => Ok(function),
-            PrivateElement::Accessor { get: None, .. } => Ok(Value::Undefined),
+            PrivateElement::Accessor { get: None, .. } => Err(RuntimeError::TypeError(
+                "private accessor has no getter".into(),
+            )),
             PrivateElement::Accessor {
                 get: Some(getter), ..
             } => self.call_native(getter, receiver.clone(), Vec::new(), false),
@@ -390,14 +392,10 @@ impl Vm {
         })?;
         match element {
             PrivateElement::Field => {
-                // The first store of a field is its PrivateFieldAdd, which an
-                // object that stopped being extensible in the meantime (say by
-                // an earlier field initializer) rejects.
-                if self.heap.private_slot(object, owner, &name)?.is_none()
-                    && !self.object_is_extensible(object)?
-                {
+                // Assignment updates an initialized field; it never adds one.
+                if self.heap.private_slot(object, owner, &name)?.is_none() {
                     return Err(RuntimeError::TypeError(
-                        "cannot add a private element to a non-extensible object".into(),
+                        "private field has not been initialized".into(),
                     ));
                 }
                 self.with_roots(|heap| heap.set_private_slot(object, owner, name, value))
@@ -431,7 +429,9 @@ impl Vm {
             .object_id()
             .expect("class constructors have a prototype object");
         let (constructor_parent, instance_parent) = match &base {
-            Value::Null => (None, None),
+            // `extends null`: the constructor still inherits from
+            // %Function.prototype%; only the instance prototype chain ends.
+            Value::Null => (Some(self.function_prototype()?), None),
             Value::Object(base) if self.is_constructor(&Value::Object(*base))? => {
                 let instance_parent =
                     match self.get_property(&Value::Object(*base), &"prototype".into())? {
@@ -453,8 +453,80 @@ impl Vm {
         };
         self.heap.set_prototype(class, constructor_parent)?;
         self.heap.set_prototype(prototype, instance_parent)?;
-        self.with_roots(|heap| heap.set_class_base(class, base))?;
         self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
+        Ok(())
+    }
+
+    /// PrivateFieldAdd: define a private field on `receiver`. It is a
+    /// TypeError to add the same field twice, or to add one to an object that
+    /// is no longer extensible.
+    pub(super) fn private_field_add(
+        &mut self,
+        receiver: &Value,
+        owner: ObjectId,
+        name: JsString,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        let object = receiver.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("private fields require an object receiver".into())
+        })?;
+        if self.heap.private_slot(object, owner, &name)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "private field is already defined on this object".into(),
+            ));
+        }
+        if !self.object_is_extensible(object)? {
+            return Err(RuntimeError::TypeError(
+                "cannot add a private element to a non-extensible object".into(),
+            ));
+        }
+        self.with_roots(|heap| {
+            heap.add_private_brand(object, owner)?;
+            heap.set_private_slot(object, owner, name, value)
+        })
+    }
+
+    /// Installs the initializer function on the class constructor beneath it
+    /// on the stack (`F, initializer` -> `F`). Its home object is the class
+    /// prototype, so `super.x` works in a field initializer.
+    pub(super) fn set_class_fields(&mut self) -> Result<(), RuntimeError> {
+        let initializer = self
+            .stack
+            .last()
+            .and_then(Value::object_id)
+            .expect("compiler emits the class field initializer closure");
+        let class = self.stack[self.stack.len() - 2]
+            .object_id()
+            .expect("compiler emits a class closure before its field initializer");
+        let prototype = self
+            .heap
+            .get(class, "prototype")?
+            .object_id()
+            .expect("class constructors have a prototype object");
+        self.with_roots(|heap| heap.set_closure_home(initializer, prototype))?;
+        self.with_roots(|heap| heap.set_class_fields(class, initializer))?;
+        self.stack.pop();
+        Ok(())
+    }
+
+    /// InitializeInstanceElements: run the class's field initializer (if it
+    /// has one) with the just-constructed object as `this`.
+    pub(super) fn initialize_instance_elements(
+        &mut self,
+        constructor: &Value,
+        instance: &Value,
+    ) -> Result<(), RuntimeError> {
+        let Some(class) = constructor.object_id() else {
+            return Ok(());
+        };
+        if let Some(initializer) = self.heap.class_fields(class)? {
+            self.call_native(
+                Value::Object(initializer),
+                instance.clone(),
+                Vec::new(),
+                false,
+            )?;
+        }
         Ok(())
     }
 
@@ -474,32 +546,50 @@ impl Vm {
         Ok(())
     }
 
-    pub(super) fn super_base(&mut self) -> Result<ObjectId, RuntimeError> {
+    /// GetSuperBase: the home object's [[Prototype]], an object or `null`.
+    pub(super) fn super_base(&mut self) -> Result<Value, RuntimeError> {
         let home = self.home_object.ok_or_else(|| {
             RuntimeError::TypeError("super is not available in this function".into())
         })?;
-        self.object_get_prototype(home)?
-            .ok_or_else(|| RuntimeError::TypeError("superclass is null".into()))
+        Ok(self
+            .object_get_prototype(home)?
+            .map_or(Value::Null, Value::Object))
     }
 
-    pub(super) fn super_get(&mut self, key: &PropertyName) -> Result<Value, RuntimeError> {
-        let base = self.super_base()?;
-        self.get_from_prototype(base, &self.this.clone(), key)
+    /// The ToObject step of GetValue/PutValue on a super Reference: a `null`
+    /// base (a class or object whose prototype chain ends) is a TypeError,
+    /// raised only once the property is actually used.
+    fn super_base_object(base: &Value) -> Result<ObjectId, RuntimeError> {
+        base.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("cannot access a property through a null super base".into())
+        })
     }
 
+    /// GetValue of a super Reference: `base.[[Get]](key, this)`, converting the
+    /// key only after the base is known to be an object.
+    pub(super) fn super_get(
+        &mut self,
+        base: &Value,
+        key: &Value,
+        this: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let base = Self::super_base_object(base)?;
+        let key = self.coerce_property_key(key)?;
+        self.get_from_prototype(base, this, &key)
+    }
+
+    /// PutValue of a super Reference: `base.[[Set]](key, value, this)`; a
+    /// failed [[Set]] is a TypeError in strict code and ignored otherwise.
     pub(super) fn super_set(
         &mut self,
-        key: &PropertyName,
+        base: &Value,
+        key: &Value,
         value: &Value,
+        this: &Value,
     ) -> Result<(), RuntimeError> {
-        let base = self.super_base()?;
-        let this = self.this.clone();
-        if !matches!(this, Value::Object(_)) {
-            return Err(RuntimeError::ReferenceError(
-                "this is uninitialized before super()".into(),
-            ));
-        }
-        if self.ordinary_set_with_receiver(base, &this, key, value)? {
+        let base = Self::super_base_object(base)?;
+        let key = self.coerce_property_key(key)?;
+        if self.ordinary_set_with_receiver(base, this, &key, value)? {
             Ok(())
         } else {
             self.super_assignment_failed("super property cannot be assigned")
@@ -514,21 +604,23 @@ impl Vm {
         }
     }
 
-    pub(super) fn super_call(&mut self, args: Vec<Value>) -> Result<Value, RuntimeError> {
-        let constructor = self.class_constructor.ok_or_else(|| {
-            RuntimeError::TypeError("super() is not available in this function".into())
-        })?;
-        let base = self.heap.class_base(constructor)?.ok_or_else(|| {
-            RuntimeError::TypeError("super() requires a derived constructor".into())
-        })?;
-        if matches!(base, Value::Null) {
-            return Err(RuntimeError::TypeError("super constructor is null".into()));
+    /// The Construct step of `super(...)`: IsConstructor is checked only now,
+    /// after the arguments have been evaluated, and the active function's
+    /// `new.target` is passed through.
+    pub(super) fn super_call(
+        &mut self,
+        constructor: Value,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        if !self.is_constructor(&constructor)? {
+            return Err(RuntimeError::TypeError(
+                "super constructor is not a constructor".into(),
+            ));
         }
-        let value =
-            self.call_with_target(base, Value::Undefined, args, true, self.new_target.clone())?;
-        self.this = value.clone();
-        Ok(value)
+        let new_target = self.new_target.clone();
+        self.call_with_target(constructor, Value::Undefined, args, true, new_target)
     }
+
     /// Implements CopyDataProperties for an object-rest binding.  The
     /// compiler supplies an internal array of already-coerced excluded keys;
     /// getters are read from the original source object and copied as normal

@@ -720,8 +720,7 @@ struct SuspendedModuleExecution {
     new_target: Value,
     new_target_allowed: bool,
     home_object: Option<ObjectId>,
-    class_constructor: Option<ObjectId>,
-    class_field_initializer_depth: u32,
+    class_field_initializer: bool,
     active_module_name: Option<String>,
 }
 
@@ -891,14 +890,10 @@ pub struct Vm {
     // The `[[HomeObject]]` of the currently executing method or class
     // constructor. It is runtime frame state because `super` is lexical.
     home_object: Option<ObjectId>,
-    // A class constructor's home object is its instance prototype for
-    // `super.property`; `super()` separately needs the constructor closure
-    // that owns the evaluated superclass metadata.
-    class_constructor: Option<ObjectId>,
-    // A direct eval in an instance field is outside a constructor for the
-    // `super()` early-error rules even though fields are lowered into the
-    // constructor bytecode.
-    class_field_initializer_depth: u32,
+    // Running a class field initializer (or an arrow function created in
+    // one): a direct eval there is outside a constructor for the `super()`
+    // early-error rules and may not refer to `arguments`.
+    class_field_initializer: bool,
     iterator_base: Option<ObjectId>,
     /// The lazily installed `%Iterator.prototype%` helpers (`flatMap`,
     /// `chunks`, `windows`) that have already been offered to the realm. Each
@@ -1114,8 +1109,7 @@ impl Vm {
             new_target: Value::Undefined,
             new_target_allowed: false,
             home_object: None,
-            class_constructor: None,
-            class_field_initializer_depth: 0,
+            class_field_initializer: false,
             iterator_base: None,
             iterator_helpers_installed: Vec::new(),
             iterator_wrapper_prototype: None,
@@ -2043,22 +2037,16 @@ impl Vm {
                 "maximum call depth exceeded".into(),
             ));
         }
-        // Arrow functions inherit their enclosing `new.target`.  This is
-        // observable when a derived-constructor arrow invokes `super()`:
-        // the superclass must allocate with the original derived class.
-        let arrow = if !construct {
-            match callee.object_id() {
-                Some(id) => self
-                    .heap
-                    .closure(id)?
-                    .is_some_and(|(code, _, _, _, _)| code.arrow),
-                None => false,
-            }
-        } else {
-            false
+        // An arrow function's `new.target` is lexical: the value its creating
+        // function had, captured when the closure was created (not whatever
+        // the caller happens to be running with). This is observable when a
+        // derived-constructor arrow invokes `super()`: the superclass must
+        // allocate with the original derived class.
+        let closure_code = match callee.object_id() {
+            Some(id) => self.heap.closure(id)?.map(|(code, _, _, _)| code),
+            None => None,
         };
-        // The captured value, not the caller's: an arrow reads the
-        // `new.target` of the function it was created in.
+        let arrow = !construct && closure_code.as_ref().is_some_and(|code| code.arrow);
         let target = match (arrow, callee.object_id()) {
             (true, Some(id)) => self.heap.closure_new_target(id)?,
             _ => target,
@@ -2069,14 +2057,11 @@ impl Vm {
         self.stack.extend(args.iter().cloned());
         self.stack.push(target.clone());
         let previous_target = std::mem::replace(&mut self.new_target, target);
-        let regular_function = matches!(
-            callee.object_id(),
-            Some(id) if self
-                .heap
-                .closure(id)?
-                .is_some_and(|(code, _, _, _, _)| !code.arrow)
-        );
-        let next_new_target_allowed = (arrow && self.new_target_allowed) || regular_function;
+        // Whether direct eval may use `new.target` is lexical too: it was
+        // decided when the function's own code was compiled.
+        let next_new_target_allowed = closure_code
+            .as_ref()
+            .is_some_and(|code| code.new_target_allowed);
         let previous_new_target_allowed =
             std::mem::replace(&mut self.new_target_allowed, next_new_target_allowed);
         let previous_module = callee.object_id().and_then(|id| {
@@ -2168,7 +2153,7 @@ impl Vm {
             }
         }
         if let Value::Object(id) = callee {
-            if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
+            if let Some((code, captures, lexical_this, home)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
                 let with_objects = self.heap.closure_with_objects(id)?;
                 return self.call_closure(builtins::ClosureCall {
@@ -2179,7 +2164,6 @@ impl Vm {
                     args,
                     construct,
                     home,
-                    class_base,
                     with_objects,
                 });
             }

@@ -597,6 +597,87 @@ impl Vm {
         self.test262_import_foreign_value(realm_id, value)
     }
 
+    /// Forwards a foreign facade's [[GetOwnProperty]] into its Realm and
+    /// imports the descriptor's value / accessor functions back across the
+    /// membrane, so the descriptor APIs see the properties of the facaded
+    /// object rather than those of its empty local stand-in.
+    pub(in super::super) fn test262_foreign_get_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: &PropertyName,
+    ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign getOwnProperty has a membrane record");
+        let descriptor = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            realm.vm.object_get_own_property(target, key)
+        };
+        let descriptor = self.test262_foreign_completion(realm_id, descriptor);
+        let Some(mut descriptor) = descriptor? else {
+            return Ok(None);
+        };
+        for field in [
+            &mut descriptor.value,
+            &mut descriptor.get,
+            &mut descriptor.set,
+        ] {
+            if let Some(value) = field.take() {
+                *field = Some(self.test262_import_foreign_value(realm_id, value)?);
+            }
+        }
+        Ok(Some(descriptor))
+    }
+
+    /// Forwards a foreign facade's [[DefineOwnProperty]] into its Realm, with
+    /// the descriptor's value / accessor functions exported across the
+    /// membrane (a facaded TypedArray keeps its buffer mirrors in step, as
+    /// [[Set]] does), so a detached or out-of-range element is judged by the
+    /// owning realm's internal method rather than by the empty local record.
+    pub(in super::super) fn test262_foreign_define_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: PropertyName,
+        mut descriptor: PropertyDescriptor,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign defineOwnProperty has a membrane record");
+        let typed_buffer = self
+            .test262_realms
+            .get(&realm_id)
+            .and_then(|realm| realm.vm.heap.typed_array_info(target).ok())
+            .map(|(buffer, _, _, _)| buffer);
+        if typed_buffer.is_some() {
+            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        }
+        for field in [
+            &mut descriptor.value,
+            &mut descriptor.get,
+            &mut descriptor.set,
+        ] {
+            if let Some(value) = field.take() {
+                *field = Some(self.test262_export_foreign_value(realm_id, &value)?);
+            }
+        }
+        let result = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            realm.vm.object_define_own_property(target, key, descriptor)
+        };
+        if let Some(buffer) = typed_buffer {
+            self.test262_refresh_foreign_buffer_mirrors(realm_id, buffer)?;
+        }
+        self.test262_foreign_completion(realm_id, result)
+    }
+
     /// Forwards a foreign facade's [[OwnPropertyKeys]] into its Realm. Keys
     /// are primitives, so no wrapper allocation is needed; agent-wide
     /// registered Symbols already retain their identity across the boundary.
@@ -676,54 +757,6 @@ impl Vm {
             .expect("foreign realm remains live");
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
         (realm_id, target, &mut realm.vm)
-    }
-
-    /// [[GetOwnProperty]] of a foreign facade, performed in its Realm. Values
-    /// and accessor functions in the descriptor are imported as facades of
-    /// the Realm's own objects.
-    pub(in super::super) fn test262_foreign_get_own_property(
-        &mut self,
-        wrapper: ObjectId,
-        key: &PropertyName,
-    ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
-        let (realm_id, target, vm) = self.test262_foreign_target(wrapper);
-        let result = vm.object_get_own_property(target, key);
-        let Some(mut descriptor) = self.test262_foreign_completion(realm_id, result)? else {
-            return Ok(None);
-        };
-        for slot in [
-            &mut descriptor.value,
-            &mut descriptor.get,
-            &mut descriptor.set,
-        ] {
-            if let Some(value) = slot.take() {
-                *slot = Some(self.test262_import_foreign_value(realm_id, value)?);
-            }
-        }
-        Ok(Some(descriptor))
-    }
-
-    /// [[DefineOwnProperty]] of a foreign facade, performed in its Realm with
-    /// the descriptor's values transported across the membrane.
-    pub(in super::super) fn test262_foreign_define_own_property(
-        &mut self,
-        wrapper: ObjectId,
-        key: PropertyName,
-        mut descriptor: PropertyDescriptor,
-    ) -> Result<bool, RuntimeError> {
-        let (realm_id, _, _) = self.test262_foreign_target(wrapper);
-        for slot in [
-            &mut descriptor.value,
-            &mut descriptor.get,
-            &mut descriptor.set,
-        ] {
-            if let Some(value) = slot.take() {
-                *slot = Some(self.test262_export_foreign_value(realm_id, &value)?);
-            }
-        }
-        let (_, target, vm) = self.test262_foreign_target(wrapper);
-        let result = vm.object_define_own_property(target, key, descriptor);
-        self.test262_foreign_completion(realm_id, result)
     }
 
     /// [[Delete]] of a foreign facade, performed in its Realm.

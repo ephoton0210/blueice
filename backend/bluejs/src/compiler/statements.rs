@@ -4,9 +4,9 @@
 
 use super::*;
 
-/// The `(key, computed, value)` of a lowered public instance field
-/// (`this[key] = value`, see `class_instance_field`); a private field stays a
-/// private-name store and any other statement is not a field definition.
+/// The `(key, computed, value)` of a lowered public class field
+/// (`this[key] = value`, see `class_field_definition`); a private field stays
+/// a private-name store and any other statement is not a field definition.
 fn public_field_definition(statement: &Stmt) -> Option<(&Expr, bool, &Expr)> {
     let Stmt::Expr(Expr::Assign {
         op: AssignOp::Assign,
@@ -43,6 +43,57 @@ fn is_function_declaration(statement: &Stmt) -> bool {
 }
 
 impl Compiler {
+    /// DefineField for one lowered class field (see `class_field_definition`),
+    /// running inside the function that initializes it with the receiver as
+    /// `this`. A public field is created with CreateDataPropertyOrThrow,
+    /// never with [[Set]] -- it shadows an inherited setter and reaches
+    /// [[DefineOwnProperty]] (a Proxy trap, a deferred namespace, ...) -- and
+    /// a private one with PrivateFieldAdd. An anonymous function definition
+    /// initializer is named after the field.
+    fn class_field(&mut self, statement: &Stmt) -> Result<(), CompileError> {
+        if let Some((key, computed, value)) = public_field_definition(statement) {
+            self.emit_this()?;
+            match (key, computed) {
+                (Expr::Identifier(name), false) => {
+                    self.constant(Value::String(name.as_str().into()))?
+                }
+                (key, _) => self.expression(key)?,
+            }
+            let literal_name = match (key, computed) {
+                (Expr::Identifier(name), false) => Some(name.clone()),
+                (Expr::String(name), true) => name.to_utf8().ok(),
+                (Expr::Number(number), true) => crate::primitive::string(&Value::Number(*number))
+                    .ok()
+                    .and_then(|text| text.to_utf8().ok()),
+                _ => None,
+            };
+            if !is_anonymous_function_definition(value) {
+                self.expression(value)?;
+            } else if let Some(name) = literal_name {
+                self.expression_with_name(value, Some(&name))?;
+            } else {
+                // A computed key is only known when the field is defined.
+                self.expression(value)?;
+                self.emit(Opcode::SetFunctionName, 0)?;
+            }
+            self.emit(Opcode::DefineInstanceField, 0)?;
+            return Ok(());
+        }
+        let Stmt::Expr(Expr::Assign { target, value, .. }) = statement else {
+            return Err(CompileError::InvalidSyntax("invalid class field AST"));
+        };
+        let owner = self.private_member_reference(target)?;
+        let name = private_member_name(target).expect("private field target is a private member");
+        if name.starts_with('\0') {
+            // An auto-accessor's hidden storage has no name to give a function.
+            self.expression(value)?;
+        } else {
+            self.expression_with_name(value, Some(&format!("#{name}")))?;
+        }
+        self.emit(Opcode::PrivateFieldAdd, owner)?;
+        Ok(())
+    }
+
     pub(super) fn statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
         self.function_declarations(statements)?;
         self.statements_after_function_declarations(statements)
@@ -528,37 +579,21 @@ impl Compiler {
             }
             Stmt::FunctionDecl(_) | Stmt::ModuleDefaultFunction { .. } => {}
             Stmt::ClassDecl(class) => {
+                // The declaration's own binding is initialized once the whole
+                // class has been evaluated; the class body sees the separate
+                // immutable inner binding `class_expression` creates.
                 let slot = self
                     .resolve(class.name.as_deref().expect("class declaration has a name"))
                     .unwrap();
-                self.class_expression_with_binding(class, None, Some(slot))?;
+                self.class_expression(class, None)?;
+                self.emit(Opcode::InitializeBinding, slot)?;
             }
-            Stmt::ClassField(statement) => {
-                self.emit(Opcode::EnterClassFieldInitializer, 0)?;
-                match public_field_definition(statement) {
-                    // DefineField: a public instance field is created with
-                    // CreateDataPropertyOrThrow, never with [[Set]] -- it
-                    // shadows an inherited setter and reaches [[DefineOwnProperty]]
-                    // (a Proxy trap, a deferred namespace, ...).
-                    Some((key, computed, value)) => {
-                        self.expression(&Expr::This)?;
-                        match (key, computed) {
-                            (Expr::Identifier(name), false) => {
-                                self.constant(Value::String(name.as_str().into()))?
-                            }
-                            (key, _) => self.expression(key)?,
-                        }
-                        self.expression(value)?;
-                        self.emit(Opcode::DefineInstanceField, 0)?;
-                    }
-                    None => self.statement(statement, declarations_allowed)?,
-                }
-                self.emit(Opcode::LeaveClassFieldInitializer, 0)?;
-            }
+            Stmt::ClassField(statement) => self.class_field(statement)?,
             Stmt::ClassPrivateBrand(binding) => {
                 let slot = self.resolve(binding).ok_or(CompileError::InvalidSyntax(
                     "private brand binding is not available in this function",
                 ))?;
+                self.emit_this()?;
                 self.emit(Opcode::InitializePrivateBrand, slot)?;
             }
             Stmt::Expr(Expr::Class(class)) => {

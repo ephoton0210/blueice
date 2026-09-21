@@ -201,34 +201,6 @@ impl Vm {
                         )?;
                         self.stack.truncate(base + 1);
                     }
-                    Opcode::DefineClassStaticField => {
-                        let base = self.stack.len() - 4;
-                        let target = self.stack[base + 1].clone();
-                        let key = self.coerce_property_key(&self.stack[base + 2].clone())?;
-                        let initializer = self.stack[base + 3].clone();
-                        if let (Value::Object(target), Value::Object(function)) =
-                            (&target, &initializer)
-                        {
-                            self.with_roots(|heap| heap.set_closure_home(*function, *target))?;
-                        }
-                        let value =
-                            self.call_native(initializer, target.clone(), Vec::new(), false)?;
-                        let Value::Object(target) = target else {
-                            unreachable!("class fields target the constructor")
-                        };
-                        if !self.with_roots(|heap| {
-                            heap.define_own_property(
-                                target,
-                                key,
-                                PropertyDescriptor::data(value, true, true, true),
-                            )
-                        })? {
-                            return Err(RuntimeError::TypeError(
-                                "cannot define class field".into(),
-                            ));
-                        }
-                        self.stack.truncate(base + 1);
-                    }
                     Opcode::DefineInstanceField => {
                         // The receiver and value stay on the operand stack (and
                         // so rooted) until the definition has completed.
@@ -252,34 +224,39 @@ impl Vm {
                         }
                         self.stack.truncate(base);
                     }
-                    Opcode::DefinePrivateStaticField => {
-                        let base = self.stack.len() - 4;
-                        let target = self.stack[base + 1].clone();
-                        let name = match self.stack[base + 2].clone() {
+                    Opcode::PrivateFieldAdd => {
+                        // The receiver, name and value stay rooted on the
+                        // operand stack until the field has been added.
+                        let base = self.stack.len() - 3;
+                        let receiver = self.stack[base].clone();
+                        let name = match self.stack[base + 1].clone() {
                             Value::String(name) => name,
-                            _ => unreachable!("compiler emits a private-name string"),
+                            _ => unreachable!("compiler emits a string private name"),
                         };
-                        let initializer = self.stack[base + 3].clone();
-                        if let (Value::Object(target), Value::Object(function)) =
-                            (&target, &initializer)
-                        {
-                            self.with_roots(|heap| heap.set_closure_home(*function, *target))?;
-                        }
-                        let value =
-                            self.call_native(initializer, target.clone(), Vec::new(), false)?;
-                        let Value::Object(target) = target else {
-                            unreachable!("class fields target the constructor")
-                        };
-                        if !self.object_is_extensible(target)? {
-                            return Err(RuntimeError::TypeError(
-                                "cannot add a private element to a non-extensible object".into(),
-                            ));
-                        }
-                        self.with_roots(|heap| heap.set_private_slot(target, target, name, value))?;
-                        self.stack.truncate(base + 1);
+                        let value = self.stack[base + 2].clone();
+                        let owner = self
+                            .binding_value(operand)?
+                            .and_then(|value| value.object_id())
+                            .ok_or_else(|| {
+                                RuntimeError::TypeError(
+                                    "private elements are not available in this function".into(),
+                                )
+                            })?;
+                        self.private_field_add(&receiver, owner, name, value)?;
+                        self.stack.truncate(base);
                     }
                     Opcode::SetClassHome => self.set_class_home()?,
                     Opcode::SetClassHeritage => self.set_class_heritage()?,
+                    Opcode::SetClassFields => self.set_class_fields()?,
+                    Opcode::InitializeInstanceElements => {
+                        // `F, result`: run F's [[Fields]] against the value
+                        // super() constructed, then drop F beneath it.
+                        let base = self.stack.len() - 2;
+                        let (constructor, result) =
+                            (self.stack[base].clone(), self.stack[base + 1].clone());
+                        self.initialize_instance_elements(&constructor, &result)?;
+                        self.stack.remove(base);
+                    }
                     Opcode::InitializePrivateBrand => {
                         let owner = self
                             .binding_value(operand)?
@@ -289,17 +266,22 @@ impl Vm {
                                     "private elements are not available in this function".into(),
                                 )
                             })?;
-                        let receiver = self.this.object_id().ok_or_else(|| {
+                        let receiver = self.pop().object_id().ok_or_else(|| {
                             RuntimeError::TypeError(
                                 "private fields require an object receiver".into(),
                             )
                         })?;
-                        // PrivateMethodOrAccessorAdd / PrivateFieldAdd: an
-                        // object that is no longer extensible cannot gain a
-                        // private element (`nonextensible-applies-to-private`).
-                        if !self.heap.has_private_brand(receiver, owner)?
-                            && !self.object_is_extensible(receiver)?
-                        {
+                        // PrivateMethodOrAccessorAdd: installing the same
+                        // methods twice (a constructor returning an already
+                        // initialized object) is a TypeError, and so is adding
+                        // one to an object that is no longer extensible
+                        // (`nonextensible-applies-to-private`).
+                        if self.heap.has_private_brand(receiver, owner)? {
+                            return Err(RuntimeError::TypeError(
+                                "private methods are already installed on this object".into(),
+                            ));
+                        }
+                        if !self.object_is_extensible(receiver)? {
                             return Err(RuntimeError::TypeError(
                                 "cannot add a private element to a non-extensible object".into(),
                             ));
@@ -320,6 +302,15 @@ impl Vm {
                         self.private_set(&receiver, owner, name, value.clone())?;
                         self.stack.push(value);
                     }
+                    Opcode::PrivateSetLeaf => {
+                        let (receiver, owner, name) = self.private_reference(operand)?;
+                        let value = self
+                            .stack
+                            .last()
+                            .expect("the destructured value is on the stack")
+                            .clone();
+                        self.private_set(&receiver, owner, name, value)?;
+                    }
                     Opcode::PrivateIn => {
                         let (receiver, owner, _name) = self.private_reference(operand)?;
                         let object = receiver.object_id().ok_or_else(|| {
@@ -328,62 +319,120 @@ impl Vm {
                         self.stack
                             .push(Value::Bool(self.heap.has_private_brand(object, owner)?));
                     }
+                    Opcode::SuperBase => {
+                        let base = self.super_base()?;
+                        self.stack.push(base);
+                    }
                     Opcode::SuperGet | Opcode::SuperGetMethod => {
-                        let key_value = self.pop();
-                        let key = self.coerce_property_key(&key_value)?;
-                        let value = self.super_get(&key)?;
+                        // The Reference operands stay on the stack (rooted)
+                        // until the property read, and any getter, is done.
+                        let base = self.stack.len() - 3;
+                        let (target, key_value, this) = (
+                            self.stack[base].clone(),
+                            self.stack[base + 1].clone(),
+                            self.stack[base + 2].clone(),
+                        );
+                        let value = self.super_get(&target, &key_value, &this)?;
                         self.check_string(&value)?;
+                        self.stack.truncate(base);
                         self.stack.push(value);
                         if instruction.opcode == Opcode::SuperGetMethod {
-                            self.stack.push(self.this.clone());
+                            self.stack.push(this);
                         }
                     }
                     Opcode::SuperSet => {
-                        let value = self.pop();
-                        let key_value = self.pop();
-                        let key = self.coerce_property_key(&key_value)?;
-                        self.super_set(&key, &value)?;
+                        // Operand 0: `base, key, value, this`; operand 1 (a
+                        // destructuring leaf): `value, base, key, this`.
+                        let base = self.stack.len() - 4;
+                        let (target, key_value, value) = if operand == 0 {
+                            (
+                                self.stack[base].clone(),
+                                self.stack[base + 1].clone(),
+                                self.stack[base + 2].clone(),
+                            )
+                        } else {
+                            (
+                                self.stack[base + 1].clone(),
+                                self.stack[base + 2].clone(),
+                                self.stack[base].clone(),
+                            )
+                        };
+                        let this = self.stack[base + 3].clone();
+                        self.super_set(&target, &key_value, &value, &this)?;
+                        self.stack.truncate(base);
                         self.stack.push(value);
                     }
                     Opcode::SuperUpdate => {
-                        let key_value = self.pop();
-                        let key = self.coerce_property_key(&key_value)?;
-                        let old_value = self.super_get(&key)?;
+                        let base = self.stack.len() - 3;
+                        let (target, key_value, this) = (
+                            self.stack[base].clone(),
+                            self.stack[base + 1].clone(),
+                            self.stack[base + 2].clone(),
+                        );
+                        // The compiler converted the key once already.
+                        let old_value = self.super_get(&target, &key_value, &this)?;
                         let (old, new) = self.numeric_step(&old_value, operand & 1 != 0)?;
-                        self.super_set(&key, &new)?;
+                        self.stack.push(new.clone());
+                        self.super_set(&target, &key_value, &new, &this)?;
+                        self.stack.truncate(base);
                         self.stack.push(if operand & 2 == 0 { old } else { new });
                     }
+                    Opcode::DeleteSuperProperty => {
+                        return Err(RuntimeError::ReferenceError(
+                            "cannot delete a super property".into(),
+                        ));
+                    }
+                    Opcode::ThisBinding => {
+                        let this = self.binding_value(operand)?.ok_or_else(|| {
+                            RuntimeError::ReferenceError(
+                                "this is uninitialized before super()".into(),
+                            )
+                        })?;
+                        self.stack.push(this);
+                    }
+                    Opcode::SuperConstructor => {
+                        let constructor = self.pop();
+                        let object = constructor
+                            .object_id()
+                            .expect("the derived constructor binding holds a function");
+                        let parent = self.object_get_prototype(object)?;
+                        self.stack.push(parent.map_or(Value::Null, Value::Object));
+                    }
                     Opcode::SuperCall | Opcode::SuperCallSpread | Opcode::SuperCallForward => {
-                        let args = if instruction.opcode == Opcode::SuperCall {
-                            let base = self.stack.len() - operand;
-                            let args = self.stack[base..].to_vec();
-                            self.stack.truncate(base);
-                            args
-                        } else if instruction.opcode == Opcode::SuperCallSpread {
-                            let arguments = self.pop();
-                            self.array_like_values(&arguments)?
-                        } else {
-                            self.arguments.clone()
+                        // `superCtor` sits below any arguments and stays
+                        // rooted on the stack through the construction.
+                        let (constructor_slot, args) = match instruction.opcode {
+                            Opcode::SuperCall => {
+                                let constructor_slot = self.stack.len() - operand - 1;
+                                (
+                                    constructor_slot,
+                                    self.stack[constructor_slot + 1..].to_vec(),
+                                )
+                            }
+                            Opcode::SuperCallSpread => {
+                                let arguments = self.stack[self.stack.len() - 1].clone();
+                                let constructor_slot = self.stack.len() - 2;
+                                (constructor_slot, self.array_like_values(&arguments)?)
+                            }
+                            _ => (self.stack.len() - 1, self.arguments.clone()),
                         };
-                        let value = self.super_call(args)?;
+                        let constructor = self.stack[constructor_slot].clone();
+                        let value = self.super_call(constructor, args)?;
+                        self.stack.truncate(constructor_slot);
                         self.stack.push(value);
                     }
-                    Opcode::EnterClassFieldInitializer => {
-                        self.class_field_initializer_depth += 1;
-                        // A field initializer is evaluated like a method
-                        // called without `new`: `new.target` is undefined in
-                        // it (and in arrows created there), not the class
-                        // being constructed. The saved value rides on the
-                        // operand stack, below the initializer's own values.
-                        let saved = std::mem::replace(&mut self.new_target, Value::Undefined);
-                        self.stack.push(saved);
-                    }
-                    Opcode::LeaveClassFieldInitializer => {
-                        self.class_field_initializer_depth = self
-                            .class_field_initializer_depth
-                            .checked_sub(1)
-                            .expect("compiler balances class field initializers");
-                        self.new_target = self.pop();
+                    Opcode::BindThisValue => {
+                        let value = self
+                            .stack
+                            .last()
+                            .expect("the constructed value is on the stack")
+                            .clone();
+                        if self.binding_value(operand)?.is_some() {
+                            return Err(RuntimeError::ReferenceError(
+                                "super() was already called".into(),
+                            ));
+                        }
+                        self.store_binding(operand, value)?;
                     }
                     Opcode::RegExpLiteral => {
                         let base = self.stack.len() - 2;
@@ -720,28 +769,21 @@ impl Vm {
                             if let Some(home) = self.home_object {
                                 self.with_roots(|heap| heap.set_closure_home(id, home))?;
                             }
-                            // A derived constructor's arrow may invoke `super()`.
-                            // Store its resolved superclass on the arrow closure;
-                            // the call frame then treats that closure as the
-                            // lexical derived-constructor context.
-                            if let Some(constructor) = self.class_constructor {
-                                if let Some(base) = self.heap.class_base(constructor)? {
-                                    self.with_roots(|heap| heap.set_class_base(id, base))?;
-                                }
-                            }
                         }
+                        // OrdinaryFunctionCreate's SetFunctionLength precedes
+                        // SetFunctionName, so `length` is the first own key.
                         self.define_data(
                             id,
-                            "name",
-                            Value::String(child.function_name.clone().into()),
+                            "length",
+                            Value::Number(child.function_length as f64),
                             false,
                             false,
                             true,
                         )?;
                         self.define_data(
                             id,
-                            "length",
-                            Value::Number(child.function_length as f64),
+                            "name",
+                            Value::String(child.function_name.clone().into()),
                             false,
                             false,
                             true,
@@ -798,15 +840,6 @@ impl Vm {
                         }
                     }
                     Opcode::This => {
-                        if self.this == Value::Undefined
-                            && self.class_constructor.is_some_and(|constructor| {
-                                self.heap.class_base(constructor).ok().flatten().is_some()
-                            })
-                        {
-                            return Err(RuntimeError::ReferenceError(
-                                "this is uninitialized before super()".into(),
-                            ));
-                        }
                         if self.this == Value::Undefined
                             && self.call_depth == 0
                             && !self.top_level_module

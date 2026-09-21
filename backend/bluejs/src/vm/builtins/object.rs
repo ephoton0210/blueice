@@ -14,6 +14,9 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        if self.heap.proxy(object)?.is_none() && self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_get_own_property(object, key);
+        }
         self.trigger_deferred_namespace(object, Some(key))?;
         // Intrinsic globals are lazily initialized, but reflective descriptor
         // operations must observe the same own properties as ordinary Get.
@@ -44,11 +47,6 @@ impl Vm {
         }
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_get_own_property(object, key);
-        }
-        // A foreign facade has no mirrored ordinary properties: every
-        // essential internal method runs in the object's own Realm.
-        if self.test262_foreign_reference(object).is_some() {
-            return self.test262_foreign_get_own_property(object, key);
         }
         self.heap
             .get_own_property_descriptor(object, key)
@@ -627,12 +625,6 @@ impl Vm {
                 .get("%Intl.Segmenter%")
                 .and_then(|constructor| self.heap.get(*constructor, "prototype").ok())
                 .and_then(|value| value.object_id());
-            let string_prototype = self.string_intrinsics()?.1;
-            let promise_prototype = self.promise_prototype()?;
-            let regexp_prototype = {
-                let regexp = self.regexp_global()?;
-                self.get_property(&regexp, &"prototype".into())?.object_id()
-            };
             let mut typed_array_intrinsic = None;
             for kind in [
                 TypedArrayKind::Int8,
@@ -711,18 +703,24 @@ impl Vm {
                 Some("Date")
             } else if default == self.base_iterator_prototype()? {
                 Some("Iterator")
-            } else if default == string_prototype {
+            } else if default == self.string_intrinsics()?.1 {
                 Some("String")
-            } else if default == promise_prototype {
+            } else if self.promise_prototype == Some(default) {
                 Some("Promise")
-            } else if regexp_prototype == Some(default) {
-                Some("RegExp")
-            } else if self.async_function_prototype == Some(default) {
-                Some("AsyncFunction")
             } else if self.generator_function_prototype == Some(default) {
                 Some("GeneratorFunction")
+            } else if self.async_function_prototype == Some(default) {
+                Some("AsyncFunction")
             } else if self.async_generator_function_prototype == Some(default) {
                 Some("AsyncGeneratorFunction")
+            } else if self.globals.get("RegExp").is_some_and(|constructor| {
+                self.heap
+                    .get(*constructor, "prototype")
+                    .ok()
+                    .and_then(|value| value.object_id())
+                    == Some(default)
+            }) {
+                Some("RegExp")
             } else {
                 None
             };
@@ -780,7 +778,7 @@ impl Vm {
         if let Some(bound) = self.heap.bound_function(*id)? {
             return Ok(bound.constructible);
         }
-        if let Some((code, _, _, _, _)) = self.heap.closure(*id)? {
+        if let Some((code, _, _, _)) = self.heap.closure(*id)? {
             return Ok(code.constructible);
         }
         Ok(matches!(

@@ -51,7 +51,6 @@ pub(super) struct ClosureCall {
     pub args: Vec<Value>,
     pub construct: bool,
     pub home: Option<ObjectId>,
-    pub class_base: Option<Value>,
     /// The with objects the function closes over (empty outside `with`).
     pub with_objects: Vec<Value>,
 }

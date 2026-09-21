@@ -159,9 +159,9 @@ impl Vm {
         radix: &Value,
     ) -> Result<Value, RuntimeError> {
         let string = self.coerce_string(value)?;
-        let Ok(string) = string.to_utf8() else {
-            return Ok(Value::Number(f64::NAN));
-        };
+        // A lone surrogate is not a digit, a sign or whitespace: it simply
+        // ends the numeric prefix, exactly as U+FFFD does.
+        let string = String::from_utf16_lossy(string.as_code_units());
         let mut input = string.trim_start_matches(primitive::whitespace);
         let negative = input.starts_with('-');
         if matches!(input.as_bytes().first(), Some(b'+' | b'-')) {
@@ -211,9 +211,9 @@ impl Vm {
     /// therefore stop after their leading decimal zero.
     pub(in super::super) fn parse_float(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         let string = self.coerce_string(value)?;
-        let Ok(input) = string.to_utf8() else {
-            return Ok(Value::Number(f64::NAN));
-        };
+        // A lone surrogate is not part of any numeric literal: it simply ends
+        // the prefix, exactly as U+FFFD does.
+        let input = String::from_utf16_lossy(string.as_code_units());
         let input = input.trim_start_matches(primitive::whitespace);
         let sign_end = usize::from(matches!(input.as_bytes().first(), Some(b'+' | b'-')));
         let negative = input.starts_with('-');

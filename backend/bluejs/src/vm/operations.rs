@@ -67,7 +67,9 @@ impl Vm {
             ));
         }
         let separator = native::argument(args, 0);
-        if !matches!(separator, Value::Null | Value::Undefined) {
+        // Only an Object argument may supply a `@@split` hook; a primitive
+        // must not observe one installed on its wrapper prototype.
+        if matches!(separator, Value::Object(_)) {
             let method = self.get_method(separator, &JsSymbol::well_known("split").into())?;
             if method != Value::Undefined {
                 return self.call_native(
@@ -133,7 +135,9 @@ impl Vm {
             ));
         }
         let search = native::argument(args, 0);
-        if !matches!(search, Value::Null | Value::Undefined) {
+        // Only an Object argument may supply a `@@replace` hook (and only an
+        // Object can be a RegExp): primitives are converted to strings.
+        if matches!(search, Value::Object(_)) {
             if all {
                 self.require_global_pattern(search)?;
             }

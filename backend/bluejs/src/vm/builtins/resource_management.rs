@@ -340,9 +340,7 @@ impl Vm {
             &[],
             &[],
             &[],
-            false,
-            false,
-            Default::default(),
+            crate::compiler::EvalContext::default(),
         )
         .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let helper = self.execute_eval(&code, Vec::new(), !code.strict)?;

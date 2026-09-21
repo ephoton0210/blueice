@@ -56,7 +56,6 @@ impl Vm {
             args,
             construct,
             home,
-            class_base,
             with_objects: closure_with_objects,
         } = call;
         if code.class_constructor && !construct {
@@ -94,6 +93,13 @@ impl Vm {
         } else {
             Value::Object(self.coerce_object(&receiver)?)
         };
+        if construct && code.class_constructor && !code.derived_constructor {
+            // A base class constructor's InitializeInstanceElements runs
+            // right after `this` is created, before the body (and even
+            // before its parameters are evaluated). A derived constructor's
+            // runs when its `super()` returns.
+            self.initialize_instance_elements(&callee, &receiver)?;
+        }
         if code.generator {
             let async_generator = code.async_function;
             let default_prototype = if code.async_function {
@@ -207,23 +213,9 @@ impl Vm {
         let active_scope_slots = std::mem::take(&mut self.active_scope_slots);
         let strict = std::mem::replace(&mut self.strict, code.strict);
         let home_object = std::mem::replace(&mut self.home_object, home);
-        let next_field_initializer_depth = if code.arrow {
-            self.class_field_initializer_depth
-        } else {
-            0
-        };
-        let class_field_initializer_depth = std::mem::replace(
-            &mut self.class_field_initializer_depth,
-            next_field_initializer_depth,
-        );
-        let derived_constructor_arrow = code.arrow && class_base.is_some();
-        let class_constructor = std::mem::replace(
-            &mut self.class_constructor,
-            (code.class_constructor || derived_constructor_arrow).then(|| {
-                callee
-                    .object_id()
-                    .expect("class and arrow closures are objects")
-            }),
+        let class_field_initializer = std::mem::replace(
+            &mut self.class_field_initializer,
+            code.class_field_initializer,
         );
         let pending_completions = self.pending_completions.clone();
         let completion_saves = self.completion_saves.clone();
@@ -294,7 +286,17 @@ impl Vm {
         if running.is_some() {
             self.call_stack.pop();
         }
-        let constructed = self.this.clone();
+        // A derived constructor's `this` lives in its hidden binding (which
+        // `super()` in the constructor or in a nested arrow or eval bound);
+        // every other constructor's is the receiver allocated at entry.
+        let constructed = match code.derived_this_slot {
+            Some(slot) => self
+                .binding_value(slot as usize)
+                .ok()
+                .flatten()
+                .unwrap_or(Value::Undefined),
+            None => self.this.clone(),
+        };
         let suspended = suspended_parent_stack.is_some();
         if let Some(stack) = suspended_parent_stack {
             self.stack = stack;
@@ -326,14 +328,7 @@ impl Vm {
         self.script_global_slots = script_global_slots;
         self.variable_scope = variable_scope;
         self.variable_scope_lexicals = variable_scope_lexicals;
-        // `super()` in a derived-constructor arrow initializes the enclosing
-        // constructor's lexical `this` binding. Nested arrows propagate that
-        // initialized receiver one frame at a time on return.
-        self.this = if derived_constructor_arrow && matches!(constructed, Value::Object(_)) {
-            constructed.clone()
-        } else {
-            this
-        };
+        self.this = this;
         self.arguments = arguments;
         self.callee = frame_callee;
         self.completion = completion;
@@ -342,8 +337,7 @@ impl Vm {
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
         self.home_object = home_object;
-        self.class_constructor = class_constructor;
-        self.class_field_initializer_depth = class_field_initializer_depth;
+        self.class_field_initializer = class_field_initializer;
         self.stack.truncate(base - 1);
         if let Some((state, awaited)) = suspended_async {
             self.suspend_async_await(state, awaited)?;

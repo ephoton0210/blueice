@@ -144,16 +144,14 @@ fn compiler_reports_public_ast_boundaries_without_panicking() {
         compile(&expression_program(generator)),
         Err(CompileError::InvalidSyntax(_))
     ));
-    let invalid_member = Expr::DestructureAssign {
+    // A super property is a valid destructuring target. Whether `super` is
+    // available at all is a property of the enclosing function, checked when
+    // the code runs, so this AST compiles.
+    let super_target = Expr::DestructureAssign {
         pattern: AssignmentPattern::Target(Box::new(super_member(identifier("value"), false))),
         value: Box::new(Expr::Number(1.0)),
     };
-    assert!(matches!(
-        compile(&expression_program(invalid_member)),
-        Err(CompileError::InvalidSyntax(
-            "super member requires a dedicated operation"
-        ))
-    ));
+    assert!(compile(&expression_program(super_target)).is_ok());
     assert!(matches!(
         compile(&expression_program(super_member(Expr::Number(1.0), false))),
         Err(CompileError::InvalidSyntax(
