@@ -149,6 +149,8 @@ impl Compiler {
                         | "encodeURIComponent"
                         | "decodeURI"
                         | "decodeURIComponent"
+                        | "escape"
+                        | "unescape"
                         | "JSON"
                         | "RangeError"
                         | "SyntaxError"
@@ -202,6 +204,21 @@ impl Compiler {
                                 "cannot delete a binding in strict mode",
                             ));
                         }
+                        // Inside `with` the with objects are consulted first.
+                        // A hit deletes the property; otherwise the fallback
+                        // below handles the enclosing binding.
+                        let with_end = if self.with_depth != 0
+                            && self.resolve_inside_innermost_with(name).is_none()
+                        {
+                            let index = self.name_constant(name)?;
+                            self.emit(Opcode::DeleteWithBinding, index)?;
+                            self.emit(Opcode::Dup, 0)?;
+                            let found = self.emit(Opcode::JumpIfNotNullish, 0)?;
+                            self.emit(Opcode::Pop, 0)?;
+                            Some(found)
+                        } else {
+                            None
+                        };
                         if let Some(slot) = self.resolve(name) {
                             if self.bytecode.dynamic_eval_slots.contains(&slot) {
                                 self.emit(Opcode::DeleteDynamicBinding, slot)?;
@@ -215,6 +232,9 @@ impl Compiler {
                                 .constants
                                 .push(Value::String(name.clone().into()));
                             self.emit(Opcode::DeleteUnboundName, index)?;
+                        }
+                        if let Some(found) = with_end {
+                            self.patch(found, self.offset()?);
                         }
                     } else {
                         self.expression(arg)?;
@@ -240,7 +260,7 @@ impl Compiler {
                     self.emit(Opcode::WithGetOrUndefined, index)?;
                     self.emit(opcode, 0)?;
                 } else if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Date" | "Function" | "Proxy" | "Map" | "Set" | "WeakMap" | "WeakSet" | "WeakRef" | "FinalizationRegistry" | "DisposableStack" | "AsyncDisposableStack" | "SuppressedError" | "ShadowRealm" | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float16Array" | "Float32Array" | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "JSON"))
+                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Date" | "Function" | "Proxy" | "Map" | "Set" | "WeakMap" | "WeakSet" | "WeakRef" | "FinalizationRegistry" | "DisposableStack" | "AsyncDisposableStack" | "SuppressedError" | "ShadowRealm" | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float16Array" | "Float32Array" | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "escape" | "unescape" | "JSON"))
                 {
                     let Expr::Identifier(name) = &**arg else {
                         unreachable!()
@@ -358,10 +378,25 @@ impl Compiler {
                     {
                         self.emit(Opcode::Dup, 0)?;
                         self.property_key(key)?;
-                        self.function(function, false)?;
+                        self.function_named_with(
+                            function,
+                            false,
+                            None,
+                            false,
+                            FunctionCompileOptions::object_method(),
+                        )?;
                         std::rc::Rc::get_mut(self.bytecode.functions.last_mut().unwrap())
                             .unwrap()
                             .constructible = false;
+                        if matches!(key, PropertyKey::Computed(_)) {
+                            // The parser could only name a literal key.
+                            let prefix = match property {
+                                ObjectProp::Accessor { getter: true, .. } => 1,
+                                ObjectProp::Accessor { .. } => 2,
+                                _ => 0,
+                            };
+                            self.emit(Opcode::SetFunctionName, prefix)?;
+                        }
                         if let ObjectProp::Accessor { getter, .. } = property {
                             self.emit(Opcode::DefineAccessor, u32::from(!getter))?;
                         } else {
@@ -397,7 +432,22 @@ impl Compiler {
                         self.emit(Opcode::SetLiteralPrototype, 0)?;
                     } else {
                         self.property_key(key)?;
-                        self.expression(value)?;
+                        match key {
+                            // PropertyDefinition : PropertyName : AssignmentExpression
+                            // names an anonymous function definition after
+                            // its key: statically for a literal key, at run
+                            // time for a computed one.
+                            PropertyKey::Computed(_) => {
+                                self.expression(value)?;
+                                if is_anonymous_function_definition(value) {
+                                    self.emit(Opcode::SetFunctionName, 0)?;
+                                }
+                            }
+                            literal => {
+                                let name = literal_property_key_name(literal);
+                                self.expression_with_name(value, name.as_deref())?;
+                            }
+                        }
                         self.emit(Opcode::DefineData, 0)?;
                         self.emit(Opcode::Pop, 0)?;
                     }
@@ -442,6 +492,15 @@ impl Compiler {
             }
             Expr::Update { op, arg, prefix } => {
                 if let Expr::Identifier(name) = &**arg {
+                    if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
+                        let index = self.name_constant(name)?;
+                        self.emit(Opcode::ResolveWithReference, index)?;
+                        self.emit(
+                            Opcode::UpdateWithReference,
+                            u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1),
+                        )?;
+                        return Ok(());
+                    }
                     let binding = self.resolve(name);
                     let name_index = if binding.is_none() {
                         Some(self.name_constant(name)?)
@@ -583,6 +642,17 @@ impl Compiler {
                         self.member_reference(callee)?;
                         self.emit(Opcode::GetMethod, 0)?;
                     }
+                } else if !construct
+                    && self.with_depth != 0
+                    && matches!(&**callee, Expr::Identifier(name) if self.resolve_inside_innermost_with(name).is_none())
+                {
+                    // `f()` inside `with`: a function found on a with object
+                    // is called with that object as `this` (WithBaseObject).
+                    let Expr::Identifier(name) = &**callee else {
+                        unreachable!()
+                    };
+                    let index = self.name_constant(name)?;
+                    self.emit(Opcode::WithGetMethod, index)?;
                 } else {
                     self.expression(callee)?;
                     self.constant(Value::Undefined)?;

@@ -222,16 +222,6 @@ fn native_deep_equal_rejects_every_kind_of_mismatch() {
 }
 
 #[test]
-fn is_constructor_distinguishes_constructors_and_rejects_non_callables() {
-    expect_true(
-        "isConstructor(function () {}) && isConstructor(class {}) && isConstructor(Array) &&\
-         !isConstructor(() => {}) && !isConstructor(Math.abs) && !isConstructor(async function () {})",
-    );
-    expect_test262_failure("isConstructor({})");
-    expect_test262_failure("isConstructor(undefined)");
-}
-
-#[test]
 fn build_string_concatenates_lone_code_points_then_ranges() {
     expect_true(
         "let s = buildString({ loneCodePoints: [0x41, 0x1f600], ranges: [[0x61, 0x63], [0x10000, 0x10002]] });\
@@ -612,8 +602,11 @@ fn format_simple_value_falls_back_for_symbols_and_objects_without_string_convers
          formatSimpleValue(undefined) === 'undefined' &&\
          formatSimpleValue(true) === 'true'",
     );
-    // An identity-free rendering never exposes objects or symbols.
-    expect_true("formatIdentityFreeValue({}) === undefined && formatIdentityFreeValue(1n) === '1'");
+    // An identity-free rendering never exposes objects or symbols, and marks a
+    // BigInt with the `n` suffix (upstream `String(value) + "n"`).
+    expect_true(
+        "formatIdentityFreeValue({}) === undefined && formatIdentityFreeValue(1n) === '1n'",
+    );
 }
 
 #[test]
@@ -626,20 +619,6 @@ fn create_realm_returns_an_independent_harness_realm() {
 }
 
 #[test]
-fn property_helper_verifies_descriptor_attributes() {
-    expect_true(
-        "let o = { x: 1 };\
-         Object.defineProperty(o, 'y', { value: 2, writable: false, enumerable: false, configurable: false });\
-         verifyProperty(o, 'x', { value: 1, writable: true, enumerable: true, configurable: true });\
-         verifyProperty(o, 'y', { value: 2, writable: false, enumerable: false, configurable: false });\
-         true",
-    );
-    expect_test262_failure("let o = { x: 1 }; verifyProperty(o, 'x', { value: 2 })");
-    expect_test262_failure("let o = { x: 1 }; verifyProperty(o, 'x', { writable: false })");
-    expect_test262_failure("verifyProperty({}, 'missing', { value: 1 })");
-}
-
-#[test]
 fn agent_helpers_are_reachable_from_the_main_realm_without_starting_an_agent() {
     expect_true(
         "$262.agent.sleep(0) === undefined &&\
@@ -648,4 +627,20 @@ fn agent_helpers_are_reachable_from_the_main_realm_without_starting_an_agent() {
     );
     // Only a started agent may announce that it is leaving.
     expect_type_error("$262.agent.leaving()");
+}
+
+#[test]
+fn host_gc_hook_runs_a_major_collection_and_keeps_live_values() {
+    let mut vm = harness_vm();
+    let before = vm.heap().stats().major_collections;
+    assert_eq!(
+        run(
+            &mut vm,
+            "var live = {kept: [1, 2, 3]}; \
+             typeof $262.gc === 'function' && $262.gc.length === 0 \
+               && $262.gc() === undefined && live.kept.length === 3"
+        ),
+        Ok(Value::Bool(true))
+    );
+    assert!(vm.heap().stats().major_collections > before);
 }

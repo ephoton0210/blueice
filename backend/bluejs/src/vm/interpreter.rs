@@ -43,6 +43,12 @@ impl Vm {
             pc += instruction.opcode.width();
             let outcome: Result<Option<Completion>, RuntimeError> = (|| {
                 match instruction.opcode {
+                    Opcode::SetFunctionName => {
+                        let len = self.stack.len();
+                        let (key, function) =
+                            (self.stack[len - 2].clone(), self.stack[len - 1].clone());
+                        self.set_function_name_from_key(&function, &key, operand as u32)?;
+                    }
                     Opcode::DefineData
                     | Opcode::DefineAccessor
                     | Opcode::DefineMethod
@@ -362,12 +368,22 @@ impl Vm {
                         let value = self.super_call(args)?;
                         self.stack.push(value);
                     }
-                    Opcode::EnterClassFieldInitializer => self.class_field_initializer_depth += 1,
+                    Opcode::EnterClassFieldInitializer => {
+                        self.class_field_initializer_depth += 1;
+                        // A field initializer is evaluated like a method
+                        // called without `new`: `new.target` is undefined in
+                        // it (and in arrows created there), not the class
+                        // being constructed. The saved value rides on the
+                        // operand stack, below the initializer's own values.
+                        let saved = std::mem::replace(&mut self.new_target, Value::Undefined);
+                        self.stack.push(saved);
+                    }
                     Opcode::LeaveClassFieldInitializer => {
                         self.class_field_initializer_depth = self
                             .class_field_initializer_depth
                             .checked_sub(1)
                             .expect("compiler balances class field initializers");
+                        self.new_target = self.pop();
                     }
                     Opcode::RegExpLiteral => {
                         let base = self.stack.len() - 2;
@@ -686,6 +702,16 @@ impl Vm {
                             self.module_closure_referrers.insert(id, module.clone());
                         }
                         self.stack.push(Value::Object(id));
+                        if child.arrow && self.new_target != Value::Undefined {
+                            let new_target = self.new_target.clone();
+                            self.with_roots(|heap| heap.set_closure_new_target(id, new_target))?;
+                        }
+                        if child.with_depth != 0 {
+                            let with_objects = self.with_objects.clone();
+                            self.with_roots(|heap| {
+                                heap.set_closure_with_objects(id, with_objects)
+                            })?;
+                        }
                         // Arrow functions inherit their containing function's
                         // [[HomeObject]] together with lexical `this`.  Keeping
                         // the new closure on the operand stack first makes it a
@@ -884,6 +910,19 @@ impl Vm {
                         let value = self.with_get(&name, fallback)?;
                         self.stack.push(value);
                     }
+                    Opcode::WithGetMethod => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!("compiler emits a name")
+                        };
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        let fallback = self
+                            .active_binding_slot(&name)
+                            .map(|slot| self.eval_aware_binding_value(slot, &name))
+                            .transpose()?;
+                        let (value, receiver) = self.with_get_method(&name, fallback)?;
+                        self.stack.push(value);
+                        self.stack.push(receiver);
+                    }
                     Opcode::WithGetOrUndefined => {
                         let Value::String(name) = &code.constants[operand] else {
                             unreachable!("compiler emits a name")
@@ -940,31 +979,7 @@ impl Vm {
                     Opcode::LoadWithReference => {
                         let marker = self.pop();
                         let target = self.pop();
-                        let value = match (&target, &marker) {
-                            (Value::Object(object), Value::String(name)) => {
-                                self.get_property(&Value::Object(*object), &name.clone().into())?
-                            }
-                            (Value::Number(slot), Value::Null)
-                                if slot.is_finite()
-                                    && *slot >= 0.0
-                                    && slot.fract() == 0.0
-                                    && (*slot as usize) < code.bindings.len() =>
-                            {
-                                let slot = *slot as usize;
-                                self.eval_aware_binding_value(slot, &code.bindings[slot].name)?
-                                    .ok_or_else(|| {
-                                        RuntimeError::ReferenceError(
-                                            code.bindings[slot].name.clone(),
-                                        )
-                                    })?
-                            }
-                            (Value::Undefined, Value::String(name)) => {
-                                return Err(RuntimeError::ReferenceError(
-                                    name.to_utf8().expect("compiler emits a UTF-8 identifier"),
-                                ));
-                            }
-                            _ => unreachable!("compiler emits a valid with reference"),
-                        };
+                        let value = self.load_with_reference(code, &target, &marker)?;
                         // Preserve the original Reference for PutValue after
                         // the RHS has run. `get_property` may invoke a getter,
                         // so stack-resident values are the GC roots here.
@@ -976,45 +991,23 @@ impl Vm {
                         let value = self.pop();
                         let marker = self.pop();
                         let target = self.pop();
-                        match (target, marker) {
-                            (Value::Object(object), Value::String(name)) => {
-                                self.set_property(&Value::Object(object), &name.into(), &value)?;
-                            }
-                            (Value::Number(slot), Value::Null)
-                                if slot.is_finite()
-                                    && slot >= 0.0
-                                    && slot.fract() == 0.0
-                                    && (slot as usize) < code.bindings.len() =>
-                            {
-                                let slot = slot as usize;
-                                let name = &code.bindings[slot].name;
-                                if !self.store_dynamic_eval_shadowing_binding(
-                                    slot,
-                                    name,
-                                    value.clone(),
-                                )? {
-                                    if self.binding_value(slot)?.is_none() {
-                                        return Err(RuntimeError::ReferenceError(name.clone()));
-                                    }
-                                    if binding_allows_assignment(&code.bindings[slot], code.strict)?
-                                    {
-                                        self.store_binding(slot, value.clone())?;
-                                    }
-                                }
-                            }
-                            (Value::Undefined, Value::String(name)) => {
-                                let name =
-                                    name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                                if !self.set_dynamic_eval_binding(&name, value.clone())?
-                                    && !self.set_global_binding(&name, value.clone())?
-                                {
-                                    let global = self.global("globalThis")?;
-                                    self.set_property(&global, &name.into(), &value)?;
-                                }
-                            }
-                            _ => unreachable!("compiler emits a valid with reference"),
-                        }
+                        self.store_with_reference(code, target, marker, &value)?;
                         self.stack.push(value);
+                    }
+                    Opcode::UpdateWithReference => {
+                        // `name++` / `--name` on a Reference resolved before
+                        // the read: GetValue, ToNumeric, then PutValue on that
+                        // same Reference. Operand bit 0: decrement; bit 1:
+                        // prefix (the result is the new value, else the old).
+                        let marker = self.pop();
+                        let target = self.pop();
+                        self.stack.push(target.clone());
+                        self.stack.push(marker.clone());
+                        let current = self.load_with_reference(code, &target, &marker)?;
+                        let (old, new) = self.numeric_step(&current, operand & 1 != 0)?;
+                        self.store_with_reference(code, target, marker, &new)?;
+                        self.stack.truncate(self.stack.len() - 2);
+                        self.stack.push(if operand & 2 == 0 { old } else { new });
                     }
                     Opcode::Global => {
                         let Value::String(name) = &code.constants[operand] else {
@@ -1191,10 +1184,9 @@ impl Vm {
                             let global = self.global("globalThis")?;
                             let global_id = global.object_id().expect("globalThis is an object");
                             let key: PropertyName = name.as_str().into();
-                            // Lazily created globals (`NaN`, `Infinity`,
-                            // `undefined`, constructors...) exist as
-                            // properties once looked up.
-                            self.materialize_global_object_property(global_id, &key)?;
+                            // Standard globals (`NaN`, `undefined`, ...) are
+                            // created lazily; the name resolves once made.
+                            self.materialize_lexical_global(global_id, &name)?;
                             if code.strict && !self.has_property(global_id, &key)? {
                                 return Err(RuntimeError::ReferenceError(name));
                             }
@@ -1206,17 +1198,26 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let has_eval_binding = self.dynamic_eval_bindings.contains_key(&name)
-                            || self
-                                .dynamic_eval_outer_bindings
-                                .iter()
-                                .any(|bindings| bindings.contains_key(&name));
-                        let deleted = if has_eval_binding {
-                            self.delete_dynamic_eval_binding(&name)?
-                        } else {
-                            self.delete_unbound_global(&name)?
-                        };
+                        let deleted = self.delete_unbound_name(&name)?;
                         self.stack.push(Value::Bool(deleted));
+                    }
+                    Opcode::DeleteWithBinding => {
+                        let Value::String(name) = &code.constants[operand] else {
+                            unreachable!("compiler emits a name")
+                        };
+                        let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                        let mut outcome = Value::Undefined;
+                        for object in self.with_objects.clone().into_iter().rev() {
+                            if self.with_has_binding(&object, &name)? {
+                                let Value::Object(id) = object else {
+                                    unreachable!("with objects are objects")
+                                };
+                                outcome =
+                                    Value::Bool(self.object_delete(id, &name.as_str().into())?);
+                                break;
+                            }
+                        }
+                        self.stack.push(outcome);
                     }
                     Opcode::DeleteDynamicBinding => {
                         let name = &code.bindings[operand].name;

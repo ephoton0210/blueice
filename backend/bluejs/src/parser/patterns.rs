@@ -5,14 +5,21 @@
 use super::*;
 
 impl Parser {
-    fn validate_binding_identifier(&self, name: &str, escaped: bool) -> Result<(), ParseError> {
+    pub(super) fn validate_binding_identifier(
+        &self,
+        name: &str,
+        escaped: bool,
+    ) -> Result<(), ParseError> {
         // These are ReservedWords which the tokenizer preserves as
-        // IdentifierName tokens because they remain valid property names. A
+        // IdentifierName tokens because they remain valid property names,
+        // together with every keyword spelled with a Unicode escape (which
+        // the tokenizer also returns as an IdentifierName). A
         // BindingIdentifier may not use them, escaped or otherwise.
         if matches!(
             name,
             "class" | "debugger" | "enum" | "export" | "extends" | "import" | "super" | "with"
-        ) {
+        ) || Keyword::from_str(name).is_some_and(|keyword| keyword != Keyword::Let)
+        {
             return Err(self.syntax_error("a reserved word cannot be used as a binding identifier"));
         }
         if name == "await" && (self.async_depth != 0 || self.module_await) {
@@ -213,6 +220,7 @@ impl Parser {
                 Ok(PropertyKey::String(s))
             }
             Token::Number(n) => {
+                self.reject_legacy_octal_escape()?;
                 self.advance();
                 Ok(PropertyKey::Number(n))
             }
@@ -226,7 +234,7 @@ impl Parser {
             }
             Token::Punct(Punct::LBracket) => {
                 self.advance();
-                let expr = self.parse_assignment()?;
+                let expr = self.with_in_allowed(Self::parse_assignment)?;
                 self.expect_punct(Punct::RBracket)?;
                 Ok(PropertyKey::Computed(Box::new(expr)))
             }

@@ -296,6 +296,25 @@ impl Vm {
         }
     }
 
+    /// Annex B.2.1 `escape` / `unescape`.
+    pub(in super::super) fn escape_string(
+        &mut self,
+        value: &Value,
+        decode: bool,
+    ) -> Result<Value, RuntimeError> {
+        let string = self.coerce_string(value)?;
+        let limit = self.config.max_string_bytes;
+        let result = if decode {
+            native::unescape(&string, limit)
+        } else {
+            native::escape(&string, limit)
+        };
+        match result {
+            Ok(result) => Ok(Value::String(result)),
+            Err(error) => self.uri_coding_error(error),
+        }
+    }
+
     pub(in super::super) fn array_length_value(
         &mut self,
         value: &Value,

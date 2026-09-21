@@ -496,6 +496,10 @@ pub(super) struct DisposableResource {
     // depends on this field and this implementation's does not).
     #[allow(dead_code)]
     pub(super) hint: DisposeHint,
+    /// An `async-dispose` resource whose method is the sync `@@dispose`
+    /// fallback: `Dispose` still awaits, but the method's result is
+    /// discarded rather than awaited (its promise may never settle).
+    pub(super) sync_fallback: bool,
 }
 
 /// The DisposeCapability Record backing one `DisposableStack`/
@@ -733,6 +737,8 @@ pub struct Vm {
     /// `%TypedArray%` and `%TypedArray%.prototype`, kept outside the global
     /// object but permanently reachable from every concrete constructor.
     typed_array_intrinsics: Option<(ObjectId, ObjectId)>,
+    /// Annex B legacy static properties of this realm's `%RegExp%`.
+    regexp_legacy: crate::regexp::LegacyStatics,
     result_root: Option<RootId>,
     stack: Vec<Value>,
     // None is a lexical binding's uninitialized state, never JS undefined.
@@ -894,6 +900,11 @@ pub struct Vm {
     // constructor bytecode.
     class_field_initializer_depth: u32,
     iterator_base: Option<ObjectId>,
+    /// The lazily installed `%Iterator.prototype%` helpers (`flatMap`,
+    /// `chunks`, `windows`) that have already been offered to the realm. Each
+    /// is installed at most once, so deleting one never lets a later
+    /// observation put a fresh copy back.
+    iterator_helpers_installed: Vec<&'static str>,
     /// `%WrapForValidIteratorPrototype%`, shared by the iterator wrappers
     /// created by `Iterator.from`.
     iterator_wrapper_prototype: Option<ObjectId>,
@@ -1011,6 +1022,7 @@ impl Vm {
             array_prototype,
             string_intrinsics: None,
             typed_array_intrinsics: None,
+            regexp_legacy: crate::regexp::LegacyStatics::default(),
             result_root: None,
             stack: Vec::new(),
             bindings: Vec::new(),
@@ -1082,6 +1094,7 @@ impl Vm {
             class_constructor: None,
             class_field_initializer_depth: 0,
             iterator_base: None,
+            iterator_helpers_installed: Vec::new(),
             iterator_wrapper_prototype: None,
             iterator_helper_prototype: None,
             array_iterator_prototype: None,
@@ -2016,10 +2029,11 @@ impl Vm {
         } else {
             false
         };
-        let target = if arrow {
-            self.new_target.clone()
-        } else {
-            target
+        // The captured value, not the caller's: an arrow reads the
+        // `new.target` of the function it was created in.
+        let target = match (arrow, callee.object_id()) {
+            (true, Some(id)) => self.heap.closure_new_target(id)?,
+            _ => target,
         };
         self.charge_step()?;
         let base = self.stack.len();
@@ -2110,6 +2124,7 @@ impl Vm {
         if let Value::Object(id) = callee {
             if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
+                let with_objects = self.heap.closure_with_objects(id)?;
                 return self.call_closure(builtins::ClosureCall {
                     code,
                     captures,
@@ -2119,6 +2134,7 @@ impl Vm {
                     construct,
                     home,
                     class_base,
+                    with_objects,
                 });
             }
         }

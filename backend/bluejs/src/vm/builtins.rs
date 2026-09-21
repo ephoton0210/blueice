@@ -52,6 +52,8 @@ pub(super) struct ClosureCall {
     pub construct: bool,
     pub home: Option<ObjectId>,
     pub class_base: Option<Value>,
+    /// The with objects the function closes over (empty outside `with`).
+    pub with_objects: Vec<Value>,
 }
 
 fn same_value_zero(left: &Value, right: &Value) -> bool {

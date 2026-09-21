@@ -100,6 +100,7 @@ impl Compiler {
             catch: None,
             catch_end: None,
             finally: None,
+            finally_end: None,
         });
         self.emit(Opcode::PushHandler, handler_index)?;
         self.emit(Opcode::MarkDisposables, 0)?;
@@ -122,6 +123,7 @@ impl Compiler {
             self.emit(Opcode::DisposeResources, handler_index)?;
         }
         self.emit(Opcode::ResumeCompletion, handler_index)?;
+        self.bytecode.handlers[handler_index as usize].finally_end = Some(self.offset()?);
         self.patch(normal_exit, finally_start);
         Ok(())
     }
@@ -151,7 +153,7 @@ impl Compiler {
     ///             let *result* = *entry*[2]
     ///                 ? *entry*[1].call(*entry*[0], *entry*[3])
     ///                 : *entry*[1].call(*entry*[0]);
-    ///             if (*entry*[4]) { await *result*; }
+    ///             if (*entry*[4]) { await (*entry*[5] ? undefined : *result*); }
     ///         } else if (*entry*[4]) {
     ///             await undefined;
     ///         }
@@ -266,7 +268,11 @@ impl Compiler {
                 ),
                 Stmt::If {
                     test: is_async_test.clone(),
-                    consequent: Box::new(await_stmt(ident("*result*"))),
+                    consequent: Box::new(await_stmt(Expr::Conditional {
+                        test: Box::new(index("*entry*", 5.0)),
+                        consequent: Box::new(ident("undefined")),
+                        alternate: Box::new(ident("*result*")),
+                    })),
                     alternate: None,
                 },
             ])),
@@ -398,7 +404,15 @@ impl Compiler {
         } else {
             self.function(function, false)?;
         }
-        let slot = self.resolve(binding_name).unwrap();
+        let Some(slot) = self.resolve(binding_name) else {
+            // A sloppy direct eval re-declaring a function that an earlier eval
+            // in the same function created: the binding is dynamic, so the new
+            // function object replaces its value.
+            let index = self.name_constant(binding_name)?;
+            self.emit(Opcode::SetUnboundName, index)?;
+            self.emit(Opcode::Pop, 0)?;
+            return Ok(());
+        };
         if self.bytecode.bindings[slot as usize].lexical {
             self.emit(Opcode::InitializeBinding, slot)?;
         } else {
@@ -499,6 +513,9 @@ impl Compiler {
                 }
                 self.expression(object)?;
                 self.emit(Opcode::EnterWith, 0)?;
+                // UpdateEmpty(stmtResult, undefined): an empty body leaves
+                // `undefined`, not the previous statement's value.
+                self.emit(Opcode::ClearCompletion, 0)?;
                 self.with_depth += 1;
                 self.with_scope_depths.push(self.names.len());
                 let result = self.statement(body, false);
@@ -556,31 +573,10 @@ impl Compiler {
                 if !self.function {
                     return Err(CompileError::InvalidSyntax("return requires a function"));
                 }
-                if let Some(args) = value
-                    .as_ref()
-                    .and_then(|value| self.self_tail_call_args(value))
-                {
-                    for argument in args {
-                        let Argument::Normal(value) = argument else {
-                            unreachable!("self tail calls exclude spread arguments")
-                        };
-                        self.expression(value)?;
+                if let Some(value) = value.as_ref().filter(|_| self.bytecode.self_slot.is_some()) {
+                    if self.tail_position_return(value)? {
+                        return Ok(());
                     }
-                    let iterators: Vec<_> = self
-                        .loops
-                        .iter()
-                        .rev()
-                        .filter_map(|context| context.iterator)
-                        .collect();
-                    for iterator in iterators {
-                        self.emit(Opcode::GetBinding, iterator)?;
-                        self.emit(Opcode::IteratorClose, 0)?;
-                    }
-                    self.emit(
-                        Opcode::TailRecur,
-                        u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
-                    )?;
-                    return Ok(());
                 }
                 if let Some(value) = value {
                     self.expression(value)?;
@@ -605,7 +601,11 @@ impl Compiler {
                 self.emit(Opcode::SetCompletion, 0)?;
             }
             Stmt::Block(body) => {
-                self.enter_scope(block_lexical_names(body)?, &var_names(body)?, false)?;
+                self.enter_scope(
+                    block_lexical_names(body, self.bytecode.strict)?,
+                    &var_names(body)?,
+                    false,
+                )?;
                 self.statements_with_disposal(body)?;
                 self.leave_scope()?;
             }
@@ -693,6 +693,130 @@ impl Compiler {
         Ok(())
     }
 
+    /// Closes the iterators of the loops being left, then returns the value
+    /// on top of the stack.
+    fn emit_return_epilogue(&mut self) -> Result<(), CompileError> {
+        let iterators: Vec<_> = self
+            .loops
+            .iter()
+            .rev()
+            .filter_map(|context| context.iterator)
+            .collect();
+        for iterator in iterators {
+            self.emit(Opcode::GetBinding, iterator)?;
+            self.emit(Opcode::IteratorClose, 0)?;
+        }
+        self.emit(Opcode::Return, 0)?;
+        Ok(())
+    }
+
+    /// Compiles `return value` when `value` contains a self tail call in a
+    /// tail position: the call itself, or through the branches of `?:`, the
+    /// right operand of `&&`/`||`/`??`, the last operand of a comma
+    /// expression, or parentheses (§15.10.2 HasCallInTailPosition). Every
+    /// path ends in a `TailRecur` or a `Return`. `Ok(false)` means `value`
+    /// has no such call and nothing was emitted.
+    fn tail_position_return(&mut self, value: &Expr) -> Result<bool, CompileError> {
+        if !self.contains_self_tail_call(value) {
+            return Ok(false);
+        }
+        match value {
+            Expr::Parenthesized(inner) => return self.tail_position_return(inner),
+            Expr::Conditional {
+                test,
+                consequent,
+                alternate,
+            } => {
+                self.expression(test)?;
+                let no = self.emit(Opcode::JumpIfFalse, 0)?;
+                self.tail_position_return_or_value(consequent)?;
+                self.patch(no, self.offset()?);
+                self.tail_position_return_or_value(alternate)?;
+            }
+            Expr::Logical { op, left, right } => {
+                self.expression(left)?;
+                self.emit(Opcode::Dup, 0)?;
+                let short_circuit = self.emit(
+                    match op {
+                        LogicalOp::And => Opcode::JumpIfFalse,
+                        LogicalOp::Or => Opcode::JumpIfTrue,
+                        LogicalOp::Nullish => Opcode::JumpIfNotNullish,
+                    },
+                    0,
+                )?;
+                self.emit(Opcode::Pop, 0)?;
+                self.tail_position_return_or_value(right)?;
+                self.patch(short_circuit, self.offset()?);
+                self.emit_return_epilogue()?;
+            }
+            Expr::Sequence(expressions) => {
+                let (last, rest) = expressions
+                    .split_last()
+                    .expect("a sequence expression has operands");
+                for expression in rest {
+                    self.expression(expression)?;
+                    self.emit(Opcode::Pop, 0)?;
+                }
+                self.tail_position_return_or_value(last)?;
+            }
+            call => {
+                let args = self
+                    .self_tail_call_args(call)
+                    .expect("contains_self_tail_call found a self tail call");
+                for argument in args {
+                    let Argument::Normal(value) = argument else {
+                        unreachable!("self tail calls exclude spread arguments")
+                    };
+                    self.expression(value)?;
+                }
+                let iterators: Vec<_> = self
+                    .loops
+                    .iter()
+                    .rev()
+                    .filter_map(|context| context.iterator)
+                    .collect();
+                for iterator in iterators {
+                    self.emit(Opcode::GetBinding, iterator)?;
+                    self.emit(Opcode::IteratorClose, 0)?;
+                }
+                self.emit(
+                    Opcode::TailRecur,
+                    u32::try_from(args.len()).map_err(|_| CompileError::ProgramTooLarge)?,
+                )?;
+            }
+        }
+        Ok(true)
+    }
+
+    /// One operand of a tail position: another tail position when it holds a
+    /// self tail call, otherwise an ordinary `return operand`.
+    fn tail_position_return_or_value(&mut self, value: &Expr) -> Result<(), CompileError> {
+        if !self.tail_position_return(value)? {
+            self.expression(value)?;
+            self.emit_return_epilogue()?;
+        }
+        Ok(())
+    }
+
+    /// Whether `value`, read as a tail position, holds a self tail call.
+    fn contains_self_tail_call(&self, value: &Expr) -> bool {
+        match value {
+            Expr::Parenthesized(inner) => self.contains_self_tail_call(inner),
+            Expr::Conditional {
+                consequent,
+                alternate,
+                ..
+            } => {
+                self.contains_self_tail_call(consequent) || self.contains_self_tail_call(alternate)
+            }
+            Expr::Logical { right, .. } => self.contains_self_tail_call(right),
+            Expr::Sequence(expressions) => expressions
+                .last()
+                .is_some_and(|last| self.contains_self_tail_call(last)),
+            call => self.self_tail_call_args(call).is_some(),
+        }
+    }
+
     /// Annex B.3.3 parses a sloppy FunctionDeclaration in an `if` clause as
     /// a synthetic block whose lexical function binding is then copied to the
     /// Annex B outer var binding when that clause executes.
@@ -702,7 +826,7 @@ impl Compiler {
                 if !function.generator && !function.is_async)
         {
             self.enter_scope(
-                block_lexical_names(std::slice::from_ref(statement))?,
+                block_lexical_names(std::slice::from_ref(statement), self.bytecode.strict)?,
                 &BTreeSet::new(),
                 false,
             )?;
@@ -898,7 +1022,7 @@ impl Compiler {
 
     pub(super) fn scoped_statements(&mut self, statements: &[Stmt]) -> Result<(), CompileError> {
         self.enter_scope(
-            block_lexical_names(statements)?,
+            block_lexical_names(statements, self.bytecode.strict)?,
             &var_names(statements)?,
             false,
         )?;
@@ -914,7 +1038,7 @@ impl Compiler {
     ) -> Result<(), CompileError> {
         validate_switch_case_declarations(cases, self.bytecode.strict)?;
         self.emit(Opcode::ClearCompletion, 0)?;
-        let lexical = switch_lexical_names(cases)?;
+        let lexical = switch_lexical_names(cases, self.bytecode.strict)?;
         let vars = switch_var_names(cases)?;
         // Switch evaluation creates its case-block lexical environment only
         // after evaluating the discriminant.  A closure created by the
@@ -1000,6 +1124,7 @@ impl Compiler {
             catch: None,
             catch_end: None,
             finally: None,
+            finally_end: None,
         });
         self.emit(Opcode::PushHandler, handler_index)?;
 
@@ -1060,7 +1185,7 @@ impl Compiler {
             // completion value.
             self.emit(Opcode::ClearCompletion, 0)?;
             self.enter_scope(
-                block_lexical_names(&catch.body)?,
+                block_lexical_names(&catch.body, self.bytecode.strict)?,
                 &var_names(&catch.body)?,
                 false,
             )?;
@@ -1092,6 +1217,7 @@ impl Compiler {
             // it replays the pending completion after the finalizer finishes.
             self.emit(Opcode::ResumeCompletion, handler_index)?;
             let end = self.offset()?;
+            self.bytecode.handlers[handler_index as usize].finally_end = Some(end);
             self.patch(normal_exit, start);
             if let Some(exit) = catch_exit {
                 self.patch(exit, start);
@@ -1134,6 +1260,21 @@ impl Compiler {
                 && declaration.init.is_none()
             {
                 continue;
+            }
+            // `var name = init` inside `with`: ResolveBinding(name) runs before
+            // the initializer, so a with object that has the property gets the
+            // assignment and the function-level binding stays untouched.
+            if let (DeclKind::Var, Pattern::Identifier(name), Some(value)) =
+                (kind, &declaration.pattern, &declaration.init)
+            {
+                if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
+                    let index = self.name_constant(name)?;
+                    self.emit(Opcode::ResolveWithReference, index)?;
+                    self.expression_with_name(value, Some(name.as_str()))?;
+                    self.emit(Opcode::StoreWithReference, 0)?;
+                    self.emit(Opcode::Pop, 0)?;
+                    continue;
+                }
             }
             if let Some(value) = &declaration.init {
                 // "IsAnonymousFunctionDefinition(Initializer)" NamedEvaluation
@@ -1185,14 +1326,25 @@ impl Compiler {
         match pattern {
             Pattern::Identifier(name) => {
                 let slot = if kind == DeclKind::Var {
-                    self.catch_var_slots
+                    let resolved = self
+                        .catch_var_slots
                         .iter()
                         .rev()
                         .find_map(|slots| slots.get(name))
                         .copied()
                         .or_else(|| self.names[self.local_scope].get(name).copied())
-                        .or_else(|| self.resolve(name))
-                        .expect("var declaration has a function or eval binding")
+                        .or_else(|| self.resolve(name));
+                    let Some(slot) = resolved else {
+                        // A sloppy direct eval does not re-create a `var` that
+                        // an earlier eval already added to the function's
+                        // VariableEnvironment: it has no static slot, and the
+                        // initializer assigns to that dynamic binding.
+                        let index = self.name_constant(name)?;
+                        self.emit(Opcode::SetUnboundName, index)?;
+                        self.emit(Opcode::Pop, 0)?;
+                        return Ok(());
+                    };
+                    slot
                 } else {
                     self.names.last().unwrap()[name]
                 };

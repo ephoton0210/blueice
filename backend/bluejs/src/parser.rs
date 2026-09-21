@@ -74,21 +74,11 @@ impl From<LexError> for ParseError {
 }
 
 pub fn parse(source: &str) -> Result<Program, ParseError> {
-    let mut parser = Parser::new(source);
+    let mut parser = Parser::new_script(source);
     let mut body = Vec::new();
-    let mut directive_prologue = true;
+    let mut prologue = DirectivePrologue::default();
     while !parser.at_eof() {
-        let statement = parser.parse_statement()?;
-        if directive_prologue {
-            if let Stmt::Expr(Expr::String(value)) = &statement {
-                if value == "use strict" {
-                    parser.strict = true;
-                }
-            } else {
-                directive_prologue = false;
-            }
-        }
-        body.push(statement);
+        body.push(parser.parse_prologue_statement(&mut prologue)?);
     }
     let program = Program { body };
     if contains_super_call_outside_class(&program)
@@ -103,14 +93,38 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
 
 /// Parses direct-eval source before its caller applies context-sensitive
 /// `super` early errors. At script top level those expressions are invalid,
-/// but a direct eval inherits the calling method's `[[HomeObject]]`.
-pub(crate) fn parse_eval(source: &str) -> Result<Program, ParseError> {
-    let mut parser = Parser::new(source);
+/// but a direct eval inherits the calling method's `[[HomeObject]]`. Eval
+/// code is strict when the calling code is (`strict`) or when its own
+/// directive prologue says so.
+pub(crate) fn parse_eval(source: &str, strict: bool) -> Result<Program, ParseError> {
+    let mut parser = Parser::new_script(source);
+    parser.strict = strict;
     let mut body = Vec::new();
+    let mut prologue = DirectivePrologue::default();
     while !parser.at_eof() {
-        body.push(parser.parse_statement()?);
+        body.push(parser.parse_prologue_statement(&mut prologue)?);
     }
     Ok(Program { body })
+}
+
+/// State of the Directive Prologue (§11.2.1) while a Script, eval code or a
+/// function body is parsed statement by statement.
+struct DirectivePrologue {
+    /// Every statement so far has been an ExpressionStatement consisting
+    /// solely of a string literal.
+    open: bool,
+    /// A directive so far used a legacy octal or non-octal decimal escape,
+    /// which a later Use Strict Directive makes an early error.
+    legacy_octal: bool,
+}
+
+impl Default for DirectivePrologue {
+    fn default() -> Self {
+        DirectivePrologue {
+            open: true,
+            legacy_octal: false,
+        }
+    }
 }
 
 // Preserve source positions so the parser can select the RegExp lexical goal
@@ -135,6 +149,7 @@ fn tokenize_all(tokenizer: &mut Tokenizer) -> (Vec<SpannedToken>, Vec<usize>) {
                     newline_before: false,
                     identifier_escaped: false,
                     legacy_octal_escape: false,
+                    string_escaped: false,
                 });
                 positions.push(tokenizer.position());
                 tokens.push(SpannedToken {
@@ -142,6 +157,7 @@ fn tokenize_all(tokenizer: &mut Tokenizer) -> (Vec<SpannedToken>, Vec<usize>) {
                     newline_before: false,
                     identifier_escaped: false,
                     legacy_octal_escape: false,
+                    string_escaped: false,
                 });
                 return (tokens, positions);
             }
@@ -326,8 +342,19 @@ impl Parser {
         Self::from_tokenizer(Tokenizer::new(source))
     }
 
+    /// A parser over complete Script source text, the only place a Hashbang
+    /// comment (`#!...`) may begin. Template placeholders and other
+    /// substring parses use [`Parser::new`], where `#!` stays an error.
+    fn new_script(source: &str) -> Parser {
+        let mut tokenizer = Tokenizer::new(source);
+        tokenizer.skip_hashbang();
+        Self::from_tokenizer(tokenizer)
+    }
+
     fn new_module(source: &str) -> Parser {
-        Self::from_tokenizer(Tokenizer::new_module(source))
+        let mut tokenizer = Tokenizer::new_module(source);
+        tokenizer.skip_hashbang();
+        Self::from_tokenizer(tokenizer)
     }
 
     fn from_tokenizer(mut tokenizer: Tokenizer) -> Parser {
@@ -392,24 +419,37 @@ impl Parser {
         let Token::Identifier(name) = self.peek() else {
             return false;
         };
-        if name == "enum" {
+        self.identifier_reference_name_is_valid(name)
+    }
+
+    /// Whether `name` may be an IdentifierReference here (§13.1.1). Besides
+    /// the ReservedWords, the strict-mode reserved words and the `yield` /
+    /// `await` context rules apply. The keywords the tokenizer keeps as
+    /// [`Keyword`] tokens can only arrive here as a property-name string
+    /// (`({ true })`) or as an escaped spelling, and are reserved too.
+    fn identifier_reference_name_is_valid(&self, name: &str) -> bool {
+        if Keyword::from_str(name).is_some_and(|keyword| keyword != Keyword::Let) {
             return false;
         }
         if matches!(
-            name.as_str(),
-            "class" | "debugger" | "export" | "extends" | "import" | "super" | "with"
+            name,
+            "class" | "debugger" | "enum" | "export" | "extends" | "import" | "super" | "with"
         ) {
             return false;
         }
         if name == "yield" && (self.generator_depth != 0 || self.strict) {
             return false;
         }
-        if name == "await" && (self.async_depth != 0 || self.module_await) {
+        if name == "await"
+            && (self.async_depth != 0
+                || self.module_await
+                || self.static_block_function_depths.last() == Some(&self.function_depth))
+        {
             return false;
         }
         !(self.strict
             && matches!(
-                name.as_str(),
+                name,
                 "implements"
                     | "interface"
                     | "let"
@@ -509,8 +549,13 @@ impl Parser {
         }
     }
 
+    /// A token the grammar cannot accept at this point. Every production the
+    /// parser implements is complete for its goal, so a token that fails to
+    /// match a mandatory position is a specified SyntaxError. Only a lexical
+    /// placeholder for a construct this engine does not scan (see
+    /// `Token::Invalid`) stays unclassified, because the source may be valid.
     fn error(&self, message: impl Into<String>) -> ParseError {
-        let known_syntax = matches!(self.peek(), Token::Invalid(message) if !message.contains("not supported") && !message.contains("unexpected character '#'"));
+        let known_syntax = !matches!(self.peek(), Token::Invalid(message) if message.contains("not supported") || message.contains("unexpected character '#'"));
         ParseError {
             message: format!("{} (found {:?})", message.into(), self.peek()),
             resource: None,
@@ -524,10 +569,106 @@ impl Parser {
     fn reject_legacy_octal_escape(&self) -> Result<(), ParseError> {
         if self.strict && self.tokens[self.pos].legacy_octal_escape {
             return Err(self.syntax_error(
-                "legacy octal and non-octal decimal escapes are not valid in strict mode",
+                "legacy octal and non-octal decimal literals and escapes are not valid in strict mode",
             ));
         }
         Ok(())
+    }
+
+    /// Parses one statement of a body that begins with a Directive
+    /// Prologue, turning strict mode on at a Use Strict Directive. Only an
+    /// unparenthesized string-literal statement spelled exactly `use strict`
+    /// (no escape, no line continuation) is that directive.
+    ///
+    /// The compiler recognizes a directive by the cooked value of the leading
+    /// string statements alone. A `use strict`-valued statement that is not
+    /// a directive (`('use strict')`, `'use\u0020strict'`) is therefore kept
+    /// in the AST wrapped in an `Expr::Parenthesized`, which evaluates the
+    /// same but is no longer a bare string statement.
+    fn parse_prologue_statement(
+        &mut self,
+        prologue: &mut DirectivePrologue,
+    ) -> Result<Stmt, ParseError> {
+        let start = self.pos;
+        let statement = self.parse_statement()?;
+        if !prologue.open {
+            return Ok(statement);
+        }
+        let token = &self.tokens[start];
+        let is_use_strict_valued =
+            matches!(&statement, Stmt::Expr(Expr::String(value)) if value == "use strict");
+        let is_directive = matches!(&statement, Stmt::Expr(Expr::String(_)))
+            && matches!(token.token, Token::String(_))
+            && (self.pos == start + 1
+                || (self.pos == start + 2
+                    && matches!(self.tokens[start + 1].token, Token::Punct(Punct::Semicolon))));
+        if !is_directive {
+            prologue.open = false;
+        } else {
+            prologue.legacy_octal |= token.legacy_octal_escape;
+        }
+        if !is_use_strict_valued {
+            return Ok(statement);
+        }
+        if !is_directive || token.string_escaped {
+            let Stmt::Expr(expression) = statement else {
+                unreachable!("a use strict-valued statement is an expression statement")
+            };
+            return Ok(Stmt::Expr(Expr::Parenthesized(Box::new(expression))));
+        }
+        if prologue.legacy_octal {
+            return Err(ParseError {
+                message: "legacy octal and non-octal decimal escapes cannot precede a \
+                          Use Strict Directive"
+                    .to_string(),
+                resource: None,
+                known_syntax: true,
+            });
+        }
+        self.strict = true;
+        Ok(statement)
+    }
+
+    /// `{ FunctionBody }` of a function, method, accessor or arrow: a
+    /// statement list with its own Directive Prologue, whose strictness ends
+    /// with the body.
+    pub(super) fn parse_function_body(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        self.with_in_allowed(Self::parse_function_body_in)
+    }
+
+    fn parse_function_body_in(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        self.expect_punct(Punct::LBrace)?;
+        let outer_strict = self.strict;
+        let mut prologue = DirectivePrologue::default();
+        let mut statements = Vec::new();
+        let result = loop {
+            if self.check_punct(Punct::RBrace) {
+                break self.expect_punct(Punct::RBrace);
+            }
+            if self.at_eof() {
+                break Err(self.error("unterminated block, expected '}'"));
+            }
+            match self.parse_prologue_statement(&mut prologue) {
+                Ok(statement) => statements.push(statement),
+                Err(error) => break Err(error),
+            }
+        };
+        self.strict = outer_strict;
+        result.map(|()| statements)
+    }
+
+    /// Runs `parse` with the `in` operator enabled again. A `for` head parses
+    /// its init with `in` disabled only at its own top level (`[~In]`);
+    /// parentheses, brackets, argument lists, object literals and function
+    /// bodies nested inside it restore `[+In]`.
+    fn with_in_allowed<T>(
+        &mut self,
+        parse: impl FnOnce(&mut Self) -> Result<T, ParseError>,
+    ) -> Result<T, ParseError> {
+        let saved_no_in = std::mem::replace(&mut self.no_in, false);
+        let result = parse(self);
+        self.no_in = saved_no_in;
+        result
     }
 
     fn syntax_error(&self, message: impl Into<String>) -> ParseError {

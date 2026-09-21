@@ -1060,6 +1060,7 @@ impl Vm {
             NativeFunction::ParseFloat => self.parse_float(first),
             NativeFunction::EncodeUri { component } => self.encode_uri(first, component),
             NativeFunction::DecodeUri { component } => self.decode_uri(first, component),
+            NativeFunction::Escape { decode } => self.escape_string(first, decode),
             NativeFunction::JsonParse => self.json_parse(first, args.get(1)),
             NativeFunction::JsonStringify => self.json_stringify(&args),
             NativeFunction::JsonRawJson => self.json_raw_json(first),
@@ -1424,19 +1425,14 @@ impl Vm {
                     .map_err(|error| RuntimeError::RangeError(error.to_string()))
             }
             NativeFunction::RegExp => {
-                if !construct
-                    && *native::argument(&args, 1) == Value::Undefined
-                    && self.is_regexp(first)?
-                {
-                    let constructor = self.get_property(first, &"constructor".into())?;
-                    if constructor == self.regexp_global()? {
-                        return Ok(first.clone());
-                    }
-                }
-                self.regexp_create(first, native::argument(&args, 1))
+                self.regexp_constructor(first, native::argument(&args, 1), construct)
             }
             NativeFunction::RegExpMethod(method) => self.regexp_method(method, &receiver, &args),
             NativeFunction::RegExpGetter(name) => self.regexp_getter(name, &receiver),
+            NativeFunction::RegExpLegacyGetter(which) => self.regexp_legacy_get(which, &receiver),
+            NativeFunction::RegExpLegacySetter(which) => {
+                self.regexp_legacy_set(which, &receiver, first)
+            }
             NativeFunction::RegExpIteratorNext => self.regexp_iterator_next(&receiver),
             NativeFunction::ThrowTypeError => Err(RuntimeError::TypeError(
                 "restricted function property".into(),

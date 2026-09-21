@@ -140,6 +140,8 @@ impl Vm {
         // an as-yet-unread `globalThis.undefined` incorrectly looked like a
         // successful deletion of an absent property.
         self.materialize_global_object_property(object, key)?;
+        // Likewise a lazily installed Iterator helper exists to be deleted.
+        self.materialize_iterator_helper_property(object, key)?;
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_delete(object, key);
         }
@@ -177,6 +179,8 @@ impl Vm {
                 "decodeURIComponent",
                 "encodeURI",
                 "encodeURIComponent",
+                "escape",
+                "unescape",
                 "Object",
                 "Function",
                 "Array",
@@ -1220,11 +1224,16 @@ impl Vm {
                 "Proxy defineProperty trap must be callable".into(),
             ));
         }
-        let descriptor_value = self.descriptor_object(&descriptor)?;
+        // The trap may be a function created by the handler's own `get`, held
+        // nowhere else: keep it alive while the descriptor record is built.
+        let base = self.stack.len();
+        self.stack.push(trap.clone());
+        let descriptor_value = self.descriptor_object(&descriptor);
+        self.stack.truncate(base);
+        let descriptor_value = descriptor_value?;
         // The descriptor record is observable by the trap. Root it across
         // the call because a trap can allocate (or invoke assertions that
         // allocate) before it reads the third argument.
-        let base = self.stack.len();
         self.stack.push(descriptor_value.clone());
         let trap_result = self.call_native(
             trap,
@@ -1439,7 +1448,12 @@ impl Vm {
                 "Proxy {name} trap must be callable"
             )));
         }
-        let arguments = self.array_from(args)?;
+        // As with the other traps, the trap function itself may be unrooted.
+        let base = self.stack.len();
+        self.stack.push(trap.clone());
+        let arguments = self.array_from(args);
+        self.stack.truncate(base);
+        let arguments = arguments?;
         let values = if construct {
             vec![Value::Object(target), arguments, self.new_target.clone()]
         } else {

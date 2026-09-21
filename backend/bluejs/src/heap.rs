@@ -221,6 +221,12 @@ impl PrivateElement {
 struct ClosureMetadata {
     home: Option<ObjectId>,
     class_base: Option<Value>,
+    /// The with objects (outermost first) that were active where a function
+    /// created inside `with` was created.
+    with_objects: Vec<Value>,
+    /// The `new.target` an arrow function inherits from the function it was
+    /// created in (unset when that was `undefined`).
+    new_target: Option<Value>,
 }
 
 impl ClosureMetadata {
@@ -228,6 +234,8 @@ impl ClosureMetadata {
         self.home
             .into_iter()
             .chain(self.class_base.iter().filter_map(Value::object_id))
+            .chain(self.with_objects.iter().filter_map(Value::object_id))
+            .chain(self.new_target.iter().filter_map(Value::object_id))
     }
 }
 
