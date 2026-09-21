@@ -67,27 +67,47 @@ impl Vm {
                 )
             })?);
         }
-        let mut source = String::from(match kind {
+        let prefix = match kind {
             DynamicFunctionKind::Normal => "function anonymous(",
             DynamicFunctionKind::Async => "async function anonymous(",
             DynamicFunctionKind::Generator => "function* anonymous(",
             DynamicFunctionKind::AsyncGenerator => "async function* anonymous(",
-        });
-        source.push_str(&strip_dynamic_function_html_comments(&parameters));
+        };
+        let parameters = strip_dynamic_function_html_comments(&parameters);
+        let body = match args.last() {
+            Some(body) => self.coerce_string(body)?.to_utf8().map_err(|_| {
+                RuntimeError::SyntaxError("Function body contains an unpaired surrogate".into())
+            })?,
+            None => String::new(),
+        };
         // Dynamic parameter text is parsed as its own grammar production.
         // Preserve that boundary in the generated wrapper: a trailing
         // single-line comment belongs to the parameters, not to the closing
         // parenthesis that follows them.
-        source.push_str("\n) {\n");
-        if let Some(body) = args.last() {
-            source.push_str(&self.coerce_string(body)?.to_utf8().map_err(|_| {
-                RuntimeError::SyntaxError("Function body contains an unpaired surrogate".into())
-            })?);
+        let wrapper =
+            |parameters: &str, body: &str| format!("{prefix}{parameters}\n) {{\n{body}\n}}");
+        // The parameters must parse as FormalParameters and the body as a
+        // FunctionBody, each on its own. Only the joined wrapper is compiled,
+        // but text that leaves a comment, template or bracket open across the
+        // boundary can still make the joined source parse (`Function("/*",
+        // "*/) {")`), so each side is also checked against an empty other side.
+        let parse_wrapper = |source: &str| -> Result<crate::ast::Program, RuntimeError> {
+            let program =
+                crate::parse(source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+            // Anything but the one wrapper declaration means the text closed
+            // the function early (`Function("} function f() {")`).
+            match program.body.as_slice() {
+                [crate::ast::Stmt::FunctionDecl(_)] => Ok(program),
+                _ => Err(RuntimeError::SyntaxError(
+                    "Function source must be exactly one function".into(),
+                )),
+            }
+        };
+        parse_wrapper(&wrapper(&parameters, ""))?;
+        if !parameters.is_empty() {
+            parse_wrapper(&wrapper("", &body))?;
         }
-        source.push_str("\n}");
-
-        let mut program =
-            crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let mut program = parse_wrapper(&wrapper(&parameters, &body))?;
         // The wrapper declaration only gives the function its `name` property.
         // CreateDynamicFunction binds no such name in the function's scope, so
         // rename the declaration to an internal identifier no source can spell:
