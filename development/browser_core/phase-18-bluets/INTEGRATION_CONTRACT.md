@@ -264,6 +264,28 @@ Only source spans that explain a reachable instruction may be attached. An erase
 
 Source locations use UTF-8 byte offsets at this boundary. BlueTSC's Source Map v3 conversion continues to use UTF-16 generated/original columns, including a single line transition for CRLF. Consumers must convert explicitly at the display boundary and must not mix these two coordinate systems.
 
+## BlueJS host callback boundary
+
+`blueice_bluejs::Vm` supplies the low-level, realm-local callback mechanism
+that a future page host may use to install bindings. `install_host_object`
+creates an opaque global host object, and `install_host_method` adds a
+non-constructable callback to that object. The VM retains callbacks privately;
+native function objects retain only a registry index. An object handle from a
+different realm, an invalid name, or a property collision is rejected.
+
+`HostFunction` receives and returns only `HostValue::Undefined`, `Null`,
+`Bool`, `Number`, or `String`. Objects, `Symbol`, and `BigInt` are rejected
+before callback dispatch, so neither a callback nor its retained Rust state can
+hold a BlueJS object identity beyond GC-visible VM roots. A callback error is
+converted to a JavaScript `TypeError`; its text is host-controlled and MUST NOT
+reflect page-controlled data without the host's own disclosure policy.
+
+This is a binding mechanism, not a page API. `DirectPageScriptHost` and
+`DirectPageInlineExecutor` currently install no callback or DOM global. A
+future binding profile MUST pair every installed value with the generated
+typing inventory, a stable binding ID, and its declared capability/origin
+policy before it can be advertised in `lib.blueice.d.ts`.
+
 ## Host-generated `lib.blueice.d.ts`
 
 `lib.blueice.d.ts` is a generated, host-supplied declaration root. It is not a hand-maintained substitute for `lib.dom.d.ts`, and it must describe only APIs that the current BlueIce page-script host has actually exposed.

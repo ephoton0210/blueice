@@ -90,4 +90,4 @@ pub use program_debug::{
 pub use property::{JsSymbol, PropertyDescriptor, PropertyName};
 pub use string::JsString;
 pub use value::{ObjectId, Value};
-pub use vm::{RuntimeError, Vm, VmConfig};
+pub use vm::{HostFunction, HostFunctionError, HostObject, HostValue, RuntimeError, Vm, VmConfig};

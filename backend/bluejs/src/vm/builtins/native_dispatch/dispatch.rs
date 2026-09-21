@@ -64,6 +64,9 @@ impl Vm {
         }
         let first = native::argument(&args, 0);
         match function {
+            NativeFunction::Host(index) => {
+                self.host_function_call(index, receiver, &args, construct)
+            }
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
             NativeFunction::PromiseResolvingFunction { promise, fulfill } => {
                 if fulfill {

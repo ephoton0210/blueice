@@ -240,3 +240,69 @@ fn compiler_owned_bytecode_invariants_fail_loudly() {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.set_class_home())).is_err()
     );
 }
+
+#[test]
+fn host_object_methods_are_realm_local_callable_globals() {
+    let mut vm = Vm::default();
+    let host = vm.install_host_object("blueice").unwrap();
+    vm.install_host_method(host, "increment", 1, |args: &[HostValue]| {
+        let Some(HostValue::Number(value)) = args.first() else {
+            return Err(HostFunctionError::new("increment requires a number"));
+        };
+        Ok(HostValue::Number(value + 1.0))
+    })
+    .unwrap();
+    let code = crate::compile(&crate::parse("blueice.increment(41);").unwrap()).unwrap();
+    assert_eq!(vm.execute_script(&code).unwrap(), Value::Number(42.0));
+
+    let wrong_arity = crate::compile(&crate::parse("blueice.increment('x');").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&wrong_arity),
+        Err(RuntimeError::TypeError(message)) if message == "increment requires a number"
+    ));
+    let object_argument =
+        crate::compile(&crate::parse("blueice.increment({ value: 1 });").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&object_argument),
+        Err(RuntimeError::TypeError(message)) if message == "host functions accept primitive values only"
+    ));
+}
+
+#[test]
+fn host_objects_and_methods_reject_collisions_and_construction() {
+    let mut vm = Vm::default();
+    let code = crate::compile(&crate::parse("globalThis.reserved = undefined;").unwrap()).unwrap();
+    vm.execute_script(&code).unwrap();
+    assert!(matches!(
+        vm.install_host_object("reserved"),
+        Err(RuntimeError::TypeError(_))
+    ));
+    let host = vm.install_host_object("blueice").unwrap();
+    assert!(matches!(
+        vm.install_host_object("blueice"),
+        Err(RuntimeError::TypeError(_))
+    ));
+    vm.install_host_method(host, "value", 0, |_args: &[HostValue]| {
+        Ok(HostValue::Number(1.0))
+    })
+    .unwrap();
+    let code = crate::compile(&crate::parse("blueice.reserved = undefined;").unwrap()).unwrap();
+    vm.execute_script(&code).unwrap();
+    assert!(matches!(
+        vm.install_host_method(host, "reserved", 0, |_args: &[HostValue]| Ok(
+            HostValue::Number(2.0)
+        )),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert!(matches!(
+        vm.install_host_method(host, "value", 0, |_args: &[HostValue]| Ok(
+            HostValue::Number(2.0)
+        )),
+        Err(RuntimeError::TypeError(_))
+    ));
+    let code = crate::compile(&crate::parse("new blueice.value();").unwrap()).unwrap();
+    assert!(matches!(
+        vm.execute_script(&code),
+        Err(RuntimeError::TypeError(message)) if message == "value is not a constructor"
+    ));
+}

@@ -76,6 +76,18 @@ or second module resolver to bypass them.
   it in TypeScript. Do not expose a broad `lib.dom.d.ts` or add bindings merely
   to satisfy a checker fixture.
 
+  Foundation delivered: `blueice_bluejs::Vm` now has a realm-local host
+  callback ABI. An embedder can install an opaque global host object and
+  non-constructable methods, backed by a VM-private callback registry. The
+  boundary accepts and returns only `undefined`, `null`, booleans, numbers and
+  `JsString`; object identities, `Symbol`, and `BigInt` fail before a callback
+  can retain them outside the garbage collector. Callback failures become a
+  host-controlled JavaScript `TypeError`, and installation rejects invalid or
+  colliding global/member names. This makes a future DOM bridge possible
+  without exposing a VM or heap reference, but no DOM/event binding, capability
+  policy, stable binding ID, or direct-page host installation exists yet, so
+  this item remains open.
+
   Acceptance: each initial binding has an implementation, capability policy,
   stable binding ID, and JavaScript page-level behavior test; an unimplemented
   API is absent and fails both static and runtime access tests.
