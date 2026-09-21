@@ -4,7 +4,7 @@
 
 //! ECMA-262 Annex B.2.1: the global `escape` and `unescape` functions.
 
-use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm};
+use blueice_bluejs::{compile, parse, RuntimeError, Value, Vm, VmConfig};
 
 fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
@@ -91,5 +91,24 @@ fn escape_and_unescape_coerce_their_argument_once_with_to_string() {
     assert_eq!(
         string("(function(){try{escape(Symbol())}catch(e){return e instanceof TypeError}})()"),
         Value::Bool(true)
+    );
+}
+
+#[test]
+fn escape_and_unescape_respect_the_runtime_string_limit() {
+    let config = VmConfig {
+        max_string_bytes: 100,
+        ..VmConfig::default()
+    };
+    // Twenty spaces are 40 bytes; their escape is 60 code units (120 bytes).
+    let mut vm = Vm::new(config).unwrap();
+    let result = vm.execute(&compile(&parse("escape(' '.repeat(20))").unwrap()).unwrap());
+    assert_eq!(result, Err(RuntimeError::StringLimit { limit: 100 }));
+    // Decoding only ever shrinks, so the same text round-trips within the limit.
+    let mut vm = Vm::new(config).unwrap();
+    let source = "unescape('%20'.repeat(10))===' '.repeat(10)";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap()),
+        Ok(Value::Bool(true))
     );
 }
