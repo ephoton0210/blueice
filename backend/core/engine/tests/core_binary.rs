@@ -446,6 +446,167 @@ fn real_subprocess_executes_an_opted_in_inline_bluets_profile_and_reports_source
 }
 
 #[test]
+fn real_subprocess_keeps_opted_in_inline_bluets_reports_isolated_by_tab() {
+    // The report query is an observation boundary, so prove it through the
+    // compiled process rather than relying only on the executor's queue test:
+    // two independently navigated tabs may execute, but draining one must not
+    // disclose or discard the other tab's report.
+    let socket_path = unique_socket_path("inline-bluets-tabs");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-inline-bluets-tabs-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("ibt-gk");
+
+    let listener_one = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr_one = listener_one.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener_one.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = concat!(
+            "<main>first inline page</main>",
+            "<script type=\"application/x-blueice-typescript\">",
+            "blueiceDocumentText();",
+            "</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+    let listener_two = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr_two = listener_two.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener_two.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = concat!(
+            "<main>second inline page</main>",
+            "<script type=\"application/x-blueice-typescript\">",
+            "blueiceDocumentText();",
+            "</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+            "--inline-bluets-profile",
+            "core-script-document-text-v1",
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn blueice-core");
+
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut stream).unwrap();
+
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{addr_one}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::OpenTab {
+            url: Some(format!("http://{addr_two}")),
+        },
+    )
+    .unwrap();
+    let tab_two = match blueice_ipc::read_server_message(&mut stream).unwrap() {
+        blueice_ipc::ServerMessage::TabOpened { tab_id, .. } => tab_id,
+        other => panic!("expected TabOpened, got {other:?}"),
+    };
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
+    )
+    .unwrap();
+    let (reply_tab, _, first_reports) =
+        blueice_ipc::read_server_message_with_ids(&mut stream).unwrap();
+    assert_eq!(reply_tab, Some(1));
+    assert_eq!(
+        first_reports,
+        blueice_ipc::ServerMessage::BlueTsScriptReports(vec![
+            blueice_ipc::BlueTsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 0,
+                kind: blueice_ipc::BlueTsScriptKind::Classic,
+                outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
+            },
+        ])
+    );
+
+    blueice_ipc::write_client_message_with_ids(
+        &mut stream,
+        Some(tab_two),
+        None,
+        &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
+    )
+    .unwrap();
+    let (reply_tab, _, second_reports) =
+        blueice_ipc::read_server_message_with_ids(&mut stream).unwrap();
+    assert_eq!(reply_tab, Some(tab_two));
+    assert_eq!(
+        second_reports,
+        blueice_ipc::ServerMessage::BlueTsScriptReports(vec![
+            blueice_ipc::BlueTsScriptExecutionReport {
+                tab_id: tab_two,
+                document_generation: 1,
+                ordinal: 0,
+                kind: blueice_ipc::BlueTsScriptKind::Classic,
+                outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
+            },
+        ])
+    );
+
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(!socket_path.exists());
+    assert!(!frame_dir.exists());
+}
+
+#[test]
 fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contamination() {
     // `phase-16-multi-tab-and-tab-groups/PLAN.md`'s minimal-first-slice
     // proof, one layer up from `session.rs`'s own in-process tests: the

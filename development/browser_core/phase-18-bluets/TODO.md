@@ -523,9 +523,12 @@ or second module resolver to bypass them.
   `--inline-bluets-profile core-script-document-text-v1`, serves an actual HTTP
   document, and verifies the framed frontend IPC sequence for a classic
   declaration, module declaration, and rejected typed call. It observes only
-  source-free outcome records after navigation. Debugger, contracts beyond the
-  two immutable snapshots, resource/policy isolation, reload, and multi-tab
-  cases remain required before this item can close.
+  source-free outcome records after navigation. A second fixture opens and
+  navigates a second tab in that same core process, drains each tab's reports
+  through tab-addressed IPC, and proves the first drain neither leaks nor
+  discards the second tab's record. Debugger, contracts beyond the two
+  immutable snapshots, resource/policy isolation, reload, and additional
+  multi-tab cases remain required before this item can close.
 
 - [x] **Make the TypeScript 5.9.3 compatibility oracle a reproducible CI
   gate.** The `typescript-oracle` CI job provisions the exact pinned compiler
