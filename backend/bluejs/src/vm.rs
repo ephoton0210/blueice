@@ -2113,6 +2113,7 @@ impl Vm {
         if let Value::Object(id) = callee {
             if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
+                let with_objects = self.heap.closure_with_objects(id)?;
                 return self.call_closure(builtins::ClosureCall {
                     code,
                     captures,
@@ -2122,6 +2123,7 @@ impl Vm {
                     construct,
                     home,
                     class_base,
+                    with_objects,
                 });
             }
         }

@@ -484,6 +484,15 @@ impl Compiler {
             }
             Expr::Update { op, arg, prefix } => {
                 if let Expr::Identifier(name) = &**arg {
+                    if self.with_depth != 0 && self.resolve_inside_innermost_with(name).is_none() {
+                        let index = self.name_constant(name)?;
+                        self.emit(Opcode::ResolveWithReference, index)?;
+                        self.emit(
+                            Opcode::UpdateWithReference,
+                            u32::from(*op == UpdateOp::Dec) | (u32::from(*prefix) << 1),
+                        )?;
+                        return Ok(());
+                    }
                     let binding = self.resolve(name);
                     let name_index = if binding.is_none() {
                         Some(self.name_constant(name)?)

@@ -126,6 +126,9 @@ opcodes! {
     ResolveWithReference: 5, 0;
     LoadWithReference: 1, 0;
     StoreWithReference: 1, 0;
+    // `name++` etc. on a `ResolveWithReference` pair. Operand bit 0:
+    // decrement; bit 1: prefix.
+    UpdateWithReference: 5, 0;
     Global: 5, 0;
     ToPropertyKey: 1, 0;
     PreparePropertyReference: 1, MAY_USE_INLINE_CACHE;
@@ -399,6 +402,10 @@ pub struct Bytecode {
     /// Whether this code was parsed under the Module goal, including a nested
     /// function whose own bytecode is not a module record.
     pub(crate) import_meta_allowed: bool,
+    /// How many enclosing `with` statements this function was created inside.
+    /// A closure over such a function captures the with objects that are
+    /// active when it is created.
+    pub(crate) with_depth: u32,
     pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
     pub(crate) captures: Vec<u32>,
     /// The immutable name environment binding of a named function expression.
@@ -476,6 +483,7 @@ impl Bytecode {
             generator_initializes_parameters: false,
             new_target_allowed: false,
             import_meta_allowed: false,
+            with_depth: 0,
             functions: Vec::new(),
             captures: Vec::new(),
             self_slot: None,

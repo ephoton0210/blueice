@@ -568,6 +568,90 @@ impl Vm {
         Err(RuntimeError::ReferenceError(name.into()))
     }
 
+    /// GetValue for a Reference produced by `ResolveWithReference`: an object
+    /// environment's property, an enclosing binding slot, or an unresolvable
+    /// name (a ReferenceError).
+    pub(super) fn load_with_reference(
+        &mut self,
+        code: &Bytecode,
+        target: &Value,
+        marker: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let value = match (&target, &marker) {
+            (Value::Object(object), Value::String(name)) => {
+                self.get_property(&Value::Object(*object), &name.clone().into())?
+            }
+            (Value::Number(slot), Value::Null)
+                if slot.is_finite()
+                    && *slot >= 0.0
+                    && slot.fract() == 0.0
+                    && (*slot as usize) < code.bindings.len() =>
+            {
+                let slot = *slot as usize;
+                self.eval_aware_binding_value(slot, &code.bindings[slot].name)?
+                    .ok_or_else(|| RuntimeError::ReferenceError(code.bindings[slot].name.clone()))?
+            }
+            (Value::Undefined, Value::String(name)) => {
+                return Err(RuntimeError::ReferenceError(
+                    name.to_utf8().expect("compiler emits a UTF-8 identifier"),
+                ));
+            }
+            _ => unreachable!("compiler emits a valid with reference"),
+        };
+        Ok(value)
+    }
+
+    /// PutValue for a Reference produced by `ResolveWithReference`.
+    pub(super) fn store_with_reference(
+        &mut self,
+        code: &Bytecode,
+        target: Value,
+        marker: Value,
+        value: &Value,
+    ) -> Result<(), RuntimeError> {
+        match (target, marker) {
+            (Value::Object(object), Value::String(name)) => {
+                // SetMutableBinding of an object Environment Record: a
+                // strict reference to a binding that has disappeared since
+                // it was resolved is a ReferenceError (§9.1.1.2.5).
+                if code.strict && !self.has_property(object, &name.clone().into())? {
+                    return Err(RuntimeError::ReferenceError(
+                        name.to_utf8().expect("compiler emits a UTF-8 identifier"),
+                    ));
+                }
+                self.set_property(&Value::Object(object), &name.into(), value)?;
+            }
+            (Value::Number(slot), Value::Null)
+                if slot.is_finite()
+                    && slot >= 0.0
+                    && slot.fract() == 0.0
+                    && (slot as usize) < code.bindings.len() =>
+            {
+                let slot = slot as usize;
+                let name = &code.bindings[slot].name;
+                if !self.store_dynamic_eval_shadowing_binding(slot, name, value.clone())? {
+                    if self.binding_value(slot)?.is_none() {
+                        return Err(RuntimeError::ReferenceError(name.clone()));
+                    }
+                    if binding_allows_assignment(&code.bindings[slot], code.strict)? {
+                        self.store_binding(slot, value.clone())?;
+                    }
+                }
+            }
+            (Value::Undefined, Value::String(name)) => {
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                if !self.set_dynamic_eval_binding(&name, value.clone())?
+                    && !self.set_global_binding(&name, value.clone())?
+                {
+                    let global = self.global("globalThis")?;
+                    self.set_property(&global, &name.into(), value)?;
+                }
+            }
+            _ => unreachable!("compiler emits a valid with reference"),
+        }
+        Ok(())
+    }
+
     pub(super) fn add(&mut self, left: Value, right: Value) -> Result<Value, RuntimeError> {
         let left = self.coerce_primitive(&left, "default")?;
         let right = self.coerce_primitive(&right, "default")?;
