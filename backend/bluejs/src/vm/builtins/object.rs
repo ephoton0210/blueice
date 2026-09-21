@@ -171,6 +171,8 @@ impl Vm {
                 "decodeURIComponent",
                 "encodeURI",
                 "encodeURIComponent",
+                "escape",
+                "unescape",
                 "Object",
                 "Function",
                 "Array",

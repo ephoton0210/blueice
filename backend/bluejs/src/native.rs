@@ -447,6 +447,10 @@ pub(crate) enum NativeFunction {
     DecodeUri {
         component: bool,
     },
+    /// Annex B.2.1 `escape` (`false`) and `unescape` (`true`).
+    Escape {
+        decode: bool,
+    },
     JsonParse,
     JsonStringify,
     JsonRawJson,
@@ -1317,6 +1321,71 @@ pub(crate) fn decode_uri(
             .len();
         uri_append(&mut output, &encoded[..utf16_width], limit)?;
         index = start + octets * 3;
+    }
+    Ok(JsString::from_code_units(output))
+}
+
+/// ECMA-262 §B.2.1.1 `escape`: code units outside the unescaped set become
+/// `%XX` (below 256) or `%uXXXX`, always with upper-case hexadecimal digits.
+pub(crate) fn escape(string: &JsString, limit: usize) -> Result<JsString, UriCodingError> {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut output = Vec::with_capacity(string.as_code_units().len());
+    for &unit in string.as_code_units() {
+        if u8::try_from(unit)
+            .is_ok_and(|byte| byte.is_ascii_alphanumeric() || b"@*_+-./".contains(&byte))
+        {
+            uri_append(&mut output, &[unit], limit)?;
+            continue;
+        }
+        let digit = |shift: u32| u16::from(HEX[usize::from((unit >> shift) & 0xf)]);
+        if unit < 256 {
+            uri_append(&mut output, &[0x25, digit(4), digit(0)], limit)?;
+        } else {
+            uri_append(
+                &mut output,
+                &[0x25, 0x75, digit(12), digit(8), digit(4), digit(0)],
+                limit,
+            )?;
+        }
+    }
+    Ok(JsString::from_code_units(output))
+}
+
+/// ECMA-262 §B.2.1.2 `unescape`: `%uXXXX` and `%XX` sequences decode to one
+/// code unit; a `%` that does not start a complete sequence is kept as is.
+pub(crate) fn unescape(string: &JsString, limit: usize) -> Result<JsString, UriCodingError> {
+    let units = string.as_code_units();
+    let mut output = Vec::with_capacity(units.len());
+    let mut index = 0;
+    while let Some(&unit) = units.get(index) {
+        let decoded = (unit == u16::from(b'%'))
+            .then(|| {
+                let hex = |from: usize, count: usize| -> Option<u16> {
+                    units
+                        .get(from..from + count)?
+                        .iter()
+                        .try_fold(0u16, |value, &digit| {
+                            Some((value << 4) | u16::from(uri_hex(digit)?))
+                        })
+                };
+                if units.get(index + 1) == Some(&u16::from(b'u')) {
+                    if let Some(value) = hex(index + 2, 4) {
+                        return Some((value, 6));
+                    }
+                }
+                hex(index + 1, 2).map(|value| (value, 3))
+            })
+            .flatten();
+        match decoded {
+            Some((value, width)) => {
+                uri_append(&mut output, &[value], limit)?;
+                index += width;
+            }
+            None => {
+                uri_append(&mut output, &[unit], limit)?;
+                index += 1;
+            }
+        }
     }
     Ok(JsString::from_code_units(output))
 }

@@ -1065,6 +1065,7 @@ impl Vm {
             NativeFunction::ParseFloat => self.parse_float(first),
             NativeFunction::EncodeUri { component } => self.encode_uri(first, component),
             NativeFunction::DecodeUri { component } => self.decode_uri(first, component),
+            NativeFunction::Escape { decode } => self.escape_string(first, decode),
             NativeFunction::JsonParse => self.json_parse(first, args.get(1)),
             NativeFunction::JsonStringify => self.json_stringify(&args),
             NativeFunction::JsonRawJson => self.json_raw_json(first),
