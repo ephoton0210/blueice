@@ -1282,7 +1282,7 @@ impl Vm {
                 // delegated expression, but the original outer return still
                 // propagates through any enclosing finally blocks.
                 let mut state = self.heap.take_generator_state(generator)?;
-                let Some((_, exit)) = Self::yield_star_delegate(&state) else {
+                let Some((record, exit)) = Self::yield_star_delegate(&state) else {
                     return Err(RuntimeError::Unsupported(
                         "lost async yield* delegation state",
                     ));
@@ -1290,6 +1290,7 @@ impl Vm {
                 let GeneratorState::Suspended {
                     pc,
                     stack,
+                    iterators,
                     async_delegate,
                     ..
                 } = &mut state
@@ -1298,6 +1299,9 @@ impl Vm {
                 };
                 *pc = exit;
                 *async_delegate = None;
+                // The delegate has finished: it is no longer an open iterator
+                // that the generator's own completion would close again.
+                iterators.retain(|active| active != &record);
                 *stack
                     .last_mut()
                     .expect("yield* delegation keeps its iterator record") = value.clone();
@@ -1324,7 +1328,7 @@ impl Vm {
             }
             AsyncGeneratorDelegateKind::Throw => {
                 let mut state = self.heap.take_generator_state(generator)?;
-                let Some((_, exit)) = Self::yield_star_delegate(&state) else {
+                let Some((record, exit)) = Self::yield_star_delegate(&state) else {
                     return Err(RuntimeError::Unsupported(
                         "lost async yield* delegation state",
                     ));
@@ -1332,6 +1336,7 @@ impl Vm {
                 let GeneratorState::Suspended {
                     pc,
                     stack,
+                    iterators,
                     async_delegate,
                     ..
                 } = &mut state
@@ -1340,6 +1345,7 @@ impl Vm {
                 };
                 *pc = exit;
                 *async_delegate = None;
+                iterators.retain(|active| active != &record);
                 *stack
                     .last_mut()
                     .expect("yield* delegation keeps its iterator record") = value;
