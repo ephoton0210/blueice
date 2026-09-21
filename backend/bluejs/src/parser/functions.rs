@@ -527,7 +527,8 @@ impl Parser {
             | Token::PrivateIdentifier(_)
             | Token::Keyword(_)
             | Token::String(_)
-            | Token::Number(_) => {
+            | Token::Number(_)
+            | Token::BigInt(_) => {
                 matches!(self.peek_at(2), Token::Punct(Punct::LParen))
             }
             _ => false,

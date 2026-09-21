@@ -306,6 +306,20 @@ fn bigint_literal_is_a_valid_property_name_converted_to_its_decimal_string() {
 }
 
 #[test]
+fn async_methods_may_have_a_bigint_literal_name() {
+    // `async` is a modifier when a method name follows, and a BigInt literal
+    // is a method name like a Number one (`async 3(){}`).
+    assert_true(
+        "let o={async 3n(){}}; o[3].name === '3' && Object.getOwnPropertyNames(o).join() === '3'",
+    );
+    assert_true("let o={async* 4n(){}, async 0x5n(){}}; o[4].name === '4' && o[5].name === '5'");
+    assert_true("class C{async 3n(){} static async 4n(){}} C.prototype[3].name === '3' && C[4].name === '4'");
+    // Still a plain member when nothing method-like follows.
+    assert_true("let o={async: 1n}; o.async === 1n");
+    assert_true("class C{async=1n} new C().async === 1n");
+}
+
+#[test]
 fn json_stringify_throws_on_a_cross_realm_boxed_bigint_without_tojson() {
     // Regression: JSON's Object branch only unwrapped a boxed Number/
     // String/BigInt via this realm's own `boxed_primitive`, so a wrapper
