@@ -5,6 +5,7 @@
 //! Direct BlueTS classic-script page-realm regressions.
 
 use super::*;
+use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution};
 
 fn artifact() -> DirectScript {
     compile_direct_script(
@@ -20,6 +21,35 @@ fn artifact() -> DirectScript {
 
 fn origin() -> bluejs::BlueJsPageOrigin {
     bluejs::BlueJsPageOrigin::new("https://example.test").unwrap()
+}
+
+fn module_graph() -> DirectModuleGraph {
+    let entry = "page:///app/main.ts";
+    let dependency = "page:///app/dependency.ts";
+    compile_direct_module_graph(
+        entry,
+        &AuthorizedModuleLoader::new(
+            [
+                AuthorizedModule::new(
+                    entry,
+                    "import { value } from './dependency'; \
+                     export const answer: number = value + 1; answer;",
+                ),
+                AuthorizedModule::new(dependency, "export const value: number = 41;"),
+            ],
+            [AuthorizedModuleResolution::new(
+                entry,
+                "./dependency",
+                dependency,
+            )],
+        )
+        .unwrap(),
+        CompilerOptions {
+            resolver_fingerprint: "page-authorized-resolver-v1".to_string(),
+            ..CompilerOptions::default()
+        },
+    )
+    .unwrap()
 }
 
 #[test]
@@ -63,6 +93,59 @@ fn provenance_mismatch_discards_the_just_installed_page_program() {
 
     assert!(matches!(
         artifact.attach_in_page_realm(&mut runtime, 7, &origin()),
+        Err(BridgeError::ProvenanceAttachment(message))
+            if message.contains("bytecode does not match")
+    ));
+    let stats = runtime.realm_stats(7).unwrap();
+    assert_eq!(stats.program_count, 0);
+    assert_eq!(stats.bytecode_bytes, 0);
+}
+
+#[test]
+fn direct_module_graph_executes_only_its_attached_page_realm_generations() {
+    let graph = module_graph();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+
+    let attachment = graph
+        .attach_in_page_realm(&mut runtime, 7, &origin())
+        .unwrap();
+    assert_eq!(attachment.modules.len(), 2);
+    assert_eq!(
+        attachment.execute_in_page_realm(&mut runtime, 7).unwrap(),
+        bluejs::Value::Number(42.0)
+    );
+    assert_eq!(runtime.realm_stats(7).unwrap().program_count, 2);
+
+    runtime.navigate(7, origin()).unwrap();
+    assert!(matches!(
+        attachment.execute_in_page_realm(&mut runtime, 7),
+        Err(BridgeError::PageRuntime(
+            bluejs::BlueJsPageRuntimeError::ProgramNotOwnedByRealm { .. }
+        ))
+    ));
+}
+
+#[test]
+fn direct_module_graph_provenance_failure_discards_every_admitted_module() {
+    let mut graph = module_graph();
+    graph
+        .modules
+        .get_mut("page:///app/main.ts")
+        .unwrap()
+        .bytecode = bluejs::BlueJsProgramV1::Module(bluejs::Module {
+        body: vec![bluejs::Stmt::Expr(bluejs::Expr::Number(7.0))],
+        imports: Vec::new(),
+        exports: Vec::new(),
+        requests: Vec::new(),
+    })
+    .compile()
+    .unwrap();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+
+    assert!(matches!(
+        graph.attach_in_page_realm(&mut runtime, 7, &origin()),
         Err(BridgeError::ProvenanceAttachment(message))
             if message.contains("bytecode does not match")
     ));

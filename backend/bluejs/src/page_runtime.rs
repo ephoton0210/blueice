@@ -15,7 +15,7 @@ use crate::{
     BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, HeapError, HeapStats, RuntimeError,
     Value, Vm, VmConfig,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
 /// Public identity for the first host-neutral page realm manager.
@@ -330,6 +330,61 @@ impl BlueJsPageRuntime {
         }
     }
 
+    /// Executes an already-admitted ESM module graph in one tab realm. Every
+    /// handle must belong to that realm, name a module root, and have a unique
+    /// canonical module identity; BlueJS never re-resolves an import specifier
+    /// at this boundary.
+    pub fn execute_module_graph(
+        &mut self,
+        tab_id: u64,
+        entry: BlueJsProgramHandle,
+        modules: impl IntoIterator<Item = BlueJsProgramHandle>,
+    ) -> Result<Value, BlueJsPageRuntimeError> {
+        let mut module_bytecode = HashMap::new();
+        let mut entry_module = None;
+        for handle in modules {
+            let owns = self
+                .realms
+                .get(&tab_id)
+                .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?
+                .programs
+                .contains(&handle);
+            if !owns {
+                return Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id, handle });
+            }
+            let compiled = self
+                .registry
+                .get(handle)
+                .map_err(BlueJsPageRuntimeError::ProgramRegistry)?;
+            if !matches!(
+                compiled.ast_nodes().first().map(|node| node.kind()),
+                Some(BlueJsAstNodeKind::Module)
+            ) {
+                return Err(BlueJsPageRuntimeError::ProgramShape);
+            }
+            let module_id = compiled.source().canonical_module_id().to_string();
+            if module_bytecode
+                .insert(module_id.clone(), compiled.bytecode().clone())
+                .is_some()
+            {
+                return Err(BlueJsPageRuntimeError::DuplicateModuleIdentity(module_id));
+            }
+            if handle == entry {
+                entry_module = Some(module_id);
+            }
+        }
+        let entry_module = entry_module.ok_or(BlueJsPageRuntimeError::ProgramNotOwnedByRealm {
+            tab_id,
+            handle: entry,
+        })?;
+        self.realms
+            .get_mut(&tab_id)
+            .expect("every graph module was checked against this live realm")
+            .vm
+            .execute_module_graph(&entry_module, &module_bytecode)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Returns resource accounting for one live tab realm.
     pub fn realm_stats(&self, tab_id: u64) -> Result<BlueJsPageRealmStats, BlueJsPageRuntimeError> {
         let realm = self
@@ -397,6 +452,7 @@ pub enum BlueJsPageRuntimeError {
         handle: BlueJsProgramHandle,
     },
     ProgramShape,
+    DuplicateModuleIdentity(String),
     VmInitialization(HeapError),
     ProgramRegistry(BlueJsProgramDebugError),
     Runtime(RuntimeError),
@@ -432,6 +488,12 @@ impl fmt::Display for BlueJsPageRuntimeError {
             }
             Self::ProgramShape => {
                 formatter.write_str("compiled page program has no script or module root")
+            }
+            Self::DuplicateModuleIdentity(module) => {
+                write!(
+                    formatter,
+                    "page module graph repeats canonical module `{module}`"
+                )
             }
             Self::VmInitialization(error) => {
                 write!(formatter, "cannot initialize page VM: {error}")

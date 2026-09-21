@@ -54,7 +54,12 @@ safe-point map. A failed provenance or static-debug attachment MUST discard
 that generation through the page runtime, including its bytecode accounting;
 it MUST NOT leave an executable but unpaired direct program behind. This is a
 host-neutral admission seam only: it neither discovers a page script nor
-activates ESM module graphs, host bindings, or page lifetime automation.
+installs host bindings or page lifetime automation. `DirectModuleGraph` applies
+the same source/bytecode/provenance check transactionally to every closed
+runtime ESM module, then calls `BlueJsPageRuntime::execute_module_graph` with
+only those attached canonical module IDs. Navigation/reload/close invalidation
+therefore makes every graph handle unusable instead of resolving an import
+again under a successor page policy.
 
 ## AST/IR hand-off
 

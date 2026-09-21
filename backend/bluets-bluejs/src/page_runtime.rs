@@ -11,6 +11,37 @@
 //! exact just-installed generation.
 
 use super::*;
+use std::collections::BTreeMap;
+
+/// One direct TypeScript module graph attached to exact live programs in a
+/// single page realm. These are compilation/provenance records, not runtime
+/// module namespaces or debugger scopes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirectPageModuleGraphAttachment {
+    /// The attached generation selected as the ESM graph entry.
+    pub entry: DirectProgramAttachment,
+    /// Every canonical runtime module attached in deterministic ID order.
+    pub modules: BTreeMap<String, DirectProgramAttachment>,
+}
+
+impl DirectPageModuleGraphAttachment {
+    /// Executes the fully attached graph in its owning page realm. BlueJS uses
+    /// the retained canonical module IDs and does not re-resolve TypeScript
+    /// import specifiers at execution time.
+    pub fn execute_in_page_realm(
+        &self,
+        runtime: &mut bluejs::BlueJsPageRuntime,
+        tab_id: u64,
+    ) -> Result<bluejs::Value, BridgeError> {
+        runtime
+            .execute_module_graph(
+                tab_id,
+                self.entry.handle,
+                self.modules.values().map(|attachment| attachment.handle),
+            )
+            .map_err(BridgeError::PageRuntime)
+    }
+}
 
 impl DirectScript {
     /// Installs this checked classic TypeScript artifact in one already-open
@@ -64,5 +95,73 @@ impl DirectScript {
             return Err(BridgeError::DebugAttachment(error));
         }
         Ok(attachment)
+    }
+}
+
+impl DirectModuleGraph {
+    /// Admits every direct ESM module into one already-open page realm, then
+    /// attaches each module's provenance to its exact live generation. Any
+    /// source, bytecode, or provenance failure discards every program already
+    /// admitted for this graph before returning an error.
+    pub fn attach_in_page_realm(
+        &self,
+        runtime: &mut bluejs::BlueJsPageRuntime,
+        tab_id: u64,
+        origin: &bluejs::BlueJsPageOrigin,
+    ) -> Result<DirectPageModuleGraphAttachment, BridgeError> {
+        let mut attachments = BTreeMap::new();
+        let mut installed = Vec::new();
+        for (module_id, module) in &self.modules {
+            let source = match source_identity(&module.sources) {
+                Ok(source) if source.canonical_module_id() == module_id => source,
+                Ok(_) => {
+                    discard_programs(runtime, tab_id, &installed);
+                    return Err(BridgeError::ProvenanceAttachment(format!(
+                        "direct module `{module_id}` does not retain its own canonical source identity"
+                    )));
+                }
+                Err(error) => {
+                    discard_programs(runtime, tab_id, &installed);
+                    return Err(error);
+                }
+            };
+            let handle = match runtime.install_program(tab_id, origin, source, &module.program) {
+                Ok(handle) => handle,
+                Err(error) => {
+                    discard_programs(runtime, tab_id, &installed);
+                    return Err(BridgeError::PageRuntime(error));
+                }
+            };
+            installed.push(handle);
+            match module.attach_existing_in(runtime.program_registry(), handle) {
+                Ok(attachment) => {
+                    attachments.insert(module_id.clone(), attachment);
+                }
+                Err(error) => {
+                    discard_programs(runtime, tab_id, &installed);
+                    return Err(error);
+                }
+            }
+        }
+        let Some(entry) = attachments.get(&self.entry).cloned() else {
+            discard_programs(runtime, tab_id, &installed);
+            return Err(BridgeError::ProvenanceAttachment(
+                "direct module graph entry has no attached runtime module".to_string(),
+            ));
+        };
+        Ok(DirectPageModuleGraphAttachment {
+            entry,
+            modules: attachments,
+        })
+    }
+}
+
+fn discard_programs(
+    runtime: &mut bluejs::BlueJsPageRuntime,
+    tab_id: u64,
+    handles: &[bluejs::BlueJsProgramHandle],
+) {
+    for handle in handles.iter().rev().copied() {
+        let _ = runtime.discard_program(tab_id, handle);
     }
 }

@@ -26,6 +26,7 @@ pub use debug_attachment::{
     DirectDebugAttachmentError, DirectDebugRegistry, DirectDebugRetentionLimits,
     RetainedDirectDebugInfo,
 };
+pub use page_runtime::DirectPageModuleGraphAttachment;
 
 /// The first directly executable BlueTS-to-BlueJS bridge ABI.
 pub const BLUE_TS_BLUEJS_BRIDGE_ABI_V1: &str = "blue-ts-bluejs-bridge-v1";
@@ -331,6 +332,21 @@ impl DirectModule {
             registry,
             &self.sources,
             &self.program,
+            &self.provenance,
+            &self.compiler_options_fingerprint,
+        )
+    }
+
+    pub(crate) fn attach_existing_in(
+        &self,
+        registry: &bluejs::BlueJsProgramRegistry,
+        handle: bluejs::BlueJsProgramHandle,
+    ) -> Result<DirectProgramAttachment, BridgeError> {
+        attach_existing_direct_program(
+            registry,
+            handle,
+            &self.sources,
+            Some(&self.bytecode),
             &self.provenance,
             &self.compiler_options_fingerprint,
         )

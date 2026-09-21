@@ -161,9 +161,12 @@ or second module resolver to bypass them.
   checks that the resulting live generation retains the artifact's exact source
   identity and bytecode, then attaches lowering provenance and verified safe
   points. A provenance or metadata failure discards the just-installed program
-  and returns its bytecode charge before it can execute. ESM graph admission,
-  a host caller for this seam, host-typing enforcement, and lifecycle-driven
-  invalidation remain required.
+  and returns its bytecode charge before it can execute. `DirectModuleGraph`
+  now applies the same all-or-cleaned-up admission rule to every closed runtime
+  ESM module and executes only those attached canonical module IDs in the tab
+  realm; navigation makes its handles unusable. A host caller for either seam,
+  host-typing enforcement, and lifecycle-driven debug invalidation remain
+  required.
 
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering
