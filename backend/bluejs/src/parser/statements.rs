@@ -96,6 +96,13 @@ impl Parser {
             Token::Identifier(_) if matches!(self.peek_at(1), Token::Punct(Punct::Colon)) => {
                 self.parse_labelled_stmt()
             }
+            // `let` is a valid label in sloppy code (`let: 1`); strict code
+            // reserves it, which `parse_labelled_stmt` rejects.
+            Token::Keyword(Keyword::Let)
+                if matches!(self.peek_at(1), Token::Punct(Punct::Colon)) =>
+            {
+                self.parse_labelled_stmt()
+            }
             _ => {
                 let expr = self.parse_expression()?;
                 self.consume_semicolon()?;
