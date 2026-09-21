@@ -86,7 +86,7 @@ fn let_is_an_ordinary_identifier_in_sloppy_code() {
         evaluate(
             "var log = [];
              let: log.push('label');
-             var o = { let: 1 }; var let2 = 0;
+             var o = { let: 1 };
              function let() { return 'function'; }
              log.push(let());
              log.push((function let() { return typeof let; })());
