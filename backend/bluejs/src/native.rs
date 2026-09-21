@@ -468,6 +468,11 @@ pub(crate) enum NativeFunction {
     Math(MathMethod),
     Error(&'static str),
     ErrorToString,
+    /// `Error.isError`.
+    ErrorIsError,
+    /// The `get`/`set` halves of the `Error.prototype.stack` accessor.
+    ErrorStackGetter,
+    ErrorStackSetter,
     /// Test262 exposes this otherwise non-global intrinsic through `$262`.
     AbstractModuleSource,
     AbstractModuleSourceToStringTag,

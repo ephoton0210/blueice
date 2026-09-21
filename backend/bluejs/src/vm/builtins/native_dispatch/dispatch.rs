@@ -108,6 +108,9 @@ impl Vm {
             NativeFunction::AsyncFunction => self.async_function_constructor(&args),
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
+            NativeFunction::ErrorIsError => self.error_is_error(first),
+            NativeFunction::ErrorStackGetter => self.error_stack_getter(&receiver),
+            NativeFunction::ErrorStackSetter => self.error_stack_setter(&receiver, first),
             NativeFunction::Test262(name) => self.test262_call(name, &args),
             NativeFunction::Test262Done => {
                 self.test262_done = Some(if matches!(first, Value::Undefined) {
