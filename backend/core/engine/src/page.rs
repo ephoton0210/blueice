@@ -35,6 +35,10 @@ pub struct Page {
     viewport_height: f64,
     scroll_y: f64,
     url: Option<String>,
+    /// Monotonically changes whenever this navigable context receives a
+    /// replacement document. Page-script realms use it to distinguish a
+    /// same-origin navigation from the document that preceded it.
+    document_generation: u64,
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     highlighted: Option<NodeId>,
@@ -51,6 +55,7 @@ impl Page {
             viewport_height,
             scroll_y: 0.0,
             url: None,
+            document_generation: 0,
             hovered: None,
             focused: None,
             highlighted: None,
@@ -67,6 +72,7 @@ impl Page {
         // an unrelated node that happens to have been assigned the same
         // recycled ID (plan §1's stable-ID-across-mutations requirement).
         self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
+        self.document_generation = self.document_generation.wrapping_add(1);
         let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
         self.styles = cascade(
             &self.doc,
@@ -360,6 +366,15 @@ impl Page {
 
     pub fn url(&self) -> Option<&str> {
         self.url.as_deref()
+    }
+
+    /// The identity of the currently loaded document within this page.
+    ///
+    /// This is intentionally crate-visible: it is a core lifecycle token, not
+    /// web-observable state. It lets the script host invalidate a realm even
+    /// when a navigation keeps the same origin.
+    pub(crate) fn document_generation(&self) -> u64 {
+        self.document_generation
     }
 
     pub fn viewport_size(&self) -> (f64, f64) {

@@ -70,6 +70,20 @@ after its navigation/reload and close operations. It has no page discovery,
 DOM binding, transport, cache, or hibernation authority; a real host must
 route those lifecycle events through this owner or enforce the same rule.
 
+`blueice_engine::script::direct_page::DirectPageScriptHost` is the first
+core-side adapter for that lifecycle rule. A direct request carries a typed
+`TabId`; it MUST NOT carry a caller-selected origin. Before an attachment, the
+adapter resolves the live `Page` from `TabManager`, accepts only a loaded
+HTTP(S) URL, and derives the network layer's canonical tuple origin. It records
+the page's core-private document generation alongside that origin. A changed
+generation MUST call realm navigation even if the tuple origin is unchanged,
+so a same-origin document replacement cannot retain the preceding document's
+programs or static metadata. A missing tab, URL-less page, or unsupported
+scheme closes any tracked realm for that tab and fails the request. A
+lifecycle owner MAY call `synchronize_tabs` to release realms for closed tabs;
+the current session loop does not yet own this adapter, so this is not a claim
+of automatic HTML page-script execution or launcher-managed process wiring.
+
 One page realm owns at most one live or previously linked program for each
 canonical ESM module ID. BlueJS retains module cells by that ID, so a second
 artifact with the same identity is rejected even after its original handle was

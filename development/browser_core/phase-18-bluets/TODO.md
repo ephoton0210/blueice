@@ -184,10 +184,18 @@ or second module resolver to bypass them.
   explicitly selected verified host profile, accepts only an
   `AuthorizedModuleLoader`, rejects caller-supplied ambient declarations and
   `transpile-only`, injects only the verified host declaration, and drives the
-  owned realm admission/execution path for opted-in classic/module kinds. It
-  remains an in-process core API, not the launcher-managed BlueJS process or
-  normal page pipeline; core still must connect actual tab lifecycle and
-  policy events to this owner before the item can close.
+  owned realm admission/execution path for opted-in classic/module kinds. Its
+  request now contains a typed core `TabId`, not an origin string or raw tab
+  number: it reads the current `TabManager` page, derives a canonical HTTP(S)
+  origin from its loaded URL, and tracks a core-private document generation.
+  An execution therefore opens a realm only for a live document and recreates
+  it on a same-origin replacement; `synchronize_tabs` also prunes a realm when
+  its tab is gone. Blank and built-in pages fail closed until they receive an
+  explicit origin policy. This remains an in-process core API, not the
+  launcher-managed BlueJS process or an HTML script loader; `run_session` does
+  not yet own this host or call its lifecycle synchronization, and no DOM
+  bindings, source/resolver transport, or normal page-pipeline fixture exists.
+  The prerequisite consequently remains open.
 
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering
