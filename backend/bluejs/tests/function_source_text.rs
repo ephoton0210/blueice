@@ -424,3 +424,40 @@ fn dynamic_functions_return_the_source_the_specification_synthesizes() {
         "function inner ( ) { }"
     );
 }
+
+#[test]
+fn source_text_edge_cases_around_the_start_of_a_program_and_template_placeholders() {
+    // A Hashbang comment, a byte order mark and leading trivia are not part of
+    // the text of the function that follows.
+    assert_eq!(
+        string_of("#!/usr/bin/env node\nfunction f() { }\nf.toString()"),
+        "function f() { }"
+    );
+    assert_eq!(
+        string_of("\u{feff}  // c\nfunction f( ) {}\nf.toString()"),
+        "function f( ) {}"
+    );
+    // Identifier escapes are text like any other.
+    assert_eq!(
+        string_of("function \\u0066( \\u0061 ) { }\nf.toString()"),
+        "function \\u0066( \\u0061 ) { }"
+    );
+    assert_eq!(
+        string_of("var o = { \\u0061sync: 1, get \\u0067() { return 1; } };\nObject.getOwnPropertyDescriptor(o, 'g').get.toString()"),
+        "get \\u0067() { return 1; }"
+    );
+    // A function inside a template placeholder, tagged or not, with CRLF in it.
+    assert_eq!(
+        string_of("`${ function ( \r\n ) { \r\n } }`"),
+        "function ( \r\n ) { \r\n }"
+    );
+    assert_eq!(
+        string_of("(function (s, f) { return f.toString(); })`a${ () => \r\n 1 }b`"),
+        "() => \r\n 1"
+    );
+    // One function per evaluation: the text is the same however often it runs.
+    assert_true(
+        "var fs = []; for (var i = 0; i < 3; i++) fs.push(function () { return i; });\n\
+         fs[0] !== fs[1] && fs[0].toString() === fs[2].toString() && fs[1].toString() === 'function () { return i; }'",
+    );
+}
