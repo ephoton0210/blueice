@@ -824,7 +824,10 @@ fn strict_assignment_in_for_head(head: &ForHead) -> bool {
 
 fn strict_assignment_in_pattern(pattern: &Pattern) -> bool {
     match pattern {
-        Pattern::Identifier(_) => false,
+        // §13.1.1: in strict code a BindingIdentifier cannot be `eval` or
+        // `arguments`, whichever declaration (`var`, `let`, `const`, a
+        // for-head declaration, a catch parameter) introduces it.
+        Pattern::Identifier(name) => restricted_name(name),
         Pattern::Array(elements) => elements.iter().flatten().any(|element| {
             strict_assignment_in_pattern(&element.pattern)
                 || element
