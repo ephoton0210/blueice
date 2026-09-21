@@ -300,3 +300,21 @@ fn bound_chains_use_fuel_without_adding_execution_frames() {
         Value::String("ok".into())
     );
 }
+
+#[test]
+fn bound_length_reads_a_proxy_target_through_its_traps() {
+    // HasOwnProperty(target, "length") is the target's [[GetOwnProperty]], so a
+    // Proxy target reports it through its trap rather than as an absent slot.
+    check(&[
+        "let seen = []; \
+         let proxy = new Proxy(function () {}, { \
+           getOwnPropertyDescriptor(t, name) { seen.push(name); return {value: 3, configurable: true}; }, \
+           get(t, name) { return name === 'length' ? 3 : name === 'name' ? 'hello world' : undefined; } }); \
+         let bound = Function.prototype.bind.call(proxy); \
+         bound.length === 3 && bound.name === 'bound hello world' && seen.join() === 'length'",
+        "let fun = function () {}; Object.defineProperty(fun, 'length', {value: '15'}); fun.bind().length === 0",
+        "let fun = function () {}; Object.defineProperty(fun, 'length', {value: Number.MAX_SAFE_INTEGER}); \
+         fun.bind().length === Number.MAX_SAFE_INTEGER",
+        "let fun = function () {}; Object.defineProperty(fun, 'length', {value: -100}); fun.bind().length === 0",
+    ]);
+}

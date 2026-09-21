@@ -26,11 +26,7 @@ impl Vm {
         let function = self.with_roots(|heap| heap.alloc_bound_function(bound, prototype))?;
         self.stack.push(Value::Object(function));
         let mut length = 0.0;
-        if self
-            .heap
-            .get_own_property_descriptor(id, "length")?
-            .is_some()
-        {
+        if self.object_get_own_property(id, &"length".into())?.is_some() {
             if let Value::Number(number) = self.get_property(&target, &"length".into())? {
                 // ECMAScript's max(0, …) returns +0 for a -0 target length.
                 // `f64::max` may retain the receiver's -0 sign for equal
