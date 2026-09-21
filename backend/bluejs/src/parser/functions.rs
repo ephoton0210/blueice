@@ -209,7 +209,11 @@ impl Parser {
         // is parsed in strict mode. Preserve the caller's grammar context so
         // a nested class does not leak strictness into its surrounding script.
         let outer_strict = std::mem::replace(&mut self.strict, true);
+        // A class body (and heritage) is parsed with the `in` operator
+        // available even inside the head of a `for` statement.
+        let outer_no_in = std::mem::replace(&mut self.no_in, false);
         let class = self.parse_class_definition();
+        self.no_in = outer_no_in;
         self.strict = outer_strict;
         class
     }
@@ -295,10 +299,22 @@ impl Parser {
             if is_async {
                 self.advance();
             }
+            // `get`/`set` only introduce an accessor when a property name
+            // follows; otherwise (`get() {}`, `get = 1`, or a line break before
+            // a `*` generator method) they are the name of a method or field.
             let accessor = match self.peek() {
                 Token::Identifier(keyword)
                     if (keyword == "get" || keyword == "set")
-                        && !matches!(self.peek_at(1), Token::Punct(Punct::LParen)) =>
+                        && matches!(
+                            self.peek_at(1),
+                            Token::Identifier(_)
+                                | Token::PrivateIdentifier(_)
+                                | Token::Keyword(_)
+                                | Token::String(_)
+                                | Token::Number(_)
+                                | Token::BigInt(_)
+                                | Token::Punct(Punct::LBracket)
+                        ) =>
                 {
                     let getter = keyword == "get";
                     self.advance();

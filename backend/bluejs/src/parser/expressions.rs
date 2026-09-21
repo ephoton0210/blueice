@@ -768,7 +768,8 @@ impl Parser {
                     self.expect_punct(Punct::RBracket)?;
                     (property, true)
                 } else {
-                    let name = self.expect_identifier_name()?;
+                    // `?.#name` accesses a private element.
+                    let name = self.expect_member_name()?;
                     (Expr::Identifier(name), false)
                 };
                 expr = Expr::OptionalMember {
