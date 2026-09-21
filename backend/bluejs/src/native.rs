@@ -89,6 +89,8 @@ pub(crate) enum MapMethod {
     Entries,
     ForEach,
     Get,
+    GetOrInsert,
+    GetOrInsertComputed,
     Has,
     Keys,
     Set,
@@ -377,6 +379,8 @@ pub(crate) enum NativeFunction {
     ProxyRevoker(ObjectId),
     Map,
     MapMethod(MapMethod),
+    /// `Map.groupBy(items, callback)`.
+    MapGroupBy,
     MapSize,
     Set,
     SetMethod(SetMethod),

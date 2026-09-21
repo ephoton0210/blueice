@@ -869,6 +869,9 @@ impl Vm {
             }
             NativeFunction::Map => self.collection_constructor(true, &args, construct),
             NativeFunction::MapMethod(method) => self.map_method(method, &receiver, &args),
+            NativeFunction::MapGroupBy => {
+                self.map_group_by_method(first, native::argument(&args, 1))
+            }
             NativeFunction::MapSize => {
                 let Some(map) = receiver.object_id() else {
                     return Err(RuntimeError::TypeError(

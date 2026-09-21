@@ -780,6 +780,9 @@ impl Vm {
                     false,
                     true,
                 )?;
+                if name == "Map" {
+                    self.install_native(id, prototype, "groupBy", 2, NativeFunction::MapGroupBy)?;
+                }
                 self.install_symbol_native_getter(
                     id,
                     prototype,

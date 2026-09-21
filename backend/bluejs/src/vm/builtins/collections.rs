@@ -91,6 +91,83 @@ impl Vm {
         result
     }
 
+    /// `Map.groupBy` (GroupBy with zero key coercion): like `Object.groupBy`
+    /// it consumes an iterator and closes it on any abrupt completion, but
+    /// keys keep their identity (only `-0` becomes `+0`) and the groups land
+    /// in a fresh `%Map%` in first-seen order. Grouping straight into that
+    /// Map is equivalent to the spec's separate group list: the Map is not
+    /// observable until it is returned, and its SameValueZero lookup is the
+    /// spec's SameValue on the zero-normalized keys.
+    pub(in super::super) fn map_group_by_method(
+        &mut self,
+        items: &Value,
+        callback: &Value,
+    ) -> Result<Value, RuntimeError> {
+        if matches!(items, Value::Undefined | Value::Null) {
+            return Err(RuntimeError::TypeError(
+                "Map.groupBy items must not be null or undefined".into(),
+            ));
+        }
+        if !self.is_callable(callback)? {
+            return Err(RuntimeError::TypeError(
+                "Map.groupBy callback must be callable".into(),
+            ));
+        }
+        let base = self.stack.len();
+        self.stack.extend([items.clone(), callback.clone()]);
+        let result = (|| {
+            let record = self.get_iterator(items)?;
+            self.stack.push(record.clone());
+            let prototype = self.collection_prototype(true)?;
+            let groups = self.with_roots(|heap| heap.alloc_map(Some(prototype)))?;
+            self.stack.push(Value::Object(groups));
+            let outcome = (|| {
+                let mut index = 0u64;
+                while let Some(value) = self.iterator_step(&record, true)? {
+                    if index >= 9_007_199_254_740_991 {
+                        return Err(RuntimeError::TypeError(
+                            "Map.groupBy iterator is too large".into(),
+                        ));
+                    }
+                    let item_base = self.stack.len();
+                    self.stack.push(value.clone());
+                    let key = self.call_native(
+                        callback.clone(),
+                        Value::Undefined,
+                        vec![value.clone(), Value::Number(index as f64)],
+                        false,
+                    )?;
+                    self.stack.push(key.clone());
+                    let group = match self.heap.map_get(groups, &key)? {
+                        Some(group) => group,
+                        None => {
+                            let group = self.array_from(Vec::new())?;
+                            self.stack.push(group.clone());
+                            self.with_roots(|heap| heap.map_set(groups, key, group.clone()))?;
+                            group
+                        }
+                    };
+                    self.stack.push(group.clone());
+                    self.array_push(&group, &value, 0)?;
+                    self.stack.truncate(item_base);
+                    index += 1;
+                }
+                Ok(Value::Object(groups))
+            })();
+            if outcome.is_err() {
+                let error_base = self.stack.len();
+                if let Err(RuntimeError::Thrown(value)) = &outcome {
+                    self.stack.push(value.clone());
+                }
+                let _ = self.iterator_close(&record);
+                self.stack.truncate(error_base);
+            }
+            outcome
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
     pub(in super::super) fn object_from_entries_method(
         &mut self,
         source: &Value,
