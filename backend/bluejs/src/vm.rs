@@ -474,6 +474,10 @@ pub(super) struct DisposableResource {
     // depends on this field and this implementation's does not).
     #[allow(dead_code)]
     pub(super) hint: DisposeHint,
+    /// An `async-dispose` resource whose method is the sync `@@dispose`
+    /// fallback: `Dispose` still awaits, but the method's result is
+    /// discarded rather than awaited (its promise may never settle).
+    pub(super) sync_fallback: bool,
 }
 
 /// The DisposeCapability Record backing one `DisposableStack`/
