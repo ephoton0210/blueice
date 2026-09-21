@@ -499,6 +499,9 @@ impl Compiler {
                 }
                 self.expression(object)?;
                 self.emit(Opcode::EnterWith, 0)?;
+                // UpdateEmpty(stmtResult, undefined): an empty body leaves
+                // `undefined`, not the previous statement's value.
+                self.emit(Opcode::ClearCompletion, 0)?;
                 self.with_depth += 1;
                 self.with_scope_depths.push(self.names.len());
                 let result = self.statement(body, false);
