@@ -468,20 +468,12 @@ impl Compiler {
             .flat_map(|param| pattern_names(&param.pattern))
             .collect();
         let lexical = lexical_names(&function.body)?;
-        // Arrow functions inherit `arguments`; ordinary functions introduce a
-        // fresh binding unless a formal or a function-body lexical declaration
-        // already occupies that name.  A `var arguments` declaration shares
-        // this function binding rather than creating another one.
-        let arguments_needed = !arrow
-            && !parameters.contains("arguments")
-            && !lexical.iter().any(|(name, _)| name == "arguments");
         if !child.bytecode.strict {
-            // Annex B.3.2.1 exempts `parameterNames`, which the specification
-            // extends with "arguments" when the arguments object is created.
+            // Annex B.3.2.1 exempts `parameterNames`. That list holds only the
+            // formal parameters: the implicit `arguments` binding is added to
+            // the separate `parameterBindings`, so a block function named
+            // `arguments` is still hoisted over the arguments object.
             child.annex_b_parameter_names = parameters.clone();
-            if arguments_needed {
-                child.annex_b_parameter_names.insert("arguments".into());
-            }
             vars.extend(
                 annex_b_function_names(&function.body, &lexical)
                     .into_iter()
@@ -502,6 +494,13 @@ impl Compiler {
         // or default. The same distinction selects unmapped arguments.
         let parameter_expressions = !simple_parameter_list;
         child.bytecode.generator_initializes_parameters = parameter_expressions;
+        // Arrow functions inherit `arguments`; ordinary functions introduce a
+        // fresh binding unless a formal or a function-body lexical declaration
+        // already occupies that name.  A `var arguments` declaration shares
+        // this function binding rather than creating another one.
+        let arguments_needed = !arrow
+            && !parameters.contains("arguments")
+            && !lexical.iter().any(|(name, _)| name == "arguments");
         if parameter_expressions {
             // Parameter expressions must not resolve into body declarations.
             // All parameter cells exist, uninitialized, before the first

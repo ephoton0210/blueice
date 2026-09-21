@@ -74,19 +74,15 @@ fn a_block_function_named_like_a_parameter_does_not_touch_the_parameter() {
 }
 
 #[test]
-fn a_block_function_named_arguments_does_not_replace_the_arguments_object() {
-    let body = "assert(arguments.toString()==='[object Arguments]');\
-                {assert(arguments()===undefined);function arguments(){}assert(arguments()===undefined)}\
-                assert(arguments.toString()==='[object Arguments]');";
-    for parameters in ["", "x", "..._", "x=1"] {
-        check(&format!(
-            "function assert(c){{if(!c)throw new Error('failed')}}\
-             (function({parameters}){{{body}}}());true"
-        ));
-    }
-    // An arrow function has no arguments binding of its own, so the ordinary
-    // hoisting applies to it.
-    check("var f=()=>{{function arguments(){return 1}}return arguments()};f()===1");
+fn a_block_function_named_arguments_still_replaces_the_arguments_binding() {
+    // B.3.2.1 exempts `parameterNames`; the implicit arguments binding is only
+    // in `parameterBindings`, so the block function is hoisted over it (the
+    // behavior SpiderMonkey's staging tests, regress-602621 among them, pin).
+    check("(function(){var before=typeof arguments;{function arguments(){}}return before+typeof arguments})()==='objectfunction'");
+    check("(function(x){{function arguments(){}}return typeof arguments})(1)==='function'");
+    check("function test(arg){eval(arg);{function arguments(){return 1}}return arguments}typeof test('42')==='function'");
+    // A parameter that is itself called `arguments` is a parameter name.
+    check("(function(arguments){{function arguments(){}}return arguments})(5)===5");
 }
 
 #[test]

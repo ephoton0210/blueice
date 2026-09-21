@@ -505,9 +505,9 @@ struct Compiler {
     /// environment was inserted. A binding declared after the innermost
     /// entry wins before that object environment during name resolution.
     with_scope_depths: Vec<usize>,
-    /// The enclosing function's `parameterNames` (with `arguments` when an
-    /// arguments object is created). Annex B.3.2.1 gives a block function
-    /// no legacy var binding, and no copy into one, for these names.
+    /// The enclosing function's formal parameter names (`parameterNames`).
+    /// Annex B.3.2.1 gives a block function no legacy var binding, and no
+    /// copy into one, for these names.
     annex_b_parameter_names: BTreeSet<String>,
 }
 
