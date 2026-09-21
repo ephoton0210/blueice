@@ -22,6 +22,7 @@ from run import (
     TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES,
     TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET,
     FINITE_FIXTURE_INSTRUCTION_BUDGETS,
+    FIXTURE_STRING_LIMITS,
     STRING_SUBSTR_NUMBER_MATRIX_FIXTURES,
     STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET,
     WALL_CLOCK_BUSY_WAIT_FIXTURES,
@@ -33,6 +34,7 @@ from run import (
     classify,
     default_jobs,
     execution_source,
+    fixture_string_limit,
     format_progress,
     instruction_budget,
     metadata,
@@ -234,6 +236,30 @@ class RunnerTests(unittest.TestCase):
             self.assertNotIn(other, FINITE_FIXTURE_INSTRUCTION_BUDGETS)
             self.assertEqual(instruction_budget({}, 100_000, other), 100_000, other)
             self.assertEqual(case_timeout({}, 2, other), 2, other)
+
+    def test_a_fixture_that_needs_a_huge_string_gets_an_exact_path_string_limit(self):
+        # staging/sm/String/unicode-braced.js evaluates a source string built
+        # from 2**24 zeros, which is 32 MiB of UTF-16 by itself and needs a
+        # string limit of at least 33,558,528 bytes (33,554,432 fails). The
+        # rest of the fixture is ordinary and takes about a second, well inside
+        # the unchanged 2 s wall deadline and the default dispatch budget. The
+        # limit is 64 MiB, twice the requirement: it is a data size, so extra
+        # headroom would buy nothing.
+        relative = "staging/sm/String/unicode-braced.js"
+        self.assertEqual(FIXTURE_STRING_LIMITS, {relative: 64 * 1024 * 1024})
+        self.assertEqual(fixture_string_limit(relative), 64 * 1024 * 1024)
+        self.assertEqual(instruction_budget({}, 100_000, relative), 100_000)
+        self.assertEqual(case_timeout({}, 2, relative), 2)
+        # Neighbours, and fixtures whose failure is a different resource (a
+        # string of 2**36 units, a 2**21-element JSON array), keep the default.
+        for other in (
+            "staging/sm/String/unicode-braced-2.js",
+            "staging/sm/String/replace-math.js",
+            "staging/sm/JSON/parse-mega-huge-array.js",
+            "staging/sm/RegExp/unicode-class-braced.js",
+            "built-ins/String/prototype/repeat/repeat-string-n-times.js",
+        ):
+            self.assertIsNone(fixture_string_limit(other), other)
 
     def test_wall_clock_busy_wait_fixture_gets_an_exact_path_dispatch_allowance(self):
         # await-import-evaluation_FIXTURE.js spins `while (true)` until

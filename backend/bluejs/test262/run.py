@@ -219,14 +219,30 @@ STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET = 6_000_000
 #   es5ish-defineGetter-defineSetter.js    110,156  (about 60 descriptor checks)
 # A fixture that is too slow for that deadline even with fuel is deliberately
 # not listed (staging/sm/Array/toSpliced-dense.js needs 19.6M dispatches and
-# about 7 s; each staging/sm/Date/dst-offset-caching-N-of-8.js part runs for
-# more than a minute).
+# about 7 s; each staging/sm/Date/dst-offset-caching-N-of-8.js part needs
+# 100M-130M dispatches and runs for more than half a minute).
 FINITE_FIXTURE_INSTRUCTION_BUDGETS = {
     "staging/sm/Array/with-dense.js": 750_000,
     "staging/sm/JSON/parse-reviver-array-delete.js": 750_000,
     "staging/sm/Math/log2-approx.js": 1_300_000,
     "staging/sm/extensions/es5ish-defineGetter-defineSetter.js": 450_000,
 }
+# `staging/sm/String/unicode-braced.js` evaluates a source string built from
+# 2**24 zeros, which is 32 MiB of UTF-16 by itself: it needs a string limit of at
+# least 33,558,528 bytes (33,554,432 is not enough) against the ordinary 1 MiB.
+# The remainder is a few dozen assertions and it runs in about a second with the
+# default dispatch budget and heap. The limit is 64 MiB, twice the requirement
+# (a data size, so more headroom would buy nothing), for this exact path only.
+FIXTURE_STRING_LIMITS = {
+    "staging/sm/String/unicode-braced.js": 64 * 1024 * 1024,
+}
+
+
+def fixture_string_limit(relative):
+    """Return the exact-path string limit for a fixture, or None for the default."""
+    return FIXTURE_STRING_LIMITS.get(relative)
+
+
 TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET = 50_000_000
 # `testIntl.js` runs every asserted result through a finite locale and
 # numbering-system matrix. Debug interpreter dispatch exceeds the ordinary
@@ -1326,6 +1342,8 @@ def main():
                     request["regex_timeout_ms"] = REGEXP_PROPERTY_ESCAPES_REGEX_TIMEOUT_MS
                 elif relative in REGEXP_CLASS_ESCAPE_FIXTURES:
                     request["string_limit"] = REGEXP_CLASS_ESCAPE_STRING_LIMIT
+                elif fixture_string_limit(relative) is not None:
+                    request["string_limit"] = fixture_string_limit(relative)
                 if relative == STRING_CASE_MAPPING_FIXTURE:
                     request["heap_limit"] = STRING_CASE_MAPPING_HEAP_LIMIT
                 has_dynamic_import_expression = bool(

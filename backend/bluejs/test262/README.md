@@ -72,7 +72,19 @@ dispatches, 750,000 allowed), `staging/sm/JSON/parse-reviver-array-delete.js`
 slow for the wall deadline even with unlimited fuel (for example
 `staging/sm/Array/toSpliced-dense.js`, `staging/sm/Date/two-digit-years.js`
 under load, and every `staging/sm/Date/dst-offset-caching-N-of-8.js` part)
-is deliberately absent and stays a reported failure. The exact
+is deliberately absent and stays a reported failure.
+`staging/sm/String/unicode-braced.js` is a resource-size case rather than a
+dispatch one: it evaluates a source string built from 2**24 zeros (32 MiB of
+UTF-16), so it needs a string limit of at least 33,558,528 bytes against the
+ordinary 1 MiB, and then runs in about a second with the default dispatch budget
+and heap. `FIXTURE_STRING_LIMITS` gives that exact path a 64 MiB string limit
+(twice the requirement; a data size gains nothing from more headroom) beside
+the existing 8 MiB limits of the RegExp property-escape fixtures. The other
+string-limit failures (`staging/sm/String/replace-math.js`, which builds 2**36
+units and expects a catchable out-of-memory error, `staging/sm/JSON/parse-mega-huge-array.js`,
+`staging/sm/RegExp/unicode-class-braced.js`, `staging/sm/regress/regress-610026.js`)
+are not admitted: they need hundreds of megabytes or gigabytes, tens of seconds,
+or a catchable language-level string-length error the host does not provide. The exact
 `Function/prototype/toString/built-in-function-object.js` graph traversal has
 its separately measured 180-second bound, and the two exact RegExp
 match-indices warm-up fixtures have 30 seconds; neither broadens the ordinary
