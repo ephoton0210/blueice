@@ -97,6 +97,17 @@ policy steps and submit an `AuthorizedModuleLoader` to the host before any
 declaration can execute. Plain JavaScript and `text/typescript` are not an
 implicit BlueTS opt-in.
 
+The core `DirectPageScriptHost::execute_inline` helper is the bounded exception
+for one inline declaration: it derives a `blueice://page/` source identity from
+the typed tab ID, private replacement-document generation, and declaration
+ordinal; constructs exactly one `AuthorizedModule` with no resolution edges;
+then passes it through the same verified-profile admission path. The source ID
+contains no caller-controlled URL component, and a new document receives a new
+identity. It MUST reject an external `src` rather than loading it. A runtime
+import in that one-module graph remains an ordinary closed-loader resolution
+failure; external scripts and module graphs still require a page loader to
+authorize canonical records and exact edges.
+
 One page realm owns at most one live or previously linked program for each
 canonical ESM module ID. BlueJS retains module cells by that ID, so a second
 artifact with the same identity is rejected even after its original handle was

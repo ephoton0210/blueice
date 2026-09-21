@@ -17,7 +17,9 @@ use super::host_typings::{
     HostTypingsManifestV1,
 };
 use crate::{Page, TabId, TabManager};
-use blueice_bluets::{AuthorizedModuleLoader, CompilerOptions, RuntimePolicy, LANGUAGE_VERSION};
+use blueice_bluets::{
+    AuthorizedModule, AuthorizedModuleLoader, CompilerOptions, RuntimePolicy, LANGUAGE_VERSION,
+};
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectPageRealmOwner,
 };
@@ -39,6 +41,21 @@ pub struct DirectPageScriptRequest<'a> {
     pub kind: DirectPageScriptKind,
     pub entry: String,
     pub loader: &'a AuthorizedModuleLoader,
+    pub compiler_options: CompilerOptions,
+    pub feature_profile: String,
+    pub supplied_manifest: &'a HostTypingsManifestV1,
+    pub supplied_declaration_source: &'a str,
+    pub supplied_runtime_bindings: &'a [HostRuntimeBindingV1],
+}
+
+/// A request to execute one inline, explicitly opted-in BlueTS declaration
+/// from the current core document. This deliberately has no source text,
+/// `src`, module ID, or resolver records: the core host derives the exact
+/// single-module graph from the live document. External declarations and
+/// imports remain a future authorized-loader boundary.
+pub struct DirectInlinePageScriptRequest<'a> {
+    pub tab_id: TabId,
+    pub ordinal: u32,
     pub compiler_options: CompilerOptions,
     pub feature_profile: String,
     pub supplied_manifest: &'a HostTypingsManifestV1,
@@ -188,6 +205,67 @@ impl DirectPageScriptHost {
         }
     }
 
+    /// Admits and executes one inline script declaration from the current
+    /// document. The generated module identity is scoped to the core tab and
+    /// replacement-document generation, so an ordinal from an older document
+    /// cannot be attached to a successor realm. An external `src` fails rather
+    /// than acquiring a loader or resolution authority implicitly.
+    pub fn execute_inline(
+        &mut self,
+        tabs: &TabManager,
+        request: DirectInlinePageScriptRequest<'_>,
+    ) -> Result<blueice_bluejs::Value, DirectPageScriptError> {
+        let page = tabs
+            .get(request.tab_id)
+            .ok_or(DirectPageScriptError::UnknownTab {
+                tab_id: request.tab_id.as_u64(),
+            })?;
+        let document_generation = page.document_generation();
+        let declaration = page
+            .blue_ts_script_declarations()
+            .into_iter()
+            .find(|declaration| match declaration {
+                crate::script::BlueTsPageScriptDeclaration::Inline { ordinal, .. }
+                | crate::script::BlueTsPageScriptDeclaration::External { ordinal, .. } => {
+                    *ordinal == request.ordinal
+                }
+            })
+            .ok_or(DirectPageScriptError::InlineScriptNotFound {
+                tab_id: request.tab_id.as_u64(),
+                ordinal: request.ordinal,
+            })?;
+        let (kind, source) = match declaration {
+            crate::script::BlueTsPageScriptDeclaration::Inline { kind, source, .. } => {
+                (kind, source)
+            }
+            crate::script::BlueTsPageScriptDeclaration::External { src, .. } => {
+                return Err(DirectPageScriptError::ExternalScriptRequiresLoader {
+                    tab_id: request.tab_id.as_u64(),
+                    ordinal: request.ordinal,
+                    src,
+                });
+            }
+        };
+        let entry = inline_module_id(request.tab_id, document_generation, request.ordinal);
+        let loader =
+            AuthorizedModuleLoader::new([AuthorizedModule::new(entry.clone(), source)], [])
+                .expect("a single core-generated inline source always forms a valid closed loader");
+        self.execute(
+            tabs,
+            DirectPageScriptRequest {
+                tab_id: request.tab_id,
+                kind,
+                entry,
+                loader: &loader,
+                compiler_options: request.compiler_options,
+                feature_profile: request.feature_profile,
+                supplied_manifest: request.supplied_manifest,
+                supplied_declaration_source: request.supplied_declaration_source,
+                supplied_runtime_bindings: request.supplied_runtime_bindings,
+            },
+        )
+    }
+
     pub fn debug_record_count(&self) -> usize {
         self.realms.debug_record_count()
     }
@@ -211,6 +289,13 @@ impl DirectPageScriptHost {
         self.live_documents.insert(tab_id, target);
         Ok(())
     }
+}
+
+fn inline_module_id(tab_id: TabId, document_generation: u64, ordinal: u32) -> String {
+    format!(
+        "blueice://page/tab-{}/document-{document_generation}/inline-{ordinal}.ts",
+        tab_id.as_u64()
+    )
 }
 
 fn verified_declaration(
@@ -278,6 +363,15 @@ pub enum DirectPageScriptError {
         url: String,
         message: String,
     },
+    InlineScriptNotFound {
+        tab_id: u64,
+        ordinal: u32,
+    },
+    ExternalScriptRequiresLoader {
+        tab_id: u64,
+        ordinal: u32,
+        src: String,
+    },
 }
 
 impl fmt::Display for DirectPageScriptError {
@@ -312,6 +406,18 @@ impl fmt::Display for DirectPageScriptError {
             } => write!(
                 formatter,
                 "page tab {tab_id} has an invalid document URL `{url}`: {message}"
+            ),
+            Self::InlineScriptNotFound { tab_id, ordinal } => write!(
+                formatter,
+                "page tab {tab_id} has no inline BlueTS script declaration {ordinal}"
+            ),
+            Self::ExternalScriptRequiresLoader {
+                tab_id,
+                ordinal,
+                src,
+            } => write!(
+                formatter,
+                "page tab {tab_id} script declaration {ordinal} uses external source `{src}` and requires an authorized loader"
             ),
         }
     }
@@ -529,6 +635,98 @@ mod tests {
         assert!(matches!(
             host.execute(&tabs, request(tab_id, &loader, &artifact)),
             Err(DirectPageScriptError::InvalidPageUrl { .. })
+        ));
+        assert_eq!(host.debug_record_count(), 0);
+    }
+
+    #[test]
+    fn executes_an_inline_document_declaration_as_a_closed_single_module() {
+        let profiles = catalog();
+        let artifact = profiles.generate("test-empty-v1").unwrap();
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script type=\"application/x-blueice-typescript\">const answer: number = 40 + 2; answer;</script>",
+            Some("https://example.test/app/index.html".to_string()),
+        );
+        let mut host = DirectPageScriptHost::new(profiles);
+
+        assert_eq!(
+            host.execute_inline(
+                &tabs,
+                DirectInlinePageScriptRequest {
+                    tab_id,
+                    ordinal: 0,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: "test-empty-v1".to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            )
+            .unwrap(),
+            blueice_bluejs::Value::Number(42.0)
+        );
+        assert_eq!(host.debug_record_count(), 1);
+    }
+
+    #[test]
+    fn executes_an_inline_module_declaration_without_a_second_resolver() {
+        let profiles = catalog();
+        let artifact = profiles.generate("test-empty-v1").unwrap();
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script type=\"application/x-blueice-typescript-module\">export const answer: number = 40 + 2; answer;</script>",
+            Some("https://example.test/app/index.html".to_string()),
+        );
+        let mut host = DirectPageScriptHost::new(profiles);
+
+        assert_eq!(
+            host.execute_inline(
+                &tabs,
+                DirectInlinePageScriptRequest {
+                    tab_id,
+                    ordinal: 0,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: "test-empty-v1".to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            )
+            .unwrap(),
+            blueice_bluejs::Value::Number(42.0)
+        );
+        assert_eq!(host.debug_record_count(), 1);
+    }
+
+    #[test]
+    fn inline_execution_rejects_external_source_without_loading_it() {
+        let profiles = catalog();
+        let artifact = profiles.generate("test-empty-v1").unwrap();
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script type=\"application/x-blueice-typescript\" src=\"/app.ts\"></script>",
+            Some("https://example.test/app/index.html".to_string()),
+        );
+        let mut host = DirectPageScriptHost::new(profiles);
+
+        assert!(matches!(
+            host.execute_inline(
+                &tabs,
+                DirectInlinePageScriptRequest {
+                    tab_id,
+                    ordinal: 0,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: "test-empty-v1".to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            ),
+            Err(DirectPageScriptError::ExternalScriptRequiresLoader { .. })
         ));
         assert_eq!(host.debug_record_count(), 0);
     }

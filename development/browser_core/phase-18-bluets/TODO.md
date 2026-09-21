@@ -199,11 +199,15 @@ or second module resolver to bypass them.
   parsed `Page` now also reports `application/x-blueice-typescript` and
   `application/x-blueice-typescript-module` declarations in document order,
   preserving either inline text or an external `src` without reinterpreting
-  ordinary JavaScript or `text/typescript`. It does not fetch `src`, mint a
-  canonical module ID, choose a profile, or invoke the host. The default
-  `run_session` and `blueice-core` therefore still do not instantiate it, and
-  no DOM bindings, source/resolver transport, or normal page-pipeline execution
-  fixture exists. The prerequisite consequently remains open.
+  ordinary JavaScript or `text/typescript`. `DirectPageScriptHost::execute_inline`
+  can now take one such inline declaration, mint its tab/document-generation/
+  ordinal-scoped source identity, form exactly one closed source module, and
+  submit it through verified direct admission. It rejects external `src`
+  instead of fetching it, and an import remains unresolved without a future
+  authorized graph loader. The default `run_session` and `blueice-core` do not
+  invoke this operation from a page lifecycle yet, and no DOM bindings,
+  source/resolver transport, or normal page-pipeline execution fixture exists.
+  The prerequisite consequently remains open.
 
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering

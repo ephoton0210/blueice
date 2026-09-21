@@ -4,10 +4,10 @@
 
 use super::*;
 use crate::script::{
-    direct_page::{DirectPageScriptHost, DirectPageScriptKind, DirectPageScriptRequest},
+    direct_page::{DirectInlinePageScriptRequest, DirectPageScriptHost},
     host_typings::{HostTypeSurfaceCatalogV1, HostTypeSurfaceV1},
 };
-use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, CompilerOptions, LANGUAGE_VERSION};
+use blueice_bluets::{CompilerOptions, LANGUAGE_VERSION};
 use std::net::TcpListener;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
@@ -95,18 +95,13 @@ fn admitted_direct_page_host(tabs: &TabManager, tab_id: TabId) -> DirectPageScri
     )])
     .unwrap();
     let artifact = profiles.generate("session-empty-v1").unwrap();
-    let loader =
-        AuthorizedModuleLoader::new([AuthorizedModule::new("page:///app/main.ts", "42;")], [])
-            .unwrap();
     let mut host = DirectPageScriptHost::new(profiles);
     assert_eq!(
-        host.execute(
+        host.execute_inline(
             tabs,
-            DirectPageScriptRequest {
+            DirectInlinePageScriptRequest {
                 tab_id,
-                kind: DirectPageScriptKind::Classic,
-                entry: "page:///app/main.ts".to_string(),
-                loader: &loader,
+                ordinal: 0,
                 compiler_options: CompilerOptions::default(),
                 feature_profile: "session-empty-v1".to_string(),
                 supplied_manifest: &artifact.manifest,
@@ -148,7 +143,7 @@ fn direct_page_host_is_invalidated_by_a_session_document_replacement() {
     let mut tabs = TabManager::new(320.0, 200.0);
     let tab_id = tabs.default_tab();
     tabs.get_mut(tab_id).unwrap().load_html_str(
-        "<main id=\"app\"></main>",
+        "<main id=\"app\"></main><script type=\"application/x-blueice-typescript\">42;</script>",
         Some("https://example.test/app/index.html".to_string()),
     );
     let mut direct_page_host = admitted_direct_page_host(&tabs, tab_id);
