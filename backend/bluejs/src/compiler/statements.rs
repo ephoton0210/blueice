@@ -617,16 +617,10 @@ impl Compiler {
                 } else {
                     self.constant(Value::Undefined)?;
                 }
-                let iterators: Vec<_> = self
-                    .loops
-                    .iter()
-                    .rev()
-                    .filter_map(|context| context.iterator)
-                    .collect();
-                for iterator in iterators {
-                    self.emit(Opcode::GetBinding, iterator)?;
-                    self.emit(Opcode::IteratorClose, 0)?;
-                }
+                // The Return completion unwinds the enclosing handlers first
+                // (their finalizers run before an outer loop's iterator is
+                // closed); the VM closes the iterators still open once no
+                // handler is left.
                 self.emit(Opcode::Return, 0)?;
             }
             Stmt::Empty => {}
@@ -727,19 +721,9 @@ impl Compiler {
         Ok(())
     }
 
-    /// Closes the iterators of the loops being left, then returns the value
-    /// on top of the stack.
+    /// Returns the value on top of the stack; the Return completion unwinds
+    /// the handlers and closes the iterators of the loops being left.
     fn emit_return_epilogue(&mut self) -> Result<(), CompileError> {
-        let iterators: Vec<_> = self
-            .loops
-            .iter()
-            .rev()
-            .filter_map(|context| context.iterator)
-            .collect();
-        for iterator in iterators {
-            self.emit(Opcode::GetBinding, iterator)?;
-            self.emit(Opcode::IteratorClose, 0)?;
-        }
         self.emit(Opcode::Return, 0)?;
         Ok(())
     }

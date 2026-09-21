@@ -872,7 +872,17 @@ impl Vm {
             let Some(frame) = handlers.last() else {
                 return Ok(match completion {
                     Completion::Throw(error) => CompletionAction::Throw(error),
-                    Completion::Return(value) => CompletionAction::Return(value),
+                    // Every finalizer has run, so the for-of iterators still
+                    // open are closed now, innermost first. A failing
+                    // `return()` replaces the return with its own throw,
+                    // which no handler of this function can catch anymore.
+                    Completion::Return(value) => {
+                        match self.close_iterators_to_first_error(iterators, 0) {
+                            None => CompletionAction::Return(value),
+                            Some(error) if error.is_catchable() => CompletionAction::Throw(error),
+                            Some(error) => return Err(error),
+                        }
+                    }
                     Completion::TailRecur(args) => CompletionAction::TailRecur(args),
                     Completion::Jump { cleanup, .. } => CompletionAction::Jump(cleanup),
                     Completion::Resume(_) | Completion::Halt(_) | Completion::Yield(_) => {
