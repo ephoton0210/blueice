@@ -1185,14 +1185,25 @@ impl Compiler {
         match pattern {
             Pattern::Identifier(name) => {
                 let slot = if kind == DeclKind::Var {
-                    self.catch_var_slots
+                    let resolved = self
+                        .catch_var_slots
                         .iter()
                         .rev()
                         .find_map(|slots| slots.get(name))
                         .copied()
                         .or_else(|| self.names[self.local_scope].get(name).copied())
-                        .or_else(|| self.resolve(name))
-                        .expect("var declaration has a function or eval binding")
+                        .or_else(|| self.resolve(name));
+                    let Some(slot) = resolved else {
+                        // A sloppy direct eval does not re-create a `var` that
+                        // an earlier eval already added to the function's
+                        // VariableEnvironment: it has no static slot, and the
+                        // initializer assigns to that dynamic binding.
+                        let index = self.name_constant(name)?;
+                        self.emit(Opcode::SetUnboundName, index)?;
+                        self.emit(Opcode::Pop, 0)?;
+                        return Ok(());
+                    };
+                    slot
                 } else {
                     self.names.last().unwrap()[name]
                 };
