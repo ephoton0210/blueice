@@ -194,7 +194,9 @@ opcodes! {
     AbruptJump: 5, 0;
     DefineData: 1, 0;
     DefineAccessor: 5, 0;
-    DefineMethod: 1, 0;
+    // Operand: non-zero for an object-literal method (enumerable), zero for a
+    // class method.
+    DefineMethod: 5, 0;
     DefineClassAccessor: 5, 0;
     DefineClassStaticField: 1, 0;
     DefineInstanceField: 1, 0;
