@@ -79,7 +79,7 @@ impl Vm {
     /// A fresh null-prototype heap record for closure state; the caller keeps
     /// it rooted while it fills it in.
     pub(super) fn promise_state(&mut self) -> Result<ObjectId, RuntimeError> {
-        Ok(self.with_roots(|heap| heap.alloc_object(None))?)
+        self.with_roots(|heap| heap.alloc_object(None))
     }
 
     pub(super) fn promise_state_get(
