@@ -370,8 +370,10 @@ static declarations; it produces no JavaScript or host capability. Direct-page
 admission also enables the fingerprinted `require_declared_global_calls`
 policy, so a direct call must resolve to a local function or this verified
 ambient root before bytecode is admitted. The standalone `bluetsc` leaves both
-host-only facilities unavailable. The empty profile therefore rejects
-`blueiceDocumentText()` and `blueiceDocumentOrigin()` statically, while an
+host-only facilities unavailable. This policy also contributes to
+`BlueTsDebugInfo`'s compiler-options hash, so a retained static record cannot
+cross the direct-page/standalone policy boundary. The empty profile therefore
+rejects `blueiceDocumentText()` and `blueiceDocumentOrigin()` statically, while an
 unconfigured raw BlueJS realm rejects either at runtime; the matching profile
 both checks and installs them. This
 establishes one truthful page capability without advertising a broad DOM API

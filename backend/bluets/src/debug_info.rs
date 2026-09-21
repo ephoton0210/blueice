@@ -106,10 +106,11 @@ fn options_hash(options: &CompilerOptions) -> String {
     let source_map = if options.source_map { "map" } else { "no-map" };
     let declaration = if options.declaration { "dts" } else { "no-dts" };
     hash(&format!(
-        "{}|{}|{}|{source_map}|{declaration}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{source_map}|{declaration}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
         options.target.as_str(),
         options.runtime_policy.as_str(),
         options.resolver_fingerprint,
+        options.require_declared_global_calls,
         options.limits.max_modules,
         options.limits.max_module_edges,
         options.limits.max_module_depth,
@@ -153,5 +154,30 @@ mod tests {
             debug.sources[0].content_hash,
             "export const count: number = 1;"
         );
+    }
+
+    #[test]
+    fn debug_info_hash_binds_declared_global_call_policy() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///app.ts",
+            "export const count: number = 1;",
+        )]);
+        let default = compile("memory:///app.ts", &loader, CompilerOptions::default())
+            .debug_info
+            .unwrap()
+            .compiler_options_hash;
+        let page_profile = compile(
+            "memory:///app.ts",
+            &loader,
+            CompilerOptions {
+                require_declared_global_calls: true,
+                ..CompilerOptions::default()
+            },
+        )
+        .debug_info
+        .unwrap()
+        .compiler_options_hash;
+
+        assert_ne!(default, page_profile);
     }
 }

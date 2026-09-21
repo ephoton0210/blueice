@@ -350,6 +350,10 @@ or second module resolver to bypass them.
   retains no source text or runtime values, bounds programs/sources/symbols/
   types, rejects mismatched or over-limit attachments before exposing metadata,
   and can prune records after the owning BlueJS generation is invalidated.
+  Its compiler-options hash includes the direct-page
+  `require_declared_global_calls` policy, so static metadata checked under an
+  empty or verified host profile cannot be mistaken for metadata compiled
+  under the standalone policy.
   `DirectModuleGraph::attach_debug_in_page_realm` now derives a module-local
   static subset (one source, that module's symbols, and their referenced type
   IDs) for every graph generation and rolls back all retained records/programs
