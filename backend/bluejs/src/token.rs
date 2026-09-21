@@ -400,6 +400,18 @@ impl Tokenizer {
         }
     }
 
+    /// Consumes a Hashbang comment (`#!` through the end of the line, not
+    /// including the line terminator) when it is the first thing in the
+    /// source text. Callers apply this only to complete Script or Module
+    /// text; the line terminator that ends it is ordinary trivia.
+    pub(crate) fn skip_hashbang(&mut self) {
+        if self.pos == 0 && self.peek() == Some('#') && self.peek_at(1) == Some('!') {
+            while self.peek().is_some_and(|c| !is_line_terminator(c)) {
+                self.advance();
+            }
+        }
+    }
+
     fn peek(&self) -> Option<char> {
         self.input.get(self.pos).copied()
     }

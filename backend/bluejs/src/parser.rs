@@ -74,7 +74,7 @@ impl From<LexError> for ParseError {
 }
 
 pub fn parse(source: &str) -> Result<Program, ParseError> {
-    let mut parser = Parser::new(source);
+    let mut parser = Parser::new_script(source);
     let mut body = Vec::new();
     let mut directive_prologue = true;
     while !parser.at_eof() {
@@ -105,7 +105,7 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
 /// `super` early errors. At script top level those expressions are invalid,
 /// but a direct eval inherits the calling method's `[[HomeObject]]`.
 pub(crate) fn parse_eval(source: &str) -> Result<Program, ParseError> {
-    let mut parser = Parser::new(source);
+    let mut parser = Parser::new_script(source);
     let mut body = Vec::new();
     while !parser.at_eof() {
         body.push(parser.parse_statement()?);
@@ -326,8 +326,19 @@ impl Parser {
         Self::from_tokenizer(Tokenizer::new(source))
     }
 
+    /// A parser over complete Script source text, the only place a Hashbang
+    /// comment (`#!...`) may begin. Template placeholders and other
+    /// substring parses use [`Parser::new`], where `#!` stays an error.
+    fn new_script(source: &str) -> Parser {
+        let mut tokenizer = Tokenizer::new(source);
+        tokenizer.skip_hashbang();
+        Self::from_tokenizer(tokenizer)
+    }
+
     fn new_module(source: &str) -> Parser {
-        Self::from_tokenizer(Tokenizer::new_module(source))
+        let mut tokenizer = Tokenizer::new_module(source);
+        tokenizer.skip_hashbang();
+        Self::from_tokenizer(tokenizer)
     }
 
     fn from_tokenizer(mut tokenizer: Tokenizer) -> Parser {
