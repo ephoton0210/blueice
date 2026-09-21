@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::vm::builtins::dynamic::DynamicFunctionKind;
 
 impl Vm {
     pub(in super::super::super) fn native_call(
@@ -109,6 +110,12 @@ impl Vm {
             NativeFunction::AbstractModuleSourceToStringTag => Ok(Value::Undefined),
             NativeFunction::Function => self.function_constructor(&args),
             NativeFunction::AsyncFunction => self.async_function_constructor(&args),
+            NativeFunction::GeneratorFunction => {
+                self.dynamic_function_constructor(&args, DynamicFunctionKind::Generator)
+            }
+            NativeFunction::AsyncGeneratorFunction => {
+                self.dynamic_function_constructor(&args, DynamicFunctionKind::AsyncGenerator)
+            }
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
             NativeFunction::ErrorIsError => self.error_is_error(first),

@@ -188,6 +188,11 @@ pub(crate) enum NativeFunction {
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.
     AsyncFunction,
+    /// The intrinsic `%GeneratorFunction%` and `%AsyncGeneratorFunction%`
+    /// constructors (no globals): they compile `function*` / `async function*`
+    /// from their arguments.
+    GeneratorFunction,
+    AsyncGeneratorFunction,
     String,
     Array,
     Date,

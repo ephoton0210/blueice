@@ -353,6 +353,9 @@ impl Vm {
         let dynamic_eval_bindings =
             std::mem::replace(&mut self.dynamic_eval_bindings, frame_dynamic_bindings);
         let eval_dynamic_slots = std::mem::take(&mut self.eval_dynamic_slots);
+        // The caller's script-level slot -> global-property map names slots of
+        // *its* frame; a resumed generator body has its own slot numbering.
+        let script_global_slots = std::mem::take(&mut self.script_global_slots);
         let this = std::mem::replace(&mut self.this, frame_this);
         let arguments = std::mem::replace(&mut self.arguments, frame_args);
         let completion = std::mem::replace(&mut self.completion, frame_completion);
@@ -588,6 +591,7 @@ impl Vm {
         self.dynamic_eval_bindings = dynamic_eval_bindings;
         self.dynamic_eval_outer_bindings = dynamic_eval_outer_bindings;
         self.eval_dynamic_slots = eval_dynamic_slots;
+        self.script_global_slots = script_global_slots;
         self.this = this;
         self.arguments = arguments;
         self.completion = completion;

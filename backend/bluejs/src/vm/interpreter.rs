@@ -656,6 +656,8 @@ impl Vm {
                         let child = code.functions[operand].clone();
                         let function_prototype = if child.generator && !child.async_function {
                             self.generator_function_prototype()?
+                        } else if child.generator {
+                            self.async_generator_function_prototype()?
                         } else if child.async_function {
                             self.async_function_prototype()?
                         } else {

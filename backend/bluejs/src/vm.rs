@@ -907,6 +907,7 @@ pub struct Vm {
     generator_prototype: Option<ObjectId>,
     async_iterator_base: Option<ObjectId>,
     async_generator_prototype: Option<ObjectId>,
+    async_generator_function_prototype: Option<ObjectId>,
     /// `%AsyncFunction.prototype%`, permanently rooted with the realm once
     /// the first async closure needs it. Its `constructor` property keeps
     /// `%AsyncFunction%` reachable without exposing a global binding.
@@ -1090,6 +1091,7 @@ impl Vm {
             generator_prototype: None,
             async_iterator_base: None,
             async_generator_prototype: None,
+            async_generator_function_prototype: None,
             async_function_prototype: None,
             promise_prototype: None,
             date_prototype: None,
@@ -2157,6 +2159,8 @@ impl Vm {
                     | NativeFunction::Promise
                     | NativeFunction::Function
                     | NativeFunction::AsyncFunction
+                    | NativeFunction::GeneratorFunction
+                    | NativeFunction::AsyncGeneratorFunction
                     | NativeFunction::Iterator
                     | NativeFunction::PrimitiveConstructor(_)
                     // Reaches native_call so its own NewTarget-is-defined
