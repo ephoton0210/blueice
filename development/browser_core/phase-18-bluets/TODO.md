@@ -637,6 +637,18 @@ or second module resolver to bypass them.
   warnings/formatting failures in BlueJS dependencies rather than hiding them
   with an allow in BlueTS.
 
+  Local gate evidence (2026-09-21): following the checked-in reference README,
+  the gitignored Test262 corpus was checked out at pinned revision
+  `72faf8ec1445c55149615e8b35187830783aba1a`. With that required input present,
+  `cargo test --workspace`, `cargo fmt --all -- --check`, and
+  `cargo clippy --workspace --all-targets -- -D warnings` all passed. The
+  focused engine library and real `blueice-core` subprocess suites also pass.
+  No BlueJS warning allow, test exclusion, or corpus-free fallback was added.
+  The local ignored TypeScript-oracle test remains intentionally dependent on
+  `BLUEICE_BLUETSC_ORACLE`; its pinned 5.9.3 execution is still enforced by the
+  required CI job, so this release item remains open pending the complete CI
+  evidence rather than being marked complete from a local proxy.
+
   Acceptance: Phase 18's required CI jobs are green with no ignored required
   oracle/integration test and no suppressed cross-crate warning that masks a
   release gate.
