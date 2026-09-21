@@ -253,6 +253,9 @@ impl Vm {
             .map(|prototype| prototype.and_then(|prototype| prototype.object_id()))
     }
 
+    /// The `%Intrinsic.prototype%` of a foreign Realm, as a facade in this
+    /// Realm: what `GetPrototypeFromConstructor` yields when the new target
+    /// belongs to that Realm and its `prototype` is not an object.
     pub(in super::super) fn test262_foreign_default_prototype(
         &mut self,
         realm_id: ObjectId,
@@ -263,50 +266,7 @@ impl Vm {
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            let constructor = match intrinsic {
-                "Intl.Collator" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.Collator%"])
-                }
-                "Intl.DateTimeFormat" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.DateTimeFormat%"])
-                }
-                "Intl.NumberFormat" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.NumberFormat%"])
-                }
-                "Intl.Locale" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.Locale%"])
-                }
-                "Intl.DisplayNames" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.DisplayNames%"])
-                }
-                "Intl.DurationFormat" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.DurationFormat%"])
-                }
-                "Intl.ListFormat" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.ListFormat%"])
-                }
-                "Intl.PluralRules" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.PluralRules%"])
-                }
-                "Intl.RelativeTimeFormat" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.RelativeTimeFormat%"])
-                }
-                "Intl.Segmenter" => {
-                    realm.vm.intl_global()?;
-                    Value::Object(realm.vm.globals["%Intl.Segmenter%"])
-                }
-                _ => realm.vm.global(intrinsic)?,
-            };
-            realm.vm.get_property(&constructor, &"prototype".into())?
+            realm.vm.intrinsic_prototype(intrinsic)?
         };
         self.test262_import_foreign_value(realm_id, prototype)?
             .object_id()
@@ -633,7 +593,89 @@ impl Vm {
             .expect("foreign realm remains live");
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
         let result = realm.vm.get_object_property(target, &receiver, key);
-        self.test262_import_foreign_result(realm_id, result)
+        let value = self.test262_foreign_completion(realm_id, result)?;
+        self.test262_import_foreign_value(realm_id, value)
+    }
+
+    /// Forwards a foreign facade's [[GetOwnProperty]] into its Realm and
+    /// imports the descriptor's value / accessor functions back across the
+    /// membrane, so the descriptor APIs see the properties of the facaded
+    /// object rather than those of its empty local stand-in.
+    pub(in super::super) fn test262_foreign_get_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: &PropertyName,
+    ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign getOwnProperty has a membrane record");
+        let descriptor = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            realm.vm.object_get_own_property(target, key)
+        };
+        let descriptor = self.test262_foreign_completion(realm_id, descriptor);
+        let Some(mut descriptor) = descriptor? else {
+            return Ok(None);
+        };
+        for field in [
+            &mut descriptor.value,
+            &mut descriptor.get,
+            &mut descriptor.set,
+        ] {
+            if let Some(value) = field.take() {
+                *field = Some(self.test262_import_foreign_value(realm_id, value)?);
+            }
+        }
+        Ok(Some(descriptor))
+    }
+
+    /// Forwards a foreign facade's [[DefineOwnProperty]] into its Realm, with
+    /// the descriptor's value / accessor functions exported across the
+    /// membrane (a facaded TypedArray keeps its buffer mirrors in step, as
+    /// [[Set]] does), so a detached or out-of-range element is judged by the
+    /// owning realm's internal method rather than by the empty local record.
+    pub(in super::super) fn test262_foreign_define_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: PropertyName,
+        mut descriptor: PropertyDescriptor,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign defineOwnProperty has a membrane record");
+        let typed_buffer = self
+            .test262_realms
+            .get(&realm_id)
+            .and_then(|realm| realm.vm.heap.typed_array_info(target).ok())
+            .map(|(buffer, _, _, _)| buffer);
+        if typed_buffer.is_some() {
+            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        }
+        for field in [
+            &mut descriptor.value,
+            &mut descriptor.get,
+            &mut descriptor.set,
+        ] {
+            if let Some(value) = field.take() {
+                *field = Some(self.test262_export_foreign_value(realm_id, &value)?);
+            }
+        }
+        let result = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            realm.vm.object_define_own_property(target, key, descriptor)
+        };
+        if let Some(buffer) = typed_buffer {
+            self.test262_refresh_foreign_buffer_mirrors(realm_id, buffer)?;
+        }
+        self.test262_foreign_completion(realm_id, result)
     }
 
     /// Forwards a foreign facade's [[OwnPropertyKeys]] into its Realm. Keys
@@ -651,7 +693,132 @@ impl Vm {
             .get_mut(&realm_id)
             .expect("foreign realm remains live");
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        realm.vm.object_own_property_keys(target)
+        let result = realm.vm.object_own_property_keys(target);
+        self.test262_foreign_completion(realm_id, result)
+    }
+
+    /// Materializes an abrupt completion of an operation run in a foreign
+    /// Realm as that Realm's own Error object and imports it, so the caller
+    /// observes an error from the Realm whose code failed. Resource errors
+    /// pass through unchanged.
+    fn test262_foreign_completion<T>(
+        &mut self,
+        realm_id: ObjectId,
+        result: Result<T, RuntimeError>,
+    ) -> Result<T, RuntimeError> {
+        match result {
+            Ok(value) => Ok(value),
+            Err(RuntimeError::Thrown(value)) => Err(RuntimeError::Thrown(
+                self.test262_import_foreign_value(realm_id, value)?,
+            )),
+            Err(error) => Err(self.test262_create_error_in_realm(realm_id, error)?),
+        }
+    }
+
+    /// An unmaterialized language error (`TypeError`, `RangeError`,
+    /// `ReferenceError`, `SyntaxError`) becomes the corresponding Error
+    /// object of the foreign Realm `realm_id`, imported here. Every other
+    /// completion, resource errors and already thrown values included, is
+    /// returned unchanged.
+    fn test262_create_error_in_realm(
+        &mut self,
+        realm_id: ObjectId,
+        error: RuntimeError,
+    ) -> Result<RuntimeError, RuntimeError> {
+        if !matches!(
+            error,
+            RuntimeError::TypeError(_)
+                | RuntimeError::RangeError(_)
+                | RuntimeError::ReferenceError(_)
+                | RuntimeError::SyntaxError(_)
+        ) {
+            return Ok(error);
+        }
+        let error = self
+            .test262_realms
+            .get_mut(&realm_id)
+            .expect("foreign realm remains live")
+            .vm
+            .error_value(error)?;
+        Ok(RuntimeError::Thrown(
+            self.test262_import_foreign_value(realm_id, error)?,
+        ))
+    }
+
+    /// The Realm and target behind `wrapper`, with a fresh instruction budget
+    /// for the operation about to run there.
+    fn test262_foreign_target(&mut self, wrapper: ObjectId) -> (ObjectId, ObjectId, &mut Vm) {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign internal method has a membrane record");
+        let realm = self
+            .test262_realms
+            .get_mut(&realm_id)
+            .expect("foreign realm remains live");
+        realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+        (realm_id, target, &mut realm.vm)
+    }
+
+    /// [[Delete]] of a foreign facade, performed in its Realm.
+    pub(in super::super) fn test262_foreign_delete(
+        &mut self,
+        wrapper: ObjectId,
+        key: &PropertyName,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, target, vm) = self.test262_foreign_target(wrapper);
+        let result = vm.object_delete(target, key);
+        self.test262_foreign_completion(realm_id, result)
+    }
+
+    /// [[IsExtensible]] of a foreign facade, performed in its Realm.
+    pub(in super::super) fn test262_foreign_is_extensible(
+        &mut self,
+        wrapper: ObjectId,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, target, vm) = self.test262_foreign_target(wrapper);
+        let result = vm.object_is_extensible(target);
+        self.test262_foreign_completion(realm_id, result)
+    }
+
+    /// [[PreventExtensions]] of a foreign facade, performed in its Realm.
+    pub(in super::super) fn test262_foreign_prevent_extensions(
+        &mut self,
+        wrapper: ObjectId,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, target, vm) = self.test262_foreign_target(wrapper);
+        let result = vm.object_prevent_extensions(target);
+        self.test262_foreign_completion(realm_id, result)
+    }
+
+    /// [[SetPrototypeOf]] of a foreign facade, performed in its Realm. A
+    /// prototype belonging to another Realm crosses the membrane like any
+    /// other value, and replaces the prototype recorded by construction.
+    pub(in super::super) fn test262_foreign_set_prototype(
+        &mut self,
+        wrapper: ObjectId,
+        prototype: Option<ObjectId>,
+    ) -> Result<bool, RuntimeError> {
+        let (realm_id, _, _) = self.test262_foreign_target(wrapper);
+        let prototype = prototype
+            .map(|prototype| {
+                self.test262_export_foreign_value(realm_id, &Value::Object(prototype))
+                    .map(|value| {
+                        value
+                            .object_id()
+                            .expect("an exported object stays an object")
+                    })
+            })
+            .transpose()?;
+        let (_, target, vm) = self.test262_foreign_target(wrapper);
+        let result = vm.object_set_prototype(target, prototype);
+        let succeeded = self.test262_foreign_completion(realm_id, result)?;
+        if succeeded {
+            self.test262_foreign_values
+                .get_mut(&wrapper)
+                .expect("foreign facade keeps its membrane record")
+                .prototype_override = None;
+        }
+        Ok(succeeded)
     }
 
     /// Runs a foreign facade's [[Set]] in its owning Realm. `Reflect.set`
@@ -675,9 +842,10 @@ impl Vm {
             .get_mut(&realm_id)
             .expect("foreign realm remains live");
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        realm
+        let result = realm
             .vm
-            .ordinary_set_with_receiver(target, &receiver, key, &value)
+            .ordinary_set_with_receiver(target, &receiver, key, &value);
+        self.test262_foreign_completion(realm_id, result)
     }
 
     pub(in super::super) fn test262_foreign_set(
@@ -702,12 +870,15 @@ impl Vm {
         // `assert.sameValue` into a child Realm; preserving that child's
         // equivalent native helper keeps the call boundary functional rather
         // than replacing it with the deliberately opaque ordinary-object
-        // transport used for arbitrary parent objects.
+        // transport used for arbitrary parent objects. Only harness helpers
+        // are interchangeable: any other built-in (`RegExp`, `Object`, ...)
+        // of this Realm is a distinct function from its namesake there.
         let native = value
             .object_id()
             .map(|object| self.heap.native_function(object))
             .transpose()?
-            .flatten();
+            .flatten()
+            .filter(|native| matches!(native, NativeFunction::Test262(_)));
         let equivalent_native = if let Some(native) = native {
             let realm = self
                 .test262_realms
@@ -741,7 +912,7 @@ impl Vm {
         if let Some(buffer) = typed_buffer {
             self.test262_refresh_foreign_buffer_mirrors(realm_id, buffer)?;
         }
-        result
+        self.test262_foreign_completion(realm_id, result)
     }
 
     /// Runs one of `%TypedArray%`'s generic native methods against a facade
@@ -1203,9 +1374,15 @@ impl Vm {
         args: Vec<Value>,
         construct: bool,
     ) -> Result<Value, RuntimeError> {
-        let (realm_id, target, _, _) = self
+        let (realm_id, target, _, constructible) = self
             .test262_foreign_reference(wrapper)
             .expect("foreign call has a membrane record");
+        // The IsConstructor check belongs to the caller (`new`,
+        // Reflect.construct), so its TypeError is created in this Realm and
+        // must not be delegated to the callee's.
+        if construct && !constructible {
+            return Err(RuntimeError::TypeError("value is not a constructor".into()));
+        }
         // Proxy.revocable does not capture a realm-specific intrinsic in its
         // result; its proxy must instead retain the supplied target and
         // handler. Those values belong to the caller VM and cannot be copied
@@ -1303,6 +1480,46 @@ impl Vm {
                     .ok()
                     .flatten()
             });
+        // A built-in that only reads and writes its operands through ordinary
+        // property access and shared internal slots (an Array method, an
+        // Iterator helper, the `stack` accessors) applied to an object that
+        // is not the callee Realm's own must see that object, not the opaque
+        // stand-in the membrane would transport: run its algorithm here, on
+        // behalf of the callee's Realm. `method.call(receiver, ...)` reaches
+        // the membrane as a foreign `Call`, so look through it.
+        if !construct {
+            let method_call = if foreign_native == Some(NativeFunction::Call) {
+                call_target_native.map(|method| {
+                    (
+                        method,
+                        args.first().cloned().unwrap_or(Value::Undefined),
+                        args.get(1..).unwrap_or_default().to_vec(),
+                    )
+                })
+            } else {
+                foreign_native.map(|method| (method, receiver.clone(), args.clone()))
+            };
+            if let Some((method, this_value, arguments)) = method_call {
+                let foreign_to_callee = |vm: &Self, value: &Value| {
+                    value.object_id().is_some_and(|object| {
+                        vm.test262_foreign_reference(object)
+                            .is_none_or(|(object_realm, _, _, _)| object_realm != realm_id)
+                    })
+                };
+                let runs_here = match runs_where_its_operands_live(method) {
+                    None => false,
+                    Some(OperandPolicy::Receiver) => foreign_to_callee(self, &this_value),
+                    Some(OperandPolicy::AnyOperand) => {
+                        foreign_to_callee(self, &this_value)
+                            || arguments.iter().any(|value| foreign_to_callee(self, value))
+                    }
+                };
+                if runs_here {
+                    return self
+                        .test262_run_native_for_realm(realm_id, method, this_value, arguments);
+                }
+            }
+        }
         if !construct
             && foreign_native == Some(NativeFunction::Call)
             && args
@@ -1495,11 +1712,23 @@ impl Vm {
             .get_mut(&realm_id)
             .expect("foreign realm remains live");
         realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+        realm.vm.construct_completion_check_failed = false;
         let result = realm
             .vm
             .call_native(Value::Object(target), receiver, args, construct);
         let result = match result {
             Ok(value) => Ok(value),
+            // [[Construct]]'s completion checks (a derived constructor's
+            // return value and `this` binding) run after the callee's
+            // execution context is removed, so their error is created in
+            // this Realm: leave it unmaterialized for the caller.
+            Err(error @ (RuntimeError::TypeError(_) | RuntimeError::ReferenceError(_)))
+                if construct
+                    && realm.vm.construct_completion_check_failed
+                    && matches!(realm.vm.heap.closure(target), Ok(Some(_))) =>
+            {
+                Err(error)
+            }
             // RuntimeError represents spec throws until they cross a VM
             // boundary. Materialize every ordinary abrupt completion in the
             // child before import so a foreign closure, Proxy, or builtin
@@ -1511,18 +1740,52 @@ impl Vm {
         };
         self.test262_sync_imported_data_properties(realm_id)?;
         let result = self.test262_import_foreign_result(realm_id, result)?;
-        if construct && foreign_native == Some(NativeFunction::Function) {
-            // CreateDynamicFunction uses `newTarget` only to select the
-            // function object's [[Prototype]].  Its body and own
-            // `prototype` object remain in the callee realm.  Preserve that
-            // cross-realm edge on the caller-side facade.
-            let default = self.function_prototype()?;
-            let prototype = self.constructor_prototype(default)?;
-            if let Some(wrapper) = result.object_id() {
-                self.test262_set_foreign_prototype_override(wrapper, prototype);
+        // OrdinaryCreateFromConstructor consulted `newTarget` only through
+        // its `prototype`, and the child ran with the callee itself as
+        // `newTarget`. When the caller's new target is another function, the
+        // created object's [[Prototype]] must come from that function (or
+        // from its Realm's matching intrinsic), so preserve that edge on the
+        // caller-side facade. For CreateDynamicFunction the body and own
+        // `prototype` object stay in the callee realm.
+        if construct && self.new_target != Value::Object(wrapper) {
+            if let (Some(intrinsic), Some(created)) = (
+                foreign_native.and_then(foreign_constructor_intrinsic),
+                result
+                    .object_id()
+                    .filter(|created| self.test262_foreign_reference(*created).is_some()),
+            ) {
+                // `default` is this Realm's intrinsic of the same name: the
+                // right fallback when the new target belongs to this Realm.
+                let default = self
+                    .intrinsic_prototype(intrinsic)?
+                    .object_id()
+                    .expect("intrinsic prototype is an object");
+                let prototype = self.constructor_prototype_for(default, Some(intrinsic))?;
+                self.test262_set_foreign_prototype_override(created, prototype);
             }
         }
         Ok(result)
+    }
+
+    /// Runs the built-in `function` of the foreign Realm `realm_id` in this
+    /// Realm's `Vm`, where its receiver and arguments live. Objects it creates
+    /// directly (`acting_realm`) and errors it raises belong to `realm_id`;
+    /// values thrown by callbacks are left alone.
+    fn test262_run_native_for_realm(
+        &mut self,
+        realm_id: ObjectId,
+        function: NativeFunction,
+        receiver: Value,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        let previous = self.acting_realm.replace(realm_id);
+        let result = self.native_call(function, receiver, args, false);
+        self.acting_realm = previous;
+        result.map_err(
+            |error| match self.test262_create_error_in_realm(realm_id, error) {
+                Ok(error) | Err(error) => error,
+            },
+        )
     }
 
     pub(in super::super) fn test262_foreign_next(
@@ -1550,6 +1813,8 @@ impl Vm {
             let next = realm.vm.get_property(&receiver, &"next".into())?;
             realm.vm.call_native(next, receiver, args, false)
         };
+        // This is the local `next` applied to a foreign receiver, so its own
+        // errors belong to this Realm: they are imported but not recreated.
         self.test262_import_foreign_result(realm_id, result)
     }
 
@@ -1609,4 +1874,104 @@ impl Vm {
         self.stack.truncate(base);
         result
     }
+}
+
+/// The intrinsic whose `%X.prototype%` a built-in constructor consults, through
+/// `OrdinaryCreateFromConstructor`, when `newTarget.prototype` is not an
+/// object. Constructors whose result does not depend on a new target's
+/// prototype (Symbol, BigInt, Proxy, ...), and those the membrane already
+/// runs in the caller's Realm, have none.
+fn foreign_constructor_intrinsic(function: NativeFunction) -> Option<&'static str> {
+    Some(match function {
+        NativeFunction::Function => "Function",
+        NativeFunction::AsyncFunction => "AsyncFunction",
+        NativeFunction::GeneratorFunction => "GeneratorFunction",
+        NativeFunction::AsyncGeneratorFunction => "AsyncGeneratorFunction",
+        NativeFunction::Date => "Date",
+        NativeFunction::Promise => "Promise",
+        NativeFunction::RegExp => "RegExp",
+        NativeFunction::Map => "Map",
+        NativeFunction::Set => "Set",
+        NativeFunction::WeakMap => "WeakMap",
+        NativeFunction::WeakSet => "WeakSet",
+        NativeFunction::WeakRef => "WeakRef",
+        NativeFunction::FinalizationRegistry => "FinalizationRegistry",
+        NativeFunction::ArrayBuffer => "ArrayBuffer",
+        NativeFunction::SharedArrayBuffer => "SharedArrayBuffer",
+        NativeFunction::DataView => "DataView",
+        NativeFunction::TypedArray(kind) => kind.name(),
+        NativeFunction::Error(name) => name,
+        _ => return None,
+    })
+}
+
+/// Which operands of a built-in of another Realm decide that it must run in
+/// the calling Realm's `Vm` (see `runs_where_its_operands_live`).
+enum OperandPolicy {
+    /// The function checks its receiver's internal slots or accessors, so it
+    /// runs here only when the receiver is not the callee Realm's own.
+    Receiver,
+    /// The function is generic over everything it is given (and may call
+    /// callbacks), so it runs here when the receiver or any argument object
+    /// is not the callee Realm's own.
+    AnyOperand,
+}
+
+/// Built-in functions whose algorithm only reads and writes its operands
+/// through ordinary property access and internal slots that every Realm's
+/// objects share. Applied to another Realm's objects they must run on those
+/// objects, not on a transported copy. Objects and errors they create belong
+/// to the callee's Realm.
+fn runs_where_its_operands_live(function: NativeFunction) -> Option<OperandPolicy> {
+    Some(match function {
+        NativeFunction::ArrayAt
+        | NativeFunction::ArrayFill
+        | NativeFunction::ArrayCopyWithin
+        | NativeFunction::ArrayToReversed
+        | NativeFunction::ArrayToSorted
+        | NativeFunction::ArrayToSpliced
+        | NativeFunction::ArrayWith
+        | NativeFunction::ArrayFlat
+        | NativeFunction::ArrayFlatMap
+        | NativeFunction::ArrayOf
+        | NativeFunction::ArrayFrom
+        | NativeFunction::ArrayForEach
+        | NativeFunction::ArrayFilter
+        | NativeFunction::ArrayMap
+        | NativeFunction::ArrayFind
+        | NativeFunction::ArrayFindIndex
+        | NativeFunction::ArrayFindLast
+        | NativeFunction::ArrayFindLastIndex
+        | NativeFunction::ArrayEvery
+        | NativeFunction::ArraySome
+        | NativeFunction::ArrayIncludes
+        | NativeFunction::ArrayReduce
+        | NativeFunction::ArrayReduceRight
+        | NativeFunction::ArrayPush
+        | NativeFunction::ArrayPop
+        | NativeFunction::ArrayShift
+        | NativeFunction::ArrayUnshift
+        | NativeFunction::ArrayReverse
+        | NativeFunction::ArrayIndexOf
+        | NativeFunction::ArrayLastIndexOf
+        | NativeFunction::ArraySlice
+        | NativeFunction::ArraySplice
+        | NativeFunction::ArraySort
+        | NativeFunction::ArrayToLocaleString
+        | NativeFunction::IteratorHelper(_)
+        | NativeFunction::IteratorToArray
+        | NativeFunction::IteratorForEach
+        | NativeFunction::IteratorEvery
+        | NativeFunction::IteratorSome
+        | NativeFunction::IteratorFind
+        | NativeFunction::IteratorReduce => OperandPolicy::AnyOperand,
+        NativeFunction::IteratorHelperNext
+        | NativeFunction::IteratorHelperReturn
+        | NativeFunction::IteratorWrapperNext
+        | NativeFunction::IteratorWrapperReturn
+        | NativeFunction::PromiseThen
+        | NativeFunction::ErrorStackGetter
+        | NativeFunction::ErrorStackSetter => OperandPolicy::Receiver,
+        _ => return None,
+    })
 }

@@ -342,9 +342,11 @@ impl Vm {
         if let Some((state, awaited)) = suspended_async {
             self.suspend_async_await(state, awaited)?;
         }
+        let mut completion_check_failed = false;
         let result = result.and_then(|value| {
             if construct && !matches!(value, Value::Object(_)) {
                 if code.derived_constructor && value != Value::Undefined {
+                    completion_check_failed = true;
                     return Err(RuntimeError::TypeError(
                         "derived constructor returned a non-object value".into(),
                     ));
@@ -352,6 +354,7 @@ impl Vm {
                 if matches!(constructed, Value::Object(_)) {
                     Ok(constructed)
                 } else {
+                    completion_check_failed = true;
                     Err(RuntimeError::ReferenceError(
                         "derived constructor did not call super()".into(),
                     ))
@@ -360,6 +363,7 @@ impl Vm {
                 Ok(value)
             }
         });
+        self.construct_completion_check_failed = completion_check_failed;
         if !async_function {
             return result;
         }

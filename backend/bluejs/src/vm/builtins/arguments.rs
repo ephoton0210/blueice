@@ -95,15 +95,18 @@ impl Vm {
         })?;
         let root = self.heap.root(function)?;
         let result = (|| {
+            // %ThrowTypeError% is frozen: `length` then `name`, both
+            // non-configurable, and the function is not extensible.
+            self.define_data(function, "length", Value::Number(0.0), false, false, false)?;
             self.define_data(
                 function,
                 "name",
                 Value::String("".into()),
                 false,
                 false,
-                true,
+                false,
             )?;
-            self.define_data(function, "length", Value::Number(0.0), false, false, true)?;
+            self.heap.prevent_extensions(function)?;
             Ok(function)
         })();
         match result {

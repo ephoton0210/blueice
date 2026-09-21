@@ -772,11 +772,51 @@ pub(crate) fn statements_contain_arguments(statements: &[Stmt]) -> bool {
     stmts_contain_super(statements, SuperSearch::Arguments)
 }
 
+/// Whether an ordinary function's parameters or body can observe the
+/// function's own `arguments` object: a lexical reference to the name (arrow
+/// functions inside it share the object; nested ordinary functions have their
+/// own and are not entered) or a direct `eval`, which can read it by name from
+/// source that only exists at run time. When neither is present the object is
+/// unobservable, so the compiler need not build it on every call.
+pub(crate) fn function_may_observe_arguments(function: &Function) -> bool {
+    let search = SuperSearch::ArgumentsOrEval;
+    function.params.iter().any(|param| {
+        pattern_contains_super(&param.pattern, search)
+            || param
+                .default
+                .as_ref()
+                .is_some_and(|expr| expr_contains_super(expr, search))
+    }) || stmts_contain_super(&function.body, search)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SuperSearch {
     Call,
     Property,
+    /// A lexical `arguments` reference, for the class-field and static-block
+    /// early errors.
     Arguments,
+    /// A lexical `arguments` reference or a direct `eval` call: everything
+    /// that can reach the enclosing function's `arguments` object.
+    ArgumentsOrEval,
+}
+
+impl SuperSearch {
+    /// The searches that look for `arguments` and therefore stop at an
+    /// ordinary function boundary, which has its own binding.
+    fn looks_for_arguments(self) -> bool {
+        matches!(self, Self::Arguments | Self::ArgumentsOrEval)
+    }
+}
+
+/// `eval` written as the callee of a call, possibly parenthesized: the forms
+/// that are direct evals when they name the intrinsic.
+fn is_eval_reference(expr: &Expr) -> bool {
+    match expr {
+        Expr::Identifier(name) => name == "eval",
+        Expr::Parenthesized(expr) => is_eval_reference(expr),
+        _ => false,
+    }
 }
 
 fn stmts_contain_super_call(statements: &[Stmt]) -> bool {
@@ -873,10 +913,10 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
         }
         Stmt::Labelled { item, .. } => stmt_contains_super(item, search),
         Stmt::FunctionDecl(function) | Stmt::ModuleDefaultFunction { function, .. } => {
-            search != SuperSearch::Arguments && function_contains_super(function, search)
+            !search.looks_for_arguments() && function_contains_super(function, search)
         }
         Stmt::ClassDecl(class) => {
-            search == SuperSearch::Arguments && class_contains_arguments(class)
+            search.looks_for_arguments() && class_contains_arguments(class, search)
         }
         Stmt::ClassField(statement) => stmt_contains_super(statement, search),
         Stmt::ClassDecoratedField { field, .. } => stmt_contains_super(field, search),
@@ -909,7 +949,7 @@ fn for_head_contains_super(head: &ForHead, search: SuperSearch) -> bool {
 }
 
 fn function_contains_super(function: &Function, search: SuperSearch) -> bool {
-    if search == SuperSearch::Arguments {
+    if search.looks_for_arguments() {
         return false;
     }
     function.params.iter().any(|param| {
@@ -1005,7 +1045,7 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         | Expr::Super
         | Expr::NewTarget
         | Expr::ImportMeta => false,
-        Expr::Identifier(name) => search == SuperSearch::Arguments && name == "arguments",
+        Expr::Identifier(name) => search.looks_for_arguments() && name == "arguments",
         Expr::Parenthesized(expr) => expr_contains_super(expr, search),
         Expr::Template { expressions, .. } => expressions
             .iter()
@@ -1034,7 +1074,9 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
             }
         }),
         Expr::Function(function) => function_contains_super(function, search),
-        Expr::Class(class) => search == SuperSearch::Arguments && class_contains_arguments(class),
+        Expr::Class(class) => {
+            search.looks_for_arguments() && class_contains_arguments(class, search)
+        }
         Expr::Yield { value, .. } => value
             .as_deref()
             .is_some_and(|expr| expr_contains_super(expr, search)),
@@ -1084,6 +1126,7 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         }
         Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
             (search == SuperSearch::Call && matches!(callee.as_ref(), Expr::Super))
+                || (search == SuperSearch::ArgumentsOrEval && is_eval_reference(callee))
                 || expr_contains_super(callee, search)
                 || args.iter().any(|argument| match argument {
                     Argument::Normal(expr) | Argument::Spread(expr) => {
@@ -1113,12 +1156,15 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
     }
 }
 
-fn class_contains_arguments(class: &Class) -> bool {
+fn class_contains_arguments(class: &Class, search: SuperSearch) -> bool {
     class
         .extends
         .as_deref()
-        .is_some_and(expr_contains_arguments)
-        || class.decorators.iter().any(expr_contains_arguments)
+        .is_some_and(|expr| expr_contains_super(expr, search))
+        || class
+            .decorators
+            .iter()
+            .any(|expr| expr_contains_super(expr, search))
         || class.elements.iter().any(|element| match element {
             ClassElement::Method {
                 key, decorators, ..
@@ -1129,8 +1175,10 @@ fn class_contains_arguments(class: &Class) -> bool {
             | ClassElement::Field {
                 key, decorators, ..
             } => {
-                decorators.iter().any(expr_contains_arguments)
-                    || matches!(key, PropertyKey::Computed(expr) if expr_contains_arguments(expr))
+                decorators
+                    .iter()
+                    .any(|expr| expr_contains_super(expr, search))
+                    || matches!(key, PropertyKey::Computed(expr) if expr_contains_super(expr, search))
             }
             ClassElement::StaticBlock(_) => false,
         })
