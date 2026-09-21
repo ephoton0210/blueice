@@ -5,6 +5,7 @@
 //! Process-isolated regular expressions. The parent never executes regress.
 
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{self, Read, Write};
 use std::ops::Range;
 use std::path::PathBuf;
@@ -35,6 +36,18 @@ static STARTED: AtomicU64 = AtomicU64::new(0);
 #[doc(hidden)]
 pub fn workers_started() -> u64 {
     STARTED.load(Ordering::Relaxed)
+}
+
+/// Requests sent to helper processes so far (every operation that crossed the
+/// pipe, whichever process served it).
+static ROUND_TRIPS: AtomicU64 = AtomicU64::new(0);
+
+/// How many requests this process has sent to helper processes. A diagnostic
+/// for tests: repeating an identical match must be answered from the parent's
+/// memo rather than by another round trip.
+#[doc(hidden)]
+pub fn round_trips() -> u64 {
+    ROUND_TRIPS.load(Ordering::Relaxed)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -87,7 +100,7 @@ pub(crate) enum Reply {
     SyntaxError(String),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Match {
     captures: Vec<Option<Range<usize>>>,
     names: Vec<(String, Option<Range<usize>>)>,
@@ -233,6 +246,7 @@ impl Worker {
     }
 
     fn transact(&mut self, bytes: Vec<u8>, timeout: Duration) -> Result<Vec<u8>, RuntimeError> {
+        ROUND_TRIPS.fetch_add(1, Ordering::Relaxed);
         self.requests
             .as_ref()
             .unwrap()
@@ -448,13 +462,98 @@ fn with_worker<T>(
     result
 }
 
+/// Patterns the helper has already accepted. A regular expression literal in a
+/// loop body is compiled on every iteration, and acceptance depends only on the
+/// pattern and its flags. Rejected patterns are not kept: they are rare, and
+/// their message must come from the helper. Cleared wholesale when full.
+type Pattern = (Vec<u16>, String);
+static ACCEPTED: Mutex<Option<HashSet<Pattern>>> = Mutex::new(None);
+const ACCEPTED_ENTRIES: usize = 1024;
+const ACCEPTED_KEY_UNITS: usize = 16 * 1024;
+
 pub(crate) fn compile(
     source: Vec<u16>,
     flags: String,
     timeout: Duration,
 ) -> Result<Reply, RuntimeError> {
-    with_worker(|worker| worker.compile(source, flags, timeout))
+    let key = (source, flags);
+    if ACCEPTED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .is_some_and(|accepted| accepted.contains(&key))
+    {
+        return Ok(Reply::Compiled);
+    }
+    let (source, flags) = key.clone();
+    let reply = with_worker(|worker| worker.compile(source, flags, timeout))?;
+    if matches!(reply, Reply::Compiled) && key.0.len() <= ACCEPTED_KEY_UNITS {
+        let mut accepted = ACCEPTED.lock().unwrap_or_else(PoisonError::into_inner);
+        let accepted = accepted.get_or_insert_with(Default::default);
+        if accepted.len() >= ACCEPTED_ENTRIES {
+            accepted.clear();
+        }
+        accepted.insert(key);
+    }
+    Ok(reply)
 }
+
+/// A match request, as the memo keys it.
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct FindKey {
+    source: Vec<u16>,
+    flags: String,
+    input: Vec<u16>,
+    start: usize,
+}
+
+/// Results of recent `find` requests. Matching is a pure function of the
+/// pattern, its flags, the subject and the start index, and scripts (Test262's
+/// harness matrices in particular) ask the same question many times: one case
+/// sent 167,000 requests of which 263 were distinct. Each request that reaches
+/// the helper costs a pipe round trip (tens of microseconds on Unix, about half
+/// a millisecond on Windows), so answering repeats here is what keeps such a
+/// case inside its deadline on every platform.
+///
+/// Only answers the helper actually gave are kept: a timeout or transport
+/// failure is never recorded, so a pattern that is slow only under load is not
+/// remembered as slow.
+#[derive(Default)]
+struct FindMemo {
+    results: HashMap<FindKey, Option<Match>>,
+    order: VecDeque<FindKey>,
+    /// UTF-16 code units held by the keys, to bound memory.
+    units: usize,
+}
+
+/// Most results remembered.
+const MEMO_ENTRIES: usize = 1024;
+/// Most UTF-16 code units of pattern and subject text remembered across all
+/// entries (4 MiB), and the most one request may contribute.
+const MEMO_UNITS: usize = 2 * 1024 * 1024;
+const MEMO_KEY_UNITS: usize = 16 * 1024;
+
+impl FindMemo {
+    fn remember(&mut self, key: FindKey, result: Option<Match>) {
+        let size = key.source.len() + key.input.len();
+        if size > MEMO_KEY_UNITS || self.results.contains_key(&key) {
+            return;
+        }
+        while self.results.len() >= MEMO_ENTRIES || self.units + size > MEMO_UNITS {
+            let Some(oldest) = self.order.pop_front() else {
+                break;
+            };
+            if self.results.remove(&oldest).is_some() {
+                self.units -= oldest.source.len() + oldest.input.len();
+            }
+        }
+        self.units += size;
+        self.order.push_back(key.clone());
+        self.results.insert(key, result);
+    }
+}
+
+static MEMO: Mutex<Option<FindMemo>> = Mutex::new(None);
 
 pub(crate) fn find(
     source: Vec<u16>,
@@ -463,7 +562,32 @@ pub(crate) fn find(
     start: usize,
     timeout: Duration,
 ) -> Result<Option<Match>, RuntimeError> {
-    with_worker(|worker| worker.find(source, flags, input, start, timeout))
+    let key = FindKey {
+        source,
+        flags,
+        input,
+        start,
+    };
+    if let Some(known) = MEMO
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .and_then(|memo| memo.results.get(&key))
+    {
+        return Ok(known.clone());
+    }
+    let FindKey {
+        source,
+        flags,
+        input,
+        start,
+    } = key.clone();
+    let result = with_worker(|worker| worker.find(source, flags, input, start, timeout))?;
+    MEMO.lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get_or_insert_with(FindMemo::default)
+        .remember(key, result.clone());
+    Ok(result)
 }
 
 pub(crate) fn validate(
