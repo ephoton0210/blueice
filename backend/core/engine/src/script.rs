@@ -24,6 +24,7 @@ pub mod direct_page;
 /// surface. The initial profile deliberately exposes no JavaScript globals:
 /// core's narrow IPC dispatcher is not itself a BlueJS DOM binding.
 pub mod host_typings;
+pub mod inline_runner;
 pub use declarations::{
     discover_blue_ts_page_scripts, BlueTsPageScriptDeclaration, BLUE_TS_CLASSIC_SCRIPT_TYPE,
     BLUE_TS_MODULE_SCRIPT_TYPE,

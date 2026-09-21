@@ -204,10 +204,21 @@ or second module resolver to bypass them.
   ordinal-scoped source identity, form exactly one closed source module, and
   submit it through verified direct admission. It rejects external `src`
   instead of fetching it, and an import remains unresolved without a future
-  authorized graph loader. The default `run_session` and `blueice-core` do not
-  invoke this operation from a page lifecycle yet, and no DOM bindings,
-  source/resolver transport, or normal page-pipeline execution fixture exists.
-  The prerequisite consequently remains open.
+  authorized graph loader. `DirectPageInlineExecutor` now adds a deliberately
+  opt-in in-process page-pipeline seam: a core owner selects a known verified
+  profile and compiler options once, the executor generates that profile's
+  artifact itself, rejects `transpile-only` and caller-supplied ambient
+  declarations, and runs each document's inline opted-in declarations once in
+  document order after session lifecycle batches. Each declaration has an
+  independent result; an external `src` is reported as a bounded source-free
+  rejection and later declarations still run. The explicit
+  `run_session_with_script_requests_and_inline_page_executor` entry point has a
+  regression fixture that fetches a real HTTP page through the normal core
+  session pipeline and executes both an inline classic and inline module
+  declaration. The default `run_session` and `blueice-core` still do not enable
+  it, and no DOM bindings, external source/resolver transport, authorized ESM
+  graph, or launcher-managed BlueJS process exists. The prerequisite
+  consequently remains open.
 
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering

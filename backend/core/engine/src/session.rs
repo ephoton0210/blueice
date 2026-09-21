@@ -52,7 +52,10 @@
 
 use crate::gatekeeper_client::{self, NavOutcome};
 use crate::{
-    script::{direct_page::DirectPageScriptHost, ScriptRequestReceiver},
+    script::{
+        direct_page::DirectPageScriptHost, inline_runner::DirectPageInlineExecutor,
+        ScriptRequestReceiver,
+    },
     Page, TabId, TabManager,
 };
 use blueice_dom::NodeId;
@@ -185,7 +188,66 @@ pub fn run_session_with_script_requests_and_direct_page_host<S: Read + Write + R
     script_requests: Option<&ScriptRequestReceiver>,
     direct_page_host: Option<&mut DirectPageScriptHost>,
 ) -> io::Result<()> {
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        script_requests,
+        direct_page_host,
+        None,
+    )
+}
+
+/// Like [`run_session_with_script_requests_and_direct_page_host`], but with
+/// an explicitly configured inline BlueTS executor. Unlike the observer-only
+/// host seam, this runs the current document's opted-in inline declarations
+/// after each lifecycle batch. The default [`run_session`] does not enable it;
+/// callers must select a verified host profile when constructing the executor.
+pub fn run_session_with_script_requests_and_inline_page_executor<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    script_requests: Option<&ScriptRequestReceiver>,
+    inline_page_executor: Option<&mut DirectPageInlineExecutor>,
+) -> io::Result<()> {
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        script_requests,
+        None,
+        inline_page_executor,
+    )
+}
+
+/// Shared session implementation for the observer-only direct host and the
+/// explicitly enabled inline runner. They must not be supplied together:
+/// independent hosts would allocate separate page realms for one document.
+#[allow(clippy::too_many_arguments)]
+fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    script_requests: Option<&ScriptRequestReceiver>,
+    direct_page_host: Option<&mut DirectPageScriptHost>,
+    inline_page_executor: Option<&mut DirectPageInlineExecutor>,
+) -> io::Result<()> {
     let mut direct_page_host = direct_page_host;
+    let mut inline_page_executor = inline_page_executor;
+    if direct_page_host.is_some() && inline_page_executor.is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "direct page host observer and inline executor cannot share one session",
+        ));
+    }
     // Best-effort: on at least one real platform, setting a read
     // timeout on a Unix domain socket whose peer has *already*
     // disconnected (a client that connects and drops the connection
@@ -204,7 +266,7 @@ pub fn run_session_with_script_requests_and_direct_page_host<S: Read + Write + R
     if !perform_handshake(stream)? {
         return Ok(());
     }
-    synchronize_direct_page_host(&mut direct_page_host, tabs)?;
+    synchronize_page_script_runtime(&mut direct_page_host, &mut inline_page_executor, tabs)?;
 
     let (completion_tx, completion_rx) = mpsc::channel::<Completion>();
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
@@ -417,22 +479,28 @@ pub fn run_session_with_script_requests_and_direct_page_host<S: Read + Write + R
         if let Some(script_requests) = script_requests {
             script_requests.dispatch_pending(tabs);
         }
-        synchronize_direct_page_host(&mut direct_page_host, tabs)?;
+        synchronize_page_script_runtime(&mut direct_page_host, &mut inline_page_executor, tabs)?;
     }
 }
 
-fn synchronize_direct_page_host(
+fn synchronize_page_script_runtime(
     direct_page_host: &mut Option<&mut DirectPageScriptHost>,
+    inline_page_executor: &mut Option<&mut DirectPageInlineExecutor>,
     tabs: &TabManager,
 ) -> io::Result<()> {
-    let Some(direct_page_host) = direct_page_host.as_deref_mut() else {
-        return Ok(());
-    };
-    direct_page_host.synchronize_tabs(tabs).map_err(|error| {
-        io::Error::other(format!(
-            "direct page lifecycle synchronization failed: {error}"
-        ))
-    })
+    if let Some(direct_page_host) = direct_page_host.as_deref_mut() {
+        direct_page_host.synchronize_tabs(tabs).map_err(|error| {
+            io::Error::other(format!(
+                "direct page lifecycle synchronization failed: {error}"
+            ))
+        })?;
+    }
+    if let Some(inline_page_executor) = inline_page_executor.as_deref_mut() {
+        inline_page_executor
+            .synchronize_and_execute(tabs)
+            .map_err(|error| io::Error::other(format!("inline page execution failed: {error}")))?;
+    }
+    Ok(())
 }
 
 /// Which reply variant a background gated navigation's eventual

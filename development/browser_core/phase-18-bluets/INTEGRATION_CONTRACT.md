@@ -112,6 +112,21 @@ import in that one-module graph remains an ordinary closed-loader resolution
 failure; external scripts and module graphs still require a page loader to
 authorize canonical records and exact edges.
 
+`DirectPageInlineExecutor` is the sole shipped automatic caller of that inline
+helper. A core owner MUST construct it with a known host-profile catalog,
+selected profile, and compiler options; it generates the matching typing
+artifact itself and rejects caller-supplied ambient declarations and
+`transpile-only`. At each session lifecycle observation it synchronizes prior
+realms, then runs a document's inline opted-in declarations at most once in
+document order. A rejection of one declaration MUST NOT prevent a later
+declaration from being considered. External declarations produce a bounded,
+source-free rejection report and MUST NOT fetch, resolve, or reflect their
+page-controlled `src`. Reports contain neither source text nor a BlueJS runtime
+value. `run_session_with_script_requests_and_inline_page_executor` is an
+explicit opt-in; `run_session` and the production core binary do not construct
+an executor. This does not authorize external graph loading, DOM bindings,
+debugger transport, or an out-of-process BlueJS host.
+
 One page realm owns at most one live or previously linked program for each
 canonical ESM module ID. BlueJS retains module cells by that ID, so a second
 artifact with the same identity is rejected even after its original handle was
