@@ -12,6 +12,8 @@
 //! remain owned by the page-host and debugger work.
 
 use crate::{BlueJsProgramV1, Bytecode, CompileError};
+mod ast_ids;
+use ast_ids::collect_ast_nodes;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -93,6 +95,67 @@ pub struct BlueJsCodeUnitId {
     ordinal: u32,
 }
 
+/// One deterministic executable AST-node identity within a program generation.
+///
+/// This v1 inventory names the structured-program root and every statement or
+/// expression that can contribute executable behavior. Binding patterns and
+/// declarative module entries are traversed for executable children but are
+/// not independently named.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BlueJsAstNodeId {
+    generation: BlueJsProgramGeneration,
+    ordinal: u32,
+}
+
+impl BlueJsAstNodeId {
+    /// The program generation that owns this AST node.
+    pub fn generation(self) -> BlueJsProgramGeneration {
+        self.generation
+    }
+
+    /// The deterministic pre-order index inside the owning structured AST.
+    pub fn ordinal(self) -> u32 {
+        self.ordinal
+    }
+}
+
+/// The executable AST shape identified by [`BlueJsAstNodeId`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlueJsAstNodeKind {
+    /// The root of a classic-script structured program.
+    Script,
+    /// The root of an ECMAScript module structured program.
+    Module,
+    /// An executable statement.
+    Statement,
+    /// An executable expression.
+    Expression,
+}
+
+/// Metadata for one generation-bound executable AST node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlueJsAstNodeInfo {
+    id: BlueJsAstNodeId,
+    kind: BlueJsAstNodeKind,
+}
+
+impl BlueJsAstNodeInfo {
+    /// The generation-bound AST-node identity.
+    pub fn id(&self) -> BlueJsAstNodeId {
+        self.id
+    }
+
+    /// The executable AST shape at this identity.
+    pub fn kind(&self) -> BlueJsAstNodeKind {
+        self.kind
+    }
+}
+
+#[derive(Clone, Copy)]
+struct AstNodeDescriptor {
+    kind: BlueJsAstNodeKind,
+}
+
 impl BlueJsCodeUnitId {
     /// The program generation that owns this code unit.
     pub fn generation(self) -> BlueJsProgramGeneration {
@@ -140,6 +203,7 @@ pub struct BlueJsCompiledProgram {
     source: BlueJsSourceIdentity,
     bytecode: Bytecode,
     code_units: Vec<BlueJsCodeUnitInfo>,
+    ast_nodes: Vec<BlueJsAstNodeInfo>,
 }
 
 impl BlueJsCompiledProgram {
@@ -161,6 +225,11 @@ impl BlueJsCompiledProgram {
     /// The root-first, pre-order code-unit inventory.
     pub fn code_units(&self) -> &[BlueJsCodeUnitInfo] {
         &self.code_units
+    }
+
+    /// The root-first pre-order inventory of executable structured AST nodes.
+    pub fn ast_nodes(&self) -> &[BlueJsAstNodeInfo] {
+        &self.ast_nodes
     }
 
     /// Every valid instruction boundary in deterministic code-unit order.
@@ -198,6 +267,21 @@ impl BlueJsCompiledProgram {
         }
         Ok(())
     }
+
+    fn validate_ast_node(&self, node: BlueJsAstNodeId) -> Result<(), BlueJsProgramDebugError> {
+        if node.generation != self.handle.generation {
+            return Err(BlueJsProgramDebugError::StaleAstNode);
+        }
+        let known = self
+            .ast_nodes
+            .get(node.ordinal as usize)
+            .is_some_and(|candidate| candidate.id == node);
+        if known {
+            Ok(())
+        } else {
+            Err(BlueJsProgramDebugError::UnknownAstNode)
+        }
+    }
 }
 
 /// Failure to install, replace, or validate a generation-bound program ID.
@@ -213,6 +297,9 @@ pub enum BlueJsProgramDebugError {
     GenerationExhausted,
     /// The compiler produced more code units than this v1 identity can name.
     CodeUnitLimitExceeded,
+    /// The compiler produced more executable AST nodes than this v1 identity
+    /// can name.
+    AstNodeLimitExceeded,
     /// The program handle was never registered or has been invalidated.
     UnknownProgram,
     /// The supplied safe point belongs to a different program generation.
@@ -221,6 +308,10 @@ pub enum BlueJsProgramDebugError {
     UnknownCodeUnit,
     /// The offset is not the beginning of a generated instruction.
     InvalidInstructionBoundary,
+    /// The AST-node identity belongs to a different program generation.
+    StaleAstNode,
+    /// The AST-node component is absent from the named generation.
+    UnknownAstNode,
 }
 
 impl fmt::Display for BlueJsProgramDebugError {
@@ -233,12 +324,15 @@ impl fmt::Display for BlueJsProgramDebugError {
                 f.write_str("BlueJS program generation space is exhausted")
             }
             Self::CodeUnitLimitExceeded => f.write_str("BlueJS program has too many code units"),
+            Self::AstNodeLimitExceeded => f.write_str("BlueJS program has too many AST nodes"),
             Self::UnknownProgram => f.write_str("BlueJS program handle is stale or unknown"),
             Self::StaleSafePoint => f.write_str("BlueJS safe point belongs to another generation"),
             Self::UnknownCodeUnit => f.write_str("BlueJS code unit is unknown for this generation"),
             Self::InvalidInstructionBoundary => {
                 f.write_str("BlueJS offset is not an instruction boundary")
             }
+            Self::StaleAstNode => f.write_str("BlueJS AST node belongs to another generation"),
+            Self::UnknownAstNode => f.write_str("BlueJS AST node is unknown for this generation"),
         }
     }
 }
@@ -282,7 +376,8 @@ impl BlueJsProgramRegistry {
         program: &BlueJsProgramV1,
     ) -> Result<BlueJsProgramHandle, BlueJsProgramDebugError> {
         let bytecode = program.compile()?;
-        self.install_precompiled(source, bytecode)
+        let ast_nodes = collect_ast_nodes(program);
+        self.install_with_ast_nodes(source, bytecode, ast_nodes)
     }
 
     /// Installs bytecode already compiled by BlueJS together with the exact
@@ -297,6 +392,15 @@ impl BlueJsProgramRegistry {
         source: BlueJsSourceIdentity,
         bytecode: Bytecode,
     ) -> Result<BlueJsProgramHandle, BlueJsProgramDebugError> {
+        self.install_with_ast_nodes(source, bytecode, Vec::new())
+    }
+
+    fn install_with_ast_nodes(
+        &mut self,
+        source: BlueJsSourceIdentity,
+        bytecode: Bytecode,
+        ast_descriptors: Vec<AstNodeDescriptor>,
+    ) -> Result<BlueJsProgramHandle, BlueJsProgramDebugError> {
         let generation = BlueJsProgramGeneration(self.next_generation);
         self.next_generation = self
             .next_generation
@@ -305,6 +409,20 @@ impl BlueJsProgramRegistry {
         let handle = BlueJsProgramHandle { generation };
         let mut code_units = Vec::new();
         collect_code_units(&bytecode, generation, &mut code_units)?;
+        let ast_nodes = ast_descriptors
+            .into_iter()
+            .enumerate()
+            .map(|(ordinal, descriptor)| {
+                Ok(BlueJsAstNodeInfo {
+                    id: BlueJsAstNodeId {
+                        generation,
+                        ordinal: u32::try_from(ordinal)
+                            .map_err(|_| BlueJsProgramDebugError::AstNodeLimitExceeded)?,
+                    },
+                    kind: descriptor.kind,
+                })
+            })
+            .collect::<Result<Vec<_>, BlueJsProgramDebugError>>()?;
         self.programs.insert(
             generation,
             BlueJsCompiledProgram {
@@ -312,6 +430,7 @@ impl BlueJsProgramRegistry {
                 source,
                 bytecode,
                 code_units,
+                ast_nodes,
             },
         );
         Ok(handle)
@@ -330,7 +449,8 @@ impl BlueJsProgramRegistry {
             return Err(BlueJsProgramDebugError::UnknownProgram);
         }
         let bytecode = program.compile()?;
-        let replacement = self.install_precompiled(source, bytecode)?;
+        let ast_nodes = collect_ast_nodes(program);
+        let replacement = self.install_with_ast_nodes(source, bytecode, ast_nodes)?;
         self.programs.remove(&previous.generation);
         Ok(replacement)
     }
@@ -363,6 +483,20 @@ impl BlueJsProgramRegistry {
             return Err(BlueJsProgramDebugError::StaleSafePoint);
         }
         self.get(handle)?.validate_safe_point(safe_point)
+    }
+
+    /// Checks that `node` names an executable AST node in `handle`'s exact
+    /// live generation. Precompiled-only installations deliberately have no
+    /// AST inventory and therefore reject every AST-node lookup.
+    pub fn validate_ast_node(
+        &self,
+        handle: BlueJsProgramHandle,
+        node: BlueJsAstNodeId,
+    ) -> Result<(), BlueJsProgramDebugError> {
+        if node.generation != handle.generation {
+            return Err(BlueJsProgramDebugError::StaleAstNode);
+        }
+        self.get(handle)?.validate_ast_node(node)
     }
 }
 
@@ -463,6 +597,7 @@ mod tests {
             .install(source("page:///main.js", "sha256:old"), &script("1"))
             .unwrap();
         let stale_safe_point = registry.get(first).unwrap().safe_points().next().unwrap();
+        let stale_ast_node = registry.get(first).unwrap().ast_nodes()[0].id();
         let second = registry
             .replace(first, source("page:///main.js", "sha256:new"), &script("2"))
             .unwrap();
@@ -478,6 +613,14 @@ mod tests {
         assert_eq!(
             registry.validate_safe_point(second, stale_safe_point),
             Err(BlueJsProgramDebugError::StaleSafePoint)
+        );
+        assert_eq!(
+            registry.validate_ast_node(first, stale_ast_node),
+            Err(BlueJsProgramDebugError::UnknownProgram)
+        );
+        assert_eq!(
+            registry.validate_ast_node(second, stale_ast_node),
+            Err(BlueJsProgramDebugError::StaleAstNode)
         );
         assert!(registry.invalidate(second));
         assert!(!registry.invalidate(second));
@@ -513,6 +656,36 @@ mod tests {
         assert_eq!(
             BlueJsSourceIdentity::new("page:///main.js", ""),
             Err(BlueJsProgramDebugError::EmptySourceHash)
+        );
+    }
+
+    #[test]
+    fn structured_programs_expose_and_validate_executable_ast_nodes() {
+        let mut registry = BlueJsProgramRegistry::default();
+        let handle = registry
+            .install(
+                source("page:///main.js", "sha256:ast"),
+                &script("let value=1+2; value;"),
+            )
+            .unwrap();
+        let compiled = registry.get(handle).unwrap();
+        assert_eq!(compiled.ast_nodes()[0].kind(), BlueJsAstNodeKind::Script);
+        assert_eq!(compiled.ast_nodes()[0].id().ordinal(), 0);
+        let expression = compiled
+            .ast_nodes()
+            .iter()
+            .find(|node| node.kind() == BlueJsAstNodeKind::Expression)
+            .copied()
+            .unwrap();
+        registry.validate_ast_node(handle, expression.id()).unwrap();
+
+        let malformed = BlueJsAstNodeId {
+            generation: handle.generation(),
+            ordinal: u32::MAX,
+        };
+        assert_eq!(
+            registry.validate_ast_node(handle, malformed),
+            Err(BlueJsProgramDebugError::UnknownAstNode)
         );
     }
 

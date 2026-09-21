@@ -121,25 +121,26 @@ impl fmt::Display for BridgeError {
 impl std::error::Error for BridgeError {}
 
 impl DirectScript {
-    /// Installs this already compiled direct program in a caller-owned BlueJS
-    /// registry. The bridge supplies the exact canonical source identity that
-    /// BlueTS checked, without an emitted-JavaScript parse or recompilation.
+    /// Installs this direct program in a caller-owned BlueJS registry. The
+    /// bridge supplies the exact canonical source identity that BlueTS checked
+    /// without an emitted-JavaScript parse; BlueJS compiles the same structured
+    /// program while assigning its generation-bound executable AST-node IDs.
     pub fn install_in(
         &self,
         registry: &mut bluejs::BlueJsProgramRegistry,
     ) -> Result<bluejs::BlueJsProgramHandle, BridgeError> {
-        install_precompiled_direct_program(registry, &self.sources, &self.bytecode)
+        install_direct_program(registry, &self.sources, &self.program)
     }
 }
 
 impl DirectModule {
-    /// Installs this already compiled direct module in a caller-owned BlueJS
-    /// registry, retaining its BlueTS-authorized canonical source identity.
+    /// Installs this direct module in a caller-owned BlueJS registry, retaining
+    /// its BlueTS-authorized canonical source identity and AST-node inventory.
     pub fn install_in(
         &self,
         registry: &mut bluejs::BlueJsProgramRegistry,
     ) -> Result<bluejs::BlueJsProgramHandle, BridgeError> {
-        install_precompiled_direct_program(registry, &self.sources, &self.bytecode)
+        install_direct_program(registry, &self.sources, &self.program)
     }
 }
 
@@ -376,10 +377,10 @@ fn bridge_sources(debug_info: &BlueTsDebugInfo) -> Vec<BridgeSource> {
         .collect()
 }
 
-fn install_precompiled_direct_program(
+fn install_direct_program(
     registry: &mut bluejs::BlueJsProgramRegistry,
     sources: &[BridgeSource],
-    bytecode: &bluejs::Bytecode,
+    program: &bluejs::BlueJsProgramV1,
 ) -> Result<bluejs::BlueJsProgramHandle, BridgeError> {
     let [source] = sources else {
         return Err(BridgeError::InvalidSourceIdentity(
@@ -390,7 +391,7 @@ fn install_precompiled_direct_program(
         bluejs::BlueJsSourceIdentity::new(source.module.clone(), source.content_hash.clone())
             .map_err(BridgeError::BlueJsDebug)?;
     registry
-        .install_precompiled(source, bytecode.clone())
+        .install(source, program)
         .map_err(BridgeError::BlueJsDebug)
 }
 

@@ -70,6 +70,9 @@ fn installs_direct_bytecode_with_its_checked_canonical_source_identity() {
         expected_source.content_hash
     );
     assert_eq!(installed.bytecode().bytes(), artifact.bytecode.bytes());
+    let root = installed.ast_nodes()[0];
+    assert_eq!(root.kind(), bluejs::BlueJsAstNodeKind::Script);
+    registry.validate_ast_node(handle, root.id()).unwrap();
     registry
         .validate_safe_point(handle, installed.safe_points().next().unwrap())
         .unwrap();

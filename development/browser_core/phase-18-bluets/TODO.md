@@ -65,12 +65,12 @@ or second module resolver to bypass them.
 
   Foundation delivered: `bluejs-program-debug-v1` now gives a host an opaque,
   monotonically generated program handle, immutable canonical-module/source-hash
-  identity, deterministic root-first code-unit IDs, instruction-boundary
-  enumeration, and fail-closed validation. The host-neutral direct bridge can
-  install its existing bytecode and checked source identity without a JS-text
-  round trip or recompilation. Replacement, navigation-style invalidation, and
-  malformed offsets are tested. It deliberately does not yet provide AST node
-  identities, source spans, a page host, or debugger pause mechanics, so this
+  identity, deterministic root-first executable AST/code-unit IDs,
+  instruction-boundary enumeration, and fail-closed validation. The
+  host-neutral direct bridge installs its structured program and checked source
+  identity without a JS-text round trip. Replacement, navigation-style
+  invalidation, and malformed offsets are tested. It deliberately does not yet
+  provide AST source spans, a page host, or debugger pause mechanics, so this
   prerequisite remains open.
 
   Acceptance: a bytecode instruction can be named by `(code_unit, offset)` and
