@@ -534,6 +534,26 @@ impl Vm {
         self.heap.delete(binding.cell, "value").map_err(Into::into)
     }
 
+    /// `delete name` for an identifier that no enclosing scope or eval
+    /// declaration binds: DeleteBinding on the global environment. A name a
+    /// script declared (`var`, function, `let`) is never deletable; otherwise
+    /// the global object's own property is deleted if it exists, so a
+    /// non-configurable one (`NaN`, `undefined`, `Infinity`) answers false.
+    pub(super) fn delete_unbound_global(&mut self, name: &str) -> Result<bool, RuntimeError> {
+        if self.global_bindings.contains_key(name) {
+            return Ok(false);
+        }
+        let Some(&global) = self.globals.get("globalThis") else {
+            return Ok(true);
+        };
+        let key: PropertyName = name.into();
+        self.materialize_global_object_property(global, &key)?;
+        if self.object_get_own_property(global, &key)?.is_none() {
+            return Ok(true);
+        }
+        self.object_delete(global, &key)
+    }
+
     pub(super) fn store_global_cell(
         &mut self,
         cell: ObjectId,

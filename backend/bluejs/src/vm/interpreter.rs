@@ -1191,6 +1191,10 @@ impl Vm {
                             let global = self.global("globalThis")?;
                             let global_id = global.object_id().expect("globalThis is an object");
                             let key: PropertyName = name.as_str().into();
+                            // Lazily created globals (`NaN`, `Infinity`,
+                            // `undefined`, constructors...) exist as
+                            // properties once looked up.
+                            self.materialize_global_object_property(global_id, &key)?;
                             if code.strict && !self.has_property(global_id, &key)? {
                                 return Err(RuntimeError::ReferenceError(name));
                             }
@@ -1202,7 +1206,16 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let deleted = self.delete_dynamic_eval_binding(&name)?;
+                        let has_eval_binding = self.dynamic_eval_bindings.contains_key(&name)
+                            || self
+                                .dynamic_eval_outer_bindings
+                                .iter()
+                                .any(|bindings| bindings.contains_key(&name));
+                        let deleted = if has_eval_binding {
+                            self.delete_dynamic_eval_binding(&name)?
+                        } else {
+                            self.delete_unbound_global(&name)?
+                        };
                         self.stack.push(Value::Bool(deleted));
                     }
                     Opcode::DeleteDynamicBinding => {
