@@ -1417,3 +1417,29 @@ fn a_private_fields_has_is_false_until_the_field_is_added() {
          during === false && access.has(c) === true",
     );
 }
+
+#[test]
+fn accessor_and_metadata_decoration_survive_garbage_collection_at_every_allocation() {
+    assert_true_under_gc_stress(
+        "const dec = (v, ctx) => {
+             ctx.metadata[ctx.name ?? 'class'] = ctx.kind;
+             ctx.addInitializer(function () {});
+             return ctx.kind === 'accessor'
+                 ? { get() { return v.get.call(this) + '!'; }, init(x) { return x + '?'; } }
+                 : undefined;
+         };
+         const ns = { dec };
+         class B {}
+         @ns.dec class C extends B {
+             @ns.dec accessor a = 'x';
+             @ns.dec static accessor #b = 'y';
+             @ns.dec get g() { return 1; }
+             @ns.dec set g(v) {}
+             static readB() { return C.#b; }
+         }
+         const c = new C();
+         const meta = C[Symbol.metadata];
+         c.a === 'x?!' && C.readB() === 'y?!' && Object.keys(meta).join() === '#b,a,g,C'
+             && Object.getPrototypeOf(meta) === null",
+    );
+}

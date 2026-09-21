@@ -230,3 +230,13 @@ fn a_module_level_decorated_class_declaration_needs_a_name() {
     rejects_module("@dec class {}");
     rejects_module("@dec function f() {}");
 }
+
+#[test]
+fn a_decorator_inside_a_field_initializer_cannot_name_arguments() {
+    // A decorator expression is part of the enclosing class element, so a
+    // class nested in a field initializer keeps `arguments` out of its own.
+    rejects("class C { x = class { @arguments m() {} }; }");
+    rejects("class C { x = @arguments class {}; }");
+    accepts("class C { x = class { @a m() {} }; }");
+    accepts("function f() { class C { @arguments m() {} } }");
+}
