@@ -523,6 +523,41 @@ impl Vm {
         self.heap.delete(binding.cell, "value").map_err(Into::into)
     }
 
+    /// `delete name` for a name that no function or block binding resolves:
+    /// the reference is looked up in eval-created bindings, then the global
+    /// Environment Record (§9.1.1.4.7 DeleteBinding). A declarative (`let`,
+    /// `const`, `class`) global binding cannot be deleted; a property of the
+    /// global object is deleted when it is configurable, and a name that
+    /// resolves nowhere deletes "successfully".
+    pub(super) fn delete_unbound_name(&mut self, name: &str) -> Result<bool, RuntimeError> {
+        let in_eval_binding = self.dynamic_eval_bindings.contains_key(name)
+            || self
+                .dynamic_eval_outer_bindings
+                .iter()
+                .any(|bindings| bindings.contains_key(name));
+        if in_eval_binding {
+            return self.delete_dynamic_eval_binding(name);
+        }
+        if self
+            .global_bindings
+            .get(name)
+            .is_some_and(|binding| !binding.property)
+        {
+            return Ok(false);
+        }
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is an object");
+        let deleted = self.object_delete(global, &name.into())?;
+        if deleted {
+            if let Some(binding) = self.global_bindings.remove(name) {
+                self.heap.unroot(binding._root)?;
+            }
+        }
+        Ok(deleted)
+    }
+
     pub(super) fn store_global_cell(
         &mut self,
         cell: ObjectId,

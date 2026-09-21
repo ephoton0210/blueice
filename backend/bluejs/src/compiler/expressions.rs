@@ -202,6 +202,21 @@ impl Compiler {
                                 "cannot delete a binding in strict mode",
                             ));
                         }
+                        // Inside `with` the with objects are consulted first.
+                        // A hit deletes the property; otherwise the fallback
+                        // below handles the enclosing binding.
+                        let with_end = if self.with_depth != 0
+                            && self.resolve_inside_innermost_with(name).is_none()
+                        {
+                            let index = self.name_constant(name)?;
+                            self.emit(Opcode::DeleteWithBinding, index)?;
+                            self.emit(Opcode::Dup, 0)?;
+                            let found = self.emit(Opcode::JumpIfNotNullish, 0)?;
+                            self.emit(Opcode::Pop, 0)?;
+                            Some(found)
+                        } else {
+                            None
+                        };
                         if let Some(slot) = self.resolve(name) {
                             if self.bytecode.dynamic_eval_slots.contains(&slot) {
                                 self.emit(Opcode::DeleteDynamicBinding, slot)?;
@@ -215,6 +230,9 @@ impl Compiler {
                                 .constants
                                 .push(Value::String(name.clone().into()));
                             self.emit(Opcode::DeleteUnboundName, index)?;
+                        }
+                        if let Some(found) = with_end {
+                            self.patch(found, self.offset()?);
                         }
                     } else {
                         self.expression(arg)?;
