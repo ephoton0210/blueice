@@ -461,7 +461,12 @@ or second module resolver to bypass them.
   primitive host results; it does not yet provide declared boundary source
   spans, strict-runtime coverage checks, validator/cache/debug allocation
   attribution, diagnostics retention, gatekeeper summaries, or any mutable or
-  foreign-data boundary.
+  foreign-data boundary. A `blueice-core` subprocess regression now serves an
+  HTTP document whose copied text exceeds the fixed one-mebibyte budget and
+  verifies normal navigation still completes while the inline declaration is
+  rejected before BlueTS/BlueJS admission. The only frontend observation is
+  the fixed `host binding contract rejected the page script` category; neither
+  the oversized content nor compiler/runtime diagnostics cross the IPC reply.
 
   Acceptance: malformed, recursive, cyclic, deep, oversized, and
   resource-exhausting values fail at a bounded path and budget; valid data
@@ -540,7 +545,9 @@ or second module resolver to bypass them.
   through tab-addressed IPC, and proves the first drain neither leaks nor
   discards the second tab's record. A third fixture replaces one tab's document
   through two real navigations and observes one newly executed report at each
-  distinct document generation. Full stale-handle invalidation, debugger,
+  distinct document generation. A fourth fixture drives a document-text
+  contract violation through the same process path and observes only its fixed
+  source-free rejection category. Full stale-handle invalidation, debugger,
   contracts beyond the two immutable snapshots, resource/policy isolation, and
   additional multi-tab cases remain required before this item can close.
 

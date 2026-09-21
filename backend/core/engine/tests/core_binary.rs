@@ -656,6 +656,102 @@ fn real_subprocess_executes_an_opted_in_inline_bluets_profile_and_reports_source
 }
 
 #[test]
+fn real_subprocess_rejects_an_oversized_document_text_binding_before_inline_admission() {
+    // The profile's document-text boundary has a core-selected 1 MiB contract
+    // limit. Exercise it through real navigation and process IPC so the page
+    // cannot turn a rejection into either source/diagnostic disclosure or a
+    // partially admitted BlueJS program.
+    let socket_path = unique_socket_path("inline-contract");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-inline-contract-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("ic-gk");
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let oversized_text = "x".repeat(1_048_577);
+        let body = format!("<main>{oversized_text}</main>",)
+            + concat!(
+                "<script type=\"application/x-blueice-typescript\">",
+                "blueiceDocumentText();",
+                "</script>"
+            );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+            "--inline-bluets-profile",
+            "core-script-document-text-v1",
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn blueice-core");
+
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut stream).unwrap();
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{addr}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
+    ));
+
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
+    )
+    .unwrap();
+    let reports = match blueice_ipc::read_server_message(&mut stream).unwrap() {
+        blueice_ipc::ServerMessage::BlueTsScriptReports(reports) => reports,
+        other => panic!("expected BlueTsScriptReports, got {other:?}"),
+    };
+    assert_eq!(reports.len(), 1);
+    let blueice_ipc::BlueTsScriptExecutionOutcome::Rejected { category } = &reports[0].outcome
+    else {
+        panic!("the oversized document snapshot must reject before admission")
+    };
+    assert_eq!(category, "host binding contract rejected the page script");
+    assert!(!category.contains('x'));
+
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(!socket_path.exists());
+    assert!(!frame_dir.exists());
+}
+
+#[test]
 fn real_subprocess_keeps_opted_in_inline_bluets_reports_isolated_by_tab() {
     // The report query is an observation boundary, so prove it through the
     // compiled process rather than relying only on the executor's queue test:

@@ -84,6 +84,13 @@ The initial implementation completes the work that has no BlueJS dependency befo
   core-private document generations prove the configured executor observes the
   replacement and executes the new inline declaration once; it does not by
   itself prove every stale-handle/debugger invalidation requirement.
+- Another binary regression serves a document whose copied text exceeds the
+  document-text binding's fixed one-mebibyte contract budget. The normal HTTP
+  navigation completes, but inline admission reports only the fixed source-free
+  contract-rejection category before BlueTS/BlueJS program admission. This is
+  process evidence for the two installed immutable result boundaries, not
+  general strict-runtime contract, allocation, provenance, or foreign-data
+  enforcement.
 - `blueice_engine::debugger` is the core-side discovery dispatcher for the
   versioned debugger IPC. `blueice-core --debugger-socket <path>` accepts a
   separate peer, performs its independent `Hello` negotiation, and forwards
