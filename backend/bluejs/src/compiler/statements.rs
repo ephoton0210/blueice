@@ -400,7 +400,15 @@ impl Compiler {
         } else {
             self.function(function, false)?;
         }
-        let slot = self.resolve(binding_name).unwrap();
+        let Some(slot) = self.resolve(binding_name) else {
+            // A sloppy direct eval re-declaring a function that an earlier eval
+            // in the same function created: the binding is dynamic, so the new
+            // function object replaces its value.
+            let index = self.name_constant(binding_name)?;
+            self.emit(Opcode::SetUnboundName, index)?;
+            self.emit(Opcode::Pop, 0)?;
+            return Ok(());
+        };
         if self.bytecode.bindings[slot as usize].lexical {
             self.emit(Opcode::InitializeBinding, slot)?;
         } else {

@@ -42,3 +42,20 @@ fn eval_var_reinitialization_does_not_leak_to_the_global_object() {
         Value::String("undefined".into())
     );
 }
+
+#[test]
+fn eval_function_declaration_replaces_a_function_from_an_earlier_eval() {
+    assert_eq!(
+        evaluate(
+            "function t(){ eval('function f() { return 1 }'); \
+             eval('function f() { return 2 }'); return f(); } t()"
+        ),
+        Value::Number(2.0)
+    );
+    assert_eq!(
+        evaluate(
+            "function t(){ eval('var f = 1;'); eval('function f() { return 3 }'); return f(); } t()"
+        ),
+        Value::Number(3.0)
+    );
+}
