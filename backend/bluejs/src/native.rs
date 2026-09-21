@@ -404,6 +404,9 @@ pub(crate) enum NativeFunction {
     ArrayFlatMap,
     ArrayOf,
     ArraySpecies,
+    /// The `get [Symbol.species]` accessor of `Map`, `Set` and `Promise`,
+    /// which (like `ArraySpecies`) just returns its receiver.
+    CollectionSpecies,
     ArrayFrom,
     ArrayFromAsync,
     /// A settled Await inside an `Array.fromAsync` run: `state` is the run's

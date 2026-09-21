@@ -968,7 +968,7 @@ impl Vm {
                 self.array_flat_map(&receiver, first, native::argument(&args, 1))
             }
             NativeFunction::ArrayOf => self.array_of_method(&receiver, &args),
-            NativeFunction::ArraySpecies => Ok(receiver),
+            NativeFunction::ArraySpecies | NativeFunction::CollectionSpecies => Ok(receiver),
             NativeFunction::ArrayFrom => self.array_from_method(&receiver, &args),
             NativeFunction::ArrayFromAsync => self.array_from_async(&receiver, &args),
             NativeFunction::ArrayFromAsyncResume { state, rejected } => {
@@ -1678,6 +1678,9 @@ impl Vm {
             }
             NativeFunction::ArrayConcat => self.array_concat(&receiver, &args),
             NativeFunction::ArrayJoin => self.array_join(&receiver, first),
+            NativeFunction::Symbol if construct => Err(RuntimeError::TypeError(
+                "Symbol is not a constructor".into(),
+            )),
             NativeFunction::Symbol => Ok(Value::Symbol(JsSymbol::new(
                 if matches!(first, Value::Undefined) {
                     None
