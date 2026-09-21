@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::vm::builtins::dynamic::DynamicFunctionKind;
 
 impl Vm {
     pub(in super::super::super) fn native_call(
@@ -65,7 +66,14 @@ impl Vm {
         let first = native::argument(&args, 0);
         match function {
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
-            NativeFunction::PromiseResolvingFunction { promise, fulfill } => {
+            NativeFunction::PromiseResolvingFunction {
+                promise,
+                fulfill,
+                state,
+            } => {
+                if self.promise_already_resolved(state)? {
+                    return Ok(Value::Undefined);
+                }
                 if fulfill {
                     self.resolve_promise(promise, first.clone())?;
                 } else {
@@ -74,11 +82,7 @@ impl Vm {
                 Ok(Value::Undefined)
             }
             NativeFunction::PromiseCapabilityExecutor { storage } => {
-                let resolve = native::argument(&args, 0).clone();
-                let reject = native::argument(&args, 1).clone();
-                self.with_roots(|heap| heap.set(storage, "resolve", resolve))?;
-                self.with_roots(|heap| heap.set(storage, "reject", reject))?;
-                Ok(Value::Undefined)
+                self.promise_capability_executor(storage, &args)
             }
             NativeFunction::AsyncFromSyncFulfill { target, done } => {
                 let result = self.iterator_result(first.clone(), done);
@@ -106,6 +110,12 @@ impl Vm {
             NativeFunction::AbstractModuleSourceToStringTag => Ok(Value::Undefined),
             NativeFunction::Function => self.function_constructor(&args),
             NativeFunction::AsyncFunction => self.async_function_constructor(&args),
+            NativeFunction::GeneratorFunction => {
+                self.dynamic_function_constructor(&args, DynamicFunctionKind::Generator)
+            }
+            NativeFunction::AsyncGeneratorFunction => {
+                self.dynamic_function_constructor(&args, DynamicFunctionKind::AsyncGenerator)
+            }
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
             NativeFunction::ErrorIsError => self.error_is_error(first),
@@ -120,50 +130,29 @@ impl Vm {
                 });
                 Ok(Value::Undefined)
             }
-            NativeFunction::PromiseThen => self.promise_then(&receiver, &args),
+            NativeFunction::PromiseThen => self.promise_prototype_then(&receiver, &args),
             NativeFunction::PromiseCatch => self.promise_catch(&receiver, first),
             NativeFunction::PromiseFinally => self.promise_finally(&receiver, first),
-            NativeFunction::PromiseResolve => {
-                self.promise_resolve_constructor(&receiver, first.clone())
-            }
-            NativeFunction::PromiseReject => self.promise_reject(first.clone()),
+            NativeFunction::PromiseResolve => self.promise_resolve_static(&receiver, first),
+            NativeFunction::PromiseReject => self.promise_reject_static(&receiver, first),
             NativeFunction::PromiseAll => self.promise_all(&receiver, first),
             NativeFunction::PromiseRace => self.promise_race(&receiver, first),
             NativeFunction::PromiseAny => self.promise_any(&receiver, first),
-            NativeFunction::PromiseAllSettled => self.promise_all_settled_static(&receiver, first),
-            NativeFunction::PromiseAllResolve { target, index } => {
-                self.promise_all_settled(target, index, first.clone())?;
-                Ok(Value::Undefined)
+            NativeFunction::PromiseAllSettled => self.promise_all_settled(&receiver, first),
+            NativeFunction::PromiseAllKeyed { settled } => {
+                self.promise_all_keyed(settled, &receiver, first)
             }
-            NativeFunction::PromiseAllReject { target } => {
-                self.promise_all_reject(target, first.clone())?;
-                Ok(Value::Undefined)
+            NativeFunction::PromiseTry => self.promise_try(&receiver, &args),
+            NativeFunction::PromiseElement { state, index, kind } => {
+                self.promise_element_function(state, index, kind, first)
             }
-            NativeFunction::PromiseRaceFulfill { target } => {
-                self.settle_promise(target, PromiseStatus::Fulfilled(first.clone()))?;
-                Ok(Value::Undefined)
+            NativeFunction::PromiseFinallyFunction { state, catch } => {
+                self.promise_finally_function(state, catch, first)
             }
-            NativeFunction::PromiseRaceReject { target } => {
-                self.settle_promise(target, PromiseStatus::Rejected(first.clone()))?;
-                Ok(Value::Undefined)
+            NativeFunction::PromiseValueThunk { state, thrower } => {
+                self.promise_value_thunk(state, thrower)
             }
-            NativeFunction::PromiseAnyFulfill { target } => {
-                self.promise_any_fulfill(target, first.clone())?;
-                Ok(Value::Undefined)
-            }
-            NativeFunction::PromiseAnyReject { target, index } => {
-                self.promise_any_reject(target, index, first.clone())?;
-                Ok(Value::Undefined)
-            }
-            NativeFunction::PromiseAllSettledFulfill { target, index } => {
-                self.promise_all_settled_result(target, index, first.clone(), true)?;
-                Ok(Value::Undefined)
-            }
-            NativeFunction::PromiseAllSettledReject { target, index } => {
-                self.promise_all_settled_result(target, index, first.clone(), false)?;
-                Ok(Value::Undefined)
-            }
-            NativeFunction::PromiseWithResolvers => self.promise_with_resolvers(),
+            NativeFunction::PromiseWithResolvers => self.promise_with_resolvers(&receiver),
             NativeFunction::ToLocaleLowerCase
             | NativeFunction::ToLocaleUpperCase
             | NativeFunction::LocaleCompare => {
@@ -1815,6 +1804,7 @@ impl Vm {
             NativeFunction::IteratorHelperNext => self.iterator_helper_next(&receiver),
             NativeFunction::IteratorHelperReturn => self.iterator_helper_return(&receiver),
             NativeFunction::IteratorDispose => self.iterator_dispose(&receiver),
+            NativeFunction::AsyncIteratorDispose => self.async_iterator_dispose(&receiver),
             NativeFunction::IteratorConstructorGetter => self.global("Iterator"),
             NativeFunction::IteratorConstructorSetter => {
                 self.iterator_constructor_setter(&receiver, first)

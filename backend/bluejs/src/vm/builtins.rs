@@ -17,6 +17,8 @@ mod immutable_arraybuffer;
 mod math;
 mod native_dispatch;
 mod object;
+mod promise_combinators;
+mod promise_core;
 mod promises;
 mod resource_management;
 mod set_methods;

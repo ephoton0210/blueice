@@ -720,6 +720,8 @@ impl Vm {
                     // clause) but its behavior always throws for `new`.
                     | NativeFunction::Symbol
                     | NativeFunction::AsyncFunction
+                    | NativeFunction::GeneratorFunction
+                    | NativeFunction::AsyncGeneratorFunction
                     | NativeFunction::Object
                     | NativeFunction::Iterator
                     | NativeFunction::RegExp
