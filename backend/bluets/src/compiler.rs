@@ -92,6 +92,10 @@ pub struct CompilerOptions {
     /// modules. This is for a selected, already-verified host type surface,
     /// not a replacement for caller-authorized source-graph loading.
     pub ambient_declaration_modules: Vec<ModuleSource>,
+    /// Rejects a direct call whose callee is neither a local nor an
+    /// host-supplied ambient function. Page hosts enable this so a TypeScript
+    /// profile cannot silently compile a call to a missing runtime binding.
+    pub require_declared_global_calls: bool,
     pub limits: CompilerLimits,
 }
 
@@ -104,6 +108,7 @@ impl Default for CompilerOptions {
             declaration: false,
             resolver_fingerprint: "relative-v1".to_string(),
             ambient_declaration_modules: Vec::new(),
+            require_declared_global_calls: false,
             limits: CompilerLimits::default(),
         }
     }
@@ -331,6 +336,7 @@ fn compile_with_cache(
     let (checked, checker_diagnostics) = checker::check_incremental(
         &project,
         !matches!(options.runtime_policy, RuntimePolicy::TranspileOnly),
+        options.require_declared_global_calls,
         previous_checked,
         &rechecked_modules,
         options.limits.max_type_expansions,
@@ -725,6 +731,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(options.target.as_str());
     add(options.runtime_policy.as_str());
     add(&options.resolver_fingerprint);
+    add(&options.require_declared_global_calls.to_string());
     for declaration in &options.ambient_declaration_modules {
         add(&declaration.id);
         add(&declaration.text);
@@ -956,6 +963,31 @@ mod tests {
     }
 
     #[test]
+    fn declared_global_call_policy_changes_the_artifact_fingerprint() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///a.ts",
+            "export const answer: number = 42;",
+        )]);
+        let default = compile("memory:///a.ts", &loader, CompilerOptions::default())
+            .output
+            .unwrap()
+            .fingerprint;
+        let page_profile = compile(
+            "memory:///a.ts",
+            &loader,
+            CompilerOptions {
+                require_declared_global_calls: true,
+                ..CompilerOptions::default()
+            },
+        )
+        .output
+        .unwrap()
+        .fingerprint;
+
+        assert_ne!(default, page_profile);
+    }
+
+    #[test]
     fn treats_declaration_modules_as_type_only_dependencies() {
         let loader = MapLoader::from([
             ModuleSource::new(
@@ -1041,6 +1073,28 @@ mod tests {
         assert!(!declaration_output
             .declaration_modules
             .contains_key("blueice:///profiles/test/lib.blueice.d.ts"));
+    }
+
+    #[test]
+    fn declared_global_call_policy_rejects_unprovided_page_globals() {
+        let compilation = compile(
+            "memory:///src/main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "memory:///src/main.ts",
+                "blueiceDocumentText();",
+            )]),
+            CompilerOptions {
+                require_declared_global_calls: true,
+                ..CompilerOptions::default()
+            },
+        );
+
+        assert!(compilation.output.is_none());
+        assert!(compilation.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::UnknownName
+                && diagnostic.message
+                    == "function blueiceDocumentText is not declared by this page profile"
+        }));
     }
 
     #[test]

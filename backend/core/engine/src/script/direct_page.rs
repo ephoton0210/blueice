@@ -181,6 +181,7 @@ impl DirectPageScriptHost {
         self.configure_profile_bindings(tabs, request.tab_id, &request.feature_profile, &artifact)?;
         let mut options = request.compiler_options;
         options.ambient_declaration_modules = vec![declaration];
+        options.require_declared_global_calls = true;
         let origin = self
             .live_documents
             .get(&request.tab_id)
@@ -705,7 +706,7 @@ mod tests {
     }
 
     #[test]
-    fn document_text_profile_rejects_arguments_at_its_runtime_boundary() {
+    fn document_text_profile_rejects_arguments_during_page_profile_checking() {
         let profiles = core_script_host_type_catalog();
         let artifact = profiles
             .generate(CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1)
@@ -735,12 +736,51 @@ mod tests {
                     supplied_runtime_bindings: &artifact.runtime_bindings,
                 },
             ),
-            Err(DirectPageScriptError::Bridge(BridgeError::PageRuntime(
-                blueice_bluejs::BlueJsPageRuntimeError::Runtime(
-                    blueice_bluejs::RuntimeError::TypeError(message)
-                )
-            ))) if message == "blueiceDocumentText requires no arguments"
+            Err(DirectPageScriptError::Bridge(BridgeError::BlueTs(diagnostics)))
+                if diagnostics.iter().any(|diagnostic| {
+                    diagnostic.code == blueice_bluets::DiagnosticCode::TypeMismatch
+                })
         ));
+    }
+
+    #[test]
+    fn empty_profile_rejects_document_text_before_vm_admission() {
+        let profiles = core_script_host_type_catalog();
+        let artifact = profiles.generate(CORE_SCRIPT_EMPTY_PROFILE_V1).unwrap();
+        let loader = AuthorizedModuleLoader::new(
+            [AuthorizedModule::new(
+                "page:///app/main.ts",
+                "blueiceDocumentText();",
+            )],
+            [],
+        )
+        .unwrap();
+        let (tabs, tab_id) = loaded_tabs();
+        let mut host = DirectPageScriptHost::new(profiles);
+
+        assert!(matches!(
+            host.execute(
+                &tabs,
+                DirectPageScriptRequest {
+                    tab_id,
+                    kind: DirectPageScriptKind::Classic,
+                    entry: "page:///app/main.ts".to_string(),
+                    loader: &loader,
+                    compiler_options: CompilerOptions::default(),
+                    feature_profile: CORE_SCRIPT_EMPTY_PROFILE_V1.to_string(),
+                    supplied_manifest: &artifact.manifest,
+                    supplied_declaration_source: &artifact.declaration_source,
+                    supplied_runtime_bindings: &artifact.runtime_bindings,
+                },
+            ),
+            Err(DirectPageScriptError::Bridge(BridgeError::BlueTs(diagnostics)))
+                if diagnostics.iter().any(|diagnostic| {
+                    diagnostic.code == blueice_bluets::DiagnosticCode::UnknownName
+                        && diagnostic.message
+                            == "function blueiceDocumentText is not declared by this page profile"
+                })
+        ));
+        assert_eq!(host.debug_record_count(), 0);
     }
 
     #[test]

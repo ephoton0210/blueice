@@ -710,6 +710,26 @@ mod tests {
     }
 
     #[test]
+    fn unconfigured_document_text_global_is_rejected_at_runtime() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        let program = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///unconfigured.js"),
+                &BlueJsProgramV1::Script(parse("blueiceDocumentText();").unwrap()),
+            )
+            .unwrap();
+
+        assert!(matches!(
+            runtime.execute_program(7, program),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::ReferenceError(name)))
+                if name == "blueiceDocumentText"
+        ));
+    }
+
+    #[test]
     fn a_linked_module_identity_cannot_be_replaced_before_navigation() {
         let mut runtime = BlueJsPageRuntime::default();
         runtime.open_realm(7, origin()).unwrap();

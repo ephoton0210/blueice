@@ -13,11 +13,12 @@ evidence, not just an API, design document, or unit test.
 The standalone front end, BlueTSC emitter, VM-independent debug metadata,
 bounded contract validator, incremental cache, and the host-neutral direct
 BlueTS-to-BlueJS structured-program bridge are complete for `blue-ts-0.1`.
-They do not yet make a TypeScript page executable or debuggable. The bridge now
-has a limited, in-memory mapping from a single direct module's top-level
-lowering spans to verified BlueJS safe points, but it has no page host, DOM
-bindings, live contract boundary, debugger IPC, or MCP project-registration
-path.
+They do not yet make a general TypeScript page executable or debuggable. The
+bridge now has a limited, in-memory mapping from a single direct module's
+top-level lowering spans to verified BlueJS safe points, plus an in-process
+page host with one read-only document-text binding. It still has no general DOM
+or event surface, live contract boundary, debugger IPC, or MCP
+project-registration path.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
 syntax matrix while an earlier item prevents an already-supported program from
@@ -106,9 +107,14 @@ or second module resolver to bypass them.
   current document snapshot, rebinds after a same-origin document replacement,
   and rejects an uninstalled non-empty profile; an opt-in inline-executor
   lifecycle fixture executes the profile through discovered page declarations.
-  The first binding does not yet satisfy the full DOM/event surface or the
-  absent-global static-diagnostic acceptance criteria, so this item remains
-  open.
+  Direct-page compilation enables the fingerprinted
+  `require_declared_global_calls` policy, so a top-level direct call must be a
+  local function or a supplied ambient host declaration. Consequently,
+  `blueiceDocumentText()` under `core-script-empty-v1` fails with `UnknownName`
+  before VM admission; a raw BlueJS realm with no registration rejects the same
+  global with `ReferenceError`. The declared profile also rejects an incorrect
+  argument count statically. The first binding does not yet satisfy the full
+  DOM/event surface, so this item remains open.
 
   Acceptance: each initial binding has an implementation, capability policy,
   stable binding ID, and JavaScript page-level behavior test; an unimplemented
@@ -149,7 +155,7 @@ or second module resolver to bypass them.
 
 ## P0 — direct BlueTS page integration
 
-- [ ] **Generate and verify `lib.blueice.d.ts`.** Implement the
+- [x] **Generate and verify `lib.blueice.d.ts`.** Implement the
   host-adjacent `HostTypeSurfaceV1` schema and deterministic generator for
   `lib.blueice.d.ts` and `lib.blueice.manifest.json`. Sort by stable binding ID,
   normalize output, include the host API/profile/schema identities, and make
@@ -177,10 +183,16 @@ or second module resolver to bypass them.
   BlueTS parses that declaration under its ordinary module/source limits,
   includes its exact bytes in the compiler fingerprint and static source
   metadata, exposes its declarations only as static ambient names, and emits
-  no declaration code. The standalone `bluetsc` intentionally cannot set this
-  host-only option. Other bindings, their matching BlueJS installation, and
-  full absent-binding static/runtime coverage remain required before this item
-  can close.
+  no declaration code. Direct-page admission additionally enables the
+  fingerprinted `require_declared_global_calls` policy, rejecting a direct
+  call whose global function is neither local nor present in the verified
+  ambient declaration root. The standalone `bluetsc` intentionally cannot set
+  either host-only facility. Regression coverage proves the declared
+  document-text binding executes only in its matching profile, the empty
+  profile rejects that call statically without admitting VM bytecode, an
+  unconfigured BlueJS realm rejects it at runtime, and artifact mismatches
+  execute nothing. New bindings must retain the same exact inventory,
+  static-absence, and runtime-absence guarantees.
 
   Acceptance: a checked-in fixture generates byte-identical typing artifacts;
   every declared binding can be invoked in the matching host profile; an absent

@@ -13,6 +13,7 @@ impl<'a> ModuleChecker<'a> {
         exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
         ambient: Option<&'a AmbientDeclarations>,
         enforce_types: bool,
+        require_declared_global_calls: bool,
         max_type_expansions: usize,
     ) -> Self {
         Self {
@@ -21,6 +22,7 @@ impl<'a> ModuleChecker<'a> {
             exported_types,
             ambient,
             enforce_types,
+            require_declared_global_calls,
             diagnostics: Vec::new(),
             symbols: Vec::new(),
             types: BTreeMap::new(),
@@ -504,8 +506,11 @@ impl<'a> ModuleChecker<'a> {
                 Declaration::Import(_)
                 | Declaration::TypeExport(_)
                 | Declaration::DefaultExport(_)
-                | Declaration::ValueExport(_)
-                | Declaration::Raw(_) => {}
+                | Declaration::ValueExport(_) => {}
+                Declaration::Raw(raw) => {
+                    let scope = self.values.clone();
+                    self.check_direct_runtime_expression(&raw.tokens, &scope, &raw.span);
+                }
             }
         }
     }
