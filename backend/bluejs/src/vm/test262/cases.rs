@@ -18,6 +18,17 @@ impl Vm {
         if name == "createRealm" {
             return self.test262_create_realm();
         }
+        // The [[IsHTMLDDA]] host object's [[Call]]: null for no argument or an
+        // empty String first argument (INTERPRETING.md), otherwise undefined.
+        if name == "IsHTMLDDA" {
+            return Ok(
+                if args.is_empty() || matches!(first, Value::String(text) if text.is_empty()) {
+                    Value::Null
+                } else {
+                    Value::Undefined
+                },
+            );
+        }
         if name == "detachArrayBuffer" {
             let buffer = first.object_id().ok_or_else(|| {
                 RuntimeError::TypeError("detachArrayBuffer requires an ArrayBuffer".into())
