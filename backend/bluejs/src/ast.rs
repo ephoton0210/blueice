@@ -745,11 +745,25 @@ pub(crate) fn statements_contain_arguments(statements: &[Stmt]) -> bool {
     stmts_contain_super(statements, SuperSearch::Arguments)
 }
 
+/// Whether a direct `eval(...)` call belongs to these parameters' own
+/// evaluation: in a default or a computed key, but not inside a nested
+/// function or arrow, which have environments of their own.
+pub(crate) fn params_contain_direct_eval(params: &[Param]) -> bool {
+    params.iter().any(|param| {
+        pattern_contains_super(&param.pattern, SuperSearch::DirectEval)
+            || param
+                .default
+                .as_ref()
+                .is_some_and(|expr| expr_contains_super(expr, SuperSearch::DirectEval))
+    })
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SuperSearch {
     Call,
     Property,
     Arguments,
+    DirectEval,
 }
 
 fn stmts_contain_super_call(statements: &[Stmt]) -> bool {
@@ -846,7 +860,7 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
         }
         Stmt::Labelled { item, .. } => stmt_contains_super(item, search),
         Stmt::FunctionDecl(function) | Stmt::ModuleDefaultFunction { function, .. } => {
-            search != SuperSearch::Arguments && function_contains_super(function, search)
+            function_contains_super(function, search)
         }
         Stmt::ClassDecl(class) => {
             search == SuperSearch::Arguments && class_contains_arguments(class)
@@ -881,7 +895,7 @@ fn for_head_contains_super(head: &ForHead, search: SuperSearch) -> bool {
 }
 
 fn function_contains_super(function: &Function, search: SuperSearch) -> bool {
-    if search == SuperSearch::Arguments {
+    if matches!(search, SuperSearch::Arguments | SuperSearch::DirectEval) {
         return false;
     }
     function.params.iter().any(|param| {
@@ -1021,6 +1035,9 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
                     .as_deref()
                     .is_some_and(|expr| expr_contains_super(expr, search))
         }
+        // An arrow function's parameters and body are evaluated in its own
+        // call, so a direct eval there is not this function's.
+        Expr::Arrow { .. } if search == SuperSearch::DirectEval => false,
         Expr::Arrow { params, body, .. } => {
             params.iter().any(|param| {
                 pattern_contains_super(&param.pattern, search)
@@ -1056,6 +1073,8 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         }
         Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
             (search == SuperSearch::Call && matches!(callee.as_ref(), Expr::Super))
+                || (search == SuperSearch::DirectEval
+                    && matches!(callee.as_ref(), Expr::Identifier(name) if name == "eval"))
                 || expr_contains_super(callee, search)
                 || args.iter().any(|argument| match argument {
                     Argument::Normal(expr) | Argument::Spread(expr) => {

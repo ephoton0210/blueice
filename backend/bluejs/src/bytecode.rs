@@ -142,6 +142,9 @@ opcodes! {
     // `name++` etc. on a `ResolveWithReference` pair. Operand bit 0:
     // decrement; bit 1: prefix.
     UpdateWithReference: 5, 0;
+    // The parameter list has been evaluated: later direct evals declare their
+    // `var`s in the function body's own environment again.
+    EndParameterEvalScope: 1, 0;
     Global: 5, 0;
     ToPropertyKey: 1, 0;
     PreparePropertyReference: 1, MAY_USE_INLINE_CACHE;
@@ -460,6 +463,10 @@ pub struct Bytecode {
     /// A closure over such a function captures the with objects that are
     /// active when it is created.
     pub(crate) with_depth: u32,
+    /// A sloppy function whose parameter list contains a direct eval: its
+    /// calls get an environment of their own, outside the parameters, for the
+    /// `var`s such an eval declares (see `Vm::call_closure`).
+    pub(crate) parameter_eval_scope: bool,
     pub(crate) functions: Vec<std::rc::Rc<Bytecode>>,
     pub(crate) captures: Vec<u32>,
     /// The immutable name environment binding of a named function expression.
@@ -545,6 +552,7 @@ impl Bytecode {
             new_target_allowed: false,
             import_meta_allowed: false,
             with_depth: 0,
+            parameter_eval_scope: false,
             functions: Vec::new(),
             captures: Vec::new(),
             self_slot: None,

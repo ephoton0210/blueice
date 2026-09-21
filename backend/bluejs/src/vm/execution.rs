@@ -541,6 +541,28 @@ impl Vm {
         self.heap.delete(binding.cell, "value").map_err(Into::into)
     }
 
+    /// The environment object of a sloppy function whose parameter list has a
+    /// direct eval. It is an ordinary object without prototype, entered like a
+    /// `with` object; the marker property is not a valid identifier, so no
+    /// `var` an eval declares can collide with it. Each own property maps a
+    /// declared name to the cell that holds its value.
+    pub(super) fn new_parameter_eval_env(&mut self) -> Result<ObjectId, RuntimeError> {
+        let env = self.with_roots(|heap| heap.alloc_object(None))?;
+        self.stack.push(Value::Object(env));
+        let marked = self.with_roots(|heap| heap.set(env, "#eval-env", Value::Bool(true)));
+        self.stack.pop();
+        marked?;
+        Ok(env)
+    }
+
+    /// Whether `object` is such an environment (as opposed to a `with` object).
+    pub(super) fn is_parameter_eval_env(&self, object: ObjectId) -> bool {
+        matches!(
+            self.heap.get_own(object, "#eval-env"),
+            Ok(Some(Value::Bool(true)))
+        )
+    }
+
     /// Whether `name`, which no function or block binding resolves, resolves
     /// to an eval-created binding, a global binding or a property of the
     /// global object (the standard globals are created lazily).
@@ -1327,6 +1349,16 @@ impl Vm {
                 .collect();
             if !self.dynamic_eval_bindings.contains_key(&binding.name) {
                 let cell = self.with_roots(|heap| heap.alloc_object(None))?;
+                if let Some(env) = self.parameter_eval_env {
+                    // Closures made in this function's parameter list or
+                    // body reach the variable through the environment.
+                    self.stack.push(Value::Object(cell));
+                    let recorded = self.with_roots(|heap| {
+                        heap.set(env, binding.name.as_str(), Value::Object(cell))
+                    });
+                    self.stack.pop();
+                    recorded?;
+                }
                 self.dynamic_eval_bindings.insert(
                     binding.name.clone(),
                     DynamicEvalBinding {

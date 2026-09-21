@@ -1028,6 +1028,7 @@ impl Vm {
                         self.store_with_reference(code, target, marker, &value)?;
                         self.stack.push(value);
                     }
+                    Opcode::EndParameterEvalScope => self.parameter_eval_env = None,
                     Opcode::UpdateWithReference => {
                         // `name++` / `--name` on a Reference resolved before
                         // the read: GetValue, ToNumeric, then PutValue on that

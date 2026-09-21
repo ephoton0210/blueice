@@ -519,7 +519,13 @@ impl Vm {
         for object in self.with_objects.clone().into_iter().rev() {
             if self.with_has_binding(&object, name)? {
                 let value = self.object_environment_get(&object, name)?;
-                return Ok(Some((value, object)));
+                // A parameter environment is a declarative record: a function
+                // found there has no WithBaseObject to be called with.
+                let is_env = object
+                    .object_id()
+                    .is_some_and(|id| self.is_parameter_eval_env(id));
+                let base = if is_env { Value::Undefined } else { object };
+                return Ok(Some((value, base)));
             }
         }
         match fallback {
@@ -555,7 +561,43 @@ impl Vm {
                 Ok(Value::Undefined)
             };
         }
+        if let Some(cell) = self.parameter_eval_cell(id, name)? {
+            return Ok(self
+                .heap
+                .get_own(cell, "value")?
+                .unwrap_or(Value::Undefined));
+        }
         self.get_property(object, &name.into())
+    }
+
+    /// The cell an eval-declared variable of a parameter environment lives
+    /// in, when `object` is one (and `None` for a `with` object).
+    fn parameter_eval_cell(
+        &mut self,
+        object: ObjectId,
+        name: &str,
+    ) -> Result<Option<ObjectId>, RuntimeError> {
+        if !self.is_parameter_eval_env(object) {
+            return Ok(None);
+        }
+        Ok(self
+            .heap
+            .get_own(object, name)?
+            .and_then(|value| value.object_id()))
+    }
+
+    /// SetMutableBinding on an object environment: through the variable's
+    /// cell for a parameter environment, else an ordinary [[Set]].
+    fn object_environment_set(
+        &mut self,
+        object: ObjectId,
+        name: &str,
+        value: &Value,
+    ) -> Result<(), RuntimeError> {
+        if let Some(cell) = self.parameter_eval_cell(object, name)? {
+            return self.store_global_cell(cell, value.clone());
+        }
+        self.set_property(&Value::Object(object), &name.into(), value)
     }
 
     pub(super) fn with_get(
@@ -599,7 +641,7 @@ impl Vm {
                 if self.strict && !still_exists {
                     return Err(RuntimeError::ReferenceError(name.into()));
                 }
-                return self.set_property(&object, &name.into(), &value);
+                return self.object_environment_set(id, name, &value);
             }
         }
         Err(RuntimeError::ReferenceError(name.into()))
@@ -659,7 +701,8 @@ impl Vm {
                         name.to_utf8().expect("compiler emits a UTF-8 identifier"),
                     ));
                 }
-                self.set_property(&Value::Object(object), &name.into(), value)?;
+                let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                self.object_environment_set(object, &name, value)?;
             }
             (Value::Number(slot), Value::Null)
                 if slot.is_finite()

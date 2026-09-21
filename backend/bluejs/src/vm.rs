@@ -759,6 +759,10 @@ pub struct Vm {
     // Values in suspended finally paths live here rather than in Rust-only
     // handler records, so VM safepoints root them during allocations.
     pending_completions: Vec<Completion>,
+    /// The parameter environment of the running sloppy function while its
+    /// parameter list is being evaluated: the object that receives the `var`s
+    /// a direct eval there declares (`Vm::call_closure` creates it).
+    parameter_eval_env: Option<ObjectId>,
     /// A `TailCall` whose frame has been torn down: `[callee, this, args...]`,
     /// consumed by the `call_with_target` that ran that frame.
     pending_tail_call: Option<Vec<Value>>,
@@ -1048,6 +1052,7 @@ impl Vm {
             with_objects: Vec::new(),
             pending_completions: Vec::new(),
             pending_tail_call: None,
+            parameter_eval_env: None,
             completion_saves: Vec::new(),
             remaining_instructions: 0,
             cells: HashMap::new(),

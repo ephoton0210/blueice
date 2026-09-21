@@ -222,6 +222,26 @@ impl Vm {
         let with_objects = std::mem::replace(&mut self.with_objects, closure_with_objects);
         let inherited_with_depth =
             std::mem::replace(&mut self.inherited_with_depth, self.with_objects.len());
+        let parameter_eval_env = self.parameter_eval_env.take();
+        if code.parameter_eval_scope {
+            // Roots: `with_objects` is a root, and so is the callee frame's
+            // stack, which holds the caller's copy until the call returns.
+            let env = match self.new_parameter_eval_env() {
+                Ok(env) => env,
+                Err(error) => {
+                    self.with_objects = with_objects;
+                    self.inherited_with_depth = inherited_with_depth;
+                    self.parameter_eval_env = parameter_eval_env;
+                    self.stack.truncate(base - 1);
+                    return Err(error);
+                }
+            };
+            self.with_objects.push(Value::Object(env));
+            // The environment is nested inside the objects the function was
+            // created in, and the function's own bindings inside it.
+            self.inherited_with_depth = self.with_objects.len();
+            self.parameter_eval_env = Some(env);
+        }
         let frame_dynamic_eval_outer_bindings = self.dynamic_eval_outer_bindings.clone();
         let top_level_module = self.top_level_module;
         let remaining_instructions = self.remaining_instructions;
@@ -305,6 +325,7 @@ impl Vm {
             self.completion_saves = completion_saves;
             self.with_objects = with_objects;
             self.inherited_with_depth = inherited_with_depth;
+            self.parameter_eval_env = parameter_eval_env;
             self.dynamic_eval_outer_bindings = frame_dynamic_eval_outer_bindings;
             self.top_level_module = top_level_module;
             self.remaining_instructions = remaining_instructions;
@@ -315,6 +336,7 @@ impl Vm {
             self.result_root = result_root;
             self.with_objects = with_objects;
             self.inherited_with_depth = inherited_with_depth;
+            self.parameter_eval_env = parameter_eval_env;
         }
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
