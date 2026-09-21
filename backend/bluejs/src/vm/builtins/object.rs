@@ -460,6 +460,19 @@ impl Vm {
         &mut self,
         default: ObjectId,
     ) -> Result<ObjectId, RuntimeError> {
+        self.constructor_prototype_for(default, None)
+    }
+
+    /// `GetPrototypeFromConstructor` with the fallback intrinsic named by the
+    /// caller. A constructor that knows which intrinsic `default` is (the
+    /// Error family, whose prototypes carry no distinguishing identity here)
+    /// passes its global's name so a foreign new target's realm can supply
+    /// the matching prototype; `None` recognizes `default` by identity.
+    pub(in super::super) fn constructor_prototype_for(
+        &mut self,
+        default: ObjectId,
+        intrinsic_name: Option<&str>,
+    ) -> Result<ObjectId, RuntimeError> {
         let target = self.new_target.clone();
         let prototype = self.get_property(&target, &"prototype".into())?;
         if let Some(prototype) = prototype.object_id() {
@@ -472,6 +485,9 @@ impl Vm {
         // caller-supplied default is already the correct fallback after the
         // validation walk completes.
         if let Some(realm) = self.validate_function_realm(target)? {
+            if let Some(intrinsic) = intrinsic_name {
+                return self.test262_foreign_default_prototype(realm, intrinsic);
+            }
             let boolean = self.global("Boolean")?;
             let boolean_prototype = self
                 .get_property(&boolean, &"prototype".into())?

@@ -231,7 +231,7 @@ impl Vm {
             .object_id()
             .unwrap();
         let prototype = if construct {
-            self.constructor_prototype(default)?
+            self.constructor_prototype_for(default, Some(name))?
         } else {
             default
         };
