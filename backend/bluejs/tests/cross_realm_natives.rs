@@ -233,3 +233,23 @@ fn iterator_and_promise_built_ins_of_another_realm_accept_local_receivers() {
     );
     assert_no_failures(&source);
 }
+
+#[test]
+fn a_data_view_can_view_an_array_buffer_of_another_realm() {
+    let source = format!(
+        r#"{HELPERS}
+        const foreignBuffer = new other.ArrayBuffer(4);
+        new other.Uint8Array(foreignBuffer).set([1, 2, 3, 4]);
+        const view = new DataView(foreignBuffer, 1, 2);
+        check('reads the foreign bytes', view.getUint8(0) === 2 && view.getUint8(1) === 3);
+        check('extent', view.byteOffset === 1 && view.byteLength === 2);
+        check('buffer is the foreign buffer', view.buffer === foreignBuffer);
+        check('prototype', Object.getPrototypeOf(view) === DataView.prototype);
+        class Sub extends DataView {{}}
+        check('subclass', new Sub(foreignBuffer) instanceof Sub);
+        expectThrown('not a buffer', TypeError, () => new DataView(other.eval('({{}})')));
+        failures.join('; ')
+        "#
+    );
+    assert_no_failures(&source);
+}

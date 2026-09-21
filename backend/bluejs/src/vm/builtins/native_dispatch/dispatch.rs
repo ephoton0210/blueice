@@ -722,6 +722,11 @@ impl Vm {
                         }
                         error => error.into(),
                     })?;
+                // A view over an ArrayBuffer of another Test262 realm exposes
+                // that buffer, not the bridge's local mirror of it.
+                if let Some(facade) = self.test262_foreign_buffer_facade(buffer) {
+                    return Ok(facade);
+                }
                 Ok(Value::Object(buffer))
             }
             NativeFunction::DataViewByteLength => {
