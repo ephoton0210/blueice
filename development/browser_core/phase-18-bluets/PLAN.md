@@ -4,6 +4,8 @@
 
 **Status**: In progress. `backend/bluets` provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix. `backend/bluets-bluejs` now also proves direct, host-neutral classic-script and resolver-preserving ESM-module-graph paths: it checks caller-supplied BlueTS, lowers a deliberately small runtime subset to the public BlueJS program AST, and compiles it to BlueJS bytecode without reparsing BlueTSC's emitted JavaScript. It does **not** yet execute a TypeScript page: the page-script host, bytecode safe-point map, debugger IPC and MCP project-registration boundary remain prerequisites.
 
+The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
+
 ## Objective
 
 Let a BlueIce page opt in to TypeScript source without a build-time `.js` artifact, while also providing BlueTSC for projects that need to compile TypeScript to portable JavaScript. Both paths preserve the reasons to author code in TypeScript: deterministic static diagnostics, source-level debugging, and—where data crosses a trust boundary—runtime validation of an explicit, reifiable contract.
