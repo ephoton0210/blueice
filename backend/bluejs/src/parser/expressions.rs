@@ -1104,8 +1104,9 @@ impl Parser {
             }
             // A decorated class expression.
             Token::Punct(Punct::At) => {
+                let start = self.token_start();
                 let decorators = self.parse_decorators()?;
-                Ok(Expr::Class(self.parse_decorated_class(decorators)?))
+                Ok(Expr::Class(self.parse_decorated_class(decorators, start)?))
             }
             Token::Identifier(name) if name == "super" => {
                 self.advance();
@@ -1228,6 +1229,8 @@ impl Parser {
             if self.eat_punct(Punct::Ellipsis) {
                 props.push(ObjectProp::Spread(self.parse_assignment()?));
             } else {
+                // A method's source text starts at its first token.
+                let element_start = self.token_start();
                 let is_async = self.object_async_method_follows();
                 if is_async {
                     self.advance();
@@ -1249,7 +1252,12 @@ impl Parser {
                     let name = class_element_name(&key);
                     props.push(ObjectProp::Method {
                         key,
-                        function: self.parse_method_definition(Some(name), generator, is_async)?,
+                        function: self.parse_method_definition(
+                            Some(name),
+                            generator,
+                            is_async,
+                            element_start,
+                        )?,
                     });
                 } else if matches!(&key, PropertyKey::Identifier(name) if name == "get" || name == "set")
                     && !key_escaped
@@ -1266,6 +1274,7 @@ impl Parser {
                         Some(format!("{} {}", if getter { "get" } else { "set" }, name)),
                         false,
                         false,
+                        element_start,
                     )?;
                     if (getter && !function.params.is_empty())
                         || (!getter && (function.params.len() != 1 || function.params[0].rest))

@@ -12,6 +12,7 @@
 
 use crate::JsString;
 use num_bigint::BigInt;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
@@ -214,7 +215,7 @@ pub enum DeclKind {
     AwaitUsing,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Function {
     pub name: Option<String>,
     pub params: Vec<Param>,
@@ -224,6 +225,69 @@ pub struct Function {
     /// suspension slice, but retaining the grammar prevents valid programs
     /// from being misreported as malformed source.
     pub is_async: bool,
+    /// The source text this function was parsed from (its `[[SourceText]]`).
+    pub source_text: SourceText,
+}
+
+/// The exact source text of a function or class: what
+/// `Function.prototype.toString` returns for it. It is a range of the whole
+/// text that was parsed, which every function and class of one parse shares
+/// (a function nested in another is a sub-range of its parent's range, so no
+/// text is ever copied per function).
+///
+/// The default value has no text: it is what a function the compiler
+/// synthesizes (an implicit initializer, an auto-accessor's getter) carries,
+/// and `Function.prototype.toString` then reports a NativeFunction.
+///
+/// A source range is metadata, not structure, so it never takes part in
+/// equality: two syntax trees that differ only in where their functions were
+/// written are equal.
+#[derive(Clone, Default)]
+pub struct SourceText {
+    text: Option<Arc<str>>,
+    /// Byte offsets into `text`, on character boundaries.
+    start: u32,
+    end: u32,
+}
+
+impl SourceText {
+    /// The range `start..end` (byte offsets on character boundaries) of
+    /// `text`. Text longer than `u32::MAX` bytes has no representable range:
+    /// it yields the default, textless value rather than a wrong range.
+    pub(crate) fn range(text: &Arc<str>, start: usize, end: usize) -> Self {
+        debug_assert!(start <= end && text.is_char_boundary(start) && text.is_char_boundary(end));
+        match (u32::try_from(start), u32::try_from(end)) {
+            (Ok(start), Ok(end)) => Self {
+                text: Some(Arc::clone(text)),
+                start,
+                end,
+            },
+            _ => Self::default(),
+        }
+    }
+
+    /// The source text, or `None` for a function that has none.
+    pub fn as_str(&self) -> Option<&str> {
+        let text = self.text.as_deref()?;
+        text.get(self.start as usize..self.end as usize)
+    }
+}
+
+/// Prints the range, not the (whole program's) text it is a range of, so a
+/// syntax tree stays readable in assertion failures and debug output.
+impl std::fmt::Debug for SourceText {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.text {
+            Some(_) => write!(formatter, "SourceText({}..{})", self.start, self.end),
+            None => formatter.write_str("SourceText(none)"),
+        }
+    }
+}
+
+impl PartialEq for SourceText {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
 }
 
 /// A class definition with the executable elements currently supported by the
@@ -241,6 +305,9 @@ pub struct Class {
     pub elements: Vec<ClassElement>,
     /// Decorators before `class`, in source order.
     pub decorators: Vec<Expr>,
+    /// The source text of the whole class, its decorators included: what the
+    /// class constructor's `Function.prototype.toString` returns.
+    pub source_text: SourceText,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -642,6 +709,7 @@ pub enum Expr {
         params: Vec<Param>,
         body: ArrowBody,
         is_async: bool,
+        source_text: SourceText,
     },
     Unary {
         op: UnaryOp,
@@ -1210,6 +1278,31 @@ fn class_contains_arguments(class: &Class, search: SuperSearch) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn source_text_is_a_shared_range_that_never_affects_equality() {
+        let text: Arc<str> = Arc::from("a \u{3042} function () {} z");
+        let range = SourceText::range(&text, 6, 20);
+        assert_eq!(range.as_str(), Some("function () {}"));
+        assert_eq!(format!("{range:?}"), "SourceText(6..20)");
+        // A clone is another handle on the same text, not a copy of it.
+        assert_eq!(Arc::strong_count(&text), 2);
+        let copy = range.clone();
+        assert_eq!(copy.as_str(), Some("function () {}"));
+        assert_eq!(Arc::strong_count(&text), 3);
+        // No text: the default of every synthesized function.
+        assert_eq!(SourceText::default().as_str(), None);
+        assert_eq!(format!("{:?}", SourceText::default()), "SourceText(none)");
+        // Where a function was written is metadata, not structure.
+        assert_eq!(range, SourceText::default());
+        assert_eq!(
+            Function {
+                source_text: range,
+                ..Function::default()
+            },
+            Function::default()
+        );
+    }
+
     fn super_member() -> Expr {
         Expr::Member {
             object: Box::new(Expr::Super),
@@ -1232,6 +1325,7 @@ mod tests {
             body,
             generator: false,
             is_async: false,
+            source_text: Default::default(),
         }
     }
 
@@ -1315,6 +1409,7 @@ mod tests {
                 extends: None,
                 elements: Vec::new(),
                 decorators: Vec::new(),
+                source_text: Default::default(),
             }),
             SuperSearch::Property
         ));
@@ -1327,7 +1422,8 @@ mod tests {
             }],
             body: Vec::new(),
             generator: false,
-            is_async: false
+            is_async: false,
+            source_text: Default::default(),
         }));
         assert!(contains_super_call_outside_class(&Program {
             body: vec![Stmt::Expr(Expr::Call {
@@ -1566,6 +1662,7 @@ mod tests {
                 }],
                 body: ArrowBody::Expr(Box::new(Expr::Number(0.0))),
                 is_async: false,
+                source_text: Default::default(),
             },
             Expr::Sequence(vec![super_call()]),
             Expr::Call {
@@ -1612,11 +1709,13 @@ mod tests {
                 params: Vec::new(),
                 body: ArrowBody::Expr(Box::new(super_call())),
                 is_async: false,
+                source_text: Default::default(),
             },
             Expr::Arrow {
                 params: Vec::new(),
                 body: ArrowBody::Block(vec![Stmt::Expr(super_call())]),
                 is_async: false,
+                source_text: Default::default(),
             },
         ] {
             assert!(
@@ -1630,6 +1729,7 @@ mod tests {
                 extends: None,
                 elements: Vec::new(),
                 decorators: Vec::new(),
+                source_text: Default::default(),
             }
         )));
         let property = Expr::Member {

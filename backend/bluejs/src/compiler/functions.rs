@@ -244,14 +244,12 @@ impl Compiler {
             _ => None,
         });
         let default_constructor = constructor.is_none();
-        let mut constructor = constructor.unwrap_or(Function {
-            name: class.name.clone(),
-            params: Vec::new(),
-            body: Vec::new(),
-            generator: false,
-            is_async: false,
-        });
+        let mut constructor = constructor.unwrap_or_default();
         constructor.name = class.name.clone();
+        // The constructor function object is the class: its source text is the
+        // whole ClassDeclaration or ClassExpression, not the `constructor`
+        // method (which a class without one does not even have).
+        constructor.source_text = class.source_text.clone();
         self.function_named_with(
             &constructor,
             false,
@@ -581,11 +579,8 @@ impl Compiler {
         }
         if !instance_fields.is_empty() {
             let initializer = Function {
-                name: None,
-                params: Vec::new(),
                 body: instance_fields,
-                generator: false,
-                is_async: false,
+                ..Function::default()
             };
             self.function_named_with(
                 &initializer,
@@ -915,11 +910,8 @@ impl Compiler {
         field: bool,
     ) -> Result<(), CompileError> {
         let function = Function {
-            name: None,
-            params: Vec::new(),
             body,
-            generator: false,
-            is_async: false,
+            ..Function::default()
         };
         self.function_named_with(
             &function,

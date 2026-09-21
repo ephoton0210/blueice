@@ -1640,6 +1640,7 @@ impl Compiler {
                 params,
                 body,
                 is_async,
+                source_text,
             } if inferred_name.is_some() => {
                 let body = match body {
                     ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
@@ -1652,6 +1653,7 @@ impl Compiler {
                         body,
                         generator: false,
                         is_async: *is_async,
+                        source_text: source_text.clone(),
                     },
                     true,
                     inferred_name,

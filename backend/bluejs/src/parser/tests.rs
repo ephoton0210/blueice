@@ -598,6 +598,7 @@ fn parses_function_declaration() {
             }))],
             generator: false,
             is_async: false,
+            source_text: Default::default(),
         })
     );
 }
@@ -633,6 +634,7 @@ fn parses_function_with_default_and_rest_params() {
             body: vec![],
             generator: false,
             is_async: false,
+            source_text: Default::default(),
         })
     );
 }
@@ -653,6 +655,7 @@ fn parses_arrow_functions_all_shapes() {
                 right: Box::new(Expr::Number(1.0))
             })),
             is_async: false,
+            source_text: Default::default(),
         }
     );
     assert_eq!(
@@ -660,7 +663,8 @@ fn parses_arrow_functions_all_shapes() {
         Expr::Arrow {
             params: vec![],
             body: ArrowBody::Block(vec![]),
-            is_async: false
+            is_async: false,
+            source_text: Default::default(),
         }
     );
     assert_eq!(
@@ -684,6 +688,7 @@ fn parses_arrow_functions_all_shapes() {
                 right: Box::new(Expr::Identifier("b".to_string()))
             }))]),
             is_async: false,
+            source_text: Default::default(),
         }
     );
     assert!(matches!(
@@ -715,6 +720,7 @@ fn nested_parentheses_in_arrow_defaults_preserve_the_parameter_boundary() {
                 }],
                 body: ArrowBody::Expr(Box::new(Expr::Identifier("x".into()))),
                 is_async: false,
+                source_text: Default::default(),
             })],
         }
     );
@@ -739,9 +745,11 @@ fn arrow_function_closes_over_outer_scope_syntactically() {
             body: ArrowBody::Expr(Box::new(Expr::Arrow {
                 params: vec![],
                 body: ArrowBody::Expr(Box::new(Expr::Identifier("x".to_string()))),
-                is_async: false
+                is_async: false,
+                source_text: Default::default(),
             })),
             is_async: false,
+            source_text: Default::default(),
         }
     );
 }
@@ -820,6 +828,7 @@ fn parses_destructuring_in_declarations_and_params() {
             body: vec![],
             generator: false,
             is_async: false,
+            source_text: Default::default(),
         })
     );
     assert!(matches!(
@@ -1090,7 +1099,8 @@ fn automatic_semicolon_insertion_covers_the_common_cases() {
             params: vec![],
             body: vec![Stmt::Return(None), Stmt::Expr(Expr::Number(1.0))],
             generator: false,
-            is_async: false
+            is_async: false,
+            source_text: Default::default(),
         })
     );
 }
@@ -1569,4 +1579,242 @@ fn bare_yield_can_terminate_before_destructuring_delimiters() {
 fn literal_based_member_targets_are_not_nested_destructuring_patterns() {
     assert!(parse("function* g(){[...{}[yield]] = values;}").is_ok());
     assert!(parse("[{ get y() {}, set y(value) {} }.y] = values;").is_ok());
+}
+
+/// The source text of every function, method, arrow function and class in
+/// `program`, in the order the parser finished them (a construct nested in
+/// another comes before it), each sliced from `source` by its recorded range.
+fn source_texts_of(program: &impl std::fmt::Debug, source: &str) -> Vec<String> {
+    let debug = format!("{program:?}");
+    let mut texts = Vec::new();
+    let mut rest = debug.as_str();
+    while let Some(at) = rest.find("SourceText(") {
+        rest = &rest[at + "SourceText(".len()..];
+        let (range, tail) = rest.split_once(')').unwrap();
+        rest = tail;
+        if let Some((start, end)) = range.split_once("..") {
+            let (start, end) = (
+                start.parse::<usize>().unwrap(),
+                end.parse::<usize>().unwrap(),
+            );
+            texts.push(source[start..end].to_string());
+        } else {
+            texts.push(range.to_string());
+        }
+    }
+    texts
+}
+
+fn script_source_texts(source: &str) -> Vec<String> {
+    source_texts_of(&parse(source).unwrap(), source)
+}
+
+#[test]
+fn function_source_text_is_the_exact_text_of_each_function_form() {
+    for text in [
+        "function f(a, b) { return a + b; }",
+        "function   spaced  (  )  {  }",
+        "function* g() { yield 1; }",
+        "async function h() { await 1; }",
+        "async   function* i() {}",
+        "function /* c */ withComment(/* p */) /* b */ {}",
+        "function\nnewlines\n(\n)\n{\n}",
+    ] {
+        // Text around the function stays out of its source text, including
+        // the whitespace, comments and semicolons that follow it.
+        let source = format!("var before = 1; /* lead */ {text} // trail\n;var after = 2;");
+        assert_eq!(script_source_texts(&source), [text], "{source}");
+        let expression = format!("var v = (  {text}  );");
+        assert_eq!(script_source_texts(&expression), [text], "{expression}");
+    }
+}
+
+#[test]
+fn arrow_function_source_text_covers_parameters_and_body() {
+    for text in [
+        "x => x + 1",
+        "(a, b) => a * b",
+        "() => { return 1; }",
+        "async x => await x",
+        "async (a) => { await a; }",
+        "async\t(a) =>\t0",
+        "(a = (1, 2), { b } = {}, ...c) => 0",
+        "x => y => x + y",
+    ] {
+        let source = format!("var f = {text} ; var g = 0;");
+        let texts = script_source_texts(&source);
+        assert_eq!(texts.last().map(String::as_str), Some(text), "{source}");
+    }
+    // A nested arrow ends first and is a range inside its parent's.
+    assert_eq!(
+        script_source_texts("var f = x => y => x + y;"),
+        ["y => x + y", "x => y => x + y"]
+    );
+}
+
+#[test]
+fn arrow_function_source_text_ends_after_a_regexp_or_tagged_template_body() {
+    // Neither literal is a token of the parser's stream, so the end of the
+    // arrow function cannot be taken from the last token.
+    for text in [
+        "x => /a+b/g",
+        "() => tag`a${1}b`",
+        "() => 1 / 2 / 3",
+        "() => `t`",
+    ] {
+        let source = format!("var f = {text} /* c */ ;\nvar g = 0;");
+        let texts = script_source_texts(&source);
+        assert_eq!(texts.last().map(String::as_str), Some(text), "{source}");
+    }
+}
+
+#[test]
+fn method_source_text_includes_modifiers_and_computed_names_but_not_static() {
+    let source = "var o = { m() {}, get g() { return 1; }, set s(v) {}, *gen() {}, async am() {}, async *ag() {}, [computed + 1](a) {}, 'quoted'() {}, 1.5() {}, get [c]() {}, get() {}, async() {} };";
+    assert_eq!(
+        script_source_texts(source),
+        [
+            "m() {}",
+            "get g() { return 1; }",
+            "set s(v) {}",
+            "*gen() {}",
+            "async am() {}",
+            "async *ag() {}",
+            "[computed + 1](a) {}",
+            "'quoted'() {}",
+            "1.5() {}",
+            "get [c]() {}",
+            "get() {}",
+            "async() {}",
+        ]
+    );
+    let class = "class C { m() {} static s() {} static async *sag() {} get g() {} static set [k](v) {} #p() {} static #q() {} async() {} static static() {} static get get() {} }";
+    assert_eq!(
+        script_source_texts(class),
+        [
+            "m() {}",
+            "s() {}",
+            "async *sag() {}",
+            "get g() {}",
+            "set [k](v) {}",
+            "#p() {}",
+            "#q() {}",
+            "async() {}",
+            "static() {}",
+            "get get() {}",
+            class,
+        ]
+    );
+}
+
+#[test]
+fn class_source_text_covers_the_whole_class_and_its_decorators() {
+    assert_eq!(
+        script_source_texts("var C = class  {  }  ;"),
+        ["class  {  }"]
+    );
+    assert_eq!(
+        script_source_texts("class D extends (0, B) { x = 1; static { } }\nvar y;"),
+        ["class D extends (0, B) { x = 1; static { } }"]
+    );
+    // Decorators are part of the class, those of an element are not part of
+    // its method.
+    assert_eq!(
+        script_source_texts("@a @b.c(1) class E { @d m() {} }"),
+        ["m() {}", "@a @b.c(1) class E { @d m() {} }"]
+    );
+    assert_eq!(
+        script_source_texts("var F = @(x) class { };"),
+        ["@(x) class { }"]
+    );
+}
+
+#[test]
+fn source_text_offsets_survive_non_ascii_text() {
+    // Character offsets from the tokenizer and byte offsets into the text
+    // differ once anything before or inside a function is not ASCII.
+    let source = "var s = '\u{1F600}\u{3042}'; /* \u{e9} */ function f(\u{3042} = '\u{1F600}') { return \u{3042}; }\nvar t = \u{e9}\u{e8} => '\u{1F600}';";
+    assert_eq!(
+        script_source_texts(source),
+        [
+            "function f(\u{3042} = '\u{1F600}') { return \u{3042}; }",
+            "\u{e9}\u{e8} => '\u{1F600}'"
+        ]
+    );
+}
+
+#[test]
+fn source_text_keeps_line_terminators_exactly_as_written() {
+    for terminator in ["\n", "\r\n", "\r", "\u{2028}", "\u{2029}"] {
+        let text = format!("function{terminator}f(a,{terminator}b){terminator}{{{terminator}}}");
+        let source = format!("{text}{terminator}var after;");
+        assert_eq!(
+            script_source_texts(&source),
+            [text.as_str()],
+            "{terminator:?}"
+        );
+    }
+}
+
+#[test]
+fn source_text_of_functions_in_template_placeholders_and_nested_functions() {
+    // A placeholder is parsed on its own, so its functions are ranges of the
+    // placeholder's text rather than of the whole program's.
+    let Stmt::VarDecl(_, declarators) =
+        only_stmt("var t = `a${ function () { return `b${ (x) => x }`; } }c`;")
+    else {
+        panic!("a variable declaration");
+    };
+    let Some(Expr::Template { expressions, .. }) = &declarators[0].init else {
+        panic!("a template literal");
+    };
+    let Expr::Function(function) = &expressions[0] else {
+        panic!("a function expression");
+    };
+    assert_eq!(
+        function.source_text.as_str(),
+        Some("function () { return `b${ (x) => x }`; }")
+    );
+    let Stmt::Return(Some(Expr::Template { expressions, .. })) = &function.body[0] else {
+        panic!("a template literal");
+    };
+    let Expr::Arrow { source_text, .. } = &expressions[0] else {
+        panic!("an arrow function");
+    };
+    assert_eq!(source_text.as_str(), Some("(x) => x"));
+
+    assert_eq!(
+        script_source_texts("function outer() { function inner() {} return () => inner; }"),
+        [
+            "function inner() {}",
+            "() => inner",
+            "function outer() { function inner() {} return () => inner; }"
+        ]
+    );
+}
+
+#[test]
+fn module_source_text_excludes_export_but_keeps_decorators_after_it() {
+    let source = "export function f() {}\nexport class C {}\n@a export class D {}\nexport @b class E {}\nexport default @c class {}";
+    let module = parse_module(source).unwrap();
+    assert_eq!(
+        source_texts_of(&module, source),
+        [
+            "function f() {}",
+            "class C {}",
+            "class D {}",
+            "@b class E {}",
+            "@c class {}"
+        ]
+    );
+    let source = "export default async function () {}";
+    let module = parse_module(source).unwrap();
+    assert_eq!(source_texts_of(&module, source), ["async function () {}"]);
+}
+
+#[test]
+fn eval_source_text_is_a_range_of_the_evaluated_text() {
+    let source = "  (function () {})  ";
+    let program = crate::parse_eval(source, false).unwrap();
+    assert_eq!(source_texts_of(&program, source), ["function () {}"]);
 }

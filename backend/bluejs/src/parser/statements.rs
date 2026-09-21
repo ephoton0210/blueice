@@ -62,8 +62,9 @@ impl Parser {
             }
             // A decorated class declaration.
             Token::Punct(Punct::At) => {
+                let start = self.token_start();
                 let decorators = self.parse_decorators()?;
-                let class = self.parse_decorated_class(decorators)?;
+                let class = self.parse_decorated_class(decorators, start)?;
                 if class.name.is_none() {
                     return Err(self.syntax_error("class declarations require a name"));
                 }

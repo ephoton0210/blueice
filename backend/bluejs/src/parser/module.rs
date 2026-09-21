@@ -40,11 +40,12 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
             imports.extend(declaration);
         } else if parser.check_identifier("export") || parser.check_punct(Punct::At) {
             // `@dec export class C {}`: decorators may come before `export`.
+            let start = parser.token_start();
             let decorators = parser.parse_decorators()?;
             if decorators.is_empty() {
                 // Nothing to add: `export` follows directly.
             } else if !parser.check_identifier("export") {
-                let class = parser.parse_decorated_class(decorators)?;
+                let class = parser.parse_decorated_class(decorators, start)?;
                 if class.name.is_none() {
                     return Err(parser.syntax_error("class declarations require a name"));
                 }
