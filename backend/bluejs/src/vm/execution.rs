@@ -15,6 +15,71 @@ fn push_object_roots<'a>(roots: &mut Vec<ObjectId>, values: impl IntoIterator<It
     }
 }
 
+/// The standard global properties of the realm global object that are created
+/// on first use rather than eagerly.
+pub(super) const LAZY_STANDARD_GLOBALS: &[&str] = &[
+    "String",
+    "Symbol",
+    "RegExp",
+    "Object",
+    "Reflect",
+    "Math",
+    "Number",
+    "Boolean",
+    "BigInt",
+    "Atomics",
+    "Array",
+    "ArrayBuffer",
+    "SharedArrayBuffer",
+    "DataView",
+    "Int8Array",
+    "Uint8Array",
+    "Uint8ClampedArray",
+    "Int16Array",
+    "Uint16Array",
+    "Int32Array",
+    "Uint32Array",
+    "Float16Array",
+    "Float32Array",
+    "Float64Array",
+    "BigInt64Array",
+    "BigUint64Array",
+    "Map",
+    "Set",
+    "WeakMap",
+    "WeakSet",
+    "WeakRef",
+    "FinalizationRegistry",
+    "DisposableStack",
+    "AsyncDisposableStack",
+    "ShadowRealm",
+    "Iterator",
+    "Function",
+    "Proxy",
+    "Promise",
+    "Intl",
+    "Temporal",
+    "Error",
+    "TypeError",
+    "RangeError",
+    "SyntaxError",
+    "ReferenceError",
+    "EvalError",
+    "URIError",
+    "AggregateError",
+    "SuppressedError",
+    "eval",
+    "isNaN",
+    "isFinite",
+    "parseInt",
+    "parseFloat",
+    "encodeURI",
+    "encodeURIComponent",
+    "decodeURI",
+    "decodeURIComponent",
+    "JSON",
+];
+
 impl Vm {
     pub(super) fn execute_with_global_bindings(
         &mut self,
@@ -197,69 +262,7 @@ impl Vm {
             }
             return Ok(());
         }
-        if matches!(
-            name,
-            "String"
-                | "Symbol"
-                | "RegExp"
-                | "Object"
-                | "Reflect"
-                | "Math"
-                | "Number"
-                | "Boolean"
-                | "BigInt"
-                | "Atomics"
-                | "Array"
-                | "ArrayBuffer"
-                | "SharedArrayBuffer"
-                | "DataView"
-                | "Int8Array"
-                | "Uint8Array"
-                | "Uint8ClampedArray"
-                | "Int16Array"
-                | "Uint16Array"
-                | "Int32Array"
-                | "Uint32Array"
-                | "Float16Array"
-                | "Float32Array"
-                | "Float64Array"
-                | "BigInt64Array"
-                | "BigUint64Array"
-                | "Map"
-                | "Set"
-                | "WeakMap"
-                | "WeakSet"
-                | "WeakRef"
-                | "FinalizationRegistry"
-                | "DisposableStack"
-                | "AsyncDisposableStack"
-                | "ShadowRealm"
-                | "Iterator"
-                | "Function"
-                | "Proxy"
-                | "Promise"
-                | "Intl"
-                | "Temporal"
-                | "Error"
-                | "TypeError"
-                | "RangeError"
-                | "SyntaxError"
-                | "ReferenceError"
-                | "EvalError"
-                | "URIError"
-                | "AggregateError"
-                | "SuppressedError"
-                | "eval"
-                | "isNaN"
-                | "isFinite"
-                | "parseInt"
-                | "parseFloat"
-                | "encodeURI"
-                | "encodeURIComponent"
-                | "decodeURI"
-                | "decodeURIComponent"
-                | "JSON"
-        ) {
+        if LAZY_STANDARD_GLOBALS.contains(&name) {
             self.global(name)?;
         }
         Ok(())
