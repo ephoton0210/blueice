@@ -1526,7 +1526,11 @@ impl Vm {
             .active_scopes
             .iter()
             .position(|scope| *scope == self.variable_scope);
-        let start = variable_scope_position.map_or(0, |index| index + 1);
+        // The variable scope's own lexical declarations conflict too: this
+        // engine keeps a function body's top-level `let`/`const`/`class`
+        // beside its vars, where the specification uses a separate lexical
+        // environment precisely so that a direct eval can see them.
+        let start = variable_scope_position.unwrap_or(0);
         let mut conflicts = self.active_scope_slots[start..]
             .iter()
             .flat_map(|slots| slots.iter().copied())
