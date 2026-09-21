@@ -27,6 +27,11 @@ pub const DEFAULT_BROWSER_CONTEXT_ID: u64 = 1;
 /// frontend or navigation-completion processing in the owning session loop.
 const MAX_DEBUGGER_REQUESTS_PER_SESSION_TICK: usize = 64;
 
+/// The control reply remains bounded even if a future frontend opens many
+/// tabs. A debugger client must not turn target discovery into an unbounded
+/// process-state enumeration endpoint.
+const MAX_DISCOVERABLE_PAGE_REALMS: usize = 128;
+
 /// Fixed discovery bounds for features that are not installed yet. They are
 /// part of the advertised future contract, not permission to inspect a stack
 /// or runtime value today.
@@ -101,6 +106,7 @@ impl DebuggerRequestReceiver {
 /// request envelope.
 pub fn handle_debugger_request(tabs: &TabManager, request: DebuggerRequest) -> DebuggerReply {
     match request {
+        DebuggerRequest::ListPageRealms => list_page_realms(tabs),
         DebuggerRequest::DescribeCapabilities { realm } => describe_capabilities(tabs, realm),
         DebuggerRequest::Hello { .. } => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -112,6 +118,29 @@ pub fn handle_debugger_request(tabs: &TabManager, request: DebuggerRequest) -> D
                 .to_string(),
         },
     }
+}
+
+fn list_page_realms(tabs: &TabManager) -> DebuggerReply {
+    let realms: Vec<DebuggerPageRealm> = tabs
+        .ids()
+        .filter_map(|tab_id| {
+            let page = tabs.get(tab_id)?;
+            let realm_generation = page.document_generation();
+            (realm_generation != 0 && page.url().is_some()).then_some(DebuggerPageRealm {
+                browser_context_id: DEFAULT_BROWSER_CONTEXT_ID,
+                tab_id: tab_id.as_u64(),
+                realm_generation,
+            })
+        })
+        .take(MAX_DISCOVERABLE_PAGE_REALMS + 1)
+        .collect();
+    if realms.len() > MAX_DISCOVERABLE_PAGE_REALMS {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            message: "too many live debugger page realms".to_string(),
+        };
+    }
+    DebuggerReply::PageRealms(realms)
 }
 
 fn describe_capabilities(tabs: &TabManager, realm: DebuggerPageRealm) -> DebuggerReply {
@@ -208,6 +237,10 @@ mod tests {
     #[test]
     fn discovery_requires_the_live_tab_and_exact_document_generation() {
         let (mut tabs, realm) = loaded_tabs();
+        assert_eq!(
+            handle_debugger_request(&tabs, DebuggerRequest::ListPageRealms),
+            DebuggerReply::PageRealms(vec![realm])
+        );
         let reply = handle_debugger_request(&tabs, DebuggerRequest::DescribeCapabilities { realm });
         let DebuggerReply::Capabilities(capabilities) = reply else {
             panic!("the live realm must have a discovery reply")
@@ -232,6 +265,13 @@ mod tests {
                 ..
             }
         ));
+        assert_eq!(
+            handle_debugger_request(&tabs, DebuggerRequest::ListPageRealms),
+            DebuggerReply::PageRealms(vec![DebuggerPageRealm {
+                realm_generation: 2,
+                ..realm
+            }])
+        );
     }
 
     #[test]
@@ -285,6 +325,29 @@ mod tests {
         assert!(matches!(
             reply_receiver.recv().unwrap(),
             DebuggerReply::Capabilities(_)
+        ));
+    }
+
+    #[test]
+    fn discovery_refuses_an_unbounded_page_realm_list() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        for index in 0..=MAX_DISCOVERABLE_PAGE_REALMS {
+            let tab_id = if index == 0 {
+                tabs.default_tab()
+            } else {
+                tabs.open_tab()
+            };
+            tabs.get_mut(tab_id).unwrap().load_html_str(
+                "<main>debugger target</main>",
+                Some(format!("https://example.test/{index}")),
+            );
+        }
+        assert!(matches!(
+            handle_debugger_request(&tabs, DebuggerRequest::ListPageRealms),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::ResourceLimit,
+                ..
+            }
         ));
     }
 }

@@ -126,6 +126,11 @@ pub enum DebuggerRequest {
     Hello {
         protocol_version: u32,
     },
+    /// Lists bounded, currently loaded page realm identities. The reply carries
+    /// no URL, source, program, bytecode, or runtime object; clients use the
+    /// returned generation only to make a subsequent target-bound discovery
+    /// request.
+    ListPageRealms,
     DescribeCapabilities {
         realm: DebuggerPageRealm,
     },
@@ -142,6 +147,8 @@ pub enum DebuggerReply {
     HelloAck {
         protocol_version: u32,
     },
+    /// Reply to [`DebuggerRequest::ListPageRealms`].
+    PageRealms(Vec<DebuggerPageRealm>),
     Capabilities(DebuggerCapabilities),
     Unsupported {
         operation: String,
@@ -183,12 +190,12 @@ pub fn negotiate(request: &DebuggerRequest) -> DebuggerReply {
             code: DebuggerErrorCode::ProtocolVersion,
             message: "unsupported debugger protocol version".to_string(),
         },
-        DebuggerRequest::DescribeCapabilities { .. } | DebuggerRequest::Unknown => {
-            DebuggerReply::Error {
-                code: DebuggerErrorCode::ProtocolVersion,
-                message: "debugger protocol requires Hello as its first request".to_string(),
-            }
-        }
+        DebuggerRequest::ListPageRealms
+        | DebuggerRequest::DescribeCapabilities { .. }
+        | DebuggerRequest::Unknown => DebuggerReply::Error {
+            code: DebuggerErrorCode::ProtocolVersion,
+            message: "debugger protocol requires Hello as its first request".to_string(),
+        },
     }
 }
 
@@ -232,6 +239,7 @@ mod tests {
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
             },
+            DebuggerRequest::ListPageRealms,
             DebuggerRequest::DescribeCapabilities { realm: realm() },
             DebuggerRequest::Unknown,
         ] {
@@ -255,6 +263,11 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+
+        let reply = DebuggerReply::PageRealms(vec![realm()]);
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_reply(&mut sender, &reply).unwrap();
+        assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
     }
 
     #[test]
@@ -271,6 +284,13 @@ mod tests {
             negotiate(&DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION + 1,
             }),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::ProtocolVersion,
+                ..
+            }
+        ));
+        assert!(matches!(
+            negotiate(&DebuggerRequest::ListPageRealms),
             DebuggerReply::Error {
                 code: DebuggerErrorCode::ProtocolVersion,
                 ..

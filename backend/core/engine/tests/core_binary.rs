@@ -307,11 +307,26 @@ fn real_subprocess_routes_debugger_discovery_through_the_live_core_session() {
             protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
         }
     );
-    let first_realm = blueice_ipc::debugger::DebuggerPageRealm {
-        browser_context_id: blueice_engine::debugger::DEFAULT_BROWSER_CONTEXT_ID,
-        tab_id: 1,
-        realm_generation: 1,
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListPageRealms,
+    )
+    .unwrap();
+    let first_realm = match blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap() {
+        blueice_ipc::debugger::DebuggerReply::PageRealms(realms) => {
+            assert_eq!(realms.len(), 1);
+            realms[0]
+        }
+        other => panic!("expected debugger page realms, got {other:?}"),
     };
+    assert_eq!(
+        first_realm,
+        blueice_ipc::debugger::DebuggerPageRealm {
+            browser_context_id: blueice_engine::debugger::DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: 1,
+            realm_generation: 1,
+        }
+    );
     blueice_ipc::debugger::write_debugger_request(
         &mut debugger,
         &blueice_ipc::debugger::DebuggerRequest::DescribeCapabilities { realm: first_realm },
@@ -343,6 +358,21 @@ fn real_subprocess_routes_debugger_discovery_through_the_live_core_session() {
         blueice_ipc::read_server_message(&mut frontend).unwrap(),
         blueice_ipc::ServerMessage::FrameReady { generation: 2, .. }
     ));
+
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListPageRealms,
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::PageRealms(vec![
+            blueice_ipc::debugger::DebuggerPageRealm {
+                realm_generation: 2,
+                ..first_realm
+            },
+        ])
+    );
 
     blueice_ipc::debugger::write_debugger_request(
         &mut debugger,

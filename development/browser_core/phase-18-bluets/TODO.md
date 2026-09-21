@@ -194,12 +194,16 @@ or second module resolver to bypass them.
   thread that owns live tabs. `blueice-core --debugger-socket <path>` binds
   that separate listener, negotiates `Hello` at its transport boundary, and
   validates the default browser-context ID, live tab, and exact private
-  document generation before returning a capability document. A stale
-  generation returns `StaleRealm`; malformed/unknown targets return
-  `InvalidTarget`. The running core advertises every listed capability as
-  `planned` with fixed source-free details, never as `available`. A real core
-  subprocess regression proves the socket handshake, session-owned target
-  lookup, planned-only report, and stale-realm rejection after navigation.
+  document generation before returning a capability document.
+  `ListPageRealms` first returns at most 128 currently loaded
+  `(browser-context, tab, document-generation)` identities with no URL,
+  source, program, bytecode, or runtime value; exceeding that cap fails with
+  `ResourceLimit`. A stale generation returns `StaleRealm`; malformed/unknown
+  targets return `InvalidTarget`. The running core advertises every listed
+  capability as `planned` with fixed source-free details, never as `available`.
+  A real core subprocess regression proves the socket handshake, session-owned
+  bounded target discovery, planned-only report, target refresh, and
+  stale-realm rejection after navigation.
   There is still no core-to-BlueJS program-registry validation, breakpoint
   table, pause state, stack/scope/value implementation, or debugger consumer.
 
