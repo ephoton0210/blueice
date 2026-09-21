@@ -59,7 +59,32 @@ gets an exact-path 6,000,000-dispatch allowance (4x the measurement, the
 factor the Temporal table fixtures use) while keeping the ordinary two-second
 wall deadline (it takes under a second at that cost); `test_runner.py` pins
 that a sibling `substr` path and a same-named path elsewhere keep the
-default. The exact
+default.
+Four fixed, finite staging fixtures whose size only just exceeds the default
+share one exact-path table, `FINITE_FIXTURE_INSTRUCTION_BUDGETS`, each entry
+4x its measured minimum (identical in sloppy and strict mode) and each
+finishing in a small fraction of a second, so the ordinary two-second wall
+deadline stays in force: `staging/sm/Array/with-dense.js` (178,125
+dispatches, 750,000 allowed), `staging/sm/JSON/parse-reviver-array-delete.js`
+(185,937; 750,000), `staging/sm/Math/log2-approx.js` (325,000; 1,300,000) and
+`staging/sm/extensions/es5ish-defineGetter-defineSetter.js` (110,156;
+450,000). The table is not a way to admit slow fixtures: a fixture that is too
+slow for the wall deadline even with unlimited fuel (for example
+`staging/sm/Array/toSpliced-dense.js`, `staging/sm/Date/two-digit-years.js`
+under load, and every `staging/sm/Date/dst-offset-caching-N-of-8.js` part)
+is deliberately absent and stays a reported failure.
+`staging/sm/String/unicode-braced.js` is a resource-size case rather than a
+dispatch one: it evaluates a source string built from 2**24 zeros (32 MiB of
+UTF-16), so it needs a string limit of at least 33,558,528 bytes against the
+ordinary 1 MiB, and then runs in about a second with the default dispatch budget
+and heap. `FIXTURE_STRING_LIMITS` gives that exact path a 64 MiB string limit
+(twice the requirement; a data size gains nothing from more headroom) beside
+the existing 8 MiB limits of the RegExp property-escape fixtures. The other
+string-limit failures (`staging/sm/String/replace-math.js`, which builds 2**36
+units and expects a catchable out-of-memory error, `staging/sm/JSON/parse-mega-huge-array.js`,
+`staging/sm/RegExp/unicode-class-braced.js`, `staging/sm/regress/regress-610026.js`)
+are not admitted: they need hundreds of megabytes or gigabytes, tens of seconds,
+or a catchable language-level string-length error the host does not provide. The exact
 `Function/prototype/toString/built-in-function-object.js` graph traversal has
 its separately measured 180-second bound, and the two exact RegExp
 match-indices warm-up fixtures have 30 seconds; neither broadens the ordinary
