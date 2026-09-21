@@ -490,6 +490,7 @@ pub fn compile_direct_module_graph(
                 content_hash: source.content_hash.clone(),
             })
             .collect();
+        let module_debug_info = debug_info_for_module(&debug_info, &id);
         modules.insert(
             id,
             DirectModule {
@@ -500,7 +501,7 @@ pub fn compile_direct_module_graph(
                 compiler_options_fingerprint: debug_info.compiler_options_hash.clone(),
                 sources,
                 provenance,
-                debug_info: debug_info.clone(),
+                debug_info: module_debug_info,
             },
         );
     }
@@ -611,6 +612,39 @@ fn bridge_sources(debug_info: &BlueTsDebugInfo) -> Vec<BridgeSource> {
             content_hash: source.content_hash.clone(),
         })
         .collect()
+}
+
+/// Produces static debugger metadata for one generated module program. The
+/// graph-wide artifact still retains its complete metadata separately; this
+/// subset keeps a single program's source set and safe-point map exact.
+fn debug_info_for_module(debug_info: &BlueTsDebugInfo, module_id: &str) -> BlueTsDebugInfo {
+    let symbols = debug_info
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.span.module == module_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    let type_ids = symbols
+        .iter()
+        .filter_map(|symbol| symbol.static_type)
+        .collect::<BTreeSet<_>>();
+    BlueTsDebugInfo {
+        language_version: debug_info.language_version.clone(),
+        compiler_options_hash: debug_info.compiler_options_hash.clone(),
+        sources: debug_info
+            .sources
+            .iter()
+            .filter(|source| source.module == module_id)
+            .cloned()
+            .collect(),
+        types: debug_info
+            .types
+            .iter()
+            .filter(|static_type| type_ids.contains(&static_type.id))
+            .cloned()
+            .collect(),
+        symbols,
+    }
 }
 
 fn source_identity(sources: &[BridgeSource]) -> Result<bluejs::BlueJsSourceIdentity, BridgeError> {

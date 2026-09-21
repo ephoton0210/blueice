@@ -186,10 +186,12 @@ or second module resolver to bypass them.
   are deterministically sorted, unique by instruction tuple, and revalidated
   against the live BlueJS generation; a no-output top-level statement remains
   explicitly unbound in the attachment rather than being remapped. The map is
-  intentionally limited to direct top-level lowering spans: page loader
-  integration, multi-module lifetime ownership, nested-expression locations,
-  host-request fingerprint checks, breakpoint search policy, and debugger IPC
-  are still absent, so this item remains open.
+  intentionally limited to direct top-level lowering spans. Page-realm ESM
+  admission now gives every closed runtime module its own exact map and static
+  metadata record, but page loader integration, host-owned multi-module
+  lifetime ownership, nested-expression locations, host-request fingerprint
+  checks, breakpoint search policy, and debugger IPC are still absent, so this
+  item remains open.
 
   Acceptance: entries are deterministic, sorted, unique and validated against
   BlueJS code units; a TS breakpoint binds to the nearest permitted following
@@ -210,9 +212,13 @@ or second module resolver to bypass them.
   retains no source text or runtime values, bounds programs/sources/symbols/
   types, rejects mismatched or over-limit attachments before exposing metadata,
   and can prune records after the owning BlueJS generation is invalidated.
-  The page host still must call this at navigation/reload/cache/hibernation
-  boundaries and add source policy, diagnostics/contracts, debugger IPC, stack
-  locations, and runtime-value inspection before this item can close.
+  `DirectModuleGraph::attach_debug_in_page_realm` now derives a module-local
+  static subset (one source, that module's symbols, and their referenced type
+  IDs) for every graph generation and rolls back all retained records/programs
+  if any module fails the limit or identity checks. The page host still must
+  call pruning at navigation/reload/cache/hibernation boundaries and add source
+  policy, diagnostics/contracts, debugger IPC, stack locations, and
+  runtime-value inspection before this item can close.
 
   Acceptance: TS breakpoints, stack locations, scopes, symbol navigation, and
   static type display point to original source; navigation, reload, cache

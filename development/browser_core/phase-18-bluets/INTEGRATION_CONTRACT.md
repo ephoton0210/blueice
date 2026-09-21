@@ -59,7 +59,12 @@ the same source/bytecode/provenance check transactionally to every closed
 runtime ESM module, then calls `BlueJsPageRuntime::execute_module_graph` with
 only those attached canonical module IDs. Navigation/reload/close invalidation
 therefore makes every graph handle unusable instead of resolving an import
-again under a successor page policy.
+again under a successor page policy. Its optional static-debug admission
+creates one module-local `BlueTsDebugInfo` record per live generation: the
+record's source, symbols, and referenced type IDs match that module's
+single-source safe-point map. A rejected record forgets every earlier graph
+record and discards every graph program; it never leaves a partially
+debuggable ESM graph.
 
 ## AST/IR hand-off
 

@@ -154,6 +154,51 @@ impl DirectModuleGraph {
             modules: attachments,
         })
     }
+
+    /// Like [`Self::attach_in_page_realm`], but retains static BlueTS metadata
+    /// for every exact module generation. A retention failure forgets earlier
+    /// graph records and discards every admitted program, so callers never
+    /// observe a partially debuggable graph.
+    pub fn attach_debug_in_page_realm(
+        &self,
+        runtime: &mut bluejs::BlueJsPageRuntime,
+        tab_id: u64,
+        origin: &bluejs::BlueJsPageOrigin,
+        debug_registry: &mut DirectDebugRegistry,
+    ) -> Result<DirectPageModuleGraphAttachment, BridgeError> {
+        let attachment = self.attach_in_page_realm(runtime, tab_id, origin)?;
+        let mut retained = Vec::new();
+        for (module_id, module) in &self.modules {
+            let module_attachment = attachment
+                .modules
+                .get(module_id)
+                .expect("every attached direct module is retained under its canonical ID");
+            if let Err(error) = debug_registry.retain(
+                runtime.program_registry(),
+                module_attachment,
+                &module.language_version,
+                &module.compiler_options_fingerprint,
+                &module.sources,
+                &module.debug_info,
+            ) {
+                for handle in retained {
+                    debug_registry.forget(handle);
+                }
+                discard_programs(
+                    runtime,
+                    tab_id,
+                    &attachment
+                        .modules
+                        .values()
+                        .map(|module_attachment| module_attachment.handle)
+                        .collect::<Vec<_>>(),
+                );
+                return Err(BridgeError::DebugAttachment(error));
+            }
+            retained.push(module_attachment.handle);
+        }
+        Ok(attachment)
+    }
 }
 
 fn discard_programs(

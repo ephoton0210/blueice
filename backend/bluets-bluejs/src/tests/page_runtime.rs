@@ -127,6 +127,32 @@ fn direct_module_graph_executes_only_its_attached_page_realm_generations() {
 }
 
 #[test]
+fn direct_module_graph_retains_exact_static_metadata_for_every_page_generation() {
+    let graph = module_graph();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let mut debug = DirectDebugRegistry::default();
+
+    let attachment = graph
+        .attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug)
+        .unwrap();
+    assert_eq!(debug.len(), attachment.modules.len());
+    for (module_id, module_attachment) in &attachment.modules {
+        let retained = debug
+            .get(runtime.program_registry(), module_attachment.handle)
+            .unwrap();
+        assert_eq!(retained.handle(), module_attachment.handle);
+        assert_eq!(retained.static_info().sources.len(), 1);
+        assert_eq!(retained.static_info().sources[0].module, *module_id);
+        assert_eq!(retained.safe_point_map(), &module_attachment.safe_point_map);
+    }
+
+    runtime.navigate(7, origin()).unwrap();
+    assert_eq!(debug.prune_invalid(runtime.program_registry()), 2);
+    assert!(debug.is_empty());
+}
+
+#[test]
 fn direct_module_graph_provenance_failure_discards_every_admitted_module() {
     let mut graph = module_graph();
     graph
@@ -149,6 +175,31 @@ fn direct_module_graph_provenance_failure_discards_every_admitted_module() {
         Err(BridgeError::ProvenanceAttachment(message))
             if message.contains("bytecode does not match")
     ));
+    let stats = runtime.realm_stats(7).unwrap();
+    assert_eq!(stats.program_count, 0);
+    assert_eq!(stats.bytecode_bytes, 0);
+}
+
+#[test]
+fn direct_module_graph_debug_failure_forgets_records_and_discards_every_program() {
+    let graph = module_graph();
+    let mut runtime = bluejs::BlueJsPageRuntime::default();
+    runtime.open_realm(7, origin()).unwrap();
+    let mut debug = DirectDebugRegistry::new(DirectDebugRetentionLimits {
+        max_programs: 1,
+        ..DirectDebugRetentionLimits::default()
+    });
+
+    assert!(matches!(
+        graph.attach_debug_in_page_realm(&mut runtime, 7, &origin(), &mut debug),
+        Err(BridgeError::DebugAttachment(
+            DirectDebugAttachmentError::RetentionLimit {
+                resource: "programs",
+                limit: 1,
+            }
+        ))
+    ));
+    assert!(debug.is_empty());
     let stats = runtime.realm_stats(7).unwrap();
     assert_eq!(stats.program_count, 0);
     assert_eq!(stats.bytecode_bytes, 0);
