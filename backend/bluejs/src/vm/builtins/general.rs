@@ -487,7 +487,18 @@ impl Vm {
         &mut self,
         values: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        self.array_from_with_prototype(values, self.array_prototype)
+        let prototype = self.array_create_prototype()?;
+        self.array_from_with_prototype(values, prototype)
+    }
+
+    /// The `%Array.prototype%` `ArrayCreate` uses: the current Realm's, which
+    /// for a built-in function of another Test262 realm running here on its
+    /// behalf is that realm's (as a facade).
+    pub(in super::super) fn array_create_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
+        match self.acting_realm {
+            Some(realm) => self.test262_foreign_default_prototype(realm, "Array"),
+            None => Ok(self.array_prototype),
+        }
     }
 
     /// Create an Array exotic with a caller-selected prototype. Array's

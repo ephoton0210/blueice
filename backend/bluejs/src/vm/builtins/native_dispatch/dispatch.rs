@@ -722,6 +722,11 @@ impl Vm {
                         }
                         error => error.into(),
                     })?;
+                // A view over an ArrayBuffer of another Test262 realm exposes
+                // that buffer, not the bridge's local mirror of it.
+                if let Some(facade) = self.test262_foreign_buffer_facade(buffer) {
+                    return Ok(facade);
+                }
                 Ok(Value::Object(buffer))
             }
             NativeFunction::DataViewByteLength => {
@@ -1094,6 +1099,11 @@ impl Vm {
                 }
                 let length = if self.heap.is_typed_array(object)? {
                     let (_, _, length, _) = self.typed_array_receiver(&Value::Object(object))?;
+                    length as f64
+                } else if let Some((length, _)) = self.test262_foreign_typed_array_info(object)? {
+                    // A TypedArray of another Test262 realm: its length is
+                    // an internal slot, and a detached or out-of-bounds view
+                    // is this function's TypeError, not its Realm's getter's.
                     length as f64
                 } else {
                     let length = self.get_property(&Value::Object(object), &"length".into())?;

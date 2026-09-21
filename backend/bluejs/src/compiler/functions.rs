@@ -695,9 +695,15 @@ impl Compiler {
         // no parameter expressions (FunctionDeclarationInstantiation step 22):
         // otherwise the parameter initializers still see it and the body's own
         // declaration shadows it afterwards.
+        //
+        // The object is also skipped when nothing in the function can observe
+        // it (no `arguments` reference, no direct eval): building it costs
+        // several property definitions and a heap cell per parameter on every
+        // call, and no script can tell it was never made.
         let arguments_needed = !arrow
             && !parameters.contains("arguments")
-            && (parameter_expressions || !lexical.iter().any(|(name, _)| name == "arguments"));
+            && (parameter_expressions || !lexical.iter().any(|(name, _)| name == "arguments"))
+            && function_may_observe_arguments(function);
         if parameter_expressions {
             // Parameter expressions must not resolve into body declarations.
             // All parameter cells exist, uninitialized, before the first

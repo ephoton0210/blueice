@@ -1349,7 +1349,7 @@ impl Vm {
         let ordinary_array = |vm: &mut Self| {
             let length = u32::try_from(length)
                 .map_err(|_| RuntimeError::RangeError("invalid Array length".into()))?;
-            let prototype = vm.array_prototype;
+            let prototype = vm.array_create_prototype()?;
             vm.with_roots(|heap| heap.alloc_array(length, Some(prototype)))
         };
         if !self.is_array(&Value::Object(original))? {

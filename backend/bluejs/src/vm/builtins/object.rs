@@ -145,6 +145,9 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_delete(object, key);
         }
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_delete(object, key);
+        }
         self.heap.delete(object, key).map_err(Into::into)
     }
 
@@ -216,6 +219,9 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_is_extensible(object);
         }
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_is_extensible(object);
+        }
         self.heap.is_extensible(object).map_err(Into::into)
     }
 
@@ -240,6 +246,29 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_set_prototype(object, prototype);
         }
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_set_prototype(object, prototype);
+        }
+        // OrdinarySetPrototypeOf's cycle check walks [[GetPrototypeOf]]
+        // through every ordinary object, including the facades of other
+        // Realms, which the heap-level check below cannot see through.
+        if !self.test262_foreign_values.is_empty() {
+            let mut current = prototype;
+            while let Some(candidate) = current {
+                if candidate == object {
+                    return Ok(false);
+                }
+                if self.heap.proxy(candidate)?.is_some() {
+                    break;
+                }
+                self.charge_step()?;
+                current = if self.test262_foreign_reference(candidate).is_some() {
+                    self.test262_foreign_get_prototype(candidate)?
+                } else {
+                    self.heap.prototype(candidate)?
+                };
+            }
+        }
         // %Object.prototype% is the Immutable Prototype Exotic Object.  Its
         // current null prototype is accepted as a no-op, but no distinct
         // value may replace it even though the record is otherwise
@@ -260,6 +289,9 @@ impl Vm {
     ) -> Result<bool, RuntimeError> {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_prevent_extensions(object);
+        }
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_prevent_extensions(object);
         }
         if self.heap.is_typed_array(object)?
             && !self.heap.typed_array_prevent_extensions_allowed(object)?
@@ -482,6 +514,30 @@ impl Vm {
         default: ObjectId,
     ) -> Result<ObjectId, RuntimeError> {
         self.constructor_prototype_for(default, None)
+    }
+
+    /// This realm's `%Intrinsic.prototype%` for the constructor named
+    /// `intrinsic`: a global constructor's name, `Intl.X`, or one of the
+    /// function-kind constructors that have no global binding.
+    pub(in super::super) fn intrinsic_prototype(
+        &mut self,
+        intrinsic: &str,
+    ) -> Result<Value, RuntimeError> {
+        let constructor = match intrinsic {
+            "AsyncFunction" => return Ok(Value::Object(self.async_function_prototype()?)),
+            "GeneratorFunction" => {
+                return Ok(Value::Object(self.generator_function_prototype()?));
+            }
+            "AsyncGeneratorFunction" => {
+                return Ok(Value::Object(self.async_generator_function_prototype()?));
+            }
+            name if name.starts_with("Intl.") => {
+                self.intl_global()?;
+                Value::Object(self.globals[&format!("%{name}%")])
+            }
+            name => self.global(name)?,
+        };
+        self.get_property(&constructor, &"prototype".into())
     }
 
     /// `GetPrototypeFromConstructor` with the fallback intrinsic named by the
