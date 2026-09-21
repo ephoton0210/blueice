@@ -84,7 +84,12 @@ impl Compiler {
         };
         let owner = self.private_member_reference(target)?;
         let name = private_member_name(target).expect("private field target is a private member");
-        self.expression_with_name(value, Some(&format!("#{name}")))?;
+        if name.starts_with('\0') {
+            // An auto-accessor's hidden storage has no name to give a function.
+            self.expression(value)?;
+        } else {
+            self.expression_with_name(value, Some(&format!("#{name}")))?;
+        }
         self.emit(Opcode::PrivateFieldAdd, owner)?;
         Ok(())
     }

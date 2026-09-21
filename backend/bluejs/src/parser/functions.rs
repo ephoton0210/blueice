@@ -337,9 +337,36 @@ impl Parser {
                 }
                 _ => None,
             };
+            // `accessor` starts an auto-accessor field only when a class element
+            // name follows on the same line: `accessor` alone, before `=`,
+            // `;`, `(` or a line break, is an ordinary field or method name.
+            let auto_accessor = !is_async
+                && accessor.is_none()
+                && matches!(self.peek(), Token::Identifier(name) if name == "accessor")
+                && !self.current_identifier_escaped()
+                && self
+                    .tokens
+                    .get(self.pos + 1)
+                    .is_some_and(|token| !token.newline_before)
+                && matches!(
+                    self.peek_at(1),
+                    Token::Identifier(_)
+                        | Token::PrivateIdentifier(_)
+                        | Token::Keyword(_)
+                        | Token::String(_)
+                        | Token::Number(_)
+                        | Token::BigInt(_)
+                        | Token::Punct(Punct::LBracket)
+                );
+            if auto_accessor {
+                self.advance();
+            }
             let generator = self.eat_punct(Punct::Star);
             let key = self.parse_class_element_key()?;
             let method_name = class_element_name(&key);
+            if auto_accessor && (generator || self.check_punct(Punct::LParen)) {
+                return Err(self.syntax_error("an auto-accessor cannot be a method"));
+            }
             if !self.check_punct(Punct::LParen) {
                 if generator || accessor.is_some() {
                     return Err(self.error("expected class method parameters"));
@@ -385,6 +412,7 @@ impl Parser {
                     key,
                     initializer,
                     is_static,
+                    accessor: auto_accessor,
                 });
                 continue;
             }

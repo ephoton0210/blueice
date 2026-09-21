@@ -60,6 +60,7 @@ impl Compiler {
                 element,
                 ClassElement::Field {
                     initializer: None,
+                    accessor: false,
                     ..
                 }
             )
@@ -235,44 +236,22 @@ impl Compiler {
                     getter,
                     is_static,
                 } => {
-                    self.class_property_target(*is_static)?;
-                    if let Some(name) = private_class_name(key) {
-                        self.constant(Value::String(name.into()))?;
-                    } else {
-                        self.property_key(key)?;
-                    }
-                    // A getter or setter is named `get name` / `set name`.
-                    let mut function = function.clone();
-                    if let Some(name) = literal_property_key_name(key) {
-                        function.name =
-                            Some(format!("{} {name}", if *getter { "get" } else { "set" }));
-                    }
-                    self.function_named_with(
-                        &function,
-                        false,
-                        None,
-                        false,
-                        FunctionCompileOptions::class_method(),
-                    )?;
-                    if matches!(key, PropertyKey::Computed(_)) {
-                        self.emit(Opcode::SetFunctionName, if *getter { 1 } else { 2 })?;
-                    }
-                    if private_class_name(key).is_some() {
-                        self.emit(
-                            Opcode::DefinePrivateAccessor,
-                            u32::from(!getter) | (u32::from(*is_static) << 1),
-                        )?;
-                    } else {
-                        self.emit(Opcode::DefineClassAccessor, u32::from(!getter))?;
-                        self.emit(Opcode::Pop, 0)?;
-                    }
+                    self.class_accessor_definition(key, None, function, *getter, *is_static)?;
                 }
                 ClassElement::Field {
                     key,
                     initializer,
                     is_static,
+                    accessor,
                 } => {
-                    if let Some(name) = private_class_name(key) {
+                    // What gets initialized per instance (or once for a
+                    // static): the field itself, or an auto-accessor's hidden
+                    // private storage field.
+                    let storage_key = accessor.then(|| {
+                        PropertyKey::Identifier(format!("#{}", auto_accessor_storage_name(index)))
+                    });
+                    let field_key = storage_key.as_ref().unwrap_or(key);
+                    if let Some(name) = private_class_name(field_key) {
                         // Declare the private name on its owner now; the
                         // field itself is added when it is initialized.
                         self.class_property_target(*is_static)?;
@@ -286,10 +265,25 @@ impl Compiler {
                             .expect("computed field key binding is in the class scope");
                         self.emit(Opcode::InitializeBinding, slot)?;
                     }
+                    if *accessor {
+                        let (getter, setter) = auto_accessor_functions(
+                            index,
+                            literal_property_key_name(key).as_deref(),
+                        );
+                        for (function, is_getter) in [(getter, true), (setter, false)] {
+                            self.class_accessor_definition(
+                                key,
+                                computed_key_bindings.get(&index),
+                                &function,
+                                is_getter,
+                                *is_static,
+                            )?;
+                        }
+                    }
                     if let Some(binding_name) = static_element_bindings.get(&index) {
                         let field = class_field_definition(
-                            key,
-                            computed_key_bindings.get(&index),
+                            field_key,
+                            computed_key_bindings.get(&index).filter(|_| !*accessor),
                             initializer.as_ref(),
                         );
                         self.class_element_function(vec![field], binding_name, true)?;
@@ -323,6 +317,12 @@ impl Compiler {
                 key,
                 is_static: false,
                 ..
+            }
+            | ClassElement::Field {
+                key,
+                is_static: false,
+                accessor: true,
+                ..
             } => private_class_name(key),
             _ => None,
         });
@@ -339,13 +339,20 @@ impl Compiler {
                 key,
                 initializer,
                 is_static: false,
+                accessor,
             } = element
             {
-                instance_fields.push(class_field_definition(
-                    key,
-                    computed_key_bindings.get(&index),
-                    initializer.as_ref(),
-                ));
+                let storage_key =
+                    PropertyKey::Identifier(format!("#{}", auto_accessor_storage_name(index)));
+                instance_fields.push(if *accessor {
+                    class_field_definition(&storage_key, None, initializer.as_ref())
+                } else {
+                    class_field_definition(
+                        key,
+                        computed_key_bindings.get(&index),
+                        initializer.as_ref(),
+                    )
+                });
             }
         }
         if !instance_fields.is_empty() {
@@ -376,6 +383,57 @@ impl Compiler {
         if has_class_scope {
             self.private_scopes.pop();
             self.leave_scope()?;
+        }
+        Ok(())
+    }
+
+    /// Defines one half of a class accessor pair on the class prototype (or on
+    /// the constructor when static): a private accessor for a `#name`, else a
+    /// public one. A getter or setter is named `get name` / `set name`. A
+    /// computed key that was already converted (an auto-accessor's, shared by
+    /// its getter and setter) is read back from its hidden binding instead of
+    /// being evaluated again.
+    fn class_accessor_definition(
+        &mut self,
+        key: &PropertyKey,
+        key_binding: Option<&String>,
+        function: &Function,
+        getter: bool,
+        is_static: bool,
+    ) -> Result<(), CompileError> {
+        self.class_property_target(is_static)?;
+        if let Some(name) = private_class_name(key) {
+            self.constant(Value::String(name.into()))?;
+        } else if let Some(binding_name) = key_binding {
+            let slot = self
+                .resolve(binding_name)
+                .expect("computed key binding is in the class scope");
+            self.emit(Opcode::GetBinding, slot)?;
+        } else {
+            self.property_key(key)?;
+        }
+        let mut function = function.clone();
+        if let Some(name) = literal_property_key_name(key) {
+            function.name = Some(format!("{} {name}", if getter { "get" } else { "set" }));
+        }
+        self.function_named_with(
+            &function,
+            false,
+            None,
+            false,
+            FunctionCompileOptions::class_method(),
+        )?;
+        if matches!(key, PropertyKey::Computed(_)) {
+            self.emit(Opcode::SetFunctionName, if getter { 1 } else { 2 })?;
+        }
+        if private_class_name(key).is_some() {
+            self.emit(
+                Opcode::DefinePrivateAccessor,
+                u32::from(!getter) | (u32::from(is_static) << 1),
+            )?;
+        } else {
+            self.emit(Opcode::DefineClassAccessor, u32::from(!getter))?;
+            self.emit(Opcode::Pop, 0)?;
         }
         Ok(())
     }

@@ -253,6 +253,9 @@ pub enum ClassElement {
         key: PropertyKey,
         initializer: Option<Expr>,
         is_static: bool,
+        /// An auto-accessor (`accessor x = 1`): a getter/setter pair backed
+        /// by a hidden private field that holds the initializer's value.
+        accessor: bool,
     },
     StaticBlock(Vec<Stmt>),
 }

@@ -1166,7 +1166,11 @@ fn private_owner_binding_name(binding: &str) -> Option<(u32, String)> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PrivateDeclarationKind {
     FieldOrMethod,
-    Accessor { getter: bool },
+    Accessor {
+        getter: bool,
+    },
+    /// A getter and setter for one name: nothing else may share it.
+    AccessorPair,
 }
 
 /// Collect own private names and establish the class-element duplicate early
@@ -1176,47 +1180,122 @@ enum PrivateDeclarationKind {
 fn class_private_declarations(class: &Class) -> Result<Vec<(String, bool)>, CompileError> {
     let mut declarations = Vec::new();
     let mut seen: HashMap<String, (bool, PrivateDeclarationKind)> = HashMap::new();
-    for element in &class.elements {
-        let (key, is_static, kind) = match element {
+    for (index, element) in class.elements.iter().enumerate() {
+        // Every private name a single element declares, with its kind. An
+        // auto-accessor declares its hidden storage field, plus a private
+        // getter and setter when its own name is private.
+        let mut declared = Vec::new();
+        match element {
             ClassElement::Method { key, is_static, .. } => {
-                (key, *is_static, PrivateDeclarationKind::FieldOrMethod)
+                declared.push((
+                    private_class_name(key).map(str::to_owned),
+                    *is_static,
+                    PrivateDeclarationKind::FieldOrMethod,
+                ));
             }
             ClassElement::Accessor {
                 key,
                 getter,
                 is_static,
                 ..
-            } => (
-                key,
+            } => declared.push((
+                private_class_name(key).map(str::to_owned),
                 *is_static,
                 PrivateDeclarationKind::Accessor { getter: *getter },
-            ),
-            ClassElement::Field { key, is_static, .. } => {
-                (key, *is_static, PrivateDeclarationKind::FieldOrMethod)
-            }
-            ClassElement::StaticBlock(_) => continue,
-        };
-        let Some(name) = private_class_name(key) else {
-            continue;
-        };
-        let name = name.to_owned();
-        match seen.get(&name).copied() {
-            None => {
-                seen.insert(name.clone(), (is_static, kind));
-                declarations.push((name, is_static));
-            }
-            Some((previous_static, PrivateDeclarationKind::Accessor { getter: previous }))
-                if previous_static == is_static
-                    && matches!(kind, PrivateDeclarationKind::Accessor { getter } if getter != previous) =>
-                {}
-            Some(_) => {
-                return Err(CompileError::InvalidSyntax(
-                    "duplicate private name in class body",
+            )),
+            ClassElement::Field {
+                key,
+                is_static,
+                accessor: true,
+                ..
+            } => {
+                declared.push((
+                    Some(auto_accessor_storage_name(index)),
+                    *is_static,
+                    PrivateDeclarationKind::FieldOrMethod,
                 ));
+                for getter in [true, false] {
+                    declared.push((
+                        private_class_name(key).map(str::to_owned),
+                        *is_static,
+                        PrivateDeclarationKind::Accessor { getter },
+                    ));
+                }
+            }
+            ClassElement::Field { key, is_static, .. } => declared.push((
+                private_class_name(key).map(str::to_owned),
+                *is_static,
+                PrivateDeclarationKind::FieldOrMethod,
+            )),
+            ClassElement::StaticBlock(_) => continue,
+        }
+        for (name, is_static, kind) in declared {
+            let Some(name) = name else {
+                continue;
+            };
+            match seen.get(&name).copied() {
+                None => {
+                    seen.insert(name.clone(), (is_static, kind));
+                    declarations.push((name, is_static));
+                }
+                Some((previous_static, PrivateDeclarationKind::Accessor { getter: previous }))
+                    if previous_static == is_static
+                        && matches!(kind, PrivateDeclarationKind::Accessor { getter } if getter != previous) =>
+                {
+                    seen.insert(name, (is_static, PrivateDeclarationKind::AccessorPair));
+                }
+                Some(_) => {
+                    return Err(CompileError::InvalidSyntax(
+                        "duplicate private name in class body",
+                    ));
+                }
             }
         }
     }
     Ok(declarations)
+}
+
+/// The hidden private name (spelled without `#`) of the field that stores an
+/// auto-accessor's value. U+0000 cannot appear in a source identifier, so it
+/// never collides with a declared name.
+fn auto_accessor_storage_name(index: usize) -> String {
+    format!("\0accessor_{index}")
+}
+
+/// The getter and setter of an auto-accessor: `get() { return this.#s }` and
+/// `set(value) { this.#s = value }` over its hidden storage field.
+fn auto_accessor_functions(index: usize, name: Option<&str>) -> (Function, Function) {
+    let storage = Expr::Member {
+        object: Box::new(Expr::This),
+        property: Box::new(Expr::Identifier(format!(
+            "#{}",
+            auto_accessor_storage_name(index)
+        ))),
+        computed: false,
+    };
+    let getter = Function {
+        name: name.map(|name| format!("get {name}")),
+        params: Vec::new(),
+        body: vec![Stmt::Return(Some(storage.clone()))],
+        generator: false,
+        is_async: false,
+    };
+    let setter = Function {
+        name: name.map(|name| format!("set {name}")),
+        params: vec![Param {
+            pattern: Pattern::Identifier("value".into()),
+            default: None,
+            rest: false,
+        }],
+        body: vec![Stmt::Expr(Expr::Assign {
+            op: AssignOp::Assign,
+            target: Box::new(storage),
+            value: Box::new(Expr::Identifier("value".into())),
+        })],
+        generator: false,
+        is_async: false,
+    };
+    (getter, setter)
 }
 
 fn is_super_member(expr: &Expr) -> bool {

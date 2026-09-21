@@ -141,3 +141,82 @@ fn get_and_set_are_names_unless_a_property_name_follows() {
          p.x === 1 && p.y === 2 && p[3] === 3 && p.z === 4",
     );
 }
+
+#[test]
+fn an_auto_accessor_is_a_getter_setter_pair_over_hidden_storage() {
+    assert_true(
+        "let name = 'x3'; const symbol = Symbol();
+         class C {
+             accessor x0; accessor x1 = 1; accessor 'x2' = 2; accessor [name] = 3;
+             accessor [symbol] = 4; accessor 1 = 5;
+             static accessor s = 6;
+         }
+         const c = new C();
+         const own = Object.getOwnPropertyDescriptor(C.prototype, 'x1');
+         c.x0 === undefined && c.x1 === 1 && c.x2 === 2 && c.x3 === 3 && c[symbol] === 4
+             && c[1] === 5 && C.s === 6
+             && typeof own.get === 'function' && typeof own.set === 'function'
+             && own.get.name === 'get x1' && own.set.name === 'set x1'
+             && !own.enumerable && own.configurable && !c.hasOwnProperty('x1')
+             && (c.x1 = 43, c.x1 === 43) && (C.s = 7, C.s === 7)",
+    );
+    // Each instance has its own storage, initialized in field order.
+    assert_true(
+        "let n = 0;
+         class C { accessor a = ++n; b = ++n; accessor c = ++n; }
+         const one = new C(), two = new C();
+         one.a === 1 && one.b === 2 && one.c === 3 && two.a === 4 && two.c === 6 && one.a === 1",
+    );
+    // A later accessor with the same name replaces the earlier one.
+    assert_true(
+        "class C { accessor x = 0; accessor x = 1; }
+         new C().x === 1",
+    );
+    // A computed name is evaluated once for the whole pair.
+    assert_true(
+        "let calls = 0;
+         class C { accessor [(calls++, 'k')] = 1; }
+         const c = new C(); c.k = 2;
+         calls === 1 && c.k === 2",
+    );
+}
+
+#[test]
+fn a_private_auto_accessor_is_a_private_getter_and_setter() {
+    assert_true(
+        "class C {
+             accessor #x = 5; static accessor #s = 6;
+             read() { return this.#x; } write(v) { this.#x = v; }
+             static readStatic() { return C.#s; }
+         }
+         const c = new C();
+         const before = c.read(); c.write(42);
+         before === 5 && c.read() === 42 && C.readStatic() === 6",
+    );
+    for source in [
+        "class C { accessor #x = 5; accessor #x = 42; }",
+        "class C { accessor #x = 5; #x = 42; }",
+        "class C { accessor #x = 5; get #x() {} }",
+        "class C { accessor #x = 5; set #x(value) {} }",
+    ] {
+        let program = parse(source);
+        let rejected = match program {
+            Err(_) => true,
+            Ok(program) => compile(&program).is_err(),
+        };
+        assert!(rejected, "{source}");
+    }
+}
+
+#[test]
+fn accessor_is_a_plain_name_unless_a_class_element_name_follows_on_the_same_line() {
+    assert_true(
+        "class C { accessor; }
+         class D { accessor = 42; }
+         class E { accessor
+                   a = 42; }
+         class F { accessor() { return 'method'; } }
+         new C().hasOwnProperty('accessor') && new D().accessor === 42
+             && new E().a === 42 && new E().hasOwnProperty('accessor') && new F().accessor() === 'method'",
+    );
+}
