@@ -212,7 +212,7 @@ impl std::error::Error for DirectPageScriptError {}
 mod tests {
     use super::super::host_typings::HostTypeSurfaceV1;
     use super::*;
-    use blueice_bluets::AuthorizedModule;
+    use blueice_bluets::{AuthorizedModule, AuthorizedModuleResolution};
 
     fn catalog() -> HostTypeSurfaceCatalogV1 {
         HostTypeSurfaceCatalogV1::new([HostTypeSurfaceV1::new(
@@ -284,5 +284,35 @@ mod tests {
             Err(DirectPageScriptError::CallerSuppliedAmbientDeclarations)
         ));
         assert_eq!(host.debug_record_count(), 0);
+    }
+
+    #[test]
+    fn admits_a_verified_authorized_module_graph_into_the_same_page_realm() {
+        let profiles = catalog();
+        let artifact = profiles.generate("test-empty-v1").unwrap();
+        let loader = AuthorizedModuleLoader::new(
+            [
+                AuthorizedModule::new(
+                    "page:///app/main.ts",
+                    "import { value } from './value'; export const answer: number = value + 1; answer;",
+                ),
+                AuthorizedModule::new("page:///app/value.ts", "export const value: number = 41;"),
+            ],
+            [AuthorizedModuleResolution::new(
+                "page:///app/main.ts",
+                "./value",
+                "page:///app/value.ts",
+            )],
+        )
+        .unwrap();
+        let mut host = DirectPageScriptHost::new(profiles);
+        host.open_page(7, "https://example.test").unwrap();
+        let mut request = request(&loader, &artifact);
+        request.kind = DirectPageScriptKind::Module;
+        assert_eq!(
+            host.execute(request).unwrap(),
+            blueice_bluejs::Value::Number(42.0)
+        );
+        assert_eq!(host.debug_record_count(), 2);
     }
 }
