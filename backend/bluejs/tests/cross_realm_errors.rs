@@ -139,3 +139,22 @@ fn errors_raised_while_running_foreign_code_are_created_in_its_realm() {
     );
     assert_no_failures(&source);
 }
+
+#[test]
+fn a_local_array_iterator_over_a_detached_foreign_typed_array_throws_in_the_local_realm() {
+    let source = format!(
+        r#"{HELPERS}
+        const buffer = new other.ArrayBuffer(4);
+        const view = new other.Uint8Array(buffer);
+        const iterator = Array.prototype.values.call(view);
+        const foreignIterator = Reflect.apply(Uint8Array.prototype[Symbol.iterator], view, []);
+        const next = Object.getPrototypeOf([][Symbol.iterator]()).next;
+        if (next.call(iterator).value !== 0) failures.push('steps a live view');
+        other.$262.detachArrayBuffer(buffer);
+        expectThrown('detached view', TypeError, () => next.call(iterator));
+        expectThrown('detached view through a foreign iterator', TypeError, () => next.call(foreignIterator));
+        failures.join('; ')
+        "#
+    );
+    assert_no_failures(&source);
+}

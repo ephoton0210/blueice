@@ -1444,33 +1444,41 @@ impl Vm {
                     .ok()
                     .flatten()
             });
-        // A built-in that is generic over its receiver (an Array method, an
+        // A built-in that only reads and writes its operands through ordinary
+        // property access and shared internal slots (an Array method, an
         // Iterator helper, the `stack` accessors) applied to an object that
         // is not the callee Realm's own must see that object, not the opaque
         // stand-in the membrane would transport: run its algorithm here, on
         // behalf of the callee's Realm. `method.call(receiver, ...)` reaches
         // the membrane as a foreign `Call`, so look through it.
         if !construct {
-            let generic = if foreign_native == Some(NativeFunction::Call) {
-                call_target_native
-                    .filter(|method| runs_where_its_receiver_lives(*method))
-                    .map(|method| {
-                        (
-                            method,
-                            args.first().cloned().unwrap_or(Value::Undefined),
-                            args.get(1..).unwrap_or_default().to_vec(),
-                        )
-                    })
+            let method_call = if foreign_native == Some(NativeFunction::Call) {
+                call_target_native.map(|method| {
+                    (
+                        method,
+                        args.first().cloned().unwrap_or(Value::Undefined),
+                        args.get(1..).unwrap_or_default().to_vec(),
+                    )
+                })
             } else {
-                foreign_native
-                    .filter(|method| runs_where_its_receiver_lives(*method))
-                    .map(|method| (method, receiver.clone(), args.clone()))
+                foreign_native.map(|method| (method, receiver.clone(), args.clone()))
             };
-            if let Some((method, this_value, arguments)) = generic {
-                if this_value.object_id().is_some_and(|object| {
-                    self.test262_foreign_reference(object)
-                        .is_none_or(|(object_realm, _, _, _)| object_realm != realm_id)
-                }) {
+            if let Some((method, this_value, arguments)) = method_call {
+                let foreign_to_callee = |vm: &Self, value: &Value| {
+                    value.object_id().is_some_and(|object| {
+                        vm.test262_foreign_reference(object)
+                            .is_none_or(|(object_realm, _, _, _)| object_realm != realm_id)
+                    })
+                };
+                let runs_here = match runs_where_its_operands_live(method) {
+                    None => false,
+                    Some(OperandPolicy::Receiver) => foreign_to_callee(self, &this_value),
+                    Some(OperandPolicy::AnyOperand) => {
+                        foreign_to_callee(self, &this_value)
+                            || arguments.iter().any(|value| foreign_to_callee(self, value))
+                    }
+                };
+                if runs_here {
                     return self
                         .test262_run_native_for_realm(realm_id, method, this_value, arguments);
                 }
@@ -1769,8 +1777,9 @@ impl Vm {
             let next = realm.vm.get_property(&receiver, &"next".into())?;
             realm.vm.call_native(next, receiver, args, false)
         };
-        let value = self.test262_foreign_completion(realm_id, result)?;
-        self.test262_import_foreign_value(realm_id, value)
+        // This is the local `next` applied to a foreign receiver, so its own
+        // errors belong to this Realm: they are imported but not recreated.
+        self.test262_import_foreign_result(realm_id, result)
     }
 
     /// Test262's realm hook needs the callee's realm even when `eval` is
@@ -1860,55 +1869,73 @@ fn foreign_constructor_intrinsic(function: NativeFunction) -> Option<&'static st
     })
 }
 
-/// Built-in functions whose algorithm reads and writes their receiver only
-/// through ordinary property access and internal slots that any Realm's
-/// objects share, so a foreign function applied to an object of the calling
-/// Realm must run on that object rather than on a transported copy.
-fn runs_where_its_receiver_lives(function: NativeFunction) -> bool {
-    matches!(
-        function,
+/// Which operands of a built-in of another Realm decide that it must run in
+/// the calling Realm's `Vm` (see `runs_where_its_operands_live`).
+enum OperandPolicy {
+    /// The function checks its receiver's internal slots or accessors, so it
+    /// runs here only when the receiver is not the callee Realm's own.
+    Receiver,
+    /// The function is generic over everything it is given (and may call
+    /// callbacks), so it runs here when the receiver or any argument object
+    /// is not the callee Realm's own.
+    AnyOperand,
+}
+
+/// Built-in functions whose algorithm only reads and writes its operands
+/// through ordinary property access and internal slots that every Realm's
+/// objects share. Applied to another Realm's objects they must run on those
+/// objects, not on a transported copy. Objects and errors they create belong
+/// to the callee's Realm.
+fn runs_where_its_operands_live(function: NativeFunction) -> Option<OperandPolicy> {
+    Some(match function {
         NativeFunction::ArrayAt
-            | NativeFunction::ArrayFill
-            | NativeFunction::ArrayCopyWithin
-            | NativeFunction::ArrayToReversed
-            | NativeFunction::ArrayToSorted
-            | NativeFunction::ArrayToSpliced
-            | NativeFunction::ArrayWith
-            | NativeFunction::ArrayFlat
-            | NativeFunction::ArrayFlatMap
-            | NativeFunction::ArrayOf
-            | NativeFunction::ArrayFrom
-            | NativeFunction::ArrayForEach
-            | NativeFunction::ArrayFilter
-            | NativeFunction::ArrayMap
-            | NativeFunction::ArrayFind
-            | NativeFunction::ArrayFindIndex
-            | NativeFunction::ArrayFindLast
-            | NativeFunction::ArrayFindLastIndex
-            | NativeFunction::ArrayEvery
-            | NativeFunction::ArraySome
-            | NativeFunction::ArrayIncludes
-            | NativeFunction::ArrayReduce
-            | NativeFunction::ArrayReduceRight
-            | NativeFunction::ArrayPush
-            | NativeFunction::ArrayPop
-            | NativeFunction::ArrayShift
-            | NativeFunction::ArrayUnshift
-            | NativeFunction::ArrayReverse
-            | NativeFunction::ArrayIndexOf
-            | NativeFunction::ArrayLastIndexOf
-            | NativeFunction::ArraySlice
-            | NativeFunction::ArraySplice
-            | NativeFunction::ArraySort
-            | NativeFunction::ArrayToLocaleString
-            | NativeFunction::IteratorHelper(_)
-            | NativeFunction::IteratorToArray
-            | NativeFunction::IteratorForEach
-            | NativeFunction::IteratorEvery
-            | NativeFunction::IteratorSome
-            | NativeFunction::IteratorFind
-            | NativeFunction::IteratorReduce
-            | NativeFunction::ErrorStackGetter
-            | NativeFunction::ErrorStackSetter
-    )
+        | NativeFunction::ArrayFill
+        | NativeFunction::ArrayCopyWithin
+        | NativeFunction::ArrayToReversed
+        | NativeFunction::ArrayToSorted
+        | NativeFunction::ArrayToSpliced
+        | NativeFunction::ArrayWith
+        | NativeFunction::ArrayFlat
+        | NativeFunction::ArrayFlatMap
+        | NativeFunction::ArrayOf
+        | NativeFunction::ArrayFrom
+        | NativeFunction::ArrayForEach
+        | NativeFunction::ArrayFilter
+        | NativeFunction::ArrayMap
+        | NativeFunction::ArrayFind
+        | NativeFunction::ArrayFindIndex
+        | NativeFunction::ArrayFindLast
+        | NativeFunction::ArrayFindLastIndex
+        | NativeFunction::ArrayEvery
+        | NativeFunction::ArraySome
+        | NativeFunction::ArrayIncludes
+        | NativeFunction::ArrayReduce
+        | NativeFunction::ArrayReduceRight
+        | NativeFunction::ArrayPush
+        | NativeFunction::ArrayPop
+        | NativeFunction::ArrayShift
+        | NativeFunction::ArrayUnshift
+        | NativeFunction::ArrayReverse
+        | NativeFunction::ArrayIndexOf
+        | NativeFunction::ArrayLastIndexOf
+        | NativeFunction::ArraySlice
+        | NativeFunction::ArraySplice
+        | NativeFunction::ArraySort
+        | NativeFunction::ArrayToLocaleString
+        | NativeFunction::IteratorHelper(_)
+        | NativeFunction::IteratorToArray
+        | NativeFunction::IteratorForEach
+        | NativeFunction::IteratorEvery
+        | NativeFunction::IteratorSome
+        | NativeFunction::IteratorFind
+        | NativeFunction::IteratorReduce => OperandPolicy::AnyOperand,
+        NativeFunction::IteratorHelperNext
+        | NativeFunction::IteratorHelperReturn
+        | NativeFunction::IteratorWrapperNext
+        | NativeFunction::IteratorWrapperReturn
+        | NativeFunction::PromiseThen
+        | NativeFunction::ErrorStackGetter
+        | NativeFunction::ErrorStackSetter => OperandPolicy::Receiver,
+        _ => return None,
+    })
 }

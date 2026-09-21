@@ -179,3 +179,57 @@ fn the_stack_accessors_of_another_realm_apply_to_local_errors() {
     );
     assert_no_failures(&source);
 }
+
+#[test]
+fn a_foreign_array_method_calls_the_local_callbacks_it_is_given() {
+    let source = format!(
+        r#"{HELPERS}
+        const foreign = other.eval('[1, 2, 3, 4, 5]');
+        const doubled = foreign.map((x) => x * 2);
+        check('map result', doubled.join() === '2,4,6,8,10');
+        check('map result realm', doubled instanceof other.Array && doubled.constructor === other.Array);
+        check('filter', foreign.filter((x) => x % 2).join() === '1,3,5');
+        check('reduce', foreign.reduce((sum, x) => sum + x, 0) === 15);
+        let visited = 0;
+        foreign.forEach(function () {{ visited++; }});
+        check('forEach', visited === 5);
+        check('find', foreign.find((x) => x > 3) === 4);
+        check('sort', other.eval('[3, 1, 2]').sort((a, b) => a - b).join() === '1,2,3');
+        expectThrown('callback error keeps its realm', TypeError, () => foreign.map(() => {{ null.property; }}));
+        failures.join('; ')
+        "#
+    );
+    assert_no_failures(&source);
+}
+
+#[test]
+fn iterator_and_promise_built_ins_of_another_realm_accept_local_receivers() {
+    let source = format!(
+        r#"{HELPERS}
+        class Numbers extends Iterator {{
+            constructor() {{ super(); this.closed = false; }}
+            next() {{ return {{ done: false, value: 1 }}; }}
+            return(value) {{ this.closed = true; return {{ done: true, value }}; }}
+        }}
+        // A helper made by the local realm, stepped by another realm's `next`.
+        const helperPrototype = Object.getPrototypeOf(new other.Array().values().map((x) => x));
+        const source = new Numbers();
+        const helper = source.map((x) => x + 1);
+        const step = helperPrototype.next.call(helper);
+        check('helper next', step.done === false && step.value === 2);
+        check('helper return', helperPrototype.return.call(helper).done === true && source.closed);
+
+        // Iterator.from compares against the other realm's %Iterator%, so a
+        // local iterator is wrapped rather than returned.
+        const local = [1, 2, 3].values();
+        check('Iterator.from wraps a local iterator', other.Iterator.from(local) !== local);
+
+        // A foreign `then` applied to a local promise.
+        const promise = new Promise((resolve) => resolve(1));
+        const then = other.Promise.prototype.then;
+        check('then returns a promise', then.call(promise, () => {{}}) instanceof Promise);
+        failures.join('; ')
+        "#
+    );
+    assert_no_failures(&source);
+}
