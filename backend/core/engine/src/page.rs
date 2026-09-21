@@ -368,6 +368,14 @@ impl Page {
         self.url.as_deref()
     }
 
+    /// Returns this document's explicitly opted-in BlueTS script declarations
+    /// in source order. The result has no loader, origin, capability, or
+    /// execution authority; an external `src` remains only a declaration for
+    /// a future authorized page-script loader.
+    pub fn blue_ts_script_declarations(&self) -> Vec<crate::script::BlueTsPageScriptDeclaration> {
+        crate::script::discover_blue_ts_page_scripts(&self.doc)
+    }
+
     /// The identity of the currently loaded document within this page.
     ///
     /// This is intentionally crate-visible: it is a core lifecycle token, not
@@ -630,6 +638,35 @@ mod tests {
             .commands
             .iter()
             .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi")));
+    }
+
+    #[test]
+    fn page_exposes_only_explicit_blue_ts_script_declarations() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"
+                <script>const javascript = true;</script>
+                <script type="application/x-blueice-typescript">const typed: number = 42;</script>
+                <script type="application/x-blueice-typescript-module" src="/module.ts"></script>
+            "#,
+            Some("https://example.test/".to_string()),
+        );
+
+        assert_eq!(
+            page.blue_ts_script_declarations(),
+            vec![
+                crate::script::BlueTsPageScriptDeclaration::Inline {
+                    ordinal: 0,
+                    kind: crate::script::direct_page::DirectPageScriptKind::Classic,
+                    source: "const typed: number = 42;".to_string(),
+                },
+                crate::script::BlueTsPageScriptDeclaration::External {
+                    ordinal: 1,
+                    kind: crate::script::direct_page::DirectPageScriptKind::Module,
+                    src: "/module.ts".to_string(),
+                },
+            ]
+        );
     }
 
     #[test]

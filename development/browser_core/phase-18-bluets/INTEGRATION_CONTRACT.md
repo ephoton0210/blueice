@@ -87,6 +87,16 @@ after each session batch. The default session and production binary do not yet
 construct a host, so this is not a claim of automatic HTML page-script
 execution or launcher-managed process wiring.
 
+The parsed core `Page` exposes `BlueTsPageScriptDeclaration` values in document
+order for exactly `application/x-blueice-typescript` (classic) and
+`application/x-blueice-typescript-module` (module). A declaration retains
+either inline source or its raw external `src`; it MUST NOT cause a fetch,
+filesystem read, canonical module-ID minting, resolver construction, profile
+selection, or program admission by itself. A page loader must perform those
+policy steps and submit an `AuthorizedModuleLoader` to the host before any
+declaration can execute. Plain JavaScript and `text/typescript` are not an
+implicit BlueTS opt-in.
+
 One page realm owns at most one live or previously linked program for each
 canonical ESM module ID. BlueJS retains module cells by that ID, so a second
 artifact with the same identity is rejected even after its original handle was
