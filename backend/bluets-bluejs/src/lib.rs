@@ -82,6 +82,8 @@ pub enum BridgeError {
     BlueTs(Vec<Diagnostic>),
     UnsupportedRuntimeTarget { span: SourceSpan, message: String },
     BlueJs(bluejs::CompileError),
+    BlueJsDebug(bluejs::BlueJsProgramDebugError),
+    InvalidSourceIdentity(String),
 }
 
 impl fmt::Display for BridgeError {
@@ -100,11 +102,46 @@ impl fmt::Display for BridgeError {
             Self::BlueJs(error) => {
                 write!(formatter, "BlueJS rejected the lowered program: {error}")
             }
+            Self::BlueJsDebug(error) => {
+                write!(
+                    formatter,
+                    "BlueJS rejected the direct-program attachment: {error}"
+                )
+            }
+            Self::InvalidSourceIdentity(message) => {
+                write!(
+                    formatter,
+                    "BlueTS direct program has no usable source identity: {message}"
+                )
+            }
         }
     }
 }
 
 impl std::error::Error for BridgeError {}
+
+impl DirectScript {
+    /// Installs this already compiled direct program in a caller-owned BlueJS
+    /// registry. The bridge supplies the exact canonical source identity that
+    /// BlueTS checked, without an emitted-JavaScript parse or recompilation.
+    pub fn install_in(
+        &self,
+        registry: &mut bluejs::BlueJsProgramRegistry,
+    ) -> Result<bluejs::BlueJsProgramHandle, BridgeError> {
+        install_precompiled_direct_program(registry, &self.sources, &self.bytecode)
+    }
+}
+
+impl DirectModule {
+    /// Installs this already compiled direct module in a caller-owned BlueJS
+    /// registry, retaining its BlueTS-authorized canonical source identity.
+    pub fn install_in(
+        &self,
+        registry: &mut bluejs::BlueJsProgramRegistry,
+    ) -> Result<bluejs::BlueJsProgramHandle, BridgeError> {
+        install_precompiled_direct_program(registry, &self.sources, &self.bytecode)
+    }
+}
 
 /// Parses, resolves and checks one host-authorized TypeScript source graph,
 /// then directly constructs one BlueJS Script AST and bytecode unit.
@@ -337,6 +374,24 @@ fn bridge_sources(debug_info: &BlueTsDebugInfo) -> Vec<BridgeSource> {
             content_hash: source.content_hash.clone(),
         })
         .collect()
+}
+
+fn install_precompiled_direct_program(
+    registry: &mut bluejs::BlueJsProgramRegistry,
+    sources: &[BridgeSource],
+    bytecode: &bluejs::Bytecode,
+) -> Result<bluejs::BlueJsProgramHandle, BridgeError> {
+    let [source] = sources else {
+        return Err(BridgeError::InvalidSourceIdentity(
+            "a direct script or module must retain exactly one source".to_string(),
+        ));
+    };
+    let source =
+        bluejs::BlueJsSourceIdentity::new(source.module.clone(), source.content_hash.clone())
+            .map_err(BridgeError::BlueJsDebug)?;
+    registry
+        .install_precompiled(source, bytecode.clone())
+        .map_err(BridgeError::BlueJsDebug)
 }
 
 fn lower_script(

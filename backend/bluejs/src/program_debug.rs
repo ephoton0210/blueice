@@ -282,7 +282,39 @@ impl BlueJsProgramRegistry {
         program: &BlueJsProgramV1,
     ) -> Result<BlueJsProgramHandle, BlueJsProgramDebugError> {
         let bytecode = program.compile()?;
-        self.install_compiled(source, bytecode)
+        self.install_precompiled(source, bytecode)
+    }
+
+    /// Installs bytecode already compiled by BlueJS together with the exact
+    /// source identity authorized by the embedding host.
+    ///
+    /// This lets a front-end bridge hand off its existing BlueJS bytecode
+    /// without a generated-source round trip or a second compilation pass.
+    /// Callers still need to retain the structured-program ABI and their own
+    /// compiler fingerprints at the higher-level host boundary.
+    pub fn install_precompiled(
+        &mut self,
+        source: BlueJsSourceIdentity,
+        bytecode: Bytecode,
+    ) -> Result<BlueJsProgramHandle, BlueJsProgramDebugError> {
+        let generation = BlueJsProgramGeneration(self.next_generation);
+        self.next_generation = self
+            .next_generation
+            .checked_add(1)
+            .ok_or(BlueJsProgramDebugError::GenerationExhausted)?;
+        let handle = BlueJsProgramHandle { generation };
+        let mut code_units = Vec::new();
+        collect_code_units(&bytecode, generation, &mut code_units)?;
+        self.programs.insert(
+            generation,
+            BlueJsCompiledProgram {
+                handle,
+                source,
+                bytecode,
+                code_units,
+            },
+        );
+        Ok(handle)
     }
 
     /// Replaces a live program without exposing a partial replacement on
@@ -298,7 +330,7 @@ impl BlueJsProgramRegistry {
             return Err(BlueJsProgramDebugError::UnknownProgram);
         }
         let bytecode = program.compile()?;
-        let replacement = self.install_compiled(source, bytecode)?;
+        let replacement = self.install_precompiled(source, bytecode)?;
         self.programs.remove(&previous.generation);
         Ok(replacement)
     }
@@ -331,31 +363,6 @@ impl BlueJsProgramRegistry {
             return Err(BlueJsProgramDebugError::StaleSafePoint);
         }
         self.get(handle)?.validate_safe_point(safe_point)
-    }
-
-    fn install_compiled(
-        &mut self,
-        source: BlueJsSourceIdentity,
-        bytecode: Bytecode,
-    ) -> Result<BlueJsProgramHandle, BlueJsProgramDebugError> {
-        let generation = BlueJsProgramGeneration(self.next_generation);
-        self.next_generation = self
-            .next_generation
-            .checked_add(1)
-            .ok_or(BlueJsProgramDebugError::GenerationExhausted)?;
-        let handle = BlueJsProgramHandle { generation };
-        let mut code_units = Vec::new();
-        collect_code_units(&bytecode, generation, &mut code_units)?;
-        self.programs.insert(
-            generation,
-            BlueJsCompiledProgram {
-                handle,
-                source,
-                bytecode,
-                code_units,
-            },
-        );
-        Ok(handle)
     }
 }
 
@@ -507,5 +514,23 @@ mod tests {
             BlueJsSourceIdentity::new("page:///main.js", ""),
             Err(BlueJsProgramDebugError::EmptySourceHash)
         );
+    }
+
+    #[test]
+    fn precompiled_bytecode_uses_the_same_generation_bound_validation() {
+        let program = script("40 + 2");
+        let bytecode = program.compile().unwrap();
+        let mut registry = BlueJsProgramRegistry::default();
+        let handle = registry
+            .install_precompiled(source("page:///main.js", "sha256:compiled"), bytecode)
+            .unwrap();
+        let compiled = registry.get(handle).unwrap();
+        assert_eq!(
+            Vm::default().execute(compiled.bytecode()).unwrap(),
+            Value::Number(42.0)
+        );
+        registry
+            .validate_safe_point(handle, compiled.safe_points().next().unwrap())
+            .unwrap();
     }
 }

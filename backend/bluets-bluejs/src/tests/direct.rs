@@ -46,6 +46,36 @@ fn lowers_typed_source_directly_to_bluejs_ast_and_bytecode() {
 }
 
 #[test]
+fn installs_direct_bytecode_with_its_checked_canonical_source_identity() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const answer: number = 42; answer;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let expected_source = artifact.sources[0].clone();
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let handle = artifact.install_in(&mut registry).unwrap();
+    let installed = registry.get(handle).unwrap();
+
+    assert_eq!(
+        installed.source().canonical_module_id(),
+        expected_source.module
+    );
+    assert_eq!(
+        installed.source().source_hash(),
+        expected_source.content_hash
+    );
+    assert_eq!(installed.bytecode().bytes(), artifact.bytecode.bytes());
+    registry
+        .validate_safe_point(handle, installed.safe_points().next().unwrap())
+        .unwrap();
+}
+
+#[test]
 fn rejects_object_methods_without_reparsing_emitted_javascript() {
     let result = compile_direct_script(
         ENTRY,
