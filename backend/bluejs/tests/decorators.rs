@@ -1443,3 +1443,33 @@ fn accessor_and_metadata_decoration_survive_garbage_collection_at_every_allocati
              && Object.getPrototypeOf(meta) === null",
     );
 }
+
+#[test]
+fn every_evaluation_of_a_decorated_class_gets_its_own_decoration_state() {
+    assert_true(
+        "const metas = [];
+         function make(tag) {
+             const dec = (v, ctx) => {
+                 metas.push(ctx.metadata);
+                 ctx.addInitializer(function () { (this.seen ??= []).push(tag); });
+                 return ctx.kind === 'field' ? (x) => x + tag : undefined;
+             };
+             return class { @dec m() {} @dec f = 'f'; @dec static s = 's'; };
+         }
+         const A = make('a'), B = make('b');
+         const a = new A(), b = new B();
+         a.f === 'fa' && b.f === 'fb' && A.s === 'sa' && B.s === 'sb'
+             && a.seen.join() === 'a,a' && b.seen.join() === 'b,b'
+             && metas.length === 6 && new Set(metas).size === 2",
+    );
+}
+
+#[test]
+fn a_decorated_class_can_be_instantiated_reentrantly_from_its_own_initializers() {
+    assert_true(
+        "let depth = 0;
+         const dec = (v, ctx) => { ctx.addInitializer(function () { if (depth++ < 2) new this.constructor(); }); };
+         class C { @dec m() {} }
+         new C(); depth === 3",
+    );
+}

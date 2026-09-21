@@ -240,3 +240,27 @@ fn a_decorator_inside_a_field_initializer_cannot_name_arguments() {
     accepts("class C { x = class { @a m() {} }; }");
     accepts("function f() { class C { @arguments m() {} } }");
 }
+
+#[test]
+fn decorators_come_before_every_modifier_of_the_element() {
+    rejects("class C { static @dec m() {} }");
+    rejects("class C { async @dec m() {} }");
+    rejects("class C { get @dec x() {} }");
+    rejects("class C { set @dec x(v) {} }");
+    rejects("class C { accessor @dec x; }");
+    rejects("class C { * @dec g() {} }");
+    accepts("class C { @dec static async *g() {} }");
+    accepts("class C { @dec static accessor x; }");
+    accepts("class C { @dec get x() { return 1; } @dec set x(v) {} }");
+}
+
+#[test]
+fn a_decorated_element_named_accessor_is_an_ordinary_field() {
+    let class = class_of("class C { @dec accessor\n x; }");
+    // `accessor` followed by a line break is a field of that name, then `x`.
+    assert_eq!(class.elements.len(), 2);
+    assert!(matches!(
+        &class.elements[0],
+        ClassElement::Field { accessor: false, decorators, .. } if decorators.len() == 1
+    ));
+}
