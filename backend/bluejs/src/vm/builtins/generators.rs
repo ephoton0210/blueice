@@ -901,7 +901,16 @@ impl Vm {
             AsyncGeneratorDelegateKind::Return => "return",
             AsyncGeneratorDelegateKind::Throw => "throw",
         };
-        let method = self.get_method(&iterator, &name.into())?;
+        let method = match self.get_method(&iterator, &name.into()) {
+            Ok(method) => method,
+            Err(error) => {
+                // A throwing `return`/`throw` getter is an abrupt completion
+                // of the `yield*` like any other failed delegate call.
+                let error = self.error_value(error)?;
+                self.finish_async_generator_delegate(generator, target, kind, error, false)?;
+                return Ok(Some(Value::Undefined));
+            }
+        };
         if method == Value::Undefined {
             if matches!(kind, AsyncGeneratorDelegateKind::Throw) {
                 self.close_async_generator(generator)?;
@@ -925,11 +934,40 @@ impl Vm {
                 )
                 .map(Some);
         }
-        let result = self.call_native(method, iterator, vec![value], false)?;
-        let promise = self
-            .promise_resolve(result)?
-            .object_id()
-            .expect("Promise.resolve returns a Promise");
+        // A delegate method that throws (or whose result cannot be turned
+        // into a promise) is an abrupt completion of the `yield*`: like a
+        // rejected result it is thrown at the `yield*` site.
+        let async_from_sync = matches!(
+            self.heap.get_own(record, "asyncFromSync")?,
+            Some(Value::Bool(true))
+        );
+        let called = self
+            .call_native(method, iterator, vec![value], false)
+            .and_then(|result| {
+                if async_from_sync {
+                    // Over a synchronous iterator the delegate is the
+                    // AsyncFromSyncIterator: `return` and `throw` results go
+                    // through its continuation (`throw` closes an unfinished
+                    // iterator whose value rejects, `return` never does).
+                    self.async_from_sync_continue(
+                        record,
+                        result,
+                        matches!(kind, AsyncGeneratorDelegateKind::Throw),
+                    )
+                } else {
+                    self.promise_resolve(result)
+                }
+            });
+        let promise = match called {
+            Ok(promise) => promise
+                .object_id()
+                .expect("Promise.resolve returns a Promise"),
+            Err(error) => {
+                let error = self.error_value(error)?;
+                self.finish_async_generator_delegate(generator, target, kind, error, false)?;
+                return Ok(Some(Value::Undefined));
+            }
+        };
         match self
             .promises
             .get(&promise)
@@ -1072,12 +1110,19 @@ impl Vm {
                         value.clone(),
                     ) {
                         Ok(Some(result)) => Ok(result),
-                        Ok(None) => self.generator_resume(
-                            &receiver,
-                            None,
-                            Some(request.target),
-                            Some(Completion::Return(value)),
-                        ),
+                        Ok(None) => {
+                            let completion =
+                                self.async_generator_return_completion(generator, value);
+                            match completion {
+                                Ok(completion) => self.generator_resume(
+                                    &receiver,
+                                    None,
+                                    Some(request.target),
+                                    Some(completion),
+                                ),
+                                Err(error) => Err(error),
+                            }
+                        }
                         Err(error) => Err(error),
                     }
                 }
@@ -1128,6 +1173,35 @@ impl Vm {
                     )?;
                 }
             }
+        }
+    }
+
+    /// The completion injected into a generator by `return(value)`. A generator
+    /// suspended at a `yield` awaits the operand *inside* its body, so a value
+    /// whose PromiseResolve throws (a hostile `constructor` getter) becomes a
+    /// throw completion at the `yield`, where the body may catch it; otherwise
+    /// the resolved promise is returned and awaited when the generator
+    /// finishes. A generator that has not started has no body to throw into.
+    fn async_generator_return_completion(
+        &mut self,
+        generator: ObjectId,
+        value: Value,
+    ) -> Result<Completion, RuntimeError> {
+        let state = self.heap.take_generator_state(generator)?;
+        let suspended = matches!(state, GeneratorState::Suspended { .. });
+        self.heap.set_generator_state(generator, state)?;
+        if !suspended {
+            return Ok(Completion::Return(value));
+        }
+        let base = self.stack.len();
+        self.stack.push(value.clone());
+        let resolved = self.promise_resolve(value);
+        self.stack.truncate(base);
+        match resolved {
+            Ok(promise) => Ok(Completion::Return(promise)),
+            Err(error) => Ok(Completion::Throw(RuntimeError::Thrown(
+                self.error_value(error)?,
+            ))),
         }
     }
 
@@ -1312,27 +1386,18 @@ impl Vm {
         result: Value,
         fulfilled: bool,
     ) -> Result<(), RuntimeError> {
+        // A rejected delegate call, or a result that is not an object, is an
+        // abrupt completion of the `yield*` expression: it is thrown at the
+        // `yield*` site (the delegate is finished and not closed again).
         if !fulfilled {
-            self.close_async_generator(generator)?;
-            self.complete_async_generator_request(
-                generator,
-                target,
-                PromiseStatus::Rejected(result),
-            )?;
-            return self.resume_async_generator_next(generator);
+            return self.throw_at_async_delegate_exit(generator, target, result);
         }
         if !matches!(result, Value::Object(_)) {
-            self.close_async_generator(generator)?;
             let error = self.error_object(
                 "TypeError",
                 "yield* delegate method must return an object".into(),
             )?;
-            self.complete_async_generator_request(
-                generator,
-                target,
-                PromiseStatus::Rejected(error),
-            )?;
-            return self.resume_async_generator_next(generator);
+            return self.throw_at_async_delegate_exit(generator, target, error);
         }
         // IteratorComplete and IteratorValue run inside the generator, so an
         // exception from a getter is thrown at the `yield*` site (where the

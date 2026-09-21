@@ -14,6 +14,9 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        if self.heap.proxy(object)?.is_none() && self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_get_own_property(object, key);
+        }
         self.trigger_deferred_namespace(object, Some(key))?;
         // Intrinsic globals are lazily initialized, but reflective descriptor
         // operations must observe the same own properties as ordinary Get.
@@ -59,6 +62,9 @@ impl Vm {
         self.trigger_deferred_namespace(object, Some(&key))?;
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_define_own_property(object, key, descriptor);
+        }
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_define_own_property(object, key, descriptor);
         }
         if let Some(numeric) = self.heap.typed_array_numeric_key(object, &key)? {
             return self.typed_array_define_own_property(object, numeric, descriptor);
@@ -641,6 +647,24 @@ impl Vm {
                 Some("Date")
             } else if default == self.base_iterator_prototype()? {
                 Some("Iterator")
+            } else if default == self.string_intrinsics()?.1 {
+                Some("String")
+            } else if self.promise_prototype == Some(default) {
+                Some("Promise")
+            } else if self.generator_function_prototype == Some(default) {
+                Some("GeneratorFunction")
+            } else if self.async_function_prototype == Some(default) {
+                Some("AsyncFunction")
+            } else if self.async_generator_function_prototype == Some(default) {
+                Some("AsyncGeneratorFunction")
+            } else if self.globals.get("RegExp").is_some_and(|constructor| {
+                self.heap
+                    .get(*constructor, "prototype")
+                    .ok()
+                    .and_then(|value| value.object_id())
+                    == Some(default)
+            }) {
+                Some("RegExp")
             } else {
                 None
             };
