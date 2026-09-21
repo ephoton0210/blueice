@@ -259,6 +259,8 @@ impl Vm {
                     }
                     Opcode::CreateMetadata => self.create_metadata()?,
                     Opcode::DefineMetadata => self.define_metadata()?,
+                    Opcode::PushDecorator => self.push_decorator()?,
+                    Opcode::CallDecoratedStaticElement => self.call_decorated_static_element()?,
                     Opcode::DecorateElement => self.decorate_element(operand as u32)?,
                     Opcode::DecorateClass => self.decorate_class()?,
                     Opcode::ReplaceClassElement => self.replace_class_element(operand as u32)?,

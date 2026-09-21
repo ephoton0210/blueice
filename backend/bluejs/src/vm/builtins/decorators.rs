@@ -6,14 +6,17 @@
 //! extension): the interpreter operations behind a decorated class.
 //!
 //! The compiler evaluates every decorator expression in source order while it
-//! defines the class, collecting each element's decorators into an Array. Once
-//! every element exists it emits one [`Vm::decorate_element`] per decorated
-//! element (in source order), then the class decorators
-//! ([`Vm::decorate_class`]), and finally runs the initializers the decorators
-//! registered ([`Vm::run_initializers`], [`Vm::apply_initializers`]) at the
-//! time the proposal specifies. Everything crosses the compiler/VM boundary
-//! on the operand stack, so every value stays rooted while decorators (which
-//! are arbitrary JavaScript) run.
+//! defines the class, collecting each element's decorators into an Array of
+//! `decorator, receiver` pairs (the receiver is the `this` a member-expression
+//! decorator is called with). Once every element exists it emits one
+//! [`Vm::decorate_element`] per decorated element (static methods and
+//! accessors first, then instance ones, then static fields, then instance
+//! fields: the order ClassDefinitionEvaluation applies them in), then the
+//! class decorators ([`Vm::decorate_class`]), and finally runs the
+//! initializers the decorators registered ([`Vm::run_initializers`],
+//! [`Vm::apply_initializers`]) at the time the proposal specifies. Everything
+//! crosses the compiler/VM boundary on the operand stack, so every value stays
+//! rooted while decorators (which are arbitrary JavaScript) run.
 //!
 //! The state the proposal keeps in Abstract Closure captures (whether a
 //! decorator application has finished, the initializer list it appends to,
@@ -86,6 +89,8 @@ impl Vm {
         self.array_push(list, value, 0)
     }
 
+    /// The number of entries of a plain list (a decorator list holds two per
+    /// decorator: the function and its receiver).
     fn decorator_list_len(&self, list: &Value) -> Result<usize, RuntimeError> {
         let id = list
             .object_id()
@@ -161,7 +166,9 @@ impl Vm {
         Ok(())
     }
 
-    /// `DefineMetadata`: `F, metadata` -> `F`.
+    /// `DefineMetadata`: `class, metadata` -> nothing. The metadata is a
+    /// writable, configurable, non-enumerable own property of the (decorated)
+    /// class.
     pub(in super::super) fn define_metadata(&mut self) -> Result<(), RuntimeError> {
         let base = self.stack.len() - 2;
         let class = self.stack[base]
@@ -173,11 +180,48 @@ impl Vm {
             JsSymbol::well_known("metadata"),
             metadata,
             true,
-            true,
+            false,
             true,
         )?;
+        self.stack.truncate(base);
+        Ok(())
+    }
+
+    /// `PushDecorator`: `list, decorator, receiver` -> `list`.
+    pub(in super::super) fn push_decorator(&mut self) -> Result<(), RuntimeError> {
+        let base = self.stack.len() - 3;
+        let list = self.stack[base].clone();
+        let (decorator, receiver) = (self.stack[base + 1].clone(), self.stack[base + 2].clone());
+        self.decorator_list_push(&list, &decorator)?;
+        self.decorator_list_push(&list, &receiver)?;
         self.stack.truncate(base + 1);
         Ok(())
+    }
+
+    /// `CallDecoratedStaticElement`: `F, receiver, function` -> `F`. The
+    /// function of a static field or block runs with the decorated class as
+    /// `this`, but keeps the undecorated class as its home object.
+    pub(in super::super) fn call_decorated_static_element(&mut self) -> Result<(), RuntimeError> {
+        let base = self.stack.len() - 3;
+        let Value::Object(class) = self.stack[base].clone() else {
+            unreachable!("class constructors are objects")
+        };
+        let (receiver, function) = (self.stack[base + 1].clone(), self.stack[base + 2].clone());
+        if let Value::Object(function) = function {
+            self.with_roots(|heap| heap.set_closure_home(function, class))?;
+        }
+        self.call_native(function, receiver, Vec::new(), false)?;
+        self.stack.truncate(base + 1);
+        Ok(())
+    }
+
+    /// The `index`th decorator of a decorator list and the `this` value it is
+    /// called with.
+    fn decorator_entry(&self, list: &Value, index: usize) -> Result<(Value, Value), RuntimeError> {
+        Ok((
+            self.decorator_list_get(list, 2 * index)?,
+            self.decorator_list_get(list, 2 * index + 1)?,
+        ))
     }
 
     /// Builds the context object of one decorator application and leaves it on
@@ -204,8 +248,11 @@ impl Vm {
             true,
             true,
         )?;
-        self.define_data(context, "name", name, true, true, true)?;
         if let Some((kind, flags, owner, key)) = element {
+            let access = self.decorator_access_object(kind, owner, key)?;
+            self.stack.push(access.clone());
+            self.define_data(context, "access", access, true, true, true)?;
+            self.stack.pop();
             self.define_data(
                 context,
                 "static",
@@ -222,11 +269,8 @@ impl Vm {
                 true,
                 true,
             )?;
-            let access = self.decorator_access_object(kind, owner, key)?;
-            self.stack.push(access.clone());
-            self.define_data(context, "access", access, true, true, true)?;
-            self.stack.pop();
         }
+        self.define_data(context, "name", name, true, true, true)?;
         let add_initializer = self.decorator_native_function(
             NativeFunction::DecoratorAddInitializer { state },
             "addInitializer",
@@ -258,10 +302,11 @@ impl Vm {
             self.stack.push(Value::Object(state));
             self.promise_state_set(state, "owner", owner)?;
             self.promise_state_set(state, "key", key)?;
-            for (name, op, length, present) in [
-                ("has", DecoratorAccessOp::Has, 1, true),
-                ("get", DecoratorAccessOp::Get, 1, kind.has_get()),
-                ("set", DecoratorAccessOp::Set, 2, kind.has_set()),
+            // `get` and `set` are anonymous functions, `has` is named.
+            for (property, name, op, length, present) in [
+                ("get", "", DecoratorAccessOp::Get, 1, kind.has_get()),
+                ("set", "", DecoratorAccessOp::Set, 2, kind.has_set()),
+                ("has", "has", DecoratorAccessOp::Has, 1, true),
             ] {
                 if !present {
                     continue;
@@ -272,7 +317,7 @@ impl Vm {
                     length,
                 )?;
                 self.stack.push(function.clone());
-                self.define_data(access, name, function, true, true, true)?;
+                self.define_data(access, property, function, true, true, true)?;
                 self.stack.pop();
             }
             Ok(Value::Object(access))
@@ -281,17 +326,18 @@ impl Vm {
         result
     }
 
-    /// Calls one decorator with `(value, context)` and `this` undefined, then
-    /// marks its application finished (even when it threw), which disables
-    /// its `addInitializer`. Both `value` and `context` are on the stack.
+    /// Calls one decorator with `(value, context)` and its receiver as `this`,
+    /// then marks its application finished (even when it threw), which
+    /// disables its `addInitializer`. Both `value` and `context` are on the
+    /// stack.
     fn call_decorator(
         &mut self,
-        decorator: Value,
+        (decorator, receiver): (Value, Value),
         value: Value,
         context: Value,
         state: ObjectId,
     ) -> Result<Value, RuntimeError> {
-        let result = self.call_native(decorator, Value::Undefined, vec![value, context], false);
+        let result = self.call_native(decorator, receiver, vec![value, context], false);
         self.promise_state_set(state, "finished", Value::Bool(true))?;
         result
     }
@@ -339,10 +385,11 @@ impl Vm {
         self.stack.push(extras.clone());
         let initializers = self.decorator_list()?;
         self.stack.push(initializers.clone());
-        for index in (0..self.decorator_list_len(&decorators)?).rev() {
+        // The list is in source order; the last decorator applies first.
+        for index in (0..self.decorator_list_len(&decorators)? / 2).rev() {
             self.charge_step()?;
-            let decorator = self.decorator_list_get(&decorators, index)?;
-            if !self.decorator_is_callable(&decorator)? {
+            let entry = self.decorator_entry(&decorators, index)?;
+            if !self.decorator_is_callable(&entry.0)? {
                 return Err(RuntimeError::TypeError(
                     "a decorator must be a function".into(),
                 ));
@@ -368,7 +415,7 @@ impl Vm {
             } else {
                 self.stack[base + 4].clone()
             };
-            let result = self.call_decorator(decorator, argument, context, state)?;
+            let result = self.call_decorator(entry, argument, context, state)?;
             self.stack.push(result.clone());
             self.apply_element_result(kind, base, &initializers, &result)?;
             self.stack.truncate(frame);
@@ -469,10 +516,10 @@ impl Vm {
         let metadata = self.stack[base + 3].clone();
         let extras = self.decorator_list()?;
         self.stack.push(extras.clone());
-        for index in (0..self.decorator_list_len(&decorators)?).rev() {
+        for index in (0..self.decorator_list_len(&decorators)? / 2).rev() {
             self.charge_step()?;
-            let decorator = self.decorator_list_get(&decorators, index)?;
-            if !self.decorator_is_callable(&decorator)? {
+            let entry = self.decorator_entry(&decorators, index)?;
+            if !self.decorator_is_callable(&entry.0)? {
                 return Err(RuntimeError::TypeError(
                     "a decorator must be a function".into(),
                 ));
@@ -482,7 +529,7 @@ impl Vm {
             self.decorator_context(name.clone(), metadata.clone(), state, None)?;
             let context = self.stack[self.stack.len() - 1].clone();
             let class = self.stack[base].clone();
-            let result = self.call_decorator(decorator, class, context, state)?;
+            let result = self.call_decorator(entry, class, context, state)?;
             if !matches!(result, Value::Undefined) {
                 if !self.decorator_is_callable(&result)? {
                     return Err(RuntimeError::TypeError(
@@ -557,7 +604,17 @@ impl Vm {
                     Ok(Value::Undefined)
                 }
                 DecoratorAccessOp::Has => {
-                    Ok(Value::Bool(self.heap.has_private_brand(object, owner)?))
+                    // PrivateElementFind: a field is present once it has been
+                    // added; methods and accessors come with the brand.
+                    Ok(Value::Bool(
+                        match self.heap.private_element(owner, &name)? {
+                            Some(PrivateElement::Field) => {
+                                self.heap.private_slot(object, owner, &name)?.is_some()
+                            }
+                            Some(_) => self.heap.has_private_brand(object, owner)?,
+                            None => false,
+                        },
+                    ))
                 }
             };
         }
@@ -669,11 +726,14 @@ impl Vm {
 
     /// `ApplyInitializers`: `value, receiver, initializers` -> `value'`, the
     /// value passed through each initializer in turn with `this` = receiver.
+    /// A decorator's initializer runs before those of the decorators applied
+    /// before it (the ones to its right), so the list, which is in
+    /// application order, is walked backwards.
     pub(in super::super) fn apply_initializers(&mut self) -> Result<(), RuntimeError> {
         let base = self.stack.len() - 3;
         let receiver = self.stack[base + 1].clone();
         let list = self.stack[base + 2].clone();
-        for index in 0..self.decorator_list_len(&list)? {
+        for index in (0..self.decorator_list_len(&list)?).rev() {
             self.charge_step()?;
             let initializer = self.decorator_list_get(&list, index)?;
             let value = self.stack[base].clone();

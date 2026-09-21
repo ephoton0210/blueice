@@ -276,8 +276,15 @@ opcodes! {
     // Decorators. `F` -> `F, metadata`: a fresh metadata object whose
     // prototype is the superclass's `Symbol.metadata` (or null).
     CreateMetadata: 1, 0;
-    // `F, metadata` -> `F`: defines `F[Symbol.metadata]`.
+    // `class, metadata` -> nothing: defines `class[Symbol.metadata]`.
     DefineMetadata: 1, 0;
+    // `list, decorator, receiver` -> `list`: appends the value of one decorator
+    // expression and the `this` value it is called with to a decorator list.
+    PushDecorator: 1, 0;
+    // `F, receiver, function` -> `F`: runs a static field's or static block's
+    // function with `this` = receiver (the decorated class) while its home
+    // object stays F.
+    CallDecoratedStaticElement: 1, 0;
     // `decorators, name, owner, privateName, value, value2, metadata` ->
     // `record`: applies one class element's decorators, last to first, and
     // returns `[extraInitializers, ...]` (the operand encodes the element

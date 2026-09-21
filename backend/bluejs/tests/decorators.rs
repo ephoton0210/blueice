@@ -184,7 +184,7 @@ fn decorator_expressions_run_in_document_order_with_computed_keys() {
              @d(3) static [k('b')]() {}
              @d(4) [k('c')] = 1;
          }
-         log.join() === 'expr 1,expr 2,key a,expr 3,key b,expr 4,key c,apply 2,apply 1,apply 3,apply 4'",
+         log.join() === 'expr 1,expr 2,key a,expr 3,key b,expr 4,key c,apply 3,apply 2,apply 1,apply 4'",
     );
 }
 
@@ -243,8 +243,8 @@ fn static_and_private_methods_can_be_decorated_and_replaced() {
          }
          JSON.stringify(seen) === JSON.stringify([
              ['method', 's', true, false],
-             ['method', '#p', false, true],
              ['method', '#q', true, true],
+             ['method', '#p', false, true],
          ])",
     );
     assert_true(
@@ -464,12 +464,14 @@ fn a_field_initializer_function_receives_the_value_and_this() {
 }
 
 #[test]
-fn field_initializers_chain_last_decorator_first() {
+fn field_initializers_run_in_source_order_after_the_original_value_is_computed() {
+    // Decorators apply last to first, but each new initializer goes to the
+    // front of the list, so the first decorator's initializer runs first.
     assert_true(
         "const order = [];
          const mk = (n) => () => function (v) { order.push(n); return v + n; };
-         class C { @mk('a') @mk('b') x = ''; }
-         new C().x === 'ba' && order.join() === 'b,a'",
+         class C { @mk('a') @mk('b') x = 'v'; }
+         new C().x === 'vab' && order.join() === 'a,b'",
     );
 }
 
@@ -702,11 +704,12 @@ fn accessor_decorators_apply_last_to_first_and_each_sees_the_previous_result() {
          class C { @mk('a') @mk('b') accessor x = '.'; }
          new C().x === 'ab.'",
     );
+    // Initializers, unlike getters and setters, run first decorator first.
     assert_true(
         "const order = [];
          const mk = (n) => () => ({ init(v) { order.push(n); return v + n; } });
          class C { @mk('a') @mk('b') accessor x = ''; }
-         new C().x === 'ba' && order.join() === 'b,a'",
+         new C().x === 'ab' && order.join() === 'a,b'",
     );
 }
 
@@ -722,7 +725,7 @@ fn private_and_static_accessors_are_decorated_too() {
              readP() { return this.#p; }
              static readQ() { return C.#q; }
          }
-         seen.map(String).join('|') === '#p,false,true|s,true,false|#q,true,true'
+         seen.map(String).join('|') === 's,true,false|#q,true,true|#p,false,true'
              && new C().readP() === 'g:1' && C.s === 'g:2' && C.readQ() === 'g:3'",
     );
 }
@@ -843,7 +846,7 @@ fn the_class_name_is_the_inferred_name_of_an_anonymous_decorated_class_expressio
          const o = { Y: @dec class {} };
          (@dec class {});
          @dec class Named {}
-         names.join() === 'X,Y,,Named' && names[2] === undefined",
+         names.length === 4 && names[0] === 'X' && names[1] === 'Y' && names[2] === '' && names[3] === 'Named'",
     );
 }
 
@@ -860,12 +863,55 @@ fn a_decorated_class_expression_evaluates_to_the_decorated_class() {
 fn class_extra_initializers_run_after_static_fields_with_the_decorated_class() {
     assert_true(
         "const log = [];
-         const dec = (v, ctx) => { ctx.addInitializer(function () { log.push('class ' + (this === D) + ' ' + this.field); }); return class D extends v {}; };
-         let D;
-         D = null;
+         let original, produced;
+         const dec = (v, ctx) => {
+             original = v;
+             produced = class extends v {};
+             ctx.addInitializer(function () { log.push('class ' + (this === produced) + ' ' + this.field); });
+             return produced;
+         };
          @dec class C { static field = (log.push('field'), 'f'); static { log.push('block'); } }
-         D = C;
-         log.join() === 'field,block,class false f'",
+         log.join() === 'field,block,class true f' && C === produced && C !== original",
+    );
+}
+
+#[test]
+fn static_fields_and_blocks_of_a_replaced_class_run_on_the_decorated_class() {
+    // The static elements keep the undecorated class as their home object but
+    // run with the class the decorators produced as `this`.
+    assert_true(
+        "let original, thisInBlock, thisInField;
+         const wrap = (v) => { original = v; return class extends v {}; };
+         @wrap class C {
+             static field = (thisInField = this, 1);
+             static { thisInBlock = this; }
+             static #p = 2;
+             static readP() { return this.#p; }
+         }
+         thisInField === C && thisInBlock === C && C !== original
+             && Object.hasOwn(C, 'field') && !Object.hasOwn(original, 'field')
+             && C.readP() === 2",
+    );
+}
+
+#[test]
+fn a_static_private_method_stays_on_the_undecorated_class() {
+    // InitializePrivateMethods runs on the class before the decorators replace
+    // it, so a wrapper subclass does not carry the brand.
+    assert_type_error(
+        "@((v) => class extends v {}) class C {
+             static #m() {}
+             static call() { return this.#m(); }
+         }
+         C.call()",
+    );
+    assert_true(
+        "let original;
+         @((v) => { original = v; return class extends v {}; }) class C {
+             static #m() { return 'm'; }
+             static call() { return this.#m(); }
+         }
+         original.call() === 'm'",
     );
 }
 
@@ -954,35 +1000,41 @@ fn every_decorator_of_a_class_shares_one_metadata_object_published_on_the_class(
          @dec class C { @dec m() {} @dec static s = 1; @dec accessor a; }
          const meta = C[Symbol.metadata];
          seen.length === 4 && seen.every((m) => m === meta)
-             && Object.keys(meta).join() === 'method' + 'm,field' + 's,accessor' + 'a,class' + 'C'.replace(/^/, '')",
+             && Object.keys(meta).join() === 'methodm,accessora,fields,classC'",
     );
 }
 
 #[test]
-fn metadata_is_defined_before_the_class_decorators_run() {
+fn metadata_is_published_on_the_decorated_class_after_the_class_decorators_ran() {
     assert_true(
-        "let same;
-         @((v, ctx) => { same = v[Symbol.metadata] === ctx.metadata; }) class C {}
-         same === true",
+        "let during;
+         let meta;
+         const R = class extends Object {};
+         const C = @((v, ctx) => { during = v[Symbol.metadata]; meta = ctx.metadata; return R; }) class {};
+         during === null && C === R && R[Symbol.metadata] === meta
+             && Object.hasOwn(R, Symbol.metadata)",
     );
 }
 
 #[test]
-fn a_classs_metadata_property_is_writable_enumerable_and_configurable() {
+fn a_classs_metadata_property_is_writable_configurable_and_not_enumerable() {
     assert_true(
         "class C { @(() => {}) m() {} }
          const d = Object.getOwnPropertyDescriptor(C, Symbol.metadata);
-         d.writable === true && d.enumerable === true && d.configurable === true
+         d.writable === true && d.enumerable === false && d.configurable === true
              && Object.getPrototypeOf(d.value) === null",
     );
 }
 
 #[test]
-fn a_class_without_decorators_has_no_metadata() {
+fn a_class_without_decorators_has_null_metadata_inherited_from_function_prototype() {
     assert_true(
         "class C { m() {} } class D extends C {}
          !Object.hasOwn(C, Symbol.metadata) && Object.getOwnPropertySymbols(C).length === 0
-             && C[Symbol.metadata] === undefined && D[Symbol.metadata] === undefined",
+             && C[Symbol.metadata] === null && D[Symbol.metadata] === null
+             && Function.prototype[Symbol.metadata] === null
+             && Object.getOwnPropertyDescriptor(Function.prototype, Symbol.metadata).writable === false
+             && Object.getOwnPropertyDescriptor(Function.prototype, Symbol.metadata).configurable === false",
     );
 }
 
@@ -1170,7 +1222,7 @@ fn the_context_name_is_the_property_key_for_every_kind_of_literal_key() {
              @dec accessor 'acc' = 2;
          }
          names[0] === '1' && names[1] === 'str' && names[2] === '2.5' && names[3] === s
-             && names[4] === 'id' && names[5] === '16' && names[6] === 'acc'",
+             && names[4] === 'id' && names[5] === 'acc' && names[6] === '16'",
     );
 }
 
@@ -1211,5 +1263,157 @@ fn a_decorator_can_call_eval_in_the_class_scope() {
         "let value;
          class C { @(eval('(v, ctx) => { value = ctx.name; }')) named() {} }
          value === 'named'",
+    );
+}
+
+// ---- Receivers, order and shape, as ClassDefinitionEvaluation specifies ----
+
+#[test]
+fn a_member_expression_decorator_is_called_with_its_object_as_this() {
+    assert_true(
+        "const log = [];
+         const ns = { dec(v, ctx) { log.push(this === ns); }, nested: { dec(v, ctx) { log.push(this === ns.nested); } } };
+         class C { @ns.dec a() {} @ns.nested.dec b() {} @(ns.dec) c() {} }
+         log.join() === 'true,true,true'",
+    );
+}
+
+#[test]
+fn other_decorator_forms_are_called_without_a_receiver() {
+    assert_true(
+        "'use strict';
+         const log = [];
+         const ns = { make() { return function (v, ctx) { log.push(this); }; } };
+         function plain(v, ctx) { log.push(this); }
+         class C { @plain a() {} @ns.make() b() {} @((0, ns.make)()) c() {} @(ns.make(), plain) d() {} }
+         log.length === 4 && log.every((v) => v === undefined)",
+    );
+}
+
+#[test]
+fn a_private_member_decorator_is_called_with_its_object_as_this() {
+    assert_true(
+        "let receiver;
+         class Host {
+             static #dec(v, ctx) { receiver = this; }
+             static make() { return class { @Host.#dec m() {} }; }
+         }
+         Host.make(); receiver === Host",
+    );
+}
+
+#[test]
+fn class_decorators_are_also_called_with_their_receiver() {
+    assert_true(
+        "let receiver;
+         const ns = { dec(v, ctx) { receiver = this; } };
+         @ns.dec class C {}
+         receiver === ns",
+    );
+}
+
+#[test]
+fn element_decorators_apply_static_methods_then_instance_methods_then_static_fields_then_instance_fields(
+) {
+    assert_true(
+        "const log = [];
+         const d = (n) => (v, ctx) => { log.push(n); };
+         class C {
+             @d('field 1') f1;
+             @d('static field 1') static sf1;
+             @d('method 1') m1() {}
+             @d('static method 1') static sm1() {}
+             @d('accessor 1') accessor a1;
+             @d('static accessor 1') static accessor sa1;
+             @d('getter 1') get g1() { return 1; }
+             @d('static field 2') static sf2;
+             @d('field 2') f2;
+             @d('static method 2') static sm2() {}
+         }
+         log.join() === 'static method 1,static accessor 1,static method 2,'
+             + 'method 1,accessor 1,getter 1,'
+             + 'static field 1,static field 2,'
+             + 'field 1,field 2'",
+    );
+}
+
+#[test]
+fn a_class_decorator_list_is_evaluated_in_the_surrounding_scope_not_the_class_name_scope() {
+    assert_true(
+        "const C = 'outer';
+         let seen;
+         const D = @((seen = C, () => {})) class C {};
+         seen === 'outer'",
+    );
+}
+
+#[test]
+fn a_class_decorator_list_does_not_see_the_classs_private_names() {
+    let program = parse("class Outer { #p = 1; static m() { return @(o.#p) class { #p = 2; }; } }");
+    // `#p` in the class's own decorator list names the *enclosing* class's
+    // private name, so this is valid; naming a private name that only the
+    // decorated class declares is an early error.
+    assert!(program.is_ok(), "{program:?}");
+    assert!(parse("@(o.#q) class C { #q; }").is_err());
+}
+
+#[test]
+fn an_element_decorator_can_name_a_private_name_of_its_own_class() {
+    assert!(parse("class C { static #d() {} @C.#d m() {} }").is_ok());
+    assert!(parse("class C { @C.#missing m() {} }").is_err());
+}
+
+#[test]
+fn the_shape_of_the_context_and_access_objects() {
+    assert_true(
+        "const seen = {};
+         const dec = (v, ctx) => { seen[ctx.kind] = ctx; };
+         class C {
+             @dec m() {} @dec get g() { return 1; } @dec set s(v) {} @dec f; @dec accessor a;
+         }
+         const keys = (o) => Object.keys(o).join();
+         const elementKeys = 'kind,access,static,private,name,addInitializer,metadata';
+         keys(seen.method) === elementKeys && keys(seen.getter) === elementKeys
+             && keys(seen.setter) === elementKeys && keys(seen.field) === elementKeys
+             && keys(seen.accessor) === elementKeys
+             && keys(seen.method.access) === 'get,has' && keys(seen.getter.access) === 'get,has'
+             && keys(seen.setter.access) === 'set,has'
+             && keys(seen.field.access) === 'get,set,has' && keys(seen.accessor.access) === 'get,set,has'
+             && seen.method.access.get.name === '' && seen.field.access.set.name === ''
+             && seen.method.access.has.name === 'has' && seen.method.addInitializer.name === 'addInitializer'
+             && seen.method.access.get.length === 1 && seen.field.access.set.length === 2
+             && seen.method.addInitializer.length === 1",
+    );
+    assert_true(
+        "let context;
+         @((v, ctx) => { context = ctx; }) class C {}
+         Object.keys(context).join() === 'kind,name,addInitializer,metadata'",
+    );
+}
+
+#[test]
+fn the_context_and_access_functions_are_not_constructors() {
+    assert_type_error(
+        "let context;
+         class C { @((v, ctx) => { context = ctx; }) m() {} }
+         new context.addInitializer(() => {})",
+    );
+    assert_type_error(
+        "let context;
+         class C { @((v, ctx) => { context = ctx; }) m() {} }
+         new context.access.get({})",
+    );
+}
+
+#[test]
+fn a_private_fields_has_is_false_until_the_field_is_added() {
+    assert_true(
+        "let access, during;
+         class C {
+             #a = 1;
+             @((v, ctx) => { access = ctx.access; }) #b = (during = access.has(this), 2);
+         }
+         const c = new C();
+         during === false && access.has(c) === true",
     );
 }

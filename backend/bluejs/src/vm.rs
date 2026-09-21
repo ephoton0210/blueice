@@ -1353,6 +1353,16 @@ impl Vm {
                 1,
                 NativeFunction::HasInstance,
             )?;
+            // The decorator-metadata proposal: a class nothing decorated has
+            // `null` metadata, inherited from here.
+            self.define_data(
+                function_prototype,
+                JsSymbol::well_known("metadata"),
+                Value::Null,
+                false,
+                false,
+                false,
+            )?;
             self.install_native(
                 function_prototype,
                 function_prototype,

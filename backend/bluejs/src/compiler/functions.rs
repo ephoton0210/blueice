@@ -23,6 +23,14 @@ impl Compiler {
         class: &Class,
         inferred_name: Option<&str>,
     ) -> Result<(), CompileError> {
+        // The class's own decorators are written before `class`, outside the
+        // class: they are evaluated first, in the surrounding scope (the
+        // class's name and private names are not visible to them) and in the
+        // surrounding code's strictness, and wait on the operand stack for
+        // `class_definition` to store them.
+        if !class.decorators.is_empty() {
+            self.decorator_list_on_stack(&class.decorators)?;
+        }
         let Some(name) = class.name.as_ref() else {
             return self.class_expression_with_binding(class, inferred_name, None);
         };
@@ -49,7 +57,7 @@ impl Compiler {
         // strict mode code: a function written there is strict even when the
         // class sits in sloppy code.
         let outer_strict = std::mem::replace(&mut self.bytecode.strict, true);
-        let result = self.class_definition(class, inferred_name, binding, outer_strict);
+        let result = self.class_definition(class, inferred_name, binding);
         self.bytecode.strict = outer_strict;
         result
     }
@@ -59,7 +67,6 @@ impl Compiler {
         class: &Class,
         inferred_name: Option<&str>,
         binding: Option<u32>,
-        outer_strict: bool,
     ) -> Result<(), CompileError> {
         let private_declarations = class_private_declarations(class)?;
         let private_scope_id = self.next_private_scope;
@@ -214,17 +221,13 @@ impl Compiler {
         if has_class_scope {
             self.enter_scope(class_bindings, &BTreeSet::new(), false)?;
         }
-        // The class's own decorators are written before `class`, outside its
-        // body: they run first, in the surrounding code's strictness and with
-        // only the enclosing private names in scope.
+        // The class's own decorators were evaluated before the scope existed
+        // (see `class_expression`) and are on the operand stack.
         if has_class_decorators {
-            let strict = std::mem::replace(&mut self.bytecode.strict, outer_strict);
             let class_decoration = class_decoration
                 .as_ref()
                 .expect("a class with decorators has a decoration plan");
-            let result = self.decorator_list(&class.decorators, &class_decoration.decorators);
-            self.bytecode.strict = strict;
-            result?;
+            self.initialize_class_binding(&class_decoration.decorators)?;
         }
         if has_class_scope {
             self.private_scopes.push(private_scope.clone());
@@ -444,33 +447,40 @@ impl Compiler {
                 }
             }
         }
-        // Every element now exists. Apply the element decorators (each
-        // element's own last to first, elements in source order), then let the
-        // class decorators see the finished class.
+        // Every element now exists. Apply the element decorators, each
+        // element's own last to first: static methods and accessors first,
+        // then instance ones, then static fields, then instance fields. Then
+        // the class decorators see the finished class, and the metadata
+        // object they all shared is published on the class they produced.
         if let Some(class_decoration) = &class_decoration {
             self.emit(Opcode::CreateMetadata, 0)?;
             self.initialize_class_binding(&class_decoration.metadata)?;
-            for (index, element) in class.elements.iter().enumerate() {
-                let Some(decoration) = decorations.get(&index) else {
-                    continue;
-                };
-                self.decorate_class_element(
-                    element,
-                    decoration,
-                    computed_key_bindings.get(&index),
-                    &private_scope,
-                    &class_decoration.metadata,
-                )?;
+            for (fields, is_static) in [(false, true), (false, false), (true, true), (true, false)]
+            {
+                for (index, element) in class.elements.iter().enumerate() {
+                    let Some(decoration) = decorations.get(&index) else {
+                        continue;
+                    };
+                    if (decoration.kind == deco::FIELD) != fields
+                        || decoration.is_static != is_static
+                    {
+                        continue;
+                    }
+                    self.decorate_class_element(
+                        element,
+                        decoration,
+                        computed_key_bindings.get(&index),
+                        &private_scope,
+                        &class_decoration.metadata,
+                    )?;
+                }
             }
-            self.get_class_binding(&class_decoration.metadata)?;
-            self.emit(Opcode::DefineMetadata, 0)?;
             if has_class_decorators {
                 self.emit(Opcode::Dup, 0)?;
                 self.get_class_binding(&class_decoration.decorators)?;
-                match class.name.as_deref().or(inferred_name) {
-                    Some(name) => self.constant(Value::String(name.into()))?,
-                    None => self.constant(Value::Undefined)?,
-                }
+                self.constant(Value::String(
+                    class.name.as_deref().or(inferred_name).unwrap_or("").into(),
+                ))?;
                 self.get_class_binding(&class_decoration.metadata)?;
                 self.emit(Opcode::DecorateClass, 0)?;
                 self.emit(Opcode::Dup, 0)?;
@@ -480,7 +490,12 @@ impl Compiler {
                 self.constant(Value::String("0".into()))?;
                 self.emit(Opcode::GetProperty, 0)?;
                 self.initialize_class_binding(&class_decoration.extra_initializers)?;
+                self.get_class_binding(&class_decoration.decorated)?;
+            } else {
+                self.emit(Opcode::Dup, 0)?;
             }
+            self.get_class_binding(&class_decoration.metadata)?;
+            self.emit(Opcode::DefineMetadata, 0)?;
         }
         // The inner name binding is initialized once every element has been
         // defined, so a computed key or method definition cannot observe the
@@ -581,12 +596,24 @@ impl Compiler {
             )?;
             self.emit(Opcode::SetClassFields, 0)?;
         }
+        // From here on the class is the one the decorators produced (`this` of
+        // the static extra initializers, fields and blocks); its elements keep
+        // the undecorated class as their home object.
+        let final_class = class_decoration
+            .as_ref()
+            .filter(|_| has_class_decorators)
+            .map(|class_decoration| &class_decoration.decorated);
         // Static methods' extra initializers run before any static field.
         for decoration in decorations.values() {
             if decoration.is_static
                 && matches!(decoration.kind, deco::METHOD | deco::GETTER | deco::SETTER)
             {
-                self.emit(Opcode::Dup, 0)?;
+                match final_class {
+                    Some(decorated) => self.get_class_binding(decorated)?,
+                    None => {
+                        self.emit(Opcode::Dup, 0)?;
+                    }
+                }
                 let slot = self
                     .resolve(&decoration.result)
                     .expect("decoration record binding is in the class scope");
@@ -599,8 +626,17 @@ impl Compiler {
             let slot = self
                 .resolve(binding_name)
                 .expect("static element binding is in the class scope");
-            self.emit(Opcode::GetBinding, slot)?;
-            self.emit(Opcode::CallClassStaticBlock, 0)?;
+            match final_class {
+                Some(decorated) => {
+                    self.get_class_binding(decorated)?;
+                    self.emit(Opcode::GetBinding, slot)?;
+                    self.emit(Opcode::CallDecoratedStaticElement, 0)?;
+                }
+                None => {
+                    self.emit(Opcode::GetBinding, slot)?;
+                    self.emit(Opcode::CallClassStaticBlock, 0)?;
+                }
+            }
         }
         // The class decorators' extra initializers see the finished class, and
         // a decorator that replaced the class is what the definition returns.
@@ -635,17 +671,56 @@ impl Compiler {
         Ok(())
     }
 
-    /// Evaluates `decorators` left to right into an Array held by the hidden
-    /// binding `binding`. The decorator expressions run here, in source order
-    /// with the surrounding class's other expressions; calling them is
-    /// `DecorateElement`'s / `DecorateClass`'s job, later.
-    fn decorator_list(&mut self, decorators: &[Expr], binding: &str) -> Result<(), CompileError> {
+    /// Evaluates `decorators` left to right into a decorator list (an Array of
+    /// `decorator, receiver` pairs) on the operand stack. The decorator
+    /// expressions run here, in source order with the surrounding class's other
+    /// expressions; calling them is `DecorateElement`'s / `DecorateClass`'s
+    /// job, later.
+    fn decorator_list_on_stack(&mut self, decorators: &[Expr]) -> Result<(), CompileError> {
         self.emit(Opcode::NewArray, 0)?;
         for decorator in decorators {
-            self.expression(decorator)?;
-            self.emit(Opcode::ArrayPush, 0)?;
+            self.decorator_and_receiver(decorator)?;
+            self.emit(Opcode::PushDecorator, 0)?;
         }
+        Ok(())
+    }
+
+    /// Like `decorator_list_on_stack`, storing the list in the hidden binding.
+    fn decorator_list(&mut self, decorators: &[Expr], binding: &str) -> Result<(), CompileError> {
+        self.decorator_list_on_stack(decorators)?;
         self.initialize_class_binding(binding)
+    }
+
+    /// Pushes a decorator's value and the `this` it is called with: a
+    /// property reference (`@a.b`, `@(a.b)`) calls with its base, exactly like
+    /// the same expression as the callee of a call; everything else, a plain
+    /// name, a call's result or any other parenthesized expression, with
+    /// `undefined`.
+    fn decorator_and_receiver(&mut self, decorator: &Expr) -> Result<(), CompileError> {
+        match decorator {
+            Expr::Member { .. } if !is_super_member(decorator) => {
+                if private_member_name(decorator).is_some() {
+                    let owner = self.private_member_reference(decorator)?;
+                    self.emit(Opcode::PrivateGetMethod, owner)?;
+                } else {
+                    self.member_reference(decorator)?;
+                    self.emit(Opcode::GetMethod, 0)?;
+                }
+            }
+            Expr::Parenthesized(inner)
+                if matches!(
+                    inner.as_ref(),
+                    Expr::Member { .. } | Expr::OptionalMember { .. }
+                ) && !is_super_member(inner) =>
+            {
+                self.parenthesized_optional_member_method(inner)?;
+            }
+            other => {
+                self.expression(other)?;
+                self.constant(Value::Undefined)?;
+            }
+        }
+        Ok(())
     }
 
     /// Pushes an element's name as a decorator's context reports it: `#x` for
