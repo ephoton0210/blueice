@@ -155,6 +155,7 @@ impl Vm {
         self.active_scopes.clear();
         self.active_scope_slots.clear();
         self.with_objects.clear();
+        self.inherited_with_depth = 0;
         self.top_level_module = false;
         self.pending_completions.clear();
         self.completion_saves.clear();

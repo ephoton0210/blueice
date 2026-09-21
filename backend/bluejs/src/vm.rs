@@ -1002,6 +1002,9 @@ pub struct Vm {
     /// legacy `f.caller` reads it: eval frames, natives, generators resumed
     /// from a call and async continuations do not appear.
     call_stack: Vec<ObjectId>,
+    /// How many of `with_objects` the running function inherited from the
+    /// scope it was created in (the rest were entered by its own `with`).
+    inherited_with_depth: usize,
     joining: Vec<ObjectId>,
 }
 
@@ -1146,6 +1149,7 @@ impl Vm {
             throw_type_error: None,
             legacy_function_getters: None,
             call_stack: Vec::new(),
+            inherited_with_depth: 0,
             joining: Vec::new(),
         })
     }

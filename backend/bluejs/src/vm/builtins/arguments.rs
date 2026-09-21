@@ -323,6 +323,7 @@ impl Vm {
             self.strict,
             self.new_target_allowed,
             self.with_objects.len(),
+            self.inherited_with_depth,
         )
         .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let captures = code
@@ -353,7 +354,7 @@ impl Vm {
         })?;
         let program =
             crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0)
+        let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0, 0)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let global_this = self.global("globalThis")?;
         let this = std::mem::replace(&mut self.this, global_this);

@@ -361,6 +361,7 @@ pub(crate) fn compile_eval(
     strict: bool,
     new_target_allowed: bool,
     with_depth: usize,
+    inherited_with_depth: usize,
 ) -> Result<Bytecode, CompileError> {
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
@@ -375,9 +376,14 @@ pub(crate) fn compile_eval(
         local_scope: 1,
         with_depth,
         // Captured bindings form the outer lexical environment of direct
-        // eval. Any inherited `with` environments occur after it, while the
-        // eval's own declaration scope is entered below.
-        with_scope_depths: vec![1; with_depth],
+        // eval. The `with` environments the calling function entered occur
+        // after it, while the eval's own declaration scope is entered below.
+        // The first `inherited_with_depth` objects were in scope when the
+        // calling function was created: its own bindings are nested inside
+        // them.
+        with_scope_depths: (0..with_depth)
+            .map(|index| usize::from(index >= inherited_with_depth))
+            .collect(),
         annex_b_parameter_names: BTreeSet::new(),
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);

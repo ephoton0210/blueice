@@ -335,7 +335,7 @@ impl Vm {
         })"#;
         let program =
             crate::parse(SOURCE).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0)
+        let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0, 0)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let helper = self.execute_eval(&code, Vec::new(), !code.strict)?;
         self.async_dispose_helper = Some(helper.clone());

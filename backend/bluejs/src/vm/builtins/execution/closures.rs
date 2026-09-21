@@ -228,6 +228,8 @@ impl Vm {
         let pending_completions = self.pending_completions.clone();
         let completion_saves = self.completion_saves.clone();
         let with_objects = std::mem::replace(&mut self.with_objects, closure_with_objects);
+        let inherited_with_depth =
+            std::mem::replace(&mut self.inherited_with_depth, self.with_objects.len());
         let frame_dynamic_eval_outer_bindings = self.dynamic_eval_outer_bindings.clone();
         let top_level_module = self.top_level_module;
         let remaining_instructions = self.remaining_instructions;
@@ -300,6 +302,7 @@ impl Vm {
             self.pending_completions = pending_completions;
             self.completion_saves = completion_saves;
             self.with_objects = with_objects;
+            self.inherited_with_depth = inherited_with_depth;
             self.dynamic_eval_outer_bindings = frame_dynamic_eval_outer_bindings;
             self.top_level_module = top_level_module;
             self.remaining_instructions = remaining_instructions;
@@ -309,6 +312,7 @@ impl Vm {
         } else {
             self.result_root = result_root;
             self.with_objects = with_objects;
+            self.inherited_with_depth = inherited_with_depth;
         }
         self.bindings = bindings;
         self.binding_metadata = binding_metadata;
