@@ -143,6 +143,18 @@ or second module resolver to bypass them.
   text round trip. Preserve canonical module IDs, source hashes, ordering,
   policy, language version, and all compiler-limit fingerprints.
 
+  Foundation delivered: `blueice_bluets::AuthorizedModuleLoader` represents a
+  closed host-supplied graph of canonical module records and exact
+  `(from-module, specifier) -> canonical-target` records. It validates duplicate
+  and dangling records before compilation, performs no filesystem/URL/import-map
+  lookup, and rejects an absent edge rather than falling back to relative
+  resolution. The direct BlueTS-to-BlueJS graph bridge preserves these canonical
+  targets through module requests and executes the supplied graph without a
+  JavaScript-text reparse. A page host still must validate the host-typing
+  manifest, select an opted-in script kind, bind the request's origin/policy/
+  resolver and compiler fingerprints, submit to the page realm, and invalidate
+  it at lifecycle boundaries, so this item remains open.
+
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering
   failures execute neither the entry nor an affected dependent module; a

@@ -34,6 +34,17 @@ source_set_hash
 
 An incompatible major ABI, an unknown required field, a source hash mismatch, or a different module set is a compile/attach failure with no partial execution. Additive optional fields may be accepted only when the receiver's minor-version policy explicitly lists them; an unrecognized field is never silently interpreted as executable behavior.
 
+Before invoking BlueTS, a direct-page host MUST assemble a closed source graph
+from caller-authorized canonical module records and explicit resolution edges.
+`blueice_bluets::AuthorizedModuleLoader` is the reference in-memory carrier for
+that boundary: it validates duplicate or dangling records on construction,
+loads only a supplied canonical ID, and resolves only an exact supplied
+`(from-module, specifier)` edge. It performs no filesystem, URL, package, or
+relative-resolution fallback. The host remains responsible for canonicalizing
+those records, enforcing origin and capability policy, and placing its own
+resolver identity in `CompilerOptions::resolver_fingerprint`; the loader does
+not claim that an arbitrary map is an authorized page load.
+
 ## AST/IR hand-off
 
 The bridge lowers `new Identifier(args)` directly to BlueJS `New` data, including normal and spread arguments. Constructor members and omitted parentheses remain excluded.
