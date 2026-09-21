@@ -409,6 +409,7 @@ impl Compiler {
             with_depth: self.with_depth,
             with_scope_depths: vec![1; self.with_depth],
             annex_b_parameter_names: BTreeSet::new(),
+            tail_call_blockers: 0,
         };
         child.bytecode.with_depth = self.with_depth as u32;
         child.bytecode.strict =

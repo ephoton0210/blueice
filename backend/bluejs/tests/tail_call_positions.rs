@@ -110,3 +110,35 @@ fn a_call_that_is_not_in_tail_position_still_nests() {
     );
     assert!(result.is_err());
 }
+
+#[test]
+fn a_call_in_a_try_block_is_not_a_tail_call() {
+    // §15.10.2: a TryBlock is not a tail position (its catch/finally must see
+    // the call's outcome), nor is the Block of a catch that has a finally.
+    for (source, expected) in [
+        (
+            "(function self(n){ 'use strict'; if (n<0) throw 'neg'; try { if (n===0) return self(-1); return 1; } catch (e) { return 'c'; } })(0)",
+            "c",
+        ),
+        (
+            "(function self(n){ 'use strict'; if (n<0) throw 'neg'; var log = ''; try { try { if (n===0) return self(-1); } finally { log += 'f'; } } catch (e) { return 'c' + log; } })(0)",
+            "cf",
+        ),
+        (
+            "var log = ''; (function self(n){ 'use strict'; if (n<0) throw 'neg'; try { throw 0; } catch (e) { return self(-1); } finally { log += 'f'; } })(0)",
+            "",
+        ),
+    ] {
+        let result = std::panic::catch_unwind(|| {
+            let mut vm = Vm::default();
+            vm.execute(&compile(&parse(source).unwrap()).unwrap())
+        });
+        match (expected, result.unwrap()) {
+            ("", Err(_)) => {}
+            (text, Ok(Value::String(value))) => {
+                assert_eq!(value.to_utf8().unwrap(), text, "{source}")
+            }
+            (text, other) => panic!("{source}: expected {text:?}, got {other:?}"),
+        }
+    }
+}

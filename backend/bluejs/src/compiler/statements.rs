@@ -110,7 +110,11 @@ impl Compiler {
         // unchanged (`DisposeResources`). Clearing would turn `4; {using x =
         // null;}` into `undefined` instead of `4`.
         self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
-        compile_body(self)?;
+        // Disposal runs after the block's return value is computed.
+        self.tail_call_blockers += 1;
+        let body = compile_body(self);
+        self.tail_call_blockers -= 1;
+        body?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
         self.emit(Opcode::PopHandler, 0)?;
         self.emit(Opcode::SaveCompletion, 0)?;
@@ -717,7 +721,7 @@ impl Compiler {
     /// path ends in a `TailRecur` or a `Return`. `Ok(false)` means `value`
     /// has no such call and nothing was emitted.
     fn tail_position_return(&mut self, value: &Expr) -> Result<bool, CompileError> {
-        if !self.contains_self_tail_call(value) {
+        if self.tail_call_blockers != 0 || !self.contains_self_tail_call(value) {
             return Ok(false);
         }
         match value {
@@ -1133,7 +1137,12 @@ impl Compiler {
         // UpdateEmpty step.
         self.emit(Opcode::ClearCompletion, 0)?;
         self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
-        self.scoped_statements(block)?;
+        // A call in the try block is not a tail call: the catch and finally
+        // clauses have to observe how it ends.
+        self.tail_call_blockers += 1;
+        let try_block = self.scoped_statements(block);
+        self.tail_call_blockers -= 1;
+        try_block?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
         self.emit(Opcode::PopHandler, 0)?;
         if finalizer.is_some() {
@@ -1189,7 +1198,13 @@ impl Compiler {
                 &var_names(&catch.body)?,
                 false,
             )?;
-            self.statements_with_disposal(&catch.body)?;
+            // With a finally clause the catch block's call is not a tail
+            // call either: the finalizer runs after it returns.
+            let blocked = u32::from(finalizer.is_some());
+            self.tail_call_blockers += blocked;
+            let catch_body = self.statements_with_disposal(&catch.body);
+            self.tail_call_blockers -= blocked;
+            catch_body?;
             self.leave_scope()?;
             self.catch_var_slots
                 .pop()
