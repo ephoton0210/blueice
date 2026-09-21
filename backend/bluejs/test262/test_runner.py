@@ -32,6 +32,7 @@ from run import (
     instruction_budget,
     metadata,
     modes,
+    module_source_requests,
     module_sources,
     selected_files,
 )
@@ -682,6 +683,46 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(found.json_sources, {"modules/data.json": "[]"})
             self.assertEqual(found.text_sources, {})
             self.assertEqual(found.bytes_sources, {})
+
+    def test_module_source_requests_find_static_and_dynamic_host_source_specifiers(self):
+        # `<module source>` is Test262's host-provided Module Source; a test
+        # names it in a static `import source` or a dynamic `import.source()`.
+        self.assertEqual(module_source_requests({}), [])
+        self.assertEqual(
+            module_source_requests(
+                {
+                    "a.js": "import source x from '<module source>';",
+                    "b.js": "import source y from './other.js';",
+                }
+            ),
+            ["<module source>"],
+        )
+        self.assertEqual(
+            module_source_requests(
+                {"c.js": "const s = await import.source(  \"<module source>\"  );"}
+            ),
+            ["<module source>"],
+        )
+        # A plain `import()` or an unrelated specifier never registers one.
+        self.assertEqual(
+            module_source_requests(
+                {
+                    "d.js": "import('<module source>'); import.source('./x.js');",
+                    "e.js": "import.defer('<module source>');",
+                }
+            ),
+            [],
+        )
+        # Both forms together still yield one entry.
+        self.assertEqual(
+            module_source_requests(
+                {
+                    "f.js": "import source x from '<module source>';"
+                    "import.source('<module source>');"
+                }
+            ),
+            ["<module source>"],
+        )
 
     def test_supervisor_terminates_and_restarts_a_stalled_process(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -780,6 +780,12 @@ pub struct Vm {
     module_import_meta: HashMap<String, ObjectId>,
     module_import_meta_roots: HashMap<String, RootId>,
     abstract_module_source_prototype: Option<ObjectId>,
+    /// The prototype shared by every Module Source object this host makes:
+    /// the host's own concrete source "class" (as `WebAssembly.Module.prototype`
+    /// is for Wasm), whose [[Prototype]] is %AbstractModuleSource%.prototype
+    /// when that intrinsic exists. Created with the first source object,
+    /// which is rooted for the realm's lifetime and so keeps this alive.
+    host_module_source_prototype: Option<ObjectId>,
     /// Retains the entry namespace until a dynamic-import job has handed it
     /// to its promise.  The next graph evaluation replaces this cache.
     last_module_namespace: Option<ObjectId>,
@@ -1030,6 +1036,7 @@ impl Vm {
             module_import_meta: HashMap::new(),
             module_import_meta_roots: HashMap::new(),
             abstract_module_source_prototype: None,
+            host_module_source_prototype: None,
             last_module_namespace: None,
             last_module_namespace_root: None,
             module_namespace_cache: HashMap::new(),

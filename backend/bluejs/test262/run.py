@@ -73,6 +73,12 @@ SOURCE_PHASE_IMPORT_REQUEST = re.compile(
     r'''\bimport\s+source\s+[\w$]+\s+from\s*["']([^"']+)["']''',
     re.DOTALL,
 )
+# The dynamic form of the same request: `import.source("...")`.
+DYNAMIC_SOURCE_PHASE_IMPORT_REQUEST = re.compile(
+    r'''\bimport\s*\.\s*source\s*\(\s*["']([^"']+)["']\s*,?\s*\)'''
+)
+# Test262's host-provided Module Source specifier (INTERPRETING.md).
+HOST_MODULE_SOURCE_SPECIFIER = "<module source>"
 NATIVE_INCLUDES = frozenset({"sta.js", "assert.js", "propertyHelper.js", "isConstructor.js"})
 # Test262's general deepEqual harness is preserved by default. The two
 # DateTimeFormat fixtures compare wide arrays of two-/three-field part data
@@ -769,6 +775,28 @@ def module_sources(
     )
 
 
+def module_source_requests(sources):
+    """The host Module Source specifiers the given module texts request.
+
+    A static `import source x from "<module source>"` and a dynamic
+    `import.source("<module source>")` both ask the host for its Module
+    Source object; the adapter must register the specifier as source-phase
+    (never as an executable Source Text Module) before the test runs.
+    """
+    return sorted(
+        {
+            match.group(1)
+            for module_source in sources.values()
+            for pattern in (
+                SOURCE_PHASE_IMPORT_REQUEST,
+                DYNAMIC_SOURCE_PHASE_IMPORT_REQUEST,
+            )
+            for match in pattern.finditer(module_source)
+            if match.group(1) == HOST_MODULE_SOURCE_SPECIFIER
+        }
+    )
+
+
 def selected_files(all_files, corpus, pattern, excluded=""):
     patterns = [part for part in pattern.split(",") if part] if pattern else [""]
     exclusions = [part for part in excluded.split(",") if part]
@@ -1273,14 +1301,7 @@ def main():
                     request["module_json_sources"] = json_sources
                     request["module_text_sources"] = text_sources
                     request["module_bytes_sources"] = bytes_sources
-                    request["module_source_requests"] = sorted(
-                        {
-                            match.group(1)
-                            for module_source in sources.values()
-                            for match in SOURCE_PHASE_IMPORT_REQUEST.finditer(module_source)
-                            if match.group(1) == "<module source>"
-                        }
-                    )
+                    request["module_source_requests"] = module_source_requests(sources)
                 reply = local.worker.run(request, case_timeout(data, args.timeout, relative, source_for_execution))
                 results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
             return results
