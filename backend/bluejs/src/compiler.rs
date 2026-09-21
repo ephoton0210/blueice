@@ -350,6 +350,16 @@ fn compile_with_limit_and_mode(
     Ok(compiler.bytecode)
 }
 
+/// The `with` object environments active where a direct eval runs.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct EvalWithScopes {
+    /// How many are active in total.
+    pub(crate) depth: usize,
+    /// The first `inherited` of them were in scope when the running function
+    /// was created, so its own bindings are nested inside them.
+    pub(crate) inherited: usize,
+}
+
 /// Compiles direct-eval source with cells for the caller's visible bindings.
 /// The runtime supplies `visible` from its active lexical environments and
 /// installs the matching cells before running the resulting bytecode.
@@ -360,9 +370,9 @@ pub(crate) fn compile_eval(
     lexical_conflicts: &[String],
     strict: bool,
     new_target_allowed: bool,
-    with_depth: usize,
-    inherited_with_depth: usize,
+    with_scopes: EvalWithScopes,
 ) -> Result<Bytecode, CompileError> {
+    let with_depth = with_scopes.depth;
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
         names: vec![HashMap::new()],
@@ -378,11 +388,10 @@ pub(crate) fn compile_eval(
         // Captured bindings form the outer lexical environment of direct
         // eval. The `with` environments the calling function entered occur
         // after it, while the eval's own declaration scope is entered below.
-        // The first `inherited_with_depth` objects were in scope when the
-        // calling function was created: its own bindings are nested inside
-        // them.
+        // The first `inherited` objects were in scope when the calling
+        // function was created: its own bindings are nested inside them.
         with_scope_depths: (0..with_depth)
-            .map(|index| usize::from(index >= inherited_with_depth))
+            .map(|index| usize::from(index >= with_scopes.inherited))
             .collect(),
         annex_b_parameter_names: BTreeSet::new(),
     };

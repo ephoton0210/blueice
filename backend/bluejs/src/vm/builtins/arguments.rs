@@ -322,8 +322,10 @@ impl Vm {
             &lexical_conflicts,
             self.strict,
             self.new_target_allowed,
-            self.with_objects.len(),
-            self.inherited_with_depth,
+            crate::compiler::EvalWithScopes {
+                depth: self.with_objects.len(),
+                inherited: self.inherited_with_depth,
+            },
         )
         .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let captures = code
@@ -354,8 +356,16 @@ impl Vm {
         })?;
         let program =
             crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0, 0)
-            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        let code = crate::compiler::compile_eval(
+            &program,
+            &[],
+            &[],
+            &[],
+            false,
+            false,
+            Default::default(),
+        )
+        .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let global_this = self.global("globalThis")?;
         let this = std::mem::replace(&mut self.this, global_this);
         let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
