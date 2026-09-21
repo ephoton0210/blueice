@@ -146,6 +146,7 @@ fn tokenize_all(tokenizer: &mut Tokenizer) -> (Vec<SpannedToken>, Vec<usize>) {
             Err(error) => {
                 tokens.push(SpannedToken {
                     token: Token::Invalid(error.message),
+                    start: tokenizer.position(),
                     newline_before: false,
                     identifier_escaped: false,
                     legacy_octal_escape: false,
@@ -154,6 +155,7 @@ fn tokenize_all(tokenizer: &mut Tokenizer) -> (Vec<SpannedToken>, Vec<usize>) {
                 positions.push(tokenizer.position());
                 tokens.push(SpannedToken {
                     token: Token::Eof,
+                    start: tokenizer.position(),
                     newline_before: false,
                     identifier_escaped: false,
                     legacy_octal_escape: false,
