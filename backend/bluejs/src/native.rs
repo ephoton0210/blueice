@@ -389,6 +389,13 @@ pub(crate) enum NativeFunction {
     ArrayOf,
     ArraySpecies,
     ArrayFrom,
+    ArrayFromAsync,
+    /// A settled Await inside an `Array.fromAsync` run: `state` is the run's
+    /// heap-resident state record.
+    ArrayFromAsyncResume {
+        state: ObjectId,
+        rejected: bool,
+    },
     ArrayForEach,
     ArrayFilter,
     ArrayMap,
@@ -706,6 +713,7 @@ impl NativeFunction {
             Self::ProxyRevoker(proxy) => vec![proxy],
             Self::PromiseResolvingFunction { promise, .. } => vec![promise],
             Self::PromiseCapabilityExecutor { storage } => vec![storage],
+            Self::ArrayFromAsyncResume { state, .. } => vec![state],
             Self::AsyncFromSyncFulfill { target, .. } => vec![target],
             Self::AsyncFromSyncReject { target, record } => vec![target, record],
             Self::PromiseAllResolve { target, .. }

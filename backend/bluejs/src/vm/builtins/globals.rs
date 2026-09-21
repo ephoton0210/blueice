@@ -310,6 +310,13 @@ impl Vm {
                 self.install_native(id, prototype, "isArray", 1, NativeFunction::ArrayIsArray)?;
                 self.install_native(id, prototype, "of", 0, NativeFunction::ArrayOf)?;
                 self.install_native(id, prototype, "from", 1, NativeFunction::ArrayFrom)?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "fromAsync",
+                    1,
+                    NativeFunction::ArrayFromAsync,
+                )?;
                 self.install_symbol_native_getter(
                     id,
                     prototype,

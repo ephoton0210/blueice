@@ -1337,16 +1337,34 @@ impl Vm {
         let method = self.get_method(value, &JsSymbol::well_known("asyncIterator").into())?;
         if method == Value::Undefined {
             let record = self.get_iterator(value)?;
-            let Value::Object(record_id) = record else {
-                unreachable!("GetIterator creates an iterator record")
-            };
-            self.stack.push(Value::Object(record_id));
-            let result =
-                self.with_roots(|heap| heap.set(record_id, "asyncFromSync", Value::Bool(true)));
-            self.stack.pop();
-            result?;
-            return Ok(Value::Object(record_id));
+            return self.mark_async_from_sync(record);
         }
+        self.async_iterator_record_from_method(value, method)
+    }
+
+    /// CreateAsyncFromSyncIterator over an ordinary iterator record: the same
+    /// record, flagged so `AsyncIteratorNext` adopts each result's `value`.
+    pub(in super::super::super) fn mark_async_from_sync(
+        &mut self,
+        record: Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(record_id) = record else {
+            unreachable!("GetIterator creates an iterator record")
+        };
+        self.stack.push(Value::Object(record_id));
+        let result =
+            self.with_roots(|heap| heap.set(record_id, "asyncFromSync", Value::Bool(true)));
+        self.stack.pop();
+        result?;
+        Ok(Value::Object(record_id))
+    }
+
+    /// GetIteratorFromMethod for an already-fetched `@@asyncIterator` method.
+    pub(in super::super::super) fn async_iterator_record_from_method(
+        &mut self,
+        value: &Value,
+        method: Value,
+    ) -> Result<Value, RuntimeError> {
         let iterator = self.call_native(method, value.clone(), Vec::new(), false)?;
         if !matches!(iterator, Value::Object(_)) {
             return Err(RuntimeError::TypeError(

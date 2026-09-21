@@ -289,7 +289,7 @@ impl Vm {
     /// The result object of `Array.from`: `Construct(C)` (or `Construct(C,
     /// «len»)` for an array-like) when `this` is a constructor, otherwise a
     /// plain Array of the current Realm.
-    fn array_from_target(
+    pub(in super::super) fn array_from_target(
         &mut self,
         receiver: &Value,
         constructor: bool,

@@ -5,6 +5,7 @@
 use super::*;
 
 mod array_change_by_copy;
+mod array_from_async;
 mod arrays;
 mod binary_data;
 mod execution;
