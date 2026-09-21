@@ -77,6 +77,22 @@ class RunnerTests(unittest.TestCase):
             format_progress(0, 1, {}, [], 0, checkpoint=True).startswith("checkpoint")
         )
 
+    def test_only_sta_and_assert_are_native_includes(self):
+        # `propertyHelper.js` and `isConstructor.js` define behaviour the
+        # native counterparts only approximated (the destructive probes, the
+        # `restore` option, exact messages), so they run their upstream
+        # source like every other include; the adapter rejects them as
+        # unsupported unless the runner supplies that source.
+        self.assertEqual(run.NATIVE_INCLUDES, frozenset({"sta.js", "assert.js"}))
+        for include in (
+            "propertyHelper.js",
+            "isConstructor.js",
+            "compareArray.js",
+            "deepEqual.js",
+            "testTypedArray.js",
+        ):
+            self.assertNotIn(include, run.NATIVE_INCLUDES)
+
     def test_metadata_and_modes(self):
         self.assertEqual(modes(metadata("/*---\nflags: [async]\n---*/")), ["sloppy", "strict"])
         for flag, expected in [("raw", "raw"), ("module", "module"), ("onlyStrict", "strict"), ("noStrict", "sloppy")]:

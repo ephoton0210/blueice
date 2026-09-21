@@ -144,9 +144,15 @@ fn adapter_preserves_phases_limits_and_fresh_realms() {
             json!({"source":"1", "mode":"sloppy", "includes":["assert.js","other.js"]}),
             "unsupported",
         ),
+        // Only `sta.js` and `assert.js` are native. The property helpers have
+        // to be supplied as harness sources, and are `unsupported` without.
         (
             json!({"source":"verifyProperty(Math,'PI',{value:Math.PI,writable:false,enumerable:false,configurable:false});isConstructor(function(){})", "mode":"sloppy", "includes":["propertyHelper.js","isConstructor.js"]}),
-            "ok",
+            "unsupported",
+        ),
+        (
+            json!({"source":"1", "mode":"sloppy", "includes":["isConstructor.js"]}),
+            "unsupported",
         ),
         (
             json!({"source":"addOffset(2) === 5", "mode":"sloppy", "includes":["helpers.js"], "harness_sources":["var offset=3; function addOffset(value){return value+offset}"]}),
@@ -465,4 +471,71 @@ fn compilation_deadline_and_transport_limit_are_enforced() {
     assert_eq!(replies[0]["kind"], "timeout", "{replies:?}");
     assert_eq!(replies[1]["kind"], "worker_error", "{replies:?}");
     assert_eq!(replies[2]["kind"], "ok", "{replies:?}");
+}
+
+/// `propertyHelper.js` and `isConstructor.js` reach the adapter as ordinary
+/// harness sources, exactly as the runner supplies them from the corpus.
+#[test]
+fn adapter_runs_the_upstream_property_helpers_as_harness_sources() {
+    let sources = json!([
+        include_str!(
+            "../../../development/browser_core/reference/test262/harness/propertyHelper.js"
+        ),
+        include_str!(
+            "../../../development/browser_core/reference/test262/harness/isConstructor.js"
+        ),
+    ]);
+    let includes = json!(["propertyHelper.js", "isConstructor.js"]);
+    let cases = [
+        (
+            "verifyProperty(Math,'PI',{value:Math.PI,writable:false,enumerable:false,configurable:false});assert(isConstructor(function(){}))",
+            "sloppy",
+            "ok",
+        ),
+        (
+            "verifyProperty(Math,'PI',{value:Math.PI,writable:false,enumerable:false,configurable:false});assert(isConstructor(function(){}))",
+            "strict",
+            "ok",
+        ),
+        // The helper deletes a configurable property it has verified unless
+        // `restore` is passed, and a genuinely mismatching descriptor fails.
+        (
+            "var o={x:1};verifyProperty(o,'x',{configurable:true});assert.sameValue(Object.hasOwn(o,'x'),false)",
+            "sloppy",
+            "ok",
+        ),
+        (
+            "var o={x:1};verifyProperty(o,'x',{configurable:true},{restore:true});assert.sameValue(o.x,1)",
+            "strict",
+            "ok",
+        ),
+        ("verifyProperty(Math,'PI',{writable:true})", "sloppy", "Test262Error"),
+        ("verifyProperty(Math,'PI',{writable:true})", "strict", "Test262Error"),
+        ("isConstructor({})", "sloppy", "Test262Error"),
+        // A property reported configurable that `delete` leaves in place is
+        // rejected because the upstream helper really deletes.
+        (
+            "verifyProperty(new Proxy({x:1},{deleteProperty(){return false}}),'x',{configurable:true})",
+            "sloppy",
+            "Test262Error",
+        ),
+    ];
+    let requests: Vec<_> = cases
+        .iter()
+        .map(|(source, mode, _)| {
+            json!({"source":source, "mode":mode, "includes":includes, "harness_sources":sources})
+        })
+        .collect();
+    let replies = adapter(&requests, None);
+    assert_eq!(replies.len(), cases.len());
+    for (reply, (source, mode, expected)) in replies.iter().zip(&cases) {
+        assert_eq!(reply["kind"], *expected, "{mode}: {source}: {reply}");
+    }
+    assert!(
+        replies[4]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("PI descriptor should be writable")),
+        "{}",
+        replies[4]
+    );
 }

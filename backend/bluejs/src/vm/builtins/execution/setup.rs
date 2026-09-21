@@ -113,9 +113,7 @@ impl Vm {
         owner: ObjectId,
         key: &PropertyName,
     ) -> Result<(), RuntimeError> {
-        if self.iterator_base != Some(owner)
-            || self.heap.get_own_property_descriptor(owner, key)?.is_some()
-        {
+        if self.iterator_base != Some(owner) {
             return Ok(());
         }
         let (name, length, method) = if key == &PropertyName::from("flatMap") {
@@ -127,6 +125,13 @@ impl Vm {
         } else {
             return Ok(());
         };
+        // Once offered, the helper is an ordinary property: a script that has
+        // deleted it must not see it come back.
+        if self.iterator_helpers_installed.contains(&name)
+            || self.heap.get_own_property_descriptor(owner, key)?.is_some()
+        {
+            return Ok(());
+        }
         let function_prototype = self.function_prototype()?;
         self.install_native(
             owner,
@@ -134,7 +139,9 @@ impl Vm {
             name,
             length,
             NativeFunction::IteratorHelper(method),
-        )
+        )?;
+        self.iterator_helpers_installed.push(name);
+        Ok(())
     }
 
     pub(in super::super::super) fn install_iterator_to_string_tag_accessor(

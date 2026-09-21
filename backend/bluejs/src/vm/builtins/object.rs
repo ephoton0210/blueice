@@ -134,6 +134,8 @@ impl Vm {
         // an as-yet-unread `globalThis.undefined` incorrectly looked like a
         // successful deletion of an absent property.
         self.materialize_global_object_property(object, key)?;
+        // Likewise a lazily installed Iterator helper exists to be deleted.
+        self.materialize_iterator_helper_property(object, key)?;
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_delete(object, key);
         }
