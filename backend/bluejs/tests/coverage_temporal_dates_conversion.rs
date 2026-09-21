@@ -507,7 +507,8 @@ fn getters_report_iso_fields_and_reject_wrong_receivers() {
       type(() => getter(D, "month").call(ym));
       type(() => getter(D, "daysInMonth").call(ym));
       type(() => getter(D, "monthsInYear").call(ym));
-      same(() => getter(Temporal.PlainMonthDay, "month").call(md), 1);
+      // the specification gives PlainMonthDay no `month` accessor, only `monthCode`
+      same(() => Object.getOwnPropertyDescriptor(Temporal.PlainMonthDay.prototype, "month"), undefined);
       same(() => getter(Temporal.PlainMonthDay, "monthCode").call(md), "M01");
       same(() => getter(Temporal.PlainMonthDay, "day").call(md), 15);
       same(() => getter(Temporal.PlainYearMonth, "year").call(ym), 2020);

@@ -496,7 +496,6 @@ impl Vm {
                     ],
                     TemporalKind::PlainMonthDay => &[
                         ("calendarId", native::TemporalGetter::CalendarId),
-                        ("month", native::TemporalGetter::Month),
                         ("monthCode", native::TemporalGetter::MonthCode),
                         ("day", native::TemporalGetter::Day),
                     ],
@@ -649,24 +648,9 @@ impl Vm {
                             NativeFunction::TemporalZonedDateTimeToPlainDateTime,
                         ),
                         (
-                            "toPlainYearMonth",
-                            0,
-                            NativeFunction::TemporalZonedDateTimeToPlainYearMonth,
-                        ),
-                        (
-                            "toPlainMonthDay",
-                            0,
-                            NativeFunction::TemporalZonedDateTimeToPlainMonthDay,
-                        ),
-                        (
                             "startOfDay",
                             0,
                             NativeFunction::TemporalZonedDateTimeStartOfDay,
-                        ),
-                        (
-                            "getISOFields",
-                            0,
-                            NativeFunction::TemporalZonedDateTimeGetIsoFields,
                         ),
                         (
                             "getTimeZoneTransition",

@@ -89,9 +89,9 @@ fn every_method_brand_checks_its_receiver() {
       const methods = {
         add: [{ days: 1 }], subtract: [{ days: 1 }], until: ["2020-01-01T00:00[UTC]"], since: ["2020-01-01T00:00[UTC]"],
         round: ["hour"], equals: ["2020-01-01T00:00[UTC]"], toString: [], toJSON: [], toLocaleString: [], valueOf: [],
-        toInstant: [], toPlainDate: [], toPlainTime: [], toPlainDateTime: [], toPlainYearMonth: [], toPlainMonthDay: [],
+        toInstant: [], toPlainDate: [], toPlainTime: [], toPlainDateTime: [],
         startOfDay: [], getTimeZoneTransition: ["next"], with: [{ day: 1 }], withPlainTime: ["12:00"],
-        withTimeZone: ["UTC"], getISOFields: [],
+        withTimeZone: ["UTC"],
       };
       const receivers = { five: 5, undef: undefined, nul: null, string: "x", plain: {}, plainDate: D.from("2020-01-01"),
         plainDateTime: DT.from("2020-01-01T00:00"), instant: new Temporal.Instant(0n) };

@@ -359,8 +359,10 @@ return done();
 }
 
 /// Every route to a `PlainMonthDay` derives the same reference date from the
-/// same month code and day: `PlainDate` and `ZonedDateTime`
-/// `toPlainMonthDay` (`PlainDateTime` has none), `PlainMonthDay.from` of a string, and `toPlainDate` back.
+/// same month code and day: `PlainDate.toPlainMonthDay` (also reached from a
+/// `ZonedDateTime` through `toPlainDate`, since `ZonedDateTime` and
+/// `PlainDateTime` have no `toPlainMonthDay` of their own),
+/// `PlainMonthDay.from` of a bag or a string, and `toPlainDate` back.
 #[test]
 fn every_route_to_a_month_day_agrees_on_the_reference_date() {
     assert_ok(&format!(
@@ -387,7 +389,7 @@ for (const [calendar, monthCode, day, referenceYear] of [
   if (plain === undefined) {{ failures.push(label + ": no probe date found"); continue; }}
   const routes = {{
     "PlainDate.toPlainMonthDay": plain.toPlainMonthDay(),
-    "ZonedDateTime.toPlainMonthDay": plain.toZonedDateTime({{ timeZone: "UTC", plainTime: "12:30" }}).toPlainMonthDay(),
+    "ZonedDateTime.toPlainDate.toPlainMonthDay": plain.toZonedDateTime({{ timeZone: "UTC", plainTime: "12:30" }}).toPlainDate().toPlainMonthDay(),
     "PlainMonthDay.from(bag)": MD.from({{ monthCode, day, calendar }}),
     "PlainMonthDay.from(string)": MD.from(plain.toPlainMonthDay().toString()),
   }};

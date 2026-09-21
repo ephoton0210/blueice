@@ -3,11 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `Temporal.ZonedDateTime.prototype` conversions and field accessors: `valueOf`,
-//! `toInstant`, the `toPlain*` family, `startOfDay`, `getISOFields` and
-//! `getTimeZoneTransition`.
+//! `toInstant`, the `toPlain*` family, `startOfDay` and `getTimeZoneTransition`.
 
 use super::super::*;
-use super::formatting::format_offset_nanoseconds_exact;
 use super::resolution::{
     temporal_checked_start_of_day, temporal_set_local_fields, temporal_zoned_date_time_zone,
 };
@@ -79,55 +77,6 @@ impl Vm {
         self.alloc_temporal_value(value, false)
     }
 
-    /// `Temporal.ZonedDateTime.prototype.toPlainYearMonth`: identical
-    /// `CalendarYearMonthFromFields` resolution to
-    /// `temporal_plain_date_to_plain_year_month`, reused here since a
-    /// `ZonedDateTime`'s own stored ISO fields are already its local
-    /// calendar date -- `temporal_calendar_fields` does not care which
-    /// `TemporalKind` supplied them.
-    pub(in super::super::super) fn temporal_zoned_date_time_to_plain_year_month(
-        &mut self,
-        receiver: &Value,
-    ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
-        let fields = self.temporal_calendar_fields(&existing)?;
-        let calendar_kind = calendar::calendar_kind(&existing.calendar)
-            .expect("Temporal values retain a validated calendar identifier");
-        let ym_fields = plain_year_month::YearMonthFields {
-            era: None,
-            era_year: None,
-            extended_year: Some(fields.year),
-            month_code: Some(&fields.month_code),
-            ordinal_month: None,
-        };
-        let date = plain_year_month::year_month_from_fields(calendar_kind, &ym_fields, false)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar year-month".into()))?;
-        let value =
-            Self::temporal_date_value(TemporalKind::PlainYearMonth, existing.calendar, date);
-        self.alloc_temporal_value(value, false)
-    }
-
-    pub(in super::super::super) fn temporal_zoned_date_time_to_plain_month_day(
-        &mut self,
-        receiver: &Value,
-    ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
-        let fields = self.temporal_calendar_fields(&existing)?;
-        let calendar_kind = calendar::calendar_kind(&existing.calendar)
-            .expect("Temporal values retain a validated calendar identifier");
-        let md_fields = plain_month_day::MonthDayFields {
-            extended_year: Some(fields.year),
-            month_code: Some(&fields.month_code),
-            ordinal_month: None,
-            day: fields.day,
-            ..Default::default()
-        };
-        let date = plain_month_day::month_day_from_fields(calendar_kind, &md_fields, false)
-            .map_err(|_| RuntimeError::RangeError("invalid Temporal calendar month-day".into()))?;
-        let value = Self::temporal_date_value(TemporalKind::PlainMonthDay, existing.calendar, date);
-        self.alloc_temporal_value(value, false)
-    }
-
     pub(in super::super::super) fn temporal_zoned_date_time_start_of_day(
         &mut self,
         receiver: &Value,
@@ -138,119 +87,6 @@ impl Vm {
         existing.epoch_nanoseconds = temporal_checked_start_of_day(&zone, date)?;
         temporal_set_local_fields(&mut existing, &zone);
         self.alloc_temporal_value(existing, false)
-    }
-
-    pub(in super::super::super) fn temporal_zoned_date_time_get_iso_fields(
-        &mut self,
-        receiver: &Value,
-    ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
-        let zone = temporal_zoned_date_time_zone(&existing);
-        let offset_ns = zone.offset_nanoseconds_for(&existing.epoch_nanoseconds);
-        let object = self.with_roots(|heap| heap.alloc_object(None))?;
-        let base = self.stack.len();
-        self.stack.push(Value::Object(object));
-        let result = (|| {
-            self.define_data(
-                object,
-                "calendar",
-                Value::String(existing.calendar.clone().into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                object,
-                "isoDay",
-                Value::Number(existing.day.into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                object,
-                "isoHour",
-                Value::Number(existing.hour.into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                object,
-                "isoMicrosecond",
-                Value::Number(existing.microsecond.into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                object,
-                "isoMillisecond",
-                Value::Number(existing.millisecond.into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                object,
-                "isoMinute",
-                Value::Number(existing.minute.into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                object,
-                "isoMonth",
-                Value::Number(existing.month.into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                object,
-                "isoNanosecond",
-                Value::Number(existing.nanosecond.into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                object,
-                "isoSecond",
-                Value::Number(existing.second.into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                object,
-                "isoYear",
-                Value::Number(existing.year.into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                object,
-                "offset",
-                Value::String(format_offset_nanoseconds_exact(offset_ns).into()),
-                true,
-                true,
-                true,
-            )?;
-            self.define_data(
-                object,
-                "timeZone",
-                Value::String(existing.time_zone.clone().into()),
-                true,
-                true,
-                true,
-            )?;
-            Ok(Value::Object(object))
-        })();
-        self.stack.truncate(base);
-        result
     }
 
     /// `Temporal.ZonedDateTime.prototype.getTimeZoneTransition`

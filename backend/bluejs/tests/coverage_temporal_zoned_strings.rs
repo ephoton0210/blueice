@@ -6,8 +6,10 @@
 //! `Temporal.ZonedDateTime` (`vm/temporal/zoned.rs`): `toString` options
 //! (`fractionalSecondDigits`, `smallestUnit`, `roundingMode`, `offset`,
 //! `timeZoneName`, `calendarName`), `toJSON`, `valueOf`, `toInstant`,
-//! `toPlainDate`/`toPlainTime`/`toPlainDateTime`/`toPlainYearMonth`/
-//! `toPlainMonthDay`, `startOfDay` and `getTimeZoneTransition`.
+//! `toPlainDate`/`toPlainTime`/`toPlainDateTime`, `startOfDay` and
+//! `getTimeZoneTransition`. (`toPlainYearMonth`, `toPlainMonthDay` and
+//! `getISOFields` were removed from `ZonedDateTime` by the June 2024 Temporal
+//! consensus; `temporal_removed_methods.rs` asserts they are gone.)
 //!
 //! Only fixed IANA identifiers, fixed offsets and fixed instants are used, so
 //! nothing here depends on the host's own time zone or locale. Every
@@ -227,8 +229,6 @@ fn conversions_to_instant_and_plain_types() {
       same(() => z.toPlainDate().toString(), "2020-06-15");
       same(() => z.toPlainTime().toString(), "12:34:56.789123456");
       same(() => z.toPlainDateTime().toString(), "2020-06-15T12:34:56.789123456");
-      same(() => z.toPlainYearMonth().toString(), "2020-06");
-      same(() => z.toPlainMonthDay().toString(), "06-15");
       same(() => z.toPlainDate() instanceof Temporal.PlainDate, true);
       same(() => z.toPlainTime() instanceof Temporal.PlainTime, true);
       same(() => z.toPlainDateTime() instanceof Temporal.PlainDateTime, true);
@@ -242,23 +242,18 @@ fn conversions_to_instant_and_plain_types() {
       same(() => g.toPlainDate().calendarId, "gregory");
       same(() => g.toPlainDateTime().calendarId, "gregory");
       same(() => g.toPlainDateTime().toString(), "2020-06-15T12:34:56[u-ca=gregory]");
-      same(() => g.toPlainYearMonth().calendarId, "gregory");
-      same(() => g.toPlainMonthDay().calendarId, "gregory");
       const heb = Z.from({ year: 5784, monthCode: "M05L", day: 10, timeZone: "UTC", calendar: "hebrew" });
-      same(() => heb.toPlainYearMonth().monthCode, "M05L");
-      same(() => heb.toPlainYearMonth().year, 5784);
-      same(() => heb.toPlainMonthDay().monthCode, "M05L");
-      same(() => heb.toPlainMonthDay().day, 10);
+      same(() => heb.toPlainDate().monthCode, "M05L");
+      same(() => heb.toPlainDate().year, 5784);
+      same(() => heb.toPlainDate().day, 10);
       const jp = Z.from("2020-06-15T00:00:00[UTC][u-ca=japanese]");
-      same(() => jp.toPlainYearMonth().era, "reiwa");
-      same(() => jp.toPlainYearMonth().eraYear, 2);
-      same(() => jp.toPlainMonthDay().monthCode, "M06");
+      same(() => jp.toPlainDate().era, "reiwa");
+      same(() => jp.toPlainDate().eraYear, 2);
+      same(() => jp.toPlainDate().monthCode, "M06");
       type(() => Z.prototype.toInstant.call({}));
       type(() => Z.prototype.toPlainDate.call({}));
       type(() => Z.prototype.toPlainTime.call({}));
       type(() => Z.prototype.toPlainDateTime.call({}));
-      type(() => Z.prototype.toPlainYearMonth.call({}));
-      type(() => Z.prototype.toPlainMonthDay.call({}));
       type(() => Z.prototype.startOfDay.call({}));
       type(() => Z.prototype.getTimeZoneTransition.call({}, "next"));
       type(() => Z.prototype.valueOf.call({}));
@@ -328,28 +323,5 @@ fn get_time_zone_transition_finds_adjacent_offset_changes() {
       range(() => summer.getTimeZoneTransition("bogus"));
       range(() => summer.getTimeZoneTransition(""));
       same(() => Z.prototype.getTimeZoneTransition.length, 1);
-    "#);
-}
-
-#[test]
-fn get_iso_fields_reports_local_iso_fields_offset_and_zone() {
-    run(r#"
-      const z = Z.from("2020-06-15T12:34:56.789123456[America/New_York][u-ca=gregory]");
-      const fields = z.getISOFields();
-      same(() => Object.keys(fields).join(","), "calendar,isoDay,isoHour,isoMicrosecond,isoMillisecond,isoMinute,isoMonth,isoNanosecond,isoSecond,isoYear,offset,timeZone");
-      same(() => fields.calendar, "gregory");
-      same(() => fields.isoYear, 2020);
-      same(() => fields.isoMonth, 6);
-      same(() => fields.isoDay, 15);
-      same(() => fields.isoHour, 12);
-      same(() => fields.isoMinute, 34);
-      same(() => fields.isoSecond, 56);
-      same(() => fields.isoMillisecond, 789);
-      same(() => fields.isoMicrosecond, 123);
-      same(() => fields.isoNanosecond, 456);
-      same(() => fields.offset, "-04:00");
-      same(() => fields.timeZone, "America/New_York");
-      same(() => Z.from("1970-01-01T00:00:00-00:44:30[Africa/Monrovia]").getISOFields().offset, "-00:44:30");
-      type(() => Z.prototype.getISOFields.call({}));
     "#);
 }

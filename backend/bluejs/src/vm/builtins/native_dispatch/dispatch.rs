@@ -560,17 +560,8 @@ impl Vm {
             NativeFunction::TemporalZonedDateTimeToPlainDateTime => {
                 self.temporal_zoned_date_time_to_plain_date_time(&receiver)
             }
-            NativeFunction::TemporalZonedDateTimeToPlainYearMonth => {
-                self.temporal_zoned_date_time_to_plain_year_month(&receiver)
-            }
-            NativeFunction::TemporalZonedDateTimeToPlainMonthDay => {
-                self.temporal_zoned_date_time_to_plain_month_day(&receiver)
-            }
             NativeFunction::TemporalZonedDateTimeStartOfDay => {
                 self.temporal_zoned_date_time_start_of_day(&receiver)
-            }
-            NativeFunction::TemporalZonedDateTimeGetIsoFields => {
-                self.temporal_zoned_date_time_get_iso_fields(&receiver)
             }
             NativeFunction::TemporalZonedDateTimeGetTimeZoneTransition => {
                 self.temporal_zoned_date_time_get_time_zone_transition(&receiver, first)

@@ -110,10 +110,7 @@ impl NativeFunction {
             | Self::TemporalZonedDateTimeToPlainDate
             | Self::TemporalZonedDateTimeToPlainTime
             | Self::TemporalZonedDateTimeToPlainDateTime
-            | Self::TemporalZonedDateTimeToPlainYearMonth
-            | Self::TemporalZonedDateTimeToPlainMonthDay
             | Self::TemporalZonedDateTimeStartOfDay
-            | Self::TemporalZonedDateTimeGetIsoFields
             | Self::TemporalZonedDateTimeGetTimeZoneTransition => TemporalKind::ZonedDateTime,
             _ => return None,
         })
