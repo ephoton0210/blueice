@@ -391,6 +391,18 @@ fn a_synthetic_module_has_no_source_phase_representation() {
 }
 
 #[test]
+fn a_specifier_cannot_spell_a_typed_modules_registry_key() {
+    // Synthetic modules are keyed `path\0type`; a plain request whose
+    // specifier happens to end that way must not reach the text module of
+    // `data` without the `type` attribute.
+    let script = "
+        import('./data\\u0000text').then(
+            () => $DONE(new Error('resolved through a forged key')),
+            () => $DONE());";
+    assert_eq!(run_script(&[("data", "hello")], &[], script), Some(Ok(())));
+}
+
+#[test]
 fn dynamic_import_of_a_missing_text_resource_rejects() {
     let script = "
         import('./missing', { with: { type: 'text' } })

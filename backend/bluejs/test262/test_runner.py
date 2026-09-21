@@ -704,6 +704,32 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(found.text_sources, {})
             self.assertEqual(found.bytes_sources, {})
 
+    def test_module_sources_finds_requests_written_without_whitespace_around_punctuation(self):
+        # `export*from"./a.js"` and `import{b}from"./b.js"` are ordinary
+        # module declarations (staging/sm/module/bug1488117.js writes the
+        # first); a fixture reachable only through one must still be supplied.
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text(
+                'export* from "./star.js";\n'
+                'export*as ns from"./namespace.js";\n'
+                'export{x}from"./named.js";\n'
+                'import{y}from"./imported.js";\n'
+                'import*as z from"./whole.js";\n'
+                'import"./bare.js";\n'
+            )
+            names = ["star", "namespace", "named", "imported", "whole", "bare"]
+            for name in names:
+                (test / "modules" / f"{name}.js").write_text("export const x = 1;")
+
+            found = module_sources(entry, test)
+            self.assertEqual(
+                set(found.sources),
+                {"modules/entry.js"} | {f"modules/{name}.js" for name in names},
+            )
+
     def test_module_source_requests_find_static_and_dynamic_host_source_specifiers(self):
         # `<module source>` is Test262's host-provided Module Source; a test
         # names it in a static `import source` or a dynamic `import.source()`.

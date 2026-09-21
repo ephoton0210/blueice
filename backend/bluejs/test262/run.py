@@ -37,10 +37,14 @@ FRONTMATTER = re.compile(r"/\*---(.*?)---\*/", re.DOTALL)
 # `type` selects how the host loads the resource (`json`, `text`, `bytes`),
 # so it decides which of the adapter's source maps the resource goes into.
 IMPORT_ATTRIBUTE_TYPE = r'''(?:\s*with\s*\{[^}]*?\btype\s*:\s*["']([^"']*)["'][^}]*\})?'''
+# Whitespace is optional wherever punctuation already separates the tokens:
+# `export*from"x"`, `export{a}from"x"` and `import{a}from"x"` are declarations
+# too. (`import(` and `import.` stay out: only a space, `*`, `{` or a string
+# may follow the `import` keyword of a declaration.)
 MODULE_REQUEST = re.compile(
-    r'''\bimport\s+(?:[^;]*?\bfrom\s+)?["']([^"']+)["']'''
+    r'''\bimport(?:\s+|(?=[*{"']))(?:[^;]*?\bfrom\s*)?["']([^"']+)["']'''
     + IMPORT_ATTRIBUTE_TYPE
-    + r'''|\bexport\s+(?:\*\s*(?:as\s+(?:[\w$]+|"[^"]*"|'[^']*')\s*)?|\{[^}]*\}\s+)from\s*["']([^"']+)["']'''
+    + r'''|\bexport\s*(?:\*\s*(?:as\s+(?:[\w$]+|"[^"]*"|'[^']*')\s*)?|\{[^}]*\}\s*)from\s*["']([^"']+)["']'''
     + IMPORT_ATTRIBUTE_TYPE,
     re.DOTALL,
 )

@@ -592,6 +592,14 @@ impl Vm {
         referrer: &str,
         request: &str,
     ) -> Result<String, RuntimeError> {
+        // NUL separates a synthetic module's path from its type in the
+        // registry key (`ModuleType::module_key`); a specifier spelling one
+        // could reach a typed record without the `type` attribute.
+        if request.contains('\0') {
+            return Err(RuntimeError::ModuleResolution(
+                "a module specifier cannot contain a NUL character".into(),
+            ));
+        }
         if request.starts_with("./") || request.starts_with("../") {
             let mut parts: Vec<&str> = referrer.split('/').collect();
             if parts.len() > 1 {
