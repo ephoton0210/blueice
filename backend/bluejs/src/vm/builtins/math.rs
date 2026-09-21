@@ -60,6 +60,7 @@ impl Vm {
                 ("sin", 1, MathMethod::Sin),
                 ("sinh", 1, MathMethod::Sinh),
                 ("sqrt", 1, MathMethod::Sqrt),
+                ("sumPrecise", 1, MathMethod::SumPrecise),
                 ("tan", 1, MathMethod::Tan),
                 ("tanh", 1, MathMethod::Tanh),
                 ("trunc", 1, MathMethod::Trunc),
@@ -237,7 +238,159 @@ impl Vm {
             MathMethod::Tan => number(first, self)?.tan(),
             MathMethod::Tanh => number(first, self)?.tanh(),
             MathMethod::Trunc => number(first, self)?.trunc(),
+            MathMethod::SumPrecise => return self.math_sum_precise(first),
         };
         Ok(Value::Number(result))
+    }
+
+    /// `Math.sumPrecise ( items )`: the exactly-rounded sum of an iterable of
+    /// Numbers. The sum is a big integer scaled by 2**1074 (every finite
+    /// binary64 is an integer multiple of 2**-1074), so it never overflows or
+    /// loses a bit before the single final rounding.
+    fn math_sum_precise(&mut self, items: &Value) -> Result<Value, RuntimeError> {
+        #[derive(PartialEq)]
+        enum State {
+            MinusZero,
+            Finite,
+            PlusInfinity,
+            MinusInfinity,
+            NotANumber,
+        }
+        if matches!(items, Value::Undefined | Value::Null) {
+            return Err(RuntimeError::TypeError(
+                "Math.sumPrecise requires an iterable".into(),
+            ));
+        }
+        let base = self.stack.len();
+        self.stack.push(items.clone());
+        let result = (|| {
+            let record = self.get_iterator(items)?;
+            self.stack.push(record.clone());
+            let mut state = State::MinusZero;
+            let mut sum = BigInt::from(0);
+            let mut count: u64 = 0;
+            while let Some(next) = self.iterator_step(&record, true)? {
+                count += 1;
+                let failure = if count >= 1 << 53 {
+                    Some(RuntimeError::RangeError(
+                        "Math.sumPrecise received too many values".into(),
+                    ))
+                } else if !matches!(next, Value::Number(_)) {
+                    Some(RuntimeError::TypeError(
+                        "Math.sumPrecise requires Number values".into(),
+                    ))
+                } else {
+                    None
+                };
+                if let Some(error) = failure {
+                    // IteratorClose with a throw completion keeps that
+                    // completion, whatever `return` does.
+                    let _ = self.iterator_close(&record);
+                    return Err(error);
+                }
+                let Value::Number(number) = next else {
+                    unreachable!("checked above")
+                };
+                if state == State::NotANumber {
+                    continue;
+                }
+                if number.is_nan() {
+                    state = State::NotANumber;
+                } else if number == f64::INFINITY {
+                    state = if state == State::MinusInfinity {
+                        State::NotANumber
+                    } else {
+                        State::PlusInfinity
+                    };
+                } else if number == f64::NEG_INFINITY {
+                    state = if state == State::PlusInfinity {
+                        State::NotANumber
+                    } else {
+                        State::MinusInfinity
+                    };
+                } else if !(number == 0.0 && number.is_sign_negative())
+                    && matches!(state, State::MinusZero | State::Finite)
+                {
+                    state = State::Finite;
+                    sum += scaled_integer(number);
+                }
+            }
+            Ok(Value::Number(match state {
+                State::NotANumber => f64::NAN,
+                State::PlusInfinity => f64::INFINITY,
+                State::MinusInfinity => f64::NEG_INFINITY,
+                State::MinusZero => -0.0,
+                State::Finite => scaled_integer_to_f64(&sum),
+            }))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+}
+
+/// A finite binary64 as the integer `value * 2**1074`.
+fn scaled_integer(value: f64) -> BigInt {
+    let bits = value.to_bits();
+    let biased = ((bits >> 52) & 0x7ff) as i64;
+    let fraction = bits & ((1_u64 << 52) - 1);
+    // value == mantissa * 2**scale, with scale >= -1074.
+    let (mantissa, scale) = if biased == 0 {
+        (fraction, 0_i64)
+    } else {
+        ((1_u64 << 52) | fraction, biased - 1)
+    };
+    let magnitude = BigInt::from(mantissa) << (scale as usize);
+    if value.is_sign_negative() {
+        -magnitude
+    } else {
+        magnitude
+    }
+}
+
+/// The exactly-rounded (ties to even) binary64 nearest `scaled * 2**-1074`,
+/// or an infinity when that magnitude is not below 2**1024 - 2**970.
+fn scaled_integer_to_f64(scaled: &BigInt) -> f64 {
+    if scaled.sign() == Sign::NoSign {
+        return 0.0;
+    }
+    let negative = scaled.sign() == Sign::Minus;
+    let magnitude = scaled.magnitude();
+    let bits = magnitude.bits() as i64;
+    // 2**exponent as an exact binary64 (or infinity / 0 outside its range).
+    let power_of_two = |exponent: i64| -> f64 {
+        if exponent > 1023 {
+            f64::INFINITY
+        } else if exponent >= -1022 {
+            f64::from_bits(((exponent + 1023) as u64) << 52)
+        } else if exponent >= -1074 {
+            f64::from_bits(1_u64 << (exponent + 1074))
+        } else {
+            0.0
+        }
+    };
+    let value = if bits <= 53 {
+        let small = magnitude.iter_u64_digits().next().unwrap_or(0);
+        small as f64 * power_of_two(-1074)
+    } else {
+        let shift = (bits - 53) as usize;
+        let mut kept = magnitude >> shift;
+        let remainder = magnitude - (&kept << shift);
+        let half = BigUint::from(1_u8) << (shift - 1);
+        let odd = kept.bit(0);
+        if remainder > half || (remainder == half && odd) {
+            kept += 1_u8;
+        }
+        let mut exponent = shift as i64 - 1074;
+        let mut mantissa = kept.iter_u64_digits().next().unwrap_or(0);
+        if mantissa == 1_u64 << 53 {
+            mantissa >>= 1;
+            exponent += 1;
+        }
+        mantissa as f64 * power_of_two(exponent)
+    };
+    if negative {
+        -value
+    } else {
+        value
     }
 }
