@@ -965,6 +965,9 @@ impl Vm {
                         .expect("handler was inspected above")
                         .state = HandlerState::Catch;
                     self.stack.push(value);
+                    // A class's heritage or computed key may have thrown while
+                    // the function was running as strict code.
+                    self.strict = code.strict;
                     // `value` is now a stack root owned by the catch entry.
                     // The temporary completion root protected the original
                     // throw while Error construction and scope cleanup could
@@ -985,6 +988,7 @@ impl Vm {
                     let frame = handlers.last_mut().expect("handler was inspected above");
                     frame.state = HandlerState::Finally;
                     frame.pending = Some(pending);
+                    self.strict = code.strict;
                     return Ok(CompletionAction::Jump(target as usize));
                 }
             }

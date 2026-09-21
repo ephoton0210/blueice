@@ -48,7 +48,16 @@ impl Compiler {
         // strict mode code: a function written there is strict even when the
         // class sits in sloppy code.
         let outer_strict = std::mem::replace(&mut self.bytecode.strict, true);
-        let result = self.class_definition(class, inferred_name, binding);
+        // The instructions that evaluate those parts inline run in this
+        // function, so they need the strict runtime flag too; the handlers
+        // restore the function's own strictness if one catches a throw.
+        let result = if outer_strict {
+            self.class_definition(class, inferred_name, binding)
+        } else {
+            self.emit(Opcode::SetStrictMode, 1)
+                .and_then(|_| self.class_definition(class, inferred_name, binding))
+                .and_then(|()| self.emit(Opcode::SetStrictMode, 0).map(|_| ()))
+        };
         self.bytecode.strict = outer_strict;
         result
     }

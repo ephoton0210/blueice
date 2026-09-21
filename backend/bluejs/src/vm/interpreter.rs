@@ -1514,6 +1514,7 @@ impl Vm {
                         self.completion = self.pop();
                         self.completion_empty = false;
                     }
+                    Opcode::SetStrictMode => self.strict = operand != 0,
                     Opcode::ClearCompletion => {
                         self.completion = Value::Undefined;
                         self.completion_empty = true;

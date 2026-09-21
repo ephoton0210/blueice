@@ -99,6 +99,10 @@ opcodes! {
     SetLiteralPrototype: 1, 0;
     SetCompletion: 1, 0;
     ClearCompletion: 1, 0;
+    // Sets the VM's runtime strictness flag (operand 1 strict, 0 sloppy) for
+    // code that is strict inside an otherwise sloppy function: a class's
+    // heritage and computed keys.
+    SetStrictMode: 5, 0;
     Halt: 1, 0;
     NewArray: 5, 0;
     GlobalString: 1, 0;
