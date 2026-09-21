@@ -89,7 +89,6 @@ fn run_raw(body: &str) {
     }
 }
 
-
 const CALENDARS: &str = r#"
 const twelveMonth = ["indian", "islamic-civil", "islamic-tbla", "islamic-umalqura", "persian",
                      "gregory", "roc", "buddhist", "japanese"];
@@ -156,7 +155,10 @@ fn check_fixed_month_calendars(calendars: &str, whole_months: bool) {
 
 #[test]
 fn round_trip_and_sign_properties_hold_in_islamic_calendars() {
-    check_fixed_month_calendars(r#"["islamic-civil", "islamic-tbla", "islamic-umalqura"]"#, true);
+    check_fixed_month_calendars(
+        r#"["islamic-civil", "islamic-tbla", "islamic-umalqura"]"#,
+        true,
+    );
 }
 
 #[test]

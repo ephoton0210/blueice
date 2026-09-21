@@ -2,6 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+mod deferred;
+mod namespace;
+
 use super::*;
 
 impl Vm {
@@ -16,10 +19,21 @@ impl Vm {
         drain_jobs: bool,
         is_dynamic_import: bool,
         entry_json: bool,
+        phase: ImportPhase,
     ) -> Result<Value, RuntimeError> {
+        // An import that starts while module code is running (a dynamic
+        // `import()` in a Promise job the entry's `await` lets run) joins the
+        // graph that code belongs to instead of linking a second copy of it.
+        let mut nested_in_evaluation = false;
         let (mut linked, mut roots, fresh_graph) = match self.module_graph.take() {
             Some(graph) => (graph.linked, graph.roots, false),
-            None => (HashMap::new(), Vec::new(), true),
+            None => match self.evaluating_linked.take() {
+                Some(linked) => {
+                    nested_in_evaluation = true;
+                    (linked, Vec::new(), false)
+                }
+                None => (HashMap::new(), Vec::new(), true),
+            },
         };
         // `ensure_json_module`/`ensure_dynamic_module_compiled` (below) can
         // charge VM steps or allocate; give them a real budget before either
@@ -38,17 +52,35 @@ impl Vm {
         let mut owned_modules;
         let modules: &HashMap<String, Bytecode> = if is_dynamic_import || fresh_graph {
             owned_modules = modules.clone();
-            if is_dynamic_import {
-                // `entry` is already the resolved target: `dynamic_import_job`
-                // resolves the specifier against its referrer before this call.
-                if entry_json {
-                    self.ensure_json_module(entry, &mut owned_modules, &mut roots)?;
-                } else {
-                    self.ensure_dynamic_module_compiled(entry, &mut owned_modules)?;
+            let prepared = (|| {
+                if is_dynamic_import {
+                    // `entry` is already the resolved target: `dynamic_import_job`
+                    // resolves the specifier against its referrer before this call.
+                    if entry_json {
+                        self.ensure_json_module(entry, &mut owned_modules, &mut roots)?;
+                    } else {
+                        self.ensure_dynamic_module_compiled(entry, &mut owned_modules)?;
+                    }
                 }
-            }
-            if fresh_graph {
-                self.register_static_json_modules(&mut owned_modules, &mut roots)?;
+                if fresh_graph {
+                    self.register_static_json_modules(&mut owned_modules, &mut roots)?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = prepared {
+                // A module that cannot even be compiled or synthesized fails
+                // only this request; an existing graph stays usable.
+                if fresh_graph {
+                    for root in roots {
+                        self.heap.unroot(root)?;
+                    }
+                } else {
+                    self.store_module_graph(
+                        ModuleGraphState { linked, roots },
+                        nested_in_evaluation,
+                    );
+                }
+                return Err(error);
             }
             &owned_modules
         } else {
@@ -79,6 +111,10 @@ impl Vm {
         // retried dynamic import of the same specifier is treated as new
         // again rather than silently resuming a half-linked record.
         let roots_checkpoint = roots.len();
+        // Once a module body has started running, its evaluation error (or
+        // completion) belongs to the module record and is observed again by
+        // every later importer, so the graph is kept rather than rolled back.
+        let mut evaluation_started = false;
         let mut result = (|| {
             self.module_registry = modules.clone();
             // Resolution errors can be converted to a dynamic-import Promise
@@ -131,6 +167,7 @@ impl Vm {
                             suspended: false,
                             completion: None,
                             error: None,
+                            deferred_namespace: None,
                         },
                     )
                 }));
@@ -220,6 +257,7 @@ impl Vm {
                         {
                             ExportResolution::Binding { .. }
                             | ExportResolution::Namespace { .. }
+                            | ExportResolution::DeferredNamespace { .. }
                             | ExportResolution::Source { .. } => {}
                             ExportResolution::Missing | ExportResolution::Ambiguous => {
                                 return Err(RuntimeError::ModuleResolution(format!(
@@ -272,10 +310,17 @@ impl Vm {
                             ModuleImportName::Namespace => ExportResolution::Namespace {
                                 module: target.clone(),
                             },
+                            ModuleImportName::DeferredNamespace => {
+                                ExportResolution::DeferredNamespace {
+                                    module: target.clone(),
+                                }
+                            }
                             ModuleImportName::Source => ExportResolution::Source {
                                 module: target.clone(),
                             },
                         };
+                        let deferred_target =
+                            matches!(resolution, ExportResolution::DeferredNamespace { .. });
                         let cell = match resolution {
                             ExportResolution::Binding {
                                 module: exporter,
@@ -289,9 +334,11 @@ impl Vm {
                                         "export binding from {exporter} has no cell"
                                     ))
                                 })?,
-                            ExportResolution::Namespace { module } => {
+                            ExportResolution::Namespace { module }
+                            | ExportResolution::DeferredNamespace { module } => {
                                 let namespace = self.module_namespace(
                                     &module,
+                                    deferred_target,
                                     modules,
                                     &mut linked,
                                     &mut roots,
@@ -315,7 +362,8 @@ impl Vm {
                             ExportResolution::Missing | ExportResolution::Ambiguous => {
                                 let import_name = match &import.import_name {
                                     ModuleImportName::Named(name) => name.as_str(),
-                                    ModuleImportName::Namespace => "*",
+                                    ModuleImportName::Namespace
+                                    | ModuleImportName::DeferredNamespace => "*",
                                     ModuleImportName::Source => "source",
                                 };
                                 return Err(RuntimeError::ModuleResolution(format!(
@@ -348,8 +396,29 @@ impl Vm {
                 }
             }
 
-            let value = self.evaluate_module_record(entry, modules, &mut linked)?;
-            let namespace = self.module_namespace(entry, modules, &mut linked, &mut roots)?;
+            // LoadRequestedModules has to have succeeded for every phase before
+            // anything is evaluated: a missing module fails the whole request
+            // even when the only edge to it is a deferred one.
+            Self::check_requested_modules_loaded(entry, modules)?;
+            evaluation_started = true;
+            let (value, namespace) = if phase == ImportPhase::Defer {
+                // A deferred import evaluates nothing of `entry` itself; only
+                // the asynchronous part of its dependency graph runs now.
+                let dependencies =
+                    Self::gather_async_dependencies(entry, modules, &linked, &mut HashSet::new())?;
+                for dependency in &dependencies {
+                    self.evaluate_module_record(dependency, modules, &mut linked)?;
+                }
+                self.last_deferred_dependencies = dependencies;
+                let namespace =
+                    self.module_namespace(entry, true, modules, &mut linked, &mut roots)?;
+                (Value::Undefined, namespace)
+            } else {
+                let value = self.evaluate_module_record(entry, modules, &mut linked)?;
+                let namespace =
+                    self.module_namespace(entry, false, modules, &mut linked, &mut roots)?;
+                (value, namespace)
+            };
             self.last_module_namespace = Some(namespace);
             self.last_module_namespace_root = Some(self.heap.root(namespace)?);
             if let Value::Object(id) = value {
@@ -366,7 +435,9 @@ impl Vm {
             self.result_root = Some(self.heap.root(*id)?);
         }
 
-        if result.is_err() {
+        if result.is_err() && evaluation_started {
+            self.store_module_graph(ModuleGraphState { linked, roots }, nested_in_evaluation);
+        } else if result.is_err() {
             if fresh_graph {
                 // The whole graph never became usable; discard everything.
                 for root in roots {
@@ -385,10 +456,10 @@ impl Vm {
                 for root in roots.split_off(roots_checkpoint) {
                     self.heap.unroot(root)?;
                 }
-                self.module_graph = Some(ModuleGraphState { linked, roots });
+                self.store_module_graph(ModuleGraphState { linked, roots }, nested_in_evaluation);
             }
         } else {
-            self.module_graph = Some(ModuleGraphState { linked, roots });
+            self.store_module_graph(ModuleGraphState { linked, roots }, nested_in_evaluation);
         }
         // A module can become asynchronous solely through a dependency.  The
         // host-facing evaluation path must advance that dependency's queued
@@ -396,9 +467,7 @@ impl Vm {
         // itself, otherwise an immediately rejected imported module is
         // reported as a successful evaluation.
         let entry_is_async = self
-            .module_graph
-            .as_ref()
-            .and_then(|graph| graph.linked.get(entry))
+            .linked_record(entry)
             .is_some_and(|record| record.suspended)
             || modules.get(entry).is_some_and(|code| {
                 code.instructions()
@@ -410,21 +479,17 @@ impl Vm {
                 result = Err(error);
             }
         }
-        if result.is_ok() {
+        if result.is_ok() && phase != ImportPhase::Defer {
             if let Some(error) = self
-                .module_graph
-                .as_ref()
-                .and_then(|graph| graph.linked.get(entry))
+                .linked_record(entry)
                 .and_then(|record| record.error.clone())
             {
                 result = Err(RuntimeError::Thrown(error));
             }
         }
-        if result.is_ok() {
+        if result.is_ok() && phase != ImportPhase::Defer {
             if let Some(value) = self
-                .module_graph
-                .as_ref()
-                .and_then(|graph| graph.linked.get(entry))
+                .linked_record(entry)
                 .and_then(|record| record.completion.clone())
             {
                 result = Ok(value);
@@ -553,6 +618,11 @@ impl Vm {
                         module_request,
                         json,
                         ..
+                    }
+                    | ModuleExport::DeferredNamespace {
+                        module_request,
+                        json,
+                        ..
                     } => (module_request, *json),
                     ModuleExport::Local { .. } | ModuleExport::Source { .. } => continue,
                 };
@@ -644,38 +714,6 @@ impl Vm {
         Ok(request.to_string())
     }
 
-    /// Materializes the host identity supplied for a source-phase import.
-    /// Source Text Modules deliberately do not expose such a representation:
-    /// accepting bytecode here would accidentally link or evaluate a module
-    /// whose import phase must remain opaque.
-    pub(super) fn module_source_object(
-        &mut self,
-        module: &str,
-        modules: &HashMap<String, Bytecode>,
-    ) -> Result<ObjectId, RuntimeError> {
-        if let Some(source) = self.module_source_cache.get(module) {
-            return Ok(*source);
-        }
-        if modules.contains_key(module) {
-            return Err(RuntimeError::ModuleResolution(format!(
-                "{module} is a Source Text Module and has no source-phase representation"
-            )));
-        }
-        if !self.module_source_registry.contains(module) {
-            return Err(RuntimeError::TypeError(format!(
-                "host did not provide a source-phase representation for {module}"
-            )));
-        }
-        let prototype = self
-            .abstract_module_source_prototype
-            .unwrap_or(self.object_prototype);
-        let source = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        let root = self.heap.root(source)?;
-        self.module_source_cache.insert(module.to_string(), source);
-        self.module_source_roots.insert(module.to_string(), root);
-        Ok(source)
-    }
-
     /// Return the per-Source-Text-Module ImportMeta object. The host supplies
     /// no URL-like fields in this embedding, but the required null prototype
     /// and module-local identity are observable and must be stable.
@@ -711,28 +749,43 @@ impl Vm {
         &mut self,
         specifier: Value,
         options: Value,
+        phase: ImportPhase,
     ) -> Result<Value, RuntimeError> {
-        let promise = self.new_promise()?;
-        let outcome = self.evaluate_import_call_arguments(specifier, options);
-        match outcome {
-            Ok((specifier, json)) => {
-                let referrer = self
-                    .active_module_name
-                    .clone()
-                    .unwrap_or_else(|| "<script>".to_string());
-                self.promise_jobs.push_back(PromiseJob::DynamicImport {
-                    target: promise,
-                    referrer,
-                    specifier,
-                    json,
-                });
+        // The operands (already popped by the caller) and the promise are
+        // otherwise only in Rust locals while the promise is allocated and the
+        // arguments are coerced (user code that allocates): keep them on the
+        // operand stack, a GC root, until the import is queued or settled.
+        let base = self.stack.len();
+        self.stack.extend([specifier.clone(), options.clone()]);
+        let result = (|| {
+            let promise = self.new_promise()?;
+            self.stack.push(Value::Object(promise));
+            match self.evaluate_import_call_arguments(specifier, options) {
+                Ok((specifier, _)) if phase == ImportPhase::Source => {
+                    self.dynamic_import_source(promise, &specifier)?;
+                }
+                Ok((specifier, json)) => {
+                    let referrer = self
+                        .active_module_name
+                        .clone()
+                        .unwrap_or_else(|| "<script>".to_string());
+                    self.promise_jobs.push_back(PromiseJob::DynamicImport {
+                        target: promise,
+                        referrer,
+                        specifier,
+                        json,
+                        phase,
+                    });
+                }
+                Err(error) => {
+                    let error = self.error_value(error)?;
+                    self.settle_promise(promise, PromiseStatus::Rejected(error))?;
+                }
             }
-            Err(error) => {
-                let error = self.error_value(error)?;
-                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
-            }
-        }
-        Ok(Value::Object(promise))
+            Ok(Value::Object(promise))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     /// The specifier-ToString and options-validation steps of
@@ -798,80 +851,48 @@ impl Vm {
         Ok((specifier, json))
     }
 
-    /// Source-phase dynamic import has the same promise and ToString boundary
-    /// as ordinary import(), but asks the host for a Module Source object.
-    /// A source-text module therefore rejects with SyntaxError instead of
-    /// linking or evaluating it as an ordinary dynamic import would.
-    pub(super) fn dynamic_import_source(
-        &mut self,
-        specifier: Value,
-    ) -> Result<Value, RuntimeError> {
-        let promise = self.new_promise()?;
-        let result = (|| {
-            let specifier = self.coerce_string(&specifier)?.to_utf8().map_err(|_| {
-                RuntimeError::TypeError("module specifier is not a Unicode string".into())
-            })?;
-            let referrer = self
-                .active_module_name
-                .clone()
-                .unwrap_or_else(|| "<script>".to_string());
-            let entry = Self::resolve_module_request(&referrer, &specifier)?;
-            let modules = self.module_registry.clone();
-            if modules.contains_key(&entry) {
-                return Err(RuntimeError::SyntaxError(
-                    "a Source Text Module has no source-phase representation".into(),
-                ));
-            }
-            let source = self.module_source_object(&entry, &modules)?;
-            Ok(Value::Object(source))
-        })();
-        match result {
-            Ok(value) => self.settle_promise(promise, PromiseStatus::Fulfilled(value))?,
-            Err(error) => {
-                let error = self.error_value(error)?;
-                self.settle_promise(promise, PromiseStatus::Rejected(error))?;
-            }
-        }
-        Ok(Value::Object(promise))
-    }
-
     pub(super) fn dynamic_import_job(
         &mut self,
         referrer: &str,
         specifier: &str,
         json: bool,
+        phase: ImportPhase,
     ) -> Result<DynamicImportResult, RuntimeError> {
         let entry = Self::resolve_module_request(referrer, specifier)?;
-        if let Some(record) = self
-            .module_graph
-            .as_ref()
-            .and_then(|graph| graph.linked.get(&entry))
-        {
+        if phase == ImportPhase::Defer {
+            return self.dynamic_import_defer_job(&entry, json);
+        }
+        if let Some(record) = self.linked_record(&entry) {
             if let Some(error) = &record.error {
                 return Err(RuntimeError::Thrown(error.clone()));
             }
             if record.evaluated {
                 let modules = self.module_registry.clone();
-                let mut graph = self
-                    .module_graph
-                    .take()
-                    .expect("checked module graph remains installed");
-                let namespace =
-                    self.module_namespace(&entry, &modules, &mut graph.linked, &mut graph.roots);
-                self.module_graph = Some(graph);
-                return namespace
-                    .map(|namespace| DynamicImportResult::Fulfilled(Value::Object(namespace)));
+                return self.with_module_records(|vm, linked| {
+                    if let Some(error) = Self::cycle_root_error(&entry, &modules, linked)? {
+                        return Err(RuntimeError::Thrown(error));
+                    }
+                    // The namespace already exists for an evaluated module;
+                    // nothing new is rooted through this scratch list.
+                    vm.module_namespace(&entry, false, &modules, linked, &mut Vec::new())
+                        .map(|namespace| DynamicImportResult::Fulfilled(Value::Object(namespace)))
+                })?;
             }
             if record.evaluating || record.suspended {
                 return Ok(DynamicImportResult::Waiting(entry));
             }
         }
         let modules = self.module_registry.clone();
-        self.execute_module_graph_inner(&entry, &modules, false, true, json)?;
+        self.execute_module_graph_inner(
+            &entry,
+            &modules,
+            false,
+            true,
+            json,
+            ImportPhase::Evaluation,
+        )?;
         if self
-            .module_graph
-            .as_ref()
-            .and_then(|graph| graph.linked.get(&entry))
+            .linked_record(&entry)
             .is_some_and(|record| record.evaluating || record.suspended)
         {
             return Ok(DynamicImportResult::Waiting(entry));
@@ -882,6 +903,29 @@ impl Vm {
                 "dynamic import of {entry} did not produce a namespace"
             )))?;
         Ok(DynamicImportResult::Fulfilled(Value::Object(namespace)))
+    }
+
+    /// The record of `name` in whichever graph currently owns the module
+    /// records: the installed one, or the one parked for running module code.
+    fn linked_record(&self, name: &str) -> Option<&LinkedModule> {
+        self.module_graph
+            .as_ref()
+            .map(|graph| &graph.linked)
+            .or(self.evaluating_linked.as_ref())
+            .and_then(|linked| linked.get(name))
+    }
+
+    /// Hands the module records back to where `execute_module_graph_inner`
+    /// found them: the installed graph, or -- for an import that started
+    /// while module code was running -- the parking spot of that evaluation.
+    /// (Roots created for a nested load stay registered for the realm's
+    /// lifetime; only the graph's own list is ever unrooted.)
+    fn store_module_graph(&mut self, state: ModuleGraphState, nested_in_evaluation: bool) {
+        if nested_in_evaluation {
+            self.evaluating_linked = Some(state.linked);
+        } else {
+            self.module_graph = Some(state);
+        }
     }
 
     pub(super) fn suspend_module_execution(&mut self) -> SuspendedModuleExecution {
@@ -1292,6 +1336,23 @@ impl Vm {
         &mut self,
         module: &str,
     ) -> Result<(), RuntimeError> {
+        // An `import.defer()` resolves once the last asynchronous dependency
+        // it was waiting for has finished.
+        let mut finished = Vec::new();
+        for waiter in &mut self.deferred_import_waiters {
+            waiter.pending.remove(module);
+        }
+        self.deferred_import_waiters.retain(|waiter| {
+            if waiter.pending.is_empty() {
+                finished.push((waiter.promise, waiter.namespace));
+                false
+            } else {
+                true
+            }
+        });
+        for (promise, namespace) in finished {
+            self.settle_promise(promise, PromiseStatus::Fulfilled(Value::Object(namespace)))?;
+        }
         let Some(waiters) = self.module_import_waiters.remove(module) else {
             return Ok(());
         };
@@ -1311,6 +1372,18 @@ impl Vm {
         module: &str,
         error: Value,
     ) -> Result<(), RuntimeError> {
+        let mut failed = Vec::new();
+        self.deferred_import_waiters.retain(|waiter| {
+            if waiter.pending.contains(module) {
+                failed.push(waiter.promise);
+                false
+            } else {
+                true
+            }
+        });
+        for promise in failed {
+            self.settle_promise(promise, PromiseStatus::Rejected(error.clone()))?;
+        }
         let Some(waiters) = self.module_import_waiters.remove(module) else {
             return Ok(());
         };
@@ -1713,211 +1786,6 @@ impl Vm {
         }
     }
 
-    pub(super) fn resolve_export(
-        modules: &HashMap<String, Bytecode>,
-        module: &str,
-        export_name: &str,
-        resolve_set: &mut Vec<(String, String)>,
-    ) -> Result<ExportResolution, RuntimeError> {
-        let pair = (module.to_string(), export_name.to_string());
-        if resolve_set.contains(&pair) {
-            return Ok(ExportResolution::Missing);
-        }
-        resolve_set.push(pair);
-        let result = (|| {
-            let code = modules.get(module).ok_or_else(|| {
-                RuntimeError::ModuleResolution(format!(
-                    "module {module} was not supplied by the host"
-                ))
-            })?;
-            for export in &code.module_exports {
-                match export {
-                    ModuleExport::Local {
-                        export_name: name,
-                        local_slot,
-                    } if name == export_name => {
-                        return Ok(ExportResolution::Binding {
-                            module: module.to_string(),
-                            slot: *local_slot as usize,
-                        });
-                    }
-                    ModuleExport::Indirect {
-                        export_name: name,
-                        module_request,
-                        import_name,
-                        ..
-                    } if name == export_name => {
-                        let target = Self::resolve_module_request(module, module_request)?;
-                        return Self::resolve_export(modules, &target, import_name, resolve_set);
-                    }
-                    ModuleExport::Namespace {
-                        export_name: name,
-                        module_request,
-                        ..
-                    } if name == export_name => {
-                        return Ok(ExportResolution::Namespace {
-                            module: Self::resolve_module_request(module, module_request)?,
-                        });
-                    }
-                    ModuleExport::Source {
-                        export_name: name,
-                        module_request,
-                    } if name == export_name => {
-                        return Ok(ExportResolution::Source {
-                            module: Self::resolve_module_request(module, module_request)?,
-                        });
-                    }
-                    _ => {}
-                }
-            }
-            if export_name == "default" {
-                return Ok(ExportResolution::Missing);
-            }
-            let mut candidate = ExportResolution::Missing;
-            for export in &code.module_exports {
-                let ModuleExport::Star { module_request, .. } = export else {
-                    continue;
-                };
-                let target = Self::resolve_module_request(module, module_request)?;
-                match Self::resolve_export(modules, &target, export_name, resolve_set)? {
-                    ExportResolution::Missing => {}
-                    ExportResolution::Ambiguous => return Ok(ExportResolution::Ambiguous),
-                    found @ (ExportResolution::Binding { .. }
-                    | ExportResolution::Namespace { .. }
-                    | ExportResolution::Source { .. }) => {
-                        if candidate == ExportResolution::Missing {
-                            candidate = found;
-                        } else if candidate != found {
-                            return Ok(ExportResolution::Ambiguous);
-                        }
-                    }
-                }
-            }
-            Ok(candidate)
-        })();
-        resolve_set.pop();
-        result
-    }
-
-    pub(super) fn exported_names(
-        modules: &HashMap<String, Bytecode>,
-        module: &str,
-        star_set: &mut HashSet<String>,
-    ) -> Result<BTreeSet<String>, RuntimeError> {
-        if !star_set.insert(module.to_string()) {
-            return Ok(BTreeSet::new());
-        }
-        let result = (|| {
-            let code = modules.get(module).ok_or_else(|| {
-                RuntimeError::ModuleResolution(format!(
-                    "module {module} was not supplied by the host"
-                ))
-            })?;
-            let mut names = BTreeSet::new();
-            for export in &code.module_exports {
-                match export {
-                    ModuleExport::Local { export_name, .. }
-                    | ModuleExport::Indirect { export_name, .. }
-                    | ModuleExport::Namespace { export_name, .. }
-                    | ModuleExport::Source { export_name, .. } => {
-                        names.insert(export_name.clone());
-                    }
-                    ModuleExport::Star { module_request, .. } => {
-                        let target = Self::resolve_module_request(module, module_request)?;
-                        names.extend(
-                            Self::exported_names(modules, &target, star_set)?
-                                .into_iter()
-                                .filter(|name| name != "default"),
-                        );
-                    }
-                }
-            }
-            Ok(names)
-        })();
-        star_set.remove(module);
-        result
-    }
-
-    pub(super) fn module_namespace(
-        &mut self,
-        module: &str,
-        modules: &HashMap<String, Bytecode>,
-        linked: &mut HashMap<String, LinkedModule>,
-        roots: &mut Vec<RootId>,
-    ) -> Result<ObjectId, RuntimeError> {
-        if let Some(namespace) = self.module_namespace_cache.get(module) {
-            return Ok(*namespace);
-        }
-        if let Some(namespace) = linked
-            .get(module)
-            .ok_or_else(|| {
-                RuntimeError::ModuleResolution(format!("module {module} was not linked"))
-            })?
-            .namespace
-        {
-            return Ok(namespace);
-        }
-        let names = Self::exported_names(modules, module, &mut HashSet::new())?;
-        // Publish an identity-stable placeholder before resolving namespace
-        // exports. A module may re-export its own namespace, directly or
-        // through a cycle; waiting until after recursive resolution would
-        // recurse indefinitely and overflow the host stack.
-        let namespace = self.with_roots(|heap| heap.alloc_module_namespace(Vec::new()))?;
-        roots.push(self.heap.root(namespace)?);
-        linked
-            .get_mut(module)
-            .expect("linked module record exists")
-            .namespace = Some(namespace);
-        let cache_root = self.heap.root(namespace)?;
-        self.module_namespace_cache
-            .insert(module.to_string(), namespace);
-        self.module_namespace_roots
-            .insert(module.to_string(), cache_root);
-        let mut exports = Vec::with_capacity(names.len());
-        for name in names {
-            let resolution = Self::resolve_export(modules, module, &name, &mut Vec::new())?;
-            let cell = match resolution {
-                ExportResolution::Binding {
-                    module: exporter,
-                    slot,
-                } => {
-                    let cell = linked
-                        .get(&exporter)
-                        .and_then(|record| record.cells.get(&slot))
-                        .copied()
-                        .ok_or_else(|| {
-                            RuntimeError::ModuleResolution(format!(
-                                "export {name} from {exporter} has no binding"
-                            ))
-                        })?;
-                    cell
-                }
-                ExportResolution::Namespace { module } => {
-                    // Namespace exports still need a binding cell: namespace
-                    // exotic properties are live bindings uniformly, and this
-                    // one is an immutable binding to the target namespace.
-                    let value =
-                        Value::Object(self.module_namespace(&module, modules, linked, roots)?);
-                    let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-                    roots.push(self.heap.root(cell)?);
-                    self.with_roots(|heap| heap.set(cell, "value", value))?;
-                    cell
-                }
-                ExportResolution::Source { module } => {
-                    let value = Value::Object(self.module_source_object(&module, modules)?);
-                    let cell = self.with_roots(|heap| heap.alloc_object(None))?;
-                    roots.push(self.heap.root(cell)?);
-                    self.with_roots(|heap| heap.set(cell, "value", value))?;
-                    cell
-                }
-                ExportResolution::Missing | ExportResolution::Ambiguous => continue,
-            };
-            exports.push((name.into(), cell));
-        }
-        self.with_roots(|heap| heap.initialize_module_namespace(namespace, exports))?;
-        Ok(namespace)
-    }
-
     pub(super) fn enter_module_record(&mut self, code: &Bytecode, cells: HashMap<usize, ObjectId>) {
         self.stack.clear();
         self.bindings = vec![None; code.bindings.len()];
@@ -1974,6 +1842,12 @@ impl Vm {
             RuntimeError::ModuleResolution(format!("module {from} was not linked"))
         })?;
         for request in &code.module_requests {
+            // A deferred request is not an edge of the evaluation DFS (its
+            // module only runs when a namespace of it is observed), so it can
+            // never put two modules into one dependency cycle.
+            if request.deferred {
+                continue;
+            }
             let target = Self::resolve_module_request(from, &request.module_request)?;
             if Self::module_reaches(&target, goal, modules, visited)? {
                 return Ok(true);
@@ -2035,10 +1909,19 @@ impl Vm {
             let mut pending_dependencies = Vec::new();
             for request in &code.module_requests {
                 let target = Self::resolve_module_request(name, &request.module_request)?;
-                self.evaluate_module_record(&target, modules, linked)?;
-                if linked.get(&target).is_some_and(|record| record.suspended) {
-                    pending_dependencies
-                        .push(self.async_dependency_root(&target, modules, linked)?);
+                // A deferred request contributes only the asynchronous part of
+                // its graph; an eager one contributes the module itself.
+                let evaluation_list = if request.deferred {
+                    Self::gather_async_dependencies(&target, modules, linked, &mut HashSet::new())?
+                } else {
+                    vec![target]
+                };
+                for target in evaluation_list {
+                    self.evaluate_module_record(&target, modules, linked)?;
+                    if linked.get(&target).is_some_and(|record| record.suspended) {
+                        pending_dependencies
+                            .push(self.async_dependency_root(&target, modules, linked)?);
+                    }
                 }
             }
             if !pending_dependencies.is_empty() {
@@ -2080,7 +1963,15 @@ impl Vm {
                 .push(code.scopes.first().cloned().unwrap_or_default());
             let mut iterators = Vec::new();
             let previous_module = self.active_module_name.replace(name.to_string());
+            // Park the graph's records where user code can reach them: a
+            // deferred namespace observed by this module (or a module it
+            // triggers) evaluates other modules of the same graph.
+            self.evaluating_linked = Some(std::mem::take(linked));
             let outcome = self.interpret(code, &mut iterators, entry, None, None, None);
+            *linked = self
+                .evaluating_linked
+                .take()
+                .expect("module records are restored after the module body ran");
             match outcome {
                 Ok(InterpreterExit::Return(value)) => {
                     self.active_module_name = previous_module;
@@ -2131,6 +2022,30 @@ impl Vm {
                 }
             }
         })();
+        // Evaluate() records an abrupt completion as the module's
+        // [[EvaluationError]]: every module on the DFS stack finishes
+        // `evaluated` with that same error, which later importers, deferred
+        // namespace triggers and dynamic imports all observe unchanged.
+        // Errors raised by the engine itself become one JavaScript value here
+        // so that identity survives the propagation to the importers.
+        let result = match result {
+            Err(
+                error @ (RuntimeError::Thrown(_)
+                | RuntimeError::TypeError(_)
+                | RuntimeError::ReferenceError(_)
+                | RuntimeError::RangeError(_)
+                | RuntimeError::SyntaxError(_)),
+            ) if !linked.get(name).is_some_and(|record| record.suspended) => {
+                let value = self.error_value(error)?;
+                let record = linked.get_mut(name).expect("checked module record exists");
+                record.evaluating = false;
+                record.evaluated = true;
+                record.completion = None;
+                record.error = Some(value.clone());
+                Err(RuntimeError::Thrown(value))
+            }
+            result => result,
+        };
         let record = linked.get_mut(name).expect("checked module record exists");
         if !record.suspended {
             record.evaluating = false;

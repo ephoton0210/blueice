@@ -11,6 +11,15 @@ fn evaluate(source: &str) -> Result<Value, RuntimeError> {
     Vm::default().execute(&compile(&parse(source).unwrap()).unwrap())
 }
 
+/// Run with a tiny nursery so a collection happens on nearly every allocation.
+fn evaluate_with_nursery(source: &str, nursery_capacity: usize) -> Result<Value, RuntimeError> {
+    let mut config = VmConfig::default();
+    config.heap.nursery_capacity = nursery_capacity;
+    Vm::new(config)
+        .unwrap()
+        .execute(&compile(&parse(source).unwrap()).unwrap())
+}
+
 #[test]
 fn sparse_arrays_distinguish_holes_and_length_from_ordinary_properties() {
     let mut heap = Heap::default();
@@ -621,4 +630,250 @@ fn new_array_encoding_and_runtime_error_boundaries_are_observable() {
             .unwrap(),
         Value::Number(7.0)
     );
+}
+
+#[test]
+fn array_slice_with_an_end_before_the_start_returns_an_empty_array() {
+    let source = "let a=[1,2,3,4];let r=a.slice(3,1);let s=a.slice(9007199254740992,0);let t=a.slice(-1,-3);let u=a.slice(Infinity,-Infinity);r.length===0&&s.length===0&&t.length===0&&u.length===0&&a.slice(1,3).join()===\"2,3\"";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+fn assert_all_true(cases: &[&str]) {
+    for source in cases {
+        assert_eq!(
+            evaluate(source).unwrap_or_else(|error| panic!("{source}: {error}")),
+            Value::Bool(true),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn array_copy_within_moves_a_range_with_generic_property_semantics() {
+    assert_all_true(&[
+        // Overlapping ranges copy in the direction that preserves the source;
+        // negative, undefined, NaN and infinite indexes clamp like slice.
+        "[1,2,3,4,5].copyWithin(0,3).join()==='4,5,3,4,5'&&[1,2,3,4,5].copyWithin(1,0,3).join()==='1,1,2,3,5'&&[1,2,3,4,5].copyWithin(-2,-4,-1).join()==='1,2,3,2,3'&&[1,2,3,4,5].copyWithin(0,1,2).join()==='2,2,3,4,5'&&[1,2,3].copyWithin(1).join()==='1,1,2'&&[1,2,3].copyWithin(5,0).join()==='1,2,3'&&[1,2,3].copyWithin(0,5).join()==='1,2,3'&&[1,2,3].copyWithin(0,1,undefined).join()==='2,3,3'&&[1,2,3,4].copyWithin(NaN,'2').join()==='3,4,3,4'&&[1,2,3].copyWithin(-Infinity,Infinity).join()==='1,2,3'",
+        // A hole in the source deletes the destination instead of copying.
+        "let a=[1,,3];let r=a.copyWithin(0,1);r===a&&!(0 in a)&&a[1]===3&&a[2]===3&&a.length===3",
+        // Any array-like receiver works, and a missing source key deletes.
+        "let o={length:5,0:'a',1:'b',3:'d'};let r=Array.prototype.copyWithin.call(o,1,0,3);r===o&&o[0]==='a'&&o[1]==='a'&&o[2]==='b'&&!(3 in o)&&o[4]===undefined&&Array.prototype.copyWithin.call(true,0,1) instanceof Boolean&&Array.prototype.copyWithin.length===2&&Array.prototype.copyWithin.name==='copyWithin'",
+        // target, start and end are coerced in that order.
+        "let log=[];let a=[0,1,2,3];a.copyWithin({valueOf(){log.push('target');return 0}},{valueOf(){log.push('start');return 2}},{valueOf(){log.push('end');return 4}});log.join()==='target,start,end'&&a.join()==='2,3,2,3'",
+        // The observable step order through a Proxy: HasProperty, Get and
+        // Set per element, and DeletePropertyOrThrow for a hole.
+        "let log=[];let target=[1,2,3];let p=new Proxy(target,{has(t,k){log.push('has:'+String(k));return k in t},get(t,k,r){log.push('get:'+String(k));return Reflect.get(t,k,r)},set(t,k,v,r){log.push('set:'+String(k));return Reflect.set(t,k,v,r)},deleteProperty(t,k){log.push('delete:'+String(k));return delete t[k]}});Array.prototype.copyWithin.call(p,0,1);log.join()==='get:length,has:1,get:1,set:0,has:2,get:2,set:1'&&target.join()==='2,3,3'",
+        "let log=[];let target=[1,,3];let p=new Proxy(target,{deleteProperty(t,k){log.push('delete:'+String(k));return delete t[k]}});Array.prototype.copyWithin.call(p,0,1);log.join()==='delete:0'&&!(0 in target)&&target[1]===3",
+        // Failing Set/coercion/ToObject surface as TypeErrors.
+        "let caught=[];try{Object.freeze([1,2,3]).copyWithin(0,1)}catch(e){caught.push(e instanceof TypeError)}try{Array.prototype.copyWithin.call(null,0,1)}catch(e){caught.push(e instanceof TypeError)}try{[1].copyWithin(Symbol(),0)}catch(e){caught.push(e instanceof TypeError)}let frozen=Object.freeze({length:2,0:1,1:2});try{Array.prototype.copyWithin.call(frozen,0,1)}catch(e){caught.push(e instanceof TypeError)}caught.join()==='true,true,true,true'",
+    ]);
+}
+
+#[test]
+fn array_prototype_generic_methods_track_resizable_typed_array_lengths() {
+    assert_all_true(&[
+        // A fixed-length view that shrank out of bounds has length 0, so the
+        // generic algorithm is a no-op instead of throwing.
+        "let rab=new ArrayBuffer(4,{maxByteLength:8});let fixed=new Uint8Array(rab,0,4);let tracking=new Uint8Array(rab);tracking.set([0,1,2,3]);Array.prototype.copyWithin.call(fixed,0,2);let first=tracking.join()==='2,3,2,3';rab.resize(3);let untouched=Array.prototype.copyWithin.call(fixed,0,1)===fixed&&fixed.length===0;Array.prototype.copyWithin.call(tracking,0,1);let second=tracking.join()==='3,2,2';rab.resize(1);Array.prototype.copyWithin.call(tracking,0,0,1);rab.resize(0);Array.prototype.copyWithin.call(tracking,0,0,1);rab.resize(6);tracking.set([0,1,2,3,4,5]);Array.prototype.copyWithin.call(tracking,0,2);first&&untouched&&second&&tracking.join()==='2,3,4,5,4,5'",
+        // Array.prototype.toLocaleString reads `length` generically (0 when
+        // out of bounds); only %TypedArray%.prototype.toLocaleString throws.
+        "let rab=new ArrayBuffer(4,{maxByteLength:8});let fixed=new Uint8Array(rab,0,4);let tracking=new Uint8Array(rab);tracking.set([0,2,4,6]);let generic=Array.prototype.toLocaleString;let full=generic.call(fixed)===['0','2','4','6'].join(',');rab.resize(3);let oob=generic.call(fixed)==='';let shrunk=generic.call(tracking)==='0,2,4';let own;try{fixed.toLocaleString();own='no throw'}catch(e){own=e instanceof TypeError}full&&oob&&shrunk&&own===true",
+    ]);
+}
+
+#[test]
+fn array_flat_flattens_by_depth_and_skips_holes() {
+    assert_all_true(&[
+        "JSON.stringify([1,[2,[3,[4]]]].flat())==='[1,2,[3,[4]]]'&&JSON.stringify([1,[2,[3,[4]]]].flat(2))==='[1,2,3,[4]]'&&JSON.stringify([1,[2,[3,[4]]]].flat(Infinity))==='[1,2,3,4]'&&JSON.stringify([1,[2]].flat(0))==='[1,[2]]'&&JSON.stringify([1,[2]].flat(-5))==='[1,[2]]'&&JSON.stringify([1,[2]].flat(undefined))==='[1,2]'&&JSON.stringify([1,[2]].flat('x'))==='[1,[2]]'&&JSON.stringify([1,[2]].flat(null))==='[1,[2]]'&&JSON.stringify([1,[2]].flat(1.9))==='[1,2]'&&Array.prototype.flat.length===0&&Array.prototype.flat.name==='flat'",
+        // Holes are skipped at every level; array-like values are not
+        // flattened, but an array-like receiver is read generically.
+        "let a=[1,,[2,,3]];let r=a.flat();JSON.stringify(r)==='[1,2,3]'&&r.length===3&&JSON.stringify(Array.prototype.flat.call({length:3,0:1,2:[4]}))==='[1,4]'&&JSON.stringify([{length:1,0:'x'}].flat())==='[{\"0\":\"x\",\"length\":1}]'",
+        // IsArray sees through a Proxy, and the result comes from
+        // ArraySpeciesCreate(receiver, 0).
+        "let p=new Proxy([1,2],{});let flattened=[p,[3]].flat();let sp=[];let source=[1,[2]];source.constructor={};source.constructor[Symbol.species]=function(n){sp.push(n);return [];};let viaSpecies=source.flat();flattened.join()==='1,2,3'&&sp.join()==='0'&&viaSpecies.join()==='1,2'&&Array.isArray(viaSpecies)",
+        // `depth` is coerced (and may throw) before the species lookup.
+        "let log=[];let a=[1,[2]];Object.defineProperty(a,'constructor',{get(){log.push('constructor');return undefined}});let r=a.flat({valueOf(){log.push('depth');return 1}});let boom={};let caught;try{[1].flat({valueOf(){throw boom}})}catch(e){caught=e}log.join()==='depth,constructor'&&r.join()==='1,2'&&caught===boom",
+        // Unbounded nesting (here a cycle) is a catchable RangeError rather
+        // than exhausting the host stack or running forever.
+        "let a=[1];a.push(a);let threw=false;try{a.flat(Infinity)}catch(e){threw=e instanceof RangeError}threw",
+    ]);
+}
+
+#[test]
+fn array_flat_map_maps_then_flattens_exactly_one_level() {
+    assert_all_true(&[
+        "let log=[];let source=[1,2,3];let result=source.flatMap(function(value,index,array){log.push([this.tag,value,index,array===source].join());return value%2?[value,value*10]:value;},{tag:'T'});result.join()==='1,10,2,3,30'&&log.join(';')==='T,1,0,true;T,2,1,true;T,3,2,true'&&JSON.stringify([1].flatMap(function(v){return [[v]]}))==='[[1]]'&&Array.prototype.flatMap.length===1&&Array.prototype.flatMap.name==='flatMap'&&JSON.stringify([1,,3].flatMap(function(v){return v}))==='[1,3]'",
+        // The receiver's length is read before the callback is validated.
+        "let caught=[];try{[].flatMap()}catch(e){caught.push(e instanceof TypeError)}try{[].flatMap({})}catch(e){caught.push(e instanceof TypeError)}try{Array.prototype.flatMap.call(null,function(){})}catch(e){caught.push(e instanceof TypeError)}let order=[];try{Array.prototype.flatMap.call({get length(){order.push('length');return 1}},1)}catch(e){order.push(e instanceof TypeError)}caught.join()==='true,true,true'&&order.join()==='length,true'",
+        // A non-callable mapper is rejected before the species lookup.
+        "let log=[];let a=[1];Object.defineProperty(a,'constructor',{get(){log.push('constructor');return undefined}});try{a.flatMap(1)}catch(e){log.push(e instanceof TypeError)}log.join()==='true'",
+        // A throwing mapper propagates unchanged and leaves the VM usable.
+        "let boom=new Error('boom');let caught;try{[1,2].flatMap(function(v){if(v===2)throw boom;return [v]})}catch(e){caught=e}caught===boom&&[3].flatMap(function(v){return [v,v]}).join()==='3,3'",
+        // A TypedArray or array-like receiver yields a plain Array without
+        // ever consulting `constructor`; nested array-likes stay unflattened.
+        "let same=function(e){return e};let ta=new Int32Array([1,0,42]);Object.defineProperty(ta,'constructor',{get(){throw 'no constructor lookup'}});let fromTyped=[].flatMap.call(ta,same);let obj=new Int32Array(2);let nested=[{length:1,0:'a'},obj].flatMap(same);fromTyped.join()==='1,0,42'&&Object.getPrototypeOf(fromTyped)===Array.prototype&&!(fromTyped instanceof Int32Array)&&nested.length===2&&nested[1]===obj&&Array.prototype.flatMap.call({length:2,0:1,1:[2]},same).join()==='1,2'",
+    ]);
+}
+
+#[test]
+fn copy_within_flat_and_flat_map_root_their_intermediate_objects_under_gc_stress() {
+    // A one-object nursery makes every allocation a collection point, so an
+    // element, mapped value or frame source that was only held in a Rust
+    // local would be reclaimed mid-algorithm.
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            nursery_capacity: 1,
+            ..HeapConfig::default()
+        },
+        ..VmConfig::default()
+    })
+    .unwrap();
+    let source = "let nested=[{a:1},[{b:2},[{c:3}]]];let flat=nested.flat(Infinity);let mapped=nested.flatMap(function(x){return [{wrapped:x},{other:[x]}]});let moved=[{x:0},{x:1},{x:2},{x:3},{x:4}];moved.copyWithin(1,0,4);flat.length===3&&flat[2].c===3&&mapped.length===4&&mapped[0].wrapped===nested[0]&&mapped[3].other[0]===nested[1]&&moved[4].x===3&&moved[1]===moved[0]&&moved[0].x===0";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+    assert!(vm.heap().stats().minor_collections > 10);
+}
+
+#[test]
+fn array_push_on_a_non_array_receiver_follows_the_generic_algorithm() {
+    assert_all_true(&[
+        // A missing or non-numeric `length` goes through ToLength; the
+        // result and the written-back `length` are the new length.
+        "let o={};let r=Array.prototype.push.call(o,'a','b');r===2&&o[0]==='a'&&o[1]==='b'&&o.length===2",
+        "let o={length:'2'};let r=Array.prototype.push.call(o,'x');r===3&&o[2]==='x'&&o.length===3",
+        "let o={length:-5};let r=Array.prototype.push.call(o,'x');r===1&&o[0]==='x'&&o.length===1",
+        // With no arguments `length` is still written back, as ToLength(length).
+        "let o={length:'1.9'};let r=Array.prototype.push.call(o);r===1&&o.length===1",
+        // A getter-only `length` makes the final strict Set throw, after the
+        // element itself was stored.
+        "let o={get length(){return 1}};let caught;try{Array.prototype.push.call(o,'x')}catch(e){caught=e instanceof TypeError}caught===true&&o[1]==='x'",
+        // Growing past 2**53-1 throws before anything is written.
+        "let o={length:9007199254740991};let caught;try{Array.prototype.push.call(o,'x')}catch(e){caught=e instanceof TypeError}caught===true&&!('9007199254740991' in o)&&o.length===9007199254740991",
+        // Genuine arrays keep working (including holes and appended values).
+        "let a=[1,,3];let r=a.push(4,5);r===5&&a.length===5&&!(1 in a)&&a[3]===4&&a[4]===5",
+    ]);
+}
+
+#[test]
+fn array_push_on_a_typed_array_throws_a_type_error_instead_of_crashing() {
+    assert_all_true(&[
+        // `length` is a getter-only accessor on %TypedArray%.prototype, so the
+        // final Set(O, "length", len, true) fails with a TypeError.
+        "let ta=new Uint8Array(2);let caught;try{Array.prototype.push.call(ta,1)}catch(e){caught=e instanceof TypeError}caught===true&&ta.length===2&&ta[0]===0&&ta[1]===0",
+        "let ta=new Uint8Array(2);let caught;try{Array.prototype.push.call(ta)}catch(e){caught=e instanceof TypeError}caught===true",
+    ]);
+}
+
+#[test]
+fn array_push_on_a_frozen_or_length_locked_array_throws_a_type_error() {
+    assert_all_true(&[
+        // The strict Set of `length` (or of the new index) fails, so push
+        // throws instead of silently dropping the write.
+        "let a=[1];Object.defineProperty(a,'length',{writable:false});let caught;try{a.push(2)}catch(e){caught=e instanceof TypeError}caught===true&&a.length===1&&!(1 in a)",
+        "let a=Object.freeze([1]);let caught;try{a.push(2)}catch(e){caught=e instanceof TypeError}caught===true&&a.length===1&&!(1 in a)",
+        // Even with no arguments the final Set of `length` must fail.
+        "let a=Object.freeze([1]);let caught;try{a.push()}catch(e){caught=e instanceof TypeError}caught===true",
+        "let a=[];Object.defineProperty(a,'length',{writable:false});let caught;try{a.push()}catch(e){caught=e instanceof TypeError}caught===true",
+        // A sealed (non-extensible) array cannot grow either.
+        "let a=Object.preventExtensions([1]);let caught;try{a.push(2)}catch(e){caught=e instanceof TypeError}caught===true&&a.length===1",
+    ]);
+}
+
+#[test]
+fn array_from_keeps_mapped_values_alive_across_collections() {
+    // Every mapper result is only reachable from Array.from's own state while
+    // later mapper calls allocate; a collection in between must not free it.
+    let source = "let a=Array.from({length:300},(_,i)=>({i}));\
+                  a.length===300&&a[0].i===0&&a[299].i===299";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+    assert_eq!(evaluate_with_nursery(source, 1).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn push_on_a_real_array_honours_inherited_index_setters() {
+    // The first element store reaches an inherited setter; whatever it does
+    // to the array must be observed by the strict Set of "length".
+    for freeze in [
+        "Object.freeze(array)",
+        "Object.defineProperty(array,'length',{writable:false})",
+    ] {
+        let source = format!(
+            "var array=[];var calls=0;\
+             Object.defineProperty(Array.prototype,'0',{{set(_v){{{freeze};calls++;}}}});\
+             var threw=false;try{{array.push(1)}}catch(e){{threw=e instanceof TypeError}}\
+             threw&&!array.hasOwnProperty(0)&&array.length===0&&calls===1"
+        );
+        assert_eq!(evaluate(&source).unwrap(), Value::Bool(true), "{freeze}");
+    }
+}
+
+#[test]
+fn push_on_a_real_array_runs_an_inherited_setter_instead_of_defining() {
+    let source = "var seen=[];\
+        Object.defineProperty(Array.prototype,'1',{set(v){seen.push(v)},configurable:true});\
+        var a=[7];var n=a.push(8,9);\
+        n===3&&a.length===3&&!a.hasOwnProperty(1)&&a[2]===9&&seen.length===1&&seen[0]===8";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn push_on_a_real_array_rejects_an_inherited_read_only_element() {
+    let source = "Object.defineProperty(Object.prototype,'0',{value:1,writable:false});\
+        var a=[];var threw=false;try{a.push(2)}catch(e){threw=e instanceof TypeError}\
+        threw&&!a.hasOwnProperty(0)";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn push_on_a_real_array_with_a_proxy_prototype_uses_its_set_trap() {
+    let source = "var log=[];\
+        var a=[];Object.setPrototypeOf(a,new Proxy(Array.prototype,{\
+          set(t,k,v,r){log.push(k);return Reflect.set(t,k,v,r)}}));\
+        a.push(5);a[0]===5&&a.length===1&&log.join()==='0'";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn push_keeps_working_and_stays_correct_for_plain_arrays() {
+    let source = "var a=[1];var n=a.push(2,3);n===3&&a.join()==='1,2,3'&&a.push()===3";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn array_from_keeps_a_thrown_mapper_error_alive_while_the_iterator_closes() {
+    // The mapper's Error is reachable only from Array.from's pending
+    // completion while the iterator's return() runs user code.
+    let source = "var closed=0;var items={};\
+        items[Symbol.iterator]=function(){return{\
+          return:function(){closed+=1},\
+          next:function(){return{done:false}}}};\
+        var caught;try{Array.from(items,function(){throw new Error('boom')})}catch(e){caught=e}\
+        closed===1&&caught instanceof Error&&caught.message==='boom'";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+    assert_eq!(evaluate_with_nursery(source, 1).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn sort_keeps_collected_values_alive_when_the_comparator_empties_the_array() {
+    // After the first comparison the receiver no longer holds any element;
+    // the values being sorted are reachable only from sort's own state.
+    let source = "var a=[];for(var i=0;i<20;i++)a.push({i});\
+        var n=0;a.sort(function(x,y){if(n++===0){a.length=0}var junk=[{},{},{},{}];return x.i-y.i});\
+        a.length===20&&a.every((v,k)=>v.i===k)";
+    assert_eq!(evaluate_with_nursery(source, 1).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn in_and_with_observe_inherited_lazy_builtins() {
+    // Built-in prototype methods materialize lazily; `[[HasProperty]]` must
+    // trigger that exactly like `[[Get]]` does.
+    let source = "'push' in []&&'toString' in {}&&!('nope' in [])";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+    let source = "var r;with({}){r=toString}r===Object.prototype.toString";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+    let source = "var r;with([1,2]){r=push}r===Array.prototype.push";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
 }

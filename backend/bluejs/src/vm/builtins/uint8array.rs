@@ -113,6 +113,7 @@ impl Vm {
         // Validate the Uint8Array brand before any option lookup, but defer
         // detached/out-of-bounds validation until after observable options.
         self.uint8_array_object(receiver)?;
+        self.reject_immutable_typed_array(receiver)?;
         let input = self.uint8_array_string_argument(native::argument(args, 0))?;
         let (alphabet, handling) = self.uint8_array_decode_options(native::argument(args, 1))?;
         let (target, length) = self.uint8_array_validated_receiver(receiver)?;
@@ -130,6 +131,7 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         self.uint8_array_object(receiver)?;
+        self.reject_immutable_typed_array(receiver)?;
         let input = self.uint8_array_string_argument(native::argument(args, 0))?;
         let (target, length) = self.uint8_array_validated_receiver(receiver)?;
         let decoded = decode_hex(input, length);

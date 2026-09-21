@@ -14,7 +14,7 @@ use crate::heap::{
 use crate::native::{self, NativeFunction};
 use crate::primitive;
 use crate::{
-    Bytecode, Heap, HeapConfig, HeapError, JsString, JsSymbol, ObjectId, Opcode,
+    Bytecode, Heap, HeapConfig, HeapError, ImportPhase, JsString, JsSymbol, ObjectId, Opcode,
     PropertyDescriptor, PropertyName, RootId, Value,
 };
 use num_bigint::{BigInt, Sign};
@@ -119,6 +119,7 @@ impl From<HeapError> for RuntimeError {
                 Self::RangeError("invalid ArrayBuffer view range".into())
             }
             HeapError::DetachedArrayBuffer
+            | HeapError::ImmutableArrayBuffer
             | HeapError::InvalidWeakTarget
             | HeapError::InvalidInternalSlot(_)
             | HeapError::RevokedProxy => Self::TypeError(error.to_string()),
@@ -310,6 +311,9 @@ struct DynamicEvalBinding {
 struct LinkedModule {
     cells: HashMap<usize, ObjectId>,
     namespace: Option<ObjectId>,
+    /// The module's *deferred* namespace object (import-defer proposal), kept
+    /// apart from `namespace`: the two are distinct objects.
+    deferred_namespace: Option<ObjectId>,
     evaluated: bool,
     evaluating: bool,
     suspended: bool,
@@ -364,7 +368,17 @@ enum ExportResolution {
     Missing,
     Ambiguous,
     Namespace { module: String },
+    DeferredNamespace { module: String },
     Source { module: String },
+}
+
+/// A pending `import.defer()` promise. It resolves with the deferred
+/// namespace once every asynchronous dependency the import had to evaluate
+/// (its `pending` set) has finished, and rejects if any of them fails.
+struct DeferredImportWaiter {
+    promise: ObjectId,
+    namespace: ObjectId,
+    pending: HashSet<String>,
 }
 
 enum PromiseStatus {
@@ -520,6 +534,8 @@ enum PromiseJob {
         /// Whether `import(specifier, { with: { type: "json" } })` was
         /// requested, routing resolution to `ensure_json_module`.
         json: bool,
+        /// `import()` (`Evaluation`) or `import.defer()` (`Defer`).
+        phase: ImportPhase,
     },
     ModuleAwait {
         continuation: u64,
@@ -550,6 +566,12 @@ enum PromiseJob {
 enum DynamicImportResult {
     Fulfilled(Value),
     Waiting(String),
+    /// An `import.defer()` whose asynchronous dependencies are still running:
+    /// fulfilled with `namespace` once all of `modules` have finished.
+    WaitingDeferred {
+        namespace: ObjectId,
+        modules: Vec<String>,
+    },
 }
 
 /// A Test262 realm owns a complete VM. Foreign objects are represented by a
@@ -761,7 +783,24 @@ pub struct Vm {
     /// already made visible through a static `import * as` binding.
     module_namespace_cache: HashMap<String, ObjectId>,
     module_namespace_roots: HashMap<String, RootId>,
+    /// Deferred module namespace objects (import-defer proposal) and the
+    /// module each one evaluates when a string-keyed internal method other
+    /// than `"then"` first observes it. The per-module cache gives every
+    /// module a single deferred namespace and, through its roots, keeps that
+    /// object (and so this map's keys) alive.
+    deferred_namespaces: HashMap<ObjectId, String>,
+    module_deferred_namespace_cache: HashMap<String, ObjectId>,
+    module_deferred_namespace_roots: HashMap<String, RootId>,
     module_graph: Option<ModuleGraphState>,
+    /// The module records of the graph whose module code is running right
+    /// now. Module evaluation holds them in a local; while user code runs
+    /// they are parked here so a deferred namespace observed by that code
+    /// (or an `import()` it starts) can evaluate a module of the same graph.
+    evaluating_linked: Option<HashMap<String, LinkedModule>>,
+    deferred_import_waiters: Vec<DeferredImportWaiter>,
+    /// The asynchronous dependency frontier the last `import.defer()` graph
+    /// load evaluated (see `gather_async_dependencies`).
+    last_deferred_dependencies: Vec<String>,
     module_continuations: HashMap<u64, ModuleContinuation>,
     next_module_continuation: u64,
     async_continuations: HashMap<u64, AsyncContinuation>,
@@ -981,7 +1020,13 @@ impl Vm {
             last_module_namespace_root: None,
             module_namespace_cache: HashMap::new(),
             module_namespace_roots: HashMap::new(),
+            deferred_namespaces: HashMap::new(),
+            module_deferred_namespace_cache: HashMap::new(),
+            module_deferred_namespace_roots: HashMap::new(),
             module_graph: None,
+            evaluating_linked: None,
+            deferred_import_waiters: Vec::new(),
+            last_deferred_dependencies: Vec::new(),
             module_continuations: HashMap::new(),
             next_module_continuation: 0,
             async_continuations: HashMap::new(),
@@ -1147,7 +1192,7 @@ impl Vm {
         entry: &str,
         modules: &HashMap<String, Bytecode>,
     ) -> Result<Value, RuntimeError> {
-        self.execute_module_graph_inner(entry, modules, true, false, false)
+        self.execute_module_graph_inner(entry, modules, true, false, false, ImportPhase::Evaluation)
     }
 }
 
@@ -1416,6 +1461,23 @@ impl Vm {
                 1,
                 NativeFunction::ArrayFill,
             )?;
+            for (name, length, function) in [
+                ("copyWithin", 2, NativeFunction::ArrayCopyWithin),
+                ("flat", 0, NativeFunction::ArrayFlat),
+                ("flatMap", 1, NativeFunction::ArrayFlatMap),
+                ("toReversed", 0, NativeFunction::ArrayToReversed),
+                ("toSorted", 1, NativeFunction::ArrayToSorted),
+                ("toSpliced", 2, NativeFunction::ArrayToSpliced),
+                ("with", 2, NativeFunction::ArrayWith),
+            ] {
+                self.install_native(
+                    self.array_prototype,
+                    function_prototype,
+                    name,
+                    length,
+                    function,
+                )?;
+            }
             for (name, kind) in [
                 ("entries", ArrayIteratorKind::Entries),
                 ("keys", ArrayIteratorKind::Keys),
@@ -1588,6 +1650,7 @@ impl Vm {
                 1,
                 NativeFunction::ArraySort,
             )?;
+            self.install_array_unscopables()?;
             Ok((constructor, prototype))
         })();
         match result {
@@ -1611,6 +1674,17 @@ impl Vm {
                     (object_prototype, "hasOwnProperty".into()),
                     (self.array_prototype, "at".into()),
                     (self.array_prototype, "fill".into()),
+                    (self.array_prototype, "copyWithin".into()),
+                    (self.array_prototype, "flat".into()),
+                    (self.array_prototype, "flatMap".into()),
+                    (self.array_prototype, "toReversed".into()),
+                    (self.array_prototype, "toSorted".into()),
+                    (self.array_prototype, "toSpliced".into()),
+                    (self.array_prototype, "with".into()),
+                    (
+                        self.array_prototype,
+                        PropertyName::from(JsSymbol::well_known("unscopables")),
+                    ),
                     (self.array_prototype, "entries".into()),
                     (self.array_prototype, "keys".into()),
                     (self.array_prototype, "values".into()),

@@ -56,11 +56,13 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<bool, RuntimeError> {
+        self.materialize_string_intrinsics_for_key(key)?;
         let mut current = Some(object);
         while let Some(id) = current {
             if self.heap.proxy(id)?.is_some() {
                 return self.proxy_has(id, key);
             }
+            self.trigger_deferred_namespace(id, Some(key))?;
             if let Some(numeric) = self.heap.typed_array_numeric_key(id, key)? {
                 return match numeric {
                     crate::heap::TypedArrayNumericKey::Index(index) => {

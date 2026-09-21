@@ -37,6 +37,12 @@ impl Vm {
                 self.test262_detach_foreign_buffer_mirrors(realm_id, target)?;
                 return Ok(Value::Undefined);
             }
+            // DetachArrayBuffer is idempotent: detaching a buffer that a
+            // transfer already detached succeeds without effect (an
+            // immutable buffer still throws below, per its own step 2).
+            if self.heap.buffer_is_detached(buffer)? {
+                return Ok(Value::Undefined);
+            }
             self.test262_detach_local_buffer_mirrors(buffer)?;
             self.with_roots(|heap| heap.detach_array_buffer(buffer))?;
             return Ok(Value::Undefined);

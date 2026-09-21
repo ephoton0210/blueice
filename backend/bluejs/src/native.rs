@@ -312,12 +312,16 @@ pub(crate) enum NativeFunction {
     TemporalZonedDateTimeGetTimeZoneTransition,
     ArrayBuffer,
     ArrayBufferByteLength,
+    ArrayBufferDetached,
     ArrayBufferMaxByteLength,
     ArrayBufferResizable,
     ArrayBufferResize,
     ArrayBufferTransfer,
     ArrayBufferTransferToFixedLength,
     ArrayBufferSlice,
+    ArrayBufferImmutable,
+    ArrayBufferTransferToImmutable,
+    ArrayBufferSliceToImmutable,
     ArrayBufferIsView,
     ArrayBufferSpecies,
     SharedArrayBuffer,
@@ -391,9 +395,23 @@ pub(crate) enum NativeFunction {
     ArrayIsArray,
     ArrayAt,
     ArrayFill,
+    ArrayCopyWithin,
+    ArrayToReversed,
+    ArrayToSorted,
+    ArrayToSpliced,
+    ArrayWith,
+    ArrayFlat,
+    ArrayFlatMap,
     ArrayOf,
     ArraySpecies,
     ArrayFrom,
+    ArrayFromAsync,
+    /// A settled Await inside an `Array.fromAsync` run: `state` is the run's
+    /// heap-resident state record.
+    ArrayFromAsyncResume {
+        state: ObjectId,
+        rejected: bool,
+    },
     ArrayForEach,
     ArrayFilter,
     ArrayMap,
@@ -428,11 +446,6 @@ pub(crate) enum NativeFunction {
     },
     DecodeUri {
         component: bool,
-    },
-    /// The source/defer variants of dynamic import. They remain separate from
-    /// ordinary `import()` because their host phase is observable.
-    DynamicImport {
-        source: bool,
     },
     JsonParse,
     JsonStringify,
@@ -717,6 +730,7 @@ impl NativeFunction {
             Self::ProxyRevoker(proxy) => vec![proxy],
             Self::PromiseResolvingFunction { promise, .. } => vec![promise],
             Self::PromiseCapabilityExecutor { storage } => vec![storage],
+            Self::ArrayFromAsyncResume { state, .. } => vec![state],
             Self::AsyncFromSyncFulfill { target, .. } => vec![target],
             Self::AsyncFromSyncReject { target, record } => vec![target, record],
             Self::PromiseAllResolve { target, .. }

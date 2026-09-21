@@ -7,8 +7,8 @@
 use crate::compiler::{is_declaration_module, Project};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::parser::{
-    Declaration, FunctionDeclaration, InterfaceDeclaration, Module, Parameter, TypeField,
-    TypeParameter,
+    Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch, FunctionIfStatement,
+    InterfaceDeclaration, Module, Parameter, TypeField, TypeParameter,
 };
 use crate::syntax::{Token, TokenKind};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -106,8 +106,8 @@ pub(crate) fn check_incremental(
     rechecked: &BTreeSet<String>,
     max_type_expansions: usize,
 ) -> (CheckedProject, Vec<Diagnostic>) {
-    let mut diagnostics = declaration_module_diagnostics(project);
-    let exported_types = exported_types(project);
+    let mut diagnostics = project::declaration_module_diagnostics(project);
+    let exported_types = project::exported_types(project);
     let mut checked_modules = BTreeMap::new();
 
     for (module_id, module) in &project.modules {
@@ -117,7 +117,7 @@ pub(crate) fn check_incremental(
                 continue;
             }
         }
-        let mut checker = ModuleChecker::new(
+        let mut checker = module::ModuleChecker::new(
             project,
             module,
             &exported_types,
@@ -145,1234 +145,8 @@ pub(crate) fn check_incremental(
     )
 }
 
-fn declaration_module_diagnostics(project: &Project) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-    for (module_id, module) in &project.modules {
-        for declaration in &module.declarations {
-            if let Declaration::Import(import) = declaration {
-                if !import.type_only
-                    && project
-                        .resolutions
-                        .get(&(module_id.clone(), import.specifier.clone()))
-                        .is_some_and(|resolved| is_declaration_module(resolved))
-                {
-                    diagnostics.push(Diagnostic::error(
-                        DiagnosticCode::InvalidDeclarationFile,
-                        import.span.clone(),
-                        format!(
-                            "value import `{}` resolves to declaration module; declaration modules are type-only",
-                            import.specifier
-                        ),
-                    ));
-                }
-            }
-        }
-        if !is_declaration_module(module_id) {
-            continue;
-        }
-        for declaration in &module.declarations {
-            let runtime_declaration = match declaration {
-                Declaration::Import(import) => !import.type_only,
-                Declaration::Variable(variable) => !variable.declared,
-                Declaration::Function(function) => !function.declared && !function.overload,
-                Declaration::Raw(_) => true,
-                Declaration::TypeExport(_)
-                | Declaration::TypeAlias(_)
-                | Declaration::Interface(_) => false,
-            };
-            if runtime_declaration {
-                diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::InvalidDeclarationFile,
-                    declaration.span().clone(),
-                    "declaration module contains a runtime declaration",
-                ));
-            }
-        }
-    }
-    diagnostics
-}
-
-fn exported_types(project: &Project) -> BTreeMap<String, BTreeMap<String, TypeDefinition>> {
-    let mut modules = BTreeMap::new();
-    for (id, module) in &project.modules {
-        // An exported interface can inherit a private, local parent. Its
-        // exported definition must therefore carry the inherited shape rather
-        // than make consumers resolve an unimportable implementation detail.
-        let declared = local_type_definitions(module);
-        let mut values = BTreeMap::new();
-        for declaration in &module.declarations {
-            match declaration {
-                Declaration::TypeAlias(alias) if alias.exported => {
-                    values.insert(
-                        alias.name.clone(),
-                        TypeDefinition {
-                            kind: TypeDefinitionKind::Alias,
-                            parameters: alias.type_parameters.clone(),
-                            value: alias.value.clone(),
-                        },
-                    );
-                }
-                Declaration::Interface(interface) if interface.exported => {
-                    values.insert(
-                        interface.name.clone(),
-                        TypeDefinition {
-                            kind: TypeDefinitionKind::Interface,
-                            parameters: interface.type_parameters.clone(),
-                            value: exported_interface_value(interface, &declared),
-                        },
-                    );
-                }
-                _ => {}
-            }
-        }
-        modules.insert(id.clone(), values);
-    }
-    // Type-only re-exports are static edges, but they still contribute to the
-    // public type surface consumed by another module.  Resolve this small
-    // fixed point without executing module code; the graph is already closed
-    // and bounded by the project resolver.
-    for _ in 0..project.modules.len() {
-        let mut changed = false;
-        for (module_id, module) in &project.modules {
-            let mut additions = BTreeMap::new();
-            for declaration in &module.declarations {
-                let Declaration::TypeExport(export) = declaration else {
-                    continue;
-                };
-                let Some(specifier) = &export.specifier else {
-                    continue;
-                };
-                let Some(source_id) = project
-                    .resolutions
-                    .get(&(module_id.clone(), specifier.clone()))
-                else {
-                    continue;
-                };
-                let Some(source_types) = modules.get(source_id) else {
-                    continue;
-                };
-                for binding in &export.bindings {
-                    if binding == "*" {
-                        additions.extend(source_types.clone());
-                        continue;
-                    }
-                    let (local, exported) = binding
-                        .split_once(" as ")
-                        .map_or((binding.as_str(), binding.as_str()), |(local, exported)| {
-                            (local, exported)
-                        });
-                    if let Some(value) = source_types.get(local) {
-                        additions.insert(exported.to_string(), value.clone());
-                    }
-                }
-            }
-            let target = modules.entry(module_id.clone()).or_default();
-            for (name, value) in additions {
-                if target.get(&name) != Some(&value) {
-                    target.insert(name, value);
-                    changed = true;
-                }
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    modules
-}
-
-fn local_type_definitions(module: &Module) -> BTreeMap<String, TypeDefinition> {
-    module
-        .declarations
-        .iter()
-        .filter_map(|declaration| match declaration {
-            Declaration::TypeAlias(alias) => Some((
-                alias.name.clone(),
-                TypeDefinition {
-                    kind: TypeDefinitionKind::Alias,
-                    parameters: alias.type_parameters.clone(),
-                    value: alias.value.clone(),
-                },
-            )),
-            Declaration::Interface(interface) => Some((
-                interface.name.clone(),
-                TypeDefinition {
-                    kind: TypeDefinitionKind::Interface,
-                    parameters: interface.type_parameters.clone(),
-                    value: interface_value(interface),
-                },
-            )),
-            _ => None,
-        })
-        .collect()
-}
-
-fn exported_interface_value(
-    interface: &InterfaceDeclaration,
-    declared: &BTreeMap<String, TypeDefinition>,
-) -> Type {
-    let mut active = HashSet::new();
-    let heritage = interface
-        .heritage
-        .iter()
-        .map(|parent| expand_exported_heritage(parent, declared, &mut active))
-        .collect::<Vec<_>>();
-    interface_value_with_heritage(&heritage, &interface.fields)
-}
-
-fn expand_exported_heritage(
-    value: &Type,
-    declared: &BTreeMap<String, TypeDefinition>,
-    active: &mut HashSet<String>,
-) -> Type {
-    match value {
-        Type::Named { name, arguments } => {
-            let Some(definition) = declared.get(name) else {
-                return value.clone();
-            };
-            let Some(arguments) = complete_type_arguments(&definition.parameters, arguments) else {
-                return value.clone();
-            };
-            let key = format!("heritage:{}", type_identity(value));
-            if !active.insert(key.clone()) {
-                return value.clone();
-            }
-            let substitutions = type_parameter_substitutions(&definition.parameters, arguments);
-            let expanded = substitute_type(&definition.value, &substitutions);
-            let result = expand_exported_heritage(&expanded, declared, active);
-            active.remove(&key);
-            result
-        }
-        Type::Intersection(parts) => Type::Intersection(
-            parts
-                .iter()
-                .map(|part| expand_exported_heritage(part, declared, active))
-                .collect(),
-        ),
-        _ => value.clone(),
-    }
-}
-
-struct ModuleChecker<'a> {
-    project: &'a Project,
-    module: &'a Module,
-    exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
-    enforce_types: bool,
-    diagnostics: Vec<Diagnostic>,
-    symbols: Vec<Symbol>,
-    types: BTreeMap<String, TypeDefinition>,
-    values: BTreeMap<String, Type>,
-    functions: BTreeMap<String, Vec<FunctionSignature>>,
-    function_implementations: BTreeSet<String>,
-    type_parameters: BTreeSet<String>,
-    max_type_expansions: usize,
-}
-
-impl<'a> ModuleChecker<'a> {
-    fn new(
-        project: &'a Project,
-        module: &'a Module,
-        exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
-        enforce_types: bool,
-        max_type_expansions: usize,
-    ) -> Self {
-        Self {
-            project,
-            module,
-            exported_types,
-            enforce_types,
-            diagnostics: Vec::new(),
-            symbols: Vec::new(),
-            types: BTreeMap::new(),
-            values: BTreeMap::new(),
-            functions: BTreeMap::new(),
-            function_implementations: BTreeSet::new(),
-            type_parameters: BTreeSet::new(),
-            max_type_expansions,
-        }
-    }
-
-    fn bind(&mut self) {
-        for declaration in &self.module.declarations {
-            match declaration {
-                Declaration::Import(import) => self.bind_import(import),
-                Declaration::TypeExport(export) => self.bind_type_export(export),
-                Declaration::TypeAlias(alias) => {
-                    self.insert_type(
-                        &alias.name,
-                        TypeDefinition {
-                            kind: TypeDefinitionKind::Alias,
-                            parameters: alias.type_parameters.clone(),
-                            value: alias.value.clone(),
-                        },
-                        alias.span.clone(),
-                        SymbolKind::TypeAlias,
-                        alias.exported,
-                    );
-                }
-                Declaration::Interface(interface) => {
-                    self.insert_type(
-                        &interface.name,
-                        TypeDefinition {
-                            kind: TypeDefinitionKind::Interface,
-                            parameters: interface.type_parameters.clone(),
-                            value: interface_value(interface),
-                        },
-                        interface.span.clone(),
-                        SymbolKind::Interface,
-                        interface.exported,
-                    );
-                }
-                Declaration::Variable(variable) => {
-                    let value_type = variable.annotation.clone().unwrap_or(Type::Unknown);
-                    self.insert_value(
-                        &variable.name,
-                        value_type,
-                        variable.span.clone(),
-                        SymbolKind::Variable,
-                        variable.exported,
-                    );
-                }
-                Declaration::Function(function) => {
-                    let value_type = function.return_type.clone().unwrap_or(Type::Unknown);
-                    let signature = FunctionSignature {
-                        parameters: function.parameters.clone(),
-                        type_parameters: function.type_parameters.clone(),
-                        return_type: function.return_type.clone().unwrap_or(Type::Unknown),
-                    };
-                    if !self.values.contains_key(&function.name) {
-                        self.insert_value(
-                            &function.name,
-                            value_type,
-                            function.span.clone(),
-                            SymbolKind::Function,
-                            function.exported,
-                        );
-                    } else if !self.functions.contains_key(&function.name) {
-                        self.duplicate(&function.name, function.span.clone());
-                        continue;
-                    }
-                    if function.overload || function.declared {
-                        if self.function_implementations.contains(&function.name) {
-                            self.type_error(
-                                &function.span,
-                                format!(
-                                    "overload signature for {} must precede its implementation",
-                                    function.name
-                                ),
-                                DiagnosticCode::TypeMismatch,
-                            );
-                        } else {
-                            self.functions
-                                .entry(function.name.clone())
-                                .or_default()
-                                .push(signature);
-                        }
-                    } else if !self.function_implementations.insert(function.name.clone()) {
-                        self.duplicate(&function.name, function.span.clone());
-                    } else if self.functions.get(&function.name).is_none_or(Vec::is_empty) {
-                        self.functions
-                            .entry(function.name.clone())
-                            .or_default()
-                            .push(signature);
-                    }
-                }
-                Declaration::Raw(_) => {}
-            }
-        }
-        self.validate_function_overloads();
-    }
-
-    fn validate_function_overloads(&mut self) {
-        let overloads = self
-            .module
-            .declarations
-            .iter()
-            .filter_map(|declaration| match declaration {
-                Declaration::Function(function) if function.overload => Some(function),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        for overload in overloads {
-            let implementations = self
-                .module
-                .declarations
-                .iter()
-                .filter_map(|declaration| match declaration {
-                    Declaration::Function(function)
-                        if function.name == overload.name
-                            && !function.overload
-                            && !function.declared =>
-                    {
-                        Some(function)
-                    }
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            let Some(implementation) = implementations.first() else {
-                if !is_declaration_module(&self.module.id) {
-                    self.type_error(
-                        &overload.span,
-                        format!(
-                            "overload signature for {} requires an implementation",
-                            overload.name
-                        ),
-                        DiagnosticCode::TypeMismatch,
-                    );
-                }
-                continue;
-            };
-            match overload_is_compatible_with_implementation(
-                overload,
-                implementation,
-                &self.types,
-                self.max_type_expansions,
-            ) {
-                Ok(true) => {}
-                Ok(false) => self.type_error(
-                    &overload.span,
-                    format!(
-                        "overload signature for {} is incompatible with its implementation",
-                        overload.name
-                    ),
-                    DiagnosticCode::TypeMismatch,
-                ),
-                Err(()) => self.type_error(
-                    &overload.span,
-                    format!(
-                        "overload compatibility exceeds the {} generic-expansion limit",
-                        self.max_type_expansions
-                    ),
-                    DiagnosticCode::ResourceLimit,
-                ),
-            }
-        }
-    }
-
-    fn bind_import(&mut self, import: &crate::parser::ImportDeclaration) {
-        let Some(resolved) = self
-            .project
-            .resolutions
-            .get(&(self.module.id.clone(), import.specifier.clone()))
-        else {
-            return;
-        };
-        let exported = self.exported_types.get(resolved);
-        for binding in &import.bindings {
-            if binding.type_only {
-                if binding.imported == "*" {
-                    if let Some(source_types) = exported {
-                        for (name, definition) in source_types {
-                            self.insert_type(
-                                &format!("{}.{}", binding.local, name),
-                                definition.clone(),
-                                import.span.clone(),
-                                SymbolKind::Import,
-                                false,
-                            );
-                        }
-                    }
-                    continue;
-                }
-                let Some(source_type) = exported.and_then(|types| types.get(&binding.imported))
-                else {
-                    self.diagnostics.push(Diagnostic::error(
-                        DiagnosticCode::UnknownType,
-                        import.span.clone(),
-                        format!(
-                            "module `{}` has no exported type `{}`",
-                            import.specifier, binding.imported
-                        ),
-                    ));
-                    continue;
-                };
-                self.insert_type(
-                    &binding.local,
-                    source_type.clone(),
-                    import.span.clone(),
-                    SymbolKind::Import,
-                    false,
-                );
-            } else {
-                self.insert_value(
-                    &binding.local,
-                    Type::Unknown,
-                    import.span.clone(),
-                    SymbolKind::Import,
-                    false,
-                );
-            }
-        }
-    }
-
-    fn bind_type_export(&mut self, export: &crate::parser::TypeExportDeclaration) {
-        let source_types = export.specifier.as_ref().and_then(|specifier| {
-            self.project
-                .resolutions
-                .get(&(self.module.id.clone(), specifier.clone()))
-                .and_then(|resolved| self.exported_types.get(resolved))
-        });
-        for binding in &export.bindings {
-            if binding == "*" {
-                continue;
-            }
-            let local = binding.split(" as ").next().unwrap_or(binding);
-            let exists = source_types.is_some_and(|types| types.contains_key(local))
-                || export.specifier.is_none() && self.types.contains_key(local);
-            if !exists {
-                self.diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::UnknownType,
-                    export.span.clone(),
-                    format!("cannot re-export unknown type `{local}`"),
-                ));
-            }
-        }
-    }
-
-    fn insert_type(
-        &mut self,
-        name: &str,
-        definition: TypeDefinition,
-        span: SourceSpan,
-        kind: SymbolKind,
-        exported: bool,
-    ) {
-        if self
-            .types
-            .insert(name.to_string(), definition.clone())
-            .is_some()
-        {
-            self.duplicate(name, span);
-            return;
-        }
-        self.symbols.push(Symbol {
-            name: name.to_string(),
-            kind,
-            module: self.module.id.clone(),
-            span,
-            exported,
-            value_type: Some(definition.value),
-        });
-    }
-
-    fn insert_value(
-        &mut self,
-        name: &str,
-        value_type: Type,
-        span: SourceSpan,
-        kind: SymbolKind,
-        exported: bool,
-    ) {
-        if self
-            .values
-            .insert(name.to_string(), value_type.clone())
-            .is_some()
-        {
-            self.duplicate(name, span);
-            return;
-        }
-        self.symbols.push(Symbol {
-            name: name.to_string(),
-            kind,
-            module: self.module.id.clone(),
-            span,
-            exported,
-            value_type: Some(value_type),
-        });
-    }
-
-    fn duplicate(&mut self, name: &str, span: SourceSpan) {
-        self.diagnostics.push(Diagnostic::error(
-            DiagnosticCode::DuplicateDeclaration,
-            span,
-            format!("duplicate declaration of `{name}`"),
-        ));
-    }
-
-    fn check_types(&mut self) {
-        for declaration in &self.module.declarations {
-            match declaration {
-                Declaration::TypeAlias(alias) => {
-                    self.check_type_with_parameters(
-                        &alias.value,
-                        &alias.span,
-                        &alias.type_parameters,
-                    );
-                }
-                Declaration::Interface(interface) => {
-                    for parent in &interface.heritage {
-                        self.check_interface_heritage(
-                            parent,
-                            &interface.span,
-                            &interface.type_parameters,
-                        );
-                        self.check_inherited_field_compatibility(
-                            parent,
-                            &interface.fields,
-                            &interface.span,
-                        );
-                    }
-                    for field in &interface.fields {
-                        self.check_type_with_parameters(
-                            &field.value,
-                            &field.span,
-                            &interface.type_parameters,
-                        );
-                    }
-                }
-                Declaration::Variable(variable) => self.check_variable(variable),
-                Declaration::Function(function) => self.check_function(function),
-                Declaration::Import(_) | Declaration::TypeExport(_) | Declaration::Raw(_) => {}
-            }
-        }
-    }
-
-    fn check_type_with_parameters(
-        &mut self,
-        value: &Type,
-        span: &SourceSpan,
-        parameters: &[TypeParameter],
-    ) {
-        let previous_parameters = self.type_parameters.clone();
-        self.check_type_parameters(parameters);
-        self.check_type(value, span);
-        self.type_parameters = previous_parameters;
-    }
-
-    fn check_interface_heritage(
-        &mut self,
-        parent: &Type,
-        span: &SourceSpan,
-        parameters: &[TypeParameter],
-    ) {
-        let previous_parameters = self.type_parameters.clone();
-        self.check_type_parameters(parameters);
-        self.check_type(parent, span);
-        if let Type::Named { name, .. } = parent {
-            match self.types.get(name) {
-                Some(TypeDefinition {
-                    kind: TypeDefinitionKind::Interface,
-                    ..
-                }) => {}
-                Some(_) => self.type_error(
-                    span,
-                    format!("interface heritage {name} must name an interface declaration"),
-                    DiagnosticCode::UnsupportedSyntax,
-                ),
-                None if self.type_parameters.contains(name) => self.type_error(
-                    span,
-                    format!("interface heritage {name} must name an interface declaration"),
-                    DiagnosticCode::UnsupportedSyntax,
-                ),
-                None => {}
-            }
-        }
-        self.type_parameters = previous_parameters;
-    }
-
-    fn check_inherited_field_compatibility(
-        &mut self,
-        parent: &Type,
-        fields: &[TypeField],
-        span: &SourceSpan,
-    ) {
-        for field in fields {
-            let inherited = {
-                let mut visited = HashSet::new();
-                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-                property_type(parent, &field.name, &self.types, &mut visited, &mut budget)
-            };
-            let PropertyType::Found(inherited) = inherited else {
-                continue;
-            };
-            let declared = if field.optional {
-                Type::Union(vec![field.value.clone(), Type::Undefined])
-            } else {
-                field.value.clone()
-            };
-            if !self.is_assignable_bounded(&declared, &inherited, span) {
-                self.type_error(
-                    span,
-                    format!(
-                        "property `{}` is not compatible with the inherited type `{}`",
-                        field.name,
-                        type_label(&inherited)
-                    ),
-                    DiagnosticCode::TypeMismatch,
-                );
-            }
-        }
-    }
-
-    fn check_variable(&mut self, variable: &crate::parser::VariableDeclaration) {
-        let scope = self.values.clone();
-        self.check_variable_in_scope(variable, &scope);
-    }
-
-    fn check_variable_in_scope(
-        &mut self,
-        variable: &crate::parser::VariableDeclaration,
-        scope: &BTreeMap<String, Type>,
-    ) {
-        let Some(annotation) = &variable.annotation else {
-            return;
-        };
-        self.check_type(annotation, &variable.span);
-        if variable.initializer.is_empty() || variable.declared {
-            return;
-        }
-        self.check_function_call(&variable.initializer, scope, &variable.span);
-        self.check_direct_property_access(&variable.initializer, scope, &variable.span);
-        let inferred = self.infer_expression(&variable.initializer, scope);
-        if !self.is_assignable_bounded(&inferred, annotation, &variable.span) {
-            self.type_error(
-                &variable.span,
-                format!(
-                    "initializer has type `{}`, which is not assignable to `{}`",
-                    type_label(&inferred),
-                    type_label(annotation)
-                ),
-                DiagnosticCode::TypeMismatch,
-            );
-        }
-    }
-
-    fn check_function(&mut self, function: &FunctionDeclaration) {
-        let mut scope = self.values.clone();
-        let previous_parameters = self.type_parameters.clone();
-        self.check_type_parameters(&function.type_parameters);
-        for parameter in &function.parameters {
-            if let Some(annotation) = &parameter.annotation {
-                self.check_type(annotation, &parameter.span);
-                scope.insert(parameter.name.clone(), annotation.clone());
-            } else {
-                scope.insert(parameter.name.clone(), Type::Unknown);
-            }
-        }
-        for local in &function.locals {
-            self.check_variable_in_scope(local, &scope);
-            scope.insert(
-                local.name.clone(),
-                local.annotation.clone().unwrap_or(Type::Unknown),
-            );
-        }
-        if let Some(return_type) = &function.return_type {
-            self.check_type(return_type, &function.span);
-            for returned in &function.returns {
-                if returned.is_empty() {
-                    continue;
-                }
-                self.check_function_call(returned, &scope, &function.span);
-                self.check_direct_property_access(returned, &scope, &function.span);
-                let actual = self.infer_expression(returned, &scope);
-                if !self.is_assignable_bounded(&actual, return_type, &function.span) {
-                    self.type_error(
-                        &function.span,
-                        format!(
-                            "return expression has type `{}`, which is not assignable to `{}`",
-                            type_label(&actual),
-                            type_label(return_type)
-                        ),
-                        DiagnosticCode::ReturnTypeMismatch,
-                    );
-                }
-            }
-        }
-        self.type_parameters = previous_parameters;
-    }
-
-    fn check_type(&mut self, value: &Type, span: &SourceSpan) {
-        match value {
-            Type::Named { name, arguments } => {
-                if let Some(definition) = self.types.get(name).cloned() {
-                    self.check_type_arguments(name, arguments, &definition, span);
-                } else if !self.type_parameters.contains(name) {
-                    self.type_error(
-                        span,
-                        format!("cannot find type `{name}`"),
-                        DiagnosticCode::UnknownType,
-                    );
-                }
-            }
-            Type::Array(value) => self.check_type(value, span),
-            Type::Tuple(values) | Type::Union(values) | Type::Intersection(values) => {
-                for value in values {
-                    self.check_type(value, span);
-                }
-            }
-            Type::Record(fields) => {
-                for field in fields {
-                    self.check_type(&field.value, &field.span);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn check_type_parameters(&mut self, parameters: &[TypeParameter]) {
-        let mut saw_default = false;
-        for parameter in parameters {
-            if !self.type_parameters.insert(parameter.name.clone()) {
-                self.type_error(
-                    &parameter.span,
-                    format!("duplicate type parameter `{}`", parameter.name),
-                    DiagnosticCode::DuplicateDeclaration,
-                );
-            }
-            if saw_default && parameter.default.is_none() {
-                self.type_error(
-                    &parameter.span,
-                    format!(
-                        "required type parameter `{}` cannot follow a defaulted type parameter",
-                        parameter.name
-                    ),
-                    DiagnosticCode::TypeMismatch,
-                );
-            }
-            if parameter.default.is_some() {
-                saw_default = true;
-            }
-            if let Some(constraint) = &parameter.constraint {
-                self.check_type(constraint, &parameter.span);
-            }
-            if let Some(default) = &parameter.default {
-                self.check_type(default, &parameter.span);
-                if let Some(constraint) = &parameter.constraint {
-                    if !self.is_assignable_bounded(default, constraint, &parameter.span) {
-                        self.type_error(
-                            &parameter.span,
-                            format!(
-                                "default type `{}` does not satisfy constraint `{}` for `{}`",
-                                type_label(default),
-                                type_label(constraint),
-                                parameter.name,
-                            ),
-                            DiagnosticCode::TypeMismatch,
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    fn check_type_arguments(
-        &mut self,
-        name: &str,
-        arguments: &[Type],
-        definition: &TypeDefinition,
-        span: &SourceSpan,
-    ) {
-        let required = definition
-            .parameters
-            .iter()
-            .filter(|parameter| parameter.default.is_none())
-            .count();
-        if arguments.len() < required || arguments.len() > definition.parameters.len() {
-            self.type_error(
-                span,
-                format!(
-                    "type `{name}` requires {required} to {} type argument(s), got {}",
-                    definition.parameters.len(),
-                    arguments.len(),
-                ),
-                DiagnosticCode::TypeMismatch,
-            );
-        }
-        for argument in arguments {
-            self.check_type(argument, span);
-        }
-        let Some(arguments) = complete_type_arguments(&definition.parameters, arguments) else {
-            return;
-        };
-        let substitutions = definition
-            .parameters
-            .iter()
-            .map(|parameter| parameter.name.clone())
-            .zip(arguments)
-            .collect::<BTreeMap<_, _>>();
-        for parameter in &definition.parameters {
-            let Some(constraint) = &parameter.constraint else {
-                continue;
-            };
-            let actual = substitutions
-                .get(&parameter.name)
-                .expect("completed generic arguments contain every parameter");
-            let expected = substitute_type(constraint, &substitutions);
-            if !self.is_assignable_bounded(actual, &expected, span) {
-                self.type_error(
-                    span,
-                    format!(
-                        "type argument `{}` does not satisfy constraint `{}` for `{}`",
-                        type_label(actual),
-                        type_label(&expected),
-                        parameter.name,
-                    ),
-                    DiagnosticCode::TypeMismatch,
-                );
-            }
-        }
-    }
-
-    fn type_error(&mut self, span: &SourceSpan, message: String, code: DiagnosticCode) {
-        if self.enforce_types {
-            self.diagnostics
-                .push(Diagnostic::error(code, span.clone(), message));
-        }
-    }
-
-    fn infer_expression(&self, tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
-        let Some(first) = tokens.first() else {
-            return Type::Undefined;
-        };
-        if first.kind == TokenKind::String || first.kind == TokenKind::Template {
-            return Type::String;
-        }
-        if first.kind == TokenKind::Number {
-            return Type::Number;
-        }
-        match first.text.as_str() {
-            "true" | "false" => Type::Boolean,
-            "null" => Type::Null,
-            "undefined" => Type::Undefined,
-            "[" => infer_array(tokens, scope),
-            "{" => infer_record(tokens, scope),
-            _ if first.kind == TokenKind::Identifier => {
-                if tokens.get(1).is_some_and(|token| token.is("."))
-                    && tokens
-                        .get(2)
-                        .is_some_and(|token| token.kind == TokenKind::Identifier)
-                {
-                    let base = scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
-                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-                    return match property_type(
-                        &base,
-                        &tokens[2].text,
-                        &self.types,
-                        &mut HashSet::new(),
-                        &mut budget,
-                    ) {
-                        PropertyType::Found(value) => value,
-                        PropertyType::Missing
-                        | PropertyType::Indeterminate
-                        | PropertyType::Exhausted => Type::Unknown,
-                    };
-                }
-                if let Some(call) = direct_call_parts(tokens) {
-                    if let Some(signatures) = self.functions.get(&call.callee.text) {
-                        let explicit = call.generic.then(|| {
-                            self.module
-                                .generic_call_type_arguments
-                                .get(&call.callee.start)
-                                .expect("parsed generic call has recorded type arguments")
-                                .as_slice()
-                        });
-                        return self.infer_function_call(
-                            signatures,
-                            call.arguments,
-                            scope,
-                            explicit,
-                        );
-                    }
-                    return scope.get(&first.text).cloned().unwrap_or(Type::Unknown);
-                }
-                scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
-            }
-            _ => Type::Unknown,
-        }
-    }
-
-    fn infer_function_call(
-        &self,
-        signatures: &[FunctionSignature],
-        tokens: &[Token],
-        scope: &BTreeMap<String, Type>,
-        explicit_type_arguments: Option<&[Type]>,
-    ) -> Type {
-        let Some(arguments) = split_call_arguments(tokens) else {
-            return Type::Unknown;
-        };
-        let actuals = arguments
-            .iter()
-            .map(|argument| self.infer_expression(argument, scope))
-            .collect::<Vec<_>>();
-        let Ok(Some(signature)) =
-            self.select_function_signature(signatures, &actuals, explicit_type_arguments)
-        else {
-            return Type::Unknown;
-        };
-        let substitutions =
-            function_call_substitutions(signature, &actuals, explicit_type_arguments)
-                .expect("selected function signature has valid substitutions");
-        substitute_type(&signature.return_type, &substitutions)
-    }
-
-    fn check_function_call(
-        &mut self,
-        tokens: &[Token],
-        scope: &BTreeMap<String, Type>,
-        span: &SourceSpan,
-    ) {
-        let Some(call) = direct_call_parts(tokens) else {
-            return;
-        };
-        let Some(signatures) = self.functions.get(&call.callee.text).cloned() else {
-            return;
-        };
-        let Some(arguments) = split_call_arguments(call.arguments) else {
-            return;
-        };
-        let actuals = arguments
-            .iter()
-            .map(|argument| {
-                self.check_direct_property_access(argument, scope, span);
-                self.infer_expression(argument, scope)
-            })
-            .collect::<Vec<_>>();
-        let explicit = call.generic.then(|| {
-            self.module
-                .generic_call_type_arguments
-                .get(&call.callee.start)
-                .expect("parsed generic call has recorded type arguments")
-                .as_slice()
-        });
-        let selected = match self.select_function_signature(&signatures, &actuals, explicit) {
-            Ok(selected) => selected.cloned(),
-            Err(()) => {
-                self.type_error(
-                    span,
-                    format!(
-                        "overload selection exceeds the {} generic-expansion limit",
-                        self.max_type_expansions
-                    ),
-                    DiagnosticCode::ResourceLimit,
-                );
-                return;
-            }
-        };
-        if signatures.len() > 1 && selected.is_none() {
-            self.type_error(
-                span,
-                format!(
-                    "no overload of function {} accepts the supplied argument types",
-                    call.callee.text
-                ),
-                DiagnosticCode::TypeMismatch,
-            );
-            return;
-        }
-        let Some(signature) = selected.or_else(|| signatures.first().cloned()) else {
-            return;
-        };
-        let required = signature
-            .parameters
-            .iter()
-            .filter(|parameter| !parameter.optional)
-            .count();
-        if arguments.len() < required || arguments.len() > signature.parameters.len() {
-            self.type_error(
-                span,
-                format!(
-                    "function {} expects {} to {} argument(s), got {}",
-                    call.callee.text,
-                    required,
-                    signature.parameters.len(),
-                    arguments.len()
-                ),
-                DiagnosticCode::TypeMismatch,
-            );
-            return;
-        }
-        let substitutions = if let Some(explicit) = explicit {
-            let Some(substitutions) =
-                self.check_explicit_function_type_arguments(&signature, explicit, span)
-            else {
-                return;
-            };
-            substitutions
-        } else {
-            let substitutions = infer_call_substitutions(&signature, &actuals);
-            self.check_call_type_parameter_constraints(
-                &signature,
-                &substitutions,
-                span,
-                "inferred type",
-            );
-            substitutions
-        };
-        for (index, (parameter, actual)) in signature.parameters.iter().zip(actuals).enumerate() {
-            let expected = parameter_expected_type(parameter, &substitutions);
-            if !self.is_assignable_bounded(&actual, &expected, span) {
-                self.type_error(
-                    span,
-                    format!(
-                        "argument {} has type `{}`, which is not assignable to parameter `{}` of type `{}`",
-                        index + 1,
-                        type_label(&actual),
-                        parameter.name,
-                        type_label(&expected)
-                    ),
-                    DiagnosticCode::TypeMismatch,
-                );
-            }
-        }
-    }
-
-    fn select_function_signature<'b>(
-        &self,
-        signatures: &'b [FunctionSignature],
-        actuals: &[Type],
-        explicit_type_arguments: Option<&[Type]>,
-    ) -> Result<Option<&'b FunctionSignature>, ()> {
-        for signature in signatures {
-            if function_signature_matches(
-                signature,
-                actuals,
-                explicit_type_arguments,
-                &self.types,
-                self.max_type_expansions,
-            )? {
-                return Ok(Some(signature));
-            }
-        }
-        Ok(None)
-    }
-
-    fn is_assignable_bounded(&mut self, actual: &Type, expected: &Type, span: &SourceSpan) -> bool {
-        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        let assignable = is_assignable(
-            actual,
-            expected,
-            &self.types,
-            &mut HashSet::new(),
-            &mut budget,
-        );
-        if budget.exhausted {
-            self.type_error(
-                span,
-                format!(
-                    "type comparison exceeds the {} generic-expansion limit",
-                    self.max_type_expansions
-                ),
-                DiagnosticCode::ResourceLimit,
-            );
-            true
-        } else {
-            assignable
-        }
-    }
-
-    fn check_call_type_parameter_constraints(
-        &mut self,
-        signature: &FunctionSignature,
-        substitutions: &BTreeMap<String, Type>,
-        span: &SourceSpan,
-        actual_description: &str,
-    ) {
-        for parameter in &signature.type_parameters {
-            let Some(constraint) = &parameter.constraint else {
-                continue;
-            };
-            let actual = substitutions
-                .get(&parameter.name)
-                .expect("function substitutions contain every type parameter");
-            let expected = substitute_type(constraint, substitutions);
-            if !self.is_assignable_bounded(actual, &expected, span) {
-                self.type_error(
-                    span,
-                    format!(
-                        "{actual_description} `{}` does not satisfy constraint `{}` for `{}`",
-                        type_label(actual),
-                        type_label(&expected),
-                        parameter.name,
-                    ),
-                    DiagnosticCode::TypeMismatch,
-                );
-            }
-        }
-    }
-
-    fn check_explicit_function_type_arguments(
-        &mut self,
-        signature: &FunctionSignature,
-        arguments: &[Type],
-        span: &SourceSpan,
-    ) -> Option<BTreeMap<String, Type>> {
-        let required = signature
-            .type_parameters
-            .iter()
-            .filter(|parameter| parameter.default.is_none())
-            .count();
-        if arguments.len() < required || arguments.len() > signature.type_parameters.len() {
-            self.type_error(
-                span,
-                format!(
-                    "function type arguments require {required} to {} argument(s), got {}",
-                    signature.type_parameters.len(),
-                    arguments.len(),
-                ),
-                DiagnosticCode::TypeMismatch,
-            );
-            return None;
-        }
-        for argument in arguments {
-            self.check_type(argument, span);
-        }
-        let completed = complete_type_arguments(&signature.type_parameters, arguments)?;
-        let substitutions = type_parameter_substitutions(&signature.type_parameters, completed);
-        self.check_call_type_parameter_constraints(
-            signature,
-            &substitutions,
-            span,
-            "type argument",
-        );
-        Some(substitutions)
-    }
-
-    fn check_direct_property_access(
-        &mut self,
-        tokens: &[Token],
-        scope: &BTreeMap<String, Type>,
-        span: &SourceSpan,
-    ) {
-        let [base, dot, property] = tokens else {
-            return;
-        };
-        if base.kind != TokenKind::Identifier
-            || !dot.is(".")
-            || property.kind != TokenKind::Identifier
-        {
-            return;
-        }
-        let value = scope.get(&base.text).cloned().unwrap_or(Type::Unknown);
-        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        match property_type(
-            &value,
-            &property.text,
-            &self.types,
-            &mut HashSet::new(),
-            &mut budget,
-        ) {
-            PropertyType::Found(_) | PropertyType::Indeterminate => {}
-            PropertyType::Missing => self.type_error(
-                span,
-                format!(
-                    "property `{}` does not exist on type `{}`",
-                    property.text,
-                    type_label(&value)
-                ),
-                DiagnosticCode::TypeMismatch,
-            ),
-            PropertyType::Exhausted => self.type_error(
-                span,
-                format!(
-                    "property lookup exceeds the {} generic-expansion limit",
-                    self.max_type_expansions
-                ),
-                DiagnosticCode::ResourceLimit,
-            ),
-        }
-    }
-}
+mod module;
+mod project;
 
 fn interface_value(interface: &InterfaceDeclaration) -> Type {
     interface_value_with_heritage(&interface.heritage, &interface.fields)
@@ -1403,8 +177,16 @@ fn infer_call_substitutions(
         .iter()
         .map(|parameter| parameter.name.clone())
         .collect::<BTreeSet<_>>();
-    for (parameter, actual) in signature.parameters.iter().zip(actuals) {
-        let Some(annotation) = &parameter.annotation else {
+    for (index, actual) in actuals.iter().enumerate() {
+        let Some(parameter) = function_parameter_for_argument(signature, index) else {
+            break;
+        };
+        let annotation = if parameter.rest {
+            rest_parameter_element_annotation(parameter)
+        } else {
+            parameter.annotation.as_ref()
+        };
+        let Some(annotation) = annotation else {
             continue;
         };
         infer_type_arguments(annotation, actual, &type_parameters, &mut substitutions);
@@ -1441,12 +223,7 @@ fn function_signature_matches(
     aliases: &BTreeMap<String, TypeDefinition>,
     max_type_expansions: usize,
 ) -> Result<bool, ()> {
-    let required = signature
-        .parameters
-        .iter()
-        .filter(|parameter| !parameter.optional)
-        .count();
-    if actuals.len() < required || actuals.len() > signature.parameters.len() {
+    if !function_signature_accepts_argument_count(signature, actuals.len()) {
         return Ok(false);
     }
     let Some(substitutions) =
@@ -1470,8 +247,10 @@ fn function_signature_matches(
             return Err(());
         }
     }
-    for (parameter, actual) in signature.parameters.iter().zip(actuals) {
-        let expected = parameter_expected_type(parameter, &substitutions);
+    for (index, actual) in actuals.iter().enumerate() {
+        let parameter = function_parameter_for_argument(signature, index)
+            .expect("a matching function signature has a parameter for every argument");
+        let expected = call_parameter_expected_type(parameter, &substitutions);
         if !is_assignable(actual, &expected, aliases, &mut HashSet::new(), &mut budget) {
             return if budget.exhausted { Err(()) } else { Ok(false) };
         }
@@ -1561,6 +340,60 @@ fn parameter_expected_type(parameter: &Parameter, substitutions: &BTreeMap<Strin
     } else {
         value
     }
+}
+
+fn call_parameter_expected_type(
+    parameter: &Parameter,
+    substitutions: &BTreeMap<String, Type>,
+) -> Type {
+    let value = parameter_expected_type(parameter, substitutions);
+    if parameter.rest {
+        match value {
+            Type::Array(element) => *element,
+            _ => Type::Unknown,
+        }
+    } else {
+        value
+    }
+}
+
+fn rest_parameter_element_annotation(parameter: &Parameter) -> Option<&Type> {
+    match parameter.annotation.as_ref()? {
+        Type::Array(element) => Some(element),
+        _ => None,
+    }
+}
+
+fn function_signature_required_arguments(signature: &FunctionSignature) -> usize {
+    signature
+        .parameters
+        .iter()
+        .filter(|parameter| !parameter.rest && !parameter.optional)
+        .count()
+}
+
+fn function_signature_accepts_argument_count(
+    signature: &FunctionSignature,
+    actual_count: usize,
+) -> bool {
+    actual_count >= function_signature_required_arguments(signature)
+        && (signature
+            .parameters
+            .last()
+            .is_some_and(|parameter| parameter.rest)
+            || actual_count <= signature.parameters.len())
+}
+
+fn function_parameter_for_argument(
+    signature: &FunctionSignature,
+    argument_index: usize,
+) -> Option<&Parameter> {
+    signature.parameters.get(argument_index).or_else(|| {
+        signature
+            .parameters
+            .last()
+            .filter(|parameter| parameter.rest)
+    })
 }
 
 fn type_parameter_constraint_substitutions(parameters: &[TypeParameter]) -> BTreeMap<String, Type> {
@@ -1770,7 +603,7 @@ fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
             "]" | ")" | "}" if depth > 0 => depth -= 1,
             "," if depth == 0 => {
                 if start < index {
-                    values.push(infer_simple(&tokens[start..index], scope));
+                    values.push(infer_array_element(&tokens[start..index], scope));
                 }
                 start = index + 1;
             }
@@ -1778,7 +611,7 @@ fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
         }
     }
     if start + 1 < tokens.len() {
-        values.push(infer_simple(&tokens[start..tokens.len() - 1], scope));
+        values.push(infer_array_element(&tokens[start..tokens.len() - 1], scope));
     }
     let Some(first) = values.first().cloned() else {
         return Type::Array(Box::new(Type::Unknown));
@@ -1790,32 +623,144 @@ fn infer_array(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
     }
 }
 
+/// Infers an array literal against an explicit tuple annotation without
+/// changing ordinary array-literal inference. A tuple spread is expanded only
+/// when its source is itself known to be a tuple, preserving fixed arity.
+fn infer_contextual_tuple_literal(
+    tokens: &[Token],
+    scope: &BTreeMap<String, Type>,
+) -> Option<Type> {
+    if tokens.first().is_none_or(|token| !token.is("["))
+        || tokens.last().is_none_or(|token| !token.is("]"))
+    {
+        return None;
+    }
+    let mut values = Vec::new();
+    let mut start = 1usize;
+    let mut depth = 0usize;
+    for index in 1..tokens.len() {
+        match tokens[index].text.as_str() {
+            "[" | "(" | "{" => depth += 1,
+            "]" | ")" | "}" if depth > 0 => depth -= 1,
+            "," if depth == 0 => {
+                push_contextual_tuple_element(&tokens[start..index], scope, &mut values)?;
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    if start + 1 < tokens.len() {
+        push_contextual_tuple_element(&tokens[start..tokens.len() - 1], scope, &mut values)?;
+    }
+    Some(Type::Tuple(values))
+}
+
+fn push_contextual_tuple_element(
+    tokens: &[Token],
+    scope: &BTreeMap<String, Type>,
+    values: &mut Vec<Type>,
+) -> Option<()> {
+    if tokens.is_empty() {
+        return None;
+    }
+    if tokens.first().is_some_and(|token| token.is("...")) {
+        let Type::Tuple(spread) = infer_simple(&tokens[1..], scope) else {
+            return None;
+        };
+        values.extend(spread);
+    } else {
+        values.push(infer_array_element(tokens, scope));
+    }
+    Some(())
+}
+
+fn infer_array_element(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
+    if tokens.first().is_some_and(|token| token.is("...")) {
+        return match infer_simple(&tokens[1..], scope) {
+            Type::Array(element) => *element,
+            _ => Type::Unknown,
+        };
+    }
+    infer_simple(tokens, scope)
+}
+
 fn infer_record(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
     let mut fields = Vec::new();
     let mut index = 1usize;
-    while index + 2 < tokens.len() && !tokens[index].is("}") {
+    while index < tokens.len() && !tokens[index].is("}") {
+        if tokens[index].is("...") {
+            let Some(source) = tokens.get(index + 1) else {
+                return Type::Unknown;
+            };
+            let Some(separator) = tokens.get(index + 2) else {
+                return Type::Unknown;
+            };
+            if source.kind != TokenKind::Identifier || !matches!(separator.text.as_str(), "," | "}")
+            {
+                return Type::Unknown;
+            }
+            let Type::Record(spread) = scope.get(&source.text).cloned().unwrap_or(Type::Unknown)
+            else {
+                return Type::Unknown;
+            };
+            for field in spread {
+                insert_inferred_record_field(&mut fields, field);
+            }
+            index += if separator.is(",") { 3 } else { 2 };
+            continue;
+        }
         let name = tokens[index].text.clone();
-        if !tokens[index + 1].is(":") {
+        let (value, value_end) = if tokens.get(index + 1).is_some_and(|token| token.is(":")) {
+            let value_start = index + 2;
+            let mut value_end = value_start;
+            while value_end < tokens.len()
+                && !tokens[value_end].is(",")
+                && !tokens[value_end].is("}")
+            {
+                value_end += 1;
+            }
+            (
+                infer_simple(&tokens[value_start..value_end], scope),
+                value_end,
+            )
+        } else if tokens
+            .get(index + 1)
+            .is_some_and(|token| token.is(",") || token.is("}"))
+        {
+            (
+                scope.get(&name).cloned().unwrap_or(Type::Unknown),
+                index + 1,
+            )
+        } else {
             return Type::Unknown;
-        }
-        let value_start = index + 2;
-        let mut value_end = value_start;
-        while value_end < tokens.len() && !tokens[value_end].is(",") && !tokens[value_end].is("}") {
-            value_end += 1;
-        }
-        fields.push(TypeField {
-            name,
-            optional: false,
-            value: infer_simple(&tokens[value_start..value_end], scope),
-            span: SourceSpan::new(
-                "<inferred>",
-                tokens[index].start,
-                tokens[value_end.saturating_sub(1)].end,
-            ),
-        });
+        };
+        insert_inferred_record_field(
+            &mut fields,
+            TypeField {
+                name,
+                optional: false,
+                value,
+                span: SourceSpan::new(
+                    "<inferred>",
+                    tokens[index].start,
+                    tokens[value_end.saturating_sub(1)].end,
+                ),
+            },
+        );
         index = value_end.saturating_add(1);
     }
     Type::Record(fields)
+}
+
+fn insert_inferred_record_field(fields: &mut Vec<TypeField>, field: TypeField) {
+    if let Some(existing) = fields
+        .iter_mut()
+        .find(|existing| existing.name == field.name)
+    {
+        *existing = field;
+    } else {
+        fields.push(field);
+    }
 }
 
 fn infer_simple(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
@@ -1834,6 +779,307 @@ fn infer_simple(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
         scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
     } else {
         Type::Unknown
+    }
+}
+
+/// Removes matching parentheses that wrap an entire expression. This does not
+/// parse JavaScript generally; it only exposes a nested expression to the
+/// bounded inference rules below.
+fn strip_outer_parentheses(mut tokens: &[Token]) -> &[Token] {
+    while tokens.len() >= 2 && tokens.first().is_some_and(|token| token.is("(")) {
+        let mut depth = 0usize;
+        let mut closes_at_end = false;
+        for (index, token) in tokens.iter().enumerate() {
+            match token.text.as_str() {
+                "(" => depth += 1,
+                ")" if depth > 0 => {
+                    depth -= 1;
+                    if depth == 0 {
+                        closes_at_end = index + 1 == tokens.len();
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !closes_at_end {
+            break;
+        }
+        tokens = &tokens[1..tokens.len() - 1];
+    }
+    tokens
+}
+
+/// Returns the operands and final top-level operator from `operators`.
+/// Selecting the final occurrence preserves left associativity for the
+/// bounded expression operators this checker supports.
+fn top_level_binary_parts<'a>(
+    tokens: &'a [Token],
+    operators: &[&str],
+    is_explicit_generic_call: impl Fn(usize) -> bool,
+) -> Option<(&'a [Token], &'a Token, &'a [Token])> {
+    let mut depth = 0usize;
+    let mut operator_index = None;
+    let mut index = 0usize;
+    while index < tokens.len() {
+        let token = &tokens[index];
+        if token.kind == TokenKind::Identifier && is_explicit_generic_call(token.start) {
+            if let Some(close) = explicit_generic_call_close(tokens, index) {
+                index = close + 1;
+                continue;
+            }
+        }
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            _ if depth == 0
+                && operators.contains(&token.text.as_str())
+                && !is_prefix_arithmetic_operator(tokens, index)
+                && !is_shift_operator_token(tokens, index) =>
+            {
+                operator_index = Some(index);
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    let index = operator_index?;
+    (index > 0 && index + 1 < tokens.len()).then_some((
+        &tokens[..index],
+        &tokens[index],
+        &tokens[index + 1..],
+    ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShiftOperator {
+    Left,
+    Right,
+    UnsignedRight,
+}
+
+impl ShiftOperator {
+    fn text(self) -> &'static str {
+        match self {
+            Self::Left => "<<",
+            Self::Right => ">>",
+            Self::UnsignedRight => ">>>",
+        }
+    }
+}
+
+/// Returns the operands and final top-level shift operator. Runtime `>>` and
+/// `>>>` arrive as adjacent `>` tokens because the parser splits generic
+/// closers for type syntax, so recognize only source-contiguous runs here.
+fn top_level_shift_parts(
+    tokens: &[Token],
+    is_explicit_generic_call: impl Fn(usize) -> bool,
+) -> Option<(&[Token], ShiftOperator, &[Token])> {
+    let mut depth = 0usize;
+    let mut operator = None;
+    let mut index = 0usize;
+    while index < tokens.len() {
+        let token = &tokens[index];
+        if token.kind == TokenKind::Identifier && is_explicit_generic_call(token.start) {
+            if let Some(close) = explicit_generic_call_close(tokens, index) {
+                index = close + 1;
+                continue;
+            }
+        }
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            _ if depth == 0 => {
+                if let Some((kind, width)) = shift_operator_at(tokens, index) {
+                    operator = Some((index, kind, width));
+                    index += width;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    let (index, operator, width) = operator?;
+    (index > 0 && index + width < tokens.len()).then_some((
+        &tokens[..index],
+        operator,
+        &tokens[index + width..],
+    ))
+}
+
+fn is_shift_operator_token(tokens: &[Token], index: usize) -> bool {
+    (index.saturating_sub(2)..=index).any(|start| {
+        shift_operator_at(tokens, start)
+            .is_some_and(|(_, width)| start <= index && index < start + width)
+    })
+}
+
+fn shift_operator_at(tokens: &[Token], index: usize) -> Option<(ShiftOperator, usize)> {
+    if tokens.get(index).is_some_and(|token| token.is("<<")) {
+        return Some((ShiftOperator::Left, 1));
+    }
+    let first = tokens.get(index)?;
+    let second = tokens.get(index + 1)?;
+    if !first.is(">") || !second.is(">") || first.end != second.start {
+        return None;
+    }
+    if let Some(third) = tokens.get(index + 2) {
+        if third.is(">") && second.end == third.start {
+            return Some((ShiftOperator::UnsignedRight, 3));
+        }
+    }
+    Some((ShiftOperator::Right, 2))
+}
+
+fn is_prefix_arithmetic_operator(tokens: &[Token], index: usize) -> bool {
+    if !tokens
+        .get(index)
+        .is_some_and(|token| matches!(token.text.as_str(), "+" | "-"))
+    {
+        return false;
+    }
+    index == 0
+        || tokens.get(index - 1).is_some_and(|previous| {
+            matches!(
+                previous.text.as_str(),
+                "(" | "[" | "{" | "?" | ":" | "," | "=" | "+" | "-" | "*" | "/" | "%"
+            )
+        })
+}
+
+/// Finds the closing angle bracket for a parser-confirmed explicit generic
+/// call. The parser's source-offset table disambiguates these brackets from
+/// ordinary relational operators before this bounded expression scan runs.
+fn explicit_generic_call_close(tokens: &[Token], callee_index: usize) -> Option<usize> {
+    if !tokens
+        .get(callee_index + 1)
+        .is_some_and(|token| token.is("<"))
+    {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate().skip(callee_index + 1) {
+        match token.text.as_str() {
+            "<" => depth += 1,
+            ">" if depth > 0 => {
+                depth -= 1;
+                if depth == 0 {
+                    return tokens
+                        .get(index + 1)
+                        .is_some_and(|token| token.is("("))
+                        .then_some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Splits one top-level conditional expression into its condition and branch
+/// expressions. Nested conditionals are accounted for before accepting their
+/// matching colon, so `a ? b : c ? d : e` remains well formed.
+fn conditional_expression_parts(tokens: &[Token]) -> Option<(&[Token], &[Token], &[Token])> {
+    let mut depth = 0usize;
+    let mut question_index = None;
+    let mut nested_conditionals = 0usize;
+    for (index, token) in tokens.iter().enumerate() {
+        match token.text.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" if depth > 0 => depth -= 1,
+            "?" if depth == 0 => {
+                if question_index.is_none() {
+                    question_index = Some(index);
+                } else {
+                    nested_conditionals += 1;
+                }
+            }
+            ":" if depth == 0 && question_index.is_some() => {
+                if nested_conditionals == 0 {
+                    let question_index = question_index.expect("conditional question index exists");
+                    return (question_index > 0
+                        && index > question_index + 1
+                        && index + 1 < tokens.len())
+                    .then_some((
+                        &tokens[..question_index],
+                        &tokens[question_index + 1..index],
+                        &tokens[index + 1..],
+                    ));
+                }
+                nested_conditionals -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn infer_boolean_logical_expression(left: Type, right: Type) -> Type {
+    if left == Type::Boolean && right == Type::Boolean {
+        Type::Boolean
+    } else {
+        Type::Unknown
+    }
+}
+
+fn infer_additive_expression(operator: &Token, left: Type, right: Type) -> Type {
+    if operator.is("+") && (left == Type::String || right == Type::String) {
+        Type::String
+    } else {
+        infer_numeric_binary_expression(left, right)
+    }
+}
+
+fn infer_numeric_binary_expression(left: Type, right: Type) -> Type {
+    if left == Type::Number && right == Type::Number {
+        Type::Number
+    } else {
+        Type::Unknown
+    }
+}
+
+fn is_known_primitive_type(value: &Type) -> bool {
+    matches!(
+        value,
+        Type::Boolean | Type::Number | Type::String | Type::Null | Type::Undefined
+    )
+}
+
+fn is_strict_equality_primitive_type(value: &Type) -> bool {
+    matches!(value, Type::Boolean | Type::Number | Type::String)
+}
+
+fn infer_nullish_coalescing_expression(left: Type, right: Type) -> Type {
+    match exclude_nullish_type(left) {
+        None => right,
+        Some(left) => merge_conditional_branch_types(left, right),
+    }
+}
+
+fn exclude_nullish_type(value: Type) -> Option<Type> {
+    match value {
+        Type::Null | Type::Undefined => None,
+        Type::Union(values) => {
+            let mut values = values
+                .into_iter()
+                .filter(|value| !matches!(value, Type::Null | Type::Undefined))
+                .collect::<Vec<_>>();
+            match values.len() {
+                0 => None,
+                1 => values.pop(),
+                _ => Some(Type::Union(values)),
+            }
+        }
+        value => Some(value),
+    }
+}
+
+fn merge_conditional_branch_types(consequent: Type, alternate: Type) -> Type {
+    if consequent == alternate {
+        consequent
+    } else {
+        Type::Union(vec![consequent, alternate])
     }
 }
 
@@ -2090,5 +1336,4 @@ pub(crate) fn type_label(value: &Type) -> String {
 }
 
 #[cfg(test)]
-#[path = "checker/tests.rs"]
 mod tests;

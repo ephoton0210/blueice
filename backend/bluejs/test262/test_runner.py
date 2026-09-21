@@ -114,6 +114,7 @@ class RunnerTests(unittest.TestCase):
 
     def test_finite_locale_module_and_sparse_array_stress_fixtures_are_bounded(self):
         for relative in (
+            "built-ins/ArrayBuffer/prototype/sliceToImmutable/argument-coercion.js",
             "intl402/Intl/getCanonicalLocales/canonicalized-tags.js",
             "intl402/Intl/getCanonicalLocales/complex-region-subtag-replacement.js",
             "intl402/Intl/getCanonicalLocales/transformed-ext-valid.js",
@@ -133,6 +134,24 @@ class RunnerTests(unittest.TestCase):
         ):
             self.assertEqual(instruction_budget({}, 100_000, relative), 10_000_000)
             self.assertEqual(case_timeout({}, 2, relative), 90)
+
+    def test_typed_array_detach_during_coercion_fixtures_have_a_measured_envelope(self):
+        # These three fixtures run testTypedArray.js's byte-copy loop over a
+        # 10,000-element source for every constructor/factory pair (about
+        # 27M dispatches), so the generic 10M/60s harness class is too small.
+        data = {"includes": ["testTypedArray.js", "detachArrayBuffer.js"]}
+        for relative in (
+            "built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js",
+            "built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached.js",
+            "built-ins/TypedArray/prototype/copyWithin/coerced-values-start-detached.js",
+        ):
+            self.assertEqual(instruction_budget(data, 100_000, relative), 50_000_000)
+            self.assertEqual(case_timeout(data, 2, relative), 120)
+        # The allowance is exact-path only: a sibling fixture keeps the
+        # generic TypedArray harness envelope.
+        sibling = "built-ins/TypedArray/prototype/copyWithin/coerced-values-target-detached.js"
+        self.assertEqual(instruction_budget(data, 100_000, sibling), 10_000_000)
+        self.assertEqual(case_timeout(data, 2, sibling), 60)
 
     def test_typed_array_harness_receives_a_bounded_extended_wall_deadline(self):
         self.assertEqual(case_timeout({"includes": []}, 2), 2)
@@ -497,6 +516,34 @@ class RunnerTests(unittest.TestCase):
             sources, dynamic_sources, json_sources = module_sources(entry, test)
             self.assertEqual(set(sources), {"modules/entry.js", "modules/both.js"})
             self.assertEqual(dynamic_sources, {})
+            self.assertEqual(json_sources, {})
+
+    def test_module_sources_keeps_a_literal_dynamic_specifier_dynamic_with_string_roots(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text(
+                "import('./only-dynamic.js'); "
+                "const candidate = './variable.js'; import(candidate); "
+                "import('./both.js'); const both = './both.js';"
+            )
+            (test / "modules" / "only-dynamic.js").write_text("var a; function a() {}")
+            (test / "modules" / "variable.js").write_text("export const value = true;")
+            (test / "modules" / "both.js").write_text("export const value = true;")
+
+            # The literal `import('./only-dynamic.js')` stays a dynamic edge
+            # even though its string also looks like a relative-string root;
+            # a bare relative string (the variable candidate) and a string
+            # that also appears outside an import call stay static.
+            sources, dynamic_sources, json_sources = module_sources(
+                entry, test, include_dynamic_string_roots=True
+            )
+            self.assertEqual(
+                set(sources),
+                {"modules/entry.js", "modules/variable.js", "modules/both.js"},
+            )
+            self.assertEqual(set(dynamic_sources), {"modules/only-dynamic.js"})
             self.assertEqual(json_sources, {})
 
     def test_module_sources_collects_json_fixture_text_separately(self):

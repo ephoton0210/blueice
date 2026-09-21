@@ -14,6 +14,7 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        self.trigger_deferred_namespace(object, Some(key))?;
         // Intrinsic globals are lazily initialized, but reflective descriptor
         // operations must observe the same own properties as ordinary Get.
         self.materialize_global_object_property(object, key)?;
@@ -55,6 +56,7 @@ impl Vm {
         key: PropertyName,
         descriptor: PropertyDescriptor,
     ) -> Result<bool, RuntimeError> {
+        self.trigger_deferred_namespace(object, Some(&key))?;
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_define_own_property(object, key, descriptor);
         }
@@ -81,6 +83,26 @@ impl Vm {
         if self.heap.buffer_is_detached(buffer)? || index >= length {
             return Ok(false);
         }
+        if self.heap.buffer_is_immutable(buffer)? {
+            // Immutable-buffer elements behave as permanently frozen data
+            // properties: only a descriptor compatible with the current
+            // { value, writable: false, enumerable: true, configurable: false }
+            // succeeds, and `descriptor.value` is compared as given (SameValue)
+            // rather than converted, so redefining an element never writes.
+            let current = PropertyDescriptor::data(
+                self.heap
+                    .typed_array_index_value(object, index)?
+                    .expect("a valid integer index has a value"),
+                false,
+                true,
+                false,
+            );
+            return Ok(compatible_property_descriptor(
+                false,
+                Some(&current),
+                &descriptor,
+            ));
+        }
         if descriptor.accessor()
             || descriptor.configurable == Some(false)
             || descriptor.enumerable == Some(false)
@@ -106,6 +128,7 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<bool, RuntimeError> {
+        self.trigger_deferred_namespace(object, Some(key))?;
         // Lazy global intrinsics still have their specified own-property
         // descriptors when observed through [[Delete]]. Without this, deleting
         // an as-yet-unread `globalThis.undefined` incorrectly looked like a
@@ -121,6 +144,7 @@ impl Vm {
         &mut self,
         object: ObjectId,
     ) -> Result<Vec<PropertyName>, RuntimeError> {
+        self.trigger_deferred_namespace(object, None)?;
         // A Test262 child-realm facade has no mirrored ordinary properties.
         // Its [[OwnPropertyKeys]] must be performed in the target Realm so
         // reflection sees the complete intrinsic surface and its key order.
@@ -264,6 +288,11 @@ impl Vm {
             return Ok(false);
         }
         if let Some(numeric) = self.heap.typed_array_numeric_key(target, key)? {
+            // An immutable backing buffer fails every canonical-numeric
+            // assignment outright: no conversion, no receiver distinction.
+            if self.heap.typed_array_is_immutable(target)? {
+                return Ok(false);
+            }
             let valid = match numeric {
                 TypedArrayNumericKey::Index(index) => {
                     self.heap.typed_array_index_value(target, index)?.is_some()
@@ -304,6 +333,9 @@ impl Vm {
             }
             if object != target {
                 if let Some(numeric) = self.heap.typed_array_numeric_key(object, key)? {
+                    if self.heap.typed_array_is_immutable(object)? {
+                        return Ok(false);
+                    }
                     let valid = matches!(numeric, TypedArrayNumericKey::Index(index) if self
                         .heap
                         .typed_array_index_value(object, index)?
@@ -556,6 +588,8 @@ impl Vm {
                 Some("ArrayBuffer")
             } else if default == self.buffer_prototype("SharedArrayBuffer")? {
                 Some("SharedArrayBuffer")
+            } else if default == self.buffer_prototype("DataView")? {
+                Some("DataView")
             } else if default == self.collection_prototype(true)? {
                 Some("Map")
             } else if default == self.collection_prototype(false)? {

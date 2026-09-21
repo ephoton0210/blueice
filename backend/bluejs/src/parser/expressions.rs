@@ -791,12 +791,19 @@ impl Parser {
         if self.module_await && self.check_identifier("await") {
             return Err(self.syntax_error("await cannot immediately follow new"));
         }
-        // ImportCall (`import(...)`) is a CallExpression, not a
-        // MemberExpression, so it can never be `new`'d -- `new import(x)`
-        // and `new import(x).prop` are both SyntaxErrors, even though a
-        // trailing member access is otherwise a valid `new` callee shape.
-        if self.check_identifier("import") && self.check_punct_at(1, Punct::LParen) {
-            return Err(self.syntax_error("import() cannot be the target of 'new'"));
+        // ImportCall (`import(...)`, `import.source(...)`, `import.defer(...)`)
+        // is a CallExpression, not a MemberExpression, so it can never be
+        // `new`'d -- `new import(x)` and `new import(x).prop` are both
+        // SyntaxErrors, even though a trailing member access is otherwise a
+        // valid `new` callee shape. (`new import.meta` stays legal: a
+        // MetaProperty is a MemberExpression.)
+        if self.check_identifier("import")
+            && (self.check_punct_at(1, Punct::LParen)
+                || (self.check_punct_at(1, Punct::Dot)
+                    && (self.check_identifier_at(2, "source")
+                        || self.check_identifier_at(2, "defer"))))
+        {
+            return Err(self.syntax_error("an import call cannot be the target of 'new'"));
         }
         let mut callee = if self.eat_keyword(Keyword::New) {
             self.parse_new_expression()?
@@ -831,6 +838,108 @@ impl Parser {
         Ok(Expr::New {
             callee: Box::new(callee),
             args,
+        })
+    }
+
+    /// `import` in expression position starts an ImportCall (`import(...)`,
+    /// `import.source(...)`, `import.defer(...)`) or the MetaProperty
+    /// `import.meta`. It is a reserved word: it never names an
+    /// IdentifierReference, and neither `import` nor the words following its
+    /// dot may contain a Unicode escape (they are terminal symbols).
+    fn parse_import_expression(&mut self) -> Result<Expr, ParseError> {
+        debug_assert!(self.check_identifier("import"));
+        if self.current_identifier_escaped() {
+            return Err(self.syntax_error("the import keyword cannot contain an escape"));
+        }
+        self.advance();
+        if self.check_punct(Punct::LParen) {
+            return self.parse_import_call_arguments(ImportPhase::Evaluation);
+        }
+        if !self.eat_punct(Punct::Dot) {
+            return Err(
+                self.syntax_error("'import' is reserved outside of import(...) and import.<name>")
+            );
+        }
+        let name = match self.peek() {
+            Token::Identifier(name) => name.clone(),
+            _ => return Err(self.syntax_error("expected a phase or 'meta' after 'import.'")),
+        };
+        if self.current_identifier_escaped() {
+            return Err(self.syntax_error(format!("the {name} keyword cannot contain an escape")));
+        }
+        match name.as_str() {
+            "meta" => {
+                self.advance();
+                if !self.module {
+                    return Err(self.syntax_error("import.meta is only valid in module code"));
+                }
+                Ok(Expr::ImportMeta)
+            }
+            "source" | "defer" => {
+                self.advance();
+                let phase = if name == "source" {
+                    ImportPhase::Source
+                } else {
+                    ImportPhase::Defer
+                };
+                self.parse_import_call_arguments(phase)
+            }
+            _ => Err(self.syntax_error("unknown import phase")),
+        }
+    }
+
+    /// `ImportCallArguments`: `( AssignmentExpression ,opt )` or
+    /// `( AssignmentExpression , AssignmentExpression ,opt )`, the second
+    /// carrying import attributes. Both are AssignmentExpression[+In]: the
+    /// parenthesized list re-enables `in` exactly like ordinary call
+    /// arguments, even inside a no-in `for`-head context.
+    fn parse_import_call_arguments(&mut self, phase: ImportPhase) -> Result<Expr, ParseError> {
+        if !self.eat_punct(Punct::LParen) {
+            return Err(self.syntax_error("an import phase requires an argument list"));
+        }
+        if self.check_punct(Punct::RParen) {
+            return Err(self.syntax_error("an import call requires a module specifier"));
+        }
+        let saved_no_in = self.no_in;
+        self.no_in = false;
+        let parsed: Result<_, ParseError> = (|| {
+            // ImportCall's argument list is not the ordinary ArgumentsList
+            // production: a leading `...` (a spread element) is a "Forbidden
+            // Extension", e.g. `import(...['x'])`, not merely unsupported
+            // grammar.
+            if self.check_punct(Punct::Ellipsis) {
+                return Err(self.syntax_error("an import call does not accept a spread argument"));
+            }
+            let specifier = self.parse_assignment()?;
+            let options = if self.eat_punct(Punct::Comma) {
+                if self.check_punct(Punct::RParen) {
+                    None
+                } else if self.check_punct(Punct::Ellipsis) {
+                    return Err(
+                        self.syntax_error("an import call does not accept a spread argument")
+                    );
+                } else {
+                    let options = self.parse_assignment()?;
+                    self.eat_punct(Punct::Comma);
+                    Some(Box::new(options))
+                }
+            } else {
+                None
+            };
+            // Exactly one trailing comma is allowed, but a third argument is
+            // not, e.g. `import('x', {}, '')`.
+            if !self.check_punct(Punct::RParen) {
+                return Err(self.syntax_error("an import call accepts at most two arguments"));
+            }
+            Ok((specifier, options))
+        })();
+        self.no_in = saved_no_in;
+        let (specifier, options) = parsed?;
+        self.expect_punct(Punct::RParen)?;
+        Ok(Expr::DynamicImport {
+            specifier: Box::new(specifier),
+            options,
+            phase,
         })
     }
 
@@ -952,87 +1061,7 @@ impl Parser {
                 };
                 Ok(Expr::Yield { value, delegate })
             }
-            Token::Identifier(name)
-                if name == "import" && self.check_punct_at(1, Punct::LParen) =>
-            {
-                self.advance();
-                self.expect_punct(Punct::LParen)?;
-                if self.check_punct(Punct::RParen) {
-                    return Err(self.syntax_error("import() requires a module specifier"));
-                }
-                // Both ImportCall arguments are grammatically
-                // `AssignmentExpression[+In, ...]`: the parenthesized
-                // argument list re-enables `in`, exactly like ordinary call
-                // arguments, even inside a no-in `for`-head context.
-                let saved_no_in = self.no_in;
-                self.no_in = false;
-                let parsed: Result<_, ParseError> = (|| {
-                    // ImportCall's ArgumentList is not the ordinary
-                    // ArgumentsList production: a leading `...` (a spread
-                    // element) is a "Forbidden Extension", e.g.
-                    // `import(...['x'])`, not merely unsupported grammar.
-                    if self.check_punct(Punct::Ellipsis) {
-                        return Err(self.syntax_error("import() does not accept a spread argument"));
-                    }
-                    let specifier = self.parse_assignment()?;
-                    // ImportCall : import ( AssignmentExpression ,opt )
-                    //            | import ( AssignmentExpression , AssignmentExpression ,opt )
-                    // A second argument carries import attributes; either
-                    // form allows one trailing comma before the closing paren.
-                    let options = if self.eat_punct(Punct::Comma) {
-                        if self.check_punct(Punct::RParen) {
-                            None
-                        } else if self.check_punct(Punct::Ellipsis) {
-                            return Err(
-                                self.syntax_error("import() does not accept a spread argument")
-                            );
-                        } else {
-                            let options = self.parse_assignment()?;
-                            self.eat_punct(Punct::Comma);
-                            Some(Box::new(options))
-                        }
-                    } else {
-                        None
-                    };
-                    // ImportCall is a "Forbidden Extension": exactly one
-                    // trailing comma is allowed, but a third argument is
-                    // not, e.g. `import('x', {}, '')`.
-                    if !self.check_punct(Punct::RParen) {
-                        return Err(self.syntax_error("import() accepts at most two arguments"));
-                    }
-                    Ok((specifier, options))
-                })();
-                self.no_in = saved_no_in;
-                let (specifier, options) = parsed?;
-                self.expect_punct(Punct::RParen)?;
-                Ok(Expr::DynamicImport {
-                    specifier: Box::new(specifier),
-                    options,
-                })
-            }
-            Token::Identifier(name)
-                if name == "import"
-                    && self.check_punct_at(1, Punct::Dot)
-                    && self.check_identifier_at(2, "meta") =>
-            {
-                self.advance();
-                self.advance();
-                self.advance();
-                if !self.module {
-                    return Err(self.syntax_error("import.meta is only valid in module code"));
-                }
-                Ok(Expr::ImportMeta)
-            }
-            // A bare `import` -- one followed by neither `(` (an ImportCall,
-            // matched above) nor `.` (an import-namespace-style member
-            // access such as `import.meta`/`import.source`/`import.defer`,
-            // left to the generic identifier arm below) -- is never a valid
-            // IdentifierReference: `import` is a reserved word outside
-            // those productions (e.g. `typeof import` is a SyntaxError).
-            Token::Identifier(name) if name == "import" && !self.check_punct_at(1, Punct::Dot) => {
-                Err(self
-                    .syntax_error("'import' is reserved outside of import(...) and import.<name>"))
-            }
+            Token::Identifier(name) if name == "import" => self.parse_import_expression(),
             Token::Identifier(name)
                 if name == "await"
                     && self.async_depth == 0

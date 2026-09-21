@@ -5,6 +5,7 @@ members = [
     "backend/bluejs",
     "backend/ecma402",
     "backend/bluets",
+    "backend/bluets-bluejs",
     "backend/core/dom",
     "backend/core/html",
     "backend/core/css",

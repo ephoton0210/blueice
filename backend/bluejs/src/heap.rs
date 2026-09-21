@@ -99,6 +99,7 @@ pub enum HeapError {
     InvalidArrayLength,
     InvalidBufferRange,
     DetachedArrayBuffer,
+    ImmutableArrayBuffer,
     UninitializedModuleExport,
     ReadOnlyProperty,
     HeapLimitExceeded { limit: usize },
@@ -123,6 +124,7 @@ impl fmt::Display for HeapError {
             ),
             Self::InvalidBufferRange => write!(f, "invalid ArrayBuffer view range"),
             Self::DetachedArrayBuffer => write!(f, "ArrayBuffer has been detached"),
+            Self::ImmutableArrayBuffer => write!(f, "ArrayBuffer is immutable"),
             Self::UninitializedModuleExport => {
                 write!(f, "module namespace export is uninitialized")
             }
@@ -147,6 +149,8 @@ pub struct HeapStats {
     pub next_major_bytes: usize,
     pub minor_collections: u64,
     pub major_collections: u64,
+    /// Cumulative number of individual `Heap::root` registrations.
+    pub root_registrations: u64,
 }
 
 pub(crate) type RegExpIteratorState = (ObjectId, JsString, bool, bool, bool);
@@ -825,6 +829,11 @@ enum ObjectKind {
         detached: bool,
         max_byte_length: Option<usize>,
         shared: bool,
+        /// The proposal's `[[ArrayBufferIsImmutable]]` slot. Set once, at
+        /// allocation, by `alloc_immutable_array_buffer`; an immutable buffer
+        /// is always an unshared, fixed-length, never-detached ArrayBuffer
+        /// whose bytes nothing may write after that allocation.
+        immutable: bool,
     },
     DataView {
         buffer: ObjectId,
@@ -1547,10 +1556,14 @@ pub struct Heap {
     nursery: Vec<ObjectId>,
     remembered: HashSet<ObjectId>,
     roots: HashMap<RootId, ObjectId>,
+    /// Batches of temporary roots, innermost last. A VM safepoint registers
+    /// everything it holds as one batch instead of one `roots` entry each.
+    scoped_roots: Vec<Vec<ObjectId>>,
     managed_bytes: usize,
     next_major_bytes: usize,
     minor_collections: u64,
     major_collections: u64,
+    root_registrations: u64,
 }
 
 impl Default for Heap {

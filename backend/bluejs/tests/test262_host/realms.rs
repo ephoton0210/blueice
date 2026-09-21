@@ -672,3 +672,17 @@ fn harness_compares_arrays_and_propagates_resource_errors() {
         Err(RuntimeError::TypeError(_))
     ));
 }
+
+#[test]
+fn immutable_array_buffers_stay_immutable_across_test262_realms() {
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    // A view built in one realm over the other realm's immutable buffer keeps
+    // the buffer immutable: writes are refused and host detachment throws.
+    let source = "let other=$262.createRealm().global;let parentBuffer=new ArrayBuffer(4).transferToImmutable();let childView=new other.Uint8Array(parentBuffer);let childBuffer=new other.ArrayBuffer(4).transferToImmutable();let parentView=new Uint8Array(childBuffer);let fills=0;for(const view of [childView,parentView]){try{view.fill(1)}catch(error){if(error.name===\"TypeError\")fills++}}childView[0]=9;parentView[0]=9;let detaches=0;for(const buffer of [parentBuffer,childBuffer]){try{$262.detachArrayBuffer(buffer)}catch(error){if(error.name===\"TypeError\")detaches++}}fills===2&&detaches===2&&childView.buffer.immutable&&parentView.buffer.immutable&&childView[0]===0&&parentView[0]===0&&Reflect.set(parentView,0,5)===false&&parentBuffer.byteLength===4&&childBuffer.byteLength===4";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}

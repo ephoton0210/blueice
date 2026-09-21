@@ -154,8 +154,7 @@ impl Compiler {
                         | "SyntaxError"
                         | "ReferenceError"
                         | "EvalError"
-                        | "URIError"
-                        | "import" => {
+                        | "URIError" => {
                             let index = self.bytecode.constants.len() as u32;
                             self.bytecode
                                 .constants
@@ -225,7 +224,23 @@ impl Compiler {
                     return Ok(());
                 }
                 if *op == UnaryOp::Typeof
-                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Date" | "Function" | "Proxy" | "Map" | "Set" | "WeakMap" | "WeakSet" | "WeakRef" | "FinalizationRegistry" | "DisposableStack" | "AsyncDisposableStack" | "SuppressedError" | "ShadowRealm" | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float16Array" | "Float32Array" | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "JSON" | "import"))
+                    && self.with_depth != 0
+                    && matches!(&**arg, Expr::Identifier(name) if self.resolve_inside_innermost_with(name).is_none())
+                {
+                    // Inside `with`, the identifier resolves against the with
+                    // objects first; an unresolvable name is `undefined`.
+                    let Expr::Identifier(name) = &**arg else {
+                        unreachable!()
+                    };
+                    let index = u32::try_from(self.bytecode.constants.len())
+                        .map_err(|_| CompileError::ProgramTooLarge)?;
+                    self.bytecode
+                        .constants
+                        .push(Value::String(name.as_str().into()));
+                    self.emit(Opcode::WithGetOrUndefined, index)?;
+                    self.emit(opcode, 0)?;
+                } else if *op == UnaryOp::Typeof
+                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_none() && !matches!(name.as_str(), "undefined" | "NaN" | "Infinity" | "String" | "Symbol" | "RegExp" | "Object" | "Reflect" | "Math" | "Number" | "Boolean" | "Array" | "Date" | "Function" | "Proxy" | "Map" | "Set" | "WeakMap" | "WeakSet" | "WeakRef" | "FinalizationRegistry" | "DisposableStack" | "AsyncDisposableStack" | "SuppressedError" | "ShadowRealm" | "globalThis" | "ArrayBuffer" | "SharedArrayBuffer" | "DataView" | "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array" | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float16Array" | "Float32Array" | "Float64Array" | "BigInt64Array" | "BigUint64Array" | "Atomics" | "Intl" | "Error" | "TypeError" | "RangeError" | "SyntaxError" | "ReferenceError" | "EvalError" | "URIError" | "isNaN" | "isFinite" | "parseInt" | "parseFloat" | "encodeURI" | "encodeURIComponent" | "decodeURI" | "decodeURIComponent" | "JSON"))
                 {
                     let Expr::Identifier(name) = &**arg else {
                         unreachable!()
@@ -688,7 +703,11 @@ impl Compiler {
                 self.expression(expression)?;
                 self.emit(Opcode::Await, 0)?;
             }
-            Expr::DynamicImport { specifier, options } => {
+            Expr::DynamicImport {
+                specifier,
+                options,
+                phase,
+            } => {
                 self.expression(specifier)?;
                 match options {
                     Some(options) => self.expression(options)?,
@@ -698,7 +717,7 @@ impl Compiler {
                     // "options is undefined" branch expects.
                     None => self.constant(Value::Undefined)?,
                 }
-                self.emit(Opcode::DynamicImport, 0)?;
+                self.emit(Opcode::DynamicImport, phase.operand())?;
             }
             Expr::Arrow {
                 params,

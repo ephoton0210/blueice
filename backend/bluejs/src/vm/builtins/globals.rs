@@ -107,14 +107,14 @@ impl Vm {
         } else {
             prototype
         };
-        let id = if matches!(name, "Reflect" | "globalThis" | "import" | "Atomics") {
+        let id = if matches!(name, "Reflect" | "globalThis" | "Atomics") {
             self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?
         } else {
             self.with_roots(|heap| heap.alloc_native_function(native, name, native_prototype))?
         };
         let root = self.heap.root(id)?;
         let result = (|| {
-            if !matches!(name, "Reflect" | "globalThis" | "import" | "Atomics") {
+            if !matches!(name, "Reflect" | "globalThis" | "Atomics") {
                 self.define_data(
                     id,
                     "length",
@@ -310,6 +310,13 @@ impl Vm {
                 self.install_native(id, prototype, "isArray", 1, NativeFunction::ArrayIsArray)?;
                 self.install_native(id, prototype, "of", 0, NativeFunction::ArrayOf)?;
                 self.install_native(id, prototype, "from", 1, NativeFunction::ArrayFrom)?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "fromAsync",
+                    1,
+                    NativeFunction::ArrayFromAsync,
+                )?;
                 self.install_symbol_native_getter(
                     id,
                     prototype,
@@ -495,6 +502,14 @@ impl Vm {
                         NativeFunction::ArrayBufferByteLength
                     },
                 )?;
+                if !shared {
+                    self.install_native_getter(
+                        buffer_prototype,
+                        prototype,
+                        "detached",
+                        NativeFunction::ArrayBufferDetached,
+                    )?;
+                }
                 self.install_native_getter(
                     buffer_prototype,
                     prototype,
@@ -540,6 +555,27 @@ impl Vm {
                         "transferToFixedLength",
                         0,
                         NativeFunction::ArrayBufferTransferToFixedLength,
+                    )?;
+                    // Immutable ArrayBuffer proposal.
+                    self.install_native_getter(
+                        buffer_prototype,
+                        prototype,
+                        "immutable",
+                        NativeFunction::ArrayBufferImmutable,
+                    )?;
+                    self.install_native(
+                        buffer_prototype,
+                        prototype,
+                        "transferToImmutable",
+                        0,
+                        NativeFunction::ArrayBufferTransferToImmutable,
+                    )?;
+                    self.install_native(
+                        buffer_prototype,
+                        prototype,
+                        "sliceToImmutable",
+                        2,
+                        NativeFunction::ArrayBufferSliceToImmutable,
                     )?;
                 }
                 self.install_native(
@@ -1154,21 +1190,6 @@ impl Vm {
                         NativeFunction::ObjectMethod(method),
                     )?;
                 }
-            } else if name == "import" {
-                self.install_native(
-                    id,
-                    prototype,
-                    "source",
-                    1,
-                    NativeFunction::DynamicImport { source: true },
-                )?;
-                self.install_native(
-                    id,
-                    prototype,
-                    "defer",
-                    1,
-                    NativeFunction::DynamicImport { source: false },
-                )?;
             }
             Ok(Value::Object(id))
         })();

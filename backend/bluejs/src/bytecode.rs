@@ -112,11 +112,12 @@ opcodes! {
     TailRecur: 5, 0;
     Yield: 1, 0;
     Await: 1, 0;
-    DynamicImport: 1, 0;
+    DynamicImport: 5, 0;
     ImportMeta: 1, 0;
     EnterWith: 1, 0;
     LeaveWith: 1, 0;
     WithGet: 5, 0;
+    WithGetOrUndefined: 5, 0;
     WithSet: 5, 0;
     ResolveWithReference: 5, 0;
     LoadWithReference: 1, 0;
@@ -196,6 +197,7 @@ opcodes! {
     DefineMethod: 1, 0;
     DefineClassAccessor: 5, 0;
     DefineClassStaticField: 1, 0;
+    DefineInstanceField: 1, 0;
     DefinePrivateStaticField: 1, 0;
     DefinePrivateField: 5, 0;
     DefinePrivateMethod: 5, 0;
@@ -261,6 +263,7 @@ pub(crate) struct Binding {
 pub(crate) enum ModuleImportName {
     Named(String),
     Namespace,
+    DeferredNamespace,
     Source,
 }
 
@@ -278,10 +281,13 @@ pub(crate) struct ModuleImport {
 
 /// One executable [[RequestedModules]] entry, in source-text order.
 /// Source-phase records resolve during linking but do not participate in
-/// module evaluation, so they are omitted from this sequence.
+/// module evaluation, so they are omitted from this sequence. A deferred
+/// request (`import defer * as ns from`) contributes only its asynchronous
+/// transitive dependencies to evaluation, never the module itself.
 #[derive(Clone)]
 pub(crate) struct ModuleRequest {
     pub module_request: String,
+    pub deferred: bool,
 }
 
 #[derive(Clone)]
@@ -301,6 +307,14 @@ pub(crate) enum ModuleExport {
         json: bool,
     },
     Namespace {
+        export_name: String,
+        module_request: String,
+        json: bool,
+    },
+    /// A re-export of a deferred namespace import (`import defer * as ns`
+    /// then `export { ns }`): the export resolves to the target's deferred
+    /// namespace object rather than a lexical cell.
+    DeferredNamespace {
         export_name: String,
         module_request: String,
         json: bool,
@@ -347,6 +361,10 @@ pub(crate) struct AbruptJump {
 #[derive(Clone)]
 pub struct Bytecode {
     pub(crate) code: Vec<u8>,
+    /// Compiler-recorded instruction starts for the root program's source
+    /// order statements. `None` means the statement emits no root-code-unit
+    /// instruction and therefore has no executable safe point.
+    pub(crate) root_statement_offsets: Vec<Option<u32>>,
     pub(crate) constants: Vec<Value>,
     pub(crate) bindings: Vec<Binding>,
     pub(crate) scopes: Vec<Vec<u32>>,
@@ -436,6 +454,7 @@ impl Bytecode {
     pub(crate) fn empty() -> Self {
         Self {
             code: Vec::new(),
+            root_statement_offsets: Vec::new(),
             constants: Vec::new(),
             bindings: Vec::new(),
             scopes: Vec::new(),
@@ -479,6 +498,15 @@ impl Bytecode {
         &self.code
     }
 
+    /// Root-program statement instruction starts in source order.
+    ///
+    /// This is compiler-produced provenance metadata, not a heuristic based
+    /// on source text or bytecode scanning. A `None` entry is an explicit
+    /// unbound result for a statement that contributes no root instruction.
+    pub fn root_statement_offsets(&self) -> &[Option<u32>] {
+        &self.root_statement_offsets
+    }
+
     pub fn constants(&self) -> &[Value] {
         &self.constants
     }
@@ -490,6 +518,16 @@ impl Bytecode {
             offset += instruction.opcode.width();
             Some(instruction)
         })
+    }
+
+    /// Nested executable code units created for local function closures.
+    ///
+    /// The returned order is the compiler's stable closure-table order. A
+    /// host that needs generation-bound code-unit identifiers must traverse
+    /// this tree deterministically rather than deriving an identity from a
+    /// byte offset or a heap object address.
+    pub fn child_code_units(&self) -> impl Iterator<Item = &Bytecode> {
+        self.functions.iter().map(std::rc::Rc::as_ref)
     }
 
     pub(crate) fn instruction(&self, offset: usize) -> Option<Instruction> {

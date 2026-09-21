@@ -91,6 +91,293 @@ impl Vm {
         Ok(index as u64)
     }
 
+    /// Whether `Array.prototype.push` may store `count` elements at a real
+    /// array's end with the raw element/length stores. `Set(O, key, E, true)`
+    /// consults the prototype chain: an inherited setter, a read-only inherited
+    /// data property, or a Proxy/exotic prototype (all of which can run user
+    /// code or refuse the store) must be observed, so any of them selects the
+    /// generic algorithm instead. Without one, nothing observable can happen
+    /// between the stores, and the direct path is equivalent.
+    pub(in super::super) fn array_push_is_unobservable(
+        &mut self,
+        object: ObjectId,
+        count: usize,
+    ) -> Result<bool, RuntimeError> {
+        let Value::Number(length) = self.heap.get(object, "length")? else {
+            return Ok(false);
+        };
+        let mut current = self.heap.prototype(object)?;
+        while let Some(prototype) = current {
+            if self.heap.proxy(prototype)?.is_some()
+                || self.test262_foreign_reference(prototype).is_some()
+                || self.heap.is_module_namespace(prototype)?
+            {
+                return Ok(false);
+            }
+            for offset in 0..count {
+                let key: PropertyName = ((length as u64) + offset as u64).to_string().into();
+                if self
+                    .heap
+                    .typed_array_numeric_key(prototype, &key)?
+                    .is_some()
+                    || self
+                        .heap
+                        .get_own_property_descriptor(prototype, key)?
+                        .is_some()
+                {
+                    return Ok(false);
+                }
+            }
+            current = self.heap.prototype(prototype)?;
+        }
+        Ok(true)
+    }
+
+    /// `Array.prototype.push` for a receiver whose `length` is not a plain
+    /// Number (an array-like, a proxy, a TypedArray): ToLength(Get(O,
+    /// "length")), one strict Set per argument, then a strict Set of the new
+    /// `length`. Genuine arrays never get here.
+    pub(in super::super) fn array_push_generic(
+        &mut self,
+        object: ObjectId,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+        let object_value = Value::Object(object);
+        let base = self.stack.len();
+        self.stack.push(object_value.clone());
+        self.stack.extend(args.iter().cloned());
+        let result = (|| {
+            let length = self.get_property(&object_value, &"length".into())?;
+            let mut length = self.coerce_length(&length)?;
+            if length + args.len() as f64 > MAX_SAFE_INTEGER {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.push would exceed the maximum array-like length".into(),
+                ));
+            }
+            for value in args {
+                self.charge_step()?;
+                let key: PropertyName = (length as u64).to_string().into();
+                self.array_set_or_throw(object, key, value)?;
+                length += 1.0;
+            }
+            let length = Value::Number(length);
+            self.array_set_or_throw(object, "length".into(), &length)?;
+            Ok(length)
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// `Array.prototype.copyWithin`, built from `HasProperty`, `Get`, `Set`
+    /// and `DeletePropertyOrThrow` at the ordinary property boundary, so an
+    /// array-like, Proxy or TypedArray receiver observes every step (a
+    /// resizable-buffer view that shrank simply reads as a shorter length).
+    pub(in super::super) fn array_copy_within(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        let object_value = Value::Object(object);
+        let base = self.stack.len();
+        self.stack.push(object_value.clone());
+        self.stack.extend(args.iter().cloned());
+        let result = (|| {
+            let length = self.get_property(&object_value, &"length".into())?;
+            let length = self.coerce_length(&length)?;
+            let to = self.array_fill_index(native::argument(args, 0), length)? as i64;
+            let from = self.array_fill_index(native::argument(args, 1), length)? as i64;
+            let end = if args.get(2).is_some_and(|value| *value != Value::Undefined) {
+                self.array_fill_index(native::argument(args, 2), length)? as i64
+            } else {
+                length as i64
+            };
+            let mut count = (end - from).min(length as i64 - to);
+            let (mut from, mut to, step) = if from < to && to < from + count {
+                (from + count - 1, to + count - 1, -1)
+            } else {
+                (from, to, 1)
+            };
+            while count > 0 {
+                self.charge_step()?;
+                let from_key: PropertyName = from.to_string().into();
+                let to_key: PropertyName = to.to_string().into();
+                if self.has_property(object, &from_key)? {
+                    let value = self.get_property(&object_value, &from_key)?;
+                    self.stack.push(value.clone());
+                    let stored = self.array_set_or_throw(object, to_key, &value);
+                    self.stack.pop();
+                    stored?;
+                } else {
+                    self.array_delete_or_throw(object, &to_key)?;
+                }
+                from += step;
+                to += step;
+                count -= 1;
+            }
+            Ok(object_value.clone())
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// `Array.prototype.flat`: `depth` defaults to 1, and is otherwise
+    /// `ToIntegerOrInfinity(depth)` clamped below at 0.
+    pub(in super::super) fn array_flat(
+        &mut self,
+        receiver: &Value,
+        depth: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        self.stack.push(depth.clone());
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            let depth = if *depth == Value::Undefined {
+                1.0
+            } else {
+                let number = self.coerce_number(depth)?;
+                let integer = if number.is_nan() { 0.0 } else { number.trunc() };
+                integer.max(0.0)
+            };
+            let target = self.array_species_create(object, 0)?;
+            self.stack.push(Value::Object(target));
+            self.array_flatten_into(target, object, length, depth, None)?;
+            Ok(Value::Object(target))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// `Array.prototype.flatMap`: the mapper's result is flattened one level.
+    pub(in super::super) fn array_flat_map(
+        &mut self,
+        receiver: &Value,
+        mapper: &Value,
+        this_arg: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(object));
+        self.stack.push(mapper.clone());
+        self.stack.push(this_arg.clone());
+        let result = (|| {
+            let length = self.get_property(&Value::Object(object), &"length".into())?;
+            let length = self.coerce_length(&length)? as u64;
+            if !self.is_callable(mapper)? {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.flatMap callback must be callable".into(),
+                ));
+            }
+            let target = self.array_species_create(object, 0)?;
+            self.stack.push(Value::Object(target));
+            self.array_flatten_into(target, object, length, 1.0, Some((mapper, this_arg)))?;
+            Ok(Value::Object(target))
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
+    /// `FlattenIntoArray`, run with an explicit frame list instead of Rust
+    /// recursion so that deeply nested (or cyclic) input is bounded by
+    /// `MAX_FLATTEN_NESTING` and reports a RangeError. Only the outermost
+    /// frame applies `mapper`, exactly as the recursive calls in the
+    /// specification omit it. Every frame's source stays on the VM stack.
+    fn array_flatten_into(
+        &mut self,
+        target: ObjectId,
+        source: ObjectId,
+        source_len: u64,
+        depth: f64,
+        mapper: Option<(&Value, &Value)>,
+    ) -> Result<(), RuntimeError> {
+        const MAX_FLATTEN_NESTING: usize = 10_000;
+        struct Frame {
+            source: ObjectId,
+            len: u64,
+            index: u64,
+            depth: f64,
+        }
+        let base = self.stack.len();
+        self.stack.push(Value::Object(source));
+        let mut frames = vec![Frame {
+            source,
+            len: source_len,
+            index: 0,
+            depth,
+        }];
+        let mut target_index: u64 = 0;
+        let result = (|| {
+            while let Some(frame) = frames.last_mut() {
+                if frame.index >= frame.len {
+                    frames.pop();
+                    self.stack.pop();
+                    continue;
+                }
+                self.charge_step()?;
+                let (source, index, depth) = (frame.source, frame.index, frame.depth);
+                frame.index += 1;
+                let key: PropertyName = index.to_string().into();
+                if !self.has_property(source, &key)? {
+                    continue;
+                }
+                let step_base = self.stack.len();
+                let mut element = self.get_property(&Value::Object(source), &key)?;
+                self.stack.push(element.clone());
+                if frames.len() == 1 {
+                    if let Some((mapper, this_arg)) = mapper {
+                        element = self.call_native(
+                            mapper.clone(),
+                            this_arg.clone(),
+                            vec![element, Value::Number(index as f64), Value::Object(source)],
+                            false,
+                        )?;
+                        self.stack.push(element.clone());
+                    }
+                }
+                if depth > 0.0 && self.is_array(&element)? {
+                    let length = self.get_property(&element, &"length".into())?;
+                    let length = self.coerce_length(&length)? as u64;
+                    let Value::Object(inner) = element else {
+                        unreachable!("IsArray is only true for objects");
+                    };
+                    if frames.len() >= MAX_FLATTEN_NESTING {
+                        return Err(RuntimeError::RangeError(
+                            "Array flattening is nested too deeply".into(),
+                        ));
+                    }
+                    self.stack.truncate(step_base);
+                    self.stack.push(Value::Object(inner));
+                    frames.push(Frame {
+                        source: inner,
+                        len: length,
+                        index: 0,
+                        depth: depth - 1.0,
+                    });
+                } else {
+                    if target_index >= (1u64 << 53) - 1 {
+                        return Err(RuntimeError::TypeError(
+                            "Array.prototype.flat result is too long".into(),
+                        ));
+                    }
+                    self.array_create_data_property_or_throw(
+                        target,
+                        target_index.to_string().into(),
+                        element,
+                    )?;
+                    target_index += 1;
+                    self.stack.truncate(step_base);
+                }
+            }
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        result
+    }
+
     pub(in super::super) fn array_join(
         &mut self,
         receiver: &Value,
@@ -926,21 +1213,24 @@ impl Vm {
         &mut self,
         receiver: &Value,
         args: &[Value],
+        typed_array_method: bool,
     ) -> Result<Value, RuntimeError> {
         let object = self.coerce_object(receiver)?;
         let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
             // `%TypedArray%.prototype.toLocaleString` uses the receiver's
-            // internal [[ArrayLength]], unlike Array.prototype's generic
-            // `Get("length")` algorithm. Retain the ordinary path for
-            // Array and arbitrary array-like receivers.
+            // internal [[ArrayLength]] (and throws for an out-of-bounds
+            // view), unlike Array.prototype's generic `Get("length")`
+            // algorithm. `typed_array_method` selects that variant; the
+            // Array.prototype entry point keeps the ordinary path even when
+            // its receiver happens to be a TypedArray.
             let foreign_typed_values = if self.heap.is_typed_array(object)? {
                 None
             } else {
                 self.test262_foreign_typed_array_values(object)?
             };
-            let length = if self.heap.is_typed_array(object)? {
+            let length = if typed_array_method && self.heap.is_typed_array(object)? {
                 let (_, _, length, _) = self.typed_array_receiver(&Value::Object(object))?;
                 length as u64
             } else if let Some(values) = &foreign_typed_values {
@@ -1061,6 +1351,7 @@ impl Vm {
             ));
         }
         let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
             let length = self.get_property(&Value::Object(object), &"length".into())?;
@@ -1075,48 +1366,15 @@ impl Vm {
                     if value == Value::Undefined {
                         undefined += 1;
                     } else {
+                        // The comparator may empty or replace the receiver's
+                        // elements, so the collected values must stay
+                        // reachable from the VM stack, not just this Vec.
+                        self.stack.push(value.clone());
                         values.push(value);
                     }
                 }
             }
-            // Bottom-up merge sorting remains stable while bounding observable
-            // user comparator calls to O(n log n). The 513- and 2048-element
-            // stable-array-sort conformance cases exercise this exact path.
-            let mut scratch = values.to_vec();
-            let mut width = 1usize;
-            while width < values.len() {
-                let mut start = 0usize;
-                while start < values.len() {
-                    let middle = start.saturating_add(width).min(values.len());
-                    let end = middle.saturating_add(width).min(values.len());
-                    let (mut left, mut right, mut target) = (start, middle, start);
-                    while left < middle && right < end {
-                        if self.array_sort_order(compare, &values[right], &values[left])?
-                            == std::cmp::Ordering::Less
-                        {
-                            scratch[target] = values[right].clone();
-                            right += 1;
-                        } else {
-                            scratch[target] = values[left].clone();
-                            left += 1;
-                        }
-                        target += 1;
-                    }
-                    while left < middle {
-                        scratch[target] = values[left].clone();
-                        target += 1;
-                        left += 1;
-                    }
-                    while right < end {
-                        scratch[target] = values[right].clone();
-                        target += 1;
-                        right += 1;
-                    }
-                    values[start..end].clone_from_slice(&scratch[start..end]);
-                    start = end;
-                }
-                width = width.saturating_mul(2);
-            }
+            let values = self.array_sort_values(values, compare)?;
             let mut index = 0usize;
             for value in values {
                 self.set_property_value(&Value::Object(object), &index.to_string().into(), &value)?;
@@ -1136,8 +1394,57 @@ impl Vm {
             }
             Ok(receiver.clone())
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
+    }
+
+    /// Stable bottom-up merge sort of already-collected values with the
+    /// user (or default string) comparator. Merge sorting bounds observable
+    /// comparator calls to O(n log n); the 513- and 2048-element
+    /// stable-array-sort conformance cases exercise this exact path. The
+    /// result is a permutation of the input, so a caller that keeps the input
+    /// values reachable keeps every result value reachable too.
+    pub(super) fn array_sort_values(
+        &mut self,
+        mut values: Vec<Value>,
+        compare: &Value,
+    ) -> Result<Vec<Value>, RuntimeError> {
+        let mut scratch = values.to_vec();
+        let mut width = 1usize;
+        while width < values.len() {
+            let mut start = 0usize;
+            while start < values.len() {
+                let middle = start.saturating_add(width).min(values.len());
+                let end = middle.saturating_add(width).min(values.len());
+                let (mut left, mut right, mut target) = (start, middle, start);
+                while left < middle && right < end {
+                    if self.array_sort_order(compare, &values[right], &values[left])?
+                        == std::cmp::Ordering::Less
+                    {
+                        scratch[target] = values[right].clone();
+                        right += 1;
+                    } else {
+                        scratch[target] = values[left].clone();
+                        left += 1;
+                    }
+                    target += 1;
+                }
+                while left < middle {
+                    scratch[target] = values[left].clone();
+                    target += 1;
+                    left += 1;
+                }
+                while right < end {
+                    scratch[target] = values[right].clone();
+                    target += 1;
+                    right += 1;
+                }
+                values[start..end].clone_from_slice(&scratch[start..end]);
+                start = end;
+            }
+            width = width.saturating_mul(2);
+        }
+        Ok(values)
     }
 
     fn array_sort_order(
@@ -1280,7 +1587,9 @@ impl Vm {
             } else {
                 length
             };
-            let count = end.saturating_sub(start) as usize;
+            // count = max(final - k, 0): an end before the start yields an
+            // empty result, never a wrapped-around length.
+            let count = end.saturating_sub(start).max(0) as usize;
             let target = self.array_species_create(object, count)?;
             self.stack.push(Value::Object(target));
             for (result_index, index) in (start..end.max(start)).enumerate() {

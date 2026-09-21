@@ -4,7 +4,7 @@ This document records the current ownership boundaries in `backend/bluejs`. It i
 
 ## Current audit (2026-09-20)
 
-All Rust source and integration-test files in `backend/bluejs` are at or below the repository's 2,200-line maintenance target. The largest are `vm/modules.rs` (2,140), `vm.rs` (2,098), `vm/temporal/iso.rs` (2,067), `tests/intl.rs` (2,067), and `vm/builtins/promises.rs` (2,003). These are reviewed files, not blanket refactor candidates: each has a cohesive owner and existing child-module seams. New independently evolving behavior must enter a child at that seam before expanding its parent past the target.
+All Rust source and integration-test files in `backend/bluejs` are at or below the repository's 2,200-line maintenance target. The largest are `vm.rs` (2,183), `vm/temporal/iso.rs` (2,067), `tests/intl.rs` (2,067), `vm/modules.rs` (2,058), and `vm/builtins/promises.rs` (2,011). These are reviewed files, not blanket refactor candidates: each has a cohesive owner and existing child-module seams. New independently evolving behavior must enter a child at that seam before expanding its parent past the target.
 
 ## Ownership and dependency direction
 
@@ -13,8 +13,8 @@ All Rust source and integration-test files in `backend/bluejs` are at or below t
 | Parser | Cursor state, diagnostics, public parse entry points | `module_items`, `module`, `statements`, `patterns`, `functions`, `expressions`, and parser-focused tests |
 | Compiler | Compilation context, bytecode assembly, public compilation entry points | Statement, expression, function, and private-name lowering |
 | Heap | Allocation-facing API, shared object references and common heap types | Binary-data slots, core storage, exotic behavior, lifecycle/GC, object storage, and heap tests |
-| VM shell | Realm state, public execution and module APIs, limits, errors and common value plumbing | Module linking, interpretation, script/eval execution, properties, coercion/operations, regular expressions, JSON, functions, and host/test support |
-| Built-ins | Installation surface and cross-family helpers | Object, arrays, promises, generators, binary data, typed arrays, collections, number/math/global/dynamic/resource-management families, execution, and native dispatch |
+| VM shell | Realm state, public execution and module APIs, limits, errors and common value plumbing | Module linking and evaluation (with the phase-import/deferred-namespace and export/namespace-resolution children under `modules/`), interpretation, script/eval execution, properties, coercion/operations, regular expressions, JSON, functions, and host/test support |
+| Built-ins | Installation surface and cross-family helpers | Object, arrays, promises, generators, binary data, typed arrays, the Immutable ArrayBuffer surface, collections, number/math/global/dynamic/resource-management families, execution, and native dispatch |
 | Internationalization | VM-facing intrinsic installation and shared dispatch | Collator/Locale, DateTimeFormat, list/duration, number options/runtime, plural/segmenter, and shared helpers |
 | Temporal | Public intrinsic wiring and shared Temporal entry points | Calendar, ISO values, conversion, dates, epoch/instant, plain value types, duration concerns, rounding, time-zone concerns, year-month, and zoned-date-time behavior |
 | Test262 host | Public host adapter entry point | Cases, descriptors, foreign-object handling, harness support, and agent support |
