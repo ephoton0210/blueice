@@ -603,3 +603,21 @@ fn async_disposable_stack_dispose_async_rejects_with_the_error_as_is_when_only_o
     "#;
     assert_eq!(run_async(&mut vm, setup), Value::Bool(true));
 }
+
+#[test]
+fn using_declarations_complete_with_an_empty_completion() {
+    let mut vm = Vm::default();
+    for source in [
+        "eval('{using a = null;}') === undefined",
+        "eval('{using a = null, b = null;}') === undefined",
+        "eval('4; {using a = null;}') === 4",
+        "eval('6; {using a = null, b = null;}') === 6",
+        // A non-empty statement before the declaration still supplies the value.
+        "eval('5; { 7; using a = null; }') === 7",
+        "eval('5; { using a = { [Symbol.dispose]() {} }; }') === 5",
+        // `let`/`const` behave identically, as the reference point.
+        "eval('4; {let a = 1;}') === 4",
+    ] {
+        assert_eq!(execute(&mut vm, source), Ok(Value::Bool(true)), "{source}");
+    }
+}

@@ -103,7 +103,11 @@ impl Compiler {
         });
         self.emit(Opcode::PushHandler, handler_index)?;
         self.emit(Opcode::MarkDisposables, 0)?;
-        self.emit(Opcode::ClearCompletion, 0)?;
+        // No `ClearCompletion` here, unlike a real `try` block: a block that
+        // declares `using` is not a TryStatement, so its completion is the
+        // statement list's own, and disposal returns that completion
+        // unchanged (`DisposeResources`). Clearing would turn `4; {using x =
+        // null;}` into `undefined` instead of `4`.
         self.bytecode.handlers[handler_index as usize].try_start = self.offset()?;
         compile_body(self)?;
         self.bytecode.handlers[handler_index as usize].try_end = self.offset()?;
