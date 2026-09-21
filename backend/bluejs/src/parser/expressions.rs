@@ -1102,6 +1102,11 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Class(self.parse_class()?))
             }
+            // A decorated class expression.
+            Token::Punct(Punct::At) => {
+                let decorators = self.parse_decorators()?;
+                Ok(Expr::Class(self.parse_decorated_class(decorators)?))
+            }
             Token::Identifier(name) if name == "super" => {
                 self.advance();
                 Ok(Expr::Super)

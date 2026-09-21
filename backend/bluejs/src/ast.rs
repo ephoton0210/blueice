@@ -228,12 +228,19 @@ pub struct Function {
 
 /// A class definition with the executable elements currently supported by the
 /// compiler. Private keys share the ordinary key representation with a
-/// `#` prefix; decorators remain outside this AST subset.
+/// `#` prefix.
+///
+/// Decorators (the Stage 3 decorators proposal) are kept as the expressions
+/// written after each `@`, in source order: a `DecoratorMemberExpression`, a
+/// `DecoratorCallExpression` or the inside of a `DecoratorParenthesizedExpression`
+/// (the value the decorator expression produces is what is later called).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     pub name: Option<String>,
     pub extends: Option<Box<Expr>>,
     pub elements: Vec<ClassElement>,
+    /// Decorators before `class`, in source order.
+    pub decorators: Vec<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -242,12 +249,15 @@ pub enum ClassElement {
         key: PropertyKey,
         function: Function,
         is_static: bool,
+        /// Decorators before the element, in source order.
+        decorators: Vec<Expr>,
     },
     Accessor {
         key: PropertyKey,
         function: Function,
         getter: bool,
         is_static: bool,
+        decorators: Vec<Expr>,
     },
     Field {
         key: PropertyKey,
@@ -256,7 +266,9 @@ pub enum ClassElement {
         /// An auto-accessor (`accessor x = 1`): a getter/setter pair backed
         /// by a hidden private field that holds the initializer's value.
         accessor: bool,
+        decorators: Vec<Expr>,
     },
+    /// A static block cannot be decorated.
     StaticBlock(Vec<Stmt>),
 }
 
@@ -449,6 +461,21 @@ pub enum Stmt {
     /// names the hidden lexical binding that holds the declaring class's
     /// private-brand owner.
     ClassPrivateBrand(String),
+    /// Compiler-internal wrapper for a decorated class field (or an
+    /// auto-accessor's hidden storage field). The inner `ClassField` defines
+    /// the field; its initial value first passes through the decorators'
+    /// initializer functions, and the extra initializers the decorators added
+    /// run right after the definition. `record` names the hidden lexical
+    /// binding holding the `[extraInitializers, initializers, ...]` record
+    /// the decorators produced.
+    ClassDecoratedField {
+        field: Box<Stmt>,
+        record: String,
+    },
+    /// Compiler-internal: calls the extra initializers (`record[0]`) the
+    /// decorators of a method or accessor added, with `this` the instance
+    /// being initialized. The string names the hidden record binding.
+    ClassExtraInitializers(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -892,7 +919,8 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
             search.looks_for_arguments() && class_contains_arguments(class, search)
         }
         Stmt::ClassField(statement) => stmt_contains_super(statement, search),
-        Stmt::ClassPrivateBrand(_) => false,
+        Stmt::ClassDecoratedField { field, .. } => stmt_contains_super(field, search),
+        Stmt::ClassPrivateBrand(_) | Stmt::ClassExtraInitializers(_) => false,
     }
 }
 
@@ -1133,11 +1161,24 @@ fn class_contains_arguments(class: &Class, search: SuperSearch) -> bool {
         .extends
         .as_deref()
         .is_some_and(|expr| expr_contains_super(expr, search))
+        || class
+            .decorators
+            .iter()
+            .any(|expr| expr_contains_super(expr, search))
         || class.elements.iter().any(|element| match element {
-            ClassElement::Method { key, .. }
-            | ClassElement::Accessor { key, .. }
-            | ClassElement::Field { key, .. } => {
-                matches!(key, PropertyKey::Computed(expr) if expr_contains_super(expr, search))
+            ClassElement::Method {
+                key, decorators, ..
+            }
+            | ClassElement::Accessor {
+                key, decorators, ..
+            }
+            | ClassElement::Field {
+                key, decorators, ..
+            } => {
+                decorators
+                    .iter()
+                    .any(|expr| expr_contains_super(expr, search))
+                    || matches!(key, PropertyKey::Computed(expr) if expr_contains_super(expr, search))
             }
             ClassElement::StaticBlock(_) => false,
         })
@@ -1250,7 +1291,8 @@ mod tests {
             &Expr::Class(Class {
                 name: None,
                 extends: None,
-                elements: Vec::new()
+                elements: Vec::new(),
+                decorators: Vec::new(),
             }),
             SuperSearch::Property
         ));
@@ -1564,7 +1606,8 @@ mod tests {
             Class {
                 name: None,
                 extends: None,
-                elements: Vec::new()
+                elements: Vec::new(),
+                decorators: Vec::new(),
             }
         )));
         let property = Expr::Member {

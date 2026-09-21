@@ -182,6 +182,8 @@ pub enum Punct {
     QuestionQuestion,
     QuestionQuestionAssign,
     QuestionDot,
+    /// `@`, which only ever begins a decorator.
+    At,
 }
 
 /// One lexical error -- a plain message rather than a structured enum,
@@ -1200,6 +1202,7 @@ impl Tokenizer {
             }
             '^' => two!('=', Punct::XorAssign, Punct::Xor),
             '~' => Punct::Tilde,
+            '@' => Punct::At,
             '?' => {
                 if self.peek() == Some('?') {
                     self.advance();
@@ -1696,8 +1699,20 @@ mod tests {
 
     #[test]
     fn unexpected_character_is_an_error_not_a_panic() {
-        assert!(Tokenizer::new("@").next_spanned().is_err());
+        assert!(Tokenizer::new("\\").next_spanned().is_err());
         assert!(Tokenizer::new("#").next_spanned().is_err());
+    }
+
+    #[test]
+    fn at_sign_is_the_decorator_punctuator() {
+        assert_eq!(
+            tokens("@dec"),
+            vec![
+                Token::Punct(Punct::At),
+                Token::Identifier("dec".into()),
+                Token::Eof
+            ]
+        );
     }
 
     #[test]

@@ -10,6 +10,7 @@ mod array_scan;
 mod arrays;
 mod binary_data;
 mod collection_iteration;
+mod decorators;
 mod execution;
 mod generators;
 mod globals;

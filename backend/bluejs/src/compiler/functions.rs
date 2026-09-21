@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::bytecode::decoration as deco;
 
 impl Compiler {
     pub(super) fn function(
@@ -22,6 +23,14 @@ impl Compiler {
         class: &Class,
         inferred_name: Option<&str>,
     ) -> Result<(), CompileError> {
+        // The class's own decorators are written before `class`, outside the
+        // class: they are evaluated first, in the surrounding scope (the
+        // class's name and private names are not visible to them) and in the
+        // surrounding code's strictness, and wait on the operand stack for
+        // `class_definition` to store them.
+        if !class.decorators.is_empty() {
+            self.decorator_list_on_stack(&class.decorators)?;
+        }
         let Some(name) = class.name.as_ref() else {
             return self.class_expression_with_binding(class, inferred_name, None);
         };
@@ -117,6 +126,9 @@ impl Compiler {
         // them capture.
         let mut computed_key_bindings = BTreeMap::new();
         let mut static_element_bindings = BTreeMap::new();
+        // A decorated element additionally keeps its evaluated decorators,
+        // what its definition created, and the record its decorators produce.
+        let mut decorations = BTreeMap::new();
         for (index, element) in class.elements.iter().enumerate() {
             let element_binding = |kind: &str| {
                 format!("{CLASS_ELEMENT_BINDING_PREFIX}{private_scope_id}_{kind}_{index}")
@@ -135,16 +147,89 @@ impl Compiler {
                 }
                 _ => {}
             }
+            if let Some((kind, is_static)) = decorated_element(element) {
+                // A decorated method or accessor half keeps its converted
+                // computed key too: decorating it needs the key again.
+                if matches!(
+                    element,
+                    ClassElement::Method {
+                        key: PropertyKey::Computed(_),
+                        ..
+                    } | ClassElement::Accessor {
+                        key: PropertyKey::Computed(_),
+                        ..
+                    }
+                ) {
+                    computed_key_bindings.insert(index, element_binding("key"));
+                }
+                decorations.insert(
+                    index,
+                    ElementDecoration {
+                        decorators: element_binding("decorators"),
+                        result: element_binding("decorated"),
+                        original: element_binding("original"),
+                        setter: element_binding("setter"),
+                        kind,
+                        is_static,
+                    },
+                );
+            }
         }
+        // The class itself: its decorators, and (whenever anything is
+        // decorated) the metadata object every decorator's context shares.
+        let has_class_decorators = !class.decorators.is_empty();
+        let class_binding =
+            |kind: &str| format!("{CLASS_ELEMENT_BINDING_PREFIX}{private_scope_id}_class_{kind}");
+        let decorated_class = has_class_decorators || !decorations.is_empty();
+        let class_decoration = decorated_class.then(|| ClassDecoration {
+            decorators: class_binding("decorators"),
+            metadata: class_binding("metadata"),
+            extra_initializers: class_binding("extra_initializers"),
+            decorated: class_binding("decorated"),
+        });
         class_bindings.extend(
             computed_key_bindings
                 .values()
                 .chain(static_element_bindings.values())
                 .map(|name| (name.clone(), DeclKind::Const)),
         );
+        for decoration in decorations.values() {
+            class_bindings.extend(
+                [
+                    &decoration.decorators,
+                    &decoration.result,
+                    &decoration.original,
+                    &decoration.setter,
+                ]
+                .into_iter()
+                .map(|name| (name.clone(), DeclKind::Const)),
+            );
+        }
+        if let Some(class_decoration) = &class_decoration {
+            class_bindings.extend(
+                [
+                    &class_decoration.decorators,
+                    &class_decoration.metadata,
+                    &class_decoration.extra_initializers,
+                    &class_decoration.decorated,
+                ]
+                .into_iter()
+                .map(|name| (name.clone(), DeclKind::Const)),
+            );
+        }
         let has_class_scope = !class_bindings.is_empty();
         if has_class_scope {
             self.enter_scope(class_bindings, &BTreeSet::new(), false)?;
+        }
+        // The class's own decorators were evaluated before the scope existed
+        // (see `class_expression`) and are on the operand stack.
+        if has_class_decorators {
+            let class_decoration = class_decoration
+                .as_ref()
+                .expect("a class with decorators has a decoration plan");
+            self.initialize_class_binding(&class_decoration.decorators)?;
+        }
+        if has_class_scope {
             self.private_scopes.push(private_scope.clone());
         }
         let constructor = class.elements.iter().find_map(|element| match element {
@@ -152,6 +237,7 @@ impl Compiler {
                 key,
                 function,
                 is_static: false,
+                ..
             } if class_property_name(key).is_some_and(|name| name == "constructor") => {
                 Some(function.clone())
             }
@@ -206,16 +292,21 @@ impl Compiler {
                 .expect("private owner binding is in the active class scope");
             self.emit(Opcode::InitializeBinding, owner)?;
         }
-        // Every element is evaluated in order: methods and accessors are
-        // defined now, computed field keys are converted now, and the
-        // functions that define each field or run each static block are
-        // created now but only run afterwards.
+        // Every element is evaluated in order: its decorators, then its
+        // computed key; methods and accessors are defined now, computed field
+        // keys are converted now, and the functions that define each field or
+        // run each static block are created now but only run afterwards.
         for (index, element) in class.elements.iter().enumerate() {
+            let decoration = decorations.get(&index);
+            if let Some(decoration) = decoration {
+                self.decorator_list(element_decorators(element), &decoration.decorators)?;
+            }
             match element {
                 ClassElement::Method {
                     key,
                     function,
                     is_static,
+                    ..
                 } => {
                     if !is_static
                         && class_property_name(key).is_some_and(|name| name == "constructor")
@@ -227,6 +318,13 @@ impl Compiler {
                         self.constant(Value::String(name.into()))?;
                     } else {
                         self.property_key(key)?;
+                        if let Some(binding_name) = computed_key_bindings.get(&index) {
+                            self.emit(Opcode::Dup, 0)?;
+                            let slot = self
+                                .resolve(binding_name)
+                                .expect("computed method key binding is in the class scope");
+                            self.emit(Opcode::InitializeBinding, slot)?;
+                        }
                     }
                     self.function_named_with(
                         function,
@@ -239,10 +337,21 @@ impl Compiler {
                         self.emit(Opcode::SetFunctionName, 0)?;
                     }
                     if private_class_name(key).is_some() {
+                        if let Some(decoration) = decoration {
+                            self.emit(Opcode::Dup, 0)?;
+                            self.initialize_class_binding(&decoration.original)?;
+                        }
                         self.emit(Opcode::DefinePrivateMethod, u32::from(*is_static))?;
                     } else {
                         self.emit(Opcode::DefineMethod, 0)?;
-                        self.emit(Opcode::Pop, 0)?;
+                        match decoration {
+                            Some(decoration) => {
+                                self.initialize_class_binding(&decoration.original)?
+                            }
+                            None => {
+                                self.emit(Opcode::Pop, 0)?;
+                            }
+                        }
                     }
                 }
                 ClassElement::Accessor {
@@ -250,14 +359,26 @@ impl Compiler {
                     function,
                     getter,
                     is_static,
+                    ..
                 } => {
-                    self.class_accessor_definition(key, None, function, *getter, *is_static)?;
+                    self.class_accessor_definition(
+                        key,
+                        None,
+                        ElementCapture {
+                            key: computed_key_bindings.get(&index),
+                            function: decoration.map(|decoration| &decoration.original),
+                        },
+                        function,
+                        *getter,
+                        *is_static,
+                    )?;
                 }
                 ClassElement::Field {
                     key,
                     initializer,
                     is_static,
                     accessor,
+                    ..
                 } => {
                     // What gets initialized per instance (or once for a
                     // static): the field itself, or an auto-accessor's hidden
@@ -275,10 +396,7 @@ impl Compiler {
                     }
                     if let Some(binding_name) = computed_key_bindings.get(&index) {
                         self.property_key(key)?;
-                        let slot = self
-                            .resolve(binding_name)
-                            .expect("computed field key binding is in the class scope");
-                        self.emit(Opcode::InitializeBinding, slot)?;
+                        self.initialize_class_binding(binding_name)?;
                     }
                     if *accessor {
                         let (getter, setter) = auto_accessor_functions(
@@ -289,6 +407,16 @@ impl Compiler {
                             self.class_accessor_definition(
                                 key,
                                 computed_key_bindings.get(&index),
+                                ElementCapture {
+                                    key: None,
+                                    function: decoration.map(|decoration| {
+                                        if is_getter {
+                                            &decoration.original
+                                        } else {
+                                            &decoration.setter
+                                        }
+                                    }),
+                                },
                                 &function,
                                 is_getter,
                                 *is_static,
@@ -301,6 +429,13 @@ impl Compiler {
                             computed_key_bindings.get(&index).filter(|_| !*accessor),
                             initializer.as_ref(),
                         );
+                        let field = match decoration {
+                            Some(decoration) => Stmt::ClassDecoratedField {
+                                field: Box::new(field),
+                                record: decoration.result.clone(),
+                            },
+                            None => field,
+                        };
                         self.class_element_function(vec![field], binding_name, true)?;
                     }
                 }
@@ -312,15 +447,74 @@ impl Compiler {
                 }
             }
         }
+        // Every element now exists. Apply the element decorators, each
+        // element's own last to first: static methods and accessors first,
+        // then instance ones, then static fields, then instance fields. Then
+        // the class decorators see the finished class, and the metadata
+        // object they all shared is published on the class they produced.
+        if let Some(class_decoration) = &class_decoration {
+            self.emit(Opcode::CreateMetadata, 0)?;
+            self.initialize_class_binding(&class_decoration.metadata)?;
+            for (fields, is_static) in [(false, true), (false, false), (true, true), (true, false)]
+            {
+                for (index, element) in class.elements.iter().enumerate() {
+                    let Some(decoration) = decorations.get(&index) else {
+                        continue;
+                    };
+                    if (decoration.kind == deco::FIELD) != fields
+                        || decoration.is_static != is_static
+                    {
+                        continue;
+                    }
+                    self.decorate_class_element(
+                        element,
+                        decoration,
+                        computed_key_bindings.get(&index),
+                        &private_scope,
+                        &class_decoration.metadata,
+                    )?;
+                }
+            }
+            if has_class_decorators {
+                self.emit(Opcode::Dup, 0)?;
+                self.get_class_binding(&class_decoration.decorators)?;
+                self.constant(Value::String(
+                    class.name.as_deref().or(inferred_name).unwrap_or("").into(),
+                ))?;
+                self.get_class_binding(&class_decoration.metadata)?;
+                self.emit(Opcode::DecorateClass, 0)?;
+                self.emit(Opcode::Dup, 0)?;
+                self.constant(Value::String("1".into()))?;
+                self.emit(Opcode::GetProperty, 0)?;
+                self.initialize_class_binding(&class_decoration.decorated)?;
+                self.constant(Value::String("0".into()))?;
+                self.emit(Opcode::GetProperty, 0)?;
+                self.initialize_class_binding(&class_decoration.extra_initializers)?;
+                self.get_class_binding(&class_decoration.decorated)?;
+            } else {
+                self.emit(Opcode::Dup, 0)?;
+            }
+            self.get_class_binding(&class_decoration.metadata)?;
+            self.emit(Opcode::DefineMetadata, 0)?;
+        }
         // The inner name binding is initialized once every element has been
         // defined, so a computed key or method definition cannot observe the
-        // class through it, while a static initializer can.
+        // class through it, while a static initializer can. It holds the class
+        // the decorators finally produced.
         if let Some(slot) = binding {
-            self.emit(Opcode::Dup, 0)?;
+            match class_decoration.as_ref().filter(|_| has_class_decorators) {
+                Some(class_decoration) => {
+                    self.get_class_binding(&class_decoration.decorated)?;
+                }
+                None => {
+                    self.emit(Opcode::Dup, 0)?;
+                }
+            }
             self.emit(Opcode::InitializeBinding, slot)?;
         }
-        // [[Fields]]: private methods and accessors first, then every
-        // instance field in order.
+        // [[Fields]]: private methods and accessors first, then the extra
+        // initializers of decorated methods, then every instance field in
+        // order.
         let mut instance_fields = Vec::new();
         let instance_private_method = class.elements.iter().find_map(|element| match element {
             ClassElement::Method {
@@ -349,17 +543,25 @@ impl Compiler {
                     .clone(),
             ));
         }
+        for decoration in decorations.values() {
+            if !decoration.is_static
+                && matches!(decoration.kind, deco::METHOD | deco::GETTER | deco::SETTER)
+            {
+                instance_fields.push(Stmt::ClassExtraInitializers(decoration.result.clone()));
+            }
+        }
         for (index, element) in class.elements.iter().enumerate() {
             if let ClassElement::Field {
                 key,
                 initializer,
                 is_static: false,
                 accessor,
+                ..
             } = element
             {
                 let storage_key =
                     PropertyKey::Identifier(format!("#{}", auto_accessor_storage_name(index)));
-                instance_fields.push(if *accessor {
+                let field = if *accessor {
                     class_field_definition(&storage_key, None, initializer.as_ref())
                 } else {
                     class_field_definition(
@@ -367,6 +569,13 @@ impl Compiler {
                         computed_key_bindings.get(&index),
                         initializer.as_ref(),
                     )
+                };
+                instance_fields.push(match decorations.get(&index) {
+                    Some(decoration) => Stmt::ClassDecoratedField {
+                        field: Box::new(field),
+                        record: decoration.result.clone(),
+                    },
+                    None => field,
                 });
             }
         }
@@ -387,17 +596,248 @@ impl Compiler {
             )?;
             self.emit(Opcode::SetClassFields, 0)?;
         }
+        // From here on the class is the one the decorators produced (`this` of
+        // the static extra initializers, fields and blocks); its elements keep
+        // the undecorated class as their home object.
+        let final_class = class_decoration
+            .as_ref()
+            .filter(|_| has_class_decorators)
+            .map(|class_decoration| &class_decoration.decorated);
+        // Static methods' extra initializers run before any static field.
+        for decoration in decorations.values() {
+            if decoration.is_static
+                && matches!(decoration.kind, deco::METHOD | deco::GETTER | deco::SETTER)
+            {
+                match final_class {
+                    Some(decorated) => self.get_class_binding(decorated)?,
+                    None => {
+                        self.emit(Opcode::Dup, 0)?;
+                    }
+                }
+                let slot = self
+                    .resolve(&decoration.result)
+                    .expect("decoration record binding is in the class scope");
+                self.class_decoration_record_element(slot, 0)?;
+                self.emit(Opcode::RunInitializers, 0)?;
+            }
+        }
         // Static fields and static blocks run last, in element order.
         for binding_name in static_element_bindings.values() {
             let slot = self
                 .resolve(binding_name)
                 .expect("static element binding is in the class scope");
-            self.emit(Opcode::GetBinding, slot)?;
-            self.emit(Opcode::CallClassStaticBlock, 0)?;
+            match final_class {
+                Some(decorated) => {
+                    self.get_class_binding(decorated)?;
+                    self.emit(Opcode::GetBinding, slot)?;
+                    self.emit(Opcode::CallDecoratedStaticElement, 0)?;
+                }
+                None => {
+                    self.emit(Opcode::GetBinding, slot)?;
+                    self.emit(Opcode::CallClassStaticBlock, 0)?;
+                }
+            }
+        }
+        // The class decorators' extra initializers see the finished class, and
+        // a decorator that replaced the class is what the definition returns.
+        if let Some(class_decoration) = class_decoration.as_ref().filter(|_| has_class_decorators) {
+            self.get_class_binding(&class_decoration.decorated)?;
+            self.emit(Opcode::Dup, 0)?;
+            self.get_class_binding(&class_decoration.extra_initializers)?;
+            self.emit(Opcode::RunInitializers, 0)?;
+            self.emit(Opcode::Swap, 0)?;
+            self.emit(Opcode::Pop, 0)?;
         }
         if has_class_scope {
             self.private_scopes.pop();
             self.leave_scope()?;
+        }
+        Ok(())
+    }
+
+    fn get_class_binding(&mut self, name: &str) -> Result<(), CompileError> {
+        let slot = self
+            .resolve(name)
+            .expect("class element binding is in the class scope");
+        self.emit(Opcode::GetBinding, slot)?;
+        Ok(())
+    }
+
+    fn initialize_class_binding(&mut self, name: &str) -> Result<(), CompileError> {
+        let slot = self
+            .resolve(name)
+            .expect("class element binding is in the class scope");
+        self.emit(Opcode::InitializeBinding, slot)?;
+        Ok(())
+    }
+
+    /// Evaluates `decorators` left to right into a decorator list (an Array of
+    /// `decorator, receiver` pairs) on the operand stack. The decorator
+    /// expressions run here, in source order with the surrounding class's other
+    /// expressions; calling them is `DecorateElement`'s / `DecorateClass`'s
+    /// job, later.
+    fn decorator_list_on_stack(&mut self, decorators: &[Expr]) -> Result<(), CompileError> {
+        self.emit(Opcode::NewArray, 0)?;
+        for decorator in decorators {
+            self.decorator_and_receiver(decorator)?;
+            self.emit(Opcode::PushDecorator, 0)?;
+        }
+        Ok(())
+    }
+
+    /// Like `decorator_list_on_stack`, storing the list in the hidden binding.
+    fn decorator_list(&mut self, decorators: &[Expr], binding: &str) -> Result<(), CompileError> {
+        self.decorator_list_on_stack(decorators)?;
+        self.initialize_class_binding(binding)
+    }
+
+    /// Pushes a decorator's value and the `this` it is called with: a
+    /// property reference (`@a.b`, `@(a.b)`) calls with its base, exactly like
+    /// the same expression as the callee of a call; everything else, a plain
+    /// name, a call's result or any other parenthesized expression, with
+    /// `undefined`.
+    fn decorator_and_receiver(&mut self, decorator: &Expr) -> Result<(), CompileError> {
+        match decorator {
+            Expr::Member { .. } if !is_super_member(decorator) => {
+                if private_member_name(decorator).is_some() {
+                    let owner = self.private_member_reference(decorator)?;
+                    self.emit(Opcode::PrivateGetMethod, owner)?;
+                } else {
+                    self.member_reference(decorator)?;
+                    self.emit(Opcode::GetMethod, 0)?;
+                }
+            }
+            Expr::Parenthesized(inner)
+                if matches!(
+                    inner.as_ref(),
+                    Expr::Member { .. } | Expr::OptionalMember { .. }
+                ) && !is_super_member(inner) =>
+            {
+                self.parenthesized_optional_member_method(inner)?;
+            }
+            other => {
+                self.expression(other)?;
+                self.constant(Value::Undefined)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Pushes an element's name as a decorator's context reports it: `#x` for
+    /// a private name, otherwise the (already converted) property key.
+    fn class_element_name(
+        &mut self,
+        key: &PropertyKey,
+        key_binding: Option<&String>,
+    ) -> Result<(), CompileError> {
+        if let Some(name) = private_class_name(key) {
+            self.constant(Value::String(format!("#{name}").into()))
+        } else if let Some(binding_name) = key_binding {
+            self.get_class_binding(binding_name)
+        } else {
+            self.property_key(key)
+        }
+    }
+
+    /// Applies one element's decorators (`DecorateElement`) and puts the
+    /// functions they returned back where the definition created the
+    /// originals (`ReplaceClassElement`).
+    fn decorate_class_element(
+        &mut self,
+        element: &ClassElement,
+        decoration: &ElementDecoration,
+        key_binding: Option<&String>,
+        private_scope: &HashMap<String, String>,
+        metadata: &str,
+    ) -> Result<(), CompileError> {
+        let (ClassElement::Method { key, .. }
+        | ClassElement::Accessor { key, .. }
+        | ClassElement::Field { key, .. }) = element
+        else {
+            unreachable!("only methods, accessors and fields are decorated");
+        };
+        let private_name = private_class_name(key);
+        let owner = private_name.map(|name| {
+            private_scope
+                .get(name)
+                .expect("a private element has an owner binding")
+                .clone()
+        });
+        let flags = decoration.kind
+            | if decoration.is_static {
+                deco::STATIC
+            } else {
+                0
+            }
+            | if private_name.is_some() {
+                deco::PRIVATE
+            } else {
+                0
+            };
+        self.get_class_binding(&decoration.decorators)?;
+        self.class_element_name(key, key_binding)?;
+        match (&owner, private_name) {
+            (Some(owner), Some(name)) => {
+                self.get_class_binding(owner)?;
+                self.constant(Value::String(name.into()))?;
+            }
+            _ => {
+                self.constant(Value::Undefined)?;
+                self.constant(Value::Undefined)?;
+            }
+        }
+        match decoration.kind {
+            deco::FIELD => {
+                self.constant(Value::Undefined)?;
+                self.constant(Value::Undefined)?;
+            }
+            deco::ACCESSOR => {
+                self.get_class_binding(&decoration.original)?;
+                self.get_class_binding(&decoration.setter)?;
+            }
+            _ => {
+                self.get_class_binding(&decoration.original)?;
+                self.constant(Value::Undefined)?;
+            }
+        }
+        self.get_class_binding(metadata)?;
+        self.emit(Opcode::DecorateElement, flags)?;
+        self.initialize_class_binding(&decoration.result)?;
+        let result_slot = self
+            .resolve(&decoration.result)
+            .expect("decoration record binding is in the class scope");
+        // What to put back: (kind, binding of the original, index in the record).
+        let replacements: &[(u32, &str, usize)] = match decoration.kind {
+            deco::METHOD | deco::GETTER | deco::SETTER => {
+                &[(decoration.kind, decoration.original.as_str(), 1)]
+            }
+            deco::ACCESSOR => &[
+                (deco::GETTER, decoration.original.as_str(), 2),
+                (deco::SETTER, decoration.setter.as_str(), 3),
+            ],
+            _ => &[],
+        };
+        for &(kind, original, position) in replacements {
+            match (&owner, private_name) {
+                (Some(owner), Some(name)) => {
+                    self.get_class_binding(owner)?;
+                    self.constant(Value::String(name.into()))?;
+                }
+                _ => {
+                    self.class_property_target(decoration.is_static)?;
+                    self.class_element_name(key, key_binding)?;
+                }
+            }
+            self.get_class_binding(original)?;
+            self.class_decoration_record_element(result_slot, position)?;
+            self.emit(
+                Opcode::ReplaceClassElement,
+                kind | if private_name.is_some() {
+                    deco::PRIVATE
+                } else {
+                    0
+                },
+            )?;
         }
         Ok(())
     }
@@ -407,11 +847,13 @@ impl Compiler {
     /// public one. A getter or setter is named `get name` / `set name`. A
     /// computed key that was already converted (an auto-accessor's, shared by
     /// its getter and setter) is read back from its hidden binding instead of
-    /// being evaluated again.
+    /// being evaluated again. `capture` says where a decorated element keeps
+    /// the key it converts and the function it creates.
     fn class_accessor_definition(
         &mut self,
         key: &PropertyKey,
         key_binding: Option<&String>,
+        capture: ElementCapture,
         function: &Function,
         getter: bool,
         is_static: bool,
@@ -420,12 +862,13 @@ impl Compiler {
         if let Some(name) = private_class_name(key) {
             self.constant(Value::String(name.into()))?;
         } else if let Some(binding_name) = key_binding {
-            let slot = self
-                .resolve(binding_name)
-                .expect("computed key binding is in the class scope");
-            self.emit(Opcode::GetBinding, slot)?;
+            self.get_class_binding(binding_name)?;
         } else {
             self.property_key(key)?;
+            if let Some(binding_name) = capture.key {
+                self.emit(Opcode::Dup, 0)?;
+                self.initialize_class_binding(binding_name)?;
+            }
         }
         let mut function = function.clone();
         if let Some(name) = literal_property_key_name(key) {
@@ -442,13 +885,22 @@ impl Compiler {
             self.emit(Opcode::SetFunctionName, if getter { 1 } else { 2 })?;
         }
         if private_class_name(key).is_some() {
+            if let Some(binding_name) = capture.function {
+                self.emit(Opcode::Dup, 0)?;
+                self.initialize_class_binding(binding_name)?;
+            }
             self.emit(
                 Opcode::DefinePrivateAccessor,
                 u32::from(!getter) | (u32::from(is_static) << 1),
             )?;
         } else {
             self.emit(Opcode::DefineClassAccessor, u32::from(!getter))?;
-            self.emit(Opcode::Pop, 0)?;
+            match capture.function {
+                Some(binding_name) => self.initialize_class_binding(binding_name)?,
+                None => {
+                    self.emit(Opcode::Pop, 0)?;
+                }
+            }
         }
         Ok(())
     }
@@ -813,5 +1265,86 @@ impl Compiler {
                 .iter()
                 .all(|argument| matches!(argument, Argument::Normal(_))))
         .then_some(args)
+    }
+}
+
+/// The hidden class-scope bindings one decorated class element uses (see
+/// `class_definition`).
+struct ElementDecoration {
+    /// The element's evaluated decorators, in an Array.
+    decorators: String,
+    /// The record `DecorateElement` returns (`[extraInitializers, ...]`).
+    result: String,
+    /// What the class definition created: the function of a method or accessor
+    /// half, or an auto-accessor's getter.
+    original: String,
+    /// An auto-accessor's setter.
+    setter: String,
+    /// The `deco::*` element kind.
+    kind: u32,
+    is_static: bool,
+}
+
+/// The hidden class-scope bindings a class with decorators uses.
+struct ClassDecoration {
+    /// The class's own decorators (in an Array).
+    decorators: String,
+    /// The metadata object every decorator's context shares.
+    metadata: String,
+    /// The extra initializers the class decorators added.
+    extra_initializers: String,
+    /// The class the class decorators produced.
+    decorated: String,
+}
+
+/// Where a decorated class element keeps what its definition creates.
+#[derive(Clone, Copy, Default)]
+struct ElementCapture<'a> {
+    /// The converted computed key of a method or accessor half.
+    key: Option<&'a String>,
+    /// The function the definition created.
+    function: Option<&'a String>,
+}
+
+/// A decorated element's `deco::*` kind and whether it is static.
+fn decorated_element(element: &ClassElement) -> Option<(u32, bool)> {
+    match element {
+        ClassElement::Method {
+            decorators,
+            is_static,
+            ..
+        } if !decorators.is_empty() => Some((deco::METHOD, *is_static)),
+        ClassElement::Accessor {
+            decorators,
+            getter,
+            is_static,
+            ..
+        } if !decorators.is_empty() => Some((
+            if *getter { deco::GETTER } else { deco::SETTER },
+            *is_static,
+        )),
+        ClassElement::Field {
+            decorators,
+            accessor,
+            is_static,
+            ..
+        } if !decorators.is_empty() => Some((
+            if *accessor {
+                deco::ACCESSOR
+            } else {
+                deco::FIELD
+            },
+            *is_static,
+        )),
+        _ => None,
+    }
+}
+
+fn element_decorators(element: &ClassElement) -> &[Expr] {
+    match element {
+        ClassElement::Method { decorators, .. }
+        | ClassElement::Accessor { decorators, .. }
+        | ClassElement::Field { decorators, .. } => decorators,
+        ClassElement::StaticBlock(_) => &[],
     }
 }
