@@ -43,8 +43,14 @@ fn only_anonymous_function_definitions_are_named() {
 fn computed_keys_name_functions_at_run_time() {
     assert_eq!(text("({ ['a' + 'b']: function() {} }).ab.name"), "ab");
     assert_eq!(text("({ ['a' + 'b']: () => {} }).ab.name"), "ab");
-    assert_eq!(text("var s = Symbol('test262'); ({ [s]: function() {} })[s].name"), "[test262]");
-    assert_eq!(text("var s = Symbol(); ({ [s]: function() {} })[s].name"), "");
+    assert_eq!(
+        text("var s = Symbol('test262'); ({ [s]: function() {} })[s].name"),
+        "[test262]"
+    );
+    assert_eq!(
+        text("var s = Symbol(); ({ [s]: function() {} })[s].name"),
+        ""
+    );
     assert_eq!(text("var s = Symbol('m'); ({ [s]() {} })[s].name"), "[m]");
     assert_eq!(text("var s = Symbol('m'); ({ *[s]() {} })[s].name"), "[m]");
     assert_eq!(text("var k = 'x'; ({ [k]() {} }).x.name"), "x");
@@ -59,13 +65,22 @@ fn computed_keys_name_functions_at_run_time() {
 
 #[test]
 fn a_computed_key_leaves_a_named_function_alone() {
-    assert_eq!(text("var k = 'x'; ({ [k]: function named() {} }).x.name"), "named");
+    assert_eq!(
+        text("var k = 'x'; ({ [k]: function named() {} }).x.name"),
+        "named"
+    );
 }
 
 #[test]
 fn class_methods_take_symbol_and_computed_names() {
-    assert_eq!(text("var s = Symbol('m'); (class { [s]() {} }).prototype[s].name"), "[m]");
-    assert_eq!(text("var s = Symbol('m'); (class { static [s]() {} })[s].name"), "[m]");
+    assert_eq!(
+        text("var s = Symbol('m'); (class { [s]() {} }).prototype[s].name"),
+        "[m]"
+    );
+    assert_eq!(
+        text("var s = Symbol('m'); (class { static [s]() {} })[s].name"),
+        "[m]"
+    );
     assert_eq!(text("var s = Symbol('m'); Object.getOwnPropertyDescriptor(class { static get [s]() {} }, s).get.name"), "get [m]");
 }
 

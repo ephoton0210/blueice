@@ -23,5 +23,8 @@ fn do_while_needs_no_terminator_before_the_next_statement_on_the_same_line() {
         evaluate("var x = 0; do do do ; while (x) while (x) while (x) x = 39; x"),
         Value::Number(39.0)
     );
-    assert_eq!(evaluate("var n = 0; do n++; while (n < 3); n"), Value::Number(3.0));
+    assert_eq!(
+        evaluate("var n = 0; do n++; while (n < 3); n"),
+        Value::Number(3.0)
+    );
 }

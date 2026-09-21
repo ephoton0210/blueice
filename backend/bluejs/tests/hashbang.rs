@@ -16,7 +16,15 @@ fn evaluate(source: &str) -> Value {
 
 #[test]
 fn a_hashbang_at_the_start_of_a_script_is_a_comment() {
-    for source in ["#!", "#!\n", "#! comment", "#!2\n", "#!\n1", "#!\r\n1", "#!\u{2028}1"] {
+    for source in [
+        "#!",
+        "#!\n",
+        "#! comment",
+        "#!2\n",
+        "#!\n1",
+        "#!\r\n1",
+        "#!\u{2028}1",
+    ] {
         assert!(parse(source).is_ok(), "{source:?}");
     }
     assert_eq!(evaluate("#!\n1"), Value::Number(1.0));

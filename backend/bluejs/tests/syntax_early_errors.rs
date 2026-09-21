@@ -133,7 +133,14 @@ fn untagged_templates_reject_legacy_octal_escapes() {
         "`${1}\\1`;",
         "`\\0${1}\\8`;",
     ]);
-    assert_all_accepted(&["`\\0`;", "`\\0a`;", "`\\\\1`;", "tag`\\1`;", "tag`\\8`;", "tag`\\00`;"]);
+    assert_all_accepted(&[
+        "`\\0`;",
+        "`\\0a`;",
+        "`\\\\1`;",
+        "tag`\\1`;",
+        "tag`\\8`;",
+        "tag`\\00`;",
+    ]);
     assert_eq!(
         evaluate("(function(s) { return s[0] === undefined && s.raw[0] === '\\\\1'; })`\\1`"),
         Value::Bool(true)

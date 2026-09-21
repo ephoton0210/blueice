@@ -45,7 +45,8 @@ impl Vm {
                 match instruction.opcode {
                     Opcode::SetFunctionName => {
                         let len = self.stack.len();
-                        let (key, function) = (self.stack[len - 2].clone(), self.stack[len - 1].clone());
+                        let (key, function) =
+                            (self.stack[len - 2].clone(), self.stack[len - 1].clone());
                         self.set_function_name_from_key(&function, &key, operand as u32)?;
                     }
                     Opcode::DefineData

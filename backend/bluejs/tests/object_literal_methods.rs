@@ -22,7 +22,10 @@ fn text(source: &str) -> String {
 
 #[test]
 fn object_literal_methods_are_enumerable_writable_and_configurable() {
-    assert_eq!(text("Object.keys({ m() {}, n: 1, *g() {}, async a() {} }).join()"), "m,n,g,a");
+    assert_eq!(
+        text("Object.keys({ m() {}, n: 1, *g() {}, async a() {} }).join()"),
+        "m,n,g,a"
+    );
     assert_eq!(
         text(
             "var d = Object.getOwnPropertyDescriptor({ m() {} }, 'm');

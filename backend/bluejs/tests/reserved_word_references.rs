@@ -45,8 +45,8 @@ fn a_keyword_spelled_with_an_escape_is_not_that_keyword() {
 #[test]
 fn a_reserved_word_cannot_be_a_shorthand_property() {
     for word in [
-        "true", "false", "null", "this", "if", "for", "class", "with", "enum", "export",
-        "extends", "super", "debugger", "import", "new", "typeof",
+        "true", "false", "null", "this", "if", "for", "class", "with", "enum", "export", "extends",
+        "super", "debugger", "import", "new", "typeof",
     ] {
         assert!(is_rejected(&format!("({{ {word} }});")), "{word}");
     }
@@ -55,8 +55,15 @@ fn a_reserved_word_cannot_be_a_shorthand_property() {
 #[test]
 fn strict_reserved_words_cannot_be_shorthand_properties_in_strict_code() {
     for word in [
-        "implements", "interface", "package", "private", "protected", "public", "static",
-        "yield", "let",
+        "implements",
+        "interface",
+        "package",
+        "private",
+        "protected",
+        "public",
+        "static",
+        "yield",
+        "let",
     ] {
         assert!(!is_rejected(&format!("({{ {word} }});")), "sloppy {word}");
         assert!(
@@ -108,8 +115,14 @@ fn an_escaped_reserved_word_is_still_a_property_name() {
         Value::Number(1.0)
     );
     assert_eq!(evaluate("({ \\u0069f: 2 }).if"), Value::Number(2.0));
-    assert_eq!(evaluate("var o = { for: 4 }; o.f\\u006fr"), Value::Number(4.0));
-    assert_eq!(evaluate("var o = { true: 5 }; o.tru\\u{65}"), Value::Number(5.0));
+    assert_eq!(
+        evaluate("var o = { for: 4 }; o.f\\u006fr"),
+        Value::Number(4.0)
+    );
+    assert_eq!(
+        evaluate("var o = { true: 5 }; o.tru\\u{65}"),
+        Value::Number(5.0)
+    );
 }
 
 #[test]
@@ -154,8 +167,14 @@ fn an_escaped_let_cannot_be_a_strict_binding() {
 
 #[test]
 fn a_debugger_statement_does_nothing() {
-    assert_eq!(evaluate("var n = 0; debugger; n++; debugger\nn++; n"), Value::Number(2.0));
-    assert_eq!(evaluate("if (false) debugger; else debugger; 5"), Value::Number(5.0));
+    assert_eq!(
+        evaluate("var n = 0; debugger; n++; debugger\nn++; n"),
+        Value::Number(2.0)
+    );
+    assert_eq!(
+        evaluate("if (false) debugger; else debugger; 5"),
+        Value::Number(5.0)
+    );
     assert_eq!(evaluate("while (false) debugger; 6"), Value::Number(6.0));
 }
 

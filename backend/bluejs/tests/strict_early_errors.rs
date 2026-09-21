@@ -17,7 +17,10 @@ fn is_rejected(source: &str) -> bool {
 }
 
 fn assert_strict_rejected(body: &str) {
-    assert!(is_rejected(&format!("\"use strict\";\n{body}")), "strict: {body}");
+    assert!(
+        is_rejected(&format!("\"use strict\";\n{body}")),
+        "strict: {body}"
+    );
 }
 
 fn assert_sloppy_accepted(body: &str) {
@@ -87,7 +90,9 @@ fn legacy_octal_and_leading_zero_decimal_literals_are_sloppy_only() {
             assert_sloppy_accepted(body);
         }
     }
-    for body in ["0;", "0.5;", "0e1;", "0x10;", "0b1;", "0o7;", "0n;", "10;", ".5;", "0.0;"] {
+    for body in [
+        "0;", "0.5;", "0e1;", "0x10;", "0b1;", "0o7;", "0n;", "10;", ".5;", "0.0;",
+    ] {
         assert!(!is_rejected(&format!("\"use strict\";\n{body}")), "{body}");
     }
     assert_eq!(evaluate("010 + 08 + 08.5"), Value::Number(8.0 + 8.0 + 8.5));
@@ -120,7 +125,9 @@ fn a_function_level_use_strict_directive_applies_to_the_function_body() {
 #[test]
 fn only_an_exact_unescaped_use_strict_string_is_a_directive() {
     let strict = |body: &str| {
-        evaluate(&format!("(function() {{ {body} return this === undefined; }})()"))
+        evaluate(&format!(
+            "(function() {{ {body} return this === undefined; }})()"
+        ))
     };
     assert_eq!(strict("\"use strict\";"), Value::Bool(true));
     assert_eq!(strict("'use strict'\n"), Value::Bool(true));
@@ -163,9 +170,15 @@ fn direct_eval_inherits_caller_strictness_for_syntax() {
             "(function() {{ {caller} try {{ eval({code:?}); return 0; }} catch (e) {{ return e instanceof SyntaxError ? 1 : 2; }} }})()"
         ))
     };
-    assert_eq!(outcome("'use strict';", "a = 0x1; a = 01;"), Value::Number(1.0));
+    assert_eq!(
+        outcome("'use strict';", "a = 0x1; a = 01;"),
+        Value::Number(1.0)
+    );
     assert_eq!(outcome("'use strict';", "public = 1;"), Value::Number(1.0));
-    assert_eq!(outcome("'use strict';", "var arguments;"), Value::Number(1.0));
+    assert_eq!(
+        outcome("'use strict';", "var arguments;"),
+        Value::Number(1.0)
+    );
     assert_eq!(outcome("", "'use strict'; 010;"), Value::Number(1.0));
     assert_eq!(outcome("", "var a; a = 01;"), Value::Number(0.0));
     assert_eq!(outcome("", "var public;"), Value::Number(0.0));

@@ -1262,9 +1262,9 @@ impl Parser {
                         _ => return Err(self.error("expected ':' after object property key")),
                     };
                     if !self.identifier_reference_name_is_valid(&name) {
-                        return Err(self.syntax_error(
-                            "a reserved word cannot be a shorthand property",
-                        ));
+                        return Err(
+                            self.syntax_error("a reserved word cannot be a shorthand property")
+                        );
                     }
                     props.push(ObjectProp::KeyValue {
                         key: PropertyKey::Identifier(name.clone()),

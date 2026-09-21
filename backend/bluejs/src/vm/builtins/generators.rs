@@ -1273,9 +1273,12 @@ impl Vm {
         // IteratorComplete and IteratorValue run inside the generator, so an
         // exception from a getter is thrown at the `yield*` site (where the
         // generator's own try/catch can see it), not out of this reaction.
-        let read = self
-            .get_property(&result, &"done".into())
-            .and_then(|done| Ok((self.to_boolean(&done)?, self.get_property(&result, &"value".into())?)));
+        let read = self.get_property(&result, &"done".into()).and_then(|done| {
+            Ok((
+                self.to_boolean(&done)?,
+                self.get_property(&result, &"value".into())?,
+            ))
+        });
         let (done, value) = match read {
             Ok(pair) => pair,
             Err(error) => {
