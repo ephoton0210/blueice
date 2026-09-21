@@ -959,6 +959,10 @@ impl Vm {
             NativeFunction::ArrayAt => self.array_at(&receiver, first),
             NativeFunction::ArrayFill => self.array_fill(&receiver, &args),
             NativeFunction::ArrayCopyWithin => self.array_copy_within(&receiver, &args),
+            NativeFunction::ArrayToReversed => self.array_to_reversed(&receiver),
+            NativeFunction::ArrayToSorted => self.array_to_sorted(&receiver, first),
+            NativeFunction::ArrayToSpliced => self.array_to_spliced(&receiver, &args),
+            NativeFunction::ArrayWith => self.array_with(&receiver, &args),
             NativeFunction::ArrayFlat => self.array_flat(&receiver, first),
             NativeFunction::ArrayFlatMap => {
                 self.array_flat_map(&receiver, first, native::argument(&args, 1))

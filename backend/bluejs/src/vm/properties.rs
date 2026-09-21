@@ -83,6 +83,10 @@ impl Vm {
                 || key == "copyWithin"
                 || key == "flat"
                 || key == "flatMap"
+                || key == "toReversed"
+                || key == "toSorted"
+                || key == "toSpliced"
+                || key == "with"
                 || key == "entries"
                 || key == "keys"
                 || key == "values"
@@ -114,7 +118,8 @@ impl Vm {
                 || key == "__lookupGetter__"
                 || key == "__lookupSetter__"
                 || key == "__proto__"
-                || *key == PropertyName::from(JsSymbol::well_known("iterator")))
+                || *key == PropertyName::from(JsSymbol::well_known("iterator"))
+                || *key == PropertyName::from(JsSymbol::well_known("unscopables")))
         {
             self.string_intrinsics()?;
         }

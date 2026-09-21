@@ -1465,6 +1465,10 @@ impl Vm {
                 ("copyWithin", 2, NativeFunction::ArrayCopyWithin),
                 ("flat", 0, NativeFunction::ArrayFlat),
                 ("flatMap", 1, NativeFunction::ArrayFlatMap),
+                ("toReversed", 0, NativeFunction::ArrayToReversed),
+                ("toSorted", 1, NativeFunction::ArrayToSorted),
+                ("toSpliced", 2, NativeFunction::ArrayToSpliced),
+                ("with", 2, NativeFunction::ArrayWith),
             ] {
                 self.install_native(
                     self.array_prototype,
@@ -1646,6 +1650,7 @@ impl Vm {
                 1,
                 NativeFunction::ArraySort,
             )?;
+            self.install_array_unscopables()?;
             Ok((constructor, prototype))
         })();
         match result {
@@ -1672,6 +1677,14 @@ impl Vm {
                     (self.array_prototype, "copyWithin".into()),
                     (self.array_prototype, "flat".into()),
                     (self.array_prototype, "flatMap".into()),
+                    (self.array_prototype, "toReversed".into()),
+                    (self.array_prototype, "toSorted".into()),
+                    (self.array_prototype, "toSpliced".into()),
+                    (self.array_prototype, "with".into()),
+                    (
+                        self.array_prototype,
+                        PropertyName::from(JsSymbol::well_known("unscopables")),
+                    ),
                     (self.array_prototype, "entries".into()),
                     (self.array_prototype, "keys".into()),
                     (self.array_prototype, "values".into()),
