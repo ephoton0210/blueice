@@ -837,12 +837,9 @@ impl Vm {
     /// Whether the running function frame can be replaced by a tail call: it
     /// is an ordinary (not construct) call made through `call_with_target`,
     /// which runs the callee once this frame is gone. An arrow is never a
-    /// construct call (its `new.target` is only the one it captured), and a
-    /// derived-constructor arrow must return through its own frame.
+    /// construct call (its `new.target` is only the one it captured).
     pub(super) fn frame_can_be_replaced(&self, code: &Bytecode) -> bool {
-        self.call_depth != 0
-            && self.class_constructor.is_none()
-            && (code.arrow || self.new_target == Value::Undefined)
+        self.call_depth != 0 && (code.arrow || self.new_target == Value::Undefined)
     }
 
     pub(super) fn resolve_completion(
