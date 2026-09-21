@@ -177,13 +177,7 @@ pub(crate) struct IteratorHelperState {
     pub executing: bool,
     pub kind: IteratorHelperKind,
 }
-pub(crate) type ClosureState = (
-    Rc<Bytecode>,
-    Vec<ObjectId>,
-    Value,
-    Option<ObjectId>,
-    Option<Value>,
-);
+pub(crate) type ClosureState = (Rc<Bytecode>, Vec<ObjectId>, Value, Option<ObjectId>);
 
 /// The class-declaration side of an ECMAScript private element.  These
 /// entries live on the declaring class's home object, never in ordinary
@@ -220,7 +214,6 @@ impl PrivateElement {
 #[derive(Default)]
 struct ClosureMetadata {
     home: Option<ObjectId>,
-    class_base: Option<Value>,
     /// An arrow function's lexical `new.target`, captured when the closure is
     /// created. Absent (equivalent to `undefined`) for every other closure.
     new_target: Option<Value>,
@@ -230,7 +223,6 @@ impl ClosureMetadata {
     fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
         self.home
             .into_iter()
-            .chain(self.class_base.iter().filter_map(Value::object_id))
             .chain(self.new_target.iter().filter_map(Value::object_id))
     }
 }

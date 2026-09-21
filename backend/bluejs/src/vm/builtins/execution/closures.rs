@@ -56,7 +56,6 @@ impl Vm {
             args,
             construct,
             home,
-            class_base,
         } = call;
         if code.class_constructor && !construct {
             // §10.2.1.1's class-constructor rejection is created in the
@@ -212,15 +211,6 @@ impl Vm {
             &mut self.class_field_initializer_depth,
             next_field_initializer_depth,
         );
-        let derived_constructor_arrow = code.arrow && class_base.is_some();
-        let class_constructor = std::mem::replace(
-            &mut self.class_constructor,
-            (code.class_constructor || derived_constructor_arrow).then(|| {
-                callee
-                    .object_id()
-                    .expect("class and arrow closures are objects")
-            }),
-        );
         let pending_completions = self.pending_completions.clone();
         let completion_saves = self.completion_saves.clone();
         let with_objects = self.with_objects.clone();
@@ -283,7 +273,17 @@ impl Vm {
         } else {
             self.run(&code)
         };
-        let constructed = self.this.clone();
+        // A derived constructor's `this` lives in its hidden binding (which
+        // `super()` in the constructor or in a nested arrow or eval bound);
+        // every other constructor's is the receiver allocated at entry.
+        let constructed = match code.derived_this_slot {
+            Some(slot) => self
+                .binding_value(slot as usize)
+                .ok()
+                .flatten()
+                .unwrap_or(Value::Undefined),
+            None => self.this.clone(),
+        };
         let suspended = suspended_parent_stack.is_some();
         if let Some(stack) = suspended_parent_stack {
             self.stack = stack;
@@ -312,14 +312,7 @@ impl Vm {
         self.script_global_slots = script_global_slots;
         self.variable_scope = variable_scope;
         self.variable_scope_lexicals = variable_scope_lexicals;
-        // `super()` in a derived-constructor arrow initializes the enclosing
-        // constructor's lexical `this` binding. Nested arrows propagate that
-        // initialized receiver one frame at a time on return.
-        self.this = if derived_constructor_arrow && matches!(constructed, Value::Object(_)) {
-            constructed.clone()
-        } else {
-            this
-        };
+        self.this = this;
         self.arguments = arguments;
         self.callee = frame_callee;
         self.completion = completion;
@@ -328,7 +321,6 @@ impl Vm {
         self.active_scope_slots = active_scope_slots;
         self.strict = strict;
         self.home_object = home_object;
-        self.class_constructor = class_constructor;
         self.class_field_initializer_depth = class_field_initializer_depth;
         self.stack.truncate(base - 1);
         if let Some((state, awaited)) = suspended_async {

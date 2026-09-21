@@ -916,7 +916,6 @@ impl Heap {
                     captures.clone(),
                     this.clone(),
                     metadata.and_then(|metadata| metadata.home),
-                    metadata.and_then(|metadata| metadata.class_base.clone()),
                 ))
             }
             _ => None,
@@ -939,37 +938,6 @@ impl Heap {
             .expect("metadata was installed")
             .home = Some(home);
         Ok(())
-    }
-
-    pub(crate) fn set_class_base(
-        &mut self,
-        object: ObjectId,
-        base: Value,
-    ) -> Result<(), HeapError> {
-        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
-            return Err(HeapError::InvalidObject(object));
-        }
-        if let Some(target) = base.object_id() {
-            self.ensure_closure_metadata(object, &[target])?;
-        } else {
-            self.ensure_closure_metadata(object, &[])?;
-        }
-        self.write_barrier(object, base.object_id());
-        self.closure_metadata
-            .get_mut(&object)
-            .expect("metadata was installed")
-            .class_base = Some(base);
-        Ok(())
-    }
-
-    pub(crate) fn class_base(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
-        match &self.object(object)?.kind {
-            ObjectKind::Closure { .. } => Ok(self
-                .closure_metadata
-                .get(&object)
-                .and_then(|metadata| metadata.class_base.clone())),
-            _ => Err(HeapError::InvalidObject(object)),
-        }
     }
 
     /// Record the `new.target` an arrow function closes over.

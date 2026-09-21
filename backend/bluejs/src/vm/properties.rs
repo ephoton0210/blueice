@@ -455,7 +455,6 @@ impl Vm {
         };
         self.heap.set_prototype(class, constructor_parent)?;
         self.heap.set_prototype(prototype, instance_parent)?;
-        self.with_roots(|heap| heap.set_class_base(class, base))?;
         self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
         Ok(())
     }
@@ -476,32 +475,50 @@ impl Vm {
         Ok(())
     }
 
-    pub(super) fn super_base(&mut self) -> Result<ObjectId, RuntimeError> {
+    /// GetSuperBase: the home object's [[Prototype]], an object or `null`.
+    pub(super) fn super_base(&mut self) -> Result<Value, RuntimeError> {
         let home = self.home_object.ok_or_else(|| {
             RuntimeError::TypeError("super is not available in this function".into())
         })?;
-        self.object_get_prototype(home)?
-            .ok_or_else(|| RuntimeError::TypeError("superclass is null".into()))
+        Ok(self
+            .object_get_prototype(home)?
+            .map_or(Value::Null, Value::Object))
     }
 
-    pub(super) fn super_get(&mut self, key: &PropertyName) -> Result<Value, RuntimeError> {
-        let base = self.super_base()?;
-        self.get_from_prototype(base, &self.this.clone(), key)
+    /// The ToObject step of GetValue/PutValue on a super Reference: a `null`
+    /// base (a class or object whose prototype chain ends) is a TypeError,
+    /// raised only once the property is actually used.
+    fn super_base_object(base: &Value) -> Result<ObjectId, RuntimeError> {
+        base.object_id().ok_or_else(|| {
+            RuntimeError::TypeError("cannot access a property through a null super base".into())
+        })
     }
 
+    /// GetValue of a super Reference: `base.[[Get]](key, this)`, converting the
+    /// key only after the base is known to be an object.
+    pub(super) fn super_get(
+        &mut self,
+        base: &Value,
+        key: &Value,
+        this: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let base = Self::super_base_object(base)?;
+        let key = self.coerce_property_key(key)?;
+        self.get_from_prototype(base, this, &key)
+    }
+
+    /// PutValue of a super Reference: `base.[[Set]](key, value, this)`; a
+    /// failed [[Set]] is a TypeError in strict code and ignored otherwise.
     pub(super) fn super_set(
         &mut self,
-        key: &PropertyName,
+        base: &Value,
+        key: &Value,
         value: &Value,
+        this: &Value,
     ) -> Result<(), RuntimeError> {
-        let base = self.super_base()?;
-        let this = self.this.clone();
-        if !matches!(this, Value::Object(_)) {
-            return Err(RuntimeError::ReferenceError(
-                "this is uninitialized before super()".into(),
-            ));
-        }
-        if self.ordinary_set_with_receiver(base, &this, key, value)? {
+        let base = Self::super_base_object(base)?;
+        let key = self.coerce_property_key(key)?;
+        if self.ordinary_set_with_receiver(base, this, &key, value)? {
             Ok(())
         } else {
             self.super_assignment_failed("super property cannot be assigned")
@@ -516,21 +533,23 @@ impl Vm {
         }
     }
 
-    pub(super) fn super_call(&mut self, args: Vec<Value>) -> Result<Value, RuntimeError> {
-        let constructor = self.class_constructor.ok_or_else(|| {
-            RuntimeError::TypeError("super() is not available in this function".into())
-        })?;
-        let base = self.heap.class_base(constructor)?.ok_or_else(|| {
-            RuntimeError::TypeError("super() requires a derived constructor".into())
-        })?;
-        if matches!(base, Value::Null) {
-            return Err(RuntimeError::TypeError("super constructor is null".into()));
+    /// The Construct step of `super(...)`: IsConstructor is checked only now,
+    /// after the arguments have been evaluated, and the active function's
+    /// `new.target` is passed through.
+    pub(super) fn super_call(
+        &mut self,
+        constructor: Value,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        if !self.is_constructor(&constructor)? {
+            return Err(RuntimeError::TypeError(
+                "super constructor is not a constructor".into(),
+            ));
         }
-        let value =
-            self.call_with_target(base, Value::Undefined, args, true, self.new_target.clone())?;
-        self.this = value.clone();
-        Ok(value)
+        let new_target = self.new_target.clone();
+        self.call_with_target(constructor, Value::Undefined, args, true, new_target)
     }
+
     /// Implements CopyDataProperties for an object-rest binding.  The
     /// compiler supplies an internal array of already-coerced excluded keys;
     /// getters are read from the original source object and copied as normal

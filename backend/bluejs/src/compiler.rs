@@ -21,6 +21,15 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// function/class name required by SetFunctionName.
 const MODULE_DEFAULT_BINDING: &str = "\0bluejs_module_default";
 const PRIVATE_OWNER_BINDING_PREFIX: &str = "\0bluejs_private_owner_";
+/// A derived class constructor's `this` binding. Unlike an ordinary function's
+/// receiver it starts uninitialized and is bound by `super()`, possibly from a
+/// nested arrow function or direct eval, so it is a real lexical binding that
+/// those closures capture. Ordinary functions (including methods and nested
+/// classes) never inherit it: only arrow functions and eval code see it.
+pub(crate) const DERIVED_THIS_BINDING: &str = "\0bluejs_derived_this";
+/// The derived constructor function object itself (`F` in the specification's
+/// `super()` steps), visible to the same nested closures as the `this` binding.
+pub(crate) const DERIVED_CONSTRUCTOR_BINDING: &str = "\0bluejs_derived_constructor";
 use std::fmt;
 
 mod expressions;
@@ -1149,6 +1158,10 @@ fn class_private_declarations(class: &Class) -> Result<Vec<(String, bool)>, Comp
         }
     }
     Ok(declarations)
+}
+
+fn is_super_member(expr: &Expr) -> bool {
+    matches!(expr, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
 }
 
 fn private_member_name(expr: &Expr) -> Option<&str> {

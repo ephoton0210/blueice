@@ -715,7 +715,6 @@ struct SuspendedModuleExecution {
     new_target: Value,
     new_target_allowed: bool,
     home_object: Option<ObjectId>,
-    class_constructor: Option<ObjectId>,
     class_field_initializer_depth: u32,
     active_module_name: Option<String>,
 }
@@ -886,10 +885,6 @@ pub struct Vm {
     // The `[[HomeObject]]` of the currently executing method or class
     // constructor. It is runtime frame state because `super` is lexical.
     home_object: Option<ObjectId>,
-    // A class constructor's home object is its instance prototype for
-    // `super.property`; `super()` separately needs the constructor closure
-    // that owns the evaluated superclass metadata.
-    class_constructor: Option<ObjectId>,
     // A direct eval in an instance field is outside a constructor for the
     // `super()` early-error rules even though fields are lowered into the
     // constructor bytecode.
@@ -1088,7 +1083,6 @@ impl Vm {
             new_target: Value::Undefined,
             new_target_allowed: false,
             home_object: None,
-            class_constructor: None,
             class_field_initializer_depth: 0,
             iterator_base: None,
             iterator_helpers_installed: Vec::new(),
@@ -2020,7 +2014,7 @@ impl Vm {
         // derived-constructor arrow invokes `super()`: the superclass must
         // allocate with the original derived class.
         let closure_code = match callee.object_id() {
-            Some(id) => self.heap.closure(id)?.map(|(code, _, _, _, _)| code),
+            Some(id) => self.heap.closure(id)?.map(|(code, _, _, _)| code),
             None => None,
         };
         let arrow = !construct && closure_code.as_ref().is_some_and(|code| code.arrow);
@@ -2115,7 +2109,7 @@ impl Vm {
             }
         }
         if let Value::Object(id) = callee {
-            if let Some((code, captures, lexical_this, home, class_base)) = self.heap.closure(id)? {
+            if let Some((code, captures, lexical_this, home)) = self.heap.closure(id)? {
                 let receiver = if code.arrow { lexical_this } else { receiver };
                 return self.call_closure(builtins::ClosureCall {
                     code,
@@ -2125,7 +2119,6 @@ impl Vm {
                     args,
                     construct,
                     home,
-                    class_base,
                 });
             }
         }

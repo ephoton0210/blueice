@@ -49,7 +49,6 @@ pub(super) struct ClosureCall {
     pub args: Vec<Value>,
     pub construct: bool,
     pub home: Option<ObjectId>,
-    pub class_base: Option<Value>,
 }
 
 fn same_value_zero(left: &Value, right: &Value) -> bool {

@@ -937,7 +937,6 @@ impl Vm {
             for object in self
                 .home_object
                 .iter()
-                .chain(self.class_constructor.iter())
                 .chain(self.templates.values())
                 .chain(self.joining.iter())
             {
@@ -1348,7 +1347,6 @@ impl Vm {
         let new_target = std::mem::replace(&mut self.new_target, Value::Undefined);
         let new_target_allowed = std::mem::replace(&mut self.new_target_allowed, false);
         let home_object = std::mem::take(&mut self.home_object);
-        let class_constructor = std::mem::take(&mut self.class_constructor);
         let class_field_initializer_depth =
             std::mem::replace(&mut self.class_field_initializer_depth, 0);
         let script_global_slots = std::mem::take(&mut self.script_global_slots);
@@ -1370,7 +1368,6 @@ impl Vm {
         self.new_target = new_target;
         self.new_target_allowed = new_target_allowed;
         self.home_object = home_object;
-        self.class_constructor = class_constructor;
         self.class_field_initializer_depth = class_field_initializer_depth;
         self.script_global_slots = script_global_slots;
         self.stack.truncate(base);
@@ -1496,7 +1493,7 @@ impl Vm {
             .callee
             .object_id()
             .and_then(|callee| self.heap.closure(callee).ok().flatten())
-            .is_some_and(|(code, _, _, _, _)| !code.arrow);
+            .is_some_and(|(code, _, _, _)| !code.arrow);
         if variable_scope_position.is_none() && ordinary_function {
             conflicts.extend(self.variable_scope_lexicals.iter().cloned());
         }

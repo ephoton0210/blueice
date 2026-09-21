@@ -289,7 +289,7 @@ impl Vm {
                                     "private elements are not available in this function".into(),
                                 )
                             })?;
-                        let receiver = self.this.object_id().ok_or_else(|| {
+                        let receiver = self.pop().object_id().ok_or_else(|| {
                             RuntimeError::TypeError(
                                 "private fields require an object receiver".into(),
                             )
@@ -328,45 +328,120 @@ impl Vm {
                         self.stack
                             .push(Value::Bool(self.heap.has_private_brand(object, owner)?));
                     }
+                    Opcode::SuperBase => {
+                        let base = self.super_base()?;
+                        self.stack.push(base);
+                    }
                     Opcode::SuperGet | Opcode::SuperGetMethod => {
-                        let key_value = self.pop();
-                        let key = self.coerce_property_key(&key_value)?;
-                        let value = self.super_get(&key)?;
+                        // The Reference operands stay on the stack (rooted)
+                        // until the property read, and any getter, is done.
+                        let base = self.stack.len() - 3;
+                        let (target, key_value, this) = (
+                            self.stack[base].clone(),
+                            self.stack[base + 1].clone(),
+                            self.stack[base + 2].clone(),
+                        );
+                        let value = self.super_get(&target, &key_value, &this)?;
                         self.check_string(&value)?;
+                        self.stack.truncate(base);
                         self.stack.push(value);
                         if instruction.opcode == Opcode::SuperGetMethod {
-                            self.stack.push(self.this.clone());
+                            self.stack.push(this);
                         }
                     }
                     Opcode::SuperSet => {
-                        let value = self.pop();
-                        let key_value = self.pop();
-                        let key = self.coerce_property_key(&key_value)?;
-                        self.super_set(&key, &value)?;
+                        // Operand 0: `base, key, value, this`; operand 1 (a
+                        // destructuring leaf): `value, base, key, this`.
+                        let base = self.stack.len() - 4;
+                        let (target, key_value, value) = if operand == 0 {
+                            (
+                                self.stack[base].clone(),
+                                self.stack[base + 1].clone(),
+                                self.stack[base + 2].clone(),
+                            )
+                        } else {
+                            (
+                                self.stack[base + 1].clone(),
+                                self.stack[base + 2].clone(),
+                                self.stack[base].clone(),
+                            )
+                        };
+                        let this = self.stack[base + 3].clone();
+                        self.super_set(&target, &key_value, &value, &this)?;
+                        self.stack.truncate(base);
                         self.stack.push(value);
                     }
                     Opcode::SuperUpdate => {
-                        let key_value = self.pop();
-                        let key = self.coerce_property_key(&key_value)?;
-                        let old_value = self.super_get(&key)?;
+                        let base = self.stack.len() - 3;
+                        let (target, key_value, this) = (
+                            self.stack[base].clone(),
+                            self.stack[base + 1].clone(),
+                            self.stack[base + 2].clone(),
+                        );
+                        // The compiler converted the key once already.
+                        let old_value = self.super_get(&target, &key_value, &this)?;
                         let (old, new) = self.numeric_step(&old_value, operand & 1 != 0)?;
-                        self.super_set(&key, &new)?;
+                        self.stack.push(new.clone());
+                        self.super_set(&target, &key_value, &new, &this)?;
+                        self.stack.truncate(base);
                         self.stack.push(if operand & 2 == 0 { old } else { new });
                     }
+                    Opcode::DeleteSuperProperty => {
+                        return Err(RuntimeError::ReferenceError(
+                            "cannot delete a super property".into(),
+                        ));
+                    }
+                    Opcode::ThisBinding => {
+                        let this = self.binding_value(operand)?.ok_or_else(|| {
+                            RuntimeError::ReferenceError(
+                                "this is uninitialized before super()".into(),
+                            )
+                        })?;
+                        self.stack.push(this);
+                    }
+                    Opcode::SuperConstructor => {
+                        let constructor = self.pop();
+                        let object = constructor
+                            .object_id()
+                            .expect("the derived constructor binding holds a function");
+                        let parent = self.object_get_prototype(object)?;
+                        self.stack.push(parent.map_or(Value::Null, Value::Object));
+                    }
                     Opcode::SuperCall | Opcode::SuperCallSpread | Opcode::SuperCallForward => {
-                        let args = if instruction.opcode == Opcode::SuperCall {
-                            let base = self.stack.len() - operand;
-                            let args = self.stack[base..].to_vec();
-                            self.stack.truncate(base);
-                            args
-                        } else if instruction.opcode == Opcode::SuperCallSpread {
-                            let arguments = self.pop();
-                            self.array_like_values(&arguments)?
-                        } else {
-                            self.arguments.clone()
+                        // `superCtor` sits below any arguments and stays
+                        // rooted on the stack through the construction.
+                        let (constructor_slot, args) = match instruction.opcode {
+                            Opcode::SuperCall => {
+                                let constructor_slot = self.stack.len() - operand - 1;
+                                (
+                                    constructor_slot,
+                                    self.stack[constructor_slot + 1..].to_vec(),
+                                )
+                            }
+                            Opcode::SuperCallSpread => {
+                                let arguments = self.stack[self.stack.len() - 1].clone();
+                                let constructor_slot = self.stack.len() - 2;
+                                (constructor_slot, self.array_like_values(&arguments)?)
+                            }
+                            _ => (self.stack.len() - 1, self.arguments.clone()),
                         };
-                        let value = self.super_call(args)?;
+                        let constructor = self.stack[constructor_slot].clone();
+                        let value = self.super_call(constructor, args)?;
+                        self.stack.truncate(constructor_slot);
                         self.stack.push(value);
+                    }
+                    Opcode::BindThisValue => {
+                        let value = self
+                            .stack
+                            .last()
+                            .expect("the constructed value is on the stack")
+                            .clone();
+                        if self.binding_value(operand)?.is_some() {
+                            return Err(RuntimeError::ReferenceError(
+                                "super() was already called".into(),
+                            ));
+                        }
+                        self.store_binding(operand, value)?;
                     }
                     Opcode::EnterClassFieldInitializer => self.class_field_initializer_depth += 1,
                     Opcode::LeaveClassFieldInitializer => {
@@ -704,15 +779,6 @@ impl Vm {
                                     heap.set_closure_new_target(id, new_target)
                                 })?;
                             }
-                            // A derived constructor's arrow may invoke `super()`.
-                            // Store its resolved superclass on the arrow closure;
-                            // the call frame then treats that closure as the
-                            // lexical derived-constructor context.
-                            if let Some(constructor) = self.class_constructor {
-                                if let Some(base) = self.heap.class_base(constructor)? {
-                                    self.with_roots(|heap| heap.set_class_base(id, base))?;
-                                }
-                            }
                         }
                         // OrdinaryFunctionCreate's SetFunctionLength precedes
                         // SetFunctionName, so `length` is the first own key.
@@ -784,15 +850,6 @@ impl Vm {
                         }
                     }
                     Opcode::This => {
-                        if self.this == Value::Undefined
-                            && self.class_constructor.is_some_and(|constructor| {
-                                self.heap.class_base(constructor).ok().flatten().is_some()
-                            })
-                        {
-                            return Err(RuntimeError::ReferenceError(
-                                "this is uninitialized before super()".into(),
-                            ));
-                        }
                         if self.this == Value::Undefined
                             && self.call_depth == 0
                             && !self.top_level_module

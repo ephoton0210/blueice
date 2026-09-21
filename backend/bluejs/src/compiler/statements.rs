@@ -552,6 +552,7 @@ impl Compiler {
                 let slot = self.resolve(binding).ok_or(CompileError::InvalidSyntax(
                     "private brand binding is not available in this function",
                 ))?;
+                self.emit_this()?;
                 self.emit(Opcode::InitializePrivateBrand, slot)?;
             }
             Stmt::Expr(Expr::Class(class)) => {

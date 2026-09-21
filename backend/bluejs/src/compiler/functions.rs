@@ -441,6 +441,11 @@ impl Compiler {
             visible.extend(scope.iter().map(|(name, slot)| (name.clone(), *slot)));
         }
         for (name, slot) in visible {
+            // Only an arrow function shares its creator's `this` and derived
+            // constructor; any other function has its own receiver.
+            if !arrow && (name == DERIVED_THIS_BINDING || name == DERIVED_CONSTRUCTOR_BINDING) {
+                continue;
+            }
             let index = child.bytecode.bindings.len() as u32;
             child.names[0].insert(name, index);
             child
@@ -462,6 +467,22 @@ impl Compiler {
                 name,
                 mutable: false,
                 strict_immutable: false,
+                lexical: true,
+                catch_parameter: false,
+            });
+            child.bytecode.self_slot = Some(slot);
+        }
+        if options.derived_constructor {
+            // `super()` needs the active function; the frame initializes this
+            // immutable binding to the callee, exactly like a named function
+            // expression's own name.
+            let slot = u32::try_from(child.bytecode.bindings.len())
+                .map_err(|_| CompileError::ProgramTooLarge)?;
+            child.names[0].insert(DERIVED_CONSTRUCTOR_BINDING.into(), slot);
+            child.bytecode.bindings.push(Binding {
+                name: DERIVED_CONSTRUCTOR_BINDING.into(),
+                mutable: false,
+                strict_immutable: true,
                 lexical: true,
                 catch_parameter: false,
             });
@@ -516,6 +537,9 @@ impl Compiler {
                 .iter()
                 .map(|name| (name.clone(), DeclKind::Let))
                 .collect();
+            if options.derived_constructor {
+                parameter_bindings.push((DERIVED_THIS_BINDING.into(), DeclKind::Let));
+            }
             if arguments_needed {
                 parameter_bindings.push(("arguments".into(), DeclKind::Let));
                 // The arguments binding lives in the parameter environment.
@@ -529,7 +553,14 @@ impl Compiler {
             if arguments_needed {
                 vars.insert("arguments".into());
             }
-            child.enter_scope(lexical.clone(), &vars, true)?;
+            let mut first_scope = lexical.clone();
+            if options.derived_constructor {
+                first_scope.push((DERIVED_THIS_BINDING.into(), DeclKind::Let));
+            }
+            child.enter_scope(first_scope, &vars, true)?;
+        }
+        if options.derived_constructor {
+            child.bytecode.derived_this_slot = child.resolve(DERIVED_THIS_BINDING);
         }
         if arguments_needed {
             let slot = child
@@ -586,7 +617,9 @@ impl Compiler {
             child.bytecode.generator_entry = child.offset()?;
         }
         if options.default_derived_constructor {
+            child.super_call_prologue()?;
             child.emit(Opcode::SuperCallForward, 0)?;
+            child.super_call_epilogue()?;
             child.emit(Opcode::Pop, 0)?;
         }
         child.statements_with_disposal(&function.body)?;

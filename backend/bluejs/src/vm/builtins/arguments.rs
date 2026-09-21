@@ -142,10 +142,12 @@ impl Vm {
         })?;
         let program = crate::parse_eval(&source, self.strict)
             .map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let derived_constructor = match self.class_constructor {
-            Some(constructor) => self.heap.class_base(constructor)?.is_some(),
-            None => false,
-        };
+        let visible = self.eval_visible_bindings();
+        // Only the derived constructor itself, or an arrow function or eval
+        // code inside it, has the constructor binding `super()` needs.
+        let derived_constructor = visible
+            .iter()
+            .any(|(name, _, _)| name == crate::compiler::DERIVED_CONSTRUCTOR_BINDING);
         if crate::ast::contains_super_call_outside_class(&program)
             && (self.class_field_initializer_depth != 0 || !derived_constructor)
         {
@@ -159,7 +161,6 @@ impl Vm {
                 "super property is not valid in this eval context".into(),
             ));
         }
-        let visible = self.eval_visible_bindings();
         let global_execution = self.callee == Value::Undefined;
         // The persistent global-realm path uses its existing binding cells
         // for direct eval declarations. Function eval instead distinguishes
