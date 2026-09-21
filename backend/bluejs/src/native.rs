@@ -809,6 +809,7 @@ pub(crate) enum MathMethod {
     Tan,
     Tanh,
     Trunc,
+    SumPrecise,
     Clz32,
 }
 
