@@ -66,47 +66,14 @@ impl Vm {
         }
     }
 
-    /// [[Get]] with the lookup target separated from the receiver supplied to
-    /// accessors and Proxy traps.  Ordinary property syntax supplies the same
-    /// object for both arguments; Reflect.get and inherited Proxy operations
-    /// intentionally do not.
-    pub(super) fn get_object_property(
+    /// Built-in prototype methods are installed lazily with the string
+    /// intrinsics. Any lookup that names one of them (`[[Get]]` and
+    /// `[[HasProperty]]` alike) must materialize that set first, or an
+    /// inherited built-in reads as absent (`'push' in []`, a `with` lookup).
+    pub(super) fn materialize_string_intrinsics_for_key(
         &mut self,
-        target: ObjectId,
-        receiver: &Value,
         key: &PropertyName,
-    ) -> Result<Value, RuntimeError> {
-        if key == "constructor" && self.heap.is_array(target)? {
-            // Array instances inherit this property from `%Array.prototype%`.
-            // The intrinsic constructor is otherwise lazy, but the inherited
-            // lookup may occur before a global `Array` reference in the same
-            // expression. Materialize it first so `[].constructor` is not
-            // observably absent.
-            self.global("Array")?;
-        }
-        if key == "constructor" && self.is_callable(&Value::Object(target))? {
-            // `%Function.prototype%` owns its `constructor` property.
-            // Materialize `%Function%` before an inherited lookup on a
-            // closure (including one passed through Object(value)) can
-            // observe the temporary lazy-intrinsic gap.
-            self.global("Function")?;
-        }
-        // Imported live Proxies have both a membrane record and a local
-        // Proxy exotic record.  The latter owns the current execution
-        // context, so it must dispatch before ordinary foreign forwarding.
-        if self.heap.proxy(target)?.is_some() {
-            return self.proxy_get(target, receiver, key);
-        }
-        if self.test262_foreign_reference(target).is_some() {
-            return self.test262_foreign_get(target, receiver, key);
-        }
-        self.materialize_global_object_property(target, key)?;
-        if let Some(cell) = self.global_property_cell(target, key) {
-            return self
-                .heap
-                .get_own(cell, "value")?
-                .ok_or_else(|| RuntimeError::ReferenceError("global binding".into()));
-        }
+    ) -> Result<(), RuntimeError> {
         if self.string_intrinsics.is_none()
             && (key == "toString"
                 || key == "toLocaleString"
@@ -151,6 +118,51 @@ impl Vm {
         {
             self.string_intrinsics()?;
         }
+        Ok(())
+    }
+
+    /// [[Get]] with the lookup target separated from the receiver supplied to
+    /// accessors and Proxy traps.  Ordinary property syntax supplies the same
+    /// object for both arguments; Reflect.get and inherited Proxy operations
+    /// intentionally do not.
+    pub(super) fn get_object_property(
+        &mut self,
+        target: ObjectId,
+        receiver: &Value,
+        key: &PropertyName,
+    ) -> Result<Value, RuntimeError> {
+        if key == "constructor" && self.heap.is_array(target)? {
+            // Array instances inherit this property from `%Array.prototype%`.
+            // The intrinsic constructor is otherwise lazy, but the inherited
+            // lookup may occur before a global `Array` reference in the same
+            // expression. Materialize it first so `[].constructor` is not
+            // observably absent.
+            self.global("Array")?;
+        }
+        if key == "constructor" && self.is_callable(&Value::Object(target))? {
+            // `%Function.prototype%` owns its `constructor` property.
+            // Materialize `%Function%` before an inherited lookup on a
+            // closure (including one passed through Object(value)) can
+            // observe the temporary lazy-intrinsic gap.
+            self.global("Function")?;
+        }
+        // Imported live Proxies have both a membrane record and a local
+        // Proxy exotic record.  The latter owns the current execution
+        // context, so it must dispatch before ordinary foreign forwarding.
+        if self.heap.proxy(target)?.is_some() {
+            return self.proxy_get(target, receiver, key);
+        }
+        if self.test262_foreign_reference(target).is_some() {
+            return self.test262_foreign_get(target, receiver, key);
+        }
+        self.materialize_global_object_property(target, key)?;
+        if let Some(cell) = self.global_property_cell(target, key) {
+            return self
+                .heap
+                .get_own(cell, "value")?
+                .ok_or_else(|| RuntimeError::ReferenceError("global binding".into()));
+        }
+        self.materialize_string_intrinsics_for_key(key)?;
         if key == "propertyIsEnumerable" {
             self.property_is_enumerable_intrinsic()?;
         }

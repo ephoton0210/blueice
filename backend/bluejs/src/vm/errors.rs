@@ -56,6 +56,7 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<bool, RuntimeError> {
+        self.materialize_string_intrinsics_for_key(key)?;
         let mut current = Some(object);
         while let Some(id) = current {
             if self.heap.proxy(id)?.is_some() {

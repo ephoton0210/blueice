@@ -865,3 +865,15 @@ fn sort_keeps_collected_values_alive_when_the_comparator_empties_the_array() {
         a.length===20&&a.every((v,k)=>v.i===k)";
     assert_eq!(evaluate_with_nursery(source, 1).unwrap(), Value::Bool(true));
 }
+
+#[test]
+fn in_and_with_observe_inherited_lazy_builtins() {
+    // Built-in prototype methods materialize lazily; `[[HasProperty]]` must
+    // trigger that exactly like `[[Get]]` does.
+    let source = "'push' in []&&'toString' in {}&&!('nope' in [])";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+    let source = "var r;with({}){r=toString}r===Object.prototype.toString";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+    let source = "var r;with([1,2]){r=push}r===Array.prototype.push";
+    assert_eq!(evaluate(source).unwrap(), Value::Bool(true));
+}
