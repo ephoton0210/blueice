@@ -247,10 +247,14 @@ or second module resolver to bypass them.
   explicitly unbound in the attachment rather than being remapped. The map is
   intentionally limited to direct top-level lowering spans. Page-realm ESM
   admission now gives every closed runtime module its own exact map and static
-  metadata record, but page loader integration, host-owned multi-module
-  lifetime ownership, nested-expression locations, host-request fingerprint
-  checks, breakpoint search policy, and debugger IPC are still absent, so this
-  item remains open.
+  metadata record. `DirectProgramAttachment::breakpoint_at_or_after` now
+  resolves a same-canonical-module UTF-8 byte position to its containing
+  top-level span or nearest following span, returning that exact verified safe
+  point or the span's explicit `Unbound`; it never remaps an unbound span to a
+  later instruction. The retained-map bound-only counterpart has the same
+  deterministic search policy. Page-host map aggregation, nested-expression
+  locations, host-request fingerprint checks, full breakpoint search policy,
+  and debugger IPC are still absent, so this item remains open.
 
   Acceptance: entries are deterministic, sorted, unique and validated against
   BlueJS code units; a TS breakpoint binds to the nearest permitted following

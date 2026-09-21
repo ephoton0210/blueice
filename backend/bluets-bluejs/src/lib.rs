@@ -115,6 +115,35 @@ pub struct DirectProgramAttachment {
     pub safe_point_map: BlueTsSafePointMapV1,
 }
 
+impl DirectProgramAttachment {
+    /// Resolves a TypeScript UTF-8 byte position to the nearest following
+    /// lowered statement in this exact program generation. If the position is
+    /// inside a statement whose generated root has no instruction, or there is
+    /// no later statement in this canonical source, the result is explicitly
+    /// unbound. This never guesses a bytecode offset.
+    pub fn breakpoint_at_or_after(
+        &self,
+        source: &str,
+        source_byte: usize,
+    ) -> DirectSafePointBinding {
+        self.provenance
+            .iter()
+            .filter(|provenance| {
+                provenance.source.module == source && provenance.source.end > source_byte
+            })
+            .min_by_key(|provenance| {
+                (
+                    provenance.source.start.saturating_sub(source_byte),
+                    provenance.source.start,
+                    provenance.source.end,
+                )
+            })
+            .map_or(DirectSafePointBinding::Unbound, |provenance| {
+                provenance.safe_point
+            })
+    }
+}
+
 /// One source-level lowering span attached to a generated BlueJS AST node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttachedLoweringProvenance {
@@ -772,6 +801,31 @@ fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> b
 }
 
 impl BlueTsSafePointMapV1 {
+    /// Finds the nearest bound entry at or after one TypeScript UTF-8 byte
+    /// position. This bound-only view is useful when a caller has retained the
+    /// map independently; [`DirectProgramAttachment::breakpoint_at_or_after`]
+    /// additionally preserves an explicitly unbound lowering span.
+    pub fn nearest_bound_safe_point_at_or_after(
+        &self,
+        source: &str,
+        source_byte: usize,
+    ) -> Option<bluejs::BlueJsSafePoint> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.source == source && entry.end_byte > source_byte)
+            .min_by_key(|entry| {
+                (
+                    entry.start_byte.saturating_sub(source_byte),
+                    entry.start_byte,
+                    entry.end_byte,
+                )
+            })
+            .map(|entry| bluejs::BlueJsSafePoint {
+                code_unit: entry.code_unit,
+                bytecode_offset: entry.bytecode_offset,
+            })
+    }
+
     /// Verifies this map against its exact live BlueJS generation. The caller
     /// must separately compare the retained compiler/source fingerprints with
     /// its authorized page-load request before exposing the map.
