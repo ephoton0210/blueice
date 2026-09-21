@@ -418,3 +418,24 @@ fn atomics_revalidate_the_view_after_index_and_value_coercion() {
         assert_eq!(evaluate_with_host(source), Value::Bool(true), "{source}");
     }
 }
+
+#[test]
+fn to_index_rejects_values_above_the_maximum_safe_integer() {
+    // ToIndex: an integer above 2^53 - 1 is a RangeError, and it is reported
+    // before a detached buffer's TypeError.
+    for source in [
+        "var v = new DataView(new ArrayBuffer(2)); \
+         [Math.pow(2, 53), Math.pow(2, 54), Math.pow(2, 63)].every(function (i) { \
+           try { v.getInt8(i); return false; } catch (e) { return e instanceof RangeError; } })",
+        "var v = new DataView(new ArrayBuffer(2)); \
+         [Math.pow(2, 53), Math.pow(2, 60)].every(function (i) { \
+           try { v.setInt16(i, 0); return false; } catch (e) { return e instanceof RangeError; } })",
+        "var b = new ArrayBuffer(2), v = new DataView(b); b.transfer(); \
+         try { v.getInt8(Math.pow(2, 53)); false } catch (e) { e instanceof RangeError }",
+        // 2^53 - 1 is a valid index (and out of range for this two-byte view).
+        "var v = new DataView(new ArrayBuffer(2)); \
+         try { v.getInt8(Math.pow(2, 53) - 1); false } catch (e) { e instanceof RangeError }",
+    ] {
+        assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
+    }
+}
