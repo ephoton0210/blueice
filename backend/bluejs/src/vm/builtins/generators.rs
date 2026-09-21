@@ -1079,12 +1079,19 @@ impl Vm {
                         value.clone(),
                     ) {
                         Ok(Some(result)) => Ok(result),
-                        Ok(None) => self.generator_resume(
-                            &receiver,
-                            None,
-                            Some(request.target),
-                            Some(Completion::Return(value)),
-                        ),
+                        Ok(None) => {
+                            let completion =
+                                self.async_generator_return_completion(generator, value);
+                            match completion {
+                                Ok(completion) => self.generator_resume(
+                                    &receiver,
+                                    None,
+                                    Some(request.target),
+                                    Some(completion),
+                                ),
+                                Err(error) => Err(error),
+                            }
+                        }
                         Err(error) => Err(error),
                     }
                 }
@@ -1135,6 +1142,35 @@ impl Vm {
                     )?;
                 }
             }
+        }
+    }
+
+    /// The completion injected into a generator by `return(value)`. A generator
+    /// suspended at a `yield` awaits the operand *inside* its body, so a value
+    /// whose PromiseResolve throws (a hostile `constructor` getter) becomes a
+    /// throw completion at the `yield`, where the body may catch it; otherwise
+    /// the resolved promise is returned and awaited when the generator
+    /// finishes. A generator that has not started has no body to throw into.
+    fn async_generator_return_completion(
+        &mut self,
+        generator: ObjectId,
+        value: Value,
+    ) -> Result<Completion, RuntimeError> {
+        let state = self.heap.take_generator_state(generator)?;
+        let suspended = matches!(state, GeneratorState::Suspended { .. });
+        self.heap.set_generator_state(generator, state)?;
+        if !suspended {
+            return Ok(Completion::Return(value));
+        }
+        let base = self.stack.len();
+        self.stack.push(value.clone());
+        let resolved = self.promise_resolve(value);
+        self.stack.truncate(base);
+        match resolved {
+            Ok(promise) => Ok(Completion::Return(promise)),
+            Err(error) => Ok(Completion::Throw(RuntimeError::Thrown(
+                self.error_value(error)?,
+            ))),
         }
     }
 
