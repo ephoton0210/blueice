@@ -7,7 +7,9 @@
 //! ranged `GET`, not `HEAD`").
 
 use crate::download::clearance::UrlCleared;
+use crate::download::backend;
 use crate::download::{http, DownloadError, DownloadOptions};
+use ureq::Agent;
 use blueice_ipc::downloads::SingleStreamReason;
 use ureq::ResponseExt;
 
@@ -136,11 +138,14 @@ pub fn parse_content_range(value: &str) -> Option<ContentRange> {
 /// transient failure ([`DownloadError::is_retryable`]) is the caller's
 /// policy.
 pub fn probe(cleared: &UrlCleared, options: &DownloadOptions) -> Result<Probe, DownloadError> {
-    let url = cleared.url();
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(DownloadError::InvalidUrl(format!("unsupported scheme in {url:?} (only http/https are supported)")));
-    }
-    let response = http::get(&http::agent(options), url, Some((0, 0)), None)?;
+    backend::for_url(cleared.url(), options)?.probe(cleared.url())
+}
+
+/// HTTP's ranged probe.  It is called by the HTTP backend; other backends
+/// provide their protocol's equivalent through
+/// [`TransferBackend`](crate::download::backend::TransferBackend).
+pub(crate) fn probe_http(url: &str, agent: &Agent) -> Result<Probe, DownloadError> {
+    let response = http::get(agent, url, Some((0, 0)), None)?;
     let status = response.status().as_u16();
     let header = |name: &str| http::header(&response, name);
 

@@ -35,10 +35,11 @@
 
 use crate::download::clearance::DownloadClearance;
 use crate::download::plan::{initial_split, split_point};
-use crate::download::probe::{parse_content_range, ContentRange, Probe, Validator};
+use crate::download::backend::{self, ByteRange, TransferBackend};
+use crate::download::probe::Probe;
 use crate::download::progress::Progress;
 use crate::download::sidecar::{part_path, remove_partials, sidecar_path, RestartReason, Sidecar, SidecarSegment};
-use crate::download::{http, DownloadError, DownloadOptions};
+use crate::download::{DownloadError, DownloadOptions};
 use blueice_ipc::downloads::{SegmentInfo, SegmentState, SingleStreamReason, TransferEvent, TransferMode, TransferState};
 use std::collections::VecDeque;
 use std::fmt;
@@ -49,8 +50,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use ureq::http::Response;
-use ureq::Body;
 
 /// How many events a transfer keeps: enough to explain a slow or failed
 /// transfer, bounded so a flapping server can't grow it forever.
@@ -135,8 +134,7 @@ struct Shared {
     segmented: bool,
     resume_safe: bool,
     mode: TransferMode,
-    validator: Option<Validator>,
-    agent: ureq::Agent,
+    backend: Arc<dyn TransferBackend>,
     file: File,
     inner: Mutex<Inner>,
     changed: Condvar,
@@ -241,7 +239,6 @@ impl Transfer {
         let now = Instant::now();
         let segmented = probe.can_segment();
         let resume_safe = probe.resume_safe();
-        let validator = probe.validator();
         let mut events: Vec<String> = Vec::new();
         let mut segments: Vec<Segment> = Vec::new();
 
@@ -311,13 +308,12 @@ impl Transfer {
 
         let shared = Arc::new(Shared {
             dest,
-            agent: http::agent(&options),
+            backend: backend::for_url(&probe.final_url, &options)?,
             options,
             probe,
             segmented,
             resume_safe,
             mode,
-            validator,
             file,
             inner: Mutex::new(inner),
             changed: Condvar::new(),
@@ -604,65 +600,19 @@ impl Shared {
         }
     }
 
-    fn request(&self, claim: &Claim) -> Result<Response<Body>, DownloadError> {
-        if !self.segmented {
-            let response = http::get(&self.agent, &self.probe.final_url, None, None)?;
-            return match response.status().as_u16() {
-                200..=299 => Ok(response),
-                code => Err(DownloadError::Status(code)),
-            };
-        }
-        let validator = self.validator.as_ref().map(Validator::if_range_value);
-        let response = http::get(&self.agent, &self.probe.final_url, Some((claim.pos, claim.end - 1)), validator)?;
-        match response.status().as_u16() {
-            206 => {
-                self.check_partial(&response, claim)?;
-                Ok(response)
-            }
-            200 => Err(DownloadError::ResourceChanged("the server answered a Range request with the whole file: the file changed, or ranges stopped working".to_string())),
-            416 => Err(DownloadError::ResourceChanged("the requested range no longer exists: the remote file changed".to_string())),
-            other => Err(DownloadError::Status(other)),
-        }
-    }
-
-    /// A `206` must be for exactly the range asked, of the same file.
-    fn check_partial(&self, response: &Response<Body>, claim: &Claim) -> Result<(), DownloadError> {
-        let value = http::header(response, "content-range").ok_or_else(|| DownloadError::Protocol("a 206 response with no Content-Range".to_string()))?;
-        match parse_content_range(&value) {
-            Some(ContentRange::Range { start, end, total }) if start == claim.pos && end == claim.end - 1 => {
-                if let (Some(now), Some(then)) = (total, self.probe.total) {
-                    if now != then {
-                        return Err(DownloadError::ResourceChanged(format!("the file's size changed from {then} to {now} bytes")));
-                    }
-                }
-            }
-            _ => return Err(DownloadError::Protocol(format!("unexpected Content-Range {value:?} in answer to bytes={}-{}", claim.pos, claim.end - 1))),
-        }
-        match &self.validator {
-            Some(Validator::StrongEtag(expected)) => {
-                if let Some(got) = http::header(response, "etag").filter(|got| got != expected) {
-                    return Err(DownloadError::ResourceChanged(format!("the ETag changed from {expected} to {got}")));
-                }
-            }
-            Some(Validator::LastModified(expected)) => {
-                if let Some(got) = http::header(response, "last-modified").filter(|got| got != expected) {
-                    return Err(DownloadError::ResourceChanged(format!("Last-Modified changed from {expected} to {got}")));
-                }
-            }
-            None => {}
-        }
-        Ok(())
+    fn request(&self, claim: &Claim) -> Result<crate::download::backend::ByteStream, DownloadError> {
+        let range = self.segmented.then(|| ByteRange::new(claim.pos, claim.end).expect("a claimed segment is non-empty"));
+        self.backend.get(&self.probe, range)
     }
 
     /// Fetches one claimed segment, writing each buffer at its offset and
     /// committing progress only while the claim still stands.
     fn run_segment(&self, claim: &Claim) -> Outcome {
-        let response = match self.request(claim) {
-            Ok(response) => response,
+        let mut reader = match self.request(claim) {
+            Ok(reader) => reader,
             Err(e) if e.is_retryable() => return Outcome::Retry(e),
             Err(e) => return Outcome::Fatal(e),
         };
-        let mut reader = response.into_body().into_reader();
         let mut buffer = vec![0u8; self.options.buffer_bytes.max(1)];
         let (mut pos, mut end) = (claim.pos, claim.end);
         loop {
