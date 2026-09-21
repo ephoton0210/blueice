@@ -19,6 +19,7 @@ mod native_dispatch;
 mod object;
 mod promises;
 mod resource_management;
+mod set_methods;
 mod typed_arrays;
 mod uint8array;
 use crate::heap::{

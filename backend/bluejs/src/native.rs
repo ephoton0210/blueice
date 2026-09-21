@@ -106,6 +106,13 @@ pub(crate) enum SetMethod {
     ForEach,
     Has,
     Values,
+    Union,
+    Intersection,
+    Difference,
+    SymmetricDifference,
+    IsSubsetOf,
+    IsSupersetOf,
+    IsDisjointFrom,
 }
 
 /// The lazy iterator helpers share one native dispatcher. Keeping the method

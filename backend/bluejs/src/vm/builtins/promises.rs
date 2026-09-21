@@ -134,6 +134,13 @@ impl Vm {
                     ("forEach", 1, SetMethod::ForEach),
                     ("has", 1, SetMethod::Has),
                     ("values", 0, SetMethod::Values),
+                    ("union", 1, SetMethod::Union),
+                    ("intersection", 1, SetMethod::Intersection),
+                    ("difference", 1, SetMethod::Difference),
+                    ("symmetricDifference", 1, SetMethod::SymmetricDifference),
+                    ("isSubsetOf", 1, SetMethod::IsSubsetOf),
+                    ("isSupersetOf", 1, SetMethod::IsSupersetOf),
+                    ("isDisjointFrom", 1, SetMethod::IsDisjointFrom),
                 ] {
                     self.install_native(
                         prototype,
@@ -365,6 +372,13 @@ impl Vm {
             SetMethod::ForEach => self.collection_for_each(set, false, args),
             SetMethod::Has => Ok(Value::Bool(self.heap.set_has(set, key)?)),
             SetMethod::Values => self.collection_iterator(set, false, ArrayIteratorKind::Values),
+            SetMethod::Union
+            | SetMethod::Intersection
+            | SetMethod::Difference
+            | SetMethod::SymmetricDifference
+            | SetMethod::IsSubsetOf
+            | SetMethod::IsSupersetOf
+            | SetMethod::IsDisjointFrom => self.set_algebra_method(method, set, key),
         }
     }
 
