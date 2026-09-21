@@ -146,30 +146,6 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
         vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
         Err(RuntimeError::TypeError(_))
     ));
-
-    code.code[0] = Opcode::DefineClassStaticField as u8;
-    vm.stack = vec![
-        Value::Undefined,
-        Value::Object(target),
-        Value::String("field".into()),
-        Value::Object(function),
-    ];
-    vm.remaining_instructions = vm.config.instruction_budget;
-    assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
-        Ok(InterpreterExit::Return(Value::Undefined))
-    ));
-    vm.stack = vec![
-        Value::Undefined,
-        Value::Object(target),
-        Value::String("emptyField".into()),
-        Value::Undefined,
-    ];
-    vm.remaining_instructions = vm.config.instruction_budget;
-    assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
-        Err(RuntimeError::TypeError(_))
-    ));
 }
 
 #[test]
@@ -180,10 +156,16 @@ fn super_assignment_reports_a_non_extensible_receiver() {
     let receiver = vm.heap.alloc_object(None).unwrap();
     vm.heap.prevent_extensions(receiver).unwrap();
     vm.home_object = Some(home);
-    vm.this = Value::Object(receiver);
     vm.strict = true;
+    let super_base = vm.super_base().unwrap();
+    assert_eq!(super_base, Value::Object(base));
     assert_eq!(
-        vm.super_set(&"value".into(), &Value::Number(1.0)),
+        vm.super_set(
+            &super_base,
+            &Value::String("value".into()),
+            &Value::Number(1.0),
+            &Value::Object(receiver)
+        ),
         Err(RuntimeError::TypeError(
             "super property cannot be assigned".into()
         ))
@@ -195,9 +177,14 @@ fn super_assignment_reports_a_non_extensible_receiver() {
     let stale_receiver = vm.heap.alloc_object(None).unwrap();
     vm.heap.collect_major();
     vm.home_object = Some(home);
-    vm.this = Value::Object(stale_receiver);
+    let super_base = vm.super_base().unwrap();
     assert_eq!(
-        vm.super_set(&"value".into(), &Value::Number(1.0)),
+        vm.super_set(
+            &super_base,
+            &Value::String("value".into()),
+            &Value::Number(1.0),
+            &Value::Object(stale_receiver)
+        ),
         Err(RuntimeError::Heap(HeapError::InvalidObject(stale_receiver)))
     );
 }
@@ -213,36 +200,19 @@ fn super_and_eval_context_errors_describe_missing_internal_context() {
     );
     let home = vm.heap.alloc_object(None).unwrap();
     vm.home_object = Some(home);
+    // A null super base is only an error once a property is read through it.
+    assert_eq!(vm.super_base(), Ok(Value::Null));
     assert_eq!(
-        vm.super_base(),
-        Err(RuntimeError::TypeError("superclass is null".into()))
-    );
-    assert_eq!(
-        vm.super_call(Vec::new()),
+        vm.super_get(&Value::Null, &Value::String("x".into()), &Value::Undefined),
         Err(RuntimeError::TypeError(
-            "super() is not available in this function".into()
+            "cannot access a property through a null super base".into()
         ))
     );
-    let closure = vm
-        .heap
-        .alloc_closure(
-            std::rc::Rc::new(Bytecode::empty()),
-            Vec::new(),
-            Value::Undefined,
-            vm.object_prototype,
-        )
-        .unwrap();
-    vm.class_constructor = Some(closure);
     assert_eq!(
-        vm.super_call(Vec::new()),
+        vm.super_call(Value::Null, Vec::new()),
         Err(RuntimeError::TypeError(
-            "super() requires a derived constructor".into()
+            "super constructor is not a constructor".into()
         ))
-    );
-    vm.heap.set_class_base(closure, Value::Null).unwrap();
-    assert_eq!(
-        vm.super_call(Vec::new()),
-        Err(RuntimeError::TypeError("super constructor is null".into()))
     );
     vm.binding_metadata.push(Binding {
         name: "captured".into(),

@@ -13,7 +13,7 @@ use crate::bytecode::{
     ModuleRequest as CompiledModuleRequest,
 };
 use crate::*;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 /// Parser-private binding used to represent an anonymous `export default`
 /// declaration.  It can never be spelled by ECMAScript source, which lets
@@ -21,6 +21,20 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// function/class name required by SetFunctionName.
 const MODULE_DEFAULT_BINDING: &str = "\0bluejs_module_default";
 const PRIVATE_OWNER_BINDING_PREFIX: &str = "\0bluejs_private_owner_";
+/// Per-class-evaluation bindings for state a class element carries from
+/// ClassDefinitionEvaluation to a later step: a computed field key (evaluated
+/// once, in element order) and a static field or static block's function
+/// (run only after every element has been defined).
+const CLASS_ELEMENT_BINDING_PREFIX: &str = "\0bluejs_class_element_";
+/// A derived class constructor's `this` binding. Unlike an ordinary function's
+/// receiver it starts uninitialized and is bound by `super()`, possibly from a
+/// nested arrow function or direct eval, so it is a real lexical binding that
+/// those closures capture. Ordinary functions (including methods and nested
+/// classes) never inherit it: only arrow functions and eval code see it.
+pub(crate) const DERIVED_THIS_BINDING: &str = "\0bluejs_derived_this";
+/// The derived constructor function object itself (`F` in the specification's
+/// `super()` steps), visible to the same nested closures as the `this` binding.
+pub(crate) const DERIVED_CONSTRUCTOR_BINDING: &str = "\0bluejs_derived_constructor";
 use std::fmt;
 
 mod expressions;
@@ -362,6 +376,19 @@ pub(crate) struct EvalWithScopes {
     pub(crate) inherited: usize,
 }
 
+/// What a direct eval inherits from the function that calls it, other than
+/// its visible bindings.
+#[derive(Default)]
+pub(crate) struct EvalContext {
+    pub(crate) strict: bool,
+    /// Whether `new.target` is valid in the calling function.
+    pub(crate) new_target_allowed: bool,
+    /// The caller is a class field initializer (or an arrow function inside
+    /// one).
+    pub(crate) class_field_initializer: bool,
+    pub(crate) with_scopes: EvalWithScopes,
+}
+
 /// Compiles direct-eval source with cells for the caller's visible bindings.
 /// The runtime supplies `visible` from its active lexical environments and
 /// installs the matching cells before running the resulting bytecode.
@@ -370,10 +397,14 @@ pub(crate) fn compile_eval(
     visible: &[(String, Binding, u32)],
     variable_environment_names: &[String],
     lexical_conflicts: &[String],
-    strict: bool,
-    new_target_allowed: bool,
-    with_scopes: EvalWithScopes,
+    context: EvalContext,
 ) -> Result<Bytecode, CompileError> {
+    let EvalContext {
+        strict,
+        new_target_allowed,
+        class_field_initializer,
+        with_scopes,
+    } = context;
     let with_depth = with_scopes.depth;
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
@@ -401,6 +432,7 @@ pub(crate) fn compile_eval(
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
     compiler.bytecode.new_target_allowed = new_target_allowed;
+    compiler.bytecode.class_field_initializer = class_field_initializer;
     if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
         return Err(CompileError::InvalidSyntax(
             "strict code cannot assign to eval or arguments",
@@ -546,6 +578,7 @@ struct FunctionCompileOptions {
     derived_constructor: bool,
     default_derived_constructor: bool,
     class_method: bool,
+    class_field_initializer: bool,
 }
 
 impl FunctionCompileOptions {
@@ -567,6 +600,16 @@ impl FunctionCompileOptions {
             derived_constructor: false,
             default_derived_constructor: false,
             class_method: true,
+            class_field_initializer: false,
+        }
+    }
+
+    /// A function that defines class fields on its receiver: a method whose
+    /// direct evals may not see an `arguments` binding.
+    fn class_field_initializer() -> Self {
+        Self {
+            class_field_initializer: true,
+            ..Self::class_method()
         }
     }
 }
@@ -1135,7 +1178,11 @@ fn private_owner_binding_name(binding: &str) -> Option<(u32, String)> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PrivateDeclarationKind {
     FieldOrMethod,
-    Accessor { getter: bool },
+    Accessor {
+        getter: bool,
+    },
+    /// A getter and setter for one name: nothing else may share it.
+    AccessorPair,
 }
 
 /// Collect own private names and establish the class-element duplicate early
@@ -1145,47 +1192,126 @@ enum PrivateDeclarationKind {
 fn class_private_declarations(class: &Class) -> Result<Vec<(String, bool)>, CompileError> {
     let mut declarations = Vec::new();
     let mut seen: HashMap<String, (bool, PrivateDeclarationKind)> = HashMap::new();
-    for element in &class.elements {
-        let (key, is_static, kind) = match element {
+    for (index, element) in class.elements.iter().enumerate() {
+        // Every private name a single element declares, with its kind. An
+        // auto-accessor declares its hidden storage field, plus a private
+        // getter and setter when its own name is private.
+        let mut declared = Vec::new();
+        match element {
             ClassElement::Method { key, is_static, .. } => {
-                (key, *is_static, PrivateDeclarationKind::FieldOrMethod)
+                declared.push((
+                    private_class_name(key).map(str::to_owned),
+                    *is_static,
+                    PrivateDeclarationKind::FieldOrMethod,
+                ));
             }
             ClassElement::Accessor {
                 key,
                 getter,
                 is_static,
                 ..
-            } => (
-                key,
+            } => declared.push((
+                private_class_name(key).map(str::to_owned),
                 *is_static,
                 PrivateDeclarationKind::Accessor { getter: *getter },
-            ),
-            ClassElement::Field { key, is_static, .. } => {
-                (key, *is_static, PrivateDeclarationKind::FieldOrMethod)
-            }
-            ClassElement::StaticBlock(_) => continue,
-        };
-        let Some(name) = private_class_name(key) else {
-            continue;
-        };
-        let name = name.to_owned();
-        match seen.get(&name).copied() {
-            None => {
-                seen.insert(name.clone(), (is_static, kind));
-                declarations.push((name, is_static));
-            }
-            Some((previous_static, PrivateDeclarationKind::Accessor { getter: previous }))
-                if previous_static == is_static
-                    && matches!(kind, PrivateDeclarationKind::Accessor { getter } if getter != previous) =>
-                {}
-            Some(_) => {
-                return Err(CompileError::InvalidSyntax(
-                    "duplicate private name in class body",
+            )),
+            ClassElement::Field {
+                key,
+                is_static,
+                accessor: true,
+                ..
+            } => {
+                declared.push((
+                    Some(auto_accessor_storage_name(index)),
+                    *is_static,
+                    PrivateDeclarationKind::FieldOrMethod,
                 ));
+                for getter in [true, false] {
+                    declared.push((
+                        private_class_name(key).map(str::to_owned),
+                        *is_static,
+                        PrivateDeclarationKind::Accessor { getter },
+                    ));
+                }
+            }
+            ClassElement::Field { key, is_static, .. } => declared.push((
+                private_class_name(key).map(str::to_owned),
+                *is_static,
+                PrivateDeclarationKind::FieldOrMethod,
+            )),
+            ClassElement::StaticBlock(_) => continue,
+        }
+        for (name, is_static, kind) in declared {
+            let Some(name) = name else {
+                continue;
+            };
+            match seen.get(&name).copied() {
+                None => {
+                    seen.insert(name.clone(), (is_static, kind));
+                    declarations.push((name, is_static));
+                }
+                Some((previous_static, PrivateDeclarationKind::Accessor { getter: previous }))
+                    if previous_static == is_static
+                        && matches!(kind, PrivateDeclarationKind::Accessor { getter } if getter != previous) =>
+                {
+                    seen.insert(name, (is_static, PrivateDeclarationKind::AccessorPair));
+                }
+                Some(_) => {
+                    return Err(CompileError::InvalidSyntax(
+                        "duplicate private name in class body",
+                    ));
+                }
             }
         }
     }
     Ok(declarations)
+}
+
+/// The hidden private name (spelled without `#`) of the field that stores an
+/// auto-accessor's value. U+0000 cannot appear in a source identifier, so it
+/// never collides with a declared name.
+fn auto_accessor_storage_name(index: usize) -> String {
+    format!("\0accessor_{index}")
+}
+
+/// The getter and setter of an auto-accessor: `get() { return this.#s }` and
+/// `set(value) { this.#s = value }` over its hidden storage field.
+fn auto_accessor_functions(index: usize, name: Option<&str>) -> (Function, Function) {
+    let storage = Expr::Member {
+        object: Box::new(Expr::This),
+        property: Box::new(Expr::Identifier(format!(
+            "#{}",
+            auto_accessor_storage_name(index)
+        ))),
+        computed: false,
+    };
+    let getter = Function {
+        name: name.map(|name| format!("get {name}")),
+        params: Vec::new(),
+        body: vec![Stmt::Return(Some(storage.clone()))],
+        generator: false,
+        is_async: false,
+    };
+    let setter = Function {
+        name: name.map(|name| format!("set {name}")),
+        params: vec![Param {
+            pattern: Pattern::Identifier("value".into()),
+            default: None,
+            rest: false,
+        }],
+        body: vec![Stmt::Expr(Expr::Assign {
+            op: AssignOp::Assign,
+            target: Box::new(storage),
+            value: Box::new(Expr::Identifier("value".into())),
+        })],
+        generator: false,
+        is_async: false,
+    };
+    (getter, setter)
+}
+
+fn is_super_member(expr: &Expr) -> bool {
+    matches!(expr, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
 }
 
 fn private_member_name(expr: &Expr) -> Option<&str> {
@@ -1235,12 +1361,21 @@ fn literal_property_key_name(key: &PropertyKey) -> Option<String> {
     }
 }
 
-fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
-    let (property, computed) = match key {
-        PropertyKey::Identifier(name) => (Expr::Identifier(name.clone()), false),
-        PropertyKey::String(name) => (Expr::String(name.clone()), true),
-        PropertyKey::Number(number) => (Expr::Number(*number), true),
-        PropertyKey::Computed(expression) => ((*expression.clone()), true),
+/// Lowers one class field to `this[key] = initializer`, the shape
+/// `Compiler::class_field` turns into DefineField (or PrivateFieldAdd).
+/// `computed_binding` names the hidden binding that holds a computed key,
+/// which was converted once when the class was defined.
+fn class_field_definition(
+    key: &PropertyKey,
+    computed_binding: Option<&String>,
+    initializer: Option<&Expr>,
+) -> Stmt {
+    let (property, computed) = match (key, computed_binding) {
+        (PropertyKey::Identifier(name), _) => (Expr::Identifier(name.clone()), false),
+        (PropertyKey::String(name), _) => (Expr::String(name.clone()), true),
+        (PropertyKey::Number(number), _) => (Expr::Number(*number), true),
+        (PropertyKey::Computed(_), Some(binding)) => (Expr::Identifier(binding.clone()), true),
+        (PropertyKey::Computed(expression), None) => ((**expression).clone(), true),
     };
     Stmt::ClassField(Box::new(Stmt::Expr(Expr::Assign {
         op: AssignOp::Assign,
@@ -1251,30 +1386,6 @@ fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
         }),
         value: Box::new(initializer.cloned().unwrap_or_else(undefined_expression)),
     })))
-}
-
-/// The VM establishes `this` while executing `super()`. For explicit derived
-/// constructors, fields therefore follow the first direct constructor call.
-/// A direct top-level call gets the exact specified placement. When the call
-/// is nested in a closure or control-flow expression, preserve the constructor
-/// body and defer the field list to its normal completion. This keeps `this`
-/// uninitialized until the nested `super()` actually executes, rather than
-/// rejecting otherwise valid derived class syntax during compilation.
-fn derived_constructor_body(
-    mut body: Vec<Stmt>,
-    fields: Vec<Stmt>,
-) -> Result<Vec<Stmt>, CompileError> {
-    if fields.is_empty() {
-        return Ok(body);
-    }
-    if let Some(index) = body.iter().position(|statement| {
-        matches!(statement, Stmt::Expr(Expr::Call { callee, .. }) if matches!(&**callee, Expr::Super))
-    }) {
-        body.splice(index + 1..index + 1, fields);
-    } else {
-        body.extend(fields);
-    }
-    Ok(body)
 }
 
 fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {

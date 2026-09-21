@@ -916,7 +916,6 @@ impl Heap {
                     captures.clone(),
                     this.clone(),
                     metadata.and_then(|metadata| metadata.home),
-                    metadata.and_then(|metadata| metadata.class_base.clone()),
                 ))
             }
             _ => None,
@@ -941,25 +940,34 @@ impl Heap {
         Ok(())
     }
 
-    pub(crate) fn set_class_base(
+    /// Install a class constructor's `[[Fields]]` initializer.
+    pub(crate) fn set_class_fields(
         &mut self,
         object: ObjectId,
-        base: Value,
+        initializer: ObjectId,
     ) -> Result<(), HeapError> {
+        self.object(initializer)?;
         if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
             return Err(HeapError::InvalidObject(object));
         }
-        if let Some(target) = base.object_id() {
-            self.ensure_closure_metadata(object, &[target])?;
-        } else {
-            self.ensure_closure_metadata(object, &[])?;
-        }
-        self.write_barrier(object, base.object_id());
+        self.ensure_closure_metadata(object, &[initializer])?;
+        self.write_barrier(object, Some(initializer));
         self.closure_metadata
             .get_mut(&object)
             .expect("metadata was installed")
-            .class_base = Some(base);
+            .fields = Some(initializer);
         Ok(())
+    }
+
+    /// The initializer installed by [`Self::set_class_fields`], if any.
+    pub(crate) fn class_fields(&self, object: ObjectId) -> Result<Option<ObjectId>, HeapError> {
+        match &self.object(object)?.kind {
+            ObjectKind::Closure { .. } => Ok(self
+                .closure_metadata
+                .get(&object)
+                .and_then(|metadata| metadata.fields)),
+            _ => Err(HeapError::InvalidObject(object)),
+        }
     }
 
     /// Records the with objects a closure created inside `with` closes over.
@@ -1023,16 +1031,6 @@ impl Heap {
                 .get(&object)
                 .map(|metadata| metadata.with_objects.clone())
                 .unwrap_or_default()),
-            _ => Err(HeapError::InvalidObject(object)),
-        }
-    }
-
-    pub(crate) fn class_base(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
-        match &self.object(object)?.kind {
-            ObjectKind::Closure { .. } => Ok(self
-                .closure_metadata
-                .get(&object)
-                .and_then(|metadata| metadata.class_base.clone())),
             _ => Err(HeapError::InvalidObject(object)),
         }
     }

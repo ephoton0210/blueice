@@ -222,29 +222,67 @@ opcodes! {
     // class method.
     DefineMethod: 5, 0;
     DefineClassAccessor: 5, 0;
-    DefineClassStaticField: 1, 0;
     DefineInstanceField: 1, 0;
-    DefinePrivateStaticField: 1, 0;
+    // `receiver, name, value` -> nothing: PrivateFieldAdd for the private
+    // name whose owner is in the operand's slot.
+    PrivateFieldAdd: 5, 0;
     DefinePrivateField: 5, 0;
     DefinePrivateMethod: 5, 0;
     DefinePrivateAccessor: 5, 0;
     CallClassStaticBlock: 1, 0;
     SetClassHome: 1, 0;
     SetClassHeritage: 1, 0;
+    // `F, initializer` -> `F`: install the class's [[Fields]] (a method-like
+    // function run with the new instance as `this`) and give it the class
+    // prototype as its home object.
+    SetClassFields: 1, 0;
+    // Pops the receiver to brand with the owner in the operand's slot.
     InitializePrivateBrand: 5, 0;
     PrivateGet: 5, MAY_USE_INLINE_CACHE;
     PrivateGetMethod: 5, MAY_USE_INLINE_CACHE;
     PrivateSet: 5, MAY_USE_INLINE_CACHE;
+    // A destructuring leaf's PrivateSet: `value, receiver, name` -> `value`.
+    PrivateSetLeaf: 5, 0;
     PrivateIn: 5, MAY_USE_INLINE_CACHE;
+    // A super property Reference is the operand pair `base, key` (like any
+    // other property Reference) with the `this` value pushed on top just
+    // before its consuming opcode: `SuperBase` (below) captures the base once
+    // the key expression has been evaluated, and `this` is re-read (it can
+    // only ever go from uninitialized to a fixed value) rather than stored.
+    // `SuperGet`: `base, key, this` -> value. `SuperGetMethod`: `base, key,
+    // this` -> function, this. `SuperSet`: operand 0 takes `base, key, value,
+    // this`, operand 1 takes the destructuring-leaf order `value, base, key,
+    // this`; both leave the value. `SuperUpdate`: `base, key, this` -> the
+    // old or new number (operand bit 0 decrement, bit 1 prefix).
     SuperGet: 1, MAY_USE_INLINE_CACHE;
     SuperGetMethod: 1, MAY_USE_INLINE_CACHE;
-    SuperSet: 1, MAY_USE_INLINE_CACHE;
+    SuperSet: 5, MAY_USE_INLINE_CACHE;
     SuperUpdate: 5, MAY_USE_INLINE_CACHE;
+    // Pushes GetSuperBase, the home object's [[Prototype]] (an object or
+    // null), above the already-evaluated key.
+    SuperBase: 1, 0;
+    // Pops any evaluated key and throws the ReferenceError of `delete
+    // super.x`.
+    DeleteSuperProperty: 1, 0;
+    // Pushes a derived constructor's (or one of its arrows') `this` binding
+    // held in the operand's hidden slot; a ReferenceError until `super()`
+    // has bound it.
+    ThisBinding: 5, 0;
+    // `F` -> `F.[[GetPrototypeOf]]()`, GetSuperConstructor for the active
+    // function `F`; evaluated before the `super()` arguments.
+    SuperConstructor: 1, 0;
+    // `F, superCtor, arg...` -> `F, result`: the IsConstructor check that follows
+    // argument evaluation, then Construct(superCtor, args, new.target). The
+    // operand is the argument count (`SuperCallSpread` takes one argument
+    // array, `SuperCallForward` the frame's own arguments).
     SuperCall: 5, 0;
     SuperCallSpread: 1, 0;
     SuperCallForward: 1, 0;
-    EnterClassFieldInitializer: 1, 0;
-    LeaveClassFieldInitializer: 1, 0;
+    // Peeks the constructed value and binds it as the operand slot's `this`;
+    // a second bind is a ReferenceError.
+    BindThisValue: 5, 0;
+    // `F, result` -> `result` after InitializeInstanceElements(result, F).
+    InitializeInstanceElements: 1, 0;
     DeleteProperty: 1, 0;
     Instanceof: 1, 0;
     In: 1, 0;
@@ -450,6 +488,13 @@ pub struct Bytecode {
     /// Derived class constructors receive their `this` binding from a
     /// superclass construction rather than from their own call entry.
     pub(crate) derived_constructor: bool,
+    /// The hidden lexical slot holding a derived constructor's `this` binding
+    /// (`None` for every other function).
+    pub(crate) derived_this_slot: Option<u32>,
+    /// This function is a class field initializer: it may not observe an
+    /// `arguments` binding, which a direct eval inside it (or inside an arrow
+    /// function it creates) must respect.
+    pub(crate) class_field_initializer: bool,
     pub(crate) strict: bool,
     pub(crate) templates: Vec<TemplateSite>,
     pub(crate) handlers: Vec<Handler>,
@@ -514,6 +559,8 @@ impl Bytecode {
             constructible: false,
             class_constructor: false,
             derived_constructor: false,
+            derived_this_slot: None,
+            class_field_initializer: false,
             strict: false,
             templates: Vec::new(),
             handlers: Vec::new(),

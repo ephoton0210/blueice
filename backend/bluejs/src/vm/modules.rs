@@ -871,11 +871,7 @@ impl Vm {
             new_target: std::mem::replace(&mut self.new_target, Value::Undefined),
             new_target_allowed: std::mem::replace(&mut self.new_target_allowed, false),
             home_object: self.home_object.take(),
-            class_constructor: self.class_constructor.take(),
-            class_field_initializer_depth: std::mem::replace(
-                &mut self.class_field_initializer_depth,
-                0,
-            ),
+            class_field_initializer: std::mem::take(&mut self.class_field_initializer),
             active_module_name: self.active_module_name.take(),
         }
     }
@@ -909,8 +905,7 @@ impl Vm {
         self.new_target = execution.new_target;
         self.new_target_allowed = execution.new_target_allowed;
         self.home_object = execution.home_object;
-        self.class_constructor = execution.class_constructor;
-        self.class_field_initializer_depth = execution.class_field_initializer_depth;
+        self.class_field_initializer = execution.class_field_initializer;
         self.active_module_name = execution.active_module_name;
     }
 
@@ -968,11 +963,7 @@ impl Vm {
             references.extend(binding.shadowed_cells.iter().copied());
         }
         references.extend(execution.templates.values().copied());
-        references.extend(
-            [execution.home_object, execution.class_constructor]
-                .into_iter()
-                .flatten(),
-        );
+        references.extend(execution.home_object);
         references
     }
 

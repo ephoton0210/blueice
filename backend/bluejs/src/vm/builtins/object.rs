@@ -698,7 +698,7 @@ impl Vm {
         if let Some(bound) = self.heap.bound_function(*id)? {
             return Ok(bound.constructible);
         }
-        if let Some((code, _, _, _, _)) = self.heap.closure(*id)? {
+        if let Some((code, _, _, _)) = self.heap.closure(*id)? {
             return Ok(code.constructible);
         }
         Ok(matches!(
