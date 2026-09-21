@@ -67,33 +67,41 @@ impl Vm {
                 )
             })?);
         }
-        let mut source = String::from(match kind {
+        let prefix = match kind {
             DynamicFunctionKind::Normal => "function anonymous(",
             DynamicFunctionKind::Async => "async function anonymous(",
             DynamicFunctionKind::Generator => "function* anonymous(",
             DynamicFunctionKind::AsyncGenerator => "async function* anonymous(",
-        });
-        source.push_str(&strip_dynamic_function_html_comments(&parameters));
+        };
+        let body = match args.last() {
+            Some(body) => self.coerce_string(body)?.to_utf8().map_err(|_| {
+                RuntimeError::SyntaxError("Function body contains an unpaired surrogate".into())
+            })?,
+            None => String::new(),
+        };
         // Dynamic parameter text is parsed as its own grammar production.
         // Preserve that boundary in the generated wrapper: a trailing
         // single-line comment belongs to the parameters, not to the closing
         // parenthesis that follows them.
-        source.push_str("\n) {\n");
-        if let Some(body) = args.last() {
-            source.push_str(&self.coerce_string(body)?.to_utf8().map_err(|_| {
-                RuntimeError::SyntaxError("Function body contains an unpaired surrogate".into())
-            })?);
-        }
-        source.push_str("\n}");
+        let wrapper = |parameters: &str| format!("{prefix}{parameters}\n) {{\n{body}\n}}");
+        let parsed_parameters = strip_dynamic_function_html_comments(&parameters);
+        let source = wrapper(&parsed_parameters);
 
         let mut program =
             crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        // The wrapper declaration only gives the function its `name` property.
-        // CreateDynamicFunction binds no such name in the function's scope, so
-        // rename the declaration to an internal identifier no source can spell:
-        // `anonymous` in the body then resolves like any free identifier.
         if let Some(crate::ast::Stmt::FunctionDecl(function)) = program.body.first_mut() {
+            // The wrapper declaration only gives the function its `name`
+            // property. CreateDynamicFunction binds no such name in the
+            // function's scope, so rename the declaration to an internal
+            // identifier no source can spell: `anonymous` in the body then
+            // resolves like any free identifier.
             function.name = Some(DYNAMIC_FUNCTION_BINDING.into());
+            // The wrapper is exactly the source text CreateDynamicFunction
+            // prescribes, except that the parsed parameters had their Annex B
+            // HTML-like comments removed: the function's text keeps them.
+            if parsed_parameters != parameters {
+                function.source_text = crate::ast::SourceText::whole(wrapper(&parameters));
+            }
         }
         let code = crate::compile(&program)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;

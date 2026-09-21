@@ -355,3 +355,72 @@ fn source_text_is_available_under_gc_stress() {
         ))
     );
 }
+
+#[test]
+fn dynamic_functions_return_the_source_the_specification_synthesizes() {
+    // CreateDynamicFunction: prefix, " anonymous(", the comma-joined
+    // parameters, "\n) {", "\n", the body, "\n" and "}".
+    for (call, expected) in [
+        ("Function()", "function anonymous(\n) {\n\n}"),
+        (
+            "Function('return 1')",
+            "function anonymous(\n) {\nreturn 1\n}",
+        ),
+        (
+            "new Function('a', 'b', 'return a + b;')",
+            "function anonymous(a,b\n) {\nreturn a + b;\n}",
+        ),
+        (
+            "Function('a, b', '/* c */ c', 'return a')",
+            "function anonymous(a, b,/* c */ c\n) {\nreturn a\n}",
+        ),
+        // A line comment in the parameters ends at the wrapper's line break.
+        (
+            "Function('a // c', '')",
+            "function anonymous(a // c\n) {\n\n}",
+        ),
+        // The parameters are stringified, not just accepted as strings.
+        (
+            "Function({ toString() { return 'x'; } }, 1)",
+            "function anonymous(x\n) {\n1\n}",
+        ),
+        // Annex B HTML-like comments are dropped for parsing but stay in the
+        // text the specification prescribes.
+        (
+            "Function('a <!-- c\\n', 'return a')",
+            "function anonymous(a <!-- c\n\n) {\nreturn a\n}",
+        ),
+    ] {
+        assert_eq!(string_of(&format!("{call}.toString()")), expected, "{call}");
+    }
+    let constructors = "var GeneratorFunction = Object.getPrototypeOf(function* () {}).constructor;\n\
+                        var AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;\n\
+                        var AsyncGeneratorFunction = Object.getPrototypeOf(async function* () {}).constructor;\n";
+    for (call, expected) in [
+        (
+            "GeneratorFunction('a', 'yield a')",
+            "function* anonymous(a\n) {\nyield a\n}",
+        ),
+        (
+            "AsyncFunction('a', 'await a')",
+            "async function anonymous(a\n) {\nawait a\n}",
+        ),
+        (
+            "AsyncGeneratorFunction('a', 'yield await a')",
+            "async function* anonymous(a\n) {\nyield await a\n}",
+        ),
+        ("new AsyncFunction()", "async function anonymous(\n) {\n\n}"),
+    ] {
+        assert_eq!(
+            string_of(&format!("{constructors}{call}.toString()")),
+            expected,
+            "{call}"
+        );
+    }
+    // The text is the function's own, not a nested function's: a function the
+    // body creates keeps its own range of the synthesized text.
+    assert_eq!(
+        string_of("Function('return function inner ( ) { }')().toString()"),
+        "function inner ( ) { }"
+    );
+}

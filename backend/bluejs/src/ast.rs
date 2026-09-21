@@ -266,6 +266,15 @@ impl SourceText {
         }
     }
 
+    /// All of `text`, for a function whose source is synthesized by the
+    /// specification (CreateDynamicFunction) rather than sliced from a
+    /// program.
+    pub(crate) fn whole(text: impl Into<Arc<str>>) -> Self {
+        let text = text.into();
+        let end = text.len();
+        Self::range(&text, 0, end)
+    }
+
     /// The source text, or `None` for a function that has none.
     pub fn as_str(&self) -> Option<&str> {
         let text = self.text.as_deref()?;
