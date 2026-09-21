@@ -612,8 +612,11 @@ fn format_simple_value_falls_back_for_symbols_and_objects_without_string_convers
          formatSimpleValue(undefined) === 'undefined' &&\
          formatSimpleValue(true) === 'true'",
     );
-    // An identity-free rendering never exposes objects or symbols.
-    expect_true("formatIdentityFreeValue({}) === undefined && formatIdentityFreeValue(1n) === '1'");
+    // An identity-free rendering never exposes objects or symbols, and marks a
+    // BigInt with the `n` suffix (upstream `String(value) + "n"`).
+    expect_true(
+        "formatIdentityFreeValue({}) === undefined && formatIdentityFreeValue(1n) === '1n'",
+    );
 }
 
 #[test]

@@ -6,6 +6,7 @@
 //! overriding harness functions; failures remain distinct from engine errors.
 use super::*;
 
+mod assertions;
 mod cases;
 mod descriptors;
 mod foreign;

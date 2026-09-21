@@ -101,7 +101,7 @@ impl Vm {
             global,
             prototype,
             "assert",
-            1,
+            2,
             NativeFunction::Test262("assert"),
         )?;
         // A small number of imported legacy conformance fixtures retain a
@@ -127,11 +127,11 @@ impl Vm {
         )?;
         let assert = self.heap.get(global, "assert")?.object_id().unwrap();
         for (name, length) in [
-            ("sameValue", 2),
-            ("notSameValue", 2),
+            ("sameValue", 3),
+            ("notSameValue", 3),
             ("_isSameValue", 2),
-            ("throws", 2),
-            ("compareArray", 2),
+            ("throws", 3),
+            ("compareArray", 3),
         ] {
             self.install_native(
                 assert,
