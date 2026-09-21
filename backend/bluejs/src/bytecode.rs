@@ -515,6 +515,12 @@ pub struct Bytecode {
     /// It is initialized to the closure object when that closure is called.
     pub(crate) self_slot: Option<u32>,
     pub(crate) function_name: String,
+    /// The source text of the function this code implements, which
+    /// `Function.prototype.toString` returns; empty for code that is not a
+    /// function created from source. It is a range of the text its whole
+    /// program was parsed from, shared with every other function of that
+    /// program rather than copied.
+    pub(crate) source_text: crate::ast::SourceText,
     pub(crate) function_length: u32,
     /// The per-invocation `arguments` binding of a non-arrow function.  The
     /// interpreter creates it after its function environment has entered.
@@ -599,6 +605,7 @@ impl Bytecode {
             captures: Vec::new(),
             self_slot: None,
             function_name: String::new(),
+            source_text: crate::ast::SourceText::default(),
             function_length: 0,
             arguments_slot: None,
             arguments_mapped_slots: Vec::new(),

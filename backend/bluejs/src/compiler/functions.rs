@@ -1040,6 +1040,7 @@ impl Compiler {
             .clone()
             .or_else(|| inferred_name.map(str::to_owned))
             .unwrap_or_default();
+        child.bytecode.source_text = function.source_text.clone();
         child.bytecode.function_length = function
             .params
             .iter()
