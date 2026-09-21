@@ -280,6 +280,14 @@ hold a BlueJS object identity beyond GC-visible VM roots. A callback error is
 converted to a JavaScript `TypeError`; its text is host-controlled and MUST NOT
 reflect page-controlled data without the host's own disclosure policy.
 
+`BlueJsPageRuntime::configure_realm_bindings` provides the only page-runtime
+path to this mechanism. It lends a `BlueJsHostBindingRegistrar` for a single
+live tab realm; that registrar can install only host objects and methods, not
+execute bytecode, inspect source, access the heap, or retrieve VM objects.
+Bindings belong to that realm VM and are discarded on navigation, reload, or
+close. An unknown realm and a failed installation reject without an implicit
+realm allocation or a partial program execution.
+
 This is a binding mechanism, not a page API. `DirectPageScriptHost` and
 `DirectPageInlineExecutor` currently install no callback or DOM global. A
 future binding profile MUST pair every installed value with the generated

@@ -88,6 +88,13 @@ or second module resolver to bypass them.
   policy, stable binding ID, or direct-page host installation exists yet, so
   this item remains open.
 
+  The page runtime now exposes this substrate only through a temporary,
+  realm-scoped registrar. It permits object/method registration but not VM
+  execution, heap access, source inspection, or object inspection, and its
+  callbacks disappear with navigation/reload/close when the realm VM is
+  replaced. `DirectPageScriptHost` has not selected or installed a binding
+  profile through this registrar yet.
+
   Acceptance: each initial binding has an implementation, capability policy,
   stable binding ID, and JavaScript page-level behavior test; an unimplemented
   API is absent and fails both static and runtime access tests.

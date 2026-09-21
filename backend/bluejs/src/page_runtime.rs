@@ -6,14 +6,15 @@
 //!
 //! A core or out-of-process host supplies already-authorized tab, origin, and
 //! source identities. This module never opens a URL, reads a file, grants a
-//! capability, or exposes DOM bindings. It gives that host one isolated VM per
-//! tab, generation-bound program ownership, bounded bytecode retention, and
-//! fail-closed navigation/reload invalidation.
+//! capability, or supplies DOM bindings. It gives that host one isolated VM per
+//! tab, generation-bound program ownership, bounded bytecode retention, a
+//! restricted callback-binding registrar, and fail-closed navigation/reload
+//! invalidation.
 
 use crate::{
     BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramHandle, BlueJsProgramRegistry,
-    BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, HeapError, HeapStats, RuntimeError,
-    Value, Vm, VmConfig,
+    BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, HeapError, HeapStats, HostFunction,
+    HostObject, RuntimeError, Value, Vm, VmConfig,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -85,6 +86,33 @@ struct PageRealm {
     module_programs: BTreeMap<String, BlueJsProgramHandle>,
     linked_module_ids: BTreeSet<String>,
     bytecode_bytes: usize,
+}
+
+/// A restricted, temporary view for installing host callbacks into one live
+/// page realm. It intentionally exposes no VM execution, heap, source, or
+/// object-inspection API, so a page host cannot bypass page-runtime program
+/// admission while registering its own bindings.
+pub struct BlueJsHostBindingRegistrar<'vm> {
+    vm: &'vm mut Vm,
+}
+
+impl BlueJsHostBindingRegistrar<'_> {
+    /// Installs one opaque host object as a global in this realm.
+    pub fn install_global_object(&mut self, name: &str) -> Result<HostObject, RuntimeError> {
+        self.vm.install_host_object(name)
+    }
+
+    /// Installs one non-constructable callback on a host object created by
+    /// [`Self::install_global_object`] for this same realm.
+    pub fn install_method(
+        &mut self,
+        owner: HostObject,
+        name: &str,
+        length: u32,
+        function: impl HostFunction,
+    ) -> Result<(), RuntimeError> {
+        self.vm.install_host_method(owner, name, length, function)
+    }
 }
 
 /// A long-lived collection of independent tab realms and their compiled
@@ -192,6 +220,23 @@ impl BlueJsPageRuntime {
             self.registry.invalidate(handle);
         }
         true
+    }
+
+    /// Gives an embedding host a temporary, restricted registrar for one live
+    /// realm. Bindings are scoped to the realm VM and therefore disappear on
+    /// [`Self::navigate`] or [`Self::close_realm`]. The caller cannot access
+    /// bytecode execution or heap operations through this API.
+    pub fn configure_realm_bindings(
+        &mut self,
+        tab_id: u64,
+        configure: impl FnOnce(&mut BlueJsHostBindingRegistrar<'_>) -> Result<(), RuntimeError>,
+    ) -> Result<(), BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        configure(&mut BlueJsHostBindingRegistrar { vm: &mut realm.vm })
+            .map_err(BlueJsPageRuntimeError::HostBinding)
     }
 
     /// Compiles and retains one caller-authorized structured program. The
@@ -494,6 +539,7 @@ pub enum BlueJsPageRuntimeError {
     ProgramShape,
     DuplicateModuleIdentity(String),
     VmInitialization(HeapError),
+    HostBinding(RuntimeError),
     ProgramRegistry(BlueJsProgramDebugError),
     Runtime(RuntimeError),
 }
@@ -538,6 +584,9 @@ impl fmt::Display for BlueJsPageRuntimeError {
             Self::VmInitialization(error) => {
                 write!(formatter, "cannot initialize page VM: {error}")
             }
+            Self::HostBinding(error) => {
+                write!(formatter, "cannot install page realm host binding: {error}")
+            }
             Self::ProgramRegistry(error) => write!(
                 formatter,
                 "BlueJS program registry rejected page program: {error}"
@@ -551,6 +600,7 @@ impl std::error::Error for BlueJsPageRuntimeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::VmInitialization(error) => Some(error),
+            Self::HostBinding(error) => Some(error),
             Self::ProgramRegistry(error) => Some(error),
             Self::Runtime(error) => Some(error),
             _ => None,
@@ -601,6 +651,51 @@ mod tests {
             Value::Undefined
         );
         assert_eq!(runtime.realm_stats(7).unwrap().program_count, 2);
+    }
+
+    #[test]
+    fn host_bindings_are_realm_local_and_do_not_expose_vm_execution() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        runtime
+            .configure_realm_bindings(7, |bindings| {
+                let host = bindings.install_global_object("pageHost")?;
+                bindings.install_method(host, "answer", 0, |_args: &[crate::HostValue]| {
+                    Ok(crate::HostValue::Number(42.0))
+                })
+            })
+            .unwrap();
+        let first = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///first.js"),
+                &BlueJsProgramV1::Script(parse("pageHost.answer();").unwrap()),
+            )
+            .unwrap();
+        assert_eq!(
+            runtime.execute_program(7, first).unwrap(),
+            Value::Number(42.0)
+        );
+
+        runtime.navigate(7, origin()).unwrap();
+        let replacement = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///replacement.js"),
+                &BlueJsProgramV1::Script(parse("pageHost.answer();").unwrap()),
+            )
+            .unwrap();
+        assert!(matches!(
+            runtime.execute_program(7, replacement),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::ReferenceError(name)))
+                if name == "pageHost"
+        ));
+        assert_eq!(
+            runtime.configure_realm_bindings(8, |_| Ok(())),
+            Err(BlueJsPageRuntimeError::UnknownRealm(8))
+        );
     }
 
     #[test]
