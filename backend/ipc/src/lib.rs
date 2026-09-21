@@ -140,6 +140,11 @@ pub enum ClientMessage {
     /// Chromium differential-testing harness, `TEST_PLAN.md`) needs to
     /// *not* have filtered out.
     GetDom,
+    /// Requests source-free execution outcomes for inline BlueTS scripts in
+    /// the addressed tab, replied to with [`ServerMessage::BlueTsScriptReports`].
+    /// This is observability only: it neither enables inline execution nor
+    /// exposes a script's source, diagnostics, or runtime values.
+    GetBlueTsScriptReports,
     /// Opens a new, blank tab, replied to with [`ServerMessage::TabOpened`]
     /// -- `phase-16-multi-tab-and-tab-groups/PLAN.md`'s minimal first
     /// slice. `url` is optional purely for convenience (equivalent to
@@ -202,6 +207,12 @@ pub enum ServerMessage {
     Representation(AiSnapshot),
     /// Reply to [`ClientMessage::GetDom`].
     Dom(String),
+    /// Reply to [`ClientMessage::GetBlueTsScriptReports`].
+    ///
+    /// The reports deliberately include only stable tab/document identity,
+    /// script kind, ordinal, and a source-free outcome category. They are not
+    /// an execution-result, diagnostic, or source-inspection API.
+    BlueTsScriptReports(Vec<BlueTsScriptExecutionReport>),
     /// Reply to [`ClientMessage::OpenTab`]. `url` reflects whatever
     /// actually ended up loaded -- `None` for a blank tab (`OpenTab`
     /// was given no `url`), `Some(final_url)` once a requested
@@ -248,6 +259,33 @@ pub enum ServerMessage {
 pub struct TabSummary {
     pub id: u64,
     pub url: Option<String>,
+}
+
+/// The HTML script classification used by a [`BlueTsScriptExecutionReport`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueTsScriptKind {
+    Classic,
+    Module,
+}
+
+/// The source-free outcome of an inline BlueTS script attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueTsScriptExecutionOutcome {
+    Executed,
+    Rejected {
+        /// A bounded policy/compiler category, never source or diagnostics.
+        category: String,
+    },
+}
+
+/// One source-free inline BlueTS execution report for a tab/document pair.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlueTsScriptExecutionReport {
+    pub tab_id: u64,
+    pub document_generation: u64,
+    pub ordinal: u32,
+    pub kind: BlueTsScriptKind,
+    pub outcome: BlueTsScriptExecutionOutcome,
 }
 
 fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
@@ -581,6 +619,7 @@ mod tests {
             ClientMessage::Highlight { id: Some(7) },
             ClientMessage::Highlight { id: None },
             ClientMessage::GetDom,
+            ClientMessage::GetBlueTsScriptReports,
             ClientMessage::OpenTab {
                 url: Some("https://example.com".to_string()),
             },
@@ -641,6 +680,22 @@ mod tests {
                 }],
             }),
             ServerMessage::Dom("| <html>\n".to_string()),
+            ServerMessage::BlueTsScriptReports(vec![BlueTsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 0,
+                kind: BlueTsScriptKind::Classic,
+                outcome: BlueTsScriptExecutionOutcome::Executed,
+            }]),
+            ServerMessage::BlueTsScriptReports(vec![BlueTsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 1,
+                kind: BlueTsScriptKind::Module,
+                outcome: BlueTsScriptExecutionOutcome::Rejected {
+                    category: "BlueTS compilation rejected the page script".to_string(),
+                },
+            }]),
             ServerMessage::TabOpened {
                 tab_id: 2,
                 url: Some("https://example.com/".to_string()),

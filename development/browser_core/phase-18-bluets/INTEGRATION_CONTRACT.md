@@ -87,10 +87,11 @@ document's realm. A lifecycle owner MAY call `synchronize_tabs` to release
 realms for closed tabs;
 the optional
 `run_session_with_script_requests_and_direct_page_host` entry point invokes it
-after each session batch. The default session and production binary do not yet
-construct a host, so this is not a claim of automatic HTML page-script
-execution or launcher-managed process wiring. A core owner may construct the
-host with a previously validated `DirectPageRealmOwner`; its VM, realm,
+after each session batch. The default session and default production startup
+path do not construct this direct host. The separate, explicitly selected
+inline-executor binary mode described below is not an automatic JavaScript
+page-script loader or launcher-managed process wiring. A core owner may
+construct the host with a previously validated `DirectPageRealmOwner`; its VM, realm,
 program-count, bytecode, and static-debug retention limits are then fixed
 outside each script request. An over-budget attachment is rejected before
 execution and leaves no retained direct program or static debug record.
@@ -149,9 +150,19 @@ fingerprint with the supplied value; it performs no URL resolution, fetch, or
 fallback lookup. Authorizer failures remain source-free in execution reports.
 Reports contain neither source text nor a BlueJS runtime value.
 `run_session_with_script_requests_and_inline_page_executor` is an explicit
-opt-in; `run_session` and the production core binary do not construct an
-executor. This seam does not implement a real fetch/cache/integrity provider,
-DOM bindings, debugger transport, or an out-of-process BlueJS host.
+opt-in; `run_session` and the default `blueice-core` startup path do not
+construct an executor. `blueice-core --inline-bluets-profile <known-profile>`
+is the sole shipped process-level opt-in: the executable selects the profile
+and its fixed default compiler policy before accepting a page, while page
+content has no profile/policy control. Once it is enabled, the frontend
+`GetBlueTsScriptReports` request MAY drain records only for its addressed live
+tab. The reply carries a tab ID, private document generation, declaration
+ordinal, classic/module kind, and either `Executed` or a bounded rejection
+category. It MUST NOT carry source text, source spans, compiler diagnostics,
+bytecode, VM/object handles, or runtime values; requesting it MUST NOT enable
+the executor, and an unconfigured core rejects the request. This seam does not
+implement a real fetch/cache/integrity provider, DOM bindings, debugger
+transport, or an out-of-process BlueJS host.
 
 One page realm owns at most one live or previously linked program for each
 canonical ESM module ID. BlueJS retains module cells by that ID, so a second

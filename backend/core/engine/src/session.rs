@@ -53,13 +53,17 @@
 use crate::gatekeeper_client::{self, NavOutcome};
 use crate::{
     script::{
-        direct_page::DirectPageScriptHost, inline_runner::DirectPageInlineExecutor,
+        direct_page::{DirectPageScriptHost, DirectPageScriptKind},
+        inline_runner::{DirectPageInlineExecutor, DirectPageScriptExecutionReport},
         ScriptRequestReceiver,
     },
     Page, TabId, TabManager,
 };
 use blueice_dom::NodeId;
-use blueice_ipc::{shm, ClientMessage, NodeAction, ServerMessage, TabSummary};
+use blueice_ipc::{
+    shm, BlueTsScriptExecutionOutcome, BlueTsScriptExecutionReport, BlueTsScriptKind,
+    ClientMessage, NodeAction, ServerMessage, TabSummary,
+};
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -130,7 +134,8 @@ fn is_timeout(err: &io::Error) -> bool {
 /// **Multi-tab addressing** (`phase-16-multi-tab-and-tab-groups/
 /// PLAN.md`'s minimal first slice): every per-tab-scoped message
 /// (`Navigate`, `Resize`, `Click`, `Hover`, `Scroll`,
-/// `GetRepresentation`, `ActOn`, `Highlight`, `GetDom`, `CloseTab`) is
+/// `GetRepresentation`, `ActOn`, `Highlight`, `GetDom`,
+/// `GetBlueTsScriptReports`, `CloseTab`) is
 /// addressed by the envelope's `tab_id` -- `None` resolves to
 /// [`TabManager::default_tab`], reproducing pre-Phase-16 single-`Page`
 /// behavior byte-for-byte for a client that never sends `OpenTab`. A
@@ -376,6 +381,25 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         )?,
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
+                    ClientMessage::GetBlueTsScriptReports => match tabs.get(target) {
+                        Some(_) => match inline_page_executor.as_deref_mut() {
+                            Some(executor) => blueice_ipc::write_server_message_with_ids(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                &ServerMessage::BlueTsScriptReports(inline_execution_reports(
+                                    executor.drain_reports_for_tab(target),
+                                )),
+                            )?,
+                            None => write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "inline BlueTS execution is not enabled".to_string(),
+                            )?,
+                        },
+                        None => write_unknown_tab_error(stream, request_id, target)?,
+                    },
                     ClientMessage::ActOn { id, action } => match tabs.get_mut(target) {
                         Some(page) => {
                             let is_click = matches!(action, NodeAction::Click);
@@ -481,6 +505,51 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
             script_requests.dispatch_pending(tabs);
         }
         synchronize_page_script_runtime(&mut direct_page_host, &mut inline_page_executor, tabs)?;
+    }
+}
+
+/// Converts core-owned direct-page execution records into the public IPC
+/// observation format. Deliberately map only the fixed report category: page
+/// source, compiler diagnostics, and runtime values never cross this boundary.
+fn inline_execution_reports(
+    reports: Vec<DirectPageScriptExecutionReport>,
+) -> Vec<BlueTsScriptExecutionReport> {
+    reports
+        .into_iter()
+        .map(|report| match report {
+            DirectPageScriptExecutionReport::Executed {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+            } => BlueTsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: inline_script_kind(kind),
+                outcome: BlueTsScriptExecutionOutcome::Executed,
+            },
+            DirectPageScriptExecutionReport::Rejected {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+                message,
+            } => BlueTsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: inline_script_kind(kind),
+                outcome: BlueTsScriptExecutionOutcome::Rejected { category: message },
+            },
+        })
+        .collect()
+}
+
+fn inline_script_kind(kind: DirectPageScriptKind) -> BlueTsScriptKind {
+    match kind {
+        DirectPageScriptKind::Classic => BlueTsScriptKind::Classic,
+        DirectPageScriptKind::Module => BlueTsScriptKind::Module,
     }
 }
 

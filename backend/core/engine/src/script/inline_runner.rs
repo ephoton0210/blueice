@@ -214,6 +214,28 @@ impl DirectPageInlineExecutor {
         self.reports.drain(..).collect()
     }
 
+    /// Removes and returns reports for `tab_id`, preserving reports for every
+    /// other tab in their original execution order. This keeps the frontend
+    /// control plane scoped to its addressed tab without making a report from
+    /// one page observable to another page's client.
+    pub fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<DirectPageScriptExecutionReport> {
+        let mut matched = Vec::new();
+        let mut remaining = VecDeque::with_capacity(self.reports.len());
+        while let Some(report) = self.reports.pop_front() {
+            let report_tab_id = match &report {
+                DirectPageScriptExecutionReport::Executed { tab_id, .. }
+                | DirectPageScriptExecutionReport::Rejected { tab_id, .. } => *tab_id,
+            };
+            if report_tab_id == tab_id.as_u64() {
+                matched.push(report);
+            } else {
+                remaining.push_back(report);
+            }
+        }
+        self.reports = remaining;
+        matched
+    }
+
     /// Exposes only the count of retained static debug records for lifecycle
     /// regression tests. Static metadata remains owned by the live realm.
     pub fn debug_record_count(&self) -> usize {
@@ -597,6 +619,46 @@ mod tests {
 
         executor.synchronize_and_execute(&tabs).unwrap();
         assert_eq!(executor.reports().len(), 2, "the document runs only once");
+    }
+
+    #[test]
+    fn draining_one_tab_reports_does_not_expose_or_discard_another_tabs_reports() {
+        let mut executor = executor();
+        executor.reports = VecDeque::from([
+            DirectPageScriptExecutionReport::Executed {
+                tab_id: 1,
+                document_generation: 3,
+                ordinal: 0,
+                kind: DirectPageScriptKind::Classic,
+            },
+            DirectPageScriptExecutionReport::Rejected {
+                tab_id: 2,
+                document_generation: 4,
+                ordinal: 1,
+                kind: DirectPageScriptKind::Module,
+                message: "BlueTS compilation rejected the page script".to_string(),
+            },
+        ]);
+
+        assert_eq!(
+            executor.drain_reports_for_tab(TabId::from_u64(1)),
+            vec![DirectPageScriptExecutionReport::Executed {
+                tab_id: 1,
+                document_generation: 3,
+                ordinal: 0,
+                kind: DirectPageScriptKind::Classic,
+            }]
+        );
+        assert_eq!(
+            executor.reports(),
+            &VecDeque::from([DirectPageScriptExecutionReport::Rejected {
+                tab_id: 2,
+                document_generation: 4,
+                ordinal: 1,
+                kind: DirectPageScriptKind::Module,
+                message: "BlueTS compilation rejected the page script".to_string(),
+            }])
+        );
     }
 
     #[test]

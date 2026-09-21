@@ -16,9 +16,12 @@ BlueTS-to-BlueJS structured-program bridge are complete for `blue-ts-0.1`.
 They do not yet make a general TypeScript page executable or debuggable. The
 bridge now has a limited, in-memory mapping from a single direct module's
 top-level lowering spans to verified BlueJS safe points, plus an in-process
-page host with two read-only document-oriented profiles. It still has no
-general DOM or event surface, live contract boundary, debugger IPC, or MCP
-project-registration path.
+page host with two read-only document-oriented profiles. `blueice-core` can
+now opt into one such profile for inline declarations, and expose only
+source-free per-tab outcomes through its control plane. It still has no
+general DOM or event surface, launcher-managed/out-of-process BlueJS host,
+live page-data contract boundary, debugger runtime, or MCP project-registration
+path.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
 syntax matrix while an earlier item prevents an already-supported program from
@@ -74,6 +77,20 @@ or second module resolver to bypass them.
   navigation/close releases old-realm charges before a successor is observed.
   This remains a per-host in-process policy, not a substitute for the process
   host's overall resource policy.
+
+  `blueice-core --inline-bluets-profile <known-profile>` is an additional,
+  explicitly configured process seam for the narrow inline executor. The core,
+  not page content, selects the profile and fixed default compiler options.
+  After a normal successful navigation, a client may send
+  `GetBlueTsScriptReports` for its tab and receive a bounded ordered drain of
+  tab/document generation, declaration ordinal/kind, and either `Executed` or
+  a fixed rejection category. Reports contain no script source, diagnostics,
+  runtime values, bytecode, or object handles; querying does not enable
+  execution, and a core started without the flag rejects the query. A
+  subprocess HTTP fixture now proves one classic and one module declaration
+  execute under `core-script-document-text-v1`, while an invalid static call
+  is reported source-free. This does not make the script-socket dispatcher a
+  JavaScript binding or close the real out-of-process host acceptance.
 
   Acceptance: a page fixture can run a supported JavaScript classic script and
   module in its own realm; navigation/reload invalidates old program handles;
@@ -308,8 +325,15 @@ or second module resolver to bypass them.
   `run_session_with_script_requests_and_inline_page_executor` entry point has a
   regression fixture that fetches a real HTTP page through the normal core
   session pipeline and executes both an inline classic and inline module
-  declaration. The default `run_session` and `blueice-core` still do not enable
-  it, and no concrete fetch/cache/integrity implementation,
+  declaration. `blueice-core` retains that disabled default, but its explicit
+  `--inline-bluets-profile <known-profile>` startup switch can construct the
+  executor with a core-owned profile and default compiler policy. The source-
+  free `GetBlueTsScriptReports` control-plane query drains only the addressed
+  tab's bounded execution outcomes; it cannot enable the executor or expose
+  page source, diagnostics, bytecode, or runtime values. The binary subprocess
+  regression covers that opt-in mode across real HTTP navigation, a classic
+  declaration, a module declaration, and a static rejection. No concrete
+  fetch/cache/integrity implementation,
   launcher-managed BlueJS process, or general external graph policy exists.
   The closed-graph direct bridge integration is complete; those broader
   page-host responsibilities remain separate open prerequisites.
@@ -493,6 +517,15 @@ or second module resolver to bypass them.
   Acceptance: the tests exercise `core`, IPC, BlueJS host, BlueTS, and the
   public debugger/MCP boundary as applicable; no assertion is satisfied solely
   by a host-neutral unit test.
+
+  Foundation delivered: `backend/core/engine/tests/core_binary.rs` now starts
+  the compiled `blueice-core` binary with an explicit
+  `--inline-bluets-profile core-script-document-text-v1`, serves an actual HTTP
+  document, and verifies the framed frontend IPC sequence for a classic
+  declaration, module declaration, and rejected typed call. It observes only
+  source-free outcome records after navigation. Debugger, contracts beyond the
+  two immutable snapshots, resource/policy isolation, reload, and multi-tab
+  cases remain required before this item can close.
 
 - [x] **Make the TypeScript 5.9.3 compatibility oracle a reproducible CI
   gate.** The `typescript-oracle` CI job provisions the exact pinned compiler

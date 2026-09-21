@@ -267,6 +267,37 @@ fn inline_blue_ts_scripts_execute_after_a_real_session_navigation() {
 }
 
 #[test]
+fn script_reports_query_does_not_enable_the_default_session_executor() {
+    let dir = temp_frame_dir("inline-blue-ts-reports-disabled");
+    let (mut client, mut server) = client_pair();
+    let dir_for_thread = dir.clone();
+    let handle = thread::spawn(move || {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let mut generation = 0;
+        run_session(
+            &mut tabs,
+            &mut server,
+            &dir_for_thread,
+            &mut generation,
+            std::path::Path::new("/not-used-without-navigation"),
+        )
+        .unwrap();
+    });
+    handshake(&mut client);
+
+    blueice_ipc::write_client_message(&mut client, &ClientMessage::GetBlueTsScriptReports).unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut client).unwrap(),
+        ServerMessage::Error {
+            message: "inline BlueTS execution is not enabled".to_string(),
+        }
+    );
+    blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+
+    handle.join().unwrap();
+}
+
+#[test]
 fn authorized_external_blue_ts_module_graph_executes_after_a_real_session_navigation() {
     let dir = temp_frame_dir("external-blue-ts-page-pipeline");
     std::fs::create_dir_all(&dir).unwrap();

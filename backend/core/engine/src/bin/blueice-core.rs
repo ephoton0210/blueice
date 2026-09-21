@@ -52,6 +52,11 @@ struct Args {
     /// or an integration test; omitting it preserves the reference binary's
     /// current frontend-only mode.
     script_socket: Option<PathBuf>,
+    /// An explicitly selected, core-owned host typing profile for executing
+    /// discovered inline BlueTS page declarations. Omission preserves the
+    /// default no-inline-execution process mode; page content cannot select a
+    /// profile or alter the compiler policy.
+    inline_bluets_profile: Option<String>,
 }
 
 /// Takes an injectable argument iterator (rather than reading
@@ -69,6 +74,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut frame_dir = None;
     let mut gatekeeper_socket = None;
     let mut script_socket = None;
+    let mut inline_bluets_profile = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -88,6 +94,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
+            "--inline-bluets-profile" => inline_bluets_profile = Some(value()?),
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
@@ -100,6 +107,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         frame_dir,
         gatekeeper_socket,
         script_socket,
+        inline_bluets_profile,
     })
 }
 
@@ -164,6 +172,7 @@ fn main() -> ExitCode {
         .gatekeeper_socket
         .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
     let script_socket = args.script_socket.clone();
+    let inline_bluets_profile = args.inline_bluets_profile.clone();
 
     let script_listener = match script_socket.as_ref() {
         Some(path) => {
@@ -209,14 +218,37 @@ fn main() -> ExitCode {
         let (mut stream, _) = listener.accept()?;
         let mut tabs = TabManager::new(args.width, args.height);
         let mut generation = 0u64;
-        session::run_session_with_script_requests(
-            &mut tabs,
-            &mut stream,
-            &frame_dir,
-            &mut generation,
-            &gatekeeper_socket,
-            script_socket.as_ref().map(|_| &script_requests),
-        )
+        if let Some(feature_profile) = inline_bluets_profile {
+            let mut inline_executor = script::inline_runner::DirectPageInlineExecutor::new(
+                script::host_typings::core_script_host_type_catalog(),
+                feature_profile,
+                blueice_bluets::CompilerOptions::default(),
+            )
+            .map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("invalid inline BlueTS profile: {error}"),
+                )
+            })?;
+            session::run_session_with_script_requests_and_inline_page_executor(
+                &mut tabs,
+                &mut stream,
+                &frame_dir,
+                &mut generation,
+                &gatekeeper_socket,
+                script_socket.as_ref().map(|_| &script_requests),
+                Some(&mut inline_executor),
+            )
+        } else {
+            session::run_session_with_script_requests(
+                &mut tabs,
+                &mut stream,
+                &frame_dir,
+                &mut generation,
+                &gatekeeper_socket,
+                script_socket.as_ref().map(|_| &script_requests),
+            )
+        }
     })();
 
     let _ = std::fs::remove_file(&args.socket);
@@ -262,6 +294,7 @@ mod tests {
         assert_eq!(parsed.frame_dir, None);
         assert_eq!(parsed.gatekeeper_socket, None);
         assert_eq!(parsed.script_socket, None);
+        assert_eq!(parsed.inline_bluets_profile, None);
     }
 
     #[test]
@@ -279,6 +312,8 @@ mod tests {
             "/tmp/gk.sock",
             "--script-socket",
             "/tmp/script.sock",
+            "--inline-bluets-profile",
+            "core-script-document-text-v1",
         ])
         .unwrap();
         assert_eq!(
@@ -290,6 +325,7 @@ mod tests {
                 frame_dir: Some(PathBuf::from("/tmp/frames")),
                 gatekeeper_socket: Some(PathBuf::from("/tmp/gk.sock")),
                 script_socket: Some(PathBuf::from("/tmp/script.sock")),
+                inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
             }
         );
     }
