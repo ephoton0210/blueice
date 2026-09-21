@@ -574,10 +574,17 @@ fn checked_entry(
     if compilation.has_errors() {
         return Err(BridgeError::BlueTs(compilation.diagnostics));
     }
-    if compilation.project.modules.len() != 1 {
+    if compilation
+        .project
+        .modules
+        .keys()
+        .filter(|module_id| !module_id.ends_with(".d.ts"))
+        .count()
+        != 1
+    {
         return Err(unsupported(
             SourceSpan::new(entry, 0, 0),
-            "the v1 direct bridge supports exactly one source module",
+            "the v1 direct bridge supports exactly one executable source module",
         ));
     }
     let module = compilation
@@ -648,9 +655,13 @@ fn debug_info_for_module(debug_info: &BlueTsDebugInfo, module_id: &str) -> BlueT
 }
 
 fn source_identity(sources: &[BridgeSource]) -> Result<bluejs::BlueJsSourceIdentity, BridgeError> {
-    let [source] = sources else {
+    let executable_sources = sources
+        .iter()
+        .filter(|source| !source.module.ends_with(".d.ts"))
+        .collect::<Vec<_>>();
+    let [source] = executable_sources.as_slice() else {
         return Err(BridgeError::InvalidSourceIdentity(
-            "a direct script or module must retain exactly one source".to_string(),
+            "a direct script or module must retain exactly one executable source".to_string(),
         ));
     };
     bluejs::BlueJsSourceIdentity::new(source.module.clone(), source.content_hash.clone())

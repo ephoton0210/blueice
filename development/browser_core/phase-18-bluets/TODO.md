@@ -130,8 +130,16 @@ or second module resolver to bypass them.
   exact inventory, rejecting missing, duplicate, extra, or drifted bindings.
   The checked-in `core-script-empty-v1` fixture is deliberately empty: core
   has an IPC dispatcher but no BlueJS DOM globals, so declaring `document`
-  would be dishonest. Actual bindings, their matching BlueJS installation, and
-  direct-page compiler consumption remain required before this item can close.
+  would be dishonest. `GeneratedHostTypingsV1::verify_for_direct_compiler`
+  now checks the selected manifest, exact declaration bytes, and complete
+  runtime registration inventory before returning the one `.d.ts` source that
+  a direct compiler may place in `CompilerOptions::ambient_declaration_modules`.
+  BlueTS parses that declaration under its ordinary module/source limits,
+  includes its exact bytes in the compiler fingerprint and static source
+  metadata, exposes its declarations only as static ambient names, and emits
+  no declaration code. The standalone `bluetsc` intentionally cannot set this
+  host-only option. Actual bindings, their matching BlueJS installation, and
+  page-host request adoption remain required before this item can close.
 
   Acceptance: a checked-in fixture generates byte-identical typing artifacts;
   every declared binding can be invoked in the matching host profile; an absent

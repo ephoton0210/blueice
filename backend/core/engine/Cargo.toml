@@ -14,6 +14,7 @@ blueice-raster = { path = "../raster" }
 blueice-net = { path = "../../net" }
 blueice-ipc = { path = "../../ipc" }
 blueice-i18n = { path = "../../i18n" }
+blueice-bluets = { path = "../../bluets" }
 
 [dev-dependencies]
 blueice-testing = { path = "../../testing" }

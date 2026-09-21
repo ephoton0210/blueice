@@ -81,6 +81,36 @@ fn direct_script_uses_the_page_realms_exact_generation_and_static_metadata() {
 }
 
 #[test]
+fn direct_script_keeps_ambient_host_typings_static_without_making_them_a_program_source() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const answer: number = hostAnswer; answer;",
+        )]),
+        CompilerOptions {
+            ambient_declaration_modules: vec![ModuleSource::new(
+                "blueice:///profiles/test/lib.blueice.d.ts",
+                "declare const hostAnswer: number;",
+            )],
+            ..CompilerOptions::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(artifact.sources.len(), 2);
+    assert_eq!(artifact.debug_info.sources.len(), 2);
+
+    let mut owner = DirectPageRealmOwner::default();
+    owner.open_realm(7, origin()).unwrap();
+    let attachment = owner.attach_script(&artifact, 7, &origin()).unwrap();
+    assert_eq!(owner.debug_record_count(), 1);
+    assert_eq!(
+        attachment.safe_point_map.entries[0].source,
+        ENTRY.to_string()
+    );
+}
+
+#[test]
 fn realm_owner_prunes_classic_script_metadata_as_part_of_navigation() {
     let artifact = artifact();
     let mut owner = DirectPageRealmOwner::default();

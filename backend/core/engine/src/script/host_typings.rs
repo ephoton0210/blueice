@@ -11,6 +11,7 @@
 //! explicit empty profile because IPC request handlers are not JavaScript
 //! globals by themselves.
 
+use blueice_bluets::ModuleSource;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -396,6 +397,36 @@ impl GeneratedHostTypingsV1 {
         }
         Ok(())
     }
+
+    /// Verifies all host-side typing identities and returns the exact
+    /// declaration module a direct-page compiler may expose as an ambient
+    /// type surface. The caller must place the returned source in
+    /// [`blueice_bluets::CompilerOptions::ambient_declaration_modules`]; this
+    /// method never chooses a profile or lets a stale declaration fall back to
+    /// another host schema.
+    pub fn verify_for_direct_compiler(
+        &self,
+        canonical_module_id: impl Into<String>,
+        supplied_manifest: &HostTypingsManifestV1,
+        supplied_declaration_source: &str,
+        supplied_runtime_bindings: &[HostRuntimeBindingV1],
+    ) -> Result<ModuleSource, HostTypingsError> {
+        let canonical_module_id = canonical_module_id.into();
+        if canonical_module_id.is_empty()
+            || canonical_module_id.contains('\0')
+            || !canonical_module_id.ends_with(".d.ts")
+        {
+            return Err(HostTypingsError::InvalidCompilerModuleId(
+                canonical_module_id,
+            ));
+        }
+        self.validate_supplied(supplied_manifest, supplied_declaration_source)?;
+        self.validate_runtime_bindings(supplied_runtime_bindings)?;
+        Ok(ModuleSource::new(
+            canonical_module_id,
+            self.declaration_source.clone(),
+        ))
+    }
 }
 
 /// A rejected host typing profile or artifact identity.
@@ -412,6 +443,7 @@ pub enum HostTypingsError {
     BindingInventoryMismatch,
     RuntimeBindingInventoryMismatch,
     DeclarationBytesMismatch,
+    InvalidCompilerModuleId(String),
 }
 
 impl fmt::Display for HostTypingsError {
@@ -446,6 +478,10 @@ impl fmt::Display for HostTypingsError {
             Self::DeclarationBytesMismatch => {
                 f.write_str("host typing declaration source bytes do not match")
             }
+            Self::InvalidCompilerModuleId(module_id) => write!(
+                f,
+                "host typing compiler module ID `{module_id}` must be a non-empty `.d.ts` identity"
+            ),
         }
     }
 }
@@ -648,6 +684,59 @@ mod tests {
         assert_eq!(
             artifact.validate_supplied(&artifact.manifest, "declare const document: unknown;\n"),
             Err(HostTypingsError::DeclarationBytesMismatch)
+        );
+    }
+
+    #[test]
+    fn verified_artifact_becomes_an_exact_ambient_compiler_module() {
+        let artifact = HostTypeSurfaceV1::new(
+            "blue-ts-0.1",
+            "blueice-page-v1",
+            "test-host-v1",
+            vec![binding("host.answer", "declare const hostAnswer: number;")],
+        )
+        .generate()
+        .unwrap();
+        let declaration = artifact
+            .verify_for_direct_compiler(
+                "blueice:///profiles/test-host-v1/lib.blueice.d.ts",
+                &artifact.manifest,
+                &artifact.declaration_source,
+                &artifact.runtime_bindings,
+            )
+            .unwrap();
+        let compilation = blueice_bluets::compile(
+            "page:///app/main.ts",
+            &blueice_bluets::MapLoader::from([blueice_bluets::ModuleSource::new(
+                "page:///app/main.ts",
+                "const answer: number = hostAnswer;",
+            )]),
+            blueice_bluets::CompilerOptions {
+                ambient_declaration_modules: vec![declaration],
+                ..blueice_bluets::CompilerOptions::default()
+            },
+        );
+        assert!(!compilation.has_errors(), "{:?}", compilation.diagnostics);
+
+        assert_eq!(
+            artifact.verify_for_direct_compiler(
+                "blueice:///profiles/test-host-v1/lib.blueice.ts",
+                &artifact.manifest,
+                &artifact.declaration_source,
+                &artifact.runtime_bindings,
+            ),
+            Err(HostTypingsError::InvalidCompilerModuleId(
+                "blueice:///profiles/test-host-v1/lib.blueice.ts".to_string()
+            ))
+        );
+        assert_eq!(
+            artifact.verify_for_direct_compiler(
+                "blueice:///profiles/test-host-v1/lib.blueice.d.ts",
+                &artifact.manifest,
+                &artifact.declaration_source,
+                &[],
+            ),
+            Err(HostTypingsError::RuntimeBindingInventoryMismatch)
         );
     }
 

@@ -228,9 +228,15 @@ and schema drift, binding-inventory drift, and declaration-byte drift without
 fallback. The generated artifact additionally verifies that a host's installed
 runtime registration records equal the schema-derived inventory regardless of
 registration order; missing, duplicate, extra, or capability/identity-drifted
-bindings are rejected. Direct-page compilation has not yet consumed this
-validator, so the profile remains a foundation rather than an advertised page
-API.
+bindings are rejected. `verify_for_direct_compiler` now performs all of those
+checks before producing one canonical `.d.ts` `ModuleSource` for
+`CompilerOptions::ambient_declaration_modules`. BlueTS parses this source under
+the normal source/module limits, includes its bytes in compiler fingerprints
+and static metadata, forbids imports/re-exports from it, and exposes only its
+static declarations; it produces no JavaScript or host capability. The
+standalone `bluetsc` leaves this host-only input empty. This establishes direct
+compiler consumption without advertising a page API before the BlueJS host has
+installed matching bindings.
 
 The direct bridge also retains `BlueTsDebugInfo` only through its exact live
 BlueJS generation when a caller opts into `DirectDebugRegistry`. Retention
