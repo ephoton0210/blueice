@@ -108,6 +108,18 @@ or second module resolver to bypass them.
   the direct-page compiler reject unavailable profiles, schema mismatches, or
   declaration-byte mismatches.
 
+  Foundation delivered: `blueice_engine::script::host_typings` now owns
+  `HostTypeSurfaceV1`, deterministic declaration/manifest generation, a
+  profile catalog, and a runtime-binding inventory derived from the same
+  schema. Generated artifacts have sorted binding IDs, normalized LF
+  declarations, fixed-order JSON, and schema/declaration hashes; a supplied
+  manifest or source with a wrong profile, identity, schema, binding inventory,
+  or declaration bytes is rejected without fallback. The checked-in
+  `core-script-empty-v1` fixture is deliberately empty: core has an IPC
+  dispatcher but no BlueJS DOM globals, so declaring `document` would be
+  dishonest. Actual bindings, their matching BlueJS installation, and
+  direct-page compiler consumption remain required before this item can close.
+
   Acceptance: a checked-in fixture generates byte-identical typing artifacts;
   every declared binding can be invoked in the matching host profile; an absent
   binding is rejected by both BlueTS and the host; a profile/schema mismatch

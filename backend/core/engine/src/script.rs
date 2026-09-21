@@ -12,6 +12,11 @@
 use crate::{TabId, TabManager};
 use blueice_ipc::script::{ScriptReply, ScriptRequest};
 
+/// Deterministic host typing artifacts derived from the core-owned binding
+/// surface. The initial profile deliberately exposes no JavaScript globals:
+/// core's narrow IPC dispatcher is not itself a BlueJS DOM binding.
+pub mod host_typings;
+
 /// Applies one decoded page-script request to the addressed live tab.
 ///
 /// The dispatcher never creates a tab, reads a URL, opens a file, grants a

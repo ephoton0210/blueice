@@ -147,7 +147,9 @@ Source locations use UTF-8 byte offsets at this boundary. BlueTSC's Source Map v
 
 `lib.blueice.d.ts` is a generated, host-supplied declaration root. It is not a hand-maintained substitute for `lib.dom.d.ts`, and it must describe only APIs that the current BlueIce page-script host has actually exposed.
 
-The future host owns a declarative `HostTypeSurfaceV1` schema adjacent to the binding definitions that create each value. Each schema item records:
+The core script boundary now owns the initial declarative `HostTypeSurfaceV1`
+schema and deterministic generator adjacent to the binding definitions that
+will create each value. Each schema item records:
 
 - the global/module/member name and TypeScript declaration;
 - its value/type/namespace role and overload surface;
@@ -164,12 +166,23 @@ lib.blueice.manifest.json {
   language_version,
   host_api_version,
   schema_hash,
+  declaration_hash,
   enabled_feature_profile,
   binding_ids: [...]
 }
 ```
 
 The manifest is emitted with a stable field order, normalized LF text and no timestamps, checkout paths or machine-specific IDs. The `.d.ts` generator sorts declarations by stable binding ID and uses the same normalization rules, making the host-produced typing root reproducible. A direct BlueTS compile MUST be given this manifest and declaration source by the host's authorized module loader; it MUST reject an unavailable profile, a schema hash mismatch, or a declaration source whose bytes do not match the manifest. BlueTSC may consume an explicitly supplied local `.d.ts` module under its existing root-confined policy, but that does not claim a BlueIce host API.
+
+The current `core-script-empty-v1` profile provides a checked-in,
+byte-for-byte reproducible empty declaration root and manifest. Core's narrow
+script IPC dispatcher is not a BlueJS object binding, so this profile MUST NOT
+declare `document`, DOM node types, or any other global until the long-lived
+BlueJS host installs it from the same runtime-binding inventory. The profile
+catalog and artifact validator already reject unknown profiles, ABI/identity
+and schema drift, binding-inventory drift, and declaration-byte drift without
+fallback. Direct-page compilation has not yet consumed this validator, so the
+profile remains a foundation rather than an advertised page API.
 
 Adding a host API is additive only when it preserves existing binding IDs and declaration meanings. Removing or changing a public declaration requires a new host API major version and a new compatible feature profile. A compiler may target a declared older profile only when the host explicitly supplies its matching generated manifest; it may never infer API availability from the installed BlueJS version.
 
@@ -179,7 +192,7 @@ The first structured classic-script and resolver-preserving module-graph bridge 
 
 1. Public, tested BlueJS node IDs, code-unit IDs and safe-point validation APIs for the page/module AST surface.
 2. Bridge conformance fixtures extending the shipped no-emitted-JavaScript-reparse proof to exact origin/module preservation and deterministic bytecode-map ordering.
-3. A host schema generator proving each generated `lib.blueice.d.ts` binding exists in the corresponding feature profile and that an absent binding is rejected by both checker and host.
+3. A host schema generator proving each generated `lib.blueice.d.ts` binding exists in the corresponding feature profile and that an absent binding is rejected by both checker and host. The generator, profile catalog, byte-exact manifest validator, and deliberately empty initial fixture are shipped; matching BlueJS bindings and direct-page compiler enforcement are still required.
 4. Debugger tests for breakpoint binding, step/exception locations, stale-map rejection and the distinction between a static TypeScript type and a runtime BlueJS value.
 
 Until those gates are satisfied, `BlueTsDebugInfo` remains VM-independent and contains static source/type/symbol data only. This document records the shipped bounded hand-off and fixes the rejection behavior for the still-missing page APIs.
