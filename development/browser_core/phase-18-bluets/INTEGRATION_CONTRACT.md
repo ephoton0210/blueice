@@ -218,8 +218,12 @@ declare `document`, DOM node types, or any other global until the long-lived
 BlueJS host installs it from the same runtime-binding inventory. The profile
 catalog and artifact validator already reject unknown profiles, ABI/identity
 and schema drift, binding-inventory drift, and declaration-byte drift without
-fallback. Direct-page compilation has not yet consumed this validator, so the
-profile remains a foundation rather than an advertised page API.
+fallback. The generated artifact additionally verifies that a host's installed
+runtime registration records equal the schema-derived inventory regardless of
+registration order; missing, duplicate, extra, or capability/identity-drifted
+bindings are rejected. Direct-page compilation has not yet consumed this
+validator, so the profile remains a foundation rather than an advertised page
+API.
 
 The direct bridge also retains `BlueTsDebugInfo` only through its exact live
 BlueJS generation when a caller opts into `DirectDebugRegistry`. Retention

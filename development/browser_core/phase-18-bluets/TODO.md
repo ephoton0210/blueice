@@ -125,10 +125,12 @@ or second module resolver to bypass them.
   schema. Generated artifacts have sorted binding IDs, normalized LF
   declarations, fixed-order JSON, and schema/declaration hashes; a supplied
   manifest or source with a wrong profile, identity, schema, binding inventory,
-  or declaration bytes is rejected without fallback. The checked-in
-  `core-script-empty-v1` fixture is deliberately empty: core has an IPC
-  dispatcher but no BlueJS DOM globals, so declaring `document` would be
-  dishonest. Actual bindings, their matching BlueJS installation, and
+  or declaration bytes is rejected without fallback. The generated artifact
+  also validates a host's runtime registrations as an order-independent but
+  exact inventory, rejecting missing, duplicate, extra, or drifted bindings.
+  The checked-in `core-script-empty-v1` fixture is deliberately empty: core
+  has an IPC dispatcher but no BlueJS DOM globals, so declaring `document`
+  would be dishonest. Actual bindings, their matching BlueJS installation, and
   direct-page compiler consumption remain required before this item can close.
 
   Acceptance: a checked-in fixture generates byte-identical typing artifacts;

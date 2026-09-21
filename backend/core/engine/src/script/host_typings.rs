@@ -372,6 +372,30 @@ impl GeneratedHostTypingsV1 {
         }
         Ok(())
     }
+
+    /// Verifies that a host installed exactly the bindings from this generated
+    /// profile. Registration order is irrelevant, but missing, duplicate, or
+    /// extra bindings and any identity/capability drift fail closed before the
+    /// profile is advertised to a direct-page compiler or executor.
+    pub fn validate_runtime_bindings(
+        &self,
+        supplied_bindings: &[HostRuntimeBindingV1],
+    ) -> Result<(), HostTypingsError> {
+        let mut supplied = supplied_bindings.to_vec();
+        supplied.sort_unstable_by(|left, right| left.stable_id.cmp(&right.stable_id));
+        if supplied
+            .windows(2)
+            .any(|pair| pair[0].stable_id == pair[1].stable_id)
+        {
+            return Err(HostTypingsError::RuntimeBindingInventoryMismatch);
+        }
+        let mut expected = self.runtime_bindings.clone();
+        expected.sort_unstable_by(|left, right| left.stable_id.cmp(&right.stable_id));
+        if supplied != expected {
+            return Err(HostTypingsError::RuntimeBindingInventoryMismatch);
+        }
+        Ok(())
+    }
 }
 
 /// A rejected host typing profile or artifact identity.
@@ -386,6 +410,7 @@ pub enum HostTypingsError {
     ManifestIdentityMismatch,
     SchemaHashMismatch,
     BindingInventoryMismatch,
+    RuntimeBindingInventoryMismatch,
     DeclarationBytesMismatch,
 }
 
@@ -414,6 +439,9 @@ impl fmt::Display for HostTypingsError {
             }
             Self::BindingInventoryMismatch => {
                 f.write_str("host typing manifest binding inventory does not match")
+            }
+            Self::RuntimeBindingInventoryMismatch => {
+                f.write_str("host runtime binding inventory does not match the typing profile")
             }
             Self::DeclarationBytesMismatch => {
                 f.write_str("host typing declaration source bytes do not match")
@@ -561,6 +589,24 @@ mod tests {
         );
         assert!(artifact.manifest_json.ends_with("\n"));
         assert!(!artifact.manifest_json.contains('\r'));
+        let reverse_order = artifact
+            .runtime_bindings
+            .iter()
+            .cloned()
+            .rev()
+            .collect::<Vec<_>>();
+        assert_eq!(artifact.validate_runtime_bindings(&reverse_order), Ok(()));
+
+        let missing_binding = vec![reverse_order[0].clone()];
+        assert_eq!(
+            artifact.validate_runtime_bindings(&missing_binding),
+            Err(HostTypingsError::RuntimeBindingInventoryMismatch)
+        );
+        assert_eq!(
+            artifact
+                .validate_runtime_bindings(&[reverse_order[0].clone(), reverse_order[0].clone()]),
+            Err(HostTypingsError::RuntimeBindingInventoryMismatch)
+        );
     }
 
     #[test]
@@ -579,6 +625,7 @@ mod tests {
             )
         );
         assert!(artifact.runtime_bindings.is_empty());
+        assert_eq!(artifact.validate_runtime_bindings(&[]), Ok(()));
         assert!(!artifact.declaration_source.contains("document"));
     }
 
