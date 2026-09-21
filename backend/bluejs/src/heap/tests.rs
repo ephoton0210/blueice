@@ -725,3 +725,68 @@ fn collection_clear_releases_entry_bytes_and_keeps_positions_valid_for_iterators
     ));
     heap.unroot(root).unwrap();
 }
+
+#[test]
+fn own_integer_keys_lists_only_canonical_indices_in_ascending_order() {
+    let mut heap = Heap::default();
+    let object = heap.alloc_object(None).unwrap();
+    for key in ["10", "2", "01", "x", "9007199254740990", "-1", "1.5", "0"] {
+        heap.set(object, key, Value::Number(1.0)).unwrap();
+    }
+    assert_eq!(
+        heap.own_integer_keys(object),
+        Ok(Some(vec![0, 2, 10, 9_007_199_254_740_990]))
+    );
+    let array = heap.alloc_array(100, None).unwrap();
+    heap.set(array, "50", Value::Null).unwrap();
+    assert_eq!(heap.own_integer_keys(array), Ok(Some(vec![50])));
+}
+
+#[test]
+fn own_integer_keys_declines_objects_whose_indices_are_not_all_stored() {
+    let mut heap = Heap::default();
+    let target = heap.alloc_object(None).unwrap();
+    let proxy = heap
+        .alloc_proxy(target, target, None, false, false)
+        .unwrap();
+    let string = heap.alloc_string("abc".into(), None).unwrap();
+    let buffer = heap.alloc_array_buffer(4, None).unwrap();
+    let view = heap
+        .alloc_typed_array(buffer, 0, 4, false, TypedArrayKind::Uint8, None)
+        .unwrap();
+    for object in [proxy, string, view] {
+        assert_eq!(heap.own_integer_keys(object), Ok(None));
+    }
+}
+
+#[test]
+fn structure_epoch_advances_only_when_the_set_of_findable_keys_changes() {
+    let mut heap = Heap::default();
+    let object = heap.alloc_object(None).unwrap();
+    let prototype = heap.alloc_object(None).unwrap();
+    let data = |value: Value, writable: bool| PropertyDescriptor::data(value, writable, true, true);
+    let mut epoch = heap.structure_epoch();
+    let mut advanced = |heap: &Heap| {
+        let now = heap.structure_epoch();
+        let moved = now != epoch;
+        epoch = now;
+        moved
+    };
+
+    heap.set(object, "a", Value::Number(1.0)).unwrap();
+    assert!(advanced(&heap), "a new key");
+    heap.set(object, "a", Value::Number(2.0)).unwrap();
+    assert!(!advanced(&heap), "overwriting a value");
+    heap.define_own_property(object, "b", data(Value::Null, true))
+        .unwrap();
+    assert!(advanced(&heap), "a new defined key");
+    heap.define_own_property(object, "b", data(Value::Null, false))
+        .unwrap();
+    assert!(!advanced(&heap), "redefining an existing key");
+    heap.delete(object, "missing").unwrap();
+    assert!(!advanced(&heap), "deleting an absent key");
+    heap.delete(object, "a").unwrap();
+    assert!(advanced(&heap), "deleting a key");
+    heap.set_prototype(object, Some(prototype)).unwrap();
+    assert!(advanced(&heap), "a new prototype");
+}

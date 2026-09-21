@@ -33,6 +33,7 @@ impl Heap {
             minor_collections: 0,
             major_collections: 0,
             root_registrations: 0,
+            structure_epoch: 0,
         })
     }
 

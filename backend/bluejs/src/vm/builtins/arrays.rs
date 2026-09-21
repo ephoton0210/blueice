@@ -507,43 +507,31 @@ impl Vm {
         callback: &Value,
         this_arg: &Value,
     ) -> Result<Value, RuntimeError> {
-        if !self.is_callable(callback)? {
-            return Err(RuntimeError::TypeError(
-                "Array.prototype.forEach callback must be callable".into(),
-            ));
-        }
         let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
-        let length = self.get_property(&Value::Object(object), &"length".into())?;
-        let length = self.coerce_length(&length)? as u64;
-        if let Some(indices) = self.array_own_indices(object, length)? {
-            for index in indices {
-                self.charge_step()?;
-                let value = self.get_property(&Value::Object(object), &index.to_string().into())?;
+        let result = (|| {
+            let length = self.array_like_length(object)?;
+            if !self.is_callable(callback)? {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.forEach callback must be callable".into(),
+                ));
+            }
+            let mut scan = self.index_scan(object, length)?;
+            let mut from = 0;
+            while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
                 self.call_native(
                     callback.clone(),
                     this_arg.clone(),
                     vec![value, Value::Number(index as f64), Value::Object(object)],
                     false,
                 )?;
+                from = index + 1;
             }
-        } else {
-            for index in 0..length {
-                self.charge_step()?;
-                let key: PropertyName = index.to_string().into();
-                if self.has_property(object, &key)? {
-                    let value = self.get_property(&Value::Object(object), &key)?;
-                    self.call_native(
-                        callback.clone(),
-                        this_arg.clone(),
-                        vec![value, Value::Number(index as f64), Value::Object(object)],
-                        false,
-                    )?;
-                }
-            }
-        }
-        self.stack.pop();
-        Ok(Value::Undefined)
+            Ok(Value::Undefined)
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super) fn array_filter(
@@ -552,78 +540,49 @@ impl Vm {
         callback: &Value,
         this_arg: &Value,
     ) -> Result<Value, RuntimeError> {
-        if !self.is_callable(callback)? {
-            return Err(RuntimeError::TypeError(
-                "Array.prototype.filter callback must be callable".into(),
-            ));
-        }
         let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as u64;
+            let length = self.array_like_length(object)?;
+            if !self.is_callable(callback)? {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.filter callback must be callable".into(),
+                ));
+            }
             let target = self.array_species_create(object, 0)?;
             self.stack.push(Value::Object(target));
-            let result = (|| {
-                let mut target_index = 0usize;
-                if let Some(indices) = self.array_own_indices(object, length)? {
-                    for index in indices {
-                        self.charge_step()?;
-                        let value =
-                            self.get_property(&Value::Object(object), &index.to_string().into())?;
-                        let selected = self.call_native(
-                            callback.clone(),
-                            this_arg.clone(),
-                            vec![
-                                value.clone(),
-                                Value::Number(index as f64),
-                                Value::Object(object),
-                            ],
-                            false,
-                        )?;
-                        if self.to_boolean(&selected)? {
-                            self.array_create_data_property_or_throw(
-                                target,
-                                target_index.to_string().into(),
-                                value,
-                            )?;
-                            target_index += 1;
-                        }
-                    }
-                } else {
-                    for index in 0..length {
-                        self.charge_step()?;
-                        let key: PropertyName = index.to_string().into();
-                        if !self.has_property(object, &key)? {
-                            continue;
-                        }
-                        let value = self.get_property(&Value::Object(object), &key)?;
-                        let selected = self.call_native(
-                            callback.clone(),
-                            this_arg.clone(),
-                            vec![
-                                value.clone(),
-                                Value::Number(index as f64),
-                                Value::Object(object),
-                            ],
-                            false,
-                        )?;
-                        if self.to_boolean(&selected)? {
-                            self.array_create_data_property_or_throw(
-                                target,
-                                target_index.to_string().into(),
-                                value,
-                            )?;
-                            target_index += 1;
-                        }
-                    }
+            let mut scan = self.index_scan(object, length)?;
+            let mut from = 0;
+            let mut target_index = 0usize;
+            while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
+                // The callback may delete the element from the receiver.
+                let step_base = self.stack.len();
+                self.stack.push(value.clone());
+                let selected = self.call_native(
+                    callback.clone(),
+                    this_arg.clone(),
+                    vec![
+                        value.clone(),
+                        Value::Number(index as f64),
+                        Value::Object(object),
+                    ],
+                    false,
+                )?;
+                if self.to_boolean(&selected)? {
+                    self.array_create_data_property_or_throw(
+                        target,
+                        target_index.to_string().into(),
+                        value,
+                    )?;
+                    target_index += 1;
                 }
-                Ok(Value::Object(target))
-            })();
-            self.stack.pop();
-            result
+                self.stack.truncate(step_base);
+                from = index + 1;
+            }
+            Ok(Value::Object(target))
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
     }
 
@@ -634,10 +593,10 @@ impl Vm {
         this_arg: &Value,
     ) -> Result<Value, RuntimeError> {
         let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as u64;
+            let length = self.array_like_length(object)?;
             if !self.is_callable(callback)? {
                 return Err(RuntimeError::TypeError(
                     "Array.prototype.map callback must be callable".into(),
@@ -645,28 +604,21 @@ impl Vm {
             }
             let target = self.array_species_create(object, length as usize)?;
             self.stack.push(Value::Object(target));
-            let outcome = (|| {
-                for index in 0..length {
-                    self.charge_step()?;
-                    let key: PropertyName = index.to_string().into();
-                    if !self.has_property(object, &key)? {
-                        continue;
-                    }
-                    let value = self.get_property(&Value::Object(object), &key)?;
-                    let mapped = self.call_native(
-                        callback.clone(),
-                        this_arg.clone(),
-                        vec![value, Value::Number(index as f64), Value::Object(object)],
-                        false,
-                    )?;
-                    self.array_create_data_property_or_throw(target, key, mapped)?;
-                }
-                Ok(Value::Object(target))
-            })();
-            self.stack.pop();
-            outcome
+            let mut scan = self.index_scan(object, length)?;
+            let mut from = 0;
+            while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
+                let mapped = self.call_native(
+                    callback.clone(),
+                    this_arg.clone(),
+                    vec![value, Value::Number(index as f64), Value::Object(object)],
+                    false,
+                )?;
+                self.array_create_data_property_or_throw(target, index.to_string().into(), mapped)?;
+                from = index + 1;
+            }
+            Ok(Value::Object(target))
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
     }
 
@@ -678,22 +630,18 @@ impl Vm {
         some: bool,
     ) -> Result<Value, RuntimeError> {
         let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as u64;
+            let length = self.array_like_length(object)?;
             if !self.is_callable(callback)? {
                 return Err(RuntimeError::TypeError(
                     "Array predicate callback must be callable".into(),
                 ));
             }
-            for index in 0..length {
-                self.charge_step()?;
-                let key: PropertyName = index.to_string().into();
-                if !self.has_property(object, &key)? {
-                    continue;
-                }
-                let value = self.get_property(&Value::Object(object), &key)?;
+            let mut scan = self.index_scan(object, length)?;
+            let mut from = 0;
+            while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
                 let selected = self.call_native(
                     callback.clone(),
                     this_arg.clone(),
@@ -703,10 +651,11 @@ impl Vm {
                 if self.to_boolean(&selected)? == some {
                     return Ok(Value::Bool(some));
                 }
+                from = index + 1;
             }
             Ok(Value::Bool(!some))
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
     }
 
@@ -790,57 +739,50 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let callback = native::argument(args, 0);
-        if !self.is_callable(callback)? {
-            return Err(RuntimeError::TypeError(
-                "Array.prototype.reduce callback must be callable".into(),
-            ));
-        }
         let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as u64;
-            let mut index = 0;
-            let mut accumulator = if args.len() > 1 {
-                args[1].clone()
-            } else {
-                loop {
-                    if index >= length {
-                        return Err(RuntimeError::TypeError(
-                            "reduce of empty array with no initial value".into(),
-                        ));
-                    }
-                    let key: PropertyName = index.to_string().into();
-                    if self.has_property(object, &key)? {
-                        let value = self.get_property(&Value::Object(object), &key)?;
-                        index += 1;
-                        break value;
-                    }
-                    index += 1;
-                }
-            };
-            while index < length {
-                self.charge_step()?;
-                let key: PropertyName = index.to_string().into();
-                if self.has_property(object, &key)? {
-                    let value = self.get_property(&Value::Object(object), &key)?;
-                    accumulator = self.call_native(
-                        callback.clone(),
-                        Value::Undefined,
-                        vec![
-                            accumulator,
-                            value,
-                            Value::Number(index as f64),
-                            Value::Object(object),
-                        ],
-                        false,
-                    )?;
-                }
-                index += 1;
+            let length = self.array_like_length(object)?;
+            if !self.is_callable(callback)? {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.reduce callback must be callable".into(),
+                ));
             }
-            Ok(accumulator)
+            let mut scan = self.index_scan(object, length)?;
+            let mut from = 0;
+            // The accumulator lives in a stack slot: a getter or callback may
+            // collect while it is between calls.
+            let accumulator = self.stack.len();
+            if args.len() > 1 {
+                self.stack.push(args[1].clone());
+            } else {
+                let Some((index, value)) = self.array_next_present(&mut scan, object, 0)? else {
+                    return Err(RuntimeError::TypeError(
+                        "reduce of empty array with no initial value".into(),
+                    ));
+                };
+                self.stack.push(value);
+                from = index + 1;
+            }
+            while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
+                let next = self.call_native(
+                    callback.clone(),
+                    Value::Undefined,
+                    vec![
+                        self.stack[accumulator].clone(),
+                        value,
+                        Value::Number(index as f64),
+                        Value::Object(object),
+                    ],
+                    false,
+                )?;
+                self.stack[accumulator] = next;
+                from = index + 1;
+            }
+            Ok(self.stack[accumulator].clone())
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
     }
 
@@ -851,102 +793,50 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let callback = native::argument(args, 0);
         let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let mut index = self.coerce_length(&length)? as u64;
+            let length = self.array_like_length(object)?;
             if !self.is_callable(callback)? {
                 return Err(RuntimeError::TypeError(
                     "Array.prototype.reduceRight callback must be callable".into(),
                 ));
             }
-            let mut accumulator = if args.len() > 1 {
-                args[1].clone()
+            let mut scan = self.index_scan(object, length)?;
+            let mut end = length;
+            let accumulator = self.stack.len();
+            if args.len() > 1 {
+                self.stack.push(args[1].clone());
             } else {
-                loop {
-                    if index == 0 {
-                        return Err(RuntimeError::TypeError(
-                            "reduceRight of empty array with no initial value".into(),
-                        ));
-                    }
-                    index -= 1;
-                    let key: PropertyName = index.to_string().into();
-                    if self.has_property(object, &key)? {
-                        break self.get_property(&Value::Object(object), &key)?;
-                    }
-                }
-            };
-            while index > 0 {
-                index -= 1;
-                self.charge_step()?;
-                let key: PropertyName = index.to_string().into();
-                if self.has_property(object, &key)? {
-                    let value = self.get_property(&Value::Object(object), &key)?;
-                    accumulator = self.call_native(
-                        callback.clone(),
-                        Value::Undefined,
-                        vec![
-                            accumulator,
-                            value,
-                            Value::Number(index as f64),
-                            Value::Object(object),
-                        ],
-                        false,
-                    )?;
-                }
+                let Some((index, value)) =
+                    self.array_previous_present(&mut scan, object, length)?
+                else {
+                    return Err(RuntimeError::TypeError(
+                        "reduceRight of empty array with no initial value".into(),
+                    ));
+                };
+                self.stack.push(value);
+                end = index;
             }
-            Ok(accumulator)
+            while let Some((index, value)) = self.array_previous_present(&mut scan, object, end)? {
+                let next = self.call_native(
+                    callback.clone(),
+                    Value::Undefined,
+                    vec![
+                        self.stack[accumulator].clone(),
+                        value,
+                        Value::Number(index as f64),
+                        Value::Object(object),
+                    ],
+                    false,
+                )?;
+                self.stack[accumulator] = next;
+                end = index;
+            }
+            Ok(self.stack[accumulator].clone())
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
-    }
-
-    pub(in super::super) fn array_own_indices(
-        &mut self,
-        object: ObjectId,
-        length: u64,
-    ) -> Result<Option<Vec<u32>>, RuntimeError> {
-        // Scanning ordinary arrays preserves properties added by callbacks.  This
-        // shortcut is only for the large sparse arrays that would otherwise turn
-        // a bounded operation into millions of empty property lookups.
-        if length < 65_536 || !self.heap.is_array(object)? || self.heap.proxy(object)?.is_some() {
-            return Ok(None);
-        }
-        let mut prototype = self.heap.prototype(object)?;
-        while let Some(id) = prototype {
-            // The optimized path does not invoke [[HasProperty]]. A Proxy
-            // prototype can observe that operation, so retain the normal path.
-            if self.heap.proxy(id)?.is_some() {
-                return Ok(None);
-            }
-            if self
-                .heap
-                .own_property_keys(id)?
-                .iter()
-                .any(|key| array_index_below_length(key, length).is_some())
-            {
-                return Ok(None);
-            }
-            prototype = self.heap.prototype(id)?;
-        }
-        let mut indices = Vec::new();
-        for key in self.heap.own_property_keys(object)? {
-            let Some(index) = array_index_below_length(&key, length) else {
-                continue;
-            };
-            // Accessors can add or remove later indexed properties while the
-            // method scans. Keep the ordinary path for that observable case.
-            if self
-                .heap
-                .get_own_property_descriptor(object, &key)?
-                .is_some_and(|descriptor| descriptor.accessor())
-            {
-                return Ok(None);
-            }
-            indices.push(index);
-        }
-        indices.sort_unstable();
-        Ok(Some(indices))
     }
 
     pub(in super::super) fn array_start_index(
@@ -973,47 +863,35 @@ impl Vm {
         from_index: &Value,
     ) -> Result<Value, RuntimeError> {
         let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as i64;
-            let start = self.array_start_index(from_index, length)?;
-            if let Some(indices) = self.array_own_indices(object, length as u64)? {
-                let mut index = start as u64;
-                for present in indices
-                    .into_iter()
-                    .filter(|present| i64::from(*present) >= start)
-                {
-                    // With no inherited indexed properties, the first omitted
-                    // element is an observable `undefined` for includes.
-                    if *search == Value::Undefined && index < u64::from(present) {
-                        return Ok(Value::Bool(true));
-                    }
-                    self.charge_step()?;
-                    let value = self.get_property(
-                        &Value::Object(object),
-                        &u64::from(present).to_string().into(),
-                    )?;
-                    if same_value_zero(&value, search) {
-                        return Ok(Value::Bool(true));
-                    }
-                    index = u64::from(present) + 1;
-                }
-                return Ok(Value::Bool(
-                    *search == Value::Undefined && index < length as u64,
-                ));
+            let length = self.array_like_length(object)?;
+            if length == 0 {
+                return Ok(Value::Bool(false));
             }
-            for index in start..length {
+            let start = self.array_start_index(from_index, length as i64)? as u64;
+            let mut scan = self.index_scan(object, length)?;
+            let mut from = start;
+            loop {
+                let next = self.scan_next(&mut scan, object, from)?;
+                // Indices the scan skips are absent everywhere on the chain,
+                // and `Get` reads an absent index as `undefined`.
+                if *search == Value::Undefined && next.map_or(from < length, |next| next > from) {
+                    return Ok(Value::Bool(true));
+                }
+                let Some(index) = next else {
+                    return Ok(Value::Bool(false));
+                };
                 self.charge_step()?;
-                let value =
-                    self.get_property(&Value::Object(object), &(index as u64).to_string().into())?;
+                let value = self.get_property(&Value::Object(object), &index.to_string().into())?;
                 if same_value_zero(&value, search) {
                     return Ok(Value::Bool(true));
                 }
+                from = index + 1;
             }
-            Ok(Value::Bool(false))
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
     }
 
@@ -1024,38 +902,25 @@ impl Vm {
         from_index: &Value,
     ) -> Result<Value, RuntimeError> {
         let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as i64;
-            let start = self.array_start_index(from_index, length)?;
-            if let Some(indices) = self.array_own_indices(object, length as u64)? {
-                for present in indices {
-                    if i64::from(present) < start {
-                        continue;
-                    }
-                    self.charge_step()?;
-                    let key: PropertyName = present.to_string().into();
-                    if self.get_property(&Value::Object(object), &key)? == *search {
-                        return Ok(Value::Number(present as f64));
-                    }
-                }
+            let length = self.array_like_length(object)?;
+            if length == 0 {
                 return Ok(Value::Number(-1.0));
             }
-            let mut index = start;
-            while index < length {
-                self.charge_step()?;
-                let key: PropertyName = index.to_string().into();
-                if self.has_property(object, &key)?
-                    && self.get_property(&Value::Object(object), &key)? == *search
-                {
+            let start = self.array_start_index(from_index, length as i64)? as u64;
+            let mut scan = self.index_scan(object, length)?;
+            let mut from = start;
+            while let Some((index, value)) = self.array_next_present(&mut scan, object, from)? {
+                if value == *search {
                     return Ok(Value::Number(index as f64));
                 }
-                index += 1;
+                from = index + 1;
             }
             Ok(Value::Number(-1.0))
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
     }
 
@@ -1296,15 +1161,15 @@ impl Vm {
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let object = self.coerce_object(receiver)?;
+        let base = self.stack.len();
         self.stack.push(Value::Object(object));
         let result = (|| {
-            let length = self.get_property(&Value::Object(object), &"length".into())?;
-            let length = self.coerce_length(&length)? as u64;
+            let length = self.array_like_length(object)?;
             if length == 0 {
                 return Ok(Value::Number(-1.0));
             }
             let length = length.min(i64::MAX as u64) as i64;
-            let mut index = if args.len() < 2 {
+            let index = if args.len() < 2 {
                 length - 1
             } else {
                 let number = self.coerce_number(&args[1])?;
@@ -1325,19 +1190,20 @@ impl Vm {
                     }
                 }
             };
-            while index >= 0 {
-                self.charge_step()?;
-                let key: PropertyName = index.to_string().into();
-                if self.has_property(object, &key)?
-                    && self.get_property(&Value::Object(object), &key)? == *search
-                {
+            if index < 0 {
+                return Ok(Value::Number(-1.0));
+            }
+            let mut scan = self.index_scan(object, length as u64)?;
+            let mut end = index as u64 + 1;
+            while let Some((index, value)) = self.array_previous_present(&mut scan, object, end)? {
+                if value == *search {
                     return Ok(Value::Number(index as f64));
                 }
-                index -= 1;
+                end = index;
             }
             Ok(Value::Number(-1.0))
         })();
-        self.stack.pop();
+        self.stack.truncate(base);
         result
     }
 

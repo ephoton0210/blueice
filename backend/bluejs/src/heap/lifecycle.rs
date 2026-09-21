@@ -42,6 +42,7 @@ impl Heap {
             current = self.object(id)?.prototype;
         }
         self.write_barrier(object, prototype);
+        self.structure_epoch += 1;
         self.objects
             .get_mut(&object)
             .expect("validated receiver")

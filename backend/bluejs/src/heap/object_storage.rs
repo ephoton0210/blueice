@@ -231,6 +231,7 @@ impl Heap {
         if !virtual_length {
             if !obj.properties.contains_key(&key) {
                 obj.order.push(key.clone());
+                self.structure_epoch += 1;
             }
             if let ObjectKind::Array { length } = &mut obj.kind {
                 if let Some(index) = array_index(&key) {
@@ -591,6 +592,7 @@ impl Heap {
                 .expect("the receiver is protected across collection");
             if !obj.properties.contains_key(&key) {
                 obj.order.push(key.clone());
+                self.structure_epoch += 1;
             }
             if let ObjectKind::Array { length } = &mut obj.kind {
                 if let Some(index) = array_index(&key) {
@@ -664,6 +666,7 @@ impl Heap {
             obj.order.retain(|name| name != &key);
             obj.bytes -= bytes;
             self.managed_bytes -= bytes;
+            self.structure_epoch += 1;
         }
         if mapped_cell.is_some() {
             self.unmap_arguments_property(object, &key)?;
@@ -727,6 +730,35 @@ impl Heap {
         keys.extend(strings);
         keys.extend(symbols);
         Ok(keys)
+    }
+
+    /// Ascending canonical integer-index keys (`"0"`, `"1"`, ...) of every own
+    /// string property stored on `object`, or `None` when an index can exist
+    /// without being stored (Proxy traps, String and TypedArray elements,
+    /// module namespace exports) and the stored keys therefore say nothing
+    /// about which indices an `[[HasProperty]]` probe could find.
+    pub(crate) fn own_integer_keys(&self, object: ObjectId) -> Result<Option<Vec<u64>>, HeapError> {
+        let obj = self.object(object)?;
+        if matches!(
+            obj.kind,
+            ObjectKind::Proxy { .. }
+                | ObjectKind::String(_)
+                | ObjectKind::TypedArray { .. }
+                | ObjectKind::ModuleNamespace { .. }
+        ) {
+            return Ok(None);
+        }
+        let mut keys: Vec<u64> = obj
+            .order
+            .iter()
+            .filter_map(|key| key.index().map(|index| index as u64))
+            .collect();
+        keys.sort_unstable();
+        Ok(Some(keys))
+    }
+
+    pub(crate) fn structure_epoch(&self) -> u64 {
+        self.structure_epoch
     }
 
     pub fn own_keys(&self, object: ObjectId) -> Result<Vec<JsString>, HeapError> {
