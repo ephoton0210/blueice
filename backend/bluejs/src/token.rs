@@ -16,7 +16,11 @@
 //! interpreter, not the lexer, is where it becomes meaningful.
 //!
 //! Source characters use Rust `char`; cooked literals use UTF-16 code
-//! units so Unicode escapes can preserve lone surrogates losslessly.
+//! units so Unicode escapes can preserve lone surrogates losslessly. The
+//! input is *lexer text* (see [`crate::source_encoding`]): an unpaired
+//! surrogate in the source arrives as one reserved private-use character
+//! and is turned back into its code unit wherever the source becomes a
+//! JavaScript value (string and template literals, RegExp patterns).
 
 use crate::JsString;
 use icu_properties::{props, CodePointSetData};
@@ -302,7 +306,7 @@ impl Tokenizer {
             if c == '/' && !class {
                 break;
             }
-            pattern.push_code_point(c as u32);
+            pattern.push_code_point(self.source_code_point(c));
             if c == '\\' {
                 let escaped = self
                     .advance()
@@ -310,7 +314,7 @@ impl Tokenizer {
                 if is_line_terminator(escaped) {
                     return Err(LexError::syntax("line terminator in RegExp escape"));
                 }
-                pattern.push_code_point(escaped as u32);
+                pattern.push_code_point(self.source_code_point(escaped));
             } else if c == '[' {
                 class = true;
             } else if c == ']' {
@@ -385,19 +389,38 @@ impl Tokenizer {
                             Err(_) => return None,
                         }
                     } else {
-                        result.push_code_point(c as u32);
+                        result.push_code_point(lexer.source_code_point(c));
                     }
                 }
                 Some(result)
             })
             .collect();
         Ok((
-            raw.into_iter().map(Into::into).collect(),
+            raw.iter()
+                .map(|raw| crate::source_encoding::decode(raw))
+                .collect(),
             cooked,
             expressions,
         ))
     }
 
+    /// The code point the source character `c` (just consumed) stands for in
+    /// a literal's value. Ordinary characters stand for themselves; the
+    /// lexer-text encoding of an unpaired surrogate stands for that code
+    /// unit, and its escape character makes the character after it literal
+    /// (consumed here too).
+    #[inline]
+    fn source_code_point(&mut self, c: char) -> u32 {
+        if (c as u32) < crate::source_encoding::RESERVED_START {
+            return c as u32;
+        }
+        if c == crate::source_encoding::ESCAPE {
+            return self.advance().map_or(c as u32, |next| next as u32);
+        }
+        crate::source_encoding::lone_surrogate(c).map_or(c as u32, u32::from)
+    }
+
+    /// `input` is lexer text: see [`crate::source_encoding`].
     pub fn new(input: &str) -> Tokenizer {
         Tokenizer {
             input: input.chars().collect(),
@@ -789,18 +812,25 @@ impl Tokenizer {
                     Self::hex_escape(&hex, "\\u")?
                 }
             }
-            other => other as u32, // NonEscapeCharacter, including astral source characters.
+            // NonEscapeCharacter, including astral source characters and an
+            // unpaired surrogate (one code unit, however it was spelled).
+            other => self.source_code_point(other),
         }))
     }
 
     fn hex_escape(hex: &str, kind: &str) -> Result<u32, LexError> {
         // ECMA-262 (2026) §12.9.4 requires HexDigits, not the optional
         // leading '+' accepted by Rust's from_str_radix.
+        let invalid = || {
+            LexError::new(format!(
+                "invalid {kind} escape '{}'",
+                crate::source_encoding::describe(hex)
+            ))
+        };
         if hex.is_empty() || !hex.bytes().all(|c| c.is_ascii_hexdigit()) {
-            return Err(LexError::new(format!("invalid {kind} escape '{hex}'")));
+            return Err(invalid());
         }
-        u32::from_str_radix(hex, 16)
-            .map_err(|_| LexError::new(format!("invalid {kind} escape '{hex}'")))
+        u32::from_str_radix(hex, 16).map_err(|_| invalid())
     }
 
     fn scan_string(&mut self, quote: char) -> Result<Token, LexError> {
@@ -827,7 +857,7 @@ impl Tokenizer {
                 }
                 Some(c) => {
                     self.advance();
-                    out.push_code_point(c as u32);
+                    out.push_code_point(self.source_code_point(c));
                 }
             }
         }
@@ -889,7 +919,7 @@ impl Tokenizer {
                 }
                 Some(c) => {
                     self.advance();
-                    current.push_code_point(c as u32);
+                    current.push_code_point(self.source_code_point(c));
                 }
             }
         }
@@ -1229,7 +1259,13 @@ impl Tokenizer {
                     Punct::Question
                 }
             }
-            other => return Err(LexError::new(format!("unexpected character '{other}'"))),
+            other => {
+                let code = self.source_code_point(other);
+                return Err(LexError::new(format!(
+                    "unexpected character '{}'",
+                    crate::source_encoding::describe_code_point(code)
+                )));
+            }
         };
         Ok(Token::Punct(punct))
     }
@@ -1746,5 +1782,130 @@ mod tests {
     fn empty_input_yields_immediate_eof() {
         assert_eq!(tokens(""), vec![Token::Eof]);
         assert_eq!(tokens("   \n\t  "), vec![Token::Eof]);
+    }
+
+    /// Lexer text for `units`, as the entry points of `eval` produce it.
+    fn encoded(units: &[u16]) -> String {
+        crate::source_encoding::encode(&JsString::from_code_units(units.to_vec()))
+    }
+
+    fn js(units: &[u16]) -> JsString {
+        JsString::from_code_units(units.to_vec())
+    }
+
+    #[test]
+    fn a_string_literal_holds_an_unpaired_surrogate_as_that_code_unit() {
+        for unit in [0xD800, 0xDBFF, 0xDC00, 0xDFFF] {
+            let source = encoded(&[0x27, 0x61, unit, 0x62, 0x27]);
+            assert_eq!(
+                tokens(&source),
+                vec![Token::String(js(&[0x61, unit, 0x62])), Token::Eof]
+            );
+            // An escaped surrogate is a NonEscapeCharacter: the backslash is dropped.
+            let source = encoded(&[0x22, 0x5C, unit, 0x22]);
+            assert_eq!(
+                tokens(&source),
+                vec![Token::String(js(&[unit])), Token::Eof]
+            );
+        }
+    }
+
+    #[test]
+    fn a_string_literal_holds_a_genuine_reserved_character_as_itself() {
+        for code in [0x10F000, 0x10F7FF, 0x10F800] {
+            let genuine = char::from_u32(code).unwrap();
+            let source =
+                crate::source_encoding::escape(&format!("'{genuine}\\{genuine}'")).into_owned();
+            assert_eq!(
+                tokens(&source),
+                vec![
+                    Token::String(JsString::from(format!("{genuine}{genuine}"))),
+                    Token::Eof
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn a_template_literal_holds_unpaired_surrogates_in_its_cooked_pieces() {
+        let source = encoded(&[0x60, 0xD800, 0x24, 0x7B, 0x31, 0x7D, 0xDC00, 0x60]);
+        assert_eq!(
+            tokens(&source),
+            vec![
+                Token::Template {
+                    quasis: vec![js(&[0xD800]), js(&[0xDC00])],
+                    raw_expressions: vec!["1".into()],
+                },
+                Token::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn a_placeholder_keeps_its_source_in_lexer_text() {
+        let source = encoded(&[0x60, 0x24, 0x7B, 0x27, 0xD800, 0x27, 0x7D, 0x60]);
+        let Token::Template {
+            raw_expressions, ..
+        } = tokens(&source).remove(0)
+        else {
+            panic!("expected a template");
+        };
+        assert_eq!(raw_expressions, vec![encoded(&[0x27, 0xD800, 0x27])]);
+        assert_eq!(tokens(&raw_expressions[0])[0], Token::String(js(&[0xD800])));
+    }
+
+    #[test]
+    fn a_tagged_template_reports_cooked_and_raw_strings_with_the_surrogate_intact() {
+        let source = encoded(&[0x60, 0xD800, 0x5C, 0xDC00, 0x60]);
+        let (raw, cooked, expressions) = Tokenizer::new(&source).tagged_template_at(0).unwrap();
+        assert_eq!(raw, vec![js(&[0xD800, 0x5C, 0xDC00])]);
+        assert_eq!(cooked, vec![Some(js(&[0xD800, 0xDC00]))]);
+        assert!(expressions.is_empty());
+    }
+
+    #[test]
+    fn a_regexp_literal_keeps_an_unpaired_surrogate_in_its_pattern() {
+        let source = encoded(&[0x2F, 0x5B, 0xD800, 0x5D, 0x5C, 0xDC00, 0xDBFF, 0x2F, 0x67]);
+        let (pattern, flags) = Tokenizer::new(&source).regexp_at(0).unwrap();
+        assert_eq!(pattern, js(&[0x5B, 0xD800, 0x5D, 0x5C, 0xDC00, 0xDBFF]));
+        assert_eq!(flags, JsString::from("g"));
+    }
+
+    #[test]
+    fn a_regexp_literal_keeps_a_genuine_reserved_character_after_a_backslash() {
+        let source = crate::source_encoding::escape("/\\\u{10F000}\u{10F800}/u").into_owned();
+        let (pattern, _) = Tokenizer::new(&source).regexp_at(0).unwrap();
+        assert_eq!(pattern, JsString::from("\\\u{10F000}\u{10F800}"));
+    }
+
+    #[test]
+    fn comments_skip_unpaired_surrogates_and_only_line_terminators_end_a_line_comment() {
+        let source = encoded(&[0x2F, 0x2F, 0xD800, 0x2F, 0x2A, 0xDC00, 0x0A, 0x37]);
+        assert_eq!(tokens(&source), vec![Token::Number(7.0), Token::Eof]);
+        let source = encoded(&[0x2F, 0x2A, 0xD800, 0x2A, 0x2F, 0x37, 0xDFFF]);
+        let mut tokenizer = Tokenizer::new(&source);
+        assert_eq!(tokenizer.next_spanned().unwrap().token, Token::Number(7.0));
+        assert!(tokenizer.next_spanned().is_err());
+    }
+
+    #[test]
+    fn an_unpaired_surrogate_is_never_an_identifier_or_punctuator() {
+        for source in [
+            encoded(&[0xD800]),
+            encoded(&[0x61, 0xDFFF]),
+            encoded(&[0x31, 0xDC00]),
+        ] {
+            let mut tokenizer = Tokenizer::new(&source);
+            let failed = (0..3).any(|_| tokenizer.next_spanned().is_err());
+            assert!(failed, "{source:?}");
+        }
+        let error = Tokenizer::new(&encoded(&[0xD800]))
+            .next_spanned()
+            .unwrap_err();
+        assert_eq!(error.message, "unexpected character '\\uD800'");
+        let error = Tokenizer::new(&crate::source_encoding::escape("\u{10F800}"))
+            .next_spanned()
+            .unwrap_err();
+        assert_eq!(error.message, "unexpected character '\u{10F800}'");
     }
 }

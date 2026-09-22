@@ -73,7 +73,16 @@ impl From<LexError> for ParseError {
     }
 }
 
+/// Parses one classic Script. `source` is ordinary host text: to run source
+/// that may hold an unpaired surrogate, see [`parse_encoded`].
 pub fn parse(source: &str) -> Result<Program, ParseError> {
+    parse_encoded(&crate::source_encoding::escape(source))
+}
+
+/// [`parse`] over *lexer text* (see [`crate::source_encoding`]), the form in
+/// which the source of `eval`, `Function` and `ShadowRealm.prototype.evaluate`
+/// reaches the parser, since a JavaScript string may hold unpaired surrogates.
+pub(crate) fn parse_encoded(source: &str) -> Result<Program, ParseError> {
     let mut parser = Parser::new_script(source);
     let mut body = Vec::new();
     let mut prologue = DirectivePrologue::default();
@@ -91,7 +100,7 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
     Ok(program)
 }
 
-/// Parses direct-eval source before its caller applies context-sensitive
+/// Parses direct-eval source (lexer text) before its caller applies context-sensitive
 /// `super` early errors. At script top level those expressions are invalid,
 /// but a direct eval inherits the calling method's `[[HomeObject]]`. Eval
 /// code is strict when the calling code is (`strict`) or when its own
