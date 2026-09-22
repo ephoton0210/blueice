@@ -21,3 +21,4 @@ blueice-bluejs = { path = "../../bluejs" }
 [dev-dependencies]
 blueice-testing = { path = "../../testing" }
 blueice-ai-gatekeeper = { path = "../../ai-gatekeeper" }
+blueice-launcher = { path = "../../launcher" }

@@ -66,6 +66,13 @@ struct Args {
     /// DOM bindings and is mutually exclusive with the experimental inline
     /// BlueTS executor so one page cannot acquire two independent VMs.
     inline_bluejs: bool,
+    /// Owner-only child socket selected by a launcher/supervisor for the
+    /// explicit out-of-process JavaScript host path. It is meaningful only
+    /// together with its per-spawn capability token below.
+    out_of_process_bluejs_socket: Option<PathBuf>,
+    /// Per-spawn capability supplied by the trusted launcher/supervisor. This
+    /// is never reflected to frontend/page code or printed by this binary.
+    out_of_process_bluejs_token: Option<String>,
 }
 
 /// Takes an injectable argument iterator (rather than reading
@@ -86,6 +93,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_socket = None;
     let mut inline_bluets_profile = None;
     let mut inline_bluejs = false;
+    let mut out_of_process_bluejs_socket = None;
+    let mut out_of_process_bluejs_token = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -108,6 +117,10 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
             "--inline-bluets-profile" => inline_bluets_profile = Some(value()?),
             "--inline-bluejs" => inline_bluejs = true,
+            "--out-of-process-bluejs-socket" => {
+                out_of_process_bluejs_socket = Some(PathBuf::from(value()?))
+            }
+            "--out-of-process-bluejs-token" => out_of_process_bluejs_token = Some(value()?),
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
@@ -115,6 +128,25 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
     if inline_bluets_profile.is_some() && inline_bluejs {
         return Err("--inline-bluejs cannot be combined with --inline-bluets-profile".to_string());
+    }
+    if out_of_process_bluejs_socket.is_some() != out_of_process_bluejs_token.is_some() {
+        return Err(
+            "--out-of-process-bluejs-socket and --out-of-process-bluejs-token must be provided together"
+                .to_string(),
+        );
+    }
+    if out_of_process_bluejs_token
+        .as_deref()
+        .is_some_and(str::is_empty)
+    {
+        return Err("--out-of-process-bluejs-token must not be empty".to_string());
+    }
+    if out_of_process_bluejs_socket.is_some() && (inline_bluets_profile.is_some() || inline_bluejs)
+    {
+        return Err(
+            "--out-of-process-bluejs-socket cannot be combined with --inline-bluejs or --inline-bluets-profile"
+                .to_string(),
+        );
     }
     Ok(Args {
         socket,
@@ -126,6 +158,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_socket,
         inline_bluets_profile,
         inline_bluejs,
+        out_of_process_bluejs_socket,
+        out_of_process_bluejs_token,
     })
 }
 
@@ -240,6 +274,8 @@ fn main() -> ExitCode {
     let debugger_socket = args.debugger_socket.clone();
     let inline_bluets_profile = args.inline_bluets_profile.clone();
     let inline_bluejs = args.inline_bluejs;
+    let out_of_process_bluejs_socket = args.out_of_process_bluejs_socket.clone();
+    let out_of_process_bluejs_token = args.out_of_process_bluejs_token.clone();
 
     let script_listener = match script_socket.as_ref() {
         Some(path) => {
@@ -321,6 +357,32 @@ fn main() -> ExitCode {
                     )
                 })?;
             session::run_session_with_script_and_debugger_requests_and_inline_javascript_executor(
+                &mut tabs,
+                &mut stream,
+                &frame_dir,
+                &mut generation,
+                &gatekeeper_socket,
+                session::CoreSessionRequests {
+                    script: script_socket.as_ref().map(|_| &script_requests),
+                    debugger: debugger_socket.as_ref().map(|_| &debugger_requests),
+                },
+                Some(&mut javascript_executor),
+            )
+        } else if let (Some(socket), Some(token)) = (
+            out_of_process_bluejs_socket.as_deref(),
+            out_of_process_bluejs_token.as_deref(),
+        ) {
+            let mut javascript_executor =
+                script::javascript_child::OutOfProcessJavaScriptPageExecutor::connect(
+                    socket, token,
+                )
+                .map_err(|error| {
+                    io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        format!("failed to connect to explicit BlueJS child host: {error}"),
+                    )
+                })?;
+            session::run_session_with_script_and_debugger_requests_and_out_of_process_javascript_executor(
                 &mut tabs,
                 &mut stream,
                 &frame_dir,
@@ -418,6 +480,8 @@ mod tests {
         assert_eq!(parsed.debugger_socket, None);
         assert_eq!(parsed.inline_bluets_profile, None);
         assert!(!parsed.inline_bluejs);
+        assert_eq!(parsed.out_of_process_bluejs_socket, None);
+        assert_eq!(parsed.out_of_process_bluejs_token, None);
     }
 
     #[test]
@@ -453,6 +517,8 @@ mod tests {
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
                 inline_bluejs: false,
+                out_of_process_bluejs_socket: None,
+                out_of_process_bluejs_token: None,
             }
         );
     }
@@ -473,6 +539,70 @@ mod tests {
                 "core-script-document-text-v1",
             ]),
             Err("--inline-bluejs cannot be combined with --inline-bluets-profile".to_string())
+        );
+    }
+
+    #[test]
+    fn out_of_process_javascript_host_requires_an_explicit_complete_trusted_endpoint() {
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--out-of-process-bluejs-socket",
+            "/tmp/bluejs-host.sock",
+            "--out-of-process-bluejs-token",
+            "launcher-issued-capability",
+        ])
+        .unwrap();
+        assert_eq!(
+            parsed.out_of_process_bluejs_socket,
+            Some(PathBuf::from("/tmp/bluejs-host.sock"))
+        );
+        assert_eq!(
+            parsed.out_of_process_bluejs_token.as_deref(),
+            Some("launcher-issued-capability")
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--out-of-process-bluejs-socket",
+                "/tmp/bluejs-host.sock",
+            ]),
+            Err(
+                "--out-of-process-bluejs-socket and --out-of-process-bluejs-token must be provided together"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--out-of-process-bluejs-token",
+                "launcher-issued-capability",
+            ]),
+            Err(
+                "--out-of-process-bluejs-socket and --out-of-process-bluejs-token must be provided together"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn out_of_process_javascript_host_cannot_share_a_page_with_other_executors() {
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--inline-bluejs",
+                "--out-of-process-bluejs-socket",
+                "/tmp/bluejs-host.sock",
+                "--out-of-process-bluejs-token",
+                "launcher-issued-capability",
+            ]),
+            Err(
+                "--out-of-process-bluejs-socket cannot be combined with --inline-bluejs or --inline-bluets-profile"
+                    .to_string()
+            )
         );
     }
 

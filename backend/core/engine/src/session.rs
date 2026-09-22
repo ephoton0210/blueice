@@ -51,12 +51,14 @@
 //! error still means disconnect, exactly as before gating existed).
 
 use crate::gatekeeper_client::{self, NavOutcome};
+#[cfg(unix)]
+use crate::script::javascript_child::{OutOfProcessJavaScriptPageExecutor, PageHostConnection};
 use crate::{
     debugger::DebuggerRequestReceiver,
     script::{
         direct_page::{DirectPageScriptHost, DirectPageScriptKind},
         inline_runner::{DirectPageInlineExecutor, DirectPageScriptExecutionReport},
-        javascript::{JavaScriptPageExecutionReport, JavaScriptPageExecutor},
+        javascript::{JavaScriptPageExecutionReport, PageJavaScriptExecutor},
         ScriptRequestReceiver,
     },
     Page, TabId, TabManager,
@@ -107,7 +109,7 @@ pub struct CoreSessionRequests<'a> {
 struct PageScriptRuntime<'a> {
     direct_page_host: Option<&'a mut DirectPageScriptHost>,
     inline_page_executor: Option<&'a mut DirectPageInlineExecutor>,
-    inline_javascript_executor: Option<&'a mut JavaScriptPageExecutor>,
+    javascript_executor: Option<&'a mut dyn PageJavaScriptExecutor>,
 }
 
 #[cfg(unix)]
@@ -228,7 +230,7 @@ pub fn run_session_with_script_requests_and_direct_page_host<S: Read + Write + R
         PageScriptRuntime {
             direct_page_host,
             inline_page_executor: None,
-            inline_javascript_executor: None,
+            javascript_executor: None,
         },
     )
 }
@@ -260,7 +262,7 @@ pub fn run_session_with_script_requests_and_inline_page_executor<S: Read + Write
         PageScriptRuntime {
             direct_page_host: None,
             inline_page_executor,
-            inline_javascript_executor: None,
+            javascript_executor: None,
         },
     )
 }
@@ -291,7 +293,7 @@ pub fn run_session_with_script_and_debugger_requests<S: Read + Write + ReadTimeo
         PageScriptRuntime {
             direct_page_host: None,
             inline_page_executor: None,
-            inline_javascript_executor: None,
+            javascript_executor: None,
         },
     )
 }
@@ -321,14 +323,15 @@ pub fn run_session_with_script_and_debugger_requests_and_inline_page_executor<
         PageScriptRuntime {
             direct_page_host: None,
             inline_page_executor,
-            inline_javascript_executor: None,
+            javascript_executor: None,
         },
     )
 }
 
 /// Like [`run_session_with_script_and_debugger_requests`], while running one
-/// explicitly enabled standard-JavaScript page executor. This remains a
-/// bounded in-process host seam: it has no DOM bindings and may not be paired
+/// explicitly selected standard-JavaScript page executor. The executor may be
+/// the bounded in-process host or a separately configured launcher-supervised
+/// child connection; either way it has no DOM bindings and may not be paired
 /// with the separate BlueTS executor, which would otherwise allocate a second
 /// realm for the same page.
 pub fn run_session_with_script_and_debugger_requests_and_inline_javascript_executor<
@@ -340,7 +343,7 @@ pub fn run_session_with_script_and_debugger_requests_and_inline_javascript_execu
     generation: &mut u64,
     gatekeeper_socket: &Path,
     requests: CoreSessionRequests<'_>,
-    inline_javascript_executor: Option<&mut JavaScriptPageExecutor>,
+    javascript_executor: Option<&mut dyn PageJavaScriptExecutor>,
 ) -> io::Result<()> {
     run_session_with_script_runtime(
         tabs,
@@ -352,8 +355,39 @@ pub fn run_session_with_script_and_debugger_requests_and_inline_javascript_execu
         PageScriptRuntime {
             direct_page_host: None,
             inline_page_executor: None,
-            inline_javascript_executor,
+            javascript_executor,
         },
+    )
+}
+
+/// Like [`run_session_with_script_and_debugger_requests`], while routing page
+/// declarations through the explicitly configured launcher-supervised BlueJS
+/// child host. The caller must have obtained its socket and per-spawn
+/// capability through a trusted launcher boundary; normal sessions never
+/// construct this executor themselves.
+#[cfg(unix)]
+pub fn run_session_with_script_and_debugger_requests_and_out_of_process_javascript_executor<
+    S: Read + Write + ReadTimeout,
+>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    requests: CoreSessionRequests<'_>,
+    out_of_process_javascript_executor: Option<
+        &mut OutOfProcessJavaScriptPageExecutor<PageHostConnection>,
+    >,
+) -> io::Result<()> {
+    run_session_with_script_and_debugger_requests_and_inline_javascript_executor(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        requests,
+        out_of_process_javascript_executor
+            .map(|executor| executor as &mut dyn PageJavaScriptExecutor),
     )
 }
 
@@ -373,7 +407,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     if [
         page_script_runtime.direct_page_host.is_some(),
         page_script_runtime.inline_page_executor.is_some(),
-        page_script_runtime.inline_javascript_executor.is_some(),
+        page_script_runtime.javascript_executor.is_some(),
     ]
     .into_iter()
     .filter(|enabled| *enabled)
@@ -533,10 +567,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
                     ClientMessage::GetBlueJsScriptReports => match tabs.get(target) {
-                        Some(_) => match page_script_runtime
-                            .inline_javascript_executor
-                            .as_deref_mut()
-                        {
+                        Some(_) => match page_script_runtime.javascript_executor.as_deref_mut() {
                             Some(executor) => blueice_ipc::write_server_message_with_ids(
                                 stream,
                                 reply_tab,
@@ -777,23 +808,16 @@ fn synchronize_page_script_runtime(
         })?;
     }
     synchronize_inline_page_executor(&mut page_script_runtime.inline_page_executor, tabs)?;
-    synchronize_inline_javascript_executor(
-        &mut page_script_runtime.inline_javascript_executor,
-        tabs,
-    )?;
+    synchronize_javascript_executor(&mut page_script_runtime.javascript_executor, tabs)?;
     Ok(())
 }
 
-fn synchronize_inline_javascript_executor(
-    inline_javascript_executor: &mut Option<&mut JavaScriptPageExecutor>,
+fn synchronize_javascript_executor(
+    javascript_executor: &mut Option<&mut dyn PageJavaScriptExecutor>,
     tabs: &TabManager,
 ) -> io::Result<()> {
-    if let Some(inline_javascript_executor) = inline_javascript_executor.as_deref_mut() {
-        inline_javascript_executor
-            .synchronize_and_execute(tabs)
-            .map_err(|error| {
-                io::Error::other(format!("inline JavaScript execution failed: {error}"))
-            })?;
+    if let Some(javascript_executor) = javascript_executor.as_deref_mut() {
+        javascript_executor.synchronize_and_execute(tabs)?;
     }
     Ok(())
 }

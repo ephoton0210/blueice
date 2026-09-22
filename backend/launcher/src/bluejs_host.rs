@@ -641,13 +641,42 @@ pub fn bind_bluejs_host_socket(path: &Path) -> io::Result<UnixListener> {
     Ok(listener)
 }
 
-/// A launcher-owned child and the single authenticated private connection to
-/// it. Dropping this handle kills/reaps the process and removes the socket,
-/// matching [`crate::SpawnedCore`]'s ownership discipline.
+/// Private child-connection material a launcher may hand only to the core it
+/// is supervising.
+///
+/// This is deliberately not a frontend setting or a page-visible capability.
+/// A caller using [`SpawnedBlueJsHost::spawn_for_core`] must pass it to a
+/// trusted core startup boundary and keep the returned supervisor alive for
+/// at least as long as that core. It has no fetch, URL, DOM, or VM authority.
+pub struct BlueJsHostCoreConfig {
+    socket_path: PathBuf,
+    session_token: String,
+}
+
+impl BlueJsHostCoreConfig {
+    /// The owner-only socket created for this one child.
+    pub fn socket_path(&self) -> &Path {
+        &self.socket_path
+    }
+
+    /// The per-spawn capability needed by the trusted core's v1 handshake.
+    /// Callers must not forward it to frontend/page code or log it.
+    pub fn session_token(&self) -> &str {
+        &self.session_token
+    }
+}
+
+/// A launcher-owned child and, for the legacy direct-launcher path, its one
+/// authenticated private connection. Dropping this handle kills/reaps the
+/// process and removes the socket, matching [`crate::SpawnedCore`]'s
+/// ownership discipline. [`Self::spawn_for_core`] instead delegates the sole
+/// connection to a separately spawned trusted core while retaining process
+/// supervision here.
 pub struct SpawnedBlueJsHost {
     child: Child,
     socket_path: PathBuf,
-    stream: UnixStream,
+    session_token: String,
+    stream: Option<UnixStream>,
 }
 
 impl SpawnedBlueJsHost {
@@ -656,6 +685,32 @@ impl SpawnedBlueJsHost {
     /// a usable handle. A startup failure always reaps the child and removes
     /// the private socket.
     pub fn spawn() -> io::Result<Self> {
+        let mut host = Self::spawn_unconnected()?;
+        if let Err(error) = host.connect_as_launcher() {
+            host.reap_after_shutdown();
+            return Err(error);
+        }
+        Ok(host)
+    }
+
+    /// Spawns and supervises a child whose sole authenticated connection will
+    /// belong to a trusted core. The returned configuration contains the
+    /// one-time capability and must be conveyed through a launcher-owned
+    /// startup boundary, never from a page or frontend request.
+    ///
+    /// This does not alter the normal `blueice-launcher` command path. It is
+    /// the narrow lifecycle hand-off used by the explicitly opted-in core
+    /// adapter; the caller retains this supervisor until core exits.
+    pub fn spawn_for_core() -> io::Result<(Self, BlueJsHostCoreConfig)> {
+        let host = Self::spawn_unconnected()?;
+        let config = BlueJsHostCoreConfig {
+            socket_path: host.socket_path.clone(),
+            session_token: host.session_token.clone(),
+        };
+        Ok((host, config))
+    }
+
+    fn spawn_unconnected() -> io::Result<Self> {
         let this_exe = std::env::current_exe()?;
         let binary = sibling_bluejs_host_binary(&this_exe);
         let socket_path = unique_bluejs_host_socket_path();
@@ -675,18 +730,19 @@ impl SpawnedBlueJsHost {
             let _ = fs::remove_file(&socket_path);
             return Err(error);
         }
-        let mut stream = match UnixStream::connect(&socket_path) {
-            Ok(stream) => stream,
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = fs::remove_file(&socket_path);
-                return Err(error);
-            }
-        };
+        Ok(Self {
+            child,
+            socket_path,
+            session_token: token,
+            stream: None,
+        })
+    }
+
+    fn connect_as_launcher(&mut self) -> io::Result<()> {
+        let mut stream = UnixStream::connect(&self.socket_path)?;
         let hello = PageHostRequest::Hello {
             protocol_version: page_host::PAGE_HOST_PROTOCOL_VERSION,
-            session_token: token,
+            session_token: self.session_token.clone(),
         };
         let handshake = (|| -> io::Result<PageHostReply> {
             page_host::write_page_host_request(&mut stream, &hello)?;
@@ -695,26 +751,15 @@ impl SpawnedBlueJsHost {
         match handshake {
             Ok(PageHostReply::HelloAck {
                 protocol_version: page_host::PAGE_HOST_PROTOCOL_VERSION,
-            }) => Ok(Self {
-                child,
-                socket_path,
-                stream,
-            }),
-            Ok(reply) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = fs::remove_file(&socket_path);
-                Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    format!("BlueJS page host rejected launcher handshake: {reply:?}"),
-                ))
+            }) => {
+                self.stream = Some(stream);
+                Ok(())
             }
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = fs::remove_file(&socket_path);
-                Err(error)
-            }
+            Ok(reply) => Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!("BlueJS page host rejected launcher handshake: {reply:?}"),
+            )),
+            Err(error) => Err(error),
         }
     }
 
@@ -728,8 +773,14 @@ impl SpawnedBlueJsHost {
                 "BlueJS page-host handshake is already complete",
             ));
         }
-        page_host::write_page_host_request(&mut self.stream, &request)?;
-        page_host::read_page_host_reply(&mut self.stream)
+        let stream = self.stream.as_mut().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "BlueJS page-host connection is delegated to the trusted core",
+            )
+        })?;
+        page_host::write_page_host_request(stream, &request)?;
+        page_host::read_page_host_reply(stream)
     }
 
     /// Applies one caller-authorized document to the isolated child.

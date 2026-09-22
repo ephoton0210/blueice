@@ -30,6 +30,8 @@ pub mod direct_page;
 pub mod host_typings;
 pub mod inline_runner;
 pub mod javascript;
+#[cfg(unix)]
+pub mod javascript_child;
 pub mod page_source_authorizer;
 pub use declarations::{
     discover_blue_js_page_scripts, discover_blue_ts_page_scripts, BlueJsPageScriptDeclaration,

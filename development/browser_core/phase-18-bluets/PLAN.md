@@ -10,9 +10,11 @@ The prioritized completion worklist is [TODO.md](TODO.md). Update it with this p
 a private versioned, per-spawn-capability-authenticated IPC protocol. The child
 owns bounded BlueJS tab realms and accepts only complete caller-authorized
 source/resolver graphs, returning source-free outcomes and aggregate accounting.
-It is not yet connected to core's live page-loader/navigation lifecycle, so it
-is process/supervision evidence rather than a claim that normal page scripts
-already run out of process.
+An explicitly configured core route now forwards one loaded HTTP(S) document's
+inline JavaScript declarations as core-minted closed one-module graphs and
+closes their child realms on navigation or tab removal. It requires the paired
+private endpoint and token supplied by a trusted caller; the stock launcher
+does not select it, so normal page scripts do not run out of process by default.
 
 The opt-in debugger socket now additionally supports source-free opaque
 program-location enumeration and exact compiler-verified BlueJS safe-point
@@ -142,6 +144,17 @@ The initial implementation completes the work that has no BlueJS dependency befo
   lifecycle, and stale-target routes.
 - A parsed `Page` now discovers the explicit non-portable `application/x-blueice-typescript` and `application/x-blueice-typescript-module` declarations in document order, retaining inline source or an external `src` as data. It never grants loading authority or evaluates them: a future page loader must apply origin, feature-profile, integrity, resolver, and resource policy before assembling the `AuthorizedModuleLoader` for direct admission.
 - As a deliberately bounded normal-page fixture seam, `DirectPageScriptHost::execute_inline` may admit one inline declaration only. It derives a canonical module ID from core tab/document-generation/declaration identities and creates a one-module closed loader, so it neither embeds caller text in an identity nor reads an external source. `DirectPageInlineExecutor` can invoke that seam automatically only when a core owner explicitly selects it. By default it rejects and reports external `src` without reflecting the page-controlled URL; `PageScriptSourceAuthorizer` is the sole optional core-owned authority that can turn that declaration into a supplied closed graph plus resolver fingerprint. The executor never fetches, resolves, or falls back itself. A real fetch/cache/integrity implementation, remaining host bindings, and an out-of-process host remain open.
+- The out-of-process portion of that remaining work now has a deliberately
+  narrow bridge: `OutOfProcessJavaScriptPageExecutor`, selected only when core
+  receives both a trusted child endpoint and its per-spawn capability token,
+  turns each loaded HTTP(S) tab/document generation's inline JavaScript into a
+  core-minted one-module graph. It redacts child outcomes to existing reports,
+  rejects external `src` without reflecting it, and sends exact realm closes on
+  navigation or tab removal. `SpawnedBlueJsHost::spawn_for_core` preserves
+  launcher supervision while handing that configuration to one trusted core.
+  There is no document binding, DOM/event callback, fetch/cache, URL or
+  import-map resolution, external graph authority, shared BlueTS realm, or
+  default launcher wiring; those broader host requirements remain open.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.
 
 This is deliberately not a claim of general `tsc` compatibility. Control-flow narrowing, overload resolution, decorators, enums, classes, TSX, namespace emission, parameter properties, and arbitrary JavaScript expression typing remain pending. A construct outside the implemented matrix must be added with a parser/checker/emitter test and a precise compatibility entry; it must not be advertised merely because its tokens happen to be erasable.

@@ -27,6 +27,51 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+fn spawn_private_bluejs_host(label: &str) -> (PathBuf, String, thread::JoinHandle<()>) {
+    // The default macOS temporary directory can exceed the Unix-domain socket
+    // pathname limit once this test's descriptive filename is appended.
+    let path = PathBuf::from("/private/tmp")
+        .join(format!("blueice-oop-{label}-{}.sock", std::process::id()));
+    let token = "0123456789abcdef0123456789abcdef".to_string();
+    let listener = blueice_launcher::bluejs_host::bind_bluejs_host_socket(&path)
+        .expect("test child host must bind its private socket");
+    let child_token = token.clone();
+    let child = thread::spawn(move || {
+        let mut host = blueice_launcher::bluejs_host::BlueJsChildHost::default();
+        blueice_launcher::bluejs_host::serve_bluejs_host_listener(listener, child_token, &mut host)
+            .expect("test child host must serve its private protocol");
+    });
+    (path, token, child)
+}
+
+fn shutdown_private_bluejs_host(path: &std::path::Path, token: &str) {
+    let mut stream =
+        UnixStream::connect(path).expect("must connect to test child host for shutdown");
+    blueice_ipc::page_host::write_page_host_request(
+        &mut stream,
+        &blueice_ipc::page_host::PageHostRequest::Hello {
+            protocol_version: blueice_ipc::page_host::PAGE_HOST_PROTOCOL_VERSION,
+            session_token: token.to_string(),
+        },
+    )
+    .expect("must send child-host shutdown handshake");
+    assert!(matches!(
+        blueice_ipc::page_host::read_page_host_reply(&mut stream)
+            .expect("child host must acknowledge shutdown handshake"),
+        blueice_ipc::page_host::PageHostReply::HelloAck { .. }
+    ));
+    blueice_ipc::page_host::write_page_host_request(
+        &mut stream,
+        &blueice_ipc::page_host::PageHostRequest::Shutdown,
+    )
+    .expect("must request child-host shutdown");
+    assert_eq!(
+        blueice_ipc::page_host::read_page_host_reply(&mut stream)
+            .expect("child host must acknowledge shutdown"),
+        blueice_ipc::page_host::PageHostReply::ShutdownAck
+    );
+}
+
 fn unique_socket_path(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
         "blueice-core-binary-test-{label}-{}.sock",
@@ -918,6 +963,124 @@ fn real_subprocess_executes_opted_in_standard_javascript_and_reports_source_free
 
     blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
     assert!(child.wait().unwrap().success());
+    assert!(!socket_path.exists());
+    assert!(!frame_dir.exists());
+}
+
+#[test]
+fn real_subprocess_routes_an_explicit_page_lifecycle_to_the_private_bluejs_host() {
+    // Exercise the production core binary on its explicit child-host route.
+    // The server is the launcher's real child-host state machine; unlike the
+    // regular in-process `--inline-bluejs` fixture, core reaches it only over
+    // the capability-authenticated page-host protocol.
+    let socket_path = unique_socket_path("oopj");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-out-of-process-bluejs-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("oopj-gk");
+    let (host_socket, host_token, host) = spawn_private_bluejs_host("out-of-process-host");
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = concat!(
+            "<main>out-of-process JavaScript process proof</main>",
+            "<script>globalThis.answer = 42;</script>",
+            "<script type=\"module\">export const moduleAnswer = 43;</script>",
+            "<script src=\"untrusted.js\"></script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+            "--out-of-process-bluejs-socket",
+            host_socket.to_str().unwrap(),
+            "--out-of-process-bluejs-token",
+            &host_token,
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn blueice-core");
+
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut stream).unwrap();
+    let url = format!("http://{addr}");
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url }
+    );
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
+    ));
+
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueJsScriptReports,
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::BlueJsScriptReports(vec![
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 0,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 1,
+                kind: blueice_ipc::BlueJsScriptKind::Module,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 2,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Rejected {
+                    category: "external JavaScript declarations require an authorized loader"
+                        .to_string(),
+                },
+            },
+        ])
+    );
+
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(core.wait().unwrap().success());
+    shutdown_private_bluejs_host(&host_socket, &host_token);
+    host.join().unwrap();
+    let _ = std::fs::remove_file(&host_socket);
     assert!(!socket_path.exists());
     assert!(!frame_dir.exists());
 }

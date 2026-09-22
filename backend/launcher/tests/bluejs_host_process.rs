@@ -14,6 +14,7 @@ use blueice_ipc::page_host::{
     PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
 };
 use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
+use std::os::unix::net::UnixStream;
 
 // Ensure Cargo builds the sibling child binary before `SpawnedBlueJsHost`
 // derives its path from this integration-test executable.
@@ -111,5 +112,78 @@ fn launcher_spawns_an_isolated_host_that_executes_closed_graphs_and_reaps_cleanl
     assert!(
         !private_socket.exists(),
         "launcher must clean the private child socket after a clean shutdown"
+    );
+}
+
+#[test]
+fn launcher_can_delegate_the_single_authenticated_connection_to_a_trusted_core() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let (mut host, connection) = SpawnedBlueJsHost::spawn_for_core()
+        .expect("launcher must supervise a child before delegating it to core");
+    let private_socket = connection.socket_path().to_path_buf();
+    assert!(private_socket.exists());
+    assert!(
+        host.request(blueice_ipc::page_host::PageHostRequest::Shutdown)
+            .is_err(),
+        "the supervisor must not retain a second protocol connection after hand-off"
+    );
+
+    let mut core = UnixStream::connect(connection.socket_path())
+        .expect("the trusted core must reach the delegated private socket");
+    blueice_ipc::page_host::write_page_host_request(
+        &mut core,
+        &blueice_ipc::page_host::PageHostRequest::Hello {
+            protocol_version: blueice_ipc::page_host::PAGE_HOST_PROTOCOL_VERSION,
+            session_token: connection.session_token().to_string(),
+        },
+    )
+    .expect("the trusted core must send its capability handshake");
+    assert!(matches!(
+        blueice_ipc::page_host::read_page_host_reply(&mut core)
+            .expect("the delegated child must answer the capability handshake"),
+        PageHostReply::HelloAck { .. }
+    ));
+    let source_id = "blueice://page/delegated-classic.js";
+    blueice_ipc::page_host::write_page_host_request(
+        &mut core,
+        &blueice_ipc::page_host::PageHostRequest::SynchronizeDocument {
+            document: document(
+                1,
+                vec![PageHostScript {
+                    ordinal: 0,
+                    kind: PageHostScriptKind::Classic,
+                    graph: graph(
+                        source_id,
+                        vec![PageHostSource::new(source_id, "globalThis.answer = 42;")],
+                    ),
+                }],
+            ),
+        },
+    )
+    .expect("the trusted core must send an authorized document");
+    assert!(matches!(
+        blueice_ipc::page_host::read_page_host_reply(&mut core)
+            .expect("the child must execute the delegated document"),
+        PageHostReply::Synchronized { reports, .. }
+            if reports.len() == 1 && reports[0].outcome == PageHostScriptOutcome::Executed
+    ));
+    blueice_ipc::page_host::write_page_host_request(
+        &mut core,
+        &blueice_ipc::page_host::PageHostRequest::Shutdown,
+    )
+    .expect("the trusted core must stop its delegated child");
+    assert_eq!(
+        blueice_ipc::page_host::read_page_host_reply(&mut core)
+            .expect("the child must acknowledge delegated shutdown"),
+        PageHostReply::ShutdownAck
+    );
+    drop(core);
+    drop(host);
+    assert!(
+        !private_socket.exists(),
+        "supervisor teardown must remove the delegated child socket"
     );
 }

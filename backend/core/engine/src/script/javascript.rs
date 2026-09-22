@@ -23,7 +23,7 @@ use blueice_bluejs::{
     CompileError, HostFunctionError, HostValue, ParseError, RuntimeError, Value,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::fmt;
+use std::{fmt, io};
 
 mod debugger_support;
 use debugger_support::{DebuggerBreakpointRecord, DebuggerProgramRecord};
