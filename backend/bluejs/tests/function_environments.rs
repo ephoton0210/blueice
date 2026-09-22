@@ -182,11 +182,18 @@ fn async_function_environments_preserve_contextual_names_and_lexical_contexts() 
     for source in [
         "async function(){var await;}",
         "async function(){await:;}",
-        "async function await(){}",
+        // An async function *expression* binds its own name with `[+Await]`.
+        "(async function await(){})",
+        // A declaration's name uses the enclosing context, which reserves
+        // `await` inside an async function.
+        "async function outer(){async function await(){}}",
         "void \\u0061sync function value(){}",
     ] {
         assert!(parse(source).is_err(), "{source}");
     }
+    // At script top level `await` is an ordinary identifier, so the
+    // declaration form is valid (Test262 await-BindingIdentifier-in-global).
+    assert!(parse("async function await(){}").is_ok());
 
     let mut vm = Vm::default();
     let setup = "
@@ -1108,9 +1115,81 @@ fn generators_delegate_yield_star_return_runs_outer_finally_before_completing() 
                 let first = iterator.next();
                 let duringFinally = iterator.return(9);
                 let complete = iterator.next();
-                first.value === 1 && !first.done && duringFinally.value === 'outer-finally' && !duringFinally.done && complete.value === 9 && complete.done
+                first.value === 1 && !first.done && duringFinally.value === 'outer-finally' && !duringFinally.done && complete.value === 'delegate:9' && complete.done
             ",
         ),
         Ok(Value::Bool(true))
     );
+}
+
+#[test]
+fn parameter_expressions_see_arguments_even_when_the_body_declares_it_lexically() {
+    // FunctionDeclarationInstantiation: a body lexical `arguments` only
+    // suppresses the arguments object when there are no parameter expressions.
+    let mut vm = Vm::default();
+    let run = |vm: &mut Vm, source: &str| vm.execute(&compile(&parse(source).unwrap()).unwrap());
+    assert_eq!(
+        run(&mut vm, "var args; function f(x = args = arguments) { let arguments; } f(); typeof args + args.length"),
+        Ok(Value::String("object0".into()))
+    );
+    assert_eq!(
+        run(&mut vm, "function g(x = arguments.length) { let arguments = 'body'; return x + arguments; } g(undefined, 1, 2)"),
+        Ok(Value::String("3body".into()))
+    );
+    // Without parameter expressions a lexical `arguments` still wins.
+    assert_eq!(
+        run(
+            &mut vm,
+            "function h(a) { let arguments = 'lex'; return arguments; } h(1)"
+        ),
+        Ok(Value::String("lex".into()))
+    );
+}
+
+#[test]
+fn a_sloppy_direct_eval_var_conflicts_with_a_top_level_lexical_of_the_function() {
+    // The function body's top-level lexical declarations live in a separate
+    // environment from its var scope precisely so that eval can see this
+    // conflict (FunctionDeclarationInstantiation NOTE).
+    let mut vm = Vm::default();
+    let outcome = |vm: &mut Vm, source: &str| {
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap()
+    };
+    for body in [
+        "let x; eval('var x;');",
+        "const x = 1; eval('var x;');",
+        "class x {} eval('var x;');",
+        "let x; { eval('var x;'); }",
+    ] {
+        for wrapper in [
+            "function f() { %BODY% }",
+            "var f = () => { %BODY% };",
+            "var f = { m() { %BODY% } }.m;",
+        ] {
+            let source = format!(
+                "{}; var r; try {{ f(); r = 'no throw'; }} catch (e) {{ r = e instanceof SyntaxError ? 'SyntaxError' : 'other'; }} r",
+                wrapper.replace("%BODY%", body)
+            );
+            assert_eq!(
+                outcome(&mut vm, &source),
+                Value::String("SyntaxError".into()),
+                "{source}"
+            );
+        }
+    }
+    // Vars and functions do not conflict with an eval var; neither does a
+    // strict function (its eval has its own variable environment).
+    for source in [
+        "function f() { var x; eval('var x;'); return 'ok'; } f()",
+        "function f() { function x() {} eval('var x;'); return 'ok'; } f()",
+        "function f() { 'use strict'; let x; eval('var x;'); return 'ok'; } f()",
+        "function f(x) { eval('var x;'); return 'ok'; } f()",
+    ] {
+        assert_eq!(
+            outcome(&mut vm, source),
+            Value::String("ok".into()),
+            "{source}"
+        );
+    }
 }

@@ -1,0 +1,6 @@
+# Generated declaration and manifest artifacts are compared byte for byte with
+# freshly generated output and verified by hash. Keep LF on every platform so a
+# Windows checkout with core.autocrlf=true does not turn them into CRLF.
+lib.blueice.d.ts text eol=lf
+lib.blueice.manifest.json text eol=lf
+backend/core/engine/tests/fixtures/host_typings/** text eol=lf

@@ -12,6 +12,7 @@
 
 use crate::JsString;
 use num_bigint::BigInt;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
@@ -40,9 +41,82 @@ pub struct Module {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestedModule {
     pub specifier: String,
+    /// The `with { type }` attribute the request carries; a request is
+    /// identified by its specifier *and* its module type.
+    pub module_type: ModuleType,
     /// `Evaluation` or `Defer`; source-phase imports never evaluate, so they
     /// are not requested modules at all.
     pub phase: ImportPhase,
+}
+
+/// The `type` import attribute of a ModuleRequest, which selects how the
+/// host turns the resolved resource into a module record: as a Source Text
+/// Module (no attribute), or as a synthetic module whose only export is its
+/// `default` (JSON modules, and the import-text and import-bytes proposals).
+/// The attribute is part of a request's identity: `import "./m" with { type:
+/// "text" }` and `import "./m"` name two distinct module records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ModuleType {
+    /// No (recognized) `type` attribute: a Source Text Module.
+    #[default]
+    JavaScript,
+    /// `type: "json"`: ParseJSONModule.
+    Json,
+    /// `type: "text"`: the resource decoded as UTF-8 into a String.
+    Text,
+    /// `type: "bytes"`: the resource as a `Uint8Array` over an immutable
+    /// `ArrayBuffer`.
+    Bytes,
+}
+
+impl ModuleType {
+    /// The module type a `type` attribute value selects. Other attribute
+    /// values are accepted and ignored, as every other attribute key is.
+    pub fn from_attribute_value(value: &str) -> ModuleType {
+        match value {
+            "json" => ModuleType::Json,
+            "text" => ModuleType::Text,
+            "bytes" => ModuleType::Bytes,
+            _ => ModuleType::JavaScript,
+        }
+    }
+
+    fn key_suffix(self) -> Option<&'static str> {
+        match self {
+            ModuleType::JavaScript => None,
+            ModuleType::Json => Some("json"),
+            ModuleType::Text => Some("text"),
+            ModuleType::Bytes => Some("bytes"),
+        }
+    }
+
+    /// The module-registry key of `resolved_path` loaded as this type. A
+    /// Source Text Module keeps its plain resolved path; every synthetic
+    /// module gets a distinct key, so one resource imported under two types
+    /// (or a module importing itself as text) yields two module records.
+    pub(crate) fn module_key(self, resolved_path: &str) -> String {
+        match self.key_suffix() {
+            None => resolved_path.to_string(),
+            Some(suffix) => format!("{resolved_path}\0{suffix}"),
+        }
+    }
+
+    /// Splits a registry key made by [`Self::module_key`] back into the
+    /// resource path the host knows it by and its module type.
+    pub(crate) fn split_module_key(key: &str) -> (&str, ModuleType) {
+        for module_type in [ModuleType::Json, ModuleType::Text, ModuleType::Bytes] {
+            let suffix = module_type
+                .key_suffix()
+                .expect("synthetic types have a suffix");
+            if let Some(path) = key
+                .strip_suffix(suffix)
+                .and_then(|prefix| prefix.strip_suffix('\0'))
+            {
+                return (path, module_type);
+            }
+        }
+        (key, ModuleType::JavaScript)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,9 +168,9 @@ pub struct ImportEntry {
     /// `None` represents `import "specifier";`, which participates in
     /// dependency evaluation but creates no local binding.
     pub local_name: Option<String>,
-    /// Whether this request's `with` clause specified `type: "json"`,
-    /// routing it to ParseJSONModule instead of ordinary module linking.
-    pub json: bool,
+    /// This request's `with { type }` attribute, routing it to a synthetic
+    /// module (JSON, text, bytes) instead of ordinary module linking.
+    pub module_type: ModuleType,
 }
 
 /// One declarative export.  Local entries point at a binding in this module;
@@ -111,16 +185,16 @@ pub enum ExportEntry {
         export_name: String,
         module_request: String,
         import_name: String,
-        json: bool,
+        module_type: ModuleType,
     },
     Star {
         module_request: String,
-        json: bool,
+        module_type: ModuleType,
     },
     Namespace {
         export_name: String,
         module_request: String,
-        json: bool,
+        module_type: ModuleType,
     },
 }
 
@@ -141,7 +215,7 @@ pub enum DeclKind {
     AwaitUsing,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Function {
     pub name: Option<String>,
     pub params: Vec<Param>,
@@ -151,16 +225,98 @@ pub struct Function {
     /// suspension slice, but retaining the grammar prevents valid programs
     /// from being misreported as malformed source.
     pub is_async: bool,
+    /// The source text this function was parsed from (its `[[SourceText]]`).
+    pub source_text: SourceText,
+}
+
+/// The exact source text of a function or class: what
+/// `Function.prototype.toString` returns for it. It is a range of the whole
+/// text that was parsed, which every function and class of one parse shares
+/// (a function nested in another is a sub-range of its parent's range, so no
+/// text is ever copied per function).
+///
+/// The default value has no text: it is what a function the compiler
+/// synthesizes (an implicit initializer, an auto-accessor's getter) carries,
+/// and `Function.prototype.toString` then reports a NativeFunction.
+///
+/// A source range is metadata, not structure, so it never takes part in
+/// equality: two syntax trees that differ only in where their functions were
+/// written are equal.
+#[derive(Clone, Default)]
+pub struct SourceText {
+    text: Option<Arc<str>>,
+    /// Byte offsets into `text`, on character boundaries.
+    start: u32,
+    end: u32,
+}
+
+impl SourceText {
+    /// The range `start..end` (byte offsets on character boundaries) of
+    /// `text`. Text longer than `u32::MAX` bytes has no representable range:
+    /// it yields the default, textless value rather than a wrong range.
+    pub(crate) fn range(text: &Arc<str>, start: usize, end: usize) -> Self {
+        debug_assert!(start <= end && text.is_char_boundary(start) && text.is_char_boundary(end));
+        match (u32::try_from(start), u32::try_from(end)) {
+            (Ok(start), Ok(end)) => Self {
+                text: Some(Arc::clone(text)),
+                start,
+                end,
+            },
+            _ => Self::default(),
+        }
+    }
+
+    /// All of `text`, for a function whose source is synthesized by the
+    /// specification (CreateDynamicFunction) rather than sliced from a
+    /// program.
+    pub(crate) fn whole(text: impl Into<Arc<str>>) -> Self {
+        let text = text.into();
+        let end = text.len();
+        Self::range(&text, 0, end)
+    }
+
+    /// The source text, or `None` for a function that has none.
+    pub fn as_str(&self) -> Option<&str> {
+        let text = self.text.as_deref()?;
+        text.get(self.start as usize..self.end as usize)
+    }
+}
+
+/// Prints the range, not the (whole program's) text it is a range of, so a
+/// syntax tree stays readable in assertion failures and debug output.
+impl std::fmt::Debug for SourceText {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.text {
+            Some(_) => write!(formatter, "SourceText({}..{})", self.start, self.end),
+            None => formatter.write_str("SourceText(none)"),
+        }
+    }
+}
+
+impl PartialEq for SourceText {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
 }
 
 /// A class definition with the executable elements currently supported by the
 /// compiler. Private keys share the ordinary key representation with a
-/// `#` prefix; decorators remain outside this AST subset.
+/// `#` prefix.
+///
+/// Decorators (the Stage 3 decorators proposal) are kept as the expressions
+/// written after each `@`, in source order: a `DecoratorMemberExpression`, a
+/// `DecoratorCallExpression` or the inside of a `DecoratorParenthesizedExpression`
+/// (the value the decorator expression produces is what is later called).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     pub name: Option<String>,
     pub extends: Option<Box<Expr>>,
     pub elements: Vec<ClassElement>,
+    /// Decorators before `class`, in source order.
+    pub decorators: Vec<Expr>,
+    /// The source text of the whole class, its decorators included: what the
+    /// class constructor's `Function.prototype.toString` returns.
+    pub source_text: SourceText,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -169,18 +325,26 @@ pub enum ClassElement {
         key: PropertyKey,
         function: Function,
         is_static: bool,
+        /// Decorators before the element, in source order.
+        decorators: Vec<Expr>,
     },
     Accessor {
         key: PropertyKey,
         function: Function,
         getter: bool,
         is_static: bool,
+        decorators: Vec<Expr>,
     },
     Field {
         key: PropertyKey,
         initializer: Option<Expr>,
         is_static: bool,
+        /// An auto-accessor (`accessor x = 1`): a getter/setter pair backed
+        /// by a hidden private field that holds the initializer's value.
+        accessor: bool,
+        decorators: Vec<Expr>,
     },
+    /// A static block cannot be decorated.
     StaticBlock(Vec<Stmt>),
 }
 
@@ -363,15 +527,31 @@ pub enum Stmt {
         binding: String,
     },
     ClassDecl(Class),
-    /// Compiler-internal wrapper for an instance field lowered into its
-    /// constructor body. The VM uses it to retain field-initializer lexical
-    /// context for direct eval early errors.
+    /// Compiler-internal wrapper for a class field lowered to `this[key] =
+    /// initializer` inside the function that defines it (the class's
+    /// instance-field initializer, or a static field's own function). The
+    /// compiler turns it into DefineField or PrivateFieldAdd.
     ClassField(Box<Stmt>),
     /// Compiler-internal marker inserted before the instance-element
     /// initializers of a class that declares private elements.  The string
     /// names the hidden lexical binding that holds the declaring class's
     /// private-brand owner.
     ClassPrivateBrand(String),
+    /// Compiler-internal wrapper for a decorated class field (or an
+    /// auto-accessor's hidden storage field). The inner `ClassField` defines
+    /// the field; its initial value first passes through the decorators'
+    /// initializer functions, and the extra initializers the decorators added
+    /// run right after the definition. `record` names the hidden lexical
+    /// binding holding the `[extraInitializers, initializers, ...]` record
+    /// the decorators produced.
+    ClassDecoratedField {
+        field: Box<Stmt>,
+        record: String,
+    },
+    /// Compiler-internal: calls the extra initializers (`record[0]`) the
+    /// decorators of a method or accessor added, with `this` the instance
+    /// being initialized. The string names the hidden record binding.
+    ClassExtraInitializers(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -538,6 +718,7 @@ pub enum Expr {
         params: Vec<Param>,
         body: ArrowBody,
         is_async: bool,
+        source_text: SourceText,
     },
     Unary {
         op: UnaryOp,
@@ -668,11 +849,67 @@ pub(crate) fn statements_contain_arguments(statements: &[Stmt]) -> bool {
     stmts_contain_super(statements, SuperSearch::Arguments)
 }
 
+/// Whether a direct `eval(...)` call belongs to these parameters' own
+/// evaluation: in a default or a computed key, but not inside a nested
+/// function or arrow, which have environments of their own.
+pub(crate) fn params_contain_direct_eval(params: &[Param]) -> bool {
+    params.iter().any(|param| {
+        pattern_contains_super(&param.pattern, SuperSearch::DirectEval)
+            || param
+                .default
+                .as_ref()
+                .is_some_and(|expr| expr_contains_super(expr, SuperSearch::DirectEval))
+    })
+}
+
+/// Whether an ordinary function's parameters or body can observe the
+/// function's own `arguments` object: a lexical reference to the name (arrow
+/// functions inside it share the object; nested ordinary functions have their
+/// own and are not entered) or a direct `eval`, which can read it by name from
+/// source that only exists at run time. When neither is present the object is
+/// unobservable, so the compiler need not build it on every call.
+pub(crate) fn function_may_observe_arguments(function: &Function) -> bool {
+    let search = SuperSearch::ArgumentsOrEval;
+    function.params.iter().any(|param| {
+        pattern_contains_super(&param.pattern, search)
+            || param
+                .default
+                .as_ref()
+                .is_some_and(|expr| expr_contains_super(expr, search))
+    }) || stmts_contain_super(&function.body, search)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SuperSearch {
     Call,
     Property,
+    /// A lexical `arguments` reference, for the class-field and static-block
+    /// early errors.
     Arguments,
+    /// A direct `eval` call in this function's own parameter list (not in a
+    /// nested function or arrow).
+    DirectEval,
+    /// A lexical `arguments` reference or a direct `eval` call: everything
+    /// that can reach the enclosing function's `arguments` object.
+    ArgumentsOrEval,
+}
+
+impl SuperSearch {
+    /// The searches that look for `arguments` and therefore stop at an
+    /// ordinary function boundary, which has its own binding.
+    fn looks_for_arguments(self) -> bool {
+        matches!(self, Self::Arguments | Self::ArgumentsOrEval)
+    }
+}
+
+/// `eval` written as the callee of a call, possibly parenthesized: the forms
+/// that are direct evals when they name the intrinsic.
+fn is_eval_reference(expr: &Expr) -> bool {
+    match expr {
+        Expr::Identifier(name) => name == "eval",
+        Expr::Parenthesized(expr) => is_eval_reference(expr),
+        _ => false,
+    }
 }
 
 fn stmts_contain_super_call(statements: &[Stmt]) -> bool {
@@ -769,13 +1006,14 @@ fn stmt_contains_super(statement: &Stmt, search: SuperSearch) -> bool {
         }
         Stmt::Labelled { item, .. } => stmt_contains_super(item, search),
         Stmt::FunctionDecl(function) | Stmt::ModuleDefaultFunction { function, .. } => {
-            search != SuperSearch::Arguments && function_contains_super(function, search)
+            !search.looks_for_arguments() && function_contains_super(function, search)
         }
         Stmt::ClassDecl(class) => {
-            search == SuperSearch::Arguments && class_contains_arguments(class)
+            search.looks_for_arguments() && class_contains_arguments(class, search)
         }
         Stmt::ClassField(statement) => stmt_contains_super(statement, search),
-        Stmt::ClassPrivateBrand(_) => false,
+        Stmt::ClassDecoratedField { field, .. } => stmt_contains_super(field, search),
+        Stmt::ClassPrivateBrand(_) | Stmt::ClassExtraInitializers(_) => false,
     }
 }
 
@@ -804,7 +1042,7 @@ fn for_head_contains_super(head: &ForHead, search: SuperSearch) -> bool {
 }
 
 fn function_contains_super(function: &Function, search: SuperSearch) -> bool {
-    if search == SuperSearch::Arguments {
+    if search.looks_for_arguments() || search == SuperSearch::DirectEval {
         return false;
     }
     function.params.iter().any(|param| {
@@ -900,7 +1138,7 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         | Expr::Super
         | Expr::NewTarget
         | Expr::ImportMeta => false,
-        Expr::Identifier(name) => search == SuperSearch::Arguments && name == "arguments",
+        Expr::Identifier(name) => search.looks_for_arguments() && name == "arguments",
         Expr::Parenthesized(expr) => expr_contains_super(expr, search),
         Expr::Template { expressions, .. } => expressions
             .iter()
@@ -929,7 +1167,9 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
             }
         }),
         Expr::Function(function) => function_contains_super(function, search),
-        Expr::Class(class) => search == SuperSearch::Arguments && class_contains_arguments(class),
+        Expr::Class(class) => {
+            search.looks_for_arguments() && class_contains_arguments(class, search)
+        }
         Expr::Yield { value, .. } => value
             .as_deref()
             .is_some_and(|expr| expr_contains_super(expr, search)),
@@ -944,6 +1184,9 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
                     .as_deref()
                     .is_some_and(|expr| expr_contains_super(expr, search))
         }
+        // An arrow function's parameters and body are evaluated in its own
+        // call, so a direct eval there is not this function's.
+        Expr::Arrow { .. } if search == SuperSearch::DirectEval => false,
         Expr::Arrow { params, body, .. } => {
             params.iter().any(|param| {
                 pattern_contains_super(&param.pattern, search)
@@ -979,6 +1222,10 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
         }
         Expr::Call { callee, args } | Expr::OptionalCall { callee, args } => {
             (search == SuperSearch::Call && matches!(callee.as_ref(), Expr::Super))
+                || (matches!(
+                    search,
+                    SuperSearch::DirectEval | SuperSearch::ArgumentsOrEval
+                ) && is_eval_reference(callee))
                 || expr_contains_super(callee, search)
                 || args.iter().any(|argument| match argument {
                     Argument::Normal(expr) | Argument::Spread(expr) => {
@@ -1008,16 +1255,29 @@ fn expr_contains_super(expr: &Expr, search: SuperSearch) -> bool {
     }
 }
 
-fn class_contains_arguments(class: &Class) -> bool {
+fn class_contains_arguments(class: &Class, search: SuperSearch) -> bool {
     class
         .extends
         .as_deref()
-        .is_some_and(expr_contains_arguments)
+        .is_some_and(|expr| expr_contains_super(expr, search))
+        || class
+            .decorators
+            .iter()
+            .any(|expr| expr_contains_super(expr, search))
         || class.elements.iter().any(|element| match element {
-            ClassElement::Method { key, .. }
-            | ClassElement::Accessor { key, .. }
-            | ClassElement::Field { key, .. } => {
-                matches!(key, PropertyKey::Computed(expr) if expr_contains_arguments(expr))
+            ClassElement::Method {
+                key, decorators, ..
+            }
+            | ClassElement::Accessor {
+                key, decorators, ..
+            }
+            | ClassElement::Field {
+                key, decorators, ..
+            } => {
+                decorators
+                    .iter()
+                    .any(|expr| expr_contains_super(expr, search))
+                    || matches!(key, PropertyKey::Computed(expr) if expr_contains_super(expr, search))
             }
             ClassElement::StaticBlock(_) => false,
         })
@@ -1026,6 +1286,31 @@ fn class_contains_arguments(class: &Class) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_text_is_a_shared_range_that_never_affects_equality() {
+        let text: Arc<str> = Arc::from("a \u{3042} function () {} z");
+        let range = SourceText::range(&text, 6, 20);
+        assert_eq!(range.as_str(), Some("function () {}"));
+        assert_eq!(format!("{range:?}"), "SourceText(6..20)");
+        // A clone is another handle on the same text, not a copy of it.
+        assert_eq!(Arc::strong_count(&text), 2);
+        let copy = range.clone();
+        assert_eq!(copy.as_str(), Some("function () {}"));
+        assert_eq!(Arc::strong_count(&text), 3);
+        // No text: the default of every synthesized function.
+        assert_eq!(SourceText::default().as_str(), None);
+        assert_eq!(format!("{:?}", SourceText::default()), "SourceText(none)");
+        // Where a function was written is metadata, not structure.
+        assert_eq!(range, SourceText::default());
+        assert_eq!(
+            Function {
+                source_text: range,
+                ..Function::default()
+            },
+            Function::default()
+        );
+    }
 
     fn super_member() -> Expr {
         Expr::Member {
@@ -1049,6 +1334,7 @@ mod tests {
             body,
             generator: false,
             is_async: false,
+            source_text: Default::default(),
         }
     }
 
@@ -1130,7 +1416,9 @@ mod tests {
             &Expr::Class(Class {
                 name: None,
                 extends: None,
-                elements: Vec::new()
+                elements: Vec::new(),
+                decorators: Vec::new(),
+                source_text: Default::default(),
             }),
             SuperSearch::Property
         ));
@@ -1143,7 +1431,8 @@ mod tests {
             }],
             body: Vec::new(),
             generator: false,
-            is_async: false
+            is_async: false,
+            source_text: Default::default(),
         }));
         assert!(contains_super_call_outside_class(&Program {
             body: vec![Stmt::Expr(Expr::Call {
@@ -1382,6 +1671,7 @@ mod tests {
                 }],
                 body: ArrowBody::Expr(Box::new(Expr::Number(0.0))),
                 is_async: false,
+                source_text: Default::default(),
             },
             Expr::Sequence(vec![super_call()]),
             Expr::Call {
@@ -1428,11 +1718,13 @@ mod tests {
                 params: Vec::new(),
                 body: ArrowBody::Expr(Box::new(super_call())),
                 is_async: false,
+                source_text: Default::default(),
             },
             Expr::Arrow {
                 params: Vec::new(),
                 body: ArrowBody::Block(vec![Stmt::Expr(super_call())]),
                 is_async: false,
+                source_text: Default::default(),
             },
         ] {
             assert!(
@@ -1444,7 +1736,9 @@ mod tests {
             Class {
                 name: None,
                 extends: None,
-                elements: Vec::new()
+                elements: Vec::new(),
+                decorators: Vec::new(),
+                source_text: Default::default(),
             }
         )));
         let property = Expr::Member {

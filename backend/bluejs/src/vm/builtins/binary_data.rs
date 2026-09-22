@@ -231,7 +231,8 @@ impl Vm {
         if integer < 0.0 {
             return Err(RuntimeError::RangeError("invalid buffer index".into()));
         }
-        if integer > usize::MAX as f64 {
+        // ToIndex: an integer above 2^53 - 1 is a RangeError.
+        if integer > 9_007_199_254_740_991.0 {
             return Err(RuntimeError::RangeError("buffer index is too large".into()));
         }
         Ok(integer as usize)
@@ -610,11 +611,15 @@ impl Vm {
         let buffer = native::argument(args, 0).object_id().ok_or_else(|| {
             RuntimeError::TypeError("DataView buffer must be an ArrayBuffer".into())
         })?;
-        if !self.heap.is_buffer(buffer)? {
-            return Err(RuntimeError::TypeError(
-                "DataView buffer must be an ArrayBuffer".into(),
-            ));
-        }
+        // An ArrayBuffer of another Test262 realm is viewed through a local
+        // mirror, exactly as TypedArray construction does.
+        let buffer = if self.heap.is_buffer(buffer)? {
+            buffer
+        } else {
+            self.test262_foreign_buffer_clone(buffer)?.ok_or_else(|| {
+                RuntimeError::TypeError("DataView buffer must be an ArrayBuffer".into())
+            })?
+        };
         // ToIndex(byteOffset) is observable and precedes the detached-buffer
         // check. A valueOf hook can therefore run even for a detached buffer.
         let offset = if args.len() > 1 {

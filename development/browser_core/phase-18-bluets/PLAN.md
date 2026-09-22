@@ -156,6 +156,7 @@ The initial implementation completes the work that has no BlueJS dependency befo
   import-map resolution, external graph authority, shared BlueTS realm, or
   default launcher wiring; those broader host requirements remain open.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.
+- The [BlueTS test report](TEST_REPORT.md) records the complete per-platform test-suite results, the TypeScript 5.9.3 oracle matrix and per-file line coverage for `blueice-bluets` and `blueice-bluets-bluejs` (2026-09-21).
 
 This is deliberately not a claim of general `tsc` compatibility. Control-flow narrowing, overload resolution, decorators, enums, classes, TSX, namespace emission, parameter properties, and arbitrary JavaScript expression typing remain pending. A construct outside the implemented matrix must be added with a parser/checker/emitter test and a precise compatibility entry; it must not be advertised merely because its tokens happen to be erasable.
 

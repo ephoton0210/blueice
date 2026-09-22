@@ -3,11 +3,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{JsString, RuntimeError};
+use std::rc::Rc;
 
 pub(crate) struct RegExp {
     pub source: JsString,
     pub flags: String,
     pub capture_names: Vec<(String, usize)>,
+    /// [[LegacyFeaturesEnabled]] (Annex B legacy RegExp features): true unless
+    /// the object was allocated for a `new.target` other than `%RegExp%`.
+    pub legacy_features: bool,
 }
 
 impl RegExp {
@@ -37,8 +41,9 @@ impl RegExp {
             .iter()
             .map(|&c| char::from_u32(c as u32).unwrap())
             .collect();
-        match crate::regex_worker::compile(source.as_code_units().to_vec(), flags.clone(), timeout)?
-        {
+        let wire_source =
+            crate::regex_escapes::strip_braced_leading_zeros(source.as_code_units(), &flags);
+        match crate::regex_worker::compile(wire_source.to_vec(), flags.clone(), timeout)? {
             crate::regex_worker::Reply::Compiled => {}
             crate::regex_worker::Reply::SyntaxError(message) => {
                 return Err(RuntimeError::SyntaxError(message))
@@ -50,6 +55,7 @@ impl RegExp {
             source,
             flags,
             capture_names,
+            legacy_features: true,
         })
     }
 
@@ -62,13 +68,118 @@ impl RegExp {
         if let Some(found) = class_escape_find(&self.source, &self.flags, string, start) {
             return Ok(found);
         }
+        let wire_source = crate::regex_escapes::strip_braced_leading_zeros(
+            self.source.as_code_units(),
+            &self.flags,
+        );
         crate::regex_worker::find(
-            self.source.as_code_units().to_vec(),
+            wire_source.into_owned(),
             self.flags.clone(),
             string.as_code_units().to_vec(),
             start,
             timeout,
         )
+    }
+}
+
+/// The realm's legacy static RegExp properties (`RegExp.$1`-`$9`, `input`,
+/// `lastMatch`, `lastParen`, `leftContext`, `rightContext`). The proposal keeps
+/// each as a String in an internal slot of `%RegExp%`; the match-derived ones
+/// are stored here as ranges into the matched input so that a match costs one
+/// copy of that input rather than one substring per property.
+pub(crate) struct LegacyStatics {
+    /// [[RegExpInput]]; `None` is the proposal's "empty" (getter throws).
+    input: Option<Rc<JsString>>,
+    matched: LegacyMatch,
+}
+
+enum LegacyMatch {
+    /// No match yet: every slot holds the empty String.
+    Initial,
+    /// InvalidateLegacyRegExpStaticProperties: every slot is empty.
+    Invalidated,
+    Matched {
+        input: Rc<JsString>,
+        start: usize,
+        end: usize,
+        /// Capture groups 1..n; unmatched groups read as the empty String.
+        groups: Vec<Option<std::ops::Range<usize>>>,
+    },
+}
+
+impl Default for LegacyStatics {
+    fn default() -> Self {
+        Self {
+            input: Some(Rc::new(JsString::default())),
+            matched: LegacyMatch::Initial,
+        }
+    }
+}
+
+impl LegacyStatics {
+    /// UpdateLegacyRegExpStaticProperties. `groups` excludes the whole match.
+    pub fn update(
+        &mut self,
+        input: &JsString,
+        start: usize,
+        end: usize,
+        groups: Vec<Option<std::ops::Range<usize>>>,
+    ) {
+        let input = Rc::new(input.clone());
+        self.input = Some(Rc::clone(&input));
+        self.matched = LegacyMatch::Matched {
+            input,
+            start,
+            end,
+            groups,
+        };
+    }
+
+    /// InvalidateLegacyRegExpStaticProperties.
+    pub fn invalidate(&mut self) {
+        self.input = None;
+        self.matched = LegacyMatch::Invalidated;
+    }
+
+    /// SetLegacyRegExpStaticProperty for `RegExp.input`.
+    pub fn set_input(&mut self, input: JsString) {
+        self.input = Some(Rc::new(input));
+    }
+
+    /// The slot's current String, or `None` when it is empty (invalidated).
+    pub fn get(&self, which: crate::native::LegacyRegExpStatic) -> Option<JsString> {
+        use crate::native::LegacyRegExpStatic::*;
+        if which == Input {
+            return self.input.as_deref().cloned();
+        }
+        let slice = |input: &JsString, range: std::ops::Range<usize>| {
+            JsString::from_code_units(input.as_code_units()[range].to_vec())
+        };
+        match &self.matched {
+            LegacyMatch::Initial => Some(JsString::default()),
+            LegacyMatch::Invalidated => None,
+            LegacyMatch::Matched {
+                input,
+                start,
+                end,
+                groups,
+            } => {
+                let group = |group: Option<&Option<std::ops::Range<usize>>>| {
+                    group
+                        .cloned()
+                        .flatten()
+                        .map_or_else(JsString::default, |range| slice(input, range))
+                };
+                Some(match which {
+                    Input => unreachable!("handled above"),
+                    LastMatch => slice(input, *start..*end),
+                    LastParen => group(groups.last()),
+                    LeftContext => slice(input, 0..*start),
+                    RightContext => slice(input, *end..input.len()),
+                    Paren(index) => group(groups.get(usize::from(index) - 1)),
+                })
+            }
+        }
     }
 }
 

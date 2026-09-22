@@ -14,6 +14,7 @@ from run import (
     FINITE_STRESS_FIXTURES,
     FINITE_STRESS_INSTRUCTION_BUDGET,
     FINITE_STRESS_TIMEOUT,
+    LARGE_FIXTURE_RESOURCES,
     ITERATOR_ZIP_BASIC_MATRIX_TIMEOUT,
     TEMPORAL_CALENDAR_TABLE_FIXTURES,
     TEMPORAL_CALENDAR_TABLE_INSTRUCTION_BUDGET,
@@ -21,17 +22,26 @@ from run import (
     TEMPORAL_TIME_ZONE_ID_TABLE_INSTRUCTION_BUDGET,
     TEMPORAL_TIME_ZONE_LINK_TABLE_FIXTURES,
     TEMPORAL_TIME_ZONE_LINK_TABLE_INSTRUCTION_BUDGET,
+    FINITE_FIXTURE_INSTRUCTION_BUDGETS,
+    FIXTURE_STRING_LIMITS,
+    STRING_SUBSTR_NUMBER_MATRIX_FIXTURES,
+    STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET,
+    WALL_CLOCK_BUSY_WAIT_FIXTURES,
+    WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET,
     ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES,
     ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET,
     Worker,
     case_timeout,
     classify,
     default_jobs,
+    large_fixture_limits,
     execution_source,
+    fixture_string_limit,
     format_progress,
     instruction_budget,
     metadata,
     modes,
+    module_source_requests,
     module_sources,
     selected_files,
 )
@@ -73,6 +83,22 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(
             format_progress(0, 1, {}, [], 0, checkpoint=True).startswith("checkpoint")
         )
+
+    def test_only_sta_and_assert_are_native_includes(self):
+        # `propertyHelper.js` and `isConstructor.js` define behaviour the
+        # native counterparts only approximated (the destructive probes, the
+        # `restore` option, exact messages), so they run their upstream
+        # source like every other include; the adapter rejects them as
+        # unsupported unless the runner supplies that source.
+        self.assertEqual(run.NATIVE_INCLUDES, frozenset({"sta.js", "assert.js"}))
+        for include in (
+            "propertyHelper.js",
+            "isConstructor.js",
+            "compareArray.js",
+            "deepEqual.js",
+            "testTypedArray.js",
+        ):
+            self.assertNotIn(include, run.NATIVE_INCLUDES)
 
     def test_metadata_and_modes(self):
         self.assertEqual(modes(metadata("/*---\nflags: [async]\n---*/")), ["sloppy", "strict"])
@@ -152,6 +178,169 @@ class RunnerTests(unittest.TestCase):
         sibling = "built-ins/TypedArray/prototype/copyWithin/coerced-values-target-detached.js"
         self.assertEqual(instruction_budget(data, 100_000, sibling), 10_000_000)
         self.assertEqual(case_timeout(data, 2, sibling), 60)
+
+    def test_substr_number_matrix_gets_an_exact_path_dispatch_allowance(self):
+        # annexB/.../substr/start-and-length-as-numbers.js checks
+        # String.prototype.substr against a reference implementation for
+        # 4 strings x 35 starts x 36 lengths = 5,040 finite calls, each with a
+        # per-character comparison loop. Measured minimum: 1,496,386
+        # dispatches (identically in both modes), about 15x the default. The
+        # allowance is exact-path and leaves the 2 s wall deadline untouched.
+        relative = "annexB/built-ins/String/prototype/substr/start-and-length-as-numbers.js"
+        self.assertEqual(STRING_SUBSTR_NUMBER_MATRIX_FIXTURES, frozenset({relative}))
+        self.assertEqual(STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET, 6_000_000)
+        self.assertEqual(instruction_budget({}, 100_000, relative), 6_000_000)
+        self.assertEqual(case_timeout({}, 2, relative), 2)
+        # A sibling fixture keeps the default, and so does an unrelated path
+        # whose name merely resembles this one.
+        for sibling in (
+            "annexB/built-ins/String/prototype/substr/length-negative.js",
+            "annexB/built-ins/String/prototype/substr/start-and-length-as-numbers-2.js",
+            "built-ins/String/prototype/substring/start-and-length-as-numbers.js",
+        ):
+            self.assertNotIn(sibling, STRING_SUBSTR_NUMBER_MATRIX_FIXTURES)
+            self.assertEqual(instruction_budget({}, 100_000, sibling), 100_000)
+            self.assertEqual(case_timeout({}, 2, sibling), 2)
+        # The allowance raises the floor only: a larger default is kept, so a
+        # caller asking for more dispatches is never reduced.
+        self.assertEqual(
+            instruction_budget({}, 20_000_000, relative), 20_000_000
+        )
+
+    def test_large_finite_fixtures_get_exact_path_resource_allowances(self):
+        # Each of these fixtures is finite but bigger than the default 1 MiB
+        # string, 16 MiB heap (which also caps an ArrayBuffer), dispatch or
+        # wall-clock ceiling. The allowances are about 3-4x the measured
+        # minimum, exact-path only and never unlimited.
+        mib = 1024 * 1024
+        self.assertEqual(
+            LARGE_FIXTURE_RESOURCES,
+            {
+                "staging/sm/extensions/dataview.js": {"heap_limit": 64 * mib},
+                "staging/sm/RegExp/unicode-braced.js": {
+                    "string_limit": 128 * mib,
+                    "heap_limit": 128 * mib,
+                    "timeout": 20,
+                },
+                "staging/sm/RegExp/unicode-class-braced.js": {
+                    "string_limit": 128 * mib,
+                    "heap_limit": 128 * mib,
+                    "timeout": 20,
+                },
+                "staging/sm/regress/regress-610026.js": {
+                    "string_limit": 64 * mib,
+                    "heap_limit": 128 * mib,
+                    "instruction_budget": 100_000_000,
+                    "timeout": 90,
+                },
+            },
+        )
+        # Dispatch budget and wall deadline follow the table, and only for
+        # the entries that name them.
+        long_running = "staging/sm/regress/regress-610026.js"
+        self.assertEqual(instruction_budget({}, 100_000, long_running), 100_000_000)
+        self.assertEqual(case_timeout({}, 2, long_running), 90)
+        braced = "staging/sm/RegExp/unicode-braced.js"
+        self.assertEqual(instruction_budget({}, 100_000, braced), 100_000)
+        self.assertEqual(case_timeout({}, 2, braced), 20)
+        dataview = "staging/sm/extensions/dataview.js"
+        self.assertEqual(instruction_budget({}, 100_000, dataview), 100_000)
+        self.assertEqual(case_timeout({}, 2, dataview), 2)
+        # The byte limits go to the adapter with the request.
+        self.assertEqual(large_fixture_limits(dataview), {"heap_limit": 64 * mib})
+        self.assertEqual(
+            large_fixture_limits(long_running),
+            {"string_limit": 64 * mib, "heap_limit": 128 * mib},
+        )
+        self.assertEqual(large_fixture_limits("staging/sm/regress/regress-610025.js"), {})
+        # A larger default is never reduced.
+        self.assertEqual(instruction_budget({}, 200_000_000, long_running), 200_000_000)
+        self.assertEqual(case_timeout({}, 120, long_running), 120)
+        # Neighbouring and same-named paths keep every default.
+        for sibling in (
+            "staging/sm/regress/regress-610025.js",
+            "staging/sm/RegExp/unicode-lead-trail.js",
+            "staging/sm/extensions/dataview2.js",
+            "built-ins/DataView/extensions/dataview.js",
+            "test/staging/sm/regress/regress-610026.js",
+        ):
+            self.assertNotIn(sibling, LARGE_FIXTURE_RESOURCES)
+            self.assertEqual(instruction_budget({}, 100_000, sibling), 100_000)
+            self.assertEqual(case_timeout({}, 2, sibling), 2)
+
+    def test_finite_staging_fixtures_get_exact_path_dispatch_allowances(self):
+        # Each of these fixtures is a fixed, finite loop or a run of eagerly
+        # message-building assertions whose size only just exceeds the
+        # 100,000-dispatch default. The allowance is 4x the measured minimum
+        # (identical in sloppy and strict mode), applies to the exact path
+        # only, and leaves the ordinary 2 s wall deadline untouched. Fixtures
+        # that are too slow for that deadline even with fuel (the
+        # dst-offset-caching parts, toSpliced-dense) must NOT be listed.
+        self.assertEqual(
+            FINITE_FIXTURE_INSTRUCTION_BUDGETS,
+            {
+                "staging/sm/Array/with-dense.js": 750_000,
+                "staging/sm/JSON/parse-reviver-array-delete.js": 750_000,
+                "staging/sm/Math/log2-approx.js": 1_300_000,
+                "staging/sm/extensions/es5ish-defineGetter-defineSetter.js": 450_000,
+            },
+        )
+        for relative, budget in FINITE_FIXTURE_INSTRUCTION_BUDGETS.items():
+            self.assertEqual(instruction_budget({}, 100_000, relative), budget, relative)
+            self.assertEqual(case_timeout({}, 2, relative), 2, relative)
+            # Raises the floor only: a larger default is never reduced.
+            self.assertEqual(instruction_budget({}, budget * 10, relative), budget * 10)
+        for other in (
+            "staging/sm/Array/toSpliced-dense.js",
+            "staging/sm/Array/with-dense-2.js",
+            "staging/sm/Date/dst-offset-caching-1-of-8.js",
+            "built-ins/Array/prototype/with/index-bigger-or-eq-than-length.js",
+        ):
+            self.assertNotIn(other, FINITE_FIXTURE_INSTRUCTION_BUDGETS)
+            self.assertEqual(instruction_budget({}, 100_000, other), 100_000, other)
+            self.assertEqual(case_timeout({}, 2, other), 2, other)
+
+    def test_a_fixture_that_needs_a_huge_string_gets_an_exact_path_string_limit(self):
+        # staging/sm/String/unicode-braced.js evaluates a source string built
+        # from 2**24 zeros, which is 32 MiB of UTF-16 by itself and needs a
+        # string limit of at least 33,558,528 bytes (33,554,432 fails). The
+        # rest of the fixture is ordinary and takes about a second, well inside
+        # the unchanged 2 s wall deadline and the default dispatch budget. The
+        # limit is 64 MiB, twice the requirement: it is a data size, so extra
+        # headroom would buy nothing.
+        relative = "staging/sm/String/unicode-braced.js"
+        self.assertEqual(FIXTURE_STRING_LIMITS, {relative: 64 * 1024 * 1024})
+        self.assertEqual(fixture_string_limit(relative), 64 * 1024 * 1024)
+        self.assertEqual(instruction_budget({}, 100_000, relative), 100_000)
+        self.assertEqual(case_timeout({}, 2, relative), 2)
+        # Neighbours, and fixtures whose failure is a different resource (a
+        # string of 2**36 units, a 2**21-element JSON array), keep the default.
+        for other in (
+            "staging/sm/String/unicode-braced-2.js",
+            "staging/sm/String/replace-math.js",
+            "staging/sm/JSON/parse-mega-huge-array.js",
+            "staging/sm/RegExp/unicode-class-braced.js",
+            "built-ins/String/prototype/repeat/repeat-string-n-times.js",
+        ):
+            self.assertIsNone(fixture_string_limit(other), other)
+
+    def test_wall_clock_busy_wait_fixture_gets_an_exact_path_dispatch_allowance(self):
+        # await-import-evaluation_FIXTURE.js spins `while (true)` until
+        # Date.now() has advanced 100 ms, so its dispatch count is a property
+        # of the machine (about 0.3M-1M dispatches here), not of the test. The
+        # allowance is exact-path, leaves the 2 s wall deadline untouched, and
+        # a sibling keeps the default budget.
+        relative = "language/expressions/dynamic-import/await-import-evaluation.js"
+        self.assertEqual(WALL_CLOCK_BUSY_WAIT_FIXTURES, frozenset({relative}))
+        self.assertEqual(WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET, 10_000_000)
+        self.assertEqual(
+            instruction_budget({}, 100_000, relative),
+            WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET,
+        )
+        self.assertEqual(instruction_budget({}, 50_000_000, relative), 50_000_000)
+        self.assertEqual(case_timeout({}, 2, relative), 2)
+        sibling = "language/expressions/dynamic-import/await-import-evaluation-2.js"
+        self.assertEqual(instruction_budget({}, 100_000, sibling), 100_000)
 
     def test_typed_array_harness_receives_a_bounded_extended_wall_deadline(self):
         self.assertEqual(case_timeout({"includes": []}, 2), 2)
@@ -484,7 +673,7 @@ class RunnerTests(unittest.TestCase):
             # path has no lazy-compile counterpart to
             # `ensure_dynamic_module_compiled` (see `module_sources`'s own
             # docstring), so it must still be eagerly compiled.
-            sources, dynamic_sources, json_sources = module_sources(entry, test)
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(entry, test)
             self.assertEqual(
                 set(sources),
                 {
@@ -498,7 +687,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(json_sources, {})
 
             entry.write_text("import './bytes_FIXTURE.bin';")
-            sources, dynamic_sources, json_sources = module_sources(entry, test)
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(entry, test)
             self.assertEqual(set(sources), {"modules/entry.js"})
             self.assertEqual(dynamic_sources, {})
             self.assertEqual(json_sources, {})
@@ -513,7 +702,7 @@ class RunnerTests(unittest.TestCase):
             )
             (test / "modules" / "both.js").write_text("export const value = true;")
 
-            sources, dynamic_sources, json_sources = module_sources(entry, test)
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(entry, test)
             self.assertEqual(set(sources), {"modules/entry.js", "modules/both.js"})
             self.assertEqual(dynamic_sources, {})
             self.assertEqual(json_sources, {})
@@ -536,7 +725,7 @@ class RunnerTests(unittest.TestCase):
             # even though its string also looks like a relative-string root;
             # a bare relative string (the variable candidate) and a string
             # that also appears outside an import call stay static.
-            sources, dynamic_sources, json_sources = module_sources(
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(
                 entry, test, include_dynamic_string_roots=True
             )
             self.assertEqual(
@@ -556,7 +745,7 @@ class RunnerTests(unittest.TestCase):
             )
             (test / "modules" / "data.json").write_text('{"a": 1}')
 
-            sources, dynamic_sources, json_sources = module_sources(entry, test)
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(entry, test)
             self.assertEqual(set(sources), {"modules/entry.js"})
             self.assertEqual(dynamic_sources, {})
             self.assertEqual(json_sources, {"modules/data.json": '{"a": 1}'})
@@ -569,12 +758,185 @@ class RunnerTests(unittest.TestCase):
             entry.write_text("import('./data.json', {with: {type: 'json'}});")
             (test / "modules" / "data.json").write_text('{"a": 1}')
 
-            sources, dynamic_sources, json_sources = module_sources(
+            sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(
                 entry, test, include_dynamic_string_roots=True
             )
             self.assertEqual(set(sources), {"modules/entry.js"})
             self.assertEqual(dynamic_sources, {})
             self.assertEqual(json_sources, {"modules/data.json": '{"a": 1}'})
+
+    def test_module_sources_classifies_text_and_bytes_fixtures_by_their_type_attribute(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text(
+                "import text from './plain_FIXTURE' with { type: 'text' };\n"
+                "import bytes from './image_FIXTURE.png' with { type: \"bytes\" };\n"
+                "import json from './data_FIXTURE.json' with { type: 'json' };\n"
+                "export { default as again } from './plain_FIXTURE' with { type: 'text' };\n"
+                "export * as ns from './note_FIXTURE.txt' with { type: 'text' };\n"
+            )
+            (test / "modules" / "plain_FIXTURE").write_text("plain\n")
+            (test / "modules" / "image_FIXTURE.png").write_bytes(b"\x89PNG\x00\xff")
+            (test / "modules" / "data_FIXTURE.json").write_text('{"a": 1}')
+            (test / "modules" / "note_FIXTURE.txt").write_text("note")
+
+            found = module_sources(entry, test)
+            self.assertEqual(set(found.sources), {"modules/entry.js"})
+            self.assertEqual(
+                found.text_sources,
+                {"modules/plain_FIXTURE": "plain\n", "modules/note_FIXTURE.txt": "note"},
+            )
+            self.assertEqual(
+                found.bytes_sources, {"modules/image_FIXTURE.png": [0x89, 0x50, 0x4E, 0x47, 0, 0xFF]}
+            )
+            self.assertEqual(found.json_sources, {"modules/data_FIXTURE.json": '{"a": 1}'})
+
+    def test_module_sources_type_attribute_wins_over_the_file_extension(self):
+        # A `.json` fixture imported as bytes is bytes, not JSON, and a `.js`
+        # fixture imported as text is never parsed as a module.
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text(
+                "import a from './data.json' with { type: 'bytes' };\n"
+                "import b from './invalid.js' with { type: 'text' };\n"
+            )
+            (test / "modules" / "data.json").write_text('{"a": 1}')
+            (test / "modules" / "invalid.js").write_text("invalid { javascript")
+
+            found = module_sources(entry, test)
+            self.assertEqual(set(found.sources), {"modules/entry.js"})
+            self.assertEqual(found.dynamic_sources, {})
+            self.assertEqual(found.json_sources, {})
+            self.assertEqual(found.text_sources, {"modules/invalid.js": "invalid { javascript"})
+            self.assertEqual(found.bytes_sources, {"modules/data.json": list(b'{"a": 1}')})
+
+    def test_module_sources_supplies_a_module_that_imports_itself_as_text(self):
+        # One path, two request identities: the entry module and its text.
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "self.js"
+            entry.parent.mkdir(parents=True)
+            source = "import value from './self.js' with { type: 'text' };"
+            entry.write_text(source)
+
+            found = module_sources(entry, test)
+            self.assertEqual(found.sources, {"modules/self.js": source})
+            self.assertEqual(found.text_sources, {"modules/self.js": source})
+
+    def test_module_sources_decodes_text_as_utf8_and_drops_a_leading_bom(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text("import a from './a.txt' with { type: 'text' };")
+            (test / "modules" / "a.txt").write_bytes(b"\xef\xbb\xbfcaf\xc3\xa9 \xff")
+
+            found = module_sources(entry, test)
+            # UTF-8 decode: BOM removed, malformed byte becomes U+FFFD.
+            self.assertEqual(found.text_sources, {"modules/a.txt": "caf\u00e9 \ufffd"})
+
+    def test_module_sources_reads_a_type_attribute_on_a_dynamic_import(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text(
+                "import('./fixture.json', { with: { type: 'text' } });\n"
+                "import('./other.bin', {\n  with: { type: 'bytes' },\n});\n"
+                "import('./plain.js');\n"
+            )
+            (test / "modules" / "fixture.json").write_text("{}")
+            (test / "modules" / "other.bin").write_bytes(b"\x00\x01")
+            (test / "modules" / "plain.js").write_text("export {};")
+
+            found = module_sources(entry, test)
+            self.assertEqual(found.text_sources, {"modules/fixture.json": "{}"})
+            self.assertEqual(found.bytes_sources, {"modules/other.bin": [0, 1]})
+            self.assertEqual(found.json_sources, {})
+            self.assertEqual(set(found.dynamic_sources), {"modules/plain.js"})
+
+    def test_module_sources_untyped_relative_string_to_a_json_fixture_stays_json(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text("const specifier = './data.json'; import(specifier);")
+            (test / "modules" / "data.json").write_text("[]")
+
+            found = module_sources(entry, test, include_dynamic_string_roots=True)
+            self.assertEqual(found.json_sources, {"modules/data.json": "[]"})
+            self.assertEqual(found.text_sources, {})
+            self.assertEqual(found.bytes_sources, {})
+
+    def test_module_sources_finds_requests_written_without_whitespace_around_punctuation(self):
+        # `export*from"./a.js"` and `import{b}from"./b.js"` are ordinary
+        # module declarations (staging/sm/module/bug1488117.js writes the
+        # first); a fixture reachable only through one must still be supplied.
+        with tempfile.TemporaryDirectory() as temporary:
+            test = Path(temporary) / "test"
+            entry = test / "modules" / "entry.js"
+            entry.parent.mkdir(parents=True)
+            entry.write_text(
+                'export* from "./star.js";\n'
+                'export*as ns from"./namespace.js";\n'
+                'export{x}from"./named.js";\n'
+                'import{y}from"./imported.js";\n'
+                'import*as z from"./whole.js";\n'
+                'import"./bare.js";\n'
+            )
+            names = ["star", "namespace", "named", "imported", "whole", "bare"]
+            for name in names:
+                (test / "modules" / f"{name}.js").write_text("export const x = 1;")
+
+            found = module_sources(entry, test)
+            self.assertEqual(
+                set(found.sources),
+                {"modules/entry.js"} | {f"modules/{name}.js" for name in names},
+            )
+
+    def test_module_source_requests_find_static_and_dynamic_host_source_specifiers(self):
+        # `<module source>` is Test262's host-provided Module Source; a test
+        # names it in a static `import source` or a dynamic `import.source()`.
+        self.assertEqual(module_source_requests({}), [])
+        self.assertEqual(
+            module_source_requests(
+                {
+                    "a.js": "import source x from '<module source>';",
+                    "b.js": "import source y from './other.js';",
+                }
+            ),
+            ["<module source>"],
+        )
+        self.assertEqual(
+            module_source_requests(
+                {"c.js": "const s = await import.source(  \"<module source>\"  );"}
+            ),
+            ["<module source>"],
+        )
+        # A plain `import()` or an unrelated specifier never registers one.
+        self.assertEqual(
+            module_source_requests(
+                {
+                    "d.js": "import('<module source>'); import.source('./x.js');",
+                    "e.js": "import.defer('<module source>');",
+                }
+            ),
+            [],
+        )
+        # Both forms together still yield one entry.
+        self.assertEqual(
+            module_source_requests(
+                {
+                    "f.js": "import source x from '<module source>';"
+                    "import.source('<module source>');"
+                }
+            ),
+            ["<module source>"],
+        )
 
     def test_supervisor_terminates_and_restarts_a_stalled_process(self):
         with tempfile.TemporaryDirectory() as temporary:

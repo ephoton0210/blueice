@@ -209,26 +209,25 @@ impl Vm {
                             self.json_internalize(&Value::Object(object), &key, reviver, sources)?;
                         self.stack.push(replacement.clone());
                         let property = PropertyName::from(&key);
+                        // A `false` from `[[Delete]]` or CreateDataProperty is
+                        // ignored; only an abrupt completion propagates.
                         if replacement == Value::Undefined {
-                            if !self.object_delete(object, &property)? {
-                                return Err(RuntimeError::TypeError(
-                                    "cannot delete JSON revival property".into(),
-                                ));
-                            }
-                        } else if !self.object_define_own_property(
-                            object,
-                            property,
-                            PropertyDescriptor::data(replacement, true, true, true),
-                        )? {
-                            return Err(RuntimeError::TypeError(
-                                "cannot define JSON revival property".into(),
-                            ));
+                            self.object_delete(object, &property)?;
+                        } else {
+                            self.object_define_own_property(
+                                object,
+                                property,
+                                PropertyDescriptor::data(replacement, true, true, true),
+                            )?;
                         }
                         self.stack.pop();
                     }
                 } else {
-                    let keys = self.object_own_property_keys(object)?;
-                    for key in keys {
+                    // EnumerableOwnProperties: the keys are collected (and
+                    // their enumerability read) up front, so a property the
+                    // reviver later deletes is still visited.
+                    let mut enumerable = Vec::new();
+                    for key in self.object_own_property_keys(object)? {
                         self.charge_step()?;
                         let PropertyName::String(key) = key else {
                             continue;
@@ -239,24 +238,24 @@ impl Vm {
                         {
                             continue;
                         }
+                        enumerable.push(key);
+                    }
+                    for key in enumerable {
+                        self.charge_step()?;
                         let replacement =
                             self.json_internalize(&Value::Object(object), &key, reviver, sources)?;
                         self.stack.push(replacement.clone());
                         let property = PropertyName::from(&key);
+                        // A `false` from `[[Delete]]` or CreateDataProperty is
+                        // ignored; only an abrupt completion propagates.
                         if replacement == Value::Undefined {
-                            if !self.object_delete(object, &property)? {
-                                return Err(RuntimeError::TypeError(
-                                    "cannot delete JSON revival property".into(),
-                                ));
-                            }
-                        } else if !self.object_define_own_property(
-                            object,
-                            property,
-                            PropertyDescriptor::data(replacement, true, true, true),
-                        )? {
-                            return Err(RuntimeError::TypeError(
-                                "cannot define JSON revival property".into(),
-                            ));
+                            self.object_delete(object, &property)?;
+                        } else {
+                            self.object_define_own_property(
+                                object,
+                                property,
+                                PropertyDescriptor::data(replacement, true, true, true),
+                            )?;
                         }
                         self.stack.pop();
                     }
@@ -399,6 +398,7 @@ impl Vm {
                 replacer: Some(replacer.clone()),
                 property_list: None,
                 gap: self.json_gap(space)?,
+                stack: Default::default(),
             });
         }
         if !self.is_array(replacer)? {
@@ -428,6 +428,7 @@ impl Vm {
             replacer: None,
             property_list: Some(property_list),
             gap: self.json_gap(space)?,
+            stack: Default::default(),
         })
     }
 
@@ -591,16 +592,20 @@ impl Vm {
                 if self.is_callable(value)? {
                     return Ok(None);
                 }
-                if self.joining.contains(object) {
+                if state.stack.borrow().contains(object) {
                     return Err(RuntimeError::TypeError("cyclic JSON value".into()));
                 }
-                self.joining.push(*object);
-                let result = if self.is_array(value)? {
+                let is_array = self.is_array(value)?;
+                state.stack.borrow_mut().push(*object);
+                // Keep the holder reachable for the collector as well.
+                self.stack.push(value.clone());
+                let result = if is_array {
                     self.json_array(*object, state, indent)
                 } else {
                     self.json_object(*object, state, indent)
                 };
-                self.joining.pop();
+                self.stack.pop();
+                state.stack.borrow_mut().pop();
                 result.map(Some)
             }
         }
@@ -667,24 +672,27 @@ impl Vm {
             let keys = if let Some(property_list) = &state.property_list {
                 property_list.clone()
             } else {
-                self.object_own_property_keys(object)?
-                    .into_iter()
-                    .filter_map(|key| match key {
-                        PropertyName::String(key) => Some(key),
-                        PropertyName::Symbol(_) => None,
-                    })
-                    .collect()
+                // EnumerableOwnProperties: keys and their enumerability are
+                // read before any property is serialized, so a getter or a
+                // replacer that deletes a later property does not remove it
+                // from the output (it is serialized as `undefined`).
+                let mut enumerable = Vec::new();
+                for key in self.object_own_property_keys(object)? {
+                    let PropertyName::String(key) = key else {
+                        continue;
+                    };
+                    self.charge_step()?;
+                    if self
+                        .object_get_own_property(object, &PropertyName::from(&key))?
+                        .is_some_and(|descriptor| descriptor.enumerable == Some(true))
+                    {
+                        enumerable.push(key);
+                    }
+                }
+                enumerable
             };
             for key in keys {
                 self.charge_step()?;
-                let property = PropertyName::from(&key);
-                if state.property_list.is_none()
-                    && self
-                        .object_get_own_property(object, &property)?
-                        .is_none_or(|descriptor| descriptor.enumerable != Some(true))
-                {
-                    continue;
-                }
                 let Some(value) =
                     self.json_str(&Value::Object(object), &key, state, &next_indent)?
                 else {
@@ -953,6 +961,10 @@ struct JsonStringifyState {
     replacer: Option<Value>,
     property_list: Option<Vec<JsString>>,
     gap: JsString,
+    /// The spec's per-call `stack` of holder objects being serialized: a value
+    /// found on it is a cycle. It is owned by one JSON.stringify call, so a
+    /// nested call from a replacer or `toJSON` starts with an empty stack.
+    stack: std::cell::RefCell<Vec<ObjectId>>,
 }
 
 fn json_quote(value: &JsString) -> String {

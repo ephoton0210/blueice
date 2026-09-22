@@ -13,7 +13,7 @@ use crate::bytecode::{
     ModuleRequest as CompiledModuleRequest,
 };
 use crate::*;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 /// Parser-private binding used to represent an anonymous `export default`
 /// declaration.  It can never be spelled by ECMAScript source, which lets
@@ -21,6 +21,20 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// function/class name required by SetFunctionName.
 const MODULE_DEFAULT_BINDING: &str = "\0bluejs_module_default";
 const PRIVATE_OWNER_BINDING_PREFIX: &str = "\0bluejs_private_owner_";
+/// Per-class-evaluation bindings for state a class element carries from
+/// ClassDefinitionEvaluation to a later step: a computed field key (evaluated
+/// once, in element order) and a static field or static block's function
+/// (run only after every element has been defined).
+const CLASS_ELEMENT_BINDING_PREFIX: &str = "\0bluejs_class_element_";
+/// A derived class constructor's `this` binding. Unlike an ordinary function's
+/// receiver it starts uninitialized and is bound by `super()`, possibly from a
+/// nested arrow function or direct eval, so it is a real lexical binding that
+/// those closures capture. Ordinary functions (including methods and nested
+/// classes) never inherit it: only arrow functions and eval code see it.
+pub(crate) const DERIVED_THIS_BINDING: &str = "\0bluejs_derived_this";
+/// The derived constructor function object itself (`F` in the specification's
+/// `super()` steps), visible to the same nested closures as the `this` binding.
+pub(crate) const DERIVED_CONSTRUCTOR_BINDING: &str = "\0bluejs_derived_constructor";
 use std::fmt;
 
 mod expressions;
@@ -115,6 +129,9 @@ fn compile_with_limit_and_mode(
         local_scope: 0,
         with_depth: 0,
         with_scope_depths: Vec::new(),
+        annex_b_parameter_names: BTreeSet::new(),
+        tail_call_blockers: 0,
+        tail_call_pending: false,
     };
     compiler.bytecode.strict = module || strict_body(&program.body);
     compiler.bytecode.module = module;
@@ -225,7 +242,7 @@ fn compile_with_limit_and_mode(
                         ImportName::Source => CompiledModuleImportName::Source,
                     },
                     local_slot,
-                    json: import.json,
+                    module_type: import.module_type,
                 }
             })
             .collect();
@@ -255,33 +272,33 @@ fn compile_with_limit_and_mode(
                     Some(ImportEntry {
                         module_request,
                         import_name: ImportName::Named(import_name),
-                        json,
+                        module_type,
                         ..
                     }) => Ok(CompiledModuleExport::Indirect {
                         export_name: export_name.clone(),
                         module_request: module_request.clone(),
                         import_name: import_name.clone(),
-                        json: *json,
+                        module_type: *module_type,
                     }),
                     Some(ImportEntry {
                         module_request,
                         import_name: ImportName::Namespace,
-                        json,
+                        module_type,
                         ..
                     }) => Ok(CompiledModuleExport::Namespace {
                         export_name: export_name.clone(),
                         module_request: module_request.clone(),
-                        json: *json,
+                        module_type: *module_type,
                     }),
                     Some(ImportEntry {
                         module_request,
                         import_name: ImportName::DeferredNamespace,
-                        json,
+                        module_type,
                         ..
                     }) => Ok(CompiledModuleExport::DeferredNamespace {
                         export_name: export_name.clone(),
                         module_request: module_request.clone(),
-                        json: *json,
+                        module_type: *module_type,
                     }),
                     Some(ImportEntry {
                         module_request,
@@ -304,28 +321,28 @@ fn compile_with_limit_and_mode(
                     export_name,
                     module_request,
                     import_name,
-                    json,
+                    module_type,
                 } => Ok(CompiledModuleExport::Indirect {
                     export_name: export_name.clone(),
                     module_request: module_request.clone(),
                     import_name: import_name.clone(),
-                    json: *json,
+                    module_type: *module_type,
                 }),
                 ExportEntry::Star {
                     module_request,
-                    json,
+                    module_type,
                 } => Ok(CompiledModuleExport::Star {
                     module_request: module_request.clone(),
-                    json: *json,
+                    module_type: *module_type,
                 }),
                 ExportEntry::Namespace {
                     export_name,
                     module_request,
-                    json,
+                    module_type,
                 } => Ok(CompiledModuleExport::Namespace {
                     export_name: export_name.clone(),
                     module_request: module_request.clone(),
-                    json: *json,
+                    module_type: *module_type,
                 }),
             })
             .collect::<Result<Vec<_>, CompileError>>()?;
@@ -335,16 +352,41 @@ fn compile_with_limit_and_mode(
             .filter(|request| {
                 seen.insert((
                     request.specifier.as_str(),
+                    request.module_type,
                     request.phase == ImportPhase::Defer,
                 ))
             })
             .map(|request| CompiledModuleRequest {
                 module_request: request.specifier.clone(),
+                module_type: request.module_type,
                 deferred: request.phase == ImportPhase::Defer,
             })
             .collect();
     }
     Ok(compiler.bytecode)
+}
+
+/// The `with` object environments active where a direct eval runs.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct EvalWithScopes {
+    /// How many are active in total.
+    pub(crate) depth: usize,
+    /// The first `inherited` of them were in scope when the running function
+    /// was created, so its own bindings are nested inside them.
+    pub(crate) inherited: usize,
+}
+
+/// What a direct eval inherits from the function that calls it, other than
+/// its visible bindings.
+#[derive(Default)]
+pub(crate) struct EvalContext {
+    pub(crate) strict: bool,
+    /// Whether `new.target` is valid in the calling function.
+    pub(crate) new_target_allowed: bool,
+    /// The caller is a class field initializer (or an arrow function inside
+    /// one).
+    pub(crate) class_field_initializer: bool,
+    pub(crate) with_scopes: EvalWithScopes,
 }
 
 /// Compiles direct-eval source with cells for the caller's visible bindings.
@@ -355,10 +397,15 @@ pub(crate) fn compile_eval(
     visible: &[(String, Binding, u32)],
     variable_environment_names: &[String],
     lexical_conflicts: &[String],
-    strict: bool,
-    new_target_allowed: bool,
-    with_depth: usize,
+    context: EvalContext,
 ) -> Result<Bytecode, CompileError> {
+    let EvalContext {
+        strict,
+        new_target_allowed,
+        class_field_initializer,
+        with_scopes,
+    } = context;
+    let with_depth = with_scopes.depth;
     let mut compiler = Compiler {
         bytecode: Bytecode::empty(),
         names: vec![HashMap::new()],
@@ -372,12 +419,20 @@ pub(crate) fn compile_eval(
         local_scope: 1,
         with_depth,
         // Captured bindings form the outer lexical environment of direct
-        // eval. Any inherited `with` environments occur after it, while the
-        // eval's own declaration scope is entered below.
-        with_scope_depths: vec![1; with_depth],
+        // eval. The `with` environments the calling function entered occur
+        // after it, while the eval's own declaration scope is entered below.
+        // The first `inherited` objects were in scope when the calling
+        // function was created: its own bindings are nested inside them.
+        with_scope_depths: (0..with_depth)
+            .map(|index| usize::from(index >= with_scopes.inherited))
+            .collect(),
+        annex_b_parameter_names: BTreeSet::new(),
+        tail_call_blockers: 0,
+        tail_call_pending: false,
     };
     compiler.bytecode.strict = strict || strict_body(&program.body);
     compiler.bytecode.new_target_allowed = new_target_allowed;
+    compiler.bytecode.class_field_initializer = class_field_initializer;
     if compiler.bytecode.strict && strict_assignment_to_restricted_name(&program.body) {
         return Err(CompileError::InvalidSyntax(
             "strict code cannot assign to eval or arguments",
@@ -501,6 +556,18 @@ struct Compiler {
     /// environment was inserted. A binding declared after the innermost
     /// entry wins before that object environment during name resolution.
     with_scope_depths: Vec<usize>,
+    /// The enclosing function's formal parameter names (`parameterNames`).
+    /// Annex B.3.2.1 gives a block function no legacy var binding, and no
+    /// copy into one, for these names.
+    annex_b_parameter_names: BTreeSet<String>,
+    /// How many enclosing statements make a `return f()` here not a tail call
+    /// (§15.10.2): a `try` block, the block of a `catch` that has a `finally`,
+    /// and a block whose `using` declarations dispose after the return value
+    /// is computed. Their handler must observe the call's outcome.
+    tail_call_blockers: u32,
+    /// Set by a `return` in tail position just before it compiles the call
+    /// expression; the call consumes it to emit `TailCall` instead of `Call`.
+    tail_call_pending: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -511,9 +578,20 @@ struct FunctionCompileOptions {
     derived_constructor: bool,
     default_derived_constructor: bool,
     class_method: bool,
+    class_field_initializer: bool,
 }
 
 impl FunctionCompileOptions {
+    /// An object-literal MethodDefinition: like a class method its name is
+    /// only a property name, not a binding, but it is not implicitly strict.
+    fn object_method() -> Self {
+        Self {
+            constructible: false,
+            force_strict: false,
+            ..Self::class_method()
+        }
+    }
+
     fn class_method() -> Self {
         Self {
             constructible: false,
@@ -522,6 +600,16 @@ impl FunctionCompileOptions {
             derived_constructor: false,
             default_derived_constructor: false,
             class_method: true,
+            class_field_initializer: false,
+        }
+    }
+
+    /// A function that defines class fields on its receiver: a method whose
+    /// direct evals may not see an `arguments` binding.
+    fn class_field_initializer() -> Self {
+        Self {
+            class_field_initializer: true,
+            ..Self::class_method()
         }
     }
 }
@@ -577,6 +665,7 @@ impl Compiler {
                     name.as_str(),
                     "implements"
                         | "interface"
+                        | "let"
                         | "package"
                         | "private"
                         | "protected"
@@ -672,6 +761,9 @@ impl Compiler {
             return None;
         }
         let name = &self.bytecode.bindings[slot as usize].name;
+        if self.annex_b_parameter_names.contains(name) {
+            return None;
+        }
         for scope in self.names[..self.names.len() - 1].iter().rev() {
             let Some(&candidate) = scope.get(name) else {
                 continue;
@@ -714,7 +806,8 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
         | Stmt::FunctionDecl(_)
         | Stmt::ModuleDefaultFunction { .. }
         | Stmt::ClassDecl(_)
-        | Stmt::ClassPrivateBrand(_) => false,
+        | Stmt::ClassPrivateBrand(_)
+        | Stmt::ClassExtraInitializers(_) => false,
         Stmt::Expr(expr) | Stmt::Throw(expr) => strict_assignment_in_expression(expr),
         Stmt::Block(statements) => strict_assignment_to_restricted_name(statements),
         Stmt::VarDecl(_, declarations) => declarations.iter().any(|declaration| {
@@ -769,9 +862,9 @@ fn strict_assignment_in_statement(statement: &Stmt) -> bool {
                         || strict_assignment_to_restricted_name(&case.consequent)
                 })
         }
-        Stmt::Labelled { item, .. } | Stmt::ClassField(item) => {
-            strict_assignment_in_statement(item)
-        }
+        Stmt::Labelled { item, .. }
+        | Stmt::ClassField(item)
+        | Stmt::ClassDecoratedField { field: item, .. } => strict_assignment_in_statement(item),
         Stmt::Return(value) => value.as_ref().is_some_and(strict_assignment_in_expression),
         Stmt::Try {
             block,
@@ -822,7 +915,10 @@ fn strict_assignment_in_for_head(head: &ForHead) -> bool {
 
 fn strict_assignment_in_pattern(pattern: &Pattern) -> bool {
     match pattern {
-        Pattern::Identifier(_) => false,
+        // §13.1.1: in strict code a BindingIdentifier cannot be `eval` or
+        // `arguments`, whichever declaration (`var`, `let`, `const`, a
+        // for-head declaration, a catch parameter) introduces it.
+        Pattern::Identifier(name) => restricted_name(name),
         Pattern::Array(elements) => elements.iter().flatten().any(|element| {
             strict_assignment_in_pattern(&element.pattern)
                 || element
@@ -1083,7 +1179,11 @@ fn private_owner_binding_name(binding: &str) -> Option<(u32, String)> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PrivateDeclarationKind {
     FieldOrMethod,
-    Accessor { getter: bool },
+    Accessor {
+        getter: bool,
+    },
+    /// A getter and setter for one name: nothing else may share it.
+    AccessorPair,
 }
 
 /// Collect own private names and establish the class-element duplicate early
@@ -1093,47 +1193,135 @@ enum PrivateDeclarationKind {
 fn class_private_declarations(class: &Class) -> Result<Vec<(String, bool)>, CompileError> {
     let mut declarations = Vec::new();
     let mut seen: HashMap<String, (bool, PrivateDeclarationKind)> = HashMap::new();
-    for element in &class.elements {
-        let (key, is_static, kind) = match element {
+    for (index, element) in class.elements.iter().enumerate() {
+        // Every private name a single element declares, with its kind. An
+        // auto-accessor declares its hidden storage field, plus a private
+        // getter and setter when its own name is private.
+        let mut declared = Vec::new();
+        match element {
             ClassElement::Method { key, is_static, .. } => {
-                (key, *is_static, PrivateDeclarationKind::FieldOrMethod)
+                declared.push((
+                    private_class_name(key).map(str::to_owned),
+                    *is_static,
+                    PrivateDeclarationKind::FieldOrMethod,
+                ));
             }
             ClassElement::Accessor {
                 key,
                 getter,
                 is_static,
                 ..
-            } => (
-                key,
+            } => declared.push((
+                private_class_name(key).map(str::to_owned),
                 *is_static,
                 PrivateDeclarationKind::Accessor { getter: *getter },
-            ),
-            ClassElement::Field { key, is_static, .. } => {
-                (key, *is_static, PrivateDeclarationKind::FieldOrMethod)
-            }
-            ClassElement::StaticBlock(_) => continue,
-        };
-        let Some(name) = private_class_name(key) else {
-            continue;
-        };
-        let name = name.to_owned();
-        match seen.get(&name).copied() {
-            None => {
-                seen.insert(name.clone(), (is_static, kind));
-                declarations.push((name, is_static));
-            }
-            Some((previous_static, PrivateDeclarationKind::Accessor { getter: previous }))
-                if previous_static == is_static
-                    && matches!(kind, PrivateDeclarationKind::Accessor { getter } if getter != previous) =>
-                {}
-            Some(_) => {
-                return Err(CompileError::InvalidSyntax(
-                    "duplicate private name in class body",
+            )),
+            ClassElement::Field {
+                key,
+                is_static,
+                accessor: true,
+                ..
+            } => {
+                declared.push((
+                    Some(auto_accessor_storage_name(index)),
+                    *is_static,
+                    PrivateDeclarationKind::FieldOrMethod,
                 ));
+                for getter in [true, false] {
+                    declared.push((
+                        private_class_name(key).map(str::to_owned),
+                        *is_static,
+                        PrivateDeclarationKind::Accessor { getter },
+                    ));
+                }
+            }
+            ClassElement::Field { key, is_static, .. } => declared.push((
+                private_class_name(key).map(str::to_owned),
+                *is_static,
+                PrivateDeclarationKind::FieldOrMethod,
+            )),
+            ClassElement::StaticBlock(_) => continue,
+        }
+        for (name, is_static, kind) in declared {
+            let Some(name) = name else {
+                continue;
+            };
+            match seen.get(&name).copied() {
+                None => {
+                    seen.insert(name.clone(), (is_static, kind));
+                    declarations.push((name, is_static));
+                }
+                Some((previous_static, PrivateDeclarationKind::Accessor { getter: previous }))
+                    if previous_static == is_static
+                        && matches!(kind, PrivateDeclarationKind::Accessor { getter } if getter != previous) =>
+                {
+                    seen.insert(name, (is_static, PrivateDeclarationKind::AccessorPair));
+                }
+                Some(_) => {
+                    return Err(CompileError::InvalidSyntax(
+                        "duplicate private name in class body",
+                    ));
+                }
             }
         }
     }
     Ok(declarations)
+}
+
+/// The hidden private name (spelled without `#`) of the field that stores an
+/// auto-accessor's value. U+0000 cannot appear in a source identifier, so it
+/// never collides with a declared name.
+fn auto_accessor_storage_name(index: usize) -> String {
+    format!("\0accessor_{index}")
+}
+
+/// The getter and setter of an auto-accessor: `get() { return this.#s }` and
+/// `set(value) { this.#s = value }` over its hidden storage field.
+fn auto_accessor_functions(index: usize, name: Option<&str>) -> (Function, Function) {
+    let storage = Expr::Member {
+        object: Box::new(Expr::This),
+        property: Box::new(Expr::Identifier(format!(
+            "#{}",
+            auto_accessor_storage_name(index)
+        ))),
+        computed: false,
+    };
+    let getter = Function {
+        name: name.map(|name| format!("get {name}")),
+        params: Vec::new(),
+        body: vec![Stmt::Return(Some(storage.clone()))],
+        ..Function::default()
+    };
+    let setter = Function {
+        name: name.map(|name| format!("set {name}")),
+        params: vec![Param {
+            pattern: Pattern::Identifier("value".into()),
+            default: None,
+            rest: false,
+        }],
+        body: vec![Stmt::Expr(Expr::Assign {
+            op: AssignOp::Assign,
+            target: Box::new(storage),
+            value: Box::new(Expr::Identifier("value".into())),
+        })],
+        ..Function::default()
+    };
+    (getter, setter)
+}
+
+/// The reference inside a parenthesized destructuring target: `(a)` and `(o.p)`
+/// assign like `a` and `o.p`. The parser keeps the parentheses on a target that
+/// has a default because they switch off anonymous-function naming, which
+/// [`Compiler::assignment_pattern_default`] observes on the unstripped pattern.
+fn strip_target_parentheses(target: &Expr) -> &Expr {
+    match target {
+        Expr::Parenthesized(inner) => strip_target_parentheses(inner),
+        target => target,
+    }
+}
+
+fn is_super_member(expr: &Expr) -> bool {
+    matches!(expr, Expr::Member { object, .. } if matches!(&**object, Expr::Super))
 }
 
 fn private_member_name(expr: &Expr) -> Option<&str> {
@@ -1158,12 +1346,46 @@ fn undefined_expression() -> Expr {
     }
 }
 
-fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
-    let (property, computed) = match key {
-        PropertyKey::Identifier(name) => (Expr::Identifier(name.clone()), false),
-        PropertyKey::String(name) => (Expr::String(name.clone()), true),
-        PropertyKey::Number(number) => (Expr::Number(*number), true),
-        PropertyKey::Computed(expression) => ((*expression.clone()), true),
+/// IsAnonymousFunctionDefinition: a function, arrow function or class
+/// expression without its own name, possibly parenthesized.
+fn is_anonymous_function_definition(expression: &Expr) -> bool {
+    match expression {
+        Expr::Parenthesized(inner) => is_anonymous_function_definition(inner),
+        Expr::Function(function) => function.name.is_none(),
+        Expr::Class(class) => class.name.is_none(),
+        Expr::Arrow { .. } => true,
+        _ => false,
+    }
+}
+
+/// The name a literal (non-computed) property key gives an anonymous
+/// function, when it is representable as UTF-8 text.
+fn literal_property_key_name(key: &PropertyKey) -> Option<String> {
+    match key {
+        PropertyKey::Identifier(name) => Some(name.clone()),
+        PropertyKey::String(name) => name.to_utf8().ok(),
+        PropertyKey::Number(number) => crate::primitive::string(&Value::Number(*number))
+            .ok()
+            .and_then(|text| text.to_utf8().ok()),
+        PropertyKey::Computed(_) => None,
+    }
+}
+
+/// Lowers one class field to `this[key] = initializer`, the shape
+/// `Compiler::class_field` turns into DefineField (or PrivateFieldAdd).
+/// `computed_binding` names the hidden binding that holds a computed key,
+/// which was converted once when the class was defined.
+fn class_field_definition(
+    key: &PropertyKey,
+    computed_binding: Option<&String>,
+    initializer: Option<&Expr>,
+) -> Stmt {
+    let (property, computed) = match (key, computed_binding) {
+        (PropertyKey::Identifier(name), _) => (Expr::Identifier(name.clone()), false),
+        (PropertyKey::String(name), _) => (Expr::String(name.clone()), true),
+        (PropertyKey::Number(number), _) => (Expr::Number(*number), true),
+        (PropertyKey::Computed(_), Some(binding)) => (Expr::Identifier(binding.clone()), true),
+        (PropertyKey::Computed(expression), None) => ((**expression).clone(), true),
     };
     Stmt::ClassField(Box::new(Stmt::Expr(Expr::Assign {
         op: AssignOp::Assign,
@@ -1174,30 +1396,6 @@ fn class_instance_field(key: &PropertyKey, initializer: Option<&Expr>) -> Stmt {
         }),
         value: Box::new(initializer.cloned().unwrap_or_else(undefined_expression)),
     })))
-}
-
-/// The VM establishes `this` while executing `super()`. For explicit derived
-/// constructors, fields therefore follow the first direct constructor call.
-/// A direct top-level call gets the exact specified placement. When the call
-/// is nested in a closure or control-flow expression, preserve the constructor
-/// body and defer the field list to its normal completion. This keeps `this`
-/// uninitialized until the nested `super()` actually executes, rather than
-/// rejecting otherwise valid derived class syntax during compilation.
-fn derived_constructor_body(
-    mut body: Vec<Stmt>,
-    fields: Vec<Stmt>,
-) -> Result<Vec<Stmt>, CompileError> {
-    if fields.is_empty() {
-        return Ok(body);
-    }
-    if let Some(index) = body.iter().position(|statement| {
-        matches!(statement, Stmt::Expr(Expr::Call { callee, .. }) if matches!(&**callee, Expr::Super))
-    }) {
-        body.splice(index + 1..index + 1, fields);
-    } else {
-        body.extend(fields);
-    }
-    Ok(body)
 }
 
 fn binary_opcode(op: BinaryOp) -> Result<Opcode, CompileError> {
@@ -1330,25 +1528,42 @@ pub(super) fn has_await_using_declaration(statements: &[Stmt]) -> bool {
         .any(|statement| matches!(statement, Stmt::VarDecl(DeclKind::AwaitUsing, _)))
 }
 
-fn block_lexical_names(statements: &[Stmt]) -> Result<Vec<(String, DeclKind)>, CompileError> {
+/// The lexical names of a Block. Annex B.3.2.4 lets sloppy code repeat a name
+/// that only ordinary FunctionDeclarations bind (the later declaration
+/// supplies the value); every other repeat stays a duplicate for the caller's
+/// scope to reject.
+fn block_lexical_names(
+    statements: &[Stmt],
+    strict: bool,
+) -> Result<Vec<(String, DeclKind)>, CompileError> {
     let mut names = lexical_names(statements)?;
+    let mut repeatable = BTreeSet::new();
     for statement in statements {
         if let Stmt::FunctionDecl(function) = statement {
-            names.push((
-                function
-                    .name
-                    .clone()
-                    .expect("function declaration has a name"),
-                DeclKind::Let,
-            ));
+            let name = function
+                .name
+                .clone()
+                .expect("function declaration has a name");
+            if !strict && is_annex_b_function(function) && !repeatable.insert(name.clone()) {
+                continue;
+            }
+            names.push((name, DeclKind::Let));
         }
     }
     Ok(names)
 }
 
-fn switch_lexical_names(cases: &[SwitchCase]) -> Result<Vec<(String, DeclKind)>, CompileError> {
+/// The lexical names of a CaseBlock. `validate_switch_case_declarations` has
+/// already rejected every duplicate except Annex B.3.2.5's sloppy repeats of
+/// ordinary function declarations, which share one binding.
+fn switch_lexical_names(
+    cases: &[SwitchCase],
+    strict: bool,
+) -> Result<Vec<(String, DeclKind)>, CompileError> {
+    let mut seen = BTreeSet::new();
     Ok(switch_case_lexical_declarations(cases)?
         .into_iter()
+        .filter(|(name, _, _)| strict || seen.insert(name.clone()))
         .map(|(name, kind, _)| (name, kind))
         .collect())
 }
@@ -1492,7 +1707,16 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
             Stmt::While { body, .. } | Stmt::DoWhile { body, .. } | Stmt::With { body, .. } => {
                 pending.push(body)
             }
-            Stmt::Labelled { item, .. } => pending.push(item),
+            // Annex B.3.2 (labelled function declarations): the function's
+            // name is a var binding of the enclosing function or script.
+            Stmt::Labelled { item, .. } => {
+                if let Stmt::FunctionDecl(function) = &**item {
+                    if !function.generator && !function.is_async {
+                        names.extend(function.name.iter().cloned());
+                    }
+                }
+                pending.push(item)
+            }
             Stmt::For { init, body, .. } => {
                 if let Some(ForInit::VarDecl(DeclKind::Var, declarations)) = init {
                     for declaration in declarations {

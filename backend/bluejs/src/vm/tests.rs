@@ -5,6 +5,46 @@
 use super::*;
 
 #[test]
+fn an_import_that_joins_a_running_graph_leaves_its_roots_with_that_graph() {
+    // While module code runs, its graph's records are parked in
+    // `evaluating_linked` and its root list lives in the evaluation's own
+    // frame, out of an `import()`'s reach. `dep.js` is compiled and linked
+    // only by such a nested import: every root it registers (its two binding
+    // cells and its namespace) must be handed to the graph once the running
+    // evaluation stores it, where a teardown would unroot them, not dropped.
+    let mut vm = Vm::default();
+    vm.set_dynamic_module_sources(HashMap::from([(
+        "t/dep.js".to_string(),
+        "export var x = 1; export var y = 2;".to_string(),
+    )]));
+    vm.evaluating_linked = Some(HashMap::new());
+    vm.execute_module_graph_inner(
+        "t/dep.js",
+        &HashMap::new(),
+        false,
+        true,
+        ImportPhase::Evaluation,
+    )
+    .unwrap();
+    assert!(
+        vm.nested_module_roots.len() >= 3,
+        "the nested load's roots wait for the running graph: {}",
+        vm.nested_module_roots.len()
+    );
+    let linked = vm.evaluating_linked.take().expect("still parked");
+    assert!(linked.contains_key("t/dep.js"));
+    vm.store_module_graph(
+        ModuleGraphState {
+            linked,
+            roots: Vec::new(),
+        },
+        false,
+    );
+    assert!(vm.nested_module_roots.is_empty());
+    assert!(vm.module_graph.as_ref().unwrap().roots.len() >= 3);
+}
+
+#[test]
 fn interpreter_converts_catchable_errors_and_rejects_a_top_level_yield() {
     let mut vm = Vm::default();
     vm.install_test262_harness().unwrap();
@@ -63,6 +103,11 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
             vm.object_prototype,
         )
         .unwrap();
+    // DefineMethod carries an operand (non-zero: object-literal method).
+    let mut method_code = Bytecode::empty();
+    method_code.code.push(Opcode::DefineMethod as u8);
+    method_code.code.extend(0u32.to_le_bytes());
+    method_code.code.push(Opcode::Halt as u8);
     let mut code = Bytecode::empty();
     code.code
         .extend([Opcode::DefineMethod as u8, Opcode::Halt as u8]);
@@ -74,7 +119,7 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
     ];
     vm.remaining_instructions = vm.config.instruction_budget;
     assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
+        vm.interpret(&method_code, &mut Vec::new(), 0, None, None, None),
         Ok(InterpreterExit::Return(Value::Undefined))
     ));
     vm.stack = vec![
@@ -84,7 +129,7 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
     ];
     vm.remaining_instructions = vm.config.instruction_budget;
     assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
+        vm.interpret(&method_code, &mut Vec::new(), 0, None, None, None),
         Ok(InterpreterExit::Return(Value::Undefined))
     ));
 
@@ -101,30 +146,6 @@ fn class_definition_opcodes_assign_home_objects_to_closures() {
         vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
         Err(RuntimeError::TypeError(_))
     ));
-
-    code.code[0] = Opcode::DefineClassStaticField as u8;
-    vm.stack = vec![
-        Value::Undefined,
-        Value::Object(target),
-        Value::String("field".into()),
-        Value::Object(function),
-    ];
-    vm.remaining_instructions = vm.config.instruction_budget;
-    assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
-        Ok(InterpreterExit::Return(Value::Undefined))
-    ));
-    vm.stack = vec![
-        Value::Undefined,
-        Value::Object(target),
-        Value::String("emptyField".into()),
-        Value::Undefined,
-    ];
-    vm.remaining_instructions = vm.config.instruction_budget;
-    assert!(matches!(
-        vm.interpret(&code, &mut Vec::new(), 0, None, None, None),
-        Err(RuntimeError::TypeError(_))
-    ));
 }
 
 #[test]
@@ -135,10 +156,16 @@ fn super_assignment_reports_a_non_extensible_receiver() {
     let receiver = vm.heap.alloc_object(None).unwrap();
     vm.heap.prevent_extensions(receiver).unwrap();
     vm.home_object = Some(home);
-    vm.this = Value::Object(receiver);
     vm.strict = true;
+    let super_base = vm.super_base().unwrap();
+    assert_eq!(super_base, Value::Object(base));
     assert_eq!(
-        vm.super_set(&"value".into(), &Value::Number(1.0)),
+        vm.super_set(
+            &super_base,
+            &Value::String("value".into()),
+            &Value::Number(1.0),
+            &Value::Object(receiver)
+        ),
         Err(RuntimeError::TypeError(
             "super property cannot be assigned".into()
         ))
@@ -150,9 +177,14 @@ fn super_assignment_reports_a_non_extensible_receiver() {
     let stale_receiver = vm.heap.alloc_object(None).unwrap();
     vm.heap.collect_major();
     vm.home_object = Some(home);
-    vm.this = Value::Object(stale_receiver);
+    let super_base = vm.super_base().unwrap();
     assert_eq!(
-        vm.super_set(&"value".into(), &Value::Number(1.0)),
+        vm.super_set(
+            &super_base,
+            &Value::String("value".into()),
+            &Value::Number(1.0),
+            &Value::Object(stale_receiver)
+        ),
         Err(RuntimeError::Heap(HeapError::InvalidObject(stale_receiver)))
     );
 }
@@ -168,36 +200,19 @@ fn super_and_eval_context_errors_describe_missing_internal_context() {
     );
     let home = vm.heap.alloc_object(None).unwrap();
     vm.home_object = Some(home);
+    // A null super base is only an error once a property is read through it.
+    assert_eq!(vm.super_base(), Ok(Value::Null));
     assert_eq!(
-        vm.super_base(),
-        Err(RuntimeError::TypeError("superclass is null".into()))
-    );
-    assert_eq!(
-        vm.super_call(Vec::new()),
+        vm.super_get(&Value::Null, &Value::String("x".into()), &Value::Undefined),
         Err(RuntimeError::TypeError(
-            "super() is not available in this function".into()
+            "cannot access a property through a null super base".into()
         ))
     );
-    let closure = vm
-        .heap
-        .alloc_closure(
-            std::rc::Rc::new(Bytecode::empty()),
-            Vec::new(),
-            Value::Undefined,
-            vm.object_prototype,
-        )
-        .unwrap();
-    vm.class_constructor = Some(closure);
     assert_eq!(
-        vm.super_call(Vec::new()),
+        vm.super_call(Value::Null, Vec::new()),
         Err(RuntimeError::TypeError(
-            "super() requires a derived constructor".into()
+            "super constructor is not a constructor".into()
         ))
-    );
-    vm.heap.set_class_base(closure, Value::Null).unwrap();
-    assert_eq!(
-        vm.super_call(Vec::new()),
-        Err(RuntimeError::TypeError("super constructor is null".into()))
     );
     vm.binding_metadata.push(Binding {
         name: "captured".into(),

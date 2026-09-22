@@ -391,8 +391,12 @@ impl Vm {
                 } else {
                     self.iterator_zip_keyed_results(state.record, values)?
                 };
-                self.with_roots(|heap| heap.set(state.record, "zipStarted", Value::Bool(true)))?;
+                // Adding the marker property grows the helper's state, which
+                // can run a major collection: root the result array first.
+                // Adding the marker property grows the helper's state, which
+                // can run a major collection: root the result first.
                 self.stack.push(values.clone());
+                self.with_roots(|heap| heap.set(state.record, "zipStarted", Value::Bool(true)))?;
                 let result = self.iterator_result(values, false);
                 self.stack.pop();
                 result
@@ -412,6 +416,10 @@ impl Vm {
                 Ok(value)
             }
             Err(error) => {
+                // The thrown value is referenced only by this Rust local,
+                // while finishing the helper and closing every source run
+                // JavaScript and may collect.
+                self.root_thrown(&error);
                 self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
                 let _ = self.iterator_zip_close_records(
                     state.record,
@@ -477,6 +485,7 @@ impl Vm {
         count: u64,
     ) -> Result<(), RuntimeError> {
         let mut completion = None;
+        let base = self.stack.len();
         for index in (0..count).rev() {
             let record = self
                 .heap
@@ -488,14 +497,42 @@ impl Vm {
             if let Err(error) = close {
                 // IteratorCloseAll continues after an abrupt `return`. The
                 // first such error becomes the completion; later close errors
-                // cannot replace it, but their `return` methods still run.
-                completion.get_or_insert(error);
+                // cannot replace it, but their `return` methods still run,
+                // so the retained error must stay rooted meanwhile.
+                if completion.is_none() {
+                    self.root_thrown(&error);
+                    completion = Some(error);
+                }
             }
         }
+        self.stack.truncate(base);
         if let Some(error) = completion {
             return Err(error);
         }
         Ok(())
+    }
+
+    /// Like [`Self::iterator_zip_close_records`] for a completion that is
+    /// already a throw: the in-flight error stays rooted while every `return`
+    /// method runs, and an error from one of them is discarded.
+    pub(in super::super::super) fn iterator_zip_close_records_after(
+        &mut self,
+        metadata: ObjectId,
+        count: u64,
+        error: &RuntimeError,
+    ) {
+        let base = self.stack.len();
+        self.root_thrown(error);
+        let _ = self.iterator_zip_close_records(metadata, count);
+        self.stack.truncate(base);
+    }
+
+    /// Keeps the value of a throw completion alive on the VM stack. The
+    /// caller truncates the stack once the error has been handed onward.
+    pub(in super::super::super) fn root_thrown(&mut self, error: &RuntimeError) {
+        if let RuntimeError::Thrown(value) = error {
+            self.stack.push(value.clone());
+        }
     }
 
     pub(in super::super::super) fn iterator_chunks_next(
@@ -981,6 +1018,9 @@ impl Vm {
                     state.record,
                     self.iterator_zip_count(state.record)?,
                 );
+                if let Err(error) = &close {
+                    self.root_thrown(error);
+                }
                 self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
                 close?;
             } else {
@@ -1406,7 +1446,7 @@ impl Vm {
             return result;
         }
         match result {
-            Ok(result) => self.async_from_sync_continue(*record, result),
+            Ok(result) => self.async_from_sync_continue(*record, result, true),
             Err(error) => {
                 let error = self.error_value(error)?;
                 self.promise_reject(error)
@@ -1432,12 +1472,15 @@ impl Vm {
 
     /// AsyncFromSyncIteratorContinuation. A synchronous iterator result's
     /// `value` is adopted through PromiseResolve before a for-await loop sees
-    /// it; rejection closes the original iterator and rejects the public
-    /// `next()` capability.
+    /// it. `close_on_rejection` (true for `next` and `throw`, false for
+    /// `return`) makes an unfinished iterator get closed when that value
+    /// cannot be resolved or its promise rejects; every failure rejects the
+    /// returned promise.
     pub(in super::super::super) fn async_from_sync_continue(
         &mut self,
         record: ObjectId,
         result: Value,
+        close_on_rejection: bool,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         let outcome = (|| {
@@ -1447,22 +1490,53 @@ impl Vm {
                 ));
             }
             let done = self.get_property(&result, &"done".into())?;
+            let done = self.to_boolean(&done)?;
             let value = self.get_property(&result, &"value".into())?;
-            let value_wrapper = self.promise_resolve(value)?;
+            let close = close_on_rejection && !done;
+            let value_wrapper = match self.promise_resolve(value) {
+                Ok(wrapper) => wrapper,
+                Err(error) => {
+                    if close {
+                        // IteratorClose with the throw completion: the
+                        // original error wins over anything `return` does.
+                        let error_base = self.stack.len();
+                        if let RuntimeError::Thrown(thrown) = &error {
+                            self.stack.push(thrown.clone());
+                        }
+                        let _ = self.iterator_close(&Value::Object(record));
+                        self.stack.truncate(error_base);
+                    }
+                    return Err(error);
+                }
+            };
             let target = self.new_promise()?;
             self.stack
                 .extend([value_wrapper.clone(), Value::Object(target)]);
-            let fulfilled = self.async_from_sync_handler(NativeFunction::AsyncFromSyncFulfill {
-                target,
-                done: self.to_boolean(&done)?,
-            })?;
-            // Each later allocation (the other handler, then_promise's derived
+            let fulfilled = self
+                .async_from_sync_handler(NativeFunction::AsyncFromSyncFulfill { target, done })?;
+            // Each later allocation (the other handler, the derived
             // promise) can collect, so both handlers stay stack-rooted.
             self.stack.push(fulfilled.clone());
-            let rejected = self
-                .async_from_sync_handler(NativeFunction::AsyncFromSyncReject { target, record })?;
-            self.stack.push(rejected.clone());
-            self.promise_then(&value_wrapper, &[fulfilled, rejected])?;
+            let rejected = if close {
+                let rejected =
+                    self.async_from_sync_handler(NativeFunction::AsyncFromSyncReject {
+                        target,
+                        record,
+                    })?;
+                self.stack.push(rejected.clone());
+                rejected
+            } else {
+                Value::Undefined
+            };
+            let wrapper = value_wrapper
+                .object_id()
+                .expect("PromiseResolve returns a promise object");
+            self.perform_promise_then(
+                wrapper,
+                fulfilled,
+                rejected,
+                ReactionTarget::Native(target),
+            )?;
             Ok(Value::Object(target))
         })();
         self.stack.truncate(base);
@@ -1540,6 +1614,9 @@ impl Vm {
         if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
             return Ok(None);
         }
+        if self.is_for_in_record(*record)? {
+            return self.for_in_step(*record);
+        }
         let outcome = (|| {
             let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
             let next = self.get_property(&Value::Object(*record), &"next".into())?;
@@ -1584,6 +1661,10 @@ impl Vm {
             return Ok(());
         }
         self.with_roots(|heap| heap.set(id, "done", Value::Bool(true)))?;
+        if self.is_for_in_record(id)? {
+            // A for-in record has no ECMAScript iterator to return.
+            return Ok(());
+        }
         let iterator = self.get_property(record, &"iterator".into())?;
         let close = self.get_method(&iterator, &"return".into())?;
         if close != Value::Undefined {

@@ -98,6 +98,8 @@ impl Vm {
             "encodeURIComponent" => NativeFunction::EncodeUri { component: true },
             "decodeURI" => NativeFunction::DecodeUri { component: false },
             "decodeURIComponent" => NativeFunction::DecodeUri { component: true },
+            "escape" => NativeFunction::Escape { decode: false },
+            "unescape" => NativeFunction::Escape { decode: true },
             // The remaining compiler-recognized globals are namespace objects.
             _ => NativeFunction::Empty,
         };
@@ -123,7 +125,8 @@ impl Vm {
                         "Iterator" => 0.0,
                         "Proxy" => 2.0,
                         "Date" => 7.0,
-                        "WeakMap" | "WeakSet" => 0.0,
+                        "Map" | "Set" | "WeakMap" | "WeakSet" => 0.0,
+                        "parseInt" => 2.0,
                         "FinalizationRegistry" => 1.0,
                         "DisposableStack" | "AsyncDisposableStack" => 0.0,
                         "ShadowRealm" => 0.0,
@@ -232,6 +235,12 @@ impl Vm {
                     false,
                     true,
                 )?;
+                self.install_symbol_native_getter(
+                    id,
+                    prototype,
+                    "species",
+                    NativeFunction::CollectionSpecies,
+                )?;
                 self.install_native(id, prototype, "resolve", 1, NativeFunction::PromiseResolve)?;
                 self.install_native(id, prototype, "reject", 1, NativeFunction::PromiseReject)?;
                 self.install_native(id, prototype, "all", 1, NativeFunction::PromiseAll)?;
@@ -244,6 +253,21 @@ impl Vm {
                     1,
                     NativeFunction::PromiseAllSettled,
                 )?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "allKeyed",
+                    1,
+                    NativeFunction::PromiseAllKeyed { settled: false },
+                )?;
+                self.install_native(
+                    id,
+                    prototype,
+                    "allSettledKeyed",
+                    1,
+                    NativeFunction::PromiseAllKeyed { settled: true },
+                )?;
+                self.install_native(id, prototype, "try", 1, NativeFunction::PromiseTry)?;
                 self.install_native(
                     id,
                     prototype,
@@ -774,6 +798,15 @@ impl Vm {
                     false,
                     true,
                 )?;
+                if name == "Map" {
+                    self.install_native(id, prototype, "groupBy", 2, NativeFunction::MapGroupBy)?;
+                }
+                self.install_symbol_native_getter(
+                    id,
+                    prototype,
+                    "species",
+                    NativeFunction::CollectionSpecies,
+                )?;
             } else if matches!(name, "WeakMap" | "WeakSet") {
                 let collection_prototype = self.weak_collection_prototype(name == "WeakMap")?;
                 self.define_data(
@@ -1045,7 +1078,12 @@ impl Vm {
                         1,
                         NativeFunction::NumberIsSafeInteger,
                     )?;
-                    self.install_native(id, prototype, "parseInt", 2, NativeFunction::ParseInt)?;
+                    // `Number.parseInt` and `Number.parseFloat` are the very
+                    // function objects of the corresponding globals.
+                    for parser in ["parseInt", "parseFloat"] {
+                        let function = self.global(parser)?;
+                        self.define_data(id, parser, function, true, false, true)?;
+                    }
                 }
             } else if name == "globalThis" {
                 self.define_data(id, "String", Value::Object(constructor), true, false, true)?;

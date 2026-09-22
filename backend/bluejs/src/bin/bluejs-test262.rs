@@ -30,6 +30,15 @@ struct Request {
     /// parsed as JavaScript module source unconditionally.
     #[serde(default)]
     module_json_sources: HashMap<String, String>,
+    /// Decoded text (UTF-8) for resources imported with `type: "text"`,
+    /// keyed like `module_json_sources`. A resource may appear here and in
+    /// `module_sources` at once: the attribute is part of a request's identity.
+    #[serde(default)]
+    module_text_sources: HashMap<String, String>,
+    /// Raw bytes for resources imported with `type: "bytes"`, keyed like
+    /// `module_json_sources`.
+    #[serde(default)]
+    module_bytes_sources: HashMap<String, Vec<u8>>,
     /// Paths in `module_sources` reached only through a relative-string
     /// heuristic (e.g. a `ShadowRealm.prototype.importValue` specifier
     /// argument), never through an actual `import`/dynamic-`import()`
@@ -248,17 +257,13 @@ fn evaluate(request: Request) -> Value {
     if request.parse_only {
         return json!({"kind":"ok", "phase":"parse"});
     }
-    // The native host replaces these core helpers. Other includes execute as
-    // separate classic scripts in the same VM realm.
+    // The native host replaces these two core helpers. Every other include,
+    // `propertyHelper.js` and `isConstructor.js` among them, executes as a
+    // separate classic script in the same VM realm.
     let unknown: Vec<_> = request
         .includes
         .iter()
-        .filter(|name| {
-            !matches!(
-                name.as_str(),
-                "sta.js" | "assert.js" | "propertyHelper.js" | "isConstructor.js"
-            )
-        })
+        .filter(|name| !matches!(name.as_str(), "sta.js" | "assert.js"))
         .collect();
     if request.mode != "raw" && !unknown.is_empty() && request.harness_sources.is_empty() {
         return json!({"kind":"unsupported", "reason":"harness includes require persistent script globals", "includes":unknown});
@@ -278,6 +283,12 @@ fn evaluate(request: Request) -> Value {
     {
         config.heap.nursery_capacity = capacity;
     }
+    if let Some(bytes) = std::env::var("BLUEJS_TEST262_MAJOR_THRESHOLD")
+        .ok()
+        .and_then(|value| value.parse().ok())
+    {
+        config.heap.major_threshold_bytes = bytes;
+    }
     if let Some(limit) = request.heap_limit {
         config.heap.max_heap_bytes = limit;
         config.heap.major_threshold_bytes = config.heap.major_threshold_bytes.min(limit);
@@ -294,6 +305,8 @@ fn evaluate(request: Request) -> Value {
     };
     vm.set_module_source_loader_context(request.module_source_requests);
     vm.set_json_module_sources(request.module_json_sources.clone());
+    vm.set_text_module_sources(request.module_text_sources.clone());
+    vm.set_bytes_module_sources(request.module_bytes_sources.clone());
     vm.set_dynamic_module_sources(dynamic_sources);
     if request.mode != "raw" {
         if let Err(error) = vm.install_test262_harness() {

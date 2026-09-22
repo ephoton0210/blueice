@@ -6,9 +6,11 @@ use super::*;
 
 mod array_change_by_copy;
 mod array_from_async;
+mod array_scan;
 mod arrays;
 mod binary_data;
 mod collection_iteration;
+mod decorators;
 mod execution;
 mod generators;
 mod globals;
@@ -16,8 +18,11 @@ mod immutable_arraybuffer;
 mod math;
 mod native_dispatch;
 mod object;
+mod promise_combinators;
+mod promise_core;
 mod promises;
 mod resource_management;
+mod set_methods;
 mod typed_arrays;
 mod uint8array;
 use crate::heap::{
@@ -47,16 +52,8 @@ pub(super) struct ClosureCall {
     pub args: Vec<Value>,
     pub construct: bool,
     pub home: Option<ObjectId>,
-    pub class_base: Option<Value>,
-}
-
-fn array_index_below_length(key: &PropertyName, length: u64) -> Option<u32> {
-    let PropertyName::String(name) = key else {
-        return None;
-    };
-    let name = name.to_utf8().ok()?;
-    let index = name.parse::<u32>().ok()?;
-    (name == index.to_string() && u64::from(index) < length).then_some(index)
+    /// The with objects the function closes over (empty outside `with`).
+    pub with_objects: Vec<Value>,
 }
 
 fn same_value_zero(left: &Value, right: &Value) -> bool {

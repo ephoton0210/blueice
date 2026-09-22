@@ -4,6 +4,19 @@
 
 use super::*;
 
+/// Internal name of the wrapper declaration `dynamic_function_constructor`
+/// compiles; it is not a valid identifier, so no source can refer to it.
+const DYNAMIC_FUNCTION_BINDING: &str = "*anonymous*";
+
+/// The four CreateDynamicFunction kinds.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in super::super) enum DynamicFunctionKind {
+    Normal,
+    Async,
+    Generator,
+    AsyncGenerator,
+}
+
 impl Vm {
     /// ECMA-262 Function constructor. Dynamic function source is compiled in
     /// the realm's global environment rather than inheriting the native
@@ -12,26 +25,37 @@ impl Vm {
         &mut self,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        self.dynamic_function_constructor(args, false)
+        self.dynamic_function_constructor(args, DynamicFunctionKind::Normal)
     }
 
-    /// Shared constructor path for `%Function%` and `%AsyncFunction%`. Dynamic
-    /// functions compile against the realm global environment; the async form
-    /// then takes the same Promise/continuation path as a source async
-    /// function. Generators have a separate constructor family and are not
-    /// conflated with this operation.
+    /// Constructor path for `%AsyncFunction%`. Dynamic functions compile
+    /// against the realm global environment; the async form then takes the
+    /// same Promise/continuation path as a source async function.
     pub(in super::super) fn async_function_constructor(
         &mut self,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        self.dynamic_function_constructor(args, true)
+        self.dynamic_function_constructor(args, DynamicFunctionKind::Async)
     }
 
+    /// CreateDynamicFunction ( constructor, newTarget, kind, parameterArgs,
+    /// bodyArg ) for all four kinds: the source text is a wrapper declaration
+    /// of the matching kind, compiled by the ordinary compiler, and the
+    /// resulting closure gets the kind's own prototype and, for generators,
+    /// its own `prototype` object.
     pub(in super::super) fn dynamic_function_constructor(
         &mut self,
         args: &[Value],
-        async_function: bool,
+        kind: DynamicFunctionKind,
     ) -> Result<Value, RuntimeError> {
+        let async_function = matches!(
+            kind,
+            DynamicFunctionKind::Async | DynamicFunctionKind::AsyncGenerator
+        );
+        let generator = matches!(
+            kind,
+            DynamicFunctionKind::Generator | DynamicFunctionKind::AsyncGenerator
+        );
         let mut parameters = String::new();
         for (index, argument) in args.iter().take(args.len().saturating_sub(1)).enumerate() {
             if index != 0 {
@@ -43,26 +67,63 @@ impl Vm {
                 )
             })?);
         }
-        let mut source = String::from(if async_function {
-            "async function anonymous("
-        } else {
-            "function anonymous("
-        });
-        source.push_str(&strip_dynamic_function_html_comments(&parameters));
+        let prefix = match kind {
+            DynamicFunctionKind::Normal => "function anonymous(",
+            DynamicFunctionKind::Async => "async function anonymous(",
+            DynamicFunctionKind::Generator => "function* anonymous(",
+            DynamicFunctionKind::AsyncGenerator => "async function* anonymous(",
+        };
+        let body = match args.last() {
+            Some(body) => self.coerce_string(body)?.to_utf8().map_err(|_| {
+                RuntimeError::SyntaxError("Function body contains an unpaired surrogate".into())
+            })?,
+            None => String::new(),
+        };
         // Dynamic parameter text is parsed as its own grammar production.
         // Preserve that boundary in the generated wrapper: a trailing
         // single-line comment belongs to the parameters, not to the closing
         // parenthesis that follows them.
-        source.push_str("\n) {\n");
-        if let Some(body) = args.last() {
-            source.push_str(&self.coerce_string(body)?.to_utf8().map_err(|_| {
-                RuntimeError::SyntaxError("Function body contains an unpaired surrogate".into())
-            })?);
+        let wrapper =
+            |parameters: &str, body: &str| format!("{prefix}{parameters}\n) {{\n{body}\n}}");
+        // Annex B HTML-like comments are removed from the parameters for
+        // parsing; the text of the function keeps them (see below).
+        let parsed_parameters = strip_dynamic_function_html_comments(&parameters);
+        // The parameters must parse as FormalParameters and the body as a
+        // FunctionBody, each on its own. Only the joined wrapper is compiled,
+        // but text that leaves a comment, template or bracket open across the
+        // boundary can still make the joined source parse (`Function("/*",
+        // "*/) {")`), so each side is also checked against an empty other side.
+        let parse_wrapper = |source: &str| -> Result<crate::ast::Program, RuntimeError> {
+            let program =
+                crate::parse(source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+            // Anything but the one wrapper declaration means the text closed
+            // the function early (`Function("} function f() {")`).
+            match program.body.as_slice() {
+                [crate::ast::Stmt::FunctionDecl(_)] => Ok(program),
+                _ => Err(RuntimeError::SyntaxError(
+                    "Function source must be exactly one function".into(),
+                )),
+            }
+        };
+        parse_wrapper(&wrapper(&parsed_parameters, ""))?;
+        if !parsed_parameters.is_empty() {
+            parse_wrapper(&wrapper("", &body))?;
         }
-        source.push_str("\n}");
-
-        let program =
-            crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let mut program = parse_wrapper(&wrapper(&parsed_parameters, &body))?;
+        if let Some(crate::ast::Stmt::FunctionDecl(function)) = program.body.first_mut() {
+            // The wrapper declaration only gives the function its `name`
+            // property. CreateDynamicFunction binds no such name in the
+            // function's scope, so rename the declaration to an internal
+            // identifier no source can spell: `anonymous` in the body then
+            // resolves like any free identifier.
+            function.name = Some(DYNAMIC_FUNCTION_BINDING.into());
+            // The wrapper is exactly the source text CreateDynamicFunction
+            // prescribes, except that the parsed parameters had their Annex B
+            // HTML-like comments removed: the function's text keeps them.
+            if parsed_parameters != parameters {
+                function.source_text = crate::ast::SourceText::whole(wrapper(&parameters, &body));
+            }
+        }
         let code = crate::compile(&program)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let child = code
@@ -72,10 +133,12 @@ impl Vm {
             .expect("Function wrapper compiles one function declaration");
 
         debug_assert_eq!(child.async_function, async_function);
-        let default_prototype = if async_function {
-            self.async_function_prototype()?
-        } else {
-            self.function_prototype()?
+        debug_assert_eq!(child.generator, generator);
+        let default_prototype = match kind {
+            DynamicFunctionKind::Normal => self.function_prototype()?,
+            DynamicFunctionKind::Async => self.async_function_prototype()?,
+            DynamicFunctionKind::Generator => self.generator_function_prototype()?,
+            DynamicFunctionKind::AsyncGenerator => self.async_generator_function_prototype()?,
         };
         // CreateDynamicFunction selects its function object's prototype with
         // GetPrototypeFromConstructor for every dynamic function kind. In
@@ -107,7 +170,7 @@ impl Vm {
             })?;
             self.stack.push(Value::Object(function));
             for (&slot, &cell) in child.captures.iter().zip(&captures) {
-                let value = if code.bindings[slot as usize].name == "anonymous" {
+                let value = if code.bindings[slot as usize].name == DYNAMIC_FUNCTION_BINDING {
                     Value::Object(function)
                 } else {
                     Value::Undefined
@@ -144,7 +207,24 @@ impl Vm {
             {
                 self.install_legacy_function_properties(function)?;
             }
-            if child.constructible {
+            if generator {
+                // A generator function owns the prototype its instances
+                // inherit from; it has no `constructor` back-link.
+                let base_prototype = if async_function {
+                    self.async_generator_prototype()?
+                } else {
+                    self.generator_prototype()?
+                };
+                let prototype = self.with_roots(|heap| heap.alloc_object(Some(base_prototype)))?;
+                self.define_data(
+                    function,
+                    "prototype",
+                    Value::Object(prototype),
+                    true,
+                    false,
+                    false,
+                )?;
+            } else if child.constructible {
                 let object_prototype = self.object_prototype;
                 let prototype =
                     self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;

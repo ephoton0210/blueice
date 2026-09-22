@@ -17,6 +17,13 @@ fn primitive_completions_and_error_classes_match_node() {
         .map(str::to_owned)
         .collect();
     corpus.extend(
+        // Deliberately absent: `'a'.match(3)`, `'a'.search('b')` and
+        // `'a'.matchAll(true)` with a hook installed on the primitive's
+        // prototype. ECMA-262 only reads @@match/@@search/@@matchAll from an
+        // Object argument (Test262 `cstm-matcher-on-*-primitive`), which
+        // BlueJS follows and `tests/string_protocols.rs` pins; Node 24 still
+        // boxes the primitive, so comparing against it would assert the
+        // legacy behavior.
         include_str!("fixtures/string_protocols.txt")
             .lines()
             .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))

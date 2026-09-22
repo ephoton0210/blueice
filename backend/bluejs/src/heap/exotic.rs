@@ -125,8 +125,17 @@ impl Heap {
     ) -> Result<Option<&JsString>, HeapError> {
         Ok(match &self.object(object)?.kind {
             ObjectKind::NativeFunction { initial_name, .. } => Some(initial_name),
-            // HostHasSourceTextAvailable is false for compiled functions.
-            // Anonymous NativeFunction syntax is valid for every callable.
+            // Anonymous NativeFunction syntax is valid for every callable that
+            // is not a built-in function.
+            _ => None,
+        })
+    }
+
+    /// The source text `Function.prototype.toString` returns for a function
+    /// created from source, or `None` for any other object.
+    pub(crate) fn function_source_text(&self, object: ObjectId) -> Result<Option<&str>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Closure { code, .. } => code.source_text.as_str(),
             _ => None,
         })
     }
@@ -184,6 +193,14 @@ impl Heap {
             return Err(HeapError::InvalidObject(object));
         };
         Ok(*std::mem::replace(state, Box::new(GeneratorState::Done)))
+    }
+
+    /// Whether `object` carries generator internal slots (sync or async).
+    pub(crate) fn is_generator(&self, object: ObjectId) -> Result<bool, HeapError> {
+        Ok(matches!(
+            self.object(object)?.kind,
+            ObjectKind::Generator { .. }
+        ))
     }
 
     pub(crate) fn generator_state_is_done(&self, object: ObjectId) -> Result<bool, HeapError> {
@@ -822,6 +839,28 @@ impl Heap {
             .expect("take helper is consumed only with a positive remainder");
         Ok(())
     }
+    /// Replaces a RegExp object's [[RegExpMatcher]], [[OriginalSource]] and
+    /// [[OriginalFlags]] in place (Annex B `RegExp.prototype.compile`).
+    pub(crate) fn set_regexp(
+        &mut self,
+        object: ObjectId,
+        regexp: Rc<crate::regexp::RegExp>,
+    ) -> Result<(), HeapError> {
+        let ObjectKind::RegExp(current) = &self.object(object)?.kind else {
+            return Err(HeapError::InvalidInternalSlot(object));
+        };
+        let old_bytes = regexp_bytes(current);
+        let new_bytes = regexp_bytes(&regexp);
+        self.ensure_room(new_bytes.saturating_sub(old_bytes), &[object])?;
+        let entry = self
+            .objects
+            .get_mut(&object)
+            .ok_or(HeapError::InvalidObject(object))?;
+        entry.kind = ObjectKind::RegExp(regexp);
+        entry.bytes = entry.bytes - old_bytes + new_bytes;
+        self.managed_bytes = self.managed_bytes - old_bytes + new_bytes;
+        Ok(())
+    }
     pub(crate) fn regexp(
         &self,
         object: ObjectId,
@@ -886,7 +925,6 @@ impl Heap {
                     captures.clone(),
                     this.clone(),
                     metadata.and_then(|metadata| metadata.home),
-                    metadata.and_then(|metadata| metadata.class_base.clone()),
                 ))
             }
             _ => None,
@@ -911,33 +949,97 @@ impl Heap {
         Ok(())
     }
 
-    pub(crate) fn set_class_base(
+    /// Install a class constructor's `[[Fields]]` initializer.
+    pub(crate) fn set_class_fields(
         &mut self,
         object: ObjectId,
-        base: Value,
+        initializer: ObjectId,
     ) -> Result<(), HeapError> {
+        self.object(initializer)?;
         if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
             return Err(HeapError::InvalidObject(object));
         }
-        if let Some(target) = base.object_id() {
-            self.ensure_closure_metadata(object, &[target])?;
-        } else {
-            self.ensure_closure_metadata(object, &[])?;
-        }
-        self.write_barrier(object, base.object_id());
+        self.ensure_closure_metadata(object, &[initializer])?;
+        self.write_barrier(object, Some(initializer));
         self.closure_metadata
             .get_mut(&object)
             .expect("metadata was installed")
-            .class_base = Some(base);
+            .fields = Some(initializer);
         Ok(())
     }
 
-    pub(crate) fn class_base(&self, object: ObjectId) -> Result<Option<Value>, HeapError> {
+    /// The initializer installed by [`Self::set_class_fields`], if any.
+    pub(crate) fn class_fields(&self, object: ObjectId) -> Result<Option<ObjectId>, HeapError> {
         match &self.object(object)?.kind {
             ObjectKind::Closure { .. } => Ok(self
                 .closure_metadata
                 .get(&object)
-                .and_then(|metadata| metadata.class_base.clone())),
+                .and_then(|metadata| metadata.fields)),
+            _ => Err(HeapError::InvalidObject(object)),
+        }
+    }
+
+    /// Records the with objects a closure created inside `with` closes over.
+    pub(crate) fn set_closure_with_objects(
+        &mut self,
+        object: ObjectId,
+        with_objects: Vec<Value>,
+    ) -> Result<(), HeapError> {
+        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
+            return Err(HeapError::InvalidObject(object));
+        }
+        let targets: Vec<ObjectId> = with_objects.iter().filter_map(Value::object_id).collect();
+        self.ensure_closure_metadata(object, &targets)?;
+        for target in &targets {
+            self.write_barrier(object, Some(*target));
+        }
+        self.closure_metadata
+            .get_mut(&object)
+            .expect("metadata was installed")
+            .with_objects = with_objects;
+        Ok(())
+    }
+
+    /// Records the `new.target` an arrow function closes over.
+    pub(crate) fn set_closure_new_target(
+        &mut self,
+        object: ObjectId,
+        new_target: Value,
+    ) -> Result<(), HeapError> {
+        if !matches!(self.object(object)?.kind, ObjectKind::Closure { .. }) {
+            return Err(HeapError::InvalidObject(object));
+        }
+        let target = new_target.object_id();
+        self.ensure_closure_metadata(object, target.as_slice())?;
+        self.write_barrier(object, target);
+        self.closure_metadata
+            .get_mut(&object)
+            .expect("metadata was installed")
+            .new_target = Some(new_target);
+        Ok(())
+    }
+
+    /// The `new.target` captured by an arrow closure (`undefined` when none).
+    pub(crate) fn closure_new_target(&self, object: ObjectId) -> Result<Value, HeapError> {
+        match &self.object(object)?.kind {
+            ObjectKind::Closure { .. } => Ok(self
+                .closure_metadata
+                .get(&object)
+                .and_then(|metadata| metadata.new_target.clone())
+                .unwrap_or(Value::Undefined)),
+            _ => Err(HeapError::InvalidObject(object)),
+        }
+    }
+
+    /// The with objects captured by `object`; empty for a closure that was not
+    /// created inside `with`.
+    pub(crate) fn closure_with_objects(&self, object: ObjectId) -> Result<Vec<Value>, HeapError> {
+        match &self.object(object)?.kind {
+            ObjectKind::Closure { .. } => Ok(self
+                .closure_metadata
+                .get(&object)
+                .map(|metadata| metadata.with_objects.clone())
+                .unwrap_or_default()),
             _ => Err(HeapError::InvalidObject(object)),
         }
     }
@@ -1011,4 +1113,15 @@ impl Heap {
     ) -> Result<Option<PropertyDescriptor>, HeapError> {
         self.get_own_property_descriptor_key(object, key.into())
     }
+}
+
+/// Managed bytes a RegExp object's matcher data accounts for.
+pub(super) fn regexp_bytes(regexp: &crate::regexp::RegExp) -> usize {
+    regexp.source.byte_len()
+        + regexp.flags.len()
+        + regexp
+            .capture_names
+            .iter()
+            .map(|(name, _)| name.len() + size_of::<(String, usize)>())
+            .sum::<usize>()
 }

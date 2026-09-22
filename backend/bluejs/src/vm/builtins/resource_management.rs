@@ -19,25 +19,32 @@ impl Vm {
     /// `GetDisposeMethod ( V, hint )`. `V` must already be known to be an
     /// Object; callers that also need to handle nullish `V` do so in
     /// `create_disposable_resource` below, mirroring the spec's own split
-    /// between the two operations.
+    /// between the two operations. The flag reports that an async-dispose
+    /// hint fell back to the sync `@@dispose` method.
     pub(in super::super) fn get_dispose_method(
         &mut self,
         value: &Value,
         hint: DisposeHint,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<(Value, bool), RuntimeError> {
         if hint == DisposeHint::Async {
             let method = self.get_method(value, &JsSymbol::well_known("asyncDispose").into())?;
             if method != Value::Undefined {
-                return Ok(method);
+                return Ok((method, false));
             }
             // The spec wraps a sync `@@dispose` fallback in a fresh Abstract
-            // Closure that calls it and returns its result for `Dispose` to
-            // await. Calling the raw sync method with the same receiver
-            // produces the same observable result, since that wrapper is
-            // never itself exposed to script.
-            return self.get_method(value, &JsSymbol::well_known("dispose").into());
+            // Closure that calls it and resolves a promise with `undefined`:
+            // the sync method's own return value is discarded, never awaited.
+            // Calling the raw sync method with the same receiver produces the
+            // same observable calls, since that wrapper is never itself
+            // exposed to script; `sync_fallback` makes `Dispose` discard the
+            // result.
+            let method = self.get_method(value, &JsSymbol::well_known("dispose").into())?;
+            return Ok((method, true));
         }
-        self.get_method(value, &JsSymbol::well_known("dispose").into())
+        Ok((
+            self.get_method(value, &JsSymbol::well_known("dispose").into())?,
+            false,
+        ))
     }
 
     /// `CreateDisposableResource ( V, hint [, method ] )`.
@@ -51,6 +58,7 @@ impl Vm {
         hint: DisposeHint,
         method: Option<Value>,
     ) -> Result<Option<DisposableResource>, RuntimeError> {
+        let mut sync_fallback = false;
         let method = match method {
             None => {
                 if matches!(value, Value::Null | Value::Undefined) {
@@ -66,6 +74,7 @@ impl Vm {
                         argument: None,
                         method: None,
                         hint,
+                        sync_fallback: false,
                     }));
                 }
                 if !matches!(value, Value::Object(_)) {
@@ -73,12 +82,13 @@ impl Vm {
                         "using declaration value must be an object, null, or undefined".into(),
                     ));
                 }
-                let method = self.get_dispose_method(&value, hint)?;
+                let (method, fallback) = self.get_dispose_method(&value, hint)?;
                 if method == Value::Undefined {
                     return Err(RuntimeError::TypeError(
                         "resource has no Symbol.dispose/Symbol.asyncDispose method".into(),
                     ));
                 }
+                sync_fallback = fallback;
                 method
             }
             Some(method) => {
@@ -95,6 +105,7 @@ impl Vm {
             argument: None,
             method: Some(method),
             hint,
+            sync_fallback,
         }))
     }
 
@@ -137,6 +148,25 @@ impl Vm {
     /// `Vm::async_dispose_helper`.
     pub(in super::super) fn dispose_resources_sync(
         &mut self,
+        resources: Vec<DisposableResource>,
+        prior: Option<RuntimeError>,
+    ) -> Result<(), RuntimeError> {
+        // The resources were drained out of a rooted table (`self.disposables`
+        // or a stack's side table), so the values they hold -- and every
+        // pending error value -- are reachable only from this frame. Root
+        // them until disposal finishes.
+        let base = self.stack.len();
+        self.root_resources(&resources);
+        if let Some(error) = &prior {
+            self.root_error(error);
+        }
+        let result = self.dispose_resources_rooted(resources, prior);
+        self.stack.truncate(base);
+        result
+    }
+
+    fn dispose_resources_rooted(
+        &mut self,
         mut resources: Vec<DisposableResource>,
         prior: Option<RuntimeError>,
     ) -> Result<(), RuntimeError> {
@@ -155,16 +185,16 @@ impl Vm {
                 if !new_error.is_catchable() {
                     return Err(new_error);
                 }
+                self.root_error(&new_error);
                 completion = Some(match completion {
                     Some(prior_error) if prior_error.is_catchable() => {
                         let error_value = self.error_value(new_error)?;
-                        let base = self.stack.len();
                         self.stack.push(error_value.clone());
-                        let suppressed_value = self.error_value(prior_error);
-                        self.stack.truncate(base);
-                        let suppressed_value = suppressed_value?;
+                        let suppressed_value = self.error_value(prior_error)?;
+                        self.stack.push(suppressed_value.clone());
                         let suppressed =
                             self.make_suppressed_error(error_value, suppressed_value)?;
+                        self.stack.push(suppressed.clone());
                         RuntimeError::Thrown(suppressed)
                     }
                     _ => new_error,
@@ -174,30 +204,57 @@ impl Vm {
         completion.map_or(Ok(()), Err)
     }
 
+    /// Pushes every heap value held by `resources` onto the VM stack so a
+    /// collection cannot reclaim it. The caller truncates the stack to the
+    /// length it recorded before calling.
+    fn root_resources(&mut self, resources: &[DisposableResource]) {
+        for resource in resources {
+            self.stack.push(resource.receiver.clone());
+            if let Some(argument) = &resource.argument {
+                self.stack.push(argument.clone());
+            }
+            if let Some(method) = &resource.method {
+                self.stack.push(method.clone());
+            }
+        }
+    }
+
+    /// Roots the JS value carried by a thrown error (native errors that have
+    /// not been converted to objects yet hold no heap reference).
+    fn root_error(&mut self, error: &RuntimeError) {
+        if let RuntimeError::Thrown(value) = error {
+            self.stack.push(value.clone());
+        }
+    }
+
     /// Converts a drained resource list plus any prior pending error into
     /// the plain JS value `[hasError, pendingError, entries]` that
     /// `Compiler::compile_async_dispose_finally`'s synthesized `while`/
     /// `try`/`catch` loop destructures and iterates. `entries` is a real
-    /// Array of `[receiver, method, hasArgument, argument, isAsync]`
-    /// records, one per resource, in declaration order (the loop walks it
+    /// Array of `[receiver, method, hasArgument, argument, isAsync,
+    /// syncFallback]` records, one per resource, in declaration order (the loop walks it
     /// back to front, i.e. reverse declaration order).
     pub(in super::super) fn build_async_dispose_state(
         &mut self,
         resources: Vec<DisposableResource>,
         prior: Option<RuntimeError>,
     ) -> Result<Value, RuntimeError> {
-        let (has_error, pending_error) = match prior {
-            None => (false, Value::Undefined),
-            Some(error) => {
-                if !error.is_catchable() {
-                    return Err(error);
-                }
-                (true, self.error_value(error)?)
-            }
-        };
+        // The drained resources are reachable only from this frame; root
+        // them before `error_value` (which may allocate) and before any
+        // entry array is built.
         let base = self.stack.len();
-        self.stack.push(pending_error.clone());
+        self.root_resources(&resources);
         let result = (|| {
+            let (has_error, pending_error) = match prior {
+                None => (false, Value::Undefined),
+                Some(error) => {
+                    if !error.is_catchable() {
+                        return Err(error);
+                    }
+                    (true, self.error_value(error)?)
+                }
+            };
+            self.stack.push(pending_error.clone());
             let entries = self.entries_array_from_resources(resources)?;
             self.stack.push(entries.clone());
             self.array_from(vec![Value::Bool(has_error), pending_error, entries])
@@ -207,13 +264,14 @@ impl Vm {
     }
 
     /// The `entries` half of `build_async_dispose_state`'s return value:
-    /// a real Array of `[receiver, method, hasArgument, argument, isAsync]`
-    /// records, one per resource, in declaration order.
+    /// a real Array of `[receiver, method, hasArgument, argument, isAsync,
+    /// syncFallback]` records, one per resource, in declaration order.
     fn entries_array_from_resources(
         &mut self,
         resources: Vec<DisposableResource>,
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
+        self.root_resources(&resources);
         let result = (|| {
             let mut entry_values = Vec::with_capacity(resources.len());
             for resource in resources {
@@ -223,6 +281,7 @@ impl Vm {
                     Value::Bool(resource.argument.is_some()),
                     resource.argument.unwrap_or(Value::Undefined),
                     Value::Bool(resource.hint == DisposeHint::Async),
+                    Value::Bool(resource.sync_fallback),
                 ])?;
                 // Keep every already-built entry array reachable while
                 // building the rest: each is otherwise held only by this
@@ -259,7 +318,7 @@ impl Vm {
                 try {
                     if (entry[1] !== undefined) {
                         let result = entry[2] ? entry[1].call(entry[0], entry[3]) : entry[1].call(entry[0]);
-                        if (entry[4]) { await result; }
+                        if (entry[4]) { await (entry[5] ? undefined : result); }
                     } else if (entry[4]) {
                         await undefined;
                     }
@@ -276,8 +335,14 @@ impl Vm {
         })"#;
         let program =
             crate::parse(SOURCE).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0)
-            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        let code = crate::compiler::compile_eval(
+            &program,
+            &[],
+            &[],
+            &[],
+            crate::compiler::EvalContext::default(),
+        )
+        .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let helper = self.execute_eval(&code, Vec::new(), !code.strict)?;
         self.async_dispose_helper = Some(helper.clone());
         Ok(helper)
@@ -523,6 +588,7 @@ impl Vm {
             argument: Some(value.clone()),
             method: Some(on_dispose),
             hint,
+            sync_fallback: false,
         });
         Ok(value)
     }
@@ -565,6 +631,7 @@ impl Vm {
             argument: None,
             method: Some(on_dispose),
             hint,
+            sync_fallback: false,
         });
         Ok(Value::Undefined)
     }
@@ -688,17 +755,27 @@ impl Vm {
             state.disposed = true;
             std::mem::take(&mut state.resources)
         };
-        let entries = match self.entries_array_from_resources(resources) {
-            Ok(entries) => entries,
-            Err(error) => return self.reject_with(error),
-        };
-        let helper = self.async_dispose_helper()?;
-        self.call_native(
-            helper,
-            Value::Undefined,
-            vec![Value::Bool(false), Value::Undefined, entries],
-            false,
-        )
+        let base = self.stack.len();
+        let result = (|| {
+            let entries = match self.entries_array_from_resources(resources) {
+                Ok(entries) => entries,
+                Err(error) => return self.reject_with(error),
+            };
+            // `entries` and the helper are reachable only from this frame
+            // until the call below roots them as its arguments/callee, and
+            // compiling the helper on first use allocates.
+            self.stack.push(entries.clone());
+            let helper = self.async_dispose_helper()?;
+            self.stack.push(helper.clone());
+            self.call_native(
+                helper,
+                Value::Undefined,
+                vec![Value::Bool(false), Value::Undefined, entries],
+                false,
+            )
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     /// A catchable `RuntimeError` becomes a rejected Promise (the caller's

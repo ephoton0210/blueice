@@ -27,8 +27,7 @@ impl Vm {
         self.stack.push(Value::Object(function));
         let mut length = 0.0;
         if self
-            .heap
-            .get_own_property_descriptor(id, "length")?
+            .object_get_own_property(id, &"length".into())?
             .is_some()
         {
             if let Value::Number(number) = self.get_property(&target, &"length".into())? {

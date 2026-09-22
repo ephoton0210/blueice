@@ -72,6 +72,7 @@ pub(crate) const WELL_KNOWN: &[&str] = &[
     "asyncIterator",
     "dispose",
     "asyncDispose",
+    "metadata",
 ];
 
 /// An ECMAScript property key; Symbols never alias string names.

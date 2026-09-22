@@ -29,6 +29,7 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
             {
                 requests.push(RequestedModule {
                     specifier: request.module_request.clone(),
+                    module_type: request.module_type,
                     phase: if request.import_name == ImportName::DeferredNamespace {
                         ImportPhase::Defer
                     } else {
@@ -37,10 +38,26 @@ pub fn parse_module(source: &str) -> Result<Module, ParseError> {
                 });
             }
             imports.extend(declaration);
-        } else if parser.check_identifier("export") {
-            if let Some(request) = parser.parse_export_declaration(&mut body, &mut exports)? {
+        } else if parser.check_identifier("export") || parser.check_punct(Punct::At) {
+            // `@dec export class C {}`: decorators may come before `export`.
+            let start = parser.token_start();
+            let decorators = parser.parse_decorators()?;
+            if decorators.is_empty() {
+                // Nothing to add: `export` follows directly.
+            } else if !parser.check_identifier("export") {
+                let class = parser.parse_decorated_class(decorators, start)?;
+                if class.name.is_none() {
+                    return Err(parser.syntax_error("class declarations require a name"));
+                }
+                body.push(Stmt::ClassDecl(class));
+                continue;
+            }
+            if let Some((request, module_type)) =
+                parser.parse_export_declaration(decorators, &mut body, &mut exports)?
+            {
                 requests.push(RequestedModule {
                     specifier: request,
+                    module_type,
                     phase: ImportPhase::Evaluation,
                 });
             }

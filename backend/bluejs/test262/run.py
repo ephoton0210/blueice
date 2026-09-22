@@ -32,8 +32,20 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 SNAPSHOT = json.loads(Path(__file__).with_name("snapshot.json").read_text())
 FRONTMATTER = re.compile(r"/\*---(.*?)---\*/", re.DOTALL)
+# The optional trailing `with { type: "..." }` import-attributes clause of a
+# static module request; its capture group is the `type` value. A request's
+# `type` selects how the host loads the resource (`json`, `text`, `bytes`),
+# so it decides which of the adapter's source maps the resource goes into.
+IMPORT_ATTRIBUTE_TYPE = r'''(?:\s*with\s*\{[^}]*?\btype\s*:\s*["']([^"']*)["'][^}]*\})?'''
+# Whitespace is optional wherever punctuation already separates the tokens:
+# `export*from"x"`, `export{a}from"x"` and `import{a}from"x"` are declarations
+# too. (`import(` and `import.` stay out: only a space, `*`, `{` or a string
+# may follow the `import` keyword of a declaration.)
 MODULE_REQUEST = re.compile(
-    r'''\bimport\s+(?:[^;]*?\bfrom\s+)?["']([^"']+)["']|\bexport\s+(?:\*\s*(?:as\s+(?:[\w$]+|"[^"]*"|'[^']*')\s*)?|\{[^}]*\}\s+)from\s*["']([^"']+)["']''',
+    r'''\bimport(?:\s+|(?=[*{"']))(?:[^;]*?\bfrom\s*)?["']([^"']+)["']'''
+    + IMPORT_ATTRIBUTE_TYPE
+    + r'''|\bexport\s*(?:\*\s*(?:as\s+(?:[\w$]+|"[^"]*"|'[^']*')\s*)?|\{[^}]*\}\s*)from\s*["']([^"']+)["']'''
+    + IMPORT_ATTRIBUTE_TYPE,
     re.DOTALL,
 )
 # A plain `import(...)` reference is safe to classify as a "dynamic" edge in
@@ -43,7 +55,12 @@ MODULE_REQUEST = re.compile(
 # dynamic import specifically resolves by checking whether the target is
 # *already* a compiled Source Text Module -- so a reference through either
 # of those must still be treated as a "static" (eagerly compiled) edge.
-DYNAMIC_IMPORT_PLAIN_REQUEST = re.compile(r'''\bimport\s*\(\s*["']([^"']+)["']\s*\)''')
+# `import("./x")` and `import("./x", { with: { type: "..." } })` (an optional
+# trailing comma is allowed); the second capture group is the `type` value.
+DYNAMIC_IMPORT_PLAIN_REQUEST = re.compile(
+    r'''\bimport\s*\(\s*["']([^"']+)["']\s*'''
+    r'''(?:,\s*\{\s*with\s*:\s*\{[^}]*?\btype\s*:\s*["']([^"']*)["'][^}]*\}\s*,?\s*\}\s*)?,?\s*\)'''
+)
 DYNAMIC_IMPORT_SOURCE_OR_DEFER_REQUEST = re.compile(
     r'''\bimport\s*\.\s*(?:source|defer)\s*\(\s*["']([^"']+)["']\s*\)'''
 )
@@ -60,7 +77,20 @@ SOURCE_PHASE_IMPORT_REQUEST = re.compile(
     r'''\bimport\s+source\s+[\w$]+\s+from\s*["']([^"']+)["']''',
     re.DOTALL,
 )
-NATIVE_INCLUDES = frozenset({"sta.js", "assert.js", "propertyHelper.js", "isConstructor.js"})
+# The dynamic form of the same request: `import.source("...")`.
+DYNAMIC_SOURCE_PHASE_IMPORT_REQUEST = re.compile(
+    r'''\bimport\s*\.\s*source\s*\(\s*["']([^"']+)["']\s*,?\s*\)'''
+)
+# Test262's host-provided Module Source specifier (INTERPRETING.md).
+HOST_MODULE_SOURCE_SPECIFIER = "<module source>"
+# Only `sta.js` and `assert.js` are replaced by native helpers: a JavaScript
+# `assert.js` costs enough dispatches per call to push loop-driven fixtures
+# (e.g. `built-ins/Math/sqrt/results.js`) past the ordinary instruction budget,
+# and the native `assert` family is differentially tested against the upstream
+# source. `propertyHelper.js` and `isConstructor.js` run unchanged: their
+# behaviour (destructive `delete`/write probes, `restore`, exact messages) is
+# defined by that source, and executing it costs no fixture its budget.
+NATIVE_INCLUDES = frozenset({"sta.js", "assert.js"})
 # Test262's general deepEqual harness is preserved by default. The two
 # DateTimeFormat fixtures compare wide arrays of two-/three-field part data
 # records, and this TypedArray fixture compares 39 view/species pairs; their
@@ -153,6 +183,66 @@ TYPED_ARRAY_DETACH_COERCION_FIXTURES = frozenset(
     }
 )
 TYPED_ARRAY_DETACH_COERCION_TIMEOUT = 120
+# `dynamic-import/await-import-evaluation_FIXTURE.js` waits by spinning
+# `while (true)` until `Date.now()` has advanced 100 ms, and its test asserts
+# that the import promise settled only after that wait. How many dispatches
+# 100 ms takes is a property of the host machine, not of the test (about
+# 0.3M-1M here; a faster host needs proportionally more), so no fixed default
+# budget is right for it. Grant this exact path an order-of-magnitude margin
+# over the measurement; the ordinary two-second wall deadline still bounds it,
+# and an unbounded loop in any other test keeps the 100,000-dispatch default.
+WALL_CLOCK_BUSY_WAIT_FIXTURES = frozenset(
+    {"language/expressions/dynamic-import/await-import-evaluation.js"}
+)
+WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET = 10_000_000
+# `annexB/.../String/prototype/substr/start-and-length-as-numbers.js` checks
+# `substr` against a reference implementation for 4 strings x 35 starts x 36
+# lengths (5,040 finite calls), each followed by a per-character comparison
+# loop and several assertions. The matrix is fixed and only its size exceeds
+# the default. Measured minimum: 1,496,386 dispatches, identical in both
+# modes; the allowance is 4x that (the factor the Temporal table fixtures
+# use), applies to this exact path only, and the ordinary two-second wall
+# deadline still bounds it (about 0.7-0.9 s at the measured cost).
+STRING_SUBSTR_NUMBER_MATRIX_FIXTURES = frozenset(
+    {"annexB/built-ins/String/prototype/substr/start-and-length-as-numbers.js"}
+)
+STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET = 6_000_000
+# Fixed, finite staging fixtures whose size only just exceeds the default: each
+# is straight-line or a bounded loop (a few hundred iterations, or a run of
+# assertions that build their failure message eagerly), and each finishes in a
+# small fraction of a second. Every entry is an exact path with an allowance of
+# 4x its measured minimum, which is identical in sloppy and strict mode; the
+# ordinary two-second wall deadline still bounds them.
+#   with-dense.js                          178,125  (63 receivers x 13 indices)
+#   parse-reviver-array-delete.js          185,937  (about 4,100 reviver calls)
+#   log2-approx.js                         325,000  (2,097 assertNear checks)
+#   es5ish-defineGetter-defineSetter.js    110,156  (about 60 descriptor checks)
+# A fixture that is too slow for that deadline even with fuel is deliberately
+# not listed (staging/sm/Array/toSpliced-dense.js needs 19.6M dispatches and
+# about 7 s; each staging/sm/Date/dst-offset-caching-N-of-8.js part needs
+# 100M-130M dispatches and runs for more than half a minute).
+FINITE_FIXTURE_INSTRUCTION_BUDGETS = {
+    "staging/sm/Array/with-dense.js": 750_000,
+    "staging/sm/JSON/parse-reviver-array-delete.js": 750_000,
+    "staging/sm/Math/log2-approx.js": 1_300_000,
+    "staging/sm/extensions/es5ish-defineGetter-defineSetter.js": 450_000,
+}
+# `staging/sm/String/unicode-braced.js` evaluates a source string built from
+# 2**24 zeros, which is 32 MiB of UTF-16 by itself: it needs a string limit of at
+# least 33,558,528 bytes (33,554,432 is not enough) against the ordinary 1 MiB.
+# The remainder is a few dozen assertions and it runs in about a second with the
+# default dispatch budget and heap. The limit is 64 MiB, twice the requirement
+# (a data size, so more headroom would buy nothing), for this exact path only.
+FIXTURE_STRING_LIMITS = {
+    "staging/sm/String/unicode-braced.js": 64 * 1024 * 1024,
+}
+
+
+def fixture_string_limit(relative):
+    """Return the exact-path string limit for a fixture, or None for the default."""
+    return FIXTURE_STRING_LIMITS.get(relative)
+
+
 TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET = 50_000_000
 # `testIntl.js` runs every asserted result through a finite locale and
 # numbering-system matrix. Debug interpreter dispatch exceeds the ordinary
@@ -573,6 +663,47 @@ def modes(data):
     return ["sloppy", "strict"]
 
 
+class ModuleSources(collections.namedtuple(
+    "ModuleSources",
+    "sources dynamic_sources json_sources text_sources bytes_sources",
+)):
+    """The resources one test's module graph needs, split by how the host loads them.
+
+    `sources` and `dynamic_sources` are JavaScript module text (eagerly linked
+    versus compiled lazily); `json_sources` and `text_sources` are decoded
+    text; `bytes_sources` maps a path to its raw bytes as a list of ints (the
+    adapter's JSON transport).
+    """
+
+    __slots__ = ()
+
+
+# Resource kinds a module request can load. `js` is a Source Text Module; the
+# others are the synthetic modules selected by `with { type }`.
+SYNTHETIC_MODULE_TYPES = ("json", "text", "bytes")
+
+
+def utf8_decode(data):
+    """WHATWG "UTF-8 decode": strip one leading BOM, replace malformed bytes."""
+    return data.decode("utf-8-sig", errors="replace")
+
+
+def request_kind(candidate, attribute_type):
+    """Which loader a request for `candidate` selects.
+
+    An explicit `type` attribute always wins. Without one, a `.json` fixture
+    keeps its historical JSON classification (an untyped reference through a
+    variable specifier may still be an import that carries the attribute at
+    runtime); every other suffix-less/odd fixture is left to the adapter's
+    normal module-resolution result.
+    """
+    if attribute_type in SYNTHETIC_MODULE_TYPES:
+        return attribute_type
+    if candidate.suffix == ".json":
+        return "json"
+    return "js"
+
+
 def module_sources(
     entry,
     test_root,
@@ -586,7 +717,8 @@ def module_sources(
     the test source, so a caller may opt into supplying existing sibling
     files without making unrelated ordinary module tests over-inclusive.
 
-    Returns `(sources, dynamic_sources, json_sources)`. `.js` fixtures
+    Returns a `ModuleSources`: `(sources, dynamic_sources, json_sources,
+    text_sources, bytes_sources)`. `.js` fixtures
     reached by at least one static edge (an `import`/`export ... from`, from
     `entry` or transitively) are parser input for the adapter's own eagerly
     linked JavaScript module graph, in `sources`. A `.js` fixture reached
@@ -616,39 +748,49 @@ def module_sources(
     own heuristic trigger), so the adapter's lazy per-import rejection
     applies instead of an eager hard failure.
 
-    `.json` fixtures are always raw text for the adapter's separate
-    `type: "json"` module-record path (neither a parser input nor
-    decoded/validated here), regardless of which kind of edge reaches them.
-    Other import-attribute-named fixture kinds (Wasm, binary text) are left
-    to the adapter's normal module-resolution result, per this function's
-    original scope.
+    A request's `with { type: "json" | "text" | "bytes" }` attribute (on a
+    static declaration or a literal dynamic `import()`) selects the adapter's
+    separate synthetic-module path for its target, which is raw data -- never
+    a parser input nor traversed for further requests -- and is keyed by the
+    resource path *and* type, so one file can be both a JavaScript module and
+    (say) its own text (`import-attributes/text-self.js`). `json` and `text`
+    resources are decoded as UTF-8 text (`text` per WHATWG "UTF-8 decode");
+    `bytes` resources are kept as raw byte lists. An untyped request for a
+    `.json` fixture stays a JSON resource. Other fixture kinds reached with no
+    such attribute (Wasm, binary text) are left to the adapter's normal
+    module-resolution result, per this function's original scope.
     """
     test_root = test_root.resolve()
     text = {}
+    raw = {}
     discovery = {}
-    pending = [(entry.resolve(), "static")]
+    resources = {kind: set() for kind in SYNTHETIC_MODULE_TYPES}
+    pending = [(entry.resolve(), "js", "static")]
     while pending:
-        path, reason = pending.pop()
+        path, kind, reason = pending.pop()
         relative = path.relative_to(test_root).as_posix()
+        if kind != "js":
+            resources[kind].add(relative)
+            if relative not in raw:
+                raw[relative] = path.read_bytes()
+            continue
         previous = discovery.get(relative)
         if previous == "static" or previous == reason:
             continue
         discovery[relative] = "static" if reason == "static" else previous or reason
         if relative not in text:
             text[relative] = path.read_text(encoding="utf-8")
-        if path.suffix == ".json":
-            continue
         source = text[relative]
         requests = [
-            (match.group(1) or match.group(2), "static")
+            (match.group(1) or match.group(3), match.group(2) or match.group(4), "static")
             for match in MODULE_REQUEST.finditer(source)
         ]
         requests.extend(
-            (match.group(1), "dynamic")
+            (match.group(1), match.group(2), "dynamic")
             for match in DYNAMIC_IMPORT_PLAIN_REQUEST.finditer(source)
         )
         requests.extend(
-            (match.group(1), "static")
+            (match.group(1), None, "static")
             for match in DYNAMIC_IMPORT_SOURCE_OR_DEFER_REQUEST.finditer(source)
         )
         if include_dynamic_string_roots:
@@ -663,12 +805,13 @@ def module_sources(
             requests.extend(
                 (
                     match.group(1),
+                    None,
                     "dynamic" if speculative_relative_strings else "static",
                 )
                 for match in RELATIVE_STRING.finditer(source)
                 if match.span(1) not in literal_dynamic_spans
             )
-        for request, sub_reason in requests:
+        for request, attribute_type, sub_reason in requests:
             if not request or not request.startswith("."):
                 continue
             candidate = (path.parent / request).resolve()
@@ -676,23 +819,53 @@ def module_sources(
                 candidate.relative_to(test_root)
             except ValueError:
                 continue
+            candidate_kind = request_kind(candidate, attribute_type)
             # Other import-attribute-named fixture kinds (Wasm, binary text)
             # are not parser inputs and must be left to the adapter's normal
             # module-resolution result rather than making the inventory
-            # runner attempt UTF-8 decoding and abort the whole run.
-            if candidate.is_file() and candidate.suffix in (".js", ".json"):
-                pending.append((candidate, sub_reason))
+            # runner attempt UTF-8 decoding and abort the whole run. Only a
+            # request that names a synthetic module type may load one.
+            if not candidate.is_file():
+                continue
+            if candidate_kind == "js" and candidate.suffix != ".js":
+                continue
+            pending.append((candidate, candidate_kind, sub_reason))
     sources = {}
     dynamic_sources = {}
-    json_sources = {}
     for relative, reason in discovery.items():
-        if relative.endswith(".json"):
-            json_sources[relative] = text[relative]
-        elif reason == "static":
+        if reason == "static":
             sources[relative] = text[relative]
         else:
             dynamic_sources[relative] = text[relative]
-    return sources, dynamic_sources, json_sources
+    return ModuleSources(
+        sources,
+        dynamic_sources,
+        {relative: utf8_decode(raw[relative]) for relative in sorted(resources["json"])},
+        {relative: utf8_decode(raw[relative]) for relative in sorted(resources["text"])},
+        {relative: list(raw[relative]) for relative in sorted(resources["bytes"])},
+    )
+
+
+def module_source_requests(sources):
+    """The host Module Source specifiers the given module texts request.
+
+    A static `import source x from "<module source>"` and a dynamic
+    `import.source("<module source>")` both ask the host for its Module
+    Source object; the adapter must register the specifier as source-phase
+    (never as an executable Source Text Module) before the test runs.
+    """
+    return sorted(
+        {
+            match.group(1)
+            for module_source in sources.values()
+            for pattern in (
+                SOURCE_PHASE_IMPORT_REQUEST,
+                DYNAMIC_SOURCE_PHASE_IMPORT_REQUEST,
+            )
+            for match in pattern.finditer(module_source)
+            if match.group(1) == HOST_MODULE_SOURCE_SPECIFIER
+        }
+    )
 
 
 def selected_files(all_files, corpus, pattern, excluded=""):
@@ -804,8 +977,50 @@ def format_progress(completed, total, counts, active, now, checkpoint=False):
     )
 
 
+# Finite fixtures whose real size exceeds the default per-string ceiling
+# (1 MiB), the default managed-heap ceiling (16 MiB, which also caps an
+# ArrayBuffer), the dispatch budget or the wall deadline. Each entry is exact
+# path only and keeps the fixture bounded: it is roughly 3-4x the measured
+# minimum (README, "Large finite fixtures"), never "unlimited". Keys are
+# `string_limit` and `heap_limit` in bytes, `instruction_budget` in dispatches
+# and `timeout` in seconds; an absent key leaves that default alone.
+LARGE_FIXTURE_RESOURCES = {
+    # new DataView(new ArrayBuffer(20 * 1024 * 1024)); the heap needs 21 MiB.
+    "staging/sm/extensions/dataview.js": {"heap_limit": 64 * 1024 * 1024},
+    # Two regular expressions with a 2**24-zero braced escape, built by eval
+    # and by the RegExp constructor: 32 MiB strings, a 36 MiB heap, 2.2 s.
+    "staging/sm/RegExp/unicode-braced.js": {
+        "string_limit": 128 * 1024 * 1024,
+        "heap_limit": 128 * 1024 * 1024,
+        "timeout": 20,
+    },
+    "staging/sm/RegExp/unicode-class-braced.js": {
+        "string_limit": 128 * 1024 * 1024,
+        "heap_limit": 128 * 1024 * 1024,
+        "timeout": 20,
+    },
+    # eval of 2**21, about 2**22 and about 2**22 empty blocks: 16 MiB of
+    # source, a 36 MiB heap, 20-30 million dispatches, about 25 s.
+    "staging/sm/regress/regress-610026.js": {
+        "string_limit": 64 * 1024 * 1024,
+        "heap_limit": 128 * 1024 * 1024,
+        "instruction_budget": 100_000_000,
+        "timeout": 90,
+    },
+}
+
+
+def large_fixture_limits(relative):
+    """The adapter request's `string_limit`/`heap_limit` for an exact path."""
+    large = LARGE_FIXTURE_RESOURCES.get(relative, {})
+    return {key: large[key] for key in ("string_limit", "heap_limit") if key in large}
+
+
 def instruction_budget(data, default, relative=None, source=""):
     """Keep standard tail-call conformance probes within a bounded budget."""
+    large = LARGE_FIXTURE_RESOURCES.get(relative, {})
+    if "instruction_budget" in large:
+        return max(default, large["instruction_budget"])
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET)
     if relative in ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES:
@@ -826,6 +1041,12 @@ def instruction_budget(data, default, relative=None, source=""):
         return max(default, URI_GLOBAL_INSTRUCTION_BUDGET)
     if relative in TYPED_ARRAY_DETACH_COERCION_FIXTURES:
         return max(default, TYPED_ARRAY_DETACH_COERCION_INSTRUCTION_BUDGET)
+    if relative in WALL_CLOCK_BUSY_WAIT_FIXTURES:
+        return max(default, WALL_CLOCK_BUSY_WAIT_INSTRUCTION_BUDGET)
+    if relative in STRING_SUBSTR_NUMBER_MATRIX_FIXTURES:
+        return max(default, STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET)
+    if relative in FINITE_FIXTURE_INSTRUCTION_BUDGETS:
+        return max(default, FINITE_FIXTURE_INSTRUCTION_BUDGETS[relative])
     if relative in FINITE_STRESS_FIXTURES:
         return max(default, FINITE_STRESS_INSTRUCTION_BUDGET)
     if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
@@ -847,6 +1068,9 @@ def instruction_budget(data, default, relative=None, source=""):
 
 def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
+    large = LARGE_FIXTURE_RESOURCES.get(relative, {})
+    if "timeout" in large:
+        return max(default, large["timeout"])
     if relative in SM_TYPED_ARRAY_LONG_FIXTURES:
         return max(default, SM_TYPED_ARRAY_LONG_TIMEOUT)
     if relative in TYPED_ARRAY_DETACH_COERCION_FIXTURES:
@@ -1163,8 +1387,11 @@ def main():
                     request["regex_timeout_ms"] = REGEXP_PROPERTY_ESCAPES_REGEX_TIMEOUT_MS
                 elif relative in REGEXP_CLASS_ESCAPE_FIXTURES:
                     request["string_limit"] = REGEXP_CLASS_ESCAPE_STRING_LIMIT
+                elif fixture_string_limit(relative) is not None:
+                    request["string_limit"] = fixture_string_limit(relative)
                 if relative == STRING_CASE_MAPPING_FIXTURE:
                     request["heap_limit"] = STRING_CASE_MAPPING_HEAP_LIMIT
+                request.update(large_fixture_limits(relative))
                 has_dynamic_import_expression = bool(
                     DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution)
                 )
@@ -1175,7 +1402,7 @@ def main():
                     has_dynamic_import_expression or has_shadow_realm_import_value
                 )
                 if mode == "module" or needs_dynamic_string_roots:
-                    sources, dynamic_sources, json_sources = module_sources(
+                    sources, dynamic_sources, json_sources, text_sources, bytes_sources = module_sources(
                         path,
                         args.corpus / "test",
                         include_dynamic_string_roots=needs_dynamic_string_roots,
@@ -1197,14 +1424,9 @@ def main():
                     request["module_sources"] = sources
                     request["module_dynamic_sources"] = dynamic_sources
                     request["module_json_sources"] = json_sources
-                    request["module_source_requests"] = sorted(
-                        {
-                            match.group(1)
-                            for module_source in sources.values()
-                            for match in SOURCE_PHASE_IMPORT_REQUEST.finditer(module_source)
-                            if match.group(1) == "<module source>"
-                        }
-                    )
+                    request["module_text_sources"] = text_sources
+                    request["module_bytes_sources"] = bytes_sources
+                    request["module_source_requests"] = module_source_requests(sources)
                 reply = local.worker.run(request, case_timeout(data, args.timeout, relative, source_for_execution))
                 results.append({"path": relative, "mode": mode, "status": classify(reply, negative), "expected": negative, "actual": reply, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
             return results
@@ -1288,7 +1510,7 @@ def main():
             "static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable",
             "unclassified parser rejections never satisfy parse-SyntaxError negative tests",
             "harness sources still require supported grammar and APIs",
-            "native overrides for sta.js, assert.js, propertyHelper.js, isConstructor.js, the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
+            "native overrides for sta.js and assert.js (propertyHelper.js and isConstructor.js run their upstream source), the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
             "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, the two Temporal calendar matrices, and the six finite Iterator.zip/zipKeyed basic matrices receive their recorded budgets",
         ],
     }

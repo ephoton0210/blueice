@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::vm::builtins::dynamic::DynamicFunctionKind;
 
 impl Vm {
     pub(in super::super::super) fn native_call(
@@ -68,7 +69,14 @@ impl Vm {
                 self.host_function_call(index, receiver, &args, construct)
             }
             NativeFunction::Promise => self.promise_constructor(first.clone(), construct),
-            NativeFunction::PromiseResolvingFunction { promise, fulfill } => {
+            NativeFunction::PromiseResolvingFunction {
+                promise,
+                fulfill,
+                state,
+            } => {
+                if self.promise_already_resolved(state)? {
+                    return Ok(Value::Undefined);
+                }
                 if fulfill {
                     self.resolve_promise(promise, first.clone())?;
                 } else {
@@ -77,11 +85,7 @@ impl Vm {
                 Ok(Value::Undefined)
             }
             NativeFunction::PromiseCapabilityExecutor { storage } => {
-                let resolve = native::argument(&args, 0).clone();
-                let reject = native::argument(&args, 1).clone();
-                self.with_roots(|heap| heap.set(storage, "resolve", resolve))?;
-                self.with_roots(|heap| heap.set(storage, "reject", reject))?;
-                Ok(Value::Undefined)
+                self.promise_capability_executor(storage, &args)
             }
             NativeFunction::AsyncFromSyncFulfill { target, done } => {
                 let result = self.iterator_result(first.clone(), done);
@@ -109,8 +113,17 @@ impl Vm {
             NativeFunction::AbstractModuleSourceToStringTag => Ok(Value::Undefined),
             NativeFunction::Function => self.function_constructor(&args),
             NativeFunction::AsyncFunction => self.async_function_constructor(&args),
+            NativeFunction::GeneratorFunction => {
+                self.dynamic_function_constructor(&args, DynamicFunctionKind::Generator)
+            }
+            NativeFunction::AsyncGeneratorFunction => {
+                self.dynamic_function_constructor(&args, DynamicFunctionKind::AsyncGenerator)
+            }
             NativeFunction::Error(name) => self.error_constructor(name, &args, construct),
             NativeFunction::ErrorToString => self.error_to_string(&receiver),
+            NativeFunction::ErrorIsError => self.error_is_error(first),
+            NativeFunction::ErrorStackGetter => self.error_stack_getter(&receiver),
+            NativeFunction::ErrorStackSetter => self.error_stack_setter(&receiver, first),
             NativeFunction::Test262(name) => self.test262_call(name, &args),
             NativeFunction::Test262Done => {
                 self.test262_done = Some(if matches!(first, Value::Undefined) {
@@ -120,50 +133,35 @@ impl Vm {
                 });
                 Ok(Value::Undefined)
             }
-            NativeFunction::PromiseThen => self.promise_then(&receiver, &args),
+            NativeFunction::PromiseThen => self.promise_prototype_then(&receiver, &args),
             NativeFunction::PromiseCatch => self.promise_catch(&receiver, first),
             NativeFunction::PromiseFinally => self.promise_finally(&receiver, first),
-            NativeFunction::PromiseResolve => {
-                self.promise_resolve_constructor(&receiver, first.clone())
-            }
-            NativeFunction::PromiseReject => self.promise_reject(first.clone()),
+            NativeFunction::PromiseResolve => self.promise_resolve_static(&receiver, first),
+            NativeFunction::PromiseReject => self.promise_reject_static(&receiver, first),
             NativeFunction::PromiseAll => self.promise_all(&receiver, first),
             NativeFunction::PromiseRace => self.promise_race(&receiver, first),
             NativeFunction::PromiseAny => self.promise_any(&receiver, first),
-            NativeFunction::PromiseAllSettled => self.promise_all_settled_static(&receiver, first),
-            NativeFunction::PromiseAllResolve { target, index } => {
-                self.promise_all_settled(target, index, first.clone())?;
-                Ok(Value::Undefined)
+            NativeFunction::PromiseAllSettled => self.promise_all_settled(&receiver, first),
+            NativeFunction::PromiseAllKeyed { settled } => {
+                self.promise_all_keyed(settled, &receiver, first)
             }
-            NativeFunction::PromiseAllReject { target } => {
-                self.promise_all_reject(target, first.clone())?;
-                Ok(Value::Undefined)
+            NativeFunction::PromiseTry => self.promise_try(&receiver, &args),
+            NativeFunction::PromiseElement { state, index, kind } => {
+                self.promise_element_function(state, index, kind, first)
             }
-            NativeFunction::PromiseRaceFulfill { target } => {
-                self.settle_promise(target, PromiseStatus::Fulfilled(first.clone()))?;
-                Ok(Value::Undefined)
+            NativeFunction::PromiseFinallyFunction { state, catch } => {
+                self.promise_finally_function(state, catch, first)
             }
-            NativeFunction::PromiseRaceReject { target } => {
-                self.settle_promise(target, PromiseStatus::Rejected(first.clone()))?;
-                Ok(Value::Undefined)
+            NativeFunction::PromiseValueThunk { state, thrower } => {
+                self.promise_value_thunk(state, thrower)
             }
-            NativeFunction::PromiseAnyFulfill { target } => {
-                self.promise_any_fulfill(target, first.clone())?;
-                Ok(Value::Undefined)
+            NativeFunction::PromiseWithResolvers => self.promise_with_resolvers(&receiver),
+            NativeFunction::DecoratorAddInitializer { state } => {
+                self.decorator_add_initializer(state, first)
             }
-            NativeFunction::PromiseAnyReject { target, index } => {
-                self.promise_any_reject(target, index, first.clone())?;
-                Ok(Value::Undefined)
+            NativeFunction::DecoratorAccess { op, state } => {
+                self.decorator_access(op, state, &args)
             }
-            NativeFunction::PromiseAllSettledFulfill { target, index } => {
-                self.promise_all_settled_result(target, index, first.clone(), true)?;
-                Ok(Value::Undefined)
-            }
-            NativeFunction::PromiseAllSettledReject { target, index } => {
-                self.promise_all_settled_result(target, index, first.clone(), false)?;
-                Ok(Value::Undefined)
-            }
-            NativeFunction::PromiseWithResolvers => self.promise_with_resolvers(),
             NativeFunction::ToLocaleLowerCase
             | NativeFunction::ToLocaleUpperCase
             | NativeFunction::LocaleCompare => {
@@ -733,6 +731,11 @@ impl Vm {
                         }
                         error => error.into(),
                     })?;
+                // A view over an ArrayBuffer of another Test262 realm exposes
+                // that buffer, not the bridge's local mirror of it.
+                if let Some(facade) = self.test262_foreign_buffer_facade(buffer) {
+                    return Ok(facade);
+                }
                 Ok(Value::Object(buffer))
             }
             NativeFunction::DataViewByteLength => {
@@ -872,6 +875,9 @@ impl Vm {
             }
             NativeFunction::Map => self.collection_constructor(true, &args, construct),
             NativeFunction::MapMethod(method) => self.map_method(method, &receiver, &args),
+            NativeFunction::MapGroupBy => {
+                self.map_group_by_method(first, native::argument(&args, 1))
+            }
             NativeFunction::MapSize => {
                 let Some(map) = receiver.object_id() else {
                     return Err(RuntimeError::TypeError(
@@ -971,7 +977,7 @@ impl Vm {
                 self.array_flat_map(&receiver, first, native::argument(&args, 1))
             }
             NativeFunction::ArrayOf => self.array_of_method(&receiver, &args),
-            NativeFunction::ArraySpecies => Ok(receiver),
+            NativeFunction::ArraySpecies | NativeFunction::CollectionSpecies => Ok(receiver),
             NativeFunction::ArrayFrom => self.array_from_method(&receiver, &args),
             NativeFunction::ArrayFromAsync => self.array_from_async(&receiver, &args),
             NativeFunction::ArrayFromAsyncResume { state, rejected } => {
@@ -1068,6 +1074,7 @@ impl Vm {
             NativeFunction::ParseFloat => self.parse_float(first),
             NativeFunction::EncodeUri { component } => self.encode_uri(first, component),
             NativeFunction::DecodeUri { component } => self.decode_uri(first, component),
+            NativeFunction::Escape { decode } => self.escape_string(first, decode),
             NativeFunction::JsonParse => self.json_parse(first, args.get(1)),
             NativeFunction::JsonStringify => self.json_stringify(&args),
             NativeFunction::JsonRawJson => self.json_raw_json(first),
@@ -1102,6 +1109,11 @@ impl Vm {
                 let length = if self.heap.is_typed_array(object)? {
                     let (_, _, length, _) = self.typed_array_receiver(&Value::Object(object))?;
                     length as f64
+                } else if let Some((length, _)) = self.test262_foreign_typed_array_info(object)? {
+                    // A TypedArray of another Test262 realm: its length is
+                    // an internal slot, and a detached or out-of-bounds view
+                    // is this function's TypeError, not its Realm's getter's.
+                    length as f64
                 } else {
                     let length = self.get_property(&Value::Object(object), &"length".into())?;
                     self.coerce_length(&length)?
@@ -1129,10 +1141,17 @@ impl Vm {
                 self.collection_iterator_next(map, &receiver)
             }
             NativeFunction::GeneratorNext => {
+                self.generator_validate(&receiver)?;
                 self.generator_next(&receiver, Some(first.clone()), None)
             }
-            NativeFunction::GeneratorReturn => self.generator_return(&receiver, first.clone()),
-            NativeFunction::GeneratorThrow => self.generator_throw(&receiver, first.clone()),
+            NativeFunction::GeneratorReturn => {
+                self.generator_validate(&receiver)?;
+                self.generator_return(&receiver, first.clone())
+            }
+            NativeFunction::GeneratorThrow => {
+                self.generator_validate(&receiver)?;
+                self.generator_throw(&receiver, first.clone())
+            }
             NativeFunction::AsyncGeneratorNext
             | NativeFunction::AsyncGeneratorReturn
             | NativeFunction::AsyncGeneratorThrow => {
@@ -1184,9 +1203,11 @@ impl Vm {
                         "Function.toString requires a callable".into(),
                     ));
                 }
-                let initial_name = self
-                    .heap
-                    .function_initial_name(receiver.object_id().unwrap())?;
+                let function = receiver.object_id().unwrap();
+                if let Some(source_text) = self.heap.function_source_text(function)? {
+                    return Ok(Value::String(source_text.into()));
+                }
+                let initial_name = self.heap.function_initial_name(function)?;
                 Ok(Value::String(JsString::native_function_source(
                     initial_name,
                 )))
@@ -1425,23 +1446,20 @@ impl Vm {
                     .map_err(|error| RuntimeError::RangeError(error.to_string()))
             }
             NativeFunction::RegExp => {
-                if !construct
-                    && *native::argument(&args, 1) == Value::Undefined
-                    && self.is_regexp(first)?
-                {
-                    let constructor = self.get_property(first, &"constructor".into())?;
-                    if constructor == self.regexp_global()? {
-                        return Ok(first.clone());
-                    }
-                }
-                self.regexp_create(first, native::argument(&args, 1))
+                self.regexp_constructor(first, native::argument(&args, 1), construct)
             }
             NativeFunction::RegExpMethod(method) => self.regexp_method(method, &receiver, &args),
             NativeFunction::RegExpGetter(name) => self.regexp_getter(name, &receiver),
+            NativeFunction::RegExpLegacyGetter(which) => self.regexp_legacy_get(which, &receiver),
+            NativeFunction::RegExpLegacySetter(which) => {
+                self.regexp_legacy_set(which, &receiver, first)
+            }
             NativeFunction::RegExpIteratorNext => self.regexp_iterator_next(&receiver),
             NativeFunction::ThrowTypeError => Err(RuntimeError::TypeError(
                 "restricted function property".into(),
             )),
+            NativeFunction::LegacyFunctionCaller => self.legacy_function_caller(&receiver),
+            NativeFunction::LegacyFunctionArguments => self.legacy_function_arguments(&receiver),
             NativeFunction::Empty => Ok(Value::Undefined),
             NativeFunction::ObjectValueOf => self.coerce_object(&receiver).map(Value::Object),
             NativeFunction::ObjectIsPrototypeOf => {
@@ -1596,31 +1614,26 @@ impl Vm {
                     Value::BigInt(_) => "Object",
                     Value::Bool(_) => "Boolean",
                     Value::Object(id) => {
-                        // IsArray walks Proxy targets and throws for a
-                        // revoked Proxy before Object.prototype.toString
-                        // observes @@toStringTag.  The rest of BlueJS's
-                        // object brands remain heap-owned, so unwrap only
-                        // for this internal-slot inspection while retaining
-                        // the original receiver for the later Get.
-                        let mut branded = *id;
-                        while let Some((target, _)) = self.heap.proxy(branded)? {
-                            branded = target;
-                        }
-                        if self.heap.boxed_string(branded)?.is_some() {
-                            "String"
-                        } else if self.heap.is_array(branded)? {
+                        // Only IsArray looks through a Proxy (and throws for a
+                        // revoked one). Every other brand is an internal slot,
+                        // which a Proxy does not have, so `id` itself is
+                        // inspected and a Proxy is callable or plain.
+                        let id = *id;
+                        if self.is_array(&receiver)? {
                             "Array"
-                        } else if self.heap.is_arguments(branded)? {
+                        } else if self.heap.boxed_string(id)?.is_some() {
+                            "String"
+                        } else if self.heap.is_arguments(id)? {
                             "Arguments"
-                        } else if self.heap.is_date(branded)? {
+                        } else if self.heap.is_date(id)? {
                             "Date"
                         } else if self.is_callable(&receiver)? {
                             "Function"
-                        } else if self.heap.regexp(branded)?.is_some() {
+                        } else if self.heap.regexp(id)?.is_some() {
                             "RegExp"
-                        } else if self.heap.is_error(branded)? {
+                        } else if self.heap.is_error(id)? {
                             "Error"
-                        } else if let Some(value) = self.heap.boxed_primitive(branded)? {
+                        } else if let Some(value) = self.heap.boxed_primitive(id)? {
                             match value {
                                 Value::Number(_) => "Number",
                                 Value::Bool(_) => "Boolean",
@@ -1679,6 +1692,9 @@ impl Vm {
             }
             NativeFunction::ArrayConcat => self.array_concat(&receiver, &args),
             NativeFunction::ArrayJoin => self.array_join(&receiver, first),
+            NativeFunction::Symbol if construct => Err(RuntimeError::TypeError(
+                "Symbol is not a constructor".into(),
+            )),
             NativeFunction::Symbol => Ok(Value::Symbol(JsSymbol::new(
                 if matches!(first, Value::Undefined) {
                     None
@@ -1811,6 +1827,7 @@ impl Vm {
             NativeFunction::IteratorHelperNext => self.iterator_helper_next(&receiver),
             NativeFunction::IteratorHelperReturn => self.iterator_helper_return(&receiver),
             NativeFunction::IteratorDispose => self.iterator_dispose(&receiver),
+            NativeFunction::AsyncIteratorDispose => self.async_iterator_dispose(&receiver),
             NativeFunction::IteratorConstructorGetter => self.global("Iterator"),
             NativeFunction::IteratorConstructorSetter => {
                 self.iterator_constructor_setter(&receiver, first)

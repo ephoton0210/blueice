@@ -177,13 +177,7 @@ pub(crate) struct IteratorHelperState {
     pub executing: bool,
     pub kind: IteratorHelperKind,
 }
-pub(crate) type ClosureState = (
-    Rc<Bytecode>,
-    Vec<ObjectId>,
-    Value,
-    Option<ObjectId>,
-    Option<Value>,
-);
+pub(crate) type ClosureState = (Rc<Bytecode>, Vec<ObjectId>, Value, Option<ObjectId>);
 
 /// The class-declaration side of an ECMAScript private element.  These
 /// entries live on the declaring class's home object, never in ordinary
@@ -220,14 +214,24 @@ impl PrivateElement {
 #[derive(Default)]
 struct ClosureMetadata {
     home: Option<ObjectId>,
-    class_base: Option<Value>,
+    /// A class constructor's `[[Fields]]`: the method-like function that
+    /// defines its instance elements on a newly constructed object.
+    fields: Option<ObjectId>,
+    /// The with objects (outermost first) that were active where a function
+    /// created inside `with` was created.
+    with_objects: Vec<Value>,
+    /// The `new.target` an arrow function inherits from the function it was
+    /// created in (unset when that was `undefined`).
+    new_target: Option<Value>,
 }
 
 impl ClosureMetadata {
     fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
         self.home
             .into_iter()
-            .chain(self.class_base.iter().filter_map(Value::object_id))
+            .chain(self.fields)
+            .chain(self.with_objects.iter().filter_map(Value::object_id))
+            .chain(self.new_target.iter().filter_map(Value::object_id))
     }
 }
 
@@ -336,6 +340,8 @@ pub(crate) enum GeneratorState {
         receiver: Value,
         args: Vec<Value>,
         home: Option<ObjectId>,
+        /// The `with` objects the generator function closed over.
+        with_objects: Vec<Value>,
     },
     Suspended {
         code: Rc<Bytecode>,
@@ -369,7 +375,15 @@ pub(crate) enum GeneratorState {
         dynamic_bindings: Vec<(String, ObjectId, Vec<ObjectId>)>,
         home: Option<ObjectId>,
         callee: Value,
+        /// The `with` objects in scope at the suspension point: the ones the
+        /// function closed over, its parameter environment and any `with`
+        /// statement the body is inside.
+        with_objects: Vec<Value>,
     },
+    /// The frame is executing: its state has moved into the interpreter, and
+    /// GeneratorValidate makes a re-entrant `next`/`return`/`throw` a
+    /// TypeError. Whatever the run ends with (yield or completion) replaces it.
+    Running,
     Done,
 }
 
@@ -380,12 +394,28 @@ pub(crate) enum AsyncGeneratorCompletion {
     Next(Value),
     Return(Value),
     Throw(Value),
+    /// A `return(value)` request whose operand has been awaited, as
+    /// AsyncGeneratorUnwrapYieldResumption does for a generator suspended at a
+    /// `yield`. It is forwarded to an active `yield*` delegate, if any.
+    ReturnAwaited(Value),
+    /// A return completion that is injected into the generator as is: the
+    /// `yield*` delegate had no `return` method and the operand was awaited
+    /// a second time.
+    ResumeReturn(Value),
+    /// The throw that a rejected second await of a `yield*` return raises at
+    /// the `yield*` itself (it is not forwarded to the delegate).
+    ResumeThrow(Value),
 }
 
 impl AsyncGeneratorCompletion {
     fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
         match self {
-            Self::Next(value) | Self::Return(value) | Self::Throw(value) => value.object_id(),
+            Self::Next(value)
+            | Self::Return(value)
+            | Self::Throw(value)
+            | Self::ReturnAwaited(value)
+            | Self::ResumeReturn(value)
+            | Self::ResumeThrow(value) => value.object_id(),
         }
         .into_iter()
     }
@@ -440,7 +470,10 @@ impl AsyncGeneratorControl {
                 .map(|request| match &request.completion {
                     AsyncGeneratorCompletion::Next(value)
                     | AsyncGeneratorCompletion::Return(value)
-                    | AsyncGeneratorCompletion::Throw(value) => value.payload_bytes(),
+                    | AsyncGeneratorCompletion::Throw(value)
+                    | AsyncGeneratorCompletion::ReturnAwaited(value)
+                    | AsyncGeneratorCompletion::ResumeReturn(value)
+                    | AsyncGeneratorCompletion::ResumeThrow(value) => value.payload_bytes(),
                 })
                 .sum::<usize>()
     }
@@ -489,7 +522,7 @@ impl GeneratorState {
             Self::Start { args, .. } => {
                 reference_bytes + args.iter().map(Value::payload_bytes).sum::<usize>()
             }
-            Self::Done => reference_bytes,
+            Self::Done | Self::Running => reference_bytes,
         }
     }
 
@@ -501,6 +534,7 @@ impl GeneratorState {
                 receiver,
                 args,
                 home,
+                with_objects,
                 ..
             } => captures
                 .iter()
@@ -509,6 +543,7 @@ impl GeneratorState {
                 .chain(receiver.object_id())
                 .chain(args.iter().filter_map(Value::object_id))
                 .chain(*home)
+                .chain(with_objects.iter().filter_map(Value::object_id))
                 .collect(),
             Self::Suspended {
                 stack,
@@ -525,10 +560,12 @@ impl GeneratorState {
                 dynamic_bindings,
                 home,
                 callee,
+                with_objects,
                 ..
             } => {
                 let mut references = stack
                     .iter()
+                    .chain(with_objects.iter())
                     .chain(bindings.iter().flatten())
                     .chain(std::iter::once(this))
                     .chain(args.iter())
@@ -552,7 +589,7 @@ impl GeneratorState {
                 );
                 references
             }
-            Self::Done => Vec::new(),
+            Self::Done | Self::Running => Vec::new(),
         }
     }
 }
@@ -1564,6 +1601,11 @@ pub struct Heap {
     minor_collections: u64,
     major_collections: u64,
     root_registrations: u64,
+    /// Advances whenever any object gains or loses an own property key or
+    /// changes its `[[Prototype]]`, the only ways the set of keys a property
+    /// lookup can find changes. Native loops that skip absent indices compare
+    /// it after each call into user code to know their skip list went stale.
+    structure_epoch: u64,
 }
 
 impl Default for Heap {

@@ -95,15 +95,18 @@ impl Vm {
         })?;
         let root = self.heap.root(function)?;
         let result = (|| {
+            // %ThrowTypeError% is frozen: `length` then `name`, both
+            // non-configurable, and the function is not extensible.
+            self.define_data(function, "length", Value::Number(0.0), false, false, false)?;
             self.define_data(
                 function,
                 "name",
                 Value::String("".into()),
                 false,
                 false,
-                true,
+                false,
             )?;
-            self.define_data(function, "length", Value::Number(0.0), false, false, true)?;
+            self.heap.prevent_extensions(function)?;
             Ok(function)
         })();
         match result {
@@ -120,17 +123,154 @@ impl Vm {
 
     /// Annex B legacy own properties on a non-strict ordinary, constructible
     /// function hide the restricted accessors inherited from
-    /// `%Function.prototype%`. Until call-chain tracking exists, `caller`
-    /// remains `undefined`, which preserves the standard compatibility
-    /// fallback instead of falsely advertising an active caller extension.
+    /// `%Function.prototype%`. They are own accessors sharing one getter pair
+    /// (no setter, so assignment is ignored or, in strict code, throws): see
+    /// `legacy_function_caller` and `legacy_function_arguments`.
     pub(in super::super) fn install_legacy_function_properties(
         &mut self,
         function: ObjectId,
     ) -> Result<(), RuntimeError> {
-        for (name, value) in [("arguments", Value::Null), ("caller", Value::Undefined)] {
-            self.define_data(function, name, value, false, false, false)?;
+        let (caller, arguments) = self.legacy_function_getters()?;
+        for (name, getter) in [("arguments", arguments), ("caller", caller)] {
+            let descriptor = PropertyDescriptor {
+                get: Some(Value::Object(getter)),
+                set: Some(Value::Undefined),
+                enumerable: Some(false),
+                configurable: Some(false),
+                ..PropertyDescriptor::default()
+            };
+            let defined =
+                self.with_roots(|heap| heap.define_own_property(function, name, descriptor))?;
+            if !defined {
+                return Err(RuntimeError::TypeError(
+                    "cannot define a legacy function property".into(),
+                ));
+            }
         }
         Ok(())
+    }
+
+    fn legacy_function_getters(&mut self) -> Result<(ObjectId, ObjectId), RuntimeError> {
+        if let Some(getters) = self.legacy_function_getters {
+            return Ok(getters);
+        }
+        let constructor = self.string_intrinsics()?.0;
+        let prototype = self
+            .heap
+            .prototype(constructor)?
+            .expect("String constructor has Function.prototype");
+        let mut created = Vec::new();
+        let result = (|| {
+            for native in [
+                NativeFunction::LegacyFunctionCaller,
+                NativeFunction::LegacyFunctionArguments,
+            ] {
+                let function =
+                    self.with_roots(|heap| heap.alloc_native_function(native, "", prototype))?;
+                created.push((function, self.heap.root(function)?));
+                self.define_data(
+                    function,
+                    "name",
+                    Value::String("".into()),
+                    false,
+                    false,
+                    true,
+                )?;
+                self.define_data(function, "length", Value::Number(0.0), false, false, true)?;
+            }
+            Ok((created[0].0, created[1].0))
+        })();
+        match result {
+            Ok(getters) => {
+                self.legacy_function_getters = Some(getters);
+                Ok(getters)
+            }
+            Err(error) => {
+                for (_, root) in created {
+                    self.heap.unroot(root)?;
+                }
+                Err(error)
+            }
+        }
+    }
+
+    /// `f.caller`: the sloppy function that is currently running `f`, or
+    /// `null` when `f` is not running, was called from outside any function,
+    /// or was called by a function the legacy reflection proposal censors
+    /// (strict, generator, async, class constructor).
+    pub(in super::super) fn legacy_function_caller(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(function) = receiver else {
+            return Ok(Value::Null);
+        };
+        let Some(caller) = self
+            .call_stack
+            .iter()
+            .rposition(|running| running == function)
+            .and_then(|position| position.checked_sub(1))
+            .and_then(|position| self.call_stack.get(position).copied())
+        else {
+            return Ok(Value::Null);
+        };
+        let Some((code, ..)) = self.heap.closure(caller)? else {
+            return Ok(Value::Null);
+        };
+        if code.strict || code.generator || code.async_function || code.class_constructor {
+            return Ok(Value::Null);
+        }
+        Ok(Value::Object(caller))
+    }
+
+    /// `f.arguments`: a copy of the running call's arguments while `f`'s own
+    /// body reads it, `null` otherwise. Outer activations of `f` are not
+    /// reachable from here, so they also report `null`.
+    pub(in super::super) fn legacy_function_arguments(
+        &mut self,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let Value::Object(function) = receiver else {
+            return Ok(Value::Null);
+        };
+        if self.call_stack.last() != Some(function) || self.callee != *receiver {
+            return Ok(Value::Null);
+        }
+        let base = self.stack.len();
+        self.stack.extend(self.arguments.iter().cloned());
+        let result = (|| {
+            let object_prototype = self.object_prototype;
+            let object =
+                self.with_roots(|heap| heap.alloc_arguments(HashMap::new(), object_prototype))?;
+            self.stack.push(Value::Object(object));
+            self.define_data(
+                object,
+                "length",
+                Value::Number(self.arguments.len() as f64),
+                true,
+                false,
+                true,
+            )?;
+            for (index, value) in self.arguments.clone().into_iter().enumerate() {
+                self.define_data(object, index.to_string(), value, true, true, true)?;
+            }
+            let array = self.global("Array")?;
+            let array_prototype = self.get_property(&array, &"prototype".into())?;
+            let iterator =
+                self.get_property(&array_prototype, &JsSymbol::well_known("iterator").into())?;
+            self.define_data(
+                object,
+                JsSymbol::well_known("iterator"),
+                iterator,
+                true,
+                false,
+                true,
+            )?;
+            self.define_data(object, "callee", receiver.clone(), true, false, true)?;
+            Ok(Value::Object(object))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     pub(in super::super) fn direct_eval(&mut self, value: &Value) -> Result<Value, RuntimeError> {
@@ -140,17 +280,26 @@ impl Vm {
         let source = source.to_utf8().map_err(|_| {
             RuntimeError::SyntaxError("eval source contains an unpaired surrogate".into())
         })?;
-        let program =
-            crate::parse_eval(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let derived_constructor = match self.class_constructor {
-            Some(constructor) => self.heap.class_base(constructor)?.is_some(),
-            None => false,
-        };
+        let program = crate::parse_eval(&source, self.strict)
+            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let visible = self.eval_visible_bindings();
+        // Only the derived constructor itself, or an arrow function or eval
+        // code inside it, has the constructor binding `super()` needs.
+        let derived_constructor = visible
+            .iter()
+            .any(|(name, _, _)| name == crate::compiler::DERIVED_CONSTRUCTOR_BINDING);
         if crate::ast::contains_super_call_outside_class(&program)
-            && (self.class_field_initializer_depth != 0 || !derived_constructor)
+            && (self.class_field_initializer || !derived_constructor)
         {
             return Err(RuntimeError::SyntaxError(
                 "super() is not valid in this eval context".into(),
+            ));
+        }
+        // A field initializer has no `arguments` binding, so eval code inside
+        // it (or inside an arrow function it created) may not refer to one.
+        if self.class_field_initializer && crate::ast::statements_contain_arguments(&program.body) {
+            return Err(RuntimeError::SyntaxError(
+                "arguments is not valid in a class field initializer".into(),
             ));
         }
         if crate::ast::contains_super_property_outside_class(&program) && self.home_object.is_none()
@@ -159,7 +308,6 @@ impl Vm {
                 "super property is not valid in this eval context".into(),
             ));
         }
-        let visible = self.eval_visible_bindings();
         let global_execution = self.callee == Value::Undefined;
         // The persistent global-realm path uses its existing binding cells
         // for direct eval declarations. Function eval instead distinguishes
@@ -183,9 +331,15 @@ impl Vm {
             &visible,
             &variable_environment_names,
             &lexical_conflicts,
-            self.strict,
-            self.new_target_allowed,
-            self.with_objects.len(),
+            crate::compiler::EvalContext {
+                strict: self.strict,
+                new_target_allowed: self.new_target_allowed,
+                class_field_initializer: self.class_field_initializer,
+                with_scopes: crate::compiler::EvalWithScopes {
+                    depth: self.with_objects.len(),
+                    inherited: self.inherited_with_depth,
+                },
+            },
         )
         .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let captures = code
@@ -216,8 +370,14 @@ impl Vm {
         })?;
         let program =
             crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
-        let code = crate::compiler::compile_eval(&program, &[], &[], &[], false, false, 0)
-            .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
+        let code = crate::compiler::compile_eval(
+            &program,
+            &[],
+            &[],
+            &[],
+            crate::compiler::EvalContext::default(),
+        )
+        .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         let global_this = self.global("globalThis")?;
         let this = std::mem::replace(&mut self.this, global_this);
         let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
@@ -311,9 +471,74 @@ impl Vm {
     pub(in super::super) fn generator_function_prototype(
         &mut self,
     ) -> Result<ObjectId, RuntimeError> {
-        if let Some(prototype) = self.generator_function_prototype {
-            return Ok(prototype);
+        if self.generator_function_prototype.is_none() {
+            self.generator_intrinsics()?;
         }
+        Ok(self
+            .generator_function_prototype
+            .expect("generator intrinsics install both prototypes"))
+    }
+
+    /// Creates `%GeneratorFunction.prototype%` and `%GeneratorPrototype%`
+    /// together and links them: each is the other's `constructor` /
+    /// `prototype` (both non-writable, non-enumerable, configurable), which
+    /// is how `Object.getPrototypeOf(function* () {}).prototype` reaches the
+    /// prototype shared by every generator object. On failure neither is
+    /// installed and both temporary roots are released.
+    fn generator_intrinsics(&mut self) -> Result<(), RuntimeError> {
+        let (function_side, function_root) = self.build_generator_function_prototype()?;
+        let (generator_side, generator_root) = match self.build_generator_prototype() {
+            Ok(built) => built,
+            Err(error) => {
+                self.heap.unroot(function_root)?;
+                return Err(error);
+            }
+        };
+        let base = self.stack.len();
+        self.stack.push(Value::Object(function_side));
+        self.stack.push(Value::Object(generator_side));
+        let linked = (|| {
+            self.define_data(
+                function_side,
+                "prototype",
+                Value::Object(generator_side),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                generator_side,
+                "constructor",
+                Value::Object(function_side),
+                false,
+                false,
+                true,
+            )
+        })();
+        self.stack.truncate(base);
+        match linked {
+            Ok(()) => {
+                self.generator_function_prototype = Some(function_side);
+                self.generator_prototype = Some(generator_side);
+                Ok(())
+            }
+            Err(error) => {
+                self.heap.unroot(function_root)?;
+                self.heap.unroot(generator_root)?;
+                Err(error)
+            }
+        }
+    }
+
+    fn build_generator_function_prototype(
+        &mut self,
+    ) -> Result<(ObjectId, crate::heap::RootId), RuntimeError> {
+        // %GeneratorFunction% inherits from the %Function% constructor, not
+        // from %Function.prototype%.
+        let function_constructor = self
+            .global("Function")?
+            .object_id()
+            .expect("Function is callable");
         let function_prototype = self.function_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
         let root = self.heap.root(prototype)?;
@@ -322,9 +547,9 @@ impl Vm {
         let result = (|| {
             let constructor = self.with_roots(|heap| {
                 heap.alloc_native_function(
-                    NativeFunction::Function,
+                    NativeFunction::GeneratorFunction,
                     "GeneratorFunction",
-                    function_prototype,
+                    function_constructor,
                 )
             })?;
             self.stack.push(Value::Object(constructor));
@@ -371,10 +596,7 @@ impl Vm {
         })();
         self.stack.truncate(base);
         match result {
-            Ok(()) => {
-                self.generator_function_prototype = Some(prototype);
-                Ok(prototype)
-            }
+            Ok(()) => Ok((prototype, root)),
             Err(error) => {
                 self.heap.unroot(root)?;
                 Err(error)
@@ -383,9 +605,17 @@ impl Vm {
     }
 
     pub(in super::super) fn generator_prototype(&mut self) -> Result<ObjectId, RuntimeError> {
-        if let Some(prototype) = self.generator_prototype {
-            return Ok(prototype);
+        if self.generator_prototype.is_none() {
+            self.generator_intrinsics()?;
         }
+        Ok(self
+            .generator_prototype
+            .expect("generator intrinsics install both prototypes"))
+    }
+
+    fn build_generator_prototype(
+        &mut self,
+    ) -> Result<(ObjectId, crate::heap::RootId), RuntimeError> {
         let constructor = self.string_intrinsics()?.0;
         let function_prototype = self.heap.prototype(constructor)?.unwrap();
         let base = self.base_iterator_prototype()?;
@@ -421,14 +651,15 @@ impl Vm {
                 false,
                 true,
             )?;
-            Ok(prototype)
+            Ok(())
         })();
-        if result.is_err() {
-            self.heap.unroot(root)?;
-        } else {
-            self.generator_prototype = Some(prototype);
+        match result {
+            Ok(()) => Ok((prototype, root)),
+            Err(error) => {
+                self.heap.unroot(root)?;
+                Err(error)
+            }
         }
-        result
     }
 
     /// `%AsyncIteratorPrototype%` has no global binding. It is the common
@@ -442,13 +673,23 @@ impl Vm {
         let function_prototype = self.function_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
         let root = self.heap.root(prototype)?;
-        let result = self.install_symbol_native(
-            prototype,
-            function_prototype,
-            "asyncIterator",
-            0,
-            NativeFunction::AsyncIteratorSelf,
-        );
+        let result = self
+            .install_symbol_native(
+                prototype,
+                function_prototype,
+                "asyncIterator",
+                0,
+                NativeFunction::AsyncIteratorSelf,
+            )
+            .and_then(|()| {
+                self.install_symbol_native(
+                    prototype,
+                    function_prototype,
+                    "asyncDispose",
+                    0,
+                    NativeFunction::AsyncIteratorDispose,
+                )
+            });
         if let Err(error) = result {
             self.heap.unroot(root)?;
             Err(error)
@@ -506,6 +747,107 @@ impl Vm {
         } else {
             self.async_generator_prototype = Some(prototype);
             Ok(prototype)
+        }
+    }
+
+    /// `%AsyncGeneratorFunction.prototype%`, the prototype of async generator
+    /// function objects (which is neither `%AsyncFunction.prototype%` nor
+    /// `%GeneratorFunction.prototype%`). It is built together with
+    /// `%AsyncGeneratorFunction%` and linked to `%AsyncGeneratorPrototype%`
+    /// exactly as the synchronous pair is: each is the other's
+    /// `prototype` / `constructor`, both non-writable and configurable.
+    pub(in super::super) fn async_generator_function_prototype(
+        &mut self,
+    ) -> Result<ObjectId, RuntimeError> {
+        if let Some(prototype) = self.async_generator_function_prototype {
+            return Ok(prototype);
+        }
+        let generator_side = self.async_generator_prototype()?;
+        let function_prototype = self.function_prototype()?;
+        let function_constructor = self
+            .global("Function")?
+            .object_id()
+            .expect("Function is callable");
+        let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
+        let root = self.heap.root(prototype)?;
+        let base = self.stack.len();
+        self.stack.push(Value::Object(prototype));
+        let result: Result<(), RuntimeError> = (|| {
+            let constructor = self.with_roots(|heap| {
+                heap.alloc_native_function(
+                    NativeFunction::AsyncGeneratorFunction,
+                    "AsyncGeneratorFunction",
+                    function_constructor,
+                )
+            })?;
+            self.stack.push(Value::Object(constructor));
+            self.define_data(
+                constructor,
+                "length",
+                Value::Number(1.0),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "name",
+                Value::String("AsyncGeneratorFunction".into()),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                constructor,
+                "prototype",
+                Value::Object(prototype),
+                false,
+                false,
+                false,
+            )?;
+            self.define_data(
+                prototype,
+                "constructor",
+                Value::Object(constructor),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                prototype,
+                "prototype",
+                Value::Object(generator_side),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                generator_side,
+                "constructor",
+                Value::Object(prototype),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(
+                prototype,
+                JsSymbol::well_known("toStringTag"),
+                Value::String("AsyncGeneratorFunction".into()),
+                false,
+                false,
+                true,
+            )
+        })();
+        self.stack.truncate(base);
+        match result {
+            Ok(()) => {
+                self.async_generator_function_prototype = Some(prototype);
+                Ok(prototype)
+            }
+            Err(error) => {
+                self.heap.unroot(root)?;
+                Err(error)
+            }
         }
     }
 

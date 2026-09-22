@@ -87,7 +87,7 @@ pub enum Keyword {
 }
 
 impl Keyword {
-    fn from_str(s: &str) -> Option<Keyword> {
+    pub(crate) fn from_str(s: &str) -> Option<Keyword> {
         Some(match s {
             "var" => Keyword::Var,
             "let" => Keyword::Let,
@@ -182,6 +182,8 @@ pub enum Punct {
     QuestionQuestion,
     QuestionQuestionAssign,
     QuestionDot,
+    /// `@`, which only ever begins a decorator.
+    At,
 }
 
 /// One lexical error -- a plain message rather than a structured enum,
@@ -225,6 +227,12 @@ impl LexError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpannedToken {
     pub token: Token,
+    /// Where the token's first character sits, as a character offset from the
+    /// start of the source (after the whitespace and comments before it). The
+    /// token ends where the tokenizer's [`Tokenizer::position`] is once it has
+    /// been scanned; a function's source text (its `[[SourceText]]`) is the
+    /// range from the start of its first token to the end of its last.
+    pub start: usize,
     pub newline_before: bool,
     /// Whether this IdentifierName used a Unicode escape.  Contextual
     /// keywords such as `await` cannot be escaped when the grammar requires
@@ -234,6 +242,10 @@ pub struct SpannedToken {
     /// escape. These escapes are accepted only by non-strict script code;
     /// retain the lexical fact so the parser can enforce that early error.
     pub legacy_octal_escape: bool,
+    /// Whether this token's string literal contained any escape sequence or
+    /// line continuation. A Use Strict Directive must be spelled exactly
+    /// `"use strict"` or `'use strict'`, so an escaped spelling never counts.
+    pub string_escaped: bool,
 }
 
 pub(crate) type TaggedTemplateData = (Vec<JsString>, Vec<Option<JsString>>, Vec<String>);
@@ -247,14 +259,15 @@ pub struct Tokenizer {
     line_start: bool,
     identifier_escaped: bool,
     legacy_octal_escape: bool,
+    string_escaped: bool,
     html_comments_enabled: bool,
 }
 
-fn is_ident_start(c: char) -> bool {
+pub(crate) fn is_ident_start(c: char) -> bool {
     matches!(c, '_' | '$') || CodePointSetData::new::<props::IdStart>().contains(c)
 }
 
-fn is_ident_continue(c: char) -> bool {
+pub(crate) fn is_ident_continue(c: char) -> bool {
     matches!(c, '_' | '$' | '\u{200c}' | '\u{200d}')
         || CodePointSetData::new::<props::IdContinue>().contains(c)
 }
@@ -282,9 +295,9 @@ impl Tokenizer {
         loop {
             let c = self
                 .advance()
-                .ok_or_else(|| LexError::new("unterminated RegExp literal"))?;
+                .ok_or_else(|| LexError::syntax("unterminated RegExp literal"))?;
             if is_line_terminator(c) {
-                return Err(LexError::new("line terminator in RegExp literal"));
+                return Err(LexError::syntax("line terminator in RegExp literal"));
             }
             if c == '/' && !class {
                 break;
@@ -293,9 +306,9 @@ impl Tokenizer {
             if c == '\\' {
                 let escaped = self
                     .advance()
-                    .ok_or_else(|| LexError::new("unterminated RegExp escape"))?;
+                    .ok_or_else(|| LexError::syntax("unterminated RegExp escape"))?;
                 if is_line_terminator(escaped) {
-                    return Err(LexError::new("line terminator in RegExp escape"));
+                    return Err(LexError::syntax("line terminator in RegExp escape"));
                 }
                 pattern.push_code_point(escaped as u32);
             } else if c == '[' {
@@ -363,6 +376,10 @@ impl Tokenizer {
                 while let Some(c) = lexer.advance() {
                     if c == '\\' {
                         match lexer.scan_escape() {
+                            // Legacy octal and `\8`/`\9` escapes are
+                            // NotEscapeSequences in a template: the cooked
+                            // value of that string is undefined.
+                            Ok(Some(_)) if lexer.legacy_octal_escape => return None,
                             Ok(Some(c)) => result.push_code_point(c),
                             Ok(None) => {}
                             Err(_) => return None,
@@ -388,6 +405,7 @@ impl Tokenizer {
             line_start: true,
             identifier_escaped: false,
             legacy_octal_escape: false,
+            string_escaped: false,
             html_comments_enabled: true,
         }
     }
@@ -397,6 +415,18 @@ impl Tokenizer {
         Tokenizer {
             html_comments_enabled: false,
             ..Self::new(input)
+        }
+    }
+
+    /// Consumes a Hashbang comment (`#!` through the end of the line, not
+    /// including the line terminator) when it is the first thing in the
+    /// source text. Callers apply this only to complete Script or Module
+    /// text; the line terminator that ends it is ordinary trivia.
+    pub(crate) fn skip_hashbang(&mut self) {
+        if self.pos == 0 && self.peek() == Some('#') && self.peek_at(1) == Some('!') {
+            while self.peek().is_some_and(|c| !is_line_terminator(c)) {
+                self.advance();
+            }
         }
     }
 
@@ -525,12 +555,16 @@ impl Tokenizer {
         let newline_before = self.skip_trivia()?;
         self.identifier_escaped = false;
         self.legacy_octal_escape = false;
+        self.string_escaped = false;
+        let start = self.pos;
         let token = self.next_token()?;
         Ok(SpannedToken {
             token,
+            start,
             newline_before,
             identifier_escaped: self.identifier_escaped,
             legacy_octal_escape: self.legacy_octal_escape,
+            string_escaped: self.string_escaped,
         })
     }
 
@@ -583,6 +617,12 @@ impl Tokenizer {
             }
         }
         let mut text = self.scan_digits(10, !leading_zero)?;
+        // A LegacyOctalIntegerLiteral (`010`) or NonOctalDecimalIntegerLiteral
+        // (`08`, `019`) is an Annex B extension that strict code rejects, so
+        // the parser must learn that this token used one.
+        if leading_zero && text.len() > 1 {
+            self.legacy_octal_escape = true;
+        }
         if self.peek() == Some('n') {
             self.advance();
             if leading_zero && text.len() > 1 {
@@ -697,8 +737,10 @@ impl Tokenizer {
                     consumed_extra += 1;
                 }
                 // A bare `\\0` is the ordinary NullEscape. Every other
-                // form here is legacy-only and invalid in strict code.
-                self.legacy_octal_escape = first != 0 || consumed_extra != 0;
+                // form here is legacy-only and invalid in strict code,
+                // including `\\0` directly followed by `8` or `9`.
+                self.legacy_octal_escape =
+                    first != 0 || consumed_extra != 0 || matches!(self.peek(), Some('8' | '9'));
                 value
             }
             // NonOctalDecimalEscapeSequence is likewise prohibited in
@@ -778,6 +820,7 @@ impl Tokenizer {
                 }
                 Some('\\') => {
                     self.advance();
+                    self.string_escaped = true;
                     if let Some(c) = self.scan_escape()? {
                         out.push_code_point(c);
                     }
@@ -827,6 +870,14 @@ impl Tokenizer {
                     self.advance();
                     if let Some(c) = self.scan_escape()? {
                         current.push_code_point(c);
+                    }
+                    // A tagged template re-scans its own text and may carry
+                    // such an escape (cooked value `undefined`); an untagged
+                    // template may not (§13.2.8.1, NotEscapeSequence).
+                    if self.legacy_octal_escape {
+                        return Err(LexError::syntax(
+                            "octal escape sequences are not allowed in template literals",
+                        ));
                     }
                 }
                 Some('\r') => {
@@ -894,9 +945,13 @@ impl Tokenizer {
             }
             text.push(character);
         }
+        // A keyword spelled with a Unicode escape is never that keyword
+        // (§12.7.2): it stays an IdentifierName, valid as a property name,
+        // and the parser rejects it wherever a reserved word cannot be an
+        // IdentifierReference or BindingIdentifier.
         match Keyword::from_str(&text) {
-            Some(kw) => Ok(Token::Keyword(kw)),
-            None => Ok(Token::Identifier(text)),
+            Some(kw) if !self.identifier_escaped => Ok(Token::Keyword(kw)),
+            _ => Ok(Token::Identifier(text)),
         }
     }
 
@@ -1155,6 +1210,7 @@ impl Tokenizer {
             }
             '^' => two!('=', Punct::XorAssign, Punct::Xor),
             '~' => Punct::Tilde,
+            '@' => Punct::At,
             '?' => {
                 if self.peek() == Some('?') {
                     self.advance();
@@ -1650,9 +1706,40 @@ mod tests {
     }
 
     #[test]
+    fn spanned_tokens_record_where_they_start() {
+        // Offsets count characters (not UTF-8 bytes or UTF-16 units) from the
+        // start of the source, and skip the whitespace and comments before a
+        // token; the tokenizer position after a token is where it ends.
+        let source = "  foo /* c */ 'b\u{1F600}r' // x\n\u{3042}\u{3044}";
+        let mut t = Tokenizer::new(source);
+        let mut spans = Vec::new();
+        loop {
+            let spanned = t.next_spanned().unwrap();
+            if spanned.token == Token::Eof {
+                break;
+            }
+            spans.push((spanned.start, t.position()));
+        }
+        assert_eq!(spans, vec![(2, 5), (14, 19), (25, 27)]);
+        assert_eq!(t.next_spanned().unwrap().start, 27);
+    }
+
+    #[test]
     fn unexpected_character_is_an_error_not_a_panic() {
-        assert!(Tokenizer::new("@").next_spanned().is_err());
+        assert!(Tokenizer::new("\\").next_spanned().is_err());
         assert!(Tokenizer::new("#").next_spanned().is_err());
+    }
+
+    #[test]
+    fn at_sign_is_the_decorator_punctuator() {
+        assert_eq!(
+            tokens("@dec"),
+            vec![
+                Token::Punct(Punct::At),
+                Token::Identifier("dec".into()),
+                Token::Eof
+            ]
+        );
     }
 
     #[test]

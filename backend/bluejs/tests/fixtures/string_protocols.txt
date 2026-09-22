@@ -92,9 +92,6 @@ let p={}; Object.defineProperty(p,'x',{value:1}); let o={__proto__:p,x:2}; o.x =
 let m=/(?<outer>(?<inner>a))(?<absent>b)?/d.exec('a'); m.indices.groups.outer === m.indices[1] && m.indices.groups.inner === m.indices[2] && m.indices[1] !== m.indices[2] && m.indices.groups.absent === undefined
 let m=/(x)(?<\u0061>a)/d.exec('xa'); m.indices.groups.a === m.indices[2]
 let m=/(?<x>a)|(?<x>b)/d.exec('b'); m.indices.groups.x === m.indices[2]
-Number.prototype[Symbol.match]=function(s){return s+this;}; 'a'.match(3) === 'a3'
-String.prototype[Symbol.search]=()=>42; 'a'.search('b') === 42
-Boolean.prototype[Symbol.matchAll]=()=>42; 'a'.matchAll(true) === 42
 let a=['x']; a.join=()=> 'custom'; String(a) === 'custom'
 let a=['x']; a.join=3; String(a) === '[object Array]'
 let a=['a',null,['b','c']]; a.join('|') === 'a||b,c'

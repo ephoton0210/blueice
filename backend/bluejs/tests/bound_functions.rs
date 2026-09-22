@@ -153,9 +153,12 @@ fn bound_internal_edges_survive_collection_and_are_reclaimed() {
     })
     .unwrap();
     // Ordinary calls now create an arguments object whose @@iterator is the
-    // realm's Array.prototype.values. Warm that permanent intrinsic before
-    // taking the GC baseline; the assertions below concern transient edges.
-    let code = compile(&parse("String; Object; Array; globalThis; 0").unwrap()).unwrap();
+    // realm's Array.prototype.values, and the first sloppy function creates
+    // the shared getters of its legacy `caller`/`arguments` accessors. Warm
+    // those permanent intrinsics before taking the GC baseline; the assertions
+    // below concern transient edges.
+    let code =
+        compile(&parse("String; Object; Array; globalThis; (function () {}); 0").unwrap()).unwrap();
     vm.execute(&code).unwrap();
     let baseline = vm.heap().stats().managed_bytes;
     let code = compile(&parse("let target=function(a){return this.x+a.y;}; let receiver={x:'A'}; let arg={y:'B'}; globalThis.bound=target.bind(receiver,arg); globalThis.ids=[target,receiver,arg]; target=null;receiver=null;arg=null;globalThis.ids").unwrap()).unwrap();
@@ -299,4 +302,22 @@ fn bound_chains_use_fuel_without_adding_execution_frames() {
             .unwrap(),
         Value::String("ok".into())
     );
+}
+
+#[test]
+fn bound_length_reads_a_proxy_target_through_its_traps() {
+    // HasOwnProperty(target, "length") is the target's [[GetOwnProperty]], so a
+    // Proxy target reports it through its trap rather than as an absent slot.
+    check(&[
+        "let seen = []; \
+         let proxy = new Proxy(function () {}, { \
+           getOwnPropertyDescriptor(t, name) { seen.push(name); return {value: 3, configurable: true}; }, \
+           get(t, name) { return name === 'length' ? 3 : name === 'name' ? 'hello world' : undefined; } }); \
+         let bound = Function.prototype.bind.call(proxy); \
+         bound.length === 3 && bound.name === 'bound hello world' && seen.join() === 'length'",
+        "let fun = function () {}; Object.defineProperty(fun, 'length', {value: '15'}); fun.bind().length === 0",
+        "let fun = function () {}; Object.defineProperty(fun, 'length', {value: Number.MAX_SAFE_INTEGER}); \
+         fun.bind().length === Number.MAX_SAFE_INTEGER",
+        "let fun = function () {}; Object.defineProperty(fun, 'length', {value: -100}); fun.bind().length === 0",
+    ]);
 }

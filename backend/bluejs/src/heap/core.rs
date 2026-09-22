@@ -33,6 +33,7 @@ impl Heap {
             minor_collections: 0,
             major_collections: 0,
             root_registrations: 0,
+            structure_epoch: 0,
         })
     }
 
@@ -828,12 +829,15 @@ impl Heap {
     }
 
     /// Allocates a host-defined exotic with the Annex B `[[IsHTMLDDA]]` slot.
-    /// Only the Test262 host creates one; ordinary JavaScript cannot.
+    /// It is a callable (`function` is what a call runs), like the document.all
+    /// object it models. Only the Test262 host creates one; ordinary
+    /// JavaScript cannot.
     pub(crate) fn alloc_html_dda_object(
         &mut self,
-        prototype: Option<ObjectId>,
+        function: NativeFunction,
+        prototype: ObjectId,
     ) -> Result<ObjectId, HeapError> {
-        let id = self.alloc(ObjectKind::Ordinary, prototype)?;
+        let id = self.alloc_native_function(function, "", prototype)?;
         self.objects
             .get_mut(&id)
             .expect("freshly allocated object is present")

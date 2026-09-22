@@ -5,6 +5,31 @@
 use super::*;
 
 impl Vm {
+    /// `%Object.prototype%.hasOwnProperty` and `.propertyIsEnumerable` are
+    /// installed on first ordinary lookup. Every reflective internal method
+    /// on that object ([[GetOwnProperty]], [[DefineOwnProperty]], [[Delete]],
+    /// [[OwnPropertyKeys]]) must see them as the ordinary own properties they
+    /// are: without this a first `Object.defineProperty` would define a fresh
+    /// non-configurable property, and a first `delete` would report success
+    /// yet leave the method to be installed again by the next lookup. `key` is
+    /// `None` for [[OwnPropertyKeys]].
+    pub(in super::super) fn materialize_object_prototype_methods(
+        &mut self,
+        object: ObjectId,
+        key: Option<&PropertyName>,
+    ) -> Result<(), RuntimeError> {
+        if object != self.object_prototype {
+            return Ok(());
+        }
+        if key.is_none_or(|key| key == "propertyIsEnumerable") {
+            self.property_is_enumerable_intrinsic()?;
+        }
+        if key.is_none_or(|key| key == "hasOwnProperty") {
+            self.has_own_property_intrinsic()?;
+        }
+        Ok(())
+    }
+
     /// [[GetOwnProperty]] dispatch used by descriptor APIs, Proxy invariants,
     /// and receiver-aware [[Set]].  Ordinary heap records stay below this
     /// boundary; every Proxy operation re-enters through the VM so its trap
@@ -14,6 +39,9 @@ impl Vm {
         object: ObjectId,
         key: &PropertyName,
     ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        if self.heap.proxy(object)?.is_none() && self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_get_own_property(object, key);
+        }
         self.trigger_deferred_namespace(object, Some(key))?;
         // Intrinsic globals are lazily initialized, but reflective descriptor
         // operations must observe the same own properties as ordinary Get.
@@ -28,14 +56,7 @@ impl Vm {
         // lookup. [[GetOwnProperty]] is also observable through descriptor
         // APIs, however, so it must not expose a transient lazy-intrinsic
         // absence to Object.getOwnPropertyDescriptor.
-        if object == self.object_prototype {
-            if key == "propertyIsEnumerable" {
-                self.property_is_enumerable_intrinsic()?;
-            }
-            if key == "hasOwnProperty" {
-                self.has_own_property_intrinsic()?;
-            }
-        }
+        self.materialize_object_prototype_methods(object, Some(key))?;
         // Likewise, %Function.prototype%'s constructor is installed while
         // materializing %Function%. A reflective lookup needs the same
         // observable property that `fn.constructor` receives through [[Get]].
@@ -59,6 +80,10 @@ impl Vm {
         self.trigger_deferred_namespace(object, Some(&key))?;
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_define_own_property(object, key, descriptor);
+        }
+        self.materialize_object_prototype_methods(object, Some(&key))?;
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_define_own_property(object, key, descriptor);
         }
         if let Some(numeric) = self.heap.typed_array_numeric_key(object, &key)? {
             return self.typed_array_define_own_property(object, numeric, descriptor);
@@ -134,9 +159,15 @@ impl Vm {
         // an as-yet-unread `globalThis.undefined` incorrectly looked like a
         // successful deletion of an absent property.
         self.materialize_global_object_property(object, key)?;
+        // Likewise a lazily installed Iterator helper exists to be deleted.
+        self.materialize_iterator_helper_property(object, key)?;
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_delete(object, key);
         }
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_delete(object, key);
+        }
+        self.materialize_object_prototype_methods(object, Some(key))?;
         self.heap.delete(object, key).map_err(Into::into)
     }
 
@@ -151,45 +182,18 @@ impl Vm {
         if self.heap.proxy(object)?.is_none() && self.test262_foreign_reference(object).is_some() {
             return self.test262_foreign_own_property_keys(object);
         }
+        self.materialize_object_prototype_methods(object, None)?;
         // Global built-ins are initialized on demand to keep ordinary realms
         // compact. [[OwnPropertyKeys]] is nevertheless a reflective view of
-        // the realm record, so it must expose the standard global properties
+        // the realm record, so it must expose every standard global property
         // even when no direct identifier/property access has initialized
-        // them yet. Keep this to the P0 realm surface rather than creating
-        // later-phase collection and asynchronous library globals here.
+        // them yet: the same set `Object.preventExtensions(globalThis)`
+        // creates before it closes the object.
         if self.globals.get("globalThis") == Some(&object) {
-            for name in [
-                "undefined",
-                "NaN",
-                "Infinity",
-                "eval",
-                "parseInt",
-                "parseFloat",
-                "isNaN",
-                "isFinite",
-                "decodeURI",
-                "decodeURIComponent",
-                "encodeURI",
-                "encodeURIComponent",
-                "Object",
-                "Function",
-                "Array",
-                "String",
-                "Boolean",
-                "Number",
-                "Date",
-                "RegExp",
-                "Error",
-                "EvalError",
-                "RangeError",
-                "ReferenceError",
-                "SyntaxError",
-                "TypeError",
-                "URIError",
-                "Math",
-                "JSON",
-                "Iterator",
-            ] {
+            for name in ["undefined", "NaN", "Infinity"]
+                .iter()
+                .chain(super::super::execution::LAZY_STANDARD_GLOBALS)
+            {
                 self.materialize_lexical_global(object, name)?;
             }
         }
@@ -205,6 +209,9 @@ impl Vm {
     ) -> Result<bool, RuntimeError> {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_is_extensible(object);
+        }
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_is_extensible(object);
         }
         self.heap.is_extensible(object).map_err(Into::into)
     }
@@ -230,6 +237,29 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_set_prototype(object, prototype);
         }
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_set_prototype(object, prototype);
+        }
+        // OrdinarySetPrototypeOf's cycle check walks [[GetPrototypeOf]]
+        // through every ordinary object, including the facades of other
+        // Realms, which the heap-level check below cannot see through.
+        if !self.test262_foreign_values.is_empty() {
+            let mut current = prototype;
+            while let Some(candidate) = current {
+                if candidate == object {
+                    return Ok(false);
+                }
+                if self.heap.proxy(candidate)?.is_some() {
+                    break;
+                }
+                self.charge_step()?;
+                current = if self.test262_foreign_reference(candidate).is_some() {
+                    self.test262_foreign_get_prototype(candidate)?
+                } else {
+                    self.heap.prototype(candidate)?
+                };
+            }
+        }
         // %Object.prototype% is the Immutable Prototype Exotic Object.  Its
         // current null prototype is accepted as a no-op, but no distinct
         // value may replace it even though the record is otherwise
@@ -251,10 +281,24 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_prevent_extensions(object);
         }
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_prevent_extensions(object);
+        }
         if self.heap.is_typed_array(object)?
             && !self.heap.typed_array_prevent_extensions_allowed(object)?
         {
             return Ok(false);
+        }
+        if self.globals.get("globalThis") == Some(&object) {
+            // The standard globals are created on first use. A non-extensible
+            // global object cannot gain them later, and they belong to it from
+            // the start, so create them before the object is closed.
+            for name in ["undefined", "NaN", "Infinity"]
+                .iter()
+                .chain(super::super::execution::LAZY_STANDARD_GLOBALS)
+            {
+                self.materialize_lexical_global(object, name)?;
+            }
         }
         self.heap.prevent_extensions(object)?;
         Ok(true)
@@ -460,6 +504,43 @@ impl Vm {
         &mut self,
         default: ObjectId,
     ) -> Result<ObjectId, RuntimeError> {
+        self.constructor_prototype_for(default, None)
+    }
+
+    /// This realm's `%Intrinsic.prototype%` for the constructor named
+    /// `intrinsic`: a global constructor's name, `Intl.X`, or one of the
+    /// function-kind constructors that have no global binding.
+    pub(in super::super) fn intrinsic_prototype(
+        &mut self,
+        intrinsic: &str,
+    ) -> Result<Value, RuntimeError> {
+        let constructor = match intrinsic {
+            "AsyncFunction" => return Ok(Value::Object(self.async_function_prototype()?)),
+            "GeneratorFunction" => {
+                return Ok(Value::Object(self.generator_function_prototype()?));
+            }
+            "AsyncGeneratorFunction" => {
+                return Ok(Value::Object(self.async_generator_function_prototype()?));
+            }
+            name if name.starts_with("Intl.") => {
+                self.intl_global()?;
+                Value::Object(self.globals[&format!("%{name}%")])
+            }
+            name => self.global(name)?,
+        };
+        self.get_property(&constructor, &"prototype".into())
+    }
+
+    /// `GetPrototypeFromConstructor` with the fallback intrinsic named by the
+    /// caller. A constructor that knows which intrinsic `default` is (the
+    /// Error family, whose prototypes carry no distinguishing identity here)
+    /// passes its global's name so a foreign new target's realm can supply
+    /// the matching prototype; `None` recognizes `default` by identity.
+    pub(in super::super) fn constructor_prototype_for(
+        &mut self,
+        default: ObjectId,
+        intrinsic_name: Option<&str>,
+    ) -> Result<ObjectId, RuntimeError> {
         let target = self.new_target.clone();
         let prototype = self.get_property(&target, &"prototype".into())?;
         if let Some(prototype) = prototype.object_id() {
@@ -472,6 +553,9 @@ impl Vm {
         // caller-supplied default is already the correct fallback after the
         // validation walk completes.
         if let Some(realm) = self.validate_function_realm(target)? {
+            if let Some(intrinsic) = intrinsic_name {
+                return self.test262_foreign_default_prototype(realm, intrinsic);
+            }
             let boolean = self.global("Boolean")?;
             let boolean_prototype = self
                 .get_property(&boolean, &"prototype".into())?
@@ -610,6 +694,24 @@ impl Vm {
                 Some("Date")
             } else if default == self.base_iterator_prototype()? {
                 Some("Iterator")
+            } else if default == self.string_intrinsics()?.1 {
+                Some("String")
+            } else if self.promise_prototype == Some(default) {
+                Some("Promise")
+            } else if self.generator_function_prototype == Some(default) {
+                Some("GeneratorFunction")
+            } else if self.async_function_prototype == Some(default) {
+                Some("AsyncFunction")
+            } else if self.async_generator_function_prototype == Some(default) {
+                Some("AsyncGeneratorFunction")
+            } else if self.globals.get("RegExp").is_some_and(|constructor| {
+                self.heap
+                    .get(*constructor, "prototype")
+                    .ok()
+                    .and_then(|value| value.object_id())
+                    == Some(default)
+            }) {
+                Some("RegExp")
             } else {
                 None
             };
@@ -667,7 +769,7 @@ impl Vm {
         if let Some(bound) = self.heap.bound_function(*id)? {
             return Ok(bound.constructible);
         }
-        if let Some((code, _, _, _, _)) = self.heap.closure(*id)? {
+        if let Some((code, _, _, _)) = self.heap.closure(*id)? {
             return Ok(code.constructible);
         }
         Ok(matches!(
@@ -696,7 +798,12 @@ impl Vm {
                     | NativeFunction::DisposableStack { .. }
                     | NativeFunction::ShadowRealm
                     | NativeFunction::Promise
+                    // `Symbol` has [[Construct]] (it may head a class `extends`
+                    // clause) but its behavior always throws for `new`.
+                    | NativeFunction::Symbol
                     | NativeFunction::AsyncFunction
+                    | NativeFunction::GeneratorFunction
+                    | NativeFunction::AsyncGeneratorFunction
                     | NativeFunction::Object
                     | NativeFunction::Iterator
                     | NativeFunction::RegExp
@@ -1175,11 +1282,16 @@ impl Vm {
                 "Proxy defineProperty trap must be callable".into(),
             ));
         }
-        let descriptor_value = self.descriptor_object(&descriptor)?;
+        // The trap may be a function created by the handler's own `get`, held
+        // nowhere else: keep it alive while the descriptor record is built.
+        let base = self.stack.len();
+        self.stack.push(trap.clone());
+        let descriptor_value = self.descriptor_object(&descriptor);
+        self.stack.truncate(base);
+        let descriptor_value = descriptor_value?;
         // The descriptor record is observable by the trap. Root it across
         // the call because a trap can allocate (or invoke assertions that
         // allocate) before it reads the third argument.
-        let base = self.stack.len();
         self.stack.push(descriptor_value.clone());
         let trap_result = self.call_native(
             trap,
@@ -1394,7 +1506,12 @@ impl Vm {
                 "Proxy {name} trap must be callable"
             )));
         }
-        let arguments = self.array_from(args)?;
+        // As with the other traps, the trap function itself may be unrooted.
+        let base = self.stack.len();
+        self.stack.push(trap.clone());
+        let arguments = self.array_from(args);
+        self.stack.truncate(base);
+        let arguments = arguments?;
         let values = if construct {
             vec![Value::Object(target), arguments, self.new_target.clone()]
         } else {

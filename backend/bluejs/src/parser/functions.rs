@@ -72,40 +72,172 @@ impl Parser {
         &mut self,
         is_async: bool,
     ) -> Result<Function, ParseError> {
+        self.parse_function_named(is_async, false)
+    }
+
+    /// A function *declaration*'s BindingIdentifier is parsed with the
+    /// enclosing context's `[Await]` parameter, unlike a function
+    /// expression's own name (which is `[~Yield, ~Await]` for a plain
+    /// function and `[+Await]` for an async one). So `async function
+    /// await() {}` is valid at script top level but not inside an async
+    /// function, a module or a class static block, and `function await() {}`
+    /// is invalid in those same enclosing contexts.
+    pub(super) fn parse_function_declaration(
+        &mut self,
+        is_async: bool,
+    ) -> Result<Function, ParseError> {
+        self.parse_function_named(is_async, true)
+    }
+
+    fn parse_function_named(
+        &mut self,
+        is_async: bool,
+        is_declaration: bool,
+    ) -> Result<Function, ParseError> {
+        // The caller has consumed `function`, and before it `async`.
+        let start = self.previous_token_start(1 + usize::from(is_async));
         let generator = self.eat_punct(Punct::Star);
         if matches!(self.peek(), Token::Invalid(message) if message.contains("unexpected character '#'"))
         {
             return Err(self.syntax_error("a function cannot have a private name"));
         }
         let name = if let Token::Identifier(name) = self.peek() {
-            if is_async && name == "await" {
-                let detail = if self.current_identifier_escaped() {
-                    "the await keyword cannot contain an escape"
-                } else {
-                    "await cannot be used as an async function name"
-                };
-                return Err(self.syntax_error(detail));
+            if name == "await" {
+                let context_reserves_await = self.async_depth != 0
+                    || self.module_await
+                    || self.static_block_function_depths.last() == Some(&self.function_depth);
+                // Module code reserves `await` even as a function expression's
+                // own name, which the [~Await] parameter alone would allow.
+                if self.module
+                    || (is_async && !is_declaration)
+                    || (is_declaration && context_reserves_await)
+                {
+                    let detail = if self.current_identifier_escaped() {
+                        "the await keyword cannot contain an escape"
+                    } else {
+                        "await cannot be used as a function name here"
+                    };
+                    return Err(self.syntax_error(detail));
+                }
             }
             Some(self.expect_identifier_name()?)
+        } else if !self.strict && self.check_keyword(Keyword::Let) {
+            // `let` is an ordinary identifier in sloppy code.
+            self.advance();
+            Some("let".to_string())
         } else {
             None
         };
-        if generator && matches!(name.as_deref(), Some("yield")) {
+        if let Some(name) = &name {
+            self.validate_function_name(name, is_declaration)?;
+        }
+        // A generator *declaration* names its binding in the enclosing
+        // context, so `yield` is fine there in sloppy non-generator code; a
+        // generator expression's name is parsed with [+Yield].
+        if generator
+            && matches!(name.as_deref(), Some("yield"))
+            && (!is_declaration || self.generator_depth != 0 || self.strict)
+        {
             return Err(self.syntax_error("yield cannot be used as a generator function name"));
         }
         if !self.check_punct(Punct::LParen) {
             return Err(self.syntax_error("a function parameter list must begin with '('"));
         }
-        let function = self.parse_method_function(name, generator, is_async)?;
+        let mut function = self.parse_method_function(name, generator, is_async)?;
+        // The BindingIdentifier belongs to the function code, so a Use Strict
+        // Directive in the body makes the name strict retroactively.
+        if !self.strict
+            && function
+                .name
+                .as_deref()
+                .is_some_and(is_strict_reserved_word)
+            && function_body_has_use_strict(&function.body)
+        {
+            return Err(self.syntax_error("a strict function cannot be named with a reserved word"));
+        }
         if function_contains_super_call_outside_class(&function)
             || function_contains_super_property_outside_class(&function)
         {
             return Err(self.syntax_error("a normal function cannot contain super"));
         }
+        function.source_text = self.source_text_from(start);
+        Ok(function)
+    }
+
+    /// A FieldDefinition's Initializer is parsed with `[~Yield, ~Await]`
+    /// whatever surrounds the class: inside an async function or generator
+    /// `await` and `yield` do not become operators there, and in a script
+    /// `await` is an ordinary IdentifierReference.
+    fn parse_field_initializer(&mut self) -> Result<Expr, ParseError> {
+        let outer_async_depth = std::mem::replace(&mut self.async_depth, 0);
+        let outer_module_await = std::mem::replace(&mut self.module_await, false);
+        let outer_generator_depth = std::mem::replace(&mut self.generator_depth, 0);
+        let initializer = self.parse_assignment();
+        self.generator_depth = outer_generator_depth;
+        self.module_await = outer_module_await;
+        self.async_depth = outer_async_depth;
+        initializer
+    }
+
+    /// The early errors of a function's BindingIdentifier that do not depend
+    /// on its own body: ReservedWords, the strict-mode reserved words in
+    /// strict code, and `yield` in a generator body for a declaration (whose
+    /// name is a binding of the enclosing context; `await` is handled by the
+    /// caller).
+    fn validate_function_name(&self, name: &str, is_declaration: bool) -> Result<(), ParseError> {
+        if matches!(
+            name,
+            "class" | "debugger" | "enum" | "export" | "extends" | "import" | "super" | "with"
+        ) || Keyword::from_str(name).is_some_and(|keyword| keyword != Keyword::Let)
+        {
+            return Err(self.syntax_error("a reserved word cannot be a function name"));
+        }
+        if self.strict && is_strict_reserved_word(name) {
+            return Err(self.syntax_error("a strict mode reserved word cannot be a function name"));
+        }
+        if is_declaration && name == "yield" && self.generator_depth != 0 {
+            return Err(self.syntax_error("yield cannot be used as a function name here"));
+        }
+        Ok(())
+    }
+
+    /// A MethodDefinition's function (object literal or class, including
+    /// generator, async and accessor forms). Its parameters are
+    /// UniqueFormalParameters: no name repeats, even in sloppy code.
+    ///
+    /// `start` is the character offset of the MethodDefinition's first token
+    /// (`get`, `set`, `async`, `*` or the property name, the `static` of a
+    /// class element excluded): the method's source text runs from there.
+    pub(super) fn parse_method_definition(
+        &mut self,
+        name: Option<String>,
+        generator: bool,
+        is_async: bool,
+        start: usize,
+    ) -> Result<Function, ParseError> {
+        let mut function = self.parse_method_function(name, generator, is_async)?;
+        function.source_text = self.source_text_from(start);
+        let mut names = std::collections::HashSet::new();
+        for param in &function.params {
+            for name in super::module::pattern_bound_names(&param.pattern) {
+                if !names.insert(name) {
+                    return Err(self.syntax_error("duplicate parameter name in a method"));
+                }
+            }
+        }
         Ok(function)
     }
 
     pub(super) fn parse_method_function(
+        &mut self,
+        name: Option<String>,
+        generator: bool,
+        is_async: bool,
+    ) -> Result<Function, ParseError> {
+        self.with_in_allowed(|parser| parser.parse_method_function_in(name, generator, is_async))
+    }
+
+    fn parse_method_function_in(
         &mut self,
         name: Option<String>,
         generator: bool,
@@ -118,9 +250,15 @@ impl Parser {
         // `parse_params` also enters grammar that the subset may not yet
         // implement. Preserve an unclassified parse failure from that grammar;
         // explicit parameter early errors mark themselves as known syntax.
-        let params = self.parse_params()?;
+        //
+        // The parameters already belong to the new function for static-block
+        // purposes: a nested function's own `await` parameter is not a
+        // binding "directly within" the enclosing class static block.
         self.function_depth += 1;
-        let body = self.parse_block();
+        let params = self
+            .parse_params()
+            .inspect_err(|_| self.function_depth -= 1)?;
+        let body = self.parse_function_body();
         self.function_depth -= 1;
         self.generator_depth = outer_generator_depth;
         self.async_depth = outer_async_depth;
@@ -131,6 +269,7 @@ impl Parser {
             body: body?,
             generator,
             is_async,
+            source_text: SourceText::default(),
         })
     }
 
@@ -139,7 +278,7 @@ impl Parser {
         let outer_module_await = std::mem::replace(&mut self.module_await, false);
         self.function_depth += 1;
         let body = if self.check_punct(Punct::LBrace) {
-            self.parse_block().map(ArrowBody::Block)
+            self.parse_function_body().map(ArrowBody::Block)
         } else {
             self.parse_assignment()
                 .map(|value| ArrowBody::Expr(Box::new(value)))
@@ -150,17 +289,23 @@ impl Parser {
         body
     }
 
+    /// A class whose `class` keyword the caller has just consumed.
     pub(super) fn parse_class(&mut self) -> Result<Class, ParseError> {
+        let start = self.previous_token_start(1);
+        self.with_in_allowed(|parser| parser.parse_class_strict(start))
+    }
+
+    fn parse_class_strict(&mut self, start: usize) -> Result<Class, ParseError> {
         // Every part of a ClassDefinition, including the heritage expression,
         // is parsed in strict mode. Preserve the caller's grammar context so
         // a nested class does not leak strictness into its surrounding script.
         let outer_strict = std::mem::replace(&mut self.strict, true);
-        let class = self.parse_class_definition();
+        let class = self.parse_class_definition(start);
         self.strict = outer_strict;
         class
     }
 
-    fn parse_class_definition(&mut self) -> Result<Class, ParseError> {
+    fn parse_class_definition(&mut self, start: usize) -> Result<Class, ParseError> {
         let name = match self.peek() {
             Token::Identifier(name) if name != "extends" => {
                 let name = self.expect_identifier_name()?;
@@ -212,6 +357,7 @@ impl Parser {
             if self.eat_punct(Punct::Semicolon) {
                 continue;
             }
+            let decorators = self.parse_decorators()?;
             let is_static = matches!(self.peek(), Token::Identifier(static_keyword) if static_keyword == "static")
                 && !self.current_identifier_escaped()
                 && !matches!(
@@ -221,7 +367,12 @@ impl Parser {
             if is_static {
                 self.advance();
             }
+            // A method's source text starts here: `static` is not part of it.
+            let element_start = self.token_start();
             if is_static && self.check_punct(Punct::LBrace) {
+                if !decorators.is_empty() {
+                    return Err(self.syntax_error("a class static block cannot be decorated"));
+                }
                 self.static_block_function_depths.push(self.function_depth);
                 let body = self.parse_block();
                 self.static_block_function_depths.pop();
@@ -241,10 +392,23 @@ impl Parser {
             if is_async {
                 self.advance();
             }
+            // `get`/`set` only introduce an accessor when a property name
+            // follows; otherwise (`get() {}`, `get = 1`, or a line break before
+            // a `*` generator method) they are the name of a method or field.
             let accessor = match self.peek() {
                 Token::Identifier(keyword)
                     if (keyword == "get" || keyword == "set")
-                        && !matches!(self.peek_at(1), Token::Punct(Punct::LParen)) =>
+                        && !self.current_identifier_escaped()
+                        && matches!(
+                            self.peek_at(1),
+                            Token::Identifier(_)
+                                | Token::PrivateIdentifier(_)
+                                | Token::Keyword(_)
+                                | Token::String(_)
+                                | Token::Number(_)
+                                | Token::BigInt(_)
+                                | Token::Punct(Punct::LBracket)
+                        ) =>
                 {
                     let getter = keyword == "get";
                     self.advance();
@@ -252,9 +416,36 @@ impl Parser {
                 }
                 _ => None,
             };
+            // `accessor` starts an auto-accessor field only when a class element
+            // name follows on the same line: `accessor` alone, before `=`,
+            // `;`, `(` or a line break, is an ordinary field or method name.
+            let auto_accessor = !is_async
+                && accessor.is_none()
+                && matches!(self.peek(), Token::Identifier(name) if name == "accessor")
+                && !self.current_identifier_escaped()
+                && self
+                    .tokens
+                    .get(self.pos + 1)
+                    .is_some_and(|token| !token.newline_before)
+                && matches!(
+                    self.peek_at(1),
+                    Token::Identifier(_)
+                        | Token::PrivateIdentifier(_)
+                        | Token::Keyword(_)
+                        | Token::String(_)
+                        | Token::Number(_)
+                        | Token::BigInt(_)
+                        | Token::Punct(Punct::LBracket)
+                );
+            if auto_accessor {
+                self.advance();
+            }
             let generator = self.eat_punct(Punct::Star);
             let key = self.parse_class_element_key()?;
             let method_name = class_element_name(&key);
+            if auto_accessor && (generator || self.check_punct(Punct::LParen)) {
+                return Err(self.syntax_error("an auto-accessor cannot be a method"));
+            }
             if !self.check_punct(Punct::LParen) {
                 if generator || accessor.is_some() {
                     return Err(self.error("expected class method parameters"));
@@ -267,7 +458,7 @@ impl Parser {
                     return Err(self.syntax_error("invalid public class field name"));
                 }
                 let initializer = if self.eat_punct(Punct::Assign) {
-                    Some(self.parse_assignment()?)
+                    Some(self.parse_field_initializer()?)
                 } else {
                     None
                 };
@@ -300,10 +491,17 @@ impl Parser {
                     key,
                     initializer,
                     is_static,
+                    accessor: auto_accessor,
+                    decorators,
                 });
                 continue;
             }
-            let function = self.parse_method_function(Some(method_name), generator, is_async)?;
+            let function = self.parse_method_definition(
+                Some(method_name),
+                generator,
+                is_async,
+                element_start,
+            )?;
             let constructor = accessor.is_none()
                 && !is_static
                 && !matches!(&key, PropertyKey::Computed(_))
@@ -338,6 +536,7 @@ impl Parser {
                     function,
                     getter,
                     is_static,
+                    decorators,
                 });
             } else {
                 if is_static
@@ -350,12 +549,16 @@ impl Parser {
                     if is_async || generator || has_constructor {
                         return Err(self.syntax_error("invalid class constructor"));
                     }
+                    if !decorators.is_empty() {
+                        return Err(self.syntax_error("a class constructor cannot be decorated"));
+                    }
                     has_constructor = true;
                 }
                 elements.push(ClassElement::Method {
                     key,
                     function,
                     is_static,
+                    decorators,
                 });
             }
         }
@@ -364,7 +567,82 @@ impl Parser {
             name,
             extends,
             elements,
+            decorators: Vec::new(),
+            source_text: self.source_text_from(start),
         })
+    }
+
+    /// `DecoratorList`: every `@` decorator at the current position, in source
+    /// order (empty when none starts here).
+    pub(super) fn parse_decorators(&mut self) -> Result<Vec<Expr>, ParseError> {
+        let mut decorators = Vec::new();
+        while self.eat_punct(Punct::At) {
+            decorators.push(self.parse_decorator()?);
+        }
+        Ok(decorators)
+    }
+
+    /// One decorator after its `@`. Only three shapes exist, so that a
+    /// decorator never needs arbitrary-expression parsing to find its own end:
+    /// `DecoratorMemberExpression` (`a.b.#c`), `DecoratorCallExpression` (the
+    /// same followed by one argument list) and `DecoratorParenthesizedExpression`
+    /// (`(expression)`, the escape hatch for anything else). The result is the
+    /// expression whose value is the decorator function.
+    fn parse_decorator(&mut self) -> Result<Expr, ParseError> {
+        if self.eat_punct(Punct::LParen) {
+            let expression = self.with_in_allowed(Self::parse_expression)?;
+            self.expect_punct(Punct::RParen).map_err(|mut error| {
+                error.known_syntax = true;
+                error
+            })?;
+            return Ok(Expr::Parenthesized(Box::new(expression)));
+        }
+        let name = match self.peek().clone() {
+            Token::Identifier(name) if self.identifier_reference_name_is_valid(&name) => name,
+            // `let` is an IdentifierReference in sloppy code only.
+            Token::Keyword(Keyword::Let) if !self.strict => "let".to_string(),
+            _ => return Err(self.syntax_error("expected a decorator expression")),
+        };
+        self.advance();
+        let mut expression = Expr::Identifier(name);
+        while self.eat_punct(Punct::Dot) {
+            let property = self.expect_member_name()?;
+            expression = Expr::Member {
+                object: Box::new(expression),
+                property: Box::new(Expr::Identifier(property)),
+                computed: false,
+            };
+        }
+        if self.check_punct(Punct::LParen) {
+            expression = Expr::Call {
+                callee: Box::new(expression),
+                args: self.parse_arguments()?,
+            };
+        }
+        Ok(expression)
+    }
+
+    /// A class that follows already-parsed decorators: `class` itself, then
+    /// the rest of the definition. The decorators are stored on the class, and
+    /// its source text starts at the first of them (`start`, the character
+    /// offset where the decorator list began).
+    pub(super) fn parse_decorated_class(
+        &mut self,
+        decorators: Vec<Expr>,
+        start: usize,
+    ) -> Result<Class, ParseError> {
+        if !matches!(self.peek(), Token::Identifier(name) if name == "class")
+            || self.current_identifier_escaped()
+        {
+            return Err(
+                self.syntax_error("a decorator must be followed by a class or class element")
+            );
+        }
+        self.advance();
+        let mut class = self.parse_class()?;
+        class.decorators = decorators;
+        class.source_text = self.source_text_from(start);
+        Ok(class)
     }
 
     /// A parenthesized arrow cannot be a ClassHeritage (which starts with a
@@ -400,6 +678,7 @@ impl Parser {
     /// essential for the class element grammar.
     pub(super) fn class_async_method_follows(&self) -> bool {
         if !matches!(self.peek(), Token::Identifier(name) if name == "async")
+            || self.current_identifier_escaped()
             || self
                 .tokens
                 .get(self.pos + 1)
@@ -413,7 +692,8 @@ impl Parser {
             | Token::PrivateIdentifier(_)
             | Token::Keyword(_)
             | Token::String(_)
-            | Token::Number(_) => {
+            | Token::Number(_)
+            | Token::BigInt(_) => {
                 matches!(self.peek_at(2), Token::Punct(Punct::LParen))
             }
             _ => false,
@@ -551,20 +831,27 @@ impl Parser {
     /// exists for, since the token stream is fully materialized up
     /// front rather than a lazy/streaming lexer.
     pub(super) fn try_parse_arrow_function(&mut self) -> Result<Option<Expr>, ParseError> {
+        let start = self.token_start();
         if self.async_arrow_follows() {
             self.require_unescaped_async()?;
             self.advance();
-            return self.try_parse_arrow_function_with_async(true);
+            return self.try_parse_arrow_function_with_async(true, start);
         }
-        self.try_parse_arrow_function_with_async(false)
+        self.try_parse_arrow_function_with_async(false, start)
     }
 
+    /// `start` is where the arrow function's own text begins: its first
+    /// parameter token or the `async` in front of it.
     pub(super) fn try_parse_arrow_function_with_async(
         &mut self,
         is_async: bool,
+        start: usize,
     ) -> Result<Option<Expr>, ParseError> {
         if let Token::Identifier(name) = self.peek().clone() {
             if matches!(self.peek_at(1), Token::Punct(Punct::Arrow)) {
+                if self.tokens[self.pos + 1].newline_before {
+                    return Err(self.syntax_error("no line terminator is allowed before =>"));
+                }
                 if is_async && name == "await" {
                     let detail = if self.current_identifier_escaped() {
                         "the await keyword cannot contain an escape"
@@ -573,6 +860,7 @@ impl Parser {
                     };
                     return Err(self.syntax_error(detail));
                 }
+                self.validate_binding_identifier(&name, self.current_identifier_escaped())?;
                 self.advance();
                 self.advance();
                 let params = vec![Param {
@@ -585,6 +873,7 @@ impl Parser {
                     params,
                     body,
                     is_async,
+                    source_text: self.source_text_from(start),
                 }));
             }
         }
@@ -604,12 +893,16 @@ impl Parser {
                     }
                     let params = self.parse_params()?;
                     self.async_depth = outer_async_depth;
+                    if self.tokens[self.pos].newline_before {
+                        return Err(self.syntax_error("no line terminator is allowed before =>"));
+                    }
                     self.expect_punct(Punct::Arrow)?;
                     let body = self.parse_arrow_body(is_async)?;
                     return Ok(Some(Expr::Arrow {
                         params,
                         body,
                         is_async,
+                        source_text: self.source_text_from(start),
                     }));
                 }
             }

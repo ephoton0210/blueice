@@ -6,11 +6,9 @@
 
 This work tracks the **current public TC39 ECMA-402 text**, whose 2026-09-14 publication identifies itself as the *ECMAScript® 2027 Internationalization API Specification*. The normative source is [the current ECMA-402 specification](https://tc39.es/ecma402/), checked on that date, rather than a remembered prior edition or an engine's behaviour. The latest published edition remains separately discoverable through [ECMA-402 publications](https://ecma-international.org/publications-and-standards/standards/ecma-402/). The pinned Test262 revision below is the executable compatibility corpus for that check; a later public-spec or Test262 revision must trigger a fresh inventory rather than inheriting an older completion claim.
 
-## Platform verification status (2026-09-19)
+## Platform verification status (2026-09-21)
 
-The only currently available test host is **Ubuntu 24.04.3 LTS under WSL2** (`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0). Although a requested refresh named Ubuntu 24.04.4, that is not the actual local release. On 2026-09-19, the unfiltered `python3 backend/bluejs/test262/run.py --jobs 8` inventory completed all 53,582 files / 102,926 modes in 685.257 seconds. The Test262 values later in this document are therefore current Ubuntu 24.04.3 evidence, not a 24.04.4 result. Focused local checks are also recorded in the [Ubuntu Test262 report](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md).
-
-macOS and Windows validation is **deferred** until those platforms are available. Do not infer cross-platform parity from Ubuntu outcomes.
+The complete, unfiltered `python3 backend/bluejs/test262/run.py` inventory (53,582 files / 102,926 modes) was run on commit `eaeb5c1` on macOS and Ubuntu (Windows in progress). The reference host is **Ubuntu 24.04.4 LTS** (native, Intel Core i5-9400T, `x86_64-unknown-linux-gnu`, the pinned Rust/Cargo 1.95.0), where it completed in 542.255 seconds; the macOS run (Apple M4, Rust/Cargo 1.98.0) took 324.897 seconds. Every `intl402/` mode (6,714 of 6,714) passes on both. Each platform's own tables and provenance are in the [Ubuntu](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md), [macOS](../phase-13-bluejs-engine/TEST262_MACOS_REPORT.md) and [Windows](../phase-13-bluejs-engine/TEST262_WINDOWS_REPORT.md) reports; no platform's result is inferred from another.
 
 ## Pinned CLDR provider update (2026-09-17)
 
@@ -35,19 +33,19 @@ Phase 25 can be called complete only when all of the following are true:
 3. Each host-neutral algorithm has focused Rust tests for normal, override, fallback and error paths; every JavaScript-visible operation has a BlueJS integration test for call/construct, coercion, descriptors and receiver validation where the specification requires them.
 4. `cargo llvm-cov -p blueice-ecma402 --fail-under-lines 100 --summary-only` passes with no source exclusions. This is a real line-coverage gate, but it is **not** a substitute for points 1–3 or branch/specification coverage.
 
-The current standalone no-exclusion host-crate measurement on 2026-09-17 is **9,657 / 10,237 lines (94.33%)**, 897 / 942 functions (95.22%) and 91.90% regions, from `cargo llvm-cov -p blueice-ecma402 --fail-under-lines 100 --summary-only`. The raw command still exits 1, as it must until the gate genuinely passes. The two largest remaining files by missed-line count are `date_time_format.rs` (243 of 1,820 lines missed, 86.65%) and `number_format.rs` (125 of 1,751 lines missed, 92.86%); together they account for roughly two-thirds of the crate's entire coverage gap. Every other source file is at or above 90%, and `collator.rs` and `locale_data/range_patterns.rs` are already at 100%. It must be improved with public-boundary tests rather than rounded up or hidden by an exclusion; the service inventory below is also incomplete. See [`TODO.md`](TODO.md) for the current ranked worklist.
+The current standalone no-exclusion host-crate measurement on 2026-09-21 is **9,559 / 10,130 lines (94.36%)**, 95.29% of functions and 91.91% of regions on macOS from `cargo llvm-cov -p blueice-ecma402 --summary-only` (Ubuntu: 94.42% (9,559 / 10,124)). Run with `--fail-under-lines 100` the command still exits 1, as it must until the gate genuinely passes. The two largest remaining files by missed-line count are the `date_time_format.rs` family, i.e. the file plus its `date_time_format/` submodules (230 of 1,859 lines missed, 87.63%), and the `number_format.rs` family (125 of 1,757 lines missed, 92.89%); together they account for about 63% of the crate's entire coverage gap. It must be improved with public-boundary tests rather than rounded up or hidden by an exclusion; the service inventory below is also incomplete. See [`TODO.md`](TODO.md) for the current ranked worklist.
 
-**This line-coverage number is not a Test262 pass rate and the two must not be quoted interchangeably.** It measures what fraction of `blueice-ecma402`'s own Rust source lines execute during the crate's own test suite — a measure of how thoroughly the *already-written* implementation is exercised, independent of how much of the ECMA-402 specification that implementation actually covers. [`development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md`](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md) reports a separate, unrelated number: the unfiltered upstream Test262 `intl402/` pass rate through BlueJS end-to-end, **94.787% (6,364 / 6,714 modes)** on the 2026-09-19 Ubuntu complete run. The remaining 350 failures are all in `intl402/Temporal/`; Phase 26 owns their follow-up rather than making them an ECMA-402 host-crate coverage gap. The full per-service breakdown of this denominator is in "Reproducible current inventory" below. The filtered, non-Temporal Test262 run this document already tracks (2,656 / 2,656 passing) is the correct scoped conformance figure for what Phase 25 actually claims to support; the unfiltered report's 94.787% is the honest, unscoped figure across the complete current-public `intl402/` corpus. Both numbers are real and answer different questions.
+**This line-coverage number is not a Test262 pass rate and the two must not be quoted interchangeably.** It measures what fraction of `blueice-ecma402`'s own Rust source lines execute during the crate's own test suite — a measure of how thoroughly the *already-written* implementation is exercised, independent of how much of the ECMA-402 specification that implementation actually covers. [`development/browser_core/phase-13-bluejs-engine/TEST262_LINUX_REPORT.md`](../phase-13-bluejs-engine/TEST262_LINUX_REPORT.md) reports a separate, unrelated number: the unfiltered upstream Test262 `intl402/` pass rate through BlueJS end-to-end, **6,714 / 6,714 modes (100%)** on the 2026-09-21 Ubuntu complete run (the macOS run is identical). Every `intl402/` group, including `intl402/Temporal/` (which Phase 26 owns), now passes in full, so the filtered non-Temporal figure this document already tracked (2,656 / 2,656) and the unfiltered figure agree on ECMA-402 host behaviour. The full per-service breakdown of this denominator is in "Reproducible current inventory" below. Both numbers are real and answer different questions: line coverage says how much of the crate its tests execute; the Test262 rate says how much of the upstream conformance corpus passes.
 
 ## Reproducible current inventory
 
 The Test262 pin is `72faf8ec1445c55149615e8b35187830783aba1a` (2026-09-10), verified with both the GitHub archive SHA-256 and a file manifest SHA-256 in [`backend/bluejs/test262/snapshot.json`](../../../backend/bluejs/test262/snapshot.json). It was the current public Test262 `main` revision fetched on 2026-09-14; it is not a remembered Edition 12-era corpus.
 
-The full `intl402/` selection contains 6,714 strict/sloppy modes. It is reproducible with `python3 backend/bluejs/test262/run.py --jobs 8`, writing one `{path, status, ...}` JSON line per mode to `<output>/results.jsonl`. Grouping that file by the path segment directly under `intl402/` (`path.split("/")[1]`) gives the complete denominator, broken out by service, from the 2026-09-19 complete run:
+The full `intl402/` selection contains 6,714 strict/sloppy modes. It is reproducible with `python3 backend/bluejs/test262/run.py --jobs 8`, writing one `{path, status, ...}` JSON line per mode to `<output>/results.jsonl`. Grouping that file by the path segment directly under `intl402/` (`path.split("/")[1]`) gives the complete denominator, broken out by service, from the 2026-09-21 complete run on Ubuntu:
 
 | `intl402/` group | Modes | Pass | Fail | Pass rate |
 | --- | ---: | ---: | ---: | ---: |
-| `Temporal/` | 4,058 | 3,708 | 350 | 91.375% |
+| `Temporal/` | 4,058 | 4,058 | 0 | 100% |
 | `NumberFormat/` | 498 | 498 | 0 | 100% |
 | `DateTimeFormat/` | 488 | 488 | 0 | 100% |
 | `Locale/` | 336 | 336 | 0 | 100% |
@@ -59,34 +57,27 @@ The full `intl402/` selection contains 6,714 strict/sloppy modes. It is reproduc
 | `Collator/` | 130 | 130 | 0 | 100% |
 | `DisplayNames/` | 114 | 114 | 0 | 100% |
 | `PluralRules/` | 106 | 106 | 0 | 100% |
-| `intl402/*.js` (top-level, e.g. `fallback-locales-are-supported.js`) | 44 | 44 | 0 | 100% |
-| `String/` (`localeCompare`, `toLocaleUpperCase`/`LowerCase`) | 38 | 38 | 0 | 100% |
-| `Date/` (`toLocale*String`) | 24 | 24 | 0 | 100% |
-| `BigInt/` (`toLocaleString`) | 22 | 22 | 0 | 100% |
-| `Number/` (`toLocaleString`) | 14 | 14 | 0 | 100% |
-| `Array/` (`toLocaleString`) | 4 | 4 | 0 | 100% |
-| `FallbackSymbol/` | 4 | 4 | 0 | 100% |
-| `TypedArray/` (`toLocaleString`) | 2 | 2 | 0 | 100% |
-| **Total** | **6,714** | **6,364** | **350** | **94.787%** |
+| `intl402/*.js` (top-level) + `String/`/`Date/`/`BigInt/`/`Number/`/`Array/`/`FallbackSymbol/`/`TypedArray/` (`toLocale*`/`localeCompare`) | 152 | 152 | 0 | 100% |
+| **Total** | **6,714** | **6,714** | **0** | **100.000%** |
 
-Every group other than `Temporal/` is at **100%**; the 2,656 non-Temporal modes summed above match the non-Temporal service total exactly. `intl402/Temporal/` now passes 3,708 modes; its 350 remaining failures stay visible in the full denominator and are owned by Phase 26. The complete per-mode JSON report is an ephemeral test artifact, not a source of truth checked into this repository — regenerate it with the command above rather than trusting a stale copy. A non-Temporal-only run is evidence only for the service boundary and never a phase-completion claim by itself.
+Every group is at **100%**; the 2,656 non-Temporal modes summed above match the non-Temporal service total exactly, and `intl402/Temporal/` now passes all 4,058 of its modes (at the 2026-09-19 run it passed 3,708 with 350 failures; Phase 26 closed them). The complete per-mode JSON report is an ephemeral test artifact, not a source of truth checked into this repository — regenerate it with the command above rather than trusting a stale copy. A non-Temporal-only run is evidence only for the service boundary and never a phase-completion claim by itself.
 
-`intl402/Temporal/` itself further subdivides by Temporal type (`path.split("/")[2]`), from the same 2026-09-19 run. The [Phase 26 Temporal plan](../phase-26-ecma262-temporal/PLAN.md) owns the implementation status behind these results:
+`intl402/Temporal/` itself further subdivides by Temporal type (`path.split("/")[2]`), from the same 2026-09-21 run. The [Phase 26 Temporal plan](../phase-26-ecma262-temporal/PLAN.md) owns the implementation status behind these results:
 
 | `Temporal/` type | Modes | Pass | Fail | Pass rate |
 | --- | ---: | ---: | ---: | ---: |
-| `ZonedDateTime/` | 1,166 | 1,062 | 104 | 91.080% |
-| `PlainDate/` | 986 | 908 | 78 | 92.089% |
-| `PlainDateTime/` | 966 | 890 | 76 | 92.133% |
-| `PlainYearMonth/` | 654 | 600 | 54 | 91.743% |
-| `PlainMonthDay/` | 180 | 150 | 30 | 83.333% |
-| `Duration/` | 42 | 34 | 8 | 80.952% |
+| `ZonedDateTime/` | 1,166 | 1,166 | 0 | 100% |
+| `PlainDate/` | 986 | 986 | 0 | 100% |
+| `PlainDateTime/` | 966 | 966 | 0 | 100% |
+| `PlainYearMonth/` | 654 | 654 | 0 | 100% |
+| `PlainMonthDay/` | 180 | 180 | 0 | 100% |
+| `Duration/` | 42 | 42 | 0 | 100% |
 | `Instant/` | 34 | 34 | 0 | 100% |
 | `PlainTime/` | 24 | 24 | 0 | 100% |
 | `Now/` | 6 | 6 | 0 | 100% |
-| **Total** | **4,058** | **3,708** | **350** | **91.375%** |
+| **Total** | **4,058** | **4,058** | **0** | **100%** |
 
-`Instant/`, `PlainTime/` and `Now/` are now complete in this `intl402/` subtree. The remaining failures are concentrated in calendar-aware `ZonedDateTime`, `PlainDate`, `PlainDateTime`, `PlainYearMonth`, `PlainMonthDay`, and `Duration` operations; their method-level triage belongs in Phase 26 rather than the ECMA-402 host-service backlog.
+Every Temporal type in this subtree is now complete. The combined Temporal surface (`built-ins/Temporal/` plus `intl402/Temporal/`) is 13,268 / 13,268 (100.000%), on macOS as well as Ubuntu.
 
 ## Boundary ownership
 

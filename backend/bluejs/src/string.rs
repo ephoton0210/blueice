@@ -58,6 +58,11 @@ impl JsString {
     /// UTF-16 buffer: `Function.prototype.toString` is frequently used by
     /// framework feature detection, and neither the fixed fragments nor the
     /// immutable initial name need intermediate `JsString` allocations.
+    ///
+    /// The result must match the NativeFunction grammar, whose only name slot
+    /// is `NativeFunctionAccessor_opt PropertyName_opt`. An initial name that
+    /// grammar cannot spell (for example the legacy `RegExp.$&` accessors'
+    /// `get $&`) is therefore left out rather than producing invalid source.
     pub(crate) fn native_function_source(initial_name: Option<&Self>) -> Self {
         const PREFIX: &[u16] = &[
             0x0066, 0x0075, 0x006e, 0x0063, 0x0074, 0x0069, 0x006f, 0x006e, 0x0020,
@@ -67,6 +72,7 @@ impl JsString {
             0x0065, 0x0020, 0x0063, 0x006f, 0x0064, 0x0065, 0x005d, 0x0020, 0x007d,
         ];
 
+        let initial_name = initial_name.filter(|name| name.is_native_function_name());
         let mut units =
             Vec::with_capacity(PREFIX.len() + initial_name.map_or(0, Self::len) + SUFFIX.len());
         units.extend_from_slice(PREFIX);
@@ -75,6 +81,29 @@ impl JsString {
         }
         units.extend_from_slice(SUFFIX);
         Self(units)
+    }
+
+    /// Whether this initial name can appear as `NativeFunctionAccessor_opt
+    /// PropertyName_opt` in a NativeFunction: an optional `get `/`set ` prefix
+    /// followed by nothing, an IdentifierName, or a bracketed computed name
+    /// such as `[Symbol.species]`.
+    fn is_native_function_name(&self) -> bool {
+        let Ok(name) = self.to_utf8() else {
+            return false;
+        };
+        let name = name
+            .strip_prefix("get ")
+            .or_else(|| name.strip_prefix("set "))
+            .unwrap_or(&name);
+        let mut characters = name.chars();
+        match characters.next() {
+            None => true,
+            Some('[') => name.ends_with(']'),
+            Some(first) => {
+                crate::token::is_ident_start(first)
+                    && characters.all(crate::token::is_ident_continue)
+            }
+        }
     }
 
     pub(crate) fn index(&self) -> Option<usize> {
