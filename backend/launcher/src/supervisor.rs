@@ -46,7 +46,8 @@ impl ProcessPolicy {
     fn idle_timeout(self) -> Option<Duration> {
         match self {
             ProcessPolicy::AlwaysResident => None,
-            ProcessPolicy::OnDemand { idle_timeout } | ProcessPolicy::IdleTeardown { idle_timeout } => Some(idle_timeout),
+            ProcessPolicy::OnDemand { idle_timeout }
+            | ProcessPolicy::IdleTeardown { idle_timeout } => Some(idle_timeout),
         }
     }
 }
@@ -71,7 +72,9 @@ pub struct ProcessRegistry {
 
 impl ProcessRegistry {
     pub fn new() -> Self {
-        ProcessRegistry { entries: HashMap::new() }
+        ProcessRegistry {
+            entries: HashMap::new(),
+        }
     }
 
     /// Registers `role` under `policy`. `resident` is `Some` if a
@@ -79,8 +82,21 @@ impl ProcessRegistry {
     /// (e.g. `core`, spawned unconditionally before this call), `None`
     /// for an inert slot not yet spawned. `now` seeds the initial
     /// activity timestamp.
-    pub fn register(&mut self, role: impl Into<String>, policy: ProcessPolicy, resident: Option<Child>, now: Instant) {
-        self.entries.insert(role.into(), SupervisedProcess { policy, resident, last_active: now });
+    pub fn register(
+        &mut self,
+        role: impl Into<String>,
+        policy: ProcessPolicy,
+        resident: Option<Child>,
+        now: Instant,
+    ) {
+        self.entries.insert(
+            role.into(),
+            SupervisedProcess {
+                policy,
+                resident,
+                last_active: now,
+            },
+        );
     }
 
     /// Resets `role`'s idle clock -- call this on any real activity
@@ -101,7 +117,9 @@ impl ProcessRegistry {
     /// hold the actual [`Child`] at all); every other policy reports
     /// whether this registry itself currently holds a resident process.
     pub fn is_resident(&self, role: &str) -> bool {
-        self.entries.get(role).is_some_and(|entry| matches!(entry.policy, ProcessPolicy::AlwaysResident) || entry.resident.is_some())
+        self.entries.get(role).is_some_and(|entry| {
+            matches!(entry.policy, ProcessPolicy::AlwaysResident) || entry.resident.is_some()
+        })
     }
 
     /// Transitions `role` to resident with `child` as the process this
@@ -137,7 +155,8 @@ impl ProcessRegistry {
             .filter(|(_, entry)| entry.resident.is_some())
             .filter_map(|(role, entry)| {
                 let idle_timeout = entry.policy.idle_timeout()?;
-                (now.saturating_duration_since(entry.last_active) >= idle_timeout).then(|| role.clone())
+                (now.saturating_duration_since(entry.last_active) >= idle_timeout)
+                    .then(|| role.clone())
             })
             .collect()
     }
@@ -194,15 +213,35 @@ mod tests {
     fn set_resident_transitions_an_on_demand_role_to_resident_and_resets_its_idle_clock() {
         let mut registry = ProcessRegistry::new();
         let start = Instant::now();
-        registry.register("mcp-server", ProcessPolicy::OnDemand { idle_timeout: Duration::from_secs(60) }, None, start);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::OnDemand {
+                idle_timeout: Duration::from_secs(60),
+            },
+            None,
+            start,
+        );
         assert!(!registry.is_resident("mcp-server"));
 
         let spawned_at = start + Duration::from_secs(500); // long past what would matter if the idle clock weren't reset
-        assert!(registry.set_resident("mcp-server", spawn_dummy_child(), spawned_at).is_none(), "a registered role's child must be accepted, not handed back");
+        assert!(
+            registry
+                .set_resident("mcp-server", spawn_dummy_child(), spawned_at)
+                .is_none(),
+            "a registered role's child must be accepted, not handed back"
+        );
 
         assert!(registry.is_resident("mcp-server"));
-        assert!(registry.idle_eligible_for_teardown(spawned_at + Duration::from_secs(1)).is_empty(), "freshly spawned must not be immediately idle-eligible");
-        assert_eq!(registry.idle_eligible_for_teardown(spawned_at + Duration::from_secs(61)), vec!["mcp-server".to_string()]);
+        assert!(
+            registry
+                .idle_eligible_for_teardown(spawned_at + Duration::from_secs(1))
+                .is_empty(),
+            "freshly spawned must not be immediately idle-eligible"
+        );
+        assert_eq!(
+            registry.idle_eligible_for_teardown(spawned_at + Duration::from_secs(61)),
+            vec!["mcp-server".to_string()]
+        );
 
         registry.teardown("mcp-server");
     }
@@ -210,8 +249,13 @@ mod tests {
     #[test]
     fn set_resident_on_an_unregistered_role_hands_the_child_back_instead_of_leaking_it() {
         let mut registry = ProcessRegistry::new();
-        let mut child = registry.set_resident("nonexistent", spawn_dummy_child(), Instant::now()).expect("must hand the child back rather than silently dropping (and leaking) it");
-        assert!(!registry.is_resident("nonexistent"), "must not create a phantom entry");
+        let mut child = registry
+            .set_resident("nonexistent", spawn_dummy_child(), Instant::now())
+            .expect("must hand the child back rather than silently dropping (and leaking) it");
+        assert!(
+            !registry.is_resident("nonexistent"),
+            "must not create a phantom entry"
+        );
         let _ = child.kill();
         let _ = child.wait();
     }
@@ -220,10 +264,25 @@ mod tests {
     fn idle_teardown_role_becomes_eligible_only_after_its_timeout_elapses() {
         let mut registry = ProcessRegistry::new();
         let start = Instant::now();
-        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(60) }, Some(spawn_dummy_child()), start);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::IdleTeardown {
+                idle_timeout: Duration::from_secs(60),
+            },
+            Some(spawn_dummy_child()),
+            start,
+        );
 
-        assert!(registry.idle_eligible_for_teardown(start + Duration::from_secs(30)).is_empty(), "not yet past the timeout");
-        assert_eq!(registry.idle_eligible_for_teardown(start + Duration::from_secs(61)), vec!["mcp-server".to_string()]);
+        assert!(
+            registry
+                .idle_eligible_for_teardown(start + Duration::from_secs(30))
+                .is_empty(),
+            "not yet past the timeout"
+        );
+        assert_eq!(
+            registry.idle_eligible_for_teardown(start + Duration::from_secs(61)),
+            vec!["mcp-server".to_string()]
+        );
 
         registry.teardown("mcp-server");
     }
@@ -232,14 +291,26 @@ mod tests {
     fn mark_active_resets_the_idle_clock() {
         let mut registry = ProcessRegistry::new();
         let start = Instant::now();
-        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(60) }, Some(spawn_dummy_child()), start);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::IdleTeardown {
+                idle_timeout: Duration::from_secs(60),
+            },
+            Some(spawn_dummy_child()),
+            start,
+        );
 
         let later = start + Duration::from_secs(50);
         registry.mark_active("mcp-server", later);
 
         // 70s after registration, but only 20s after the reset activity -- still not eligible.
-        assert!(registry.idle_eligible_for_teardown(start + Duration::from_secs(70)).is_empty());
-        assert_eq!(registry.idle_eligible_for_teardown(later + Duration::from_secs(61)), vec!["mcp-server".to_string()]);
+        assert!(registry
+            .idle_eligible_for_teardown(start + Duration::from_secs(70))
+            .is_empty());
+        assert_eq!(
+            registry.idle_eligible_for_teardown(later + Duration::from_secs(61)),
+            vec!["mcp-server".to_string()]
+        );
 
         registry.teardown("mcp-server");
     }
@@ -249,9 +320,18 @@ mod tests {
         // An `OnDemand` role not yet spawned -- nothing to tear down.
         let mut registry = ProcessRegistry::new();
         let start = Instant::now();
-        registry.register("mcp-server", ProcessPolicy::OnDemand { idle_timeout: Duration::from_secs(1) }, None, start);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::OnDemand {
+                idle_timeout: Duration::from_secs(1),
+            },
+            None,
+            start,
+        );
 
-        assert!(registry.idle_eligible_for_teardown(start + Duration::from_secs(1_000_000)).is_empty());
+        assert!(registry
+            .idle_eligible_for_teardown(start + Duration::from_secs(1_000_000))
+            .is_empty());
     }
 
     #[test]
@@ -270,7 +350,14 @@ mod tests {
     fn teardown_on_an_already_torn_down_role_is_a_harmless_no_op() {
         let mut registry = ProcessRegistry::new();
         let start = Instant::now();
-        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(1) }, Some(spawn_dummy_child()), start);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::IdleTeardown {
+                idle_timeout: Duration::from_secs(1),
+            },
+            Some(spawn_dummy_child()),
+            start,
+        );
 
         registry.teardown("mcp-server");
         assert!(!registry.is_resident("mcp-server"));
@@ -282,7 +369,14 @@ mod tests {
         let mut registry = ProcessRegistry::new();
         let child = spawn_dummy_child();
         let pid = child.id();
-        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(1) }, Some(child), Instant::now());
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::IdleTeardown {
+                idle_timeout: Duration::from_secs(1),
+            },
+            Some(child),
+            Instant::now(),
+        );
 
         registry.teardown("mcp-server");
 
@@ -292,8 +386,17 @@ mod tests {
         // just forgotten by the registry's own bookkeeping. `teardown`'s
         // `Child::wait()` blocks until the OS has fully reaped it, so
         // this check is deterministic, not a race.
-        let still_alive = Command::new("kill").args(["-0", &pid.to_string()]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().map(|status| status.success()).unwrap_or(false);
-        assert!(!still_alive, "the real child process must actually be terminated, not just marked non-resident");
+        let still_alive = Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+        assert!(
+            !still_alive,
+            "the real child process must actually be terminated, not just marked non-resident"
+        );
         assert!(!registry.is_resident("mcp-server"));
     }
 
@@ -302,18 +405,35 @@ mod tests {
         let mut registry = ProcessRegistry::new();
         let start = Instant::now();
         registry.register("core", ProcessPolicy::AlwaysResident, None, start);
-        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(1) }, Some(spawn_dummy_child()), start);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::IdleTeardown {
+                idle_timeout: Duration::from_secs(1),
+            },
+            Some(spawn_dummy_child()),
+            start,
+        );
 
         registry.teardown("mcp-server");
 
-        assert!(registry.is_resident("core"), "tearing down one role must not affect an unrelated resident role");
+        assert!(
+            registry.is_resident("core"),
+            "tearing down one role must not affect an unrelated resident role"
+        );
     }
 
     #[test]
     fn a_role_with_an_idle_timeout_but_not_yet_past_it_stays_resident() {
         let mut registry = ProcessRegistry::new();
         let start = Instant::now();
-        registry.register("mcp-server", ProcessPolicy::IdleTeardown { idle_timeout: Duration::from_secs(60) }, Some(spawn_dummy_child()), start);
+        registry.register(
+            "mcp-server",
+            ProcessPolicy::IdleTeardown {
+                idle_timeout: Duration::from_secs(60),
+            },
+            Some(spawn_dummy_child()),
+            start,
+        );
 
         assert!(registry.is_resident("mcp-server"));
         registry.teardown("mcp-server");

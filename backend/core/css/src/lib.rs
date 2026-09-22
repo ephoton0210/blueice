@@ -41,7 +41,9 @@ pub struct Stylesheet {
 }
 
 pub fn parse(input: &str) -> Stylesheet {
-    Stylesheet { rules: parser::parse(input) }
+    Stylesheet {
+        rules: parser::parse(input),
+    }
 }
 
 #[cfg(test)]

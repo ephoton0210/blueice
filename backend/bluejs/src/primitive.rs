@@ -1,0 +1,377 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Primitive coercions, after observable ToPrimitive has run in the VM.
+
+use crate::{JsString, RuntimeError, Value};
+use num_bigint::BigInt;
+use num_traits::{FromPrimitive, Zero};
+use std::cmp::Ordering;
+
+/// The ECMAScript Numeric union, kept distinct from `Number` conversion so
+/// callers can reject Number/BigInt mixing after observable ToPrimitive.
+#[derive(Debug, Clone)]
+pub(crate) enum Numeric {
+    Number(f64),
+    BigInt(BigInt),
+}
+
+pub(crate) fn truthy(value: &Value) -> bool {
+    match value {
+        Value::Undefined | Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => *n != 0.0 && !n.is_nan(),
+        Value::BigInt(n) => !n.is_zero(),
+        Value::String(s) => !s.is_empty(),
+        Value::Object(_) | Value::Symbol(_) => true,
+    }
+}
+
+pub(crate) fn type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Undefined => "undefined",
+        Value::Null | Value::Object(_) => "object",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::BigInt(_) => "bigint",
+        Value::String(_) => "string",
+        Value::Symbol(_) => "symbol",
+    }
+}
+
+pub(crate) fn number(value: &Value) -> Result<f64, RuntimeError> {
+    Ok(match value {
+        Value::Undefined => f64::NAN,
+        Value::Null => 0.0,
+        Value::Bool(b) => f64::from(u8::from(*b)),
+        Value::Number(n) => *n,
+        // A StringNumericLiteral cannot contain surrogate code points.
+        Value::String(s) => s.to_utf8().map_or(f64::NAN, |s| string_number(&s)),
+        Value::BigInt(_) | Value::Symbol(_) | Value::Object(_) => {
+            return Err(RuntimeError::TypeError(
+                "Number conversion requires a non-Symbol primitive".into(),
+            ))
+        }
+    })
+}
+
+pub(crate) fn numeric(value: &Value) -> Result<Numeric, RuntimeError> {
+    match value {
+        Value::BigInt(value) => Ok(Numeric::BigInt(value.clone())),
+        _ => Ok(Numeric::Number(number(value)?)),
+    }
+}
+
+/// ECMAScript ToUint32 applied after observable numeric coercion. The finite
+/// result is an integer in `[0, 2^32)`, exactly representable as an `f64`.
+pub(crate) fn to_uint32(number: f64) -> u32 {
+    if number.is_finite() {
+        number.trunc().rem_euclid(4_294_967_296.0) as u32
+    } else {
+        0
+    }
+}
+
+/// ECMAScript ToInt32 uses the same modulo conversion as ToUint32, then views
+/// the resulting bits as a signed two's-complement integer.
+pub(crate) fn to_int32(number: f64) -> i32 {
+    to_uint32(number) as i32
+}
+
+pub(crate) fn string(value: &Value) -> Result<JsString, RuntimeError> {
+    Ok(match value {
+        Value::Undefined => "undefined".into(),
+        Value::Null => "null".into(),
+        Value::Bool(b) => b.to_string().into(),
+        Value::String(s) => s.clone(),
+        Value::Number(n) if n.is_nan() => "NaN".into(),
+        Value::Number(n) if n.is_infinite() => if n.is_sign_negative() {
+            "-Infinity"
+        } else {
+            "Infinity"
+        }
+        .into(),
+        Value::Number(n) if *n == 0.0 => "0".into(),
+        Value::Number(n) => number_string(*n).into(),
+        Value::BigInt(n) => n.to_string().into(),
+        Value::Symbol(_) | Value::Object(_) => {
+            return Err(RuntimeError::TypeError(
+                "String conversion requires a non-Symbol primitive".into(),
+            ))
+        }
+    })
+}
+
+fn number_string(n: f64) -> String {
+    let shortest = format!("{:e}", n.abs());
+    let (mantissa, exponent) = shortest
+        .split_once('e')
+        .expect("scientific format includes exponent");
+    let exponent: i32 = exponent.parse().expect("formatted exponent is an integer");
+    let mut digits = mantissa.replace('.', "");
+    let significand: u64 = digits
+        .parse()
+        .expect("shortest f64 has at most 17 decimal digits");
+    if lower_even_tie(n.abs(), significand, exponent + 1 - digits.len() as i32) {
+        digits = (significand - 1).to_string();
+    }
+    let sign = if n.is_sign_negative() { "-" } else { "" };
+    if !(-6..21).contains(&exponent) {
+        let fraction = if digits.len() == 1 {
+            String::new()
+        } else {
+            format!(".{}", &digits[1..])
+        };
+        format!(
+            "{sign}{}{fraction}e{}{exponent}",
+            &digits[..1],
+            if exponent < 0 { "" } else { "+" }
+        )
+    } else {
+        let point = exponent + 1;
+        if point <= 0 {
+            format!("{sign}0.{}{digits}", "0".repeat(-point as usize))
+        } else if point as usize >= digits.len() {
+            format!(
+                "{sign}{digits}{}",
+                "0".repeat(point as usize - digits.len())
+            )
+        } else {
+            format!(
+                "{sign}{}.{}",
+                &digits[..point as usize],
+                &digits[point as usize..]
+            )
+        }
+    }
+}
+
+fn lower_even_tie(n: f64, significand: u64, decimal_exponent: i32) -> bool {
+    // Rust's shortest formatter resolves decimal midpoints upward;
+    // Number::toString recommends the even significand in ES2026 Note 2,
+    // and requires it in the current ES2027 draft step 5:
+    // https://tc39.es/ecma262/multipage/ecmascript-data-types-and-values.html#sec-numeric-types-number-tostring
+    // Never compare re-parsed floats: both adjacent decimals round to n.
+    // Compare exact rationals n = m*2^e and (2*s-1)*10^k/2 instead.
+    // An integral decimal midpoint cannot round-trip from either neighbor;
+    // for k <= -25, 5^(-k) exceeds (2*s-1) < 2*10^17.
+    // Proof and versioned references: research/js-conformance-baseline.md.
+    if significand & 1 == 0 || !(-24..0).contains(&decimal_exponent) {
+        return false;
+    }
+    let bits = n.to_bits();
+    let exponent_bits = ((bits >> 52) & 0x7ff) as i32;
+    // The decimal-exponent bound above also rules out subnormals.
+    let mut binary_significand = (bits & ((1u64 << 52) - 1)) | (1u64 << 52);
+    let zeros = binary_significand.trailing_zeros();
+    binary_significand >>= zeros;
+    let binary_exponent = exponent_bits - 1075 + zeros as i32;
+    if binary_exponent != decimal_exponent - 1 {
+        return false;
+    }
+    let midpoint = 2 * significand - 1;
+    let factor = 5u64.pow((-decimal_exponent) as u32); // At most 5^24; fits u64.
+    midpoint.is_multiple_of(factor) && midpoint / factor == binary_significand
+}
+
+pub(crate) fn compare(left: &Value, right: &Value) -> Result<Option<Ordering>, RuntimeError> {
+    if let (Value::String(a), Value::String(b)) = (left, right) {
+        // ECMAScript ordering is by UTF-16 code units, not UTF-8 bytes
+        // or Unicode scalar values (notably astral vs. BMP characters).
+        Ok(Some(a.cmp(b)))
+    } else if let (Value::BigInt(a), Value::BigInt(b)) = (left, right) {
+        // Abstract Relational Comparison is numeric for two BigInts. Routing
+        // these through ToNumber incorrectly throws before a BigInt typed
+        // array comparator can return its ordinary Number ordering result.
+        Ok(Some(a.cmp(b)))
+    } else if let (Value::BigInt(bigint), Value::Number(number)) = (left, right) {
+        compare_bigint_number(bigint, *number)
+    } else if let (Value::Number(number), Value::BigInt(bigint)) = (left, right) {
+        compare_bigint_number(bigint, *number).map(|ordering| ordering.map(Ordering::reverse))
+    } else if let (Value::BigInt(bigint), Value::String(text)) = (left, right) {
+        // A string that isn't a valid StringToBigInt source compares as
+        // undefined (neither less than, greater than, nor equal), matching
+        // an nan-producing ToNumeric conversion rather than throwing here.
+        Ok(text
+            .to_utf8()
+            .ok()
+            .and_then(|text| string_to_bigint(&text))
+            .map(|other| bigint.cmp(&other)))
+    } else if let (Value::String(text), Value::BigInt(bigint)) = (left, right) {
+        Ok(text
+            .to_utf8()
+            .ok()
+            .and_then(|text| string_to_bigint(&text))
+            .map(|other| other.cmp(bigint)))
+    } else if let (Value::BigInt(_), Value::Bool(right)) = (left, right) {
+        // ToNumeric(Boolean) is Number, not BigInt: a Boolean operand
+        // converts to 0/1 before Abstract Relational Comparison, the same
+        // as it would against a Number -- it never becomes a BigInt itself.
+        compare(left, &Value::Number(f64::from(u8::from(*right))))
+    } else if let (Value::Bool(left), Value::BigInt(_)) = (left, right) {
+        compare(&Value::Number(f64::from(u8::from(*left))), right)
+    } else {
+        Ok(number(left)?.partial_cmp(&number(right)?))
+    }
+}
+
+/// Implements abstract relational comparison between an arbitrary-precision
+/// integer and an IEEE-754 Number without first losing the integer through a
+/// Number coercion. The truncated finite Number is exactly representable as a
+/// `BigInt`; when it has a fractional remainder, an equal integer lies below a
+/// positive Number and above a negative Number.
+fn compare_bigint_number(bigint: &BigInt, number: f64) -> Result<Option<Ordering>, RuntimeError> {
+    if number.is_nan() {
+        return Ok(None);
+    }
+    if number == f64::INFINITY {
+        return Ok(Some(Ordering::Less));
+    }
+    if number == f64::NEG_INFINITY {
+        return Ok(Some(Ordering::Greater));
+    }
+    let integer = BigInt::from_f64(number.trunc()).ok_or_else(|| {
+        RuntimeError::RangeError("cannot compare a BigInt with this Number".into())
+    })?;
+    let ordering = bigint.cmp(&integer);
+    if ordering == Ordering::Equal && number.fract() != 0.0 {
+        return Ok(Some(if number.is_sign_positive() {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }));
+    }
+    Ok(Some(ordering))
+}
+
+pub(crate) fn whitespace(c: char) -> bool {
+    matches!(c, '\u{0009}'..='\u{000d}' | ' ' | '\u{00a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
+}
+
+fn string_number(s: &str) -> f64 {
+    let s = s.trim_matches(whitespace);
+    if s.is_empty() {
+        return 0.0;
+    }
+    match s {
+        "Infinity" | "+Infinity" => return f64::INFINITY,
+        "-Infinity" => return f64::NEG_INFINITY,
+        _ => {}
+    }
+    for (prefixes, bits) in [(["0x", "0X"], 4), (["0o", "0O"], 3), (["0b", "0B"], 1)] {
+        if prefixes.iter().any(|prefix| s.starts_with(prefix)) {
+            return radix_number(&s[2..], bits);
+        }
+    }
+    // Validate StringNumericLiteral before Rust's parser: Rust also
+    // accepts forms like "inf" that JavaScript must turn into NaN.
+    let bytes = s.as_bytes();
+    let mut i = usize::from(matches!(bytes[0], b'+' | b'-'));
+    let mut digits = 0;
+    while bytes.get(i).is_some_and(u8::is_ascii_digit) {
+        i += 1;
+        digits += 1;
+    }
+    if bytes.get(i) == Some(&b'.') {
+        i += 1;
+        while bytes.get(i).is_some_and(u8::is_ascii_digit) {
+            i += 1;
+            digits += 1;
+        }
+    }
+    if digits == 0 {
+        return f64::NAN;
+    }
+    if matches!(bytes.get(i), Some(b'e' | b'E')) {
+        i += 1;
+        if matches!(bytes.get(i), Some(b'+' | b'-')) {
+            i += 1;
+        }
+        let start = i;
+        while bytes.get(i).is_some_and(u8::is_ascii_digit) {
+            i += 1;
+        }
+        if i == start {
+            return f64::NAN;
+        }
+    }
+    if i != bytes.len() {
+        return f64::NAN;
+    }
+    s.parse().unwrap_or(f64::NAN)
+}
+
+/// StringToBigInt ( argument ), per the spec's own description of its
+/// grammar as StringNumericLiteral with StrUnsignedDecimalLiteral replaced by
+/// plain DecimalDigits: no `Infinity`, decimal points, or exponents, but the
+/// `0x`/`0o`/`0b` non-decimal integer literals (unsigned, no leading sign)
+/// are still accepted. An all-whitespace (including empty) string is 0n;
+/// anything else that doesn't fit the grammar reports no value at all, which
+/// callers turn into a SyntaxError (`BigInt(...)`) or TypeError-adjacent
+/// failure (`==`) as their own operation requires, rather than a shared
+/// NaN-like sentinel.
+pub(crate) fn string_to_bigint(s: &str) -> Option<BigInt> {
+    let s = s.trim_matches(whitespace);
+    if s.is_empty() {
+        return Some(BigInt::zero());
+    }
+    for (prefixes, radix) in [(["0x", "0X"], 16u32), (["0o", "0O"], 8), (["0b", "0B"], 2)] {
+        if let Some(digits) = prefixes.iter().find_map(|prefix| s.strip_prefix(prefix)) {
+            if digits.is_empty() || !digits.bytes().all(|byte| (byte as char).is_digit(radix)) {
+                return None;
+            }
+            return BigInt::parse_bytes(digits.as_bytes(), radix);
+        }
+    }
+    let bytes = s.as_bytes();
+    let negative = bytes[0] == b'-';
+    let digits = &s[usize::from(matches!(bytes[0], b'+' | b'-'))..];
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let value = BigInt::parse_bytes(digits.as_bytes(), 10)?;
+    Some(if negative { -value } else { value })
+}
+
+pub(crate) fn radix_number(s: &str, digit_bits: u32) -> f64 {
+    if s.is_empty() {
+        return f64::NAN;
+    }
+    // Accumulate only the leading 53 bits, plus guard/sticky bits for a
+    // single round-to-nearest-even. Repeated float multiply/add would
+    // round intermediate values and misparse long binary/octal/hex strings.
+    let mut count = 0usize;
+    let mut significand = 0u64;
+    let mut guard = false;
+    let mut sticky = false;
+    for c in s.chars() {
+        let Some(digit) = c.to_digit(1 << digit_bits) else {
+            return f64::NAN;
+        };
+        for shift in (0..digit_bits).rev() {
+            let bit = (digit >> shift) & 1;
+            if count == 0 && bit == 0 {
+                continue;
+            }
+            count += 1;
+            if count <= 53 {
+                significand = (significand << 1) | u64::from(bit);
+            } else if count == 54 {
+                guard = bit != 0;
+            } else {
+                sticky |= bit != 0;
+            }
+        }
+    }
+    if count <= 53 {
+        return significand as f64;
+    }
+    if count > 1024 {
+        return f64::INFINITY;
+    }
+    if guard && (sticky || significand & 1 != 0) {
+        significand += 1;
+    }
+    significand as f64 * 2f64.powi((count - 53) as i32)
+}

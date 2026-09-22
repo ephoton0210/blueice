@@ -1,0 +1,10 @@
+{
+  "cldr_json_revision": "26a79cb42bfcc90def764102aa2af126d9ef3108",
+  "cldr_release": "48.2.1",
+  "generator": "../../tools/generate_cldr_display_names.mjs",
+  "locale_count": 766,
+  "row_count": 709260,
+  "uncompressed_bytes": 32804803,
+  "gzip_bytes": 7054747,
+  "sha256": "8bd6a4728337428a01b1c4f95cf4c771681b5002a9851976ac72819276bb45a2"
+}

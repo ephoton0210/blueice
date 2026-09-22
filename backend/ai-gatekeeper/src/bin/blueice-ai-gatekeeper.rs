@@ -17,10 +17,14 @@
 //! scalability shortcut -- see `blueice_ai_gatekeeper`'s own module
 //! docs.
 
+#[cfg(unix)]
 use blueice_ai_gatekeeper::handle_one_check;
+#[cfg(unix)]
 use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
+#[cfg(unix)]
 use std::os::unix::net::UnixListener;
 
+#[cfg(unix)]
 fn main() -> std::io::Result<()> {
     let path = default_gatekeeper_socket_path();
     if let Some(parent) = path.parent() {
@@ -37,4 +41,10 @@ fn main() -> std::io::Result<()> {
         let _ = handle_one_check(&mut stream);
     }
     Ok(())
+}
+
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("blueice-ai-gatekeeper is currently supported only on Unix platforms");
+    std::process::exit(1);
 }

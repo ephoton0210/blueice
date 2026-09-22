@@ -1,0 +1,464 @@
+# One isolated script per line; primitive completion or error class only.
+# Currently unimplemented builtins/functions do not belong here; TDZ is implemented.
+
+1 + 2 * 3
+8/2 + 7%4
+true + null
+false - undefined
+'' + undefined + null + true + false
+'' + -0
+'' + NaN + Infinity + -Infinity
+'' + 1e-7
+'' + 1e-6
+'' + 1e20
+'' + 1e21
+'' + 1000000000000000128
+'' + 1.0000000000000002
+'' + 1.1142895159317463e15
+'' + -1.1142895159317463e15
+'' + 5e-324
+'' + 1.7976931348623157e308
+1 / -0
+-'0'
+NaN === NaN
+NaN !== NaN
+NaN <= 1 || NaN > 1
+'12' < '2'
+'12' < 2
+'😀' < '￿'
+'😀' > 'a'
+3 >= 3 && 2 <= 2 && 4 > 3 && 2 < 3
++' 2.5e1 ' + -'3'
++'0X10' + +'0B11' + +'0O7'
++'0x20000000000001'
++'0x20000000000003'
++'0x40000000000003'
++'0xFFFFFFFFFFFFFFFFF'
++'0b100000000000000000000000000000000000000000000000000011'
++'0o777777777777777777777'
++'0x00000000'
++'0x'
++'0b2'
++'-0x10'
++'+0o2'
++'inf'
++'Infinity'
++'+Infinity'
++'-Infinity'
++'1e999'
++'1e-999'
++'.5'
++'1.'
++'.'
++'+'
++'1e'
++'1e+'
++'1.2x'
++'１'
++'\uFEFF\u00A0 7 \u2028'
++'\u0085'
+typeof missing
+typeof undefined
+typeof NaN
+typeof true
+typeof 'x'
+typeof null
+typeof {}
+!0 && !'' && !null && !undefined && !NaN && !!{}
+false && missing
+7 || missing
+0 ?? missing
+null ?? 8
+undefined ?? 9
+true ? 1 : missing
+false ? missing : 2
+let x=0; false && x++; true || x++; 1 ?? x++; x
+`a${1+2}:${false}:${null}`
+x; var x
+if(false){var x=4;} x
+var x=1; var x; x
+var x=2; {var x=3;} x
+let x=1; {let x=2; x+=5;} x
+let x=1; {var y=2; x+=y;} x+y
+let x; x=3; x
+const o={}; o.x=4; o.x
+const x=1; x=2
+const x=1; x++
+{let x=1;} x
+let x; let x
+let x; var x
+{let x; {var x;}}
+for(let x=0;x<1;x++){var x;}
+break
+continue
+const x
+if(true) let x=1
+({__proto__:null,__proto__:null})
+let s=0; for(let i=0;i<6;i++){if(i===2)continue; if(i===5)break; {let x=i; s+=x;}} s
+let i=0; let s=0; while(i<5){i++; {let v=i; if(i===2)continue; s+=v;}} s
+let i=0; do {i++; if(i<3)continue; break;} while(true); i
+let n=0; for(let i=0;i<3;i++){for(let j=0;j<4;j++){if(j===2)break; n++;}} n
+let i=0; for(;;){i++; if(i===3)break;} i
+for(var i=0;i<2;i++){} i
+for(let i=0;i<1;i++){} i
+1; ; {} var x
+1; if(false) 2
+1; if(true) {}
+1; while(false) 2
+let i=0; while(i<3){i++; i*2;}
+let i=0; do {i++;} while(false)
+1; while(true){2;break;}
+1; while(true){2;if(true)break;}
+let i=0; while(i++<3){if(i<3)7;else break;}
+let a={x:2}; let b=a; b.x+=3; a.x
+let a={}; a===a && a!=={}
+let k='x'; let o={[k]:3,k}; o.x+o.k
+let i=0; let o={0:3}; let a=o[i++]++; a*100+o[0]*10+i
+let i=0; let o={0:3}; o[i++]+=(i=5); o[0]*10+i
+let o={x:'2'}; let a=++o.x; let b=o.x--; a*100+b*10+o.x
+let x='2'; let a=x++; let b=--x; a*100+b*10+x
+let o={x:8}; o.x-=2; o.x*=3; o.x/=2; o.x%=4; o.x
+let x=8; x-=2; x*=3; x/=2; x%=4; x
+let p={x:3}; let o={__proto__:p}; o.x
+let o={['__proto__']:7}; o.__proto__
+let __proto__=3; ({__proto__}).__proto__
+({__proto__:null}).missing
+({__proto__:3}).missing
+let o={x:4}; let old=o; o.x=(o={x:8}); old.x===o
+let o={[-0]:2,[true]:3,[null]:4,[undefined]:5}; o[0]+o.true+o.null+o.undefined
+let p={x:3}; let o={__proto__:p}; o.x++; o.x*10+p.x
+let o={}; o.x++
+let o={x:1,x:2}; o.x
+null.x
+undefined.x
+null.x=missing
+null[missing]=1
+missing
+
+# Sparse-array slice: primitive completions only, like the earlier corpus.
+[].length
+[,,].length
+[1,].length
+[1,,].length
+[,,][0]
+typeof []
+let a=[2,4,6]; let s=0; for(let i=0;i<a.length;i++){s+=a[i];} s
+let a=[]; a[4]=7; a.length*10+a[4]
+let a=[1,2,3]; a.length=1; a[2]
+let a=[1]; let result=(a.length='3'); result==='3' && a.length===3
+let a=[1,2]; a.length=null; a.length
+let a=[1,2]; a.length=true; a.length
+let a=[1,2]; a.length=false; a.length
+let a=[1,2]; a.length=''; a.length
+let a=[]; a.length='0x10'; a.length
+let a=[]; a.length=-0; 1/a.length
+let a=[1,2,3]; let n=a.length--; n*10+a.length
+let a=[]; a.length+='2'; a.length
+let a=[]; let n=(a.length+='2'); n==='02' && a.length===2
+let a=[0]; let n=++a.length; n*10+a.length
+let i=0; let a=[i++,i++,i++]; a[0]*100+a[1]*10+a[2]
+let i=0; let a=[3]; let old=a[i++]++; old*100+a[0]*10+i
+let a=[]; a.length=-1
+let a=[]; a.length=1.5
+let a=[]; a.length=NaN
+let a=[]; a.length=Infinity
+let a=[]; a.length=-Infinity
+let a=[]; a.length=4294967296
+let a=[]; a.length=undefined
+let a=[]; a.length='invalid'
+let a=[]; a.length--
+let a=[1]; a.length/=2
+let a=[]; a.length=4294967295; a.length++
+let a=[]; a[4294967294]=8; a.length
+let a=[]; a[4294967295]=8; a.length
+let a=[]; a[4294967295]=8; a.length=0; a[4294967295]
+let a=[]; a['01']=3; a['-0']=4; a.length
+let a=[]; a[-0]=3; a.length*10+a[0]
+let a=[1]; a.length=4294967295; a[4294967294]
+let a=[1]; a.length=4294967295; a.length=1; a[0]
+let a=[1]; a.length=0; a.length=1; a[0]
+let a=[]; a.length=4294967295; a.length=0; a.length
+let a=[]; a[0]=a; a===a[0]
+let a=[1]; a!==[1] && a!=={}
+let a=[1]; a[0]=[a.length=0]; a.length*10+a[0].length
+let a=[1]; let alias=a; a[0]=(a=[2]); alias[0]===a
+let a=[1]; let o={__proto__:a}; o[0]*10+o.length
+let a=[1]; let o={__proto__:a}; o.length=4; a.length*10+o.length
+let a=[1]; let o={__proto__:a}; o[2]=4; a.length*10+o[2]
+let a=[]; a.length-= -2; a.length*=2; a.length/=2; a.length%=2; a.length
+
+# ECMA-262 2026 §12.9.4: hex digits do not accept an integer sign.
+'\x+1'
+'\x-0'
+'\u+001'
+'\u-000'
+'\u{+1}'
+'\u{-0}'
+'\u{}'
+'\u{FFFFFFFFF}'
+'\u{110000}'
+'\u{00000000000000000000000000000041}'
+'\x00\x7F\xFF\u0041\u{1F600}'
+`\x+1`
+"\u{+1}"
+1.e3
+1e+309
+1e-400
+let o={length:'text'}; o.length
+let o={if:1,return:2,true:3}; o.if+o.return+o.true
+
+# ECMA-262 edition 17 corrective slice: TDZ, grammar and Number literals.
+x; let x
+typeof x; let x
+x=1; let x
+x+=1; let x
+x++; let x
+++x; let x
+x=1; const x=2
+let x=x
+const x=x
+let x=1; {x; let x=2;}
+let x=1; {typeof x; const x=2;}
+let x=y, y=2
+for(let i=i;i<1;i++){}
+let i=0; while(i++<2){if(i===2)x; let x=7;}
+let x; typeof x
+let x=false&&x; x
+let x=true?7:x; x
+1??2||3
+1||2??3
+1??2&&3
+1&&2??3
+1??2??3||4
+false&&(1??2||3)
+true?1:2??3||4
+(0||2)??3
+null??(0||3)
+(null??0)||3
+null??(2&&3)
+(null??2)&&3
+null??undefined??7
+null??(true?0||4:5)
+null??[0||4][0]
+0xFF
+0Xff
+0b101
+0B101
+0o77
+0O77
+0xAB_CD
+0b1_0_1
+0o7_7
+1_234.5_6e1_0
+.1_25
+0.1_25
+1_0.
+1_0.e+2
+1e-4_00
+0x20000000000001
+0x20000000000003
+077
+000
+08
+009
+08.5
+08e1
+({0x10:7})[16]
+1_0+0xF
+0x
+0b2
+0o8
+0xG
+0b12
+0o78
+1e
+1e+
+1.e-
+0_1
+00_1
+08_9
+1__0
+1_
+1_.0
+1._0
+1_e2
+1e_2
+1e+_2
+1e2_
+0x_FF
+0b_1
+0o_7
+0xF_
+0o7__1
+123abc
+3in
+1$
+1\u0061
+077e1
+077.5
++'1_000'
+`${1/* } { ` ' */+2}`
+`${`nested ${1/* } */+2}`}`
+
+# UTF-16 storage and String builtins (edition 17; no RegExp/locale assumptions)
+'\ud83d\ude00'
+'\u{D800}'
+'\udc00\ud800'
+'\ud800'+'\udc00'
+`\ud800${'\udfff'}\u{D801}`
+'\ud800' < '\ud801'
+'\udfff' < '\ue000'
++'1\ud800'
+let o={'\ud800':1,'\ud801':2,'\ufffd':4}; o['\ud800']+o['\ud801']+o['\ufffd']
+let a=[]; a['\ud800']=7; a.length
+String()
+String(undefined)
+String(null)
+String(42)
+String(true)
+typeof String
+typeof ''.slice
+String.prototype.constructor === String
+String.prototype.valueOf()
+String.fromCodePoint(0x1f600,0xd800,0x10ffff)
+String.fromCharCode(-1,65536,NaN,Infinity)
+String.fromCharCode()
+String.fromCodePoint()
+String.fromCodePoint(-1)
+String.fromCodePoint(0.5)
+String.fromCodePoint(NaN)
+String.fromCodePoint(Infinity)
+String.fromCodePoint(0x110000)
+String.fromCodePoint(-0)
+let f=String; {let String=3; f(42)}
+let s='abcd'; s.slice(s=1)
+String.prototype.charAt.call(123,1)
+String.prototype.slice.call(null)
+String.prototype.valueOf.call(3)
+let f='abc'.slice; f(1)
+'abc'.missing()
+1()
+new String('😀').length
+new String().toString()
+let s=new String('abc'); s[0]='z'; s.length=7; s[0]+s.length
+new String.fromCharCode(65)
+'😀'.length
+'😀'[0]
+'😀'[1]
+'😀'['01']
+'😀'['-0']
+'😀'[2]
+'a'.concat('\ud800',2,null)
+'\ud800'.isWellFormed()
+'😀'.isWellFormed()
+'\udc00\ud800A😀\udfff'.toWellFormed()
+'a'.padStart(4,'bc')
+'a'.padEnd(4,'bc')
+'a'.padEnd(2,'😀')
+'a'.padStart(3)
+'a'.padStart(Infinity,'')
+'abc'.padEnd(2,{})
+'\ud800'.repeat(2.9)
+'a'.repeat(NaN)
+'a'.repeat(-0.5)
+''.repeat(1e300)
+''.repeat(-1)
+''.repeat(Infinity)
+'\uFEFF\u2028 \ud800 \u3000'.trim()
+' a '.trimStart()
+' a '.trimEnd()
+'\u0085x\u0085'.trim()
+String.raw({raw:['a','b','c']},1,2)
+String.raw({raw:{length:2,0:'a',1:'b'}})
+String.raw({raw:'ab'},3)
+String.raw({raw:[]},{})
+String.raw({raw:{length:1.9}})
+String.raw()
+String.raw({})
+String.raw({raw:null})
+'a,b,'.split(',')[2]
+'a,b,c'.split(',',2).length
+'a'.split(undefined,0).length
+'abc'.split()[0]
+''.split('').length
+''.split(',').length
+'😀'.split('')[1]
+'abc'.split('',-1).length
+'abc'.split('',1.9).length
+'abcabc'.replace('b','X')
+'abcabc'.replaceAll('b','X')
+'abc'.replace('b',"$$:$&:$`:$':$1:$<x>:$")
+'abc'.replaceAll('x','Y')
+'ab'.replaceAll('','-')
+''.replace('','x')
+'ab'.replace('b')
+'ab'.replaceAll('b',String)
+'😀'.replaceAll('', '_')
+'aaa'.replaceAll('aa','b')
+'a'.replace('a',String.fromCodePoint)
+'Straße ﬃ'.toUpperCase()
+'ΟΣ ΟΣΑ İ'.toLowerCase()
+'A\ud800Σ'.toLowerCase()
+'a\udfffz'.toUpperCase()
+'e\u0301'.normalize()
+'é'.normalize('NFD')
+'ﬃ'.normalize('NFKC')
+'①é'.normalize('NFKD')
+'\ud800e\u0301\udfff'.normalize()
+'\u1100\u1161'.normalize('NFC')
+'a'.normalize('bad')
+'a'.normalize(null)
+'a'.normalize('\ud800')
+'abcd'.substr(-2,1)
+'abc'.substr(-Infinity,Infinity)
+'x'.anchor('"&<>')
+'x'.link('"&<>')
+'x'.fontcolor('"&<>')
+'x'.fontsize('"&<>')
+'<x>'.big()
+'<x>'.blink()
+'<x>'.bold()
+'<x>'.fixed()
+'<x>'.italics()
+'<x>'.small()
+'<x>'.strike()
+'<x>'.sub()
+'<x>'.sup()
+''.trimLeft === ''.trimStart
+''.trimRight === ''.trimEnd
+''.trimLeft.name
+null==undefined
+'1'==1
+true==1
+({valueOf(){return 7}})==7
+'own' in {own:1}
+'missing' in {}
+'x' in 1
+let [a,,b=3,...rest]=[1,2,undefined,4];a===1&&b===3&&rest.length===1&&rest[0]===4
+let [a,{b:c},[d=4]]=[1,{b:2},[]];a===1&&c===2&&d===4
+let {a,b:c=2,['d']:e,...rest}={a:1,d:3,z:4};a===1&&c===2&&e===3&&rest.z===4&&rest.a===undefined
+let count=0;let o={get a(){count++;return 1},b:2};let {a,...rest}=o;a===1&&rest.b===2&&rest.a===undefined&&count===1
+function f([a=1,{b}],{c=3,...rest}){return a+b+c+rest.d;}f([undefined,{b:2}],{d:4})
+let total=0;for(let [a,b] of [[1,2],[3,4]]){total+=a*b;}total
+let closed=0;let o={[Symbol.iterator](){return {next(){return {value:7,done:false};},return(){closed++;return {};}};}};let [x]=o;[x,closed].join(',')
+let next=0;let closed=0;let o={[Symbol.iterator](){return {next(){next++;return next===1?{value:1,done:false}:{done:true};},return(){closed++;return {};}};}};let [a,b,c]=o;[a,b,c,next,closed].join(',')
+let proto={inherited:1};let source={a:1,get b(){return 2},__proto__:proto};let object={x:0,...source,a:3};[object.x,object.a,object.b,object.inherited].join(',')
+let object={...null,...undefined,a:1};object.a
+let key=Symbol('key');let source={[key]:1};let object={...source};object[key]
+let object={...'ab'};[object[0],object[1],object.length].join(',')
+let a,b,rest;let source=[1,2,undefined,4];let result=([a,,b=3,...rest]=source);result===source&&a===1&&b===3&&rest.length===1&&rest[0]===4
+let alpha,renamed,rest;let source={alpha:1,gamma:undefined,extra:4};let result=({alpha,gamma:renamed=3,...rest}=source);result===source&&alpha===1&&renamed===3&&rest.extra===4&&rest.alpha===undefined
+let target={};([target.first,target['second']]=[1,2]);target.first===1&&target.second===2
+let left;let target={};([{value:left=1},{value:target.right}]=[{}, {value:2}]);left===1&&target.right===2
+isNaN('not a number')&&isNaN(undefined)&&!isNaN('')&&!isNaN(null)&&!isNaN('Infinity')
+isFinite('1')&&!isFinite(Infinity)&&!isFinite('NaN')&&isFinite(null)
+parseInt('  -0x10')===-16&&parseInt('11',2)===3&&parseInt('z',36)===35&&parseInt('12z',10)===12
+parseFloat('  -1.25e2x')===-125&&parseFloat('Infinitylater')===Infinity&&parseFloat('0x10')===0
+''+(1/parseInt('-0'))
+isNaN===globalThis.isNaN&&isFinite===globalThis.isFinite&&parseInt===globalThis.parseInt&&parseFloat===globalThis.parseFloat
+let value=JSON.parse('{"a":[true,null,3],"b":"x"}');value.a[0]&&value.a[1]===null&&value.a[2]===3&&value.b==='x'
+JSON.stringify({b:2,a:'x',skip:undefined,list:[undefined,NaN,Infinity]})
+JSON.stringify('\ud800\n')
+JSON===globalThis.JSON&&JSON.parse.length===2&&JSON.stringify.length===3
+String.prototype.oracleIsolationProbe = 7
+''.oracleIsolationProbe

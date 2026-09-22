@@ -60,7 +60,9 @@ pub struct FetchedPage {
 /// docs) doesn't have to duplicate the check or its message format.
 pub fn validate_url_scheme(url: &str) -> Result<(), FetchError> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(FetchError::InvalidUrl(format!("unsupported scheme in {url:?} (only http/https are supported)")));
+        return Err(FetchError::InvalidUrl(format!(
+            "unsupported scheme in {url:?} (only http/https are supported)"
+        )));
     }
     Ok(())
 }
@@ -73,14 +75,19 @@ pub fn validate_url_scheme(url: &str) -> Result<(), FetchError> {
 pub fn fetch(url: &str) -> Result<FetchedPage, FetchError> {
     validate_url_scheme(url)?;
 
-    let mut response = ureq::get(url).call().map_err(|e| FetchError::Request(e.to_string()))?;
+    let mut response = ureq::get(url)
+        .call()
+        .map_err(|e| FetchError::Request(e.to_string()))?;
     // MVP simplification: report the requested URL, not the post-
     // redirect one -- ureq follows redirects transparently but this
     // reference client doesn't yet surface the final effective URL
     // (needed for "the browser's address bar shows where you actually
     // ended up", which has no UI to show it in yet anyway).
     let final_url = url.to_string();
-    let body = response.body_mut().read_to_string().map_err(|e| FetchError::Body(e.to_string()))?;
+    let body = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| FetchError::Body(e.to_string()))?;
     Ok(FetchedPage { final_url, body })
 }
 
@@ -107,7 +114,9 @@ mod tests {
 
     #[test]
     fn fetches_a_simple_response_body() {
-        let url = serve_once("HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\n<p>hello</p>\n");
+        let url = serve_once(
+            "HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\n<p>hello</p>\n",
+        );
         let page = fetch(&url).unwrap();
         assert_eq!(page.body, "<p>hello</p>\n");
     }
@@ -122,8 +131,14 @@ mod tests {
     fn validate_url_scheme_accepts_http_and_https_and_rejects_everything_else() {
         assert!(validate_url_scheme("http://example.com").is_ok());
         assert!(validate_url_scheme("https://example.com").is_ok());
-        assert!(matches!(validate_url_scheme("file:///etc/passwd"), Err(FetchError::InvalidUrl(_))));
-        assert!(matches!(validate_url_scheme("not-a-valid-url"), Err(FetchError::InvalidUrl(_))));
+        assert!(matches!(
+            validate_url_scheme("file:///etc/passwd"),
+            Err(FetchError::InvalidUrl(_))
+        ));
+        assert!(matches!(
+            validate_url_scheme("not-a-valid-url"),
+            Err(FetchError::InvalidUrl(_))
+        ));
     }
 
     #[test]
@@ -141,15 +156,25 @@ mod tests {
 
     #[test]
     fn http_error_status_is_a_request_error() {
-        let url = serve_once("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        let url =
+            serve_once("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         let result = fetch(&url);
         assert!(matches!(result, Err(FetchError::Request(_))));
     }
 
     #[test]
     fn fetch_error_messages_are_human_readable() {
-        assert_eq!(FetchError::InvalidUrl("x".to_string()).to_string(), "invalid URL: x");
-        assert_eq!(FetchError::Request("x".to_string()).to_string(), "request failed: x");
-        assert_eq!(FetchError::Body("x".to_string()).to_string(), "reading response body failed: x");
+        assert_eq!(
+            FetchError::InvalidUrl("x".to_string()).to_string(),
+            "invalid URL: x"
+        );
+        assert_eq!(
+            FetchError::Request("x".to_string()).to_string(),
+            "request failed: x"
+        );
+        assert_eq!(
+            FetchError::Body("x".to_string()).to_string(),
+            "reading response body failed: x"
+        );
     }
 }

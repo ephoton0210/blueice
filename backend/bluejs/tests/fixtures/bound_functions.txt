@@ -1,0 +1,64 @@
+# Bound functions, instanceof and literal RegExp text: edition 17 shared semantics.
+let f=String.prototype.slice.bind('abcdef',1); f(4) === 'bcd' && f.call('wrong',3) === 'bc' && f.apply(null,[2]) === 'b'
+function f(a,b,c){return this.x+a+b+c;} let g=f.bind({x:'X'},'a').bind({x:'Y'},'b'); g('c') === 'Xabc'
+function f(){'use strict';return this;} f.bind()() === undefined && f.bind(null)() === null && f.bind(3)() === 3
+function f(){return this;} f.bind(null)() === globalThis && f.bind('a')().valueOf() === 'a'
+function f(){return (()=>this.x).bind({x:'wrong'});} f.call({x:'ok'})() === 'ok'
+function r(prefix,m,p,s){return this.x+prefix+p+s.length;} 'aba'.replaceAll('a',r.bind({x:'X'},'!')) === 'X!03bX!23'
+function r(prefix,m,a,p,s,g){return this.x+prefix+a+p+g.a;} 'aba'.replace(/(?<a>a)/g,r.bind({x:'X'},'!')) === 'X!a0abX!a2a'
+let f=String.prototype.charAt.bind('abc',1); String({toString:f}) === 'b' && Object.prototype.toString.call(f) === '[object Function]' && typeof f === 'function'
+function f(a,b,c){} let g=f.bind(null,1); g.length === 2 && g.name === 'bound f' && g.bind(null).name === 'bound bound f' && g.prototype === undefined
+function f(){} let g=f.bind(null); let l=Object.getOwnPropertyDescriptor(g,'length'); let n=Object.getOwnPropertyDescriptor(g,'name'); !l.writable && !l.enumerable && l.configurable && !n.writable && !n.enumerable && n.configurable && Reflect.ownKeys(g).join() === 'length,name'
+let p=Object.getPrototypeOf(String); let d=Object.getOwnPropertyDescriptor(p,'bind'); d.writable && !d.enumerable && d.configurable && p.bind.length === 1 && p.bind.name === 'bind'
+function f(){} let old={}; let next={}; Object.setPrototypeOf(f,old); let log=''; Object.defineProperty(f,'length',{get(){log+='l';Object.setPrototypeOf(f,next);return 3.9;}}); Object.defineProperty(f,'name',{get(){log+='n';return '\ud800';}}); let g=String.bind.call(f,null,1); Object.getPrototypeOf(g) === old && g.length === 2 && g.name === 'bound \ud800' && log === 'ln'
+function f(){} delete f.length; delete f.name; Object.setPrototypeOf(f,{get length(){throw 1;},name:'inherited'}); let g=String.bind.call(f,null); g.length === 0 && g.name === 'bound inherited'
+function f(){} Object.setPrototypeOf(f,null); let g=String.bind.call(f,null); Object.getPrototypeOf(g) === null && typeof g === 'function' && g() === undefined
+function f(){} Object.defineProperty(f,'name',{value:{toString(){throw 1;}}}); let g=f.bind(null); g.name === 'bound ' && g.toString().includes('[native code]')
+function F(a,b){this.x=a+b;} let ignored={}; let B=F.bind(ignored,2).bind(null,3); B.prototype={wrong:true}; let o=new B(); o.x === 5 && Object.getPrototypeOf(o) === F.prototype && ignored.x === undefined
+let B=String.bind(null,'abc'); let s=new B(); s.valueOf() === 'abc' && Object.getPrototypeOf(s) === String.prototype
+let B=RegExp.bind(null,'a'); let r=new B('g'); r.test('a') && r.flags === 'g' && Object.getPrototypeOf(r) === RegExp.prototype
+function F(a,b){this.x=a+b;} function N(){} let B=F.bind(null,2); let o=Reflect.construct(B,[3],N); o.x === 5 && Object.getPrototypeOf(o) === N.prototype
+function F(){} let B=F.bind(null); let o=Reflect.construct(F,[],B); Object.getPrototypeOf(o) === Object.prototype
+function F(){} let B=F.bind(null); B.prototype={x:1}; Object.getPrototypeOf(Reflect.construct(F,[],B)) === B.prototype && Object.getPrototypeOf(Reflect.construct(B,[],B)) === F.prototype
+function F(){return {x:1};} let B=F.bind(null); (new B()).x === 1
+let B=String.bind(null); let s=new B('a'); s instanceof B && s instanceof String && s instanceof Object && !('a' instanceof B) && !({} instanceof B)
+function F(){} let B=F.bind(null).bind(null); B.prototype={}; let o=new F(); o instanceof B && !(F.prototype instanceof F)
+function F(){} let B=F.bind(null); Object.defineProperty(F,Symbol.hasInstance,{value(v){return v === 'yes';}}); 'yes' instanceof B && !(new F() instanceof B)
+let seen=false; let target={get [Symbol.hasInstance](){seen=true;return function(v){return this === target && v === 3 ? {} : 0;};}}; 3 instanceof target && !(4 instanceof target) && seen
+function F(){} let B=F.bind(null); Object.defineProperty(B,Symbol.hasInstance,{value(v){return v === 1;}}); 1 instanceof B && !(new F() instanceof B)
+let has=String[Symbol.hasInstance]; !has.call({}, {}) && !has.call(null,{}) && !has.call(()=>{},1)
+function F(){} Object.setPrototypeOf(F,null); let B=String.bind.call(F,null); (new B()) instanceof B && (new F()) instanceof F
+function F(){} Object.defineProperty(F,Symbol.hasInstance,{value:undefined}); (new F()) instanceof F
+let p=Object.getPrototypeOf(String); let d=Object.getOwnPropertyDescriptor(p,Symbol.hasInstance); !d.writable && !d.enumerable && !d.configurable && d.value.name === '[Symbol.hasInstance]' && d.value.length === 1
+let f=()=>{}; f.prototype={}; Object.create(f.prototype) instanceof f && !({} instanceof f)
+function F(a,b){this.x=a+b;return a+b;} let B=F; for(let i=0;i<80;i++){B=B.bind(null);} B(2,3) === 5 && (new B(2,3)).x === 5 && (new F()) instanceof B
+function F(){} Object.setPrototypeOf(F,null); let B=F; for(let i=0;i<80;i++){B=String.bind.call(B,null);} (new B()) instanceof B
+let e=RegExp.escape; e.call(null,'abc') === '\\x61bc'
+let d=Object.getOwnPropertyDescriptor(RegExp,'escape'); d.writable && !d.enumerable && d.configurable && d.value.length === 1 && d.value.name === 'escape' && d.value.prototype === undefined
+let s='a+b[0]-😀\ud800'; let p=RegExp.escape(s); let ok=true; for(let f of ['', 'u', 'v']){ok=ok && new RegExp('^'+p+'$',f).test(s);} ok
+new RegExp('(a)\\1'+RegExp.escape('1')).test('aa1')
+new RegExp('\\x0'+RegExp.escape('a')).test('x0a')
+let s='a+b'; ('x'+s+'x'+s).replaceAll(new RegExp(RegExp.escape(s),'g'),'!') === 'x!x!'
+let s='-'; 'a-b-c'.split(new RegExp(RegExp.escape(s),'u')).join('|') === 'a|b|c'
+let s='a.b'; 'a.b ab a.b'.match(new RegExp(RegExp.escape(s),'g')).join('|') === 'a.b|a.b'
+let B=(()=>{}).bind(null); new B()
+let B=String.prototype.slice.bind('a'); new B()
+Reflect.construct(String,[],(()=>{}).bind(null))
+new String.bind(null)
+String.bind.call(null)
+String.bind.call({get length(){throw 1;}})
+String.bind.call(1)
+1 instanceof 1
+({}) instanceof {}
+1 instanceof {[Symbol.hasInstance]:1}
+({}) instanceof (()=>{})
+function F(){} F.prototype=1; ({}) instanceof F
+new RegExp.escape('x')
+let o={x:'s'}; function convert(p,h){return this.x+p+h;} String({[Symbol.toPrimitive]:convert.bind(o,':')}) === 's:string'
+let r=/a/g; r.constructor={[Symbol.species]:RegExp.bind(null)}; [...'aba'.matchAll(r)].length === 2
+function f(){} Object.defineProperty(f,'length',{value:-0}); 1/f.bind(null).length === Infinity
+function f(){} let g=f.bind(null); Object.defineProperty(g,'name',{get(){throw 1;}}); g.toString().includes('[native code]')
+function F(){} Object.defineProperty(F,Symbol.hasInstance,{value:null}); (new F()) instanceof F
+function F(){} let B=F.bind(null); Object.defineProperty(F,Symbol.hasInstance,{value:()=>true}); String[Symbol.hasInstance].call(B,1)
+let n=0; let f=()=>{}; Object.defineProperty(f,'prototype',{get(){n++;return {};}}); !(1 instanceof f) && n === 0 && !({} instanceof f) && n === 1
+function f(...args){return args.join('');} let g=f; for(let i=0;i<80;i++){g=g.bind(null,i%10);} g('!') === '0123456789'.repeat(8)+'!'

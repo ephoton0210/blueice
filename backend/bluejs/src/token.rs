@@ -4,32 +4,31 @@
 
 //! BlueJS tokenizer: a `&str` -> [`Token`] stream, scoped to exactly
 //! `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope (decided)" -- not the
-//! full ECMAScript lexical grammar. Notably absent on purpose (not
-//! oversights): regex literals (the MVP JS scope defers regular
-//! expressions entirely), bitwise/shift operators and `**`
-//! (`&`, `|`, `^`, `~`, `<<`, `>>`, `>>>`, `**` -- the scoped "standard
-//! operator set" names arithmetic/comparison/logical/ternary/
-//! `typeof`/`instanceof` only, and a hand-written DOM script
-//! essentially never needs bitwise math), non-decimal numeric literals
-//! (`0x..`/`0o..`/`0b..`), tagged templates, and legacy octal escapes.
+//! full ECMAScript lexical grammar. The edition 17 implementation track
+//! now extends that original subset: Number/BigInt radix literals and
+//! separators, ECMAScript whitespace/line terminators, string
+//! continuations, and Annex B legacy octal escapes are implemented. Regex
+//! literals, `**`, and tagged templates remain to be implemented.
 //! [`Keyword`] mirrors this: `undefined` is deliberately NOT a keyword
 //! here (unlike `null`/`true`/`false`) because it isn't one in real
 //! ECMAScript either -- it's an ordinary identifier bound to a global
 //! property, so it tokenizes as [`Token::Identifier`] and the parser/
 //! interpreter, not the lexer, is where it becomes meaningful.
 //!
-//! Every character is scanned as a `char` (a Unicode scalar value), not
-//! a UTF-16 code unit -- unlike a spec-faithful engine, this project has
-//! no reason to reproduce ECMAScript's UTF-16-surrogate-pair string
-//! indexing for an MVP subset that never inspects `.length` against
-//! astral-plane input.
+//! Source characters use Rust `char`; cooked literals use UTF-16 code
+//! units so Unicode escapes can preserve lone surrogates losslessly.
+
+use crate::JsString;
+use icu_properties::{props, CodePointSetData};
+use num_bigint::BigInt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Number(f64),
+    BigInt(BigInt),
     /// A plain (non-template) string literal, already "cooked" --
     /// escape sequences resolved to the characters they represent.
-    String(String),
+    String(JsString),
     /// A template literal (`` `...` ``). `quasis.len() ==
     /// raw_expressions.len() + 1` always holds, the same invariant
     /// real engines' `TemplateStringsArray` relies on: quasis are the
@@ -40,10 +39,17 @@ pub enum Token {
     /// text later, rather than recursively tokenizing it inline here,
     /// is this crate's chosen way to handle template nesting without a
     /// stateful lexer-mode stack.
-    Template { quasis: Vec<String>, raw_expressions: Vec<String> },
+    Template {
+        quasis: Vec<JsString>,
+        raw_expressions: Vec<String>,
+    },
     Identifier(String),
+    /// A `#`-prefixed identifier. It is admitted only by class-element and
+    /// private-member parser productions.
+    PrivateIdentifier(String),
     Keyword(Keyword),
     Punct(Punct),
+    Invalid(String),
     Eof,
 }
 
@@ -70,6 +76,8 @@ pub enum Keyword {
     Finally,
     New,
     Typeof,
+    Void,
+    Delete,
     Instanceof,
     In,
     True,
@@ -102,6 +110,8 @@ impl Keyword {
             "finally" => Keyword::Finally,
             "new" => Keyword::New,
             "typeof" => Keyword::Typeof,
+            "void" => Keyword::Void,
+            "delete" => Keyword::Delete,
             "instanceof" => Keyword::Instanceof,
             "in" => Keyword::In,
             "true" => Keyword::True,
@@ -130,6 +140,8 @@ pub enum Punct {
     Plus,
     Minus,
     Star,
+    StarStar,
+    StarStarAssign,
     Slash,
     Percent,
     PlusPlus,
@@ -140,6 +152,12 @@ pub enum Punct {
     StarAssign,
     SlashAssign,
     PercentAssign,
+    ShiftLeftAssign,
+    ShiftRightAssign,
+    UnsignedShiftRightAssign,
+    AndAssign,
+    XorAssign,
+    OrAssign,
     EqEq,
     NotEq,
     EqEqEq,
@@ -148,11 +166,22 @@ pub enum Punct {
     Gt,
     LtEq,
     GtEq,
+    ShiftLeft,
+    ShiftRight,
+    UnsignedShiftRight,
+    And,
+    Xor,
+    Or,
     AndAnd,
+    AndAndAssign,
     OrOr,
+    OrOrAssign,
     Bang,
+    Tilde,
     Question,
     QuestionQuestion,
+    QuestionQuestionAssign,
+    QuestionDot,
 }
 
 /// One lexical error -- a plain message rather than a structured enum,
@@ -166,11 +195,22 @@ pub enum Punct {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LexError {
     pub message: String,
+    pub known_syntax: bool,
 }
 
 impl LexError {
     fn new(message: impl Into<String>) -> LexError {
-        LexError { message: message.into() }
+        LexError {
+            message: message.into(),
+            known_syntax: false,
+        }
+    }
+
+    fn syntax(message: impl Into<String>) -> LexError {
+        LexError {
+            message: message.into(),
+            known_syntax: true,
+        }
     }
 }
 
@@ -186,24 +226,178 @@ impl LexError {
 pub struct SpannedToken {
     pub token: Token,
     pub newline_before: bool,
+    /// Whether this IdentifierName used a Unicode escape.  Contextual
+    /// keywords such as `await` cannot be escaped when the grammar requires
+    /// the keyword spelling, so the parser must retain this lexical fact.
+    pub identifier_escaped: bool,
+    /// Whether this token's string literal used a legacy decimal or octal
+    /// escape. These escapes are accepted only by non-strict script code;
+    /// retain the lexical fact so the parser can enforce that early error.
+    pub legacy_octal_escape: bool,
 }
+
+pub(crate) type TaggedTemplateData = (Vec<JsString>, Vec<Option<JsString>>, Vec<String>);
 
 pub struct Tokenizer {
     input: Vec<char>,
     pos: usize,
+    /// Annex B HTML close comments are recognized only at the start of a
+    /// physical line (after whitespace).  Keep that lexical state here so
+    /// trivia does not need to rescan prior source text.
+    line_start: bool,
+    identifier_escaped: bool,
+    legacy_octal_escape: bool,
+    html_comments_enabled: bool,
 }
 
 fn is_ident_start(c: char) -> bool {
-    c.is_alphabetic() || c == '_' || c == '$'
+    matches!(c, '_' | '$') || CodePointSetData::new::<props::IdStart>().contains(c)
 }
 
 fn is_ident_continue(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '$'
+    matches!(c, '_' | '$' | '\u{200c}' | '\u{200d}')
+        || CodePointSetData::new::<props::IdContinue>().contains(c)
+}
+
+fn is_line_terminator(c: char) -> bool {
+    matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
 }
 
 impl Tokenizer {
+    pub(crate) fn position(&self) -> usize {
+        self.pos
+    }
+
+    pub(crate) fn at_template(&mut self, position: usize) -> bool {
+        self.pos = position;
+        self.skip_trivia().is_ok() && self.peek() == Some('`')
+    }
+
+    pub(crate) fn regexp_at(&mut self, position: usize) -> Result<(JsString, JsString), LexError> {
+        self.pos = position;
+        self.skip_trivia()?;
+        self.advance();
+        let mut pattern = JsString::default();
+        let mut class = false;
+        loop {
+            let c = self
+                .advance()
+                .ok_or_else(|| LexError::new("unterminated RegExp literal"))?;
+            if is_line_terminator(c) {
+                return Err(LexError::new("line terminator in RegExp literal"));
+            }
+            if c == '/' && !class {
+                break;
+            }
+            pattern.push_code_point(c as u32);
+            if c == '\\' {
+                let escaped = self
+                    .advance()
+                    .ok_or_else(|| LexError::new("unterminated RegExp escape"))?;
+                if is_line_terminator(escaped) {
+                    return Err(LexError::new("line terminator in RegExp escape"));
+                }
+                pattern.push_code_point(escaped as u32);
+            } else if c == '[' {
+                class = true;
+            } else if c == ']' {
+                class = false;
+            }
+        }
+        let mut flags = JsString::default();
+        while self.peek().is_some_and(is_ident_continue) {
+            flags.push_code_point(self.advance().unwrap() as u32);
+        }
+        Ok((pattern, flags))
+    }
+
+    pub(crate) fn tagged_template_at(
+        &mut self,
+        position: usize,
+    ) -> Result<TaggedTemplateData, LexError> {
+        self.pos = position;
+        self.skip_trivia()?;
+        self.advance();
+        let mut raw = Vec::new();
+        let mut current = String::new();
+        let mut expressions = Vec::new();
+        loop {
+            let c = self
+                .advance()
+                .ok_or_else(|| LexError::new("unterminated tagged template"))?;
+            if c == '`' {
+                raw.push(current);
+                break;
+            }
+            if c == '$' && self.peek() == Some('{') {
+                self.advance();
+                raw.push(std::mem::take(&mut current));
+                expressions.push(self.scan_raw_until_matching_brace()?);
+            } else if c == '\\' {
+                current.push(c);
+                let c = self
+                    .advance()
+                    .ok_or_else(|| LexError::new("unterminated tagged template escape"))?;
+                if c == '\r' {
+                    if self.peek() == Some('\n') {
+                        self.advance();
+                    }
+                    current.push('\n');
+                } else {
+                    current.push(c);
+                }
+            } else if c == '\r' {
+                if self.peek() == Some('\n') {
+                    self.advance();
+                }
+                current.push('\n');
+            } else {
+                current.push(c);
+            }
+        }
+        let cooked = raw
+            .iter()
+            .map(|raw| {
+                let mut lexer = Tokenizer::new(raw);
+                let mut result = JsString::default();
+                while let Some(c) = lexer.advance() {
+                    if c == '\\' {
+                        match lexer.scan_escape() {
+                            Ok(Some(c)) => result.push_code_point(c),
+                            Ok(None) => {}
+                            Err(_) => return None,
+                        }
+                    } else {
+                        result.push_code_point(c as u32);
+                    }
+                }
+                Some(result)
+            })
+            .collect();
+        Ok((
+            raw.into_iter().map(Into::into).collect(),
+            cooked,
+            expressions,
+        ))
+    }
+
     pub fn new(input: &str) -> Tokenizer {
-        Tokenizer { input: input.chars().collect(), pos: 0 }
+        Tokenizer {
+            input: input.chars().collect(),
+            pos: 0,
+            line_start: true,
+            identifier_escaped: false,
+            legacy_octal_escape: false,
+            html_comments_enabled: true,
+        }
+    }
+
+    /// Modules exclude Annex B's HTML-like comment extensions.
+    pub fn new_module(input: &str) -> Tokenizer {
+        Tokenizer {
+            html_comments_enabled: false,
+            ..Self::new(input)
+        }
     }
 
     fn peek(&self) -> Option<char> {
@@ -216,8 +410,13 @@ impl Tokenizer {
 
     fn advance(&mut self) -> Option<char> {
         let c = self.peek();
-        if c.is_some() {
+        if let Some(c) = c {
             self.pos += 1;
+            if is_line_terminator(c) {
+                self.line_start = true;
+            } else if !crate::primitive::whitespace(c) {
+                self.line_start = false;
+            }
         }
         c
     }
@@ -227,22 +426,72 @@ impl Tokenizer {
     /// [`SpannedToken`]).
     fn skip_trivia(&mut self) -> Result<bool, LexError> {
         let mut saw_newline = false;
+        // Annex B permits a legacy HTML close comment after leading trivia,
+        // and directly after a block comment even when a token preceded that
+        // comment on the same line.
+        let mut html_close_allowed = self.line_start;
         loop {
             match self.peek() {
-                Some('\n') => {
+                Some(c) if is_line_terminator(c) => {
                     saw_newline = true;
                     self.advance();
+                    html_close_allowed = true;
                 }
-                Some(c) if c.is_whitespace() => {
+                Some(c) if crate::primitive::whitespace(c) => {
                     self.advance();
                 }
-                Some('/') if self.peek_at(1) == Some('/') => {
+                // Annex B's legacy HTML comments are lexical comments in
+                // Script code. `<!--` has no line-start restriction, while
+                // `-->` is recognized only after a line terminator and any
+                // following whitespace/comments.
+                Some('<')
+                    if self.peek_at(1) == Some('!')
+                        && self.peek_at(2) == Some('-')
+                        && self.peek_at(3) == Some('-') =>
+                {
+                    if !self.html_comments_enabled {
+                        return Err(LexError::syntax(
+                            "HTML-like comments are not allowed in module code",
+                        ));
+                    }
+                    for _ in 0..4 {
+                        self.advance();
+                    }
                     while let Some(c) = self.peek() {
-                        if c == '\n' {
+                        if is_line_terminator(c) {
                             break;
                         }
                         self.advance();
                     }
+                }
+                Some('-')
+                    if html_close_allowed
+                        && self.peek_at(1) == Some('-')
+                        && self.peek_at(2) == Some('>') =>
+                {
+                    if !self.html_comments_enabled {
+                        return Err(LexError::syntax(
+                            "HTML-like comments are not allowed in module code",
+                        ));
+                    }
+                    for _ in 0..3 {
+                        self.advance();
+                    }
+                    while let Some(c) = self.peek() {
+                        if is_line_terminator(c) {
+                            break;
+                        }
+                        self.advance();
+                    }
+                }
+                Some('/') if self.peek_at(1) == Some('/') => {
+                    while let Some(c) = self.peek() {
+                        if is_line_terminator(c) {
+                            break;
+                        }
+                        self.advance();
+                    }
+                    html_close_allowed = true;
                 }
                 Some('/') if self.peek_at(1) == Some('*') => {
                     self.advance();
@@ -250,13 +499,14 @@ impl Tokenizer {
                     loop {
                         match self.peek() {
                             None => return Err(LexError::new("unterminated block comment")),
-                            Some('\n') => {
+                            Some(c) if is_line_terminator(c) => {
                                 saw_newline = true;
                                 self.advance();
                             }
                             Some('*') if self.peek_at(1) == Some('/') => {
                                 self.advance();
                                 self.advance();
+                                html_close_allowed = true;
                                 break;
                             }
                             Some(_) => {
@@ -273,8 +523,15 @@ impl Tokenizer {
 
     pub fn next_spanned(&mut self) -> Result<SpannedToken, LexError> {
         let newline_before = self.skip_trivia()?;
+        self.identifier_escaped = false;
+        self.legacy_octal_escape = false;
         let token = self.next_token()?;
-        Ok(SpannedToken { token, newline_before })
+        Ok(SpannedToken {
+            token,
+            newline_before,
+            identifier_escaped: self.identifier_escaped,
+            legacy_octal_escape: self.legacy_octal_escape,
+        })
     }
 
     fn next_token(&mut self) -> Result<Token, LexError> {
@@ -292,61 +549,179 @@ impl Tokenizer {
             self.advance();
             return self.scan_template();
         }
-        if is_ident_start(c) {
-            return Ok(self.scan_identifier_or_keyword());
+        if c == '#' {
+            self.advance();
+            return self.scan_private_identifier();
+        }
+        if is_ident_start(c) || (c == '\\' && self.peek_at(1) == Some('u')) {
+            return self.scan_identifier_or_keyword();
         }
         self.scan_punct()
     }
 
     fn scan_number(&mut self) -> Result<Token, LexError> {
-        let start = self.pos;
-        while self.peek().is_some_and(|c| c.is_ascii_digit()) {
+        let leading_zero = self.peek() == Some('0');
+        if leading_zero {
+            let bits = match self.peek_at(1) {
+                Some('b' | 'B') => Some(1),
+                Some('o' | 'O') => Some(3),
+                Some('x' | 'X') => Some(4),
+                _ => None,
+            };
+            if let Some(bits) = bits {
+                self.advance();
+                self.advance();
+                let digits = self.scan_digits(1 << bits, true)?;
+                if digits.is_empty() {
+                    return Err(LexError::new("non-decimal literal requires digits"));
+                }
+                if self.peek() == Some('n') {
+                    self.advance();
+                    return self.finish_bigint(&digits, 1 << bits);
+                }
+                return self.finish_number(crate::primitive::radix_number(&digits, bits));
+            }
+        }
+        let mut text = self.scan_digits(10, !leading_zero)?;
+        if self.peek() == Some('n') {
             self.advance();
+            if leading_zero && text.len() > 1 {
+                return Err(LexError::new(
+                    "decimal BigInt literal cannot have a leading zero",
+                ));
+            }
+            return self.finish_bigint(&text, 10);
+        }
+        // Legacy leading-zero octal literals exist in sloppy scripts.
+        // Unlike leading-zero decimals containing 8/9, they have no
+        // decimal fraction/exponent production (§12.9.3).
+        if leading_zero && text.len() > 1 && text.bytes().all(|b| b <= b'7') {
+            return self.finish_number(crate::primitive::radix_number(&text, 3));
         }
         if self.peek() == Some('.') {
             self.advance();
-            while self.peek().is_some_and(|c| c.is_ascii_digit()) {
-                self.advance();
-            }
+            text.push('.');
+            text.push_str(&self.scan_digits(10, true)?);
         }
         if matches!(self.peek(), Some('e') | Some('E')) {
-            let save = self.pos;
             self.advance();
+            text.push('e');
             if matches!(self.peek(), Some('+') | Some('-')) {
-                self.advance();
+                text.push(self.advance().unwrap());
             }
-            if self.peek().is_some_and(|c| c.is_ascii_digit()) {
-                while self.peek().is_some_and(|c| c.is_ascii_digit()) {
-                    self.advance();
-                }
-            } else {
-                // Not actually an exponent (e.g. `1.e`, a trailing
-                // stray identifier char) -- back out rather than
-                // consuming a malformed exponent.
-                self.pos = save;
+            let digits = self.scan_digits(10, true)?;
+            if digits.is_empty() {
+                return Err(LexError::new("exponent requires digits"));
             }
+            text.push_str(&digits);
         }
-        let text: String = self.input[start..self.pos].iter().collect();
-        text.parse::<f64>().map(Token::Number).map_err(|_| LexError::new(format!("invalid number literal '{text}'")))
+        // Validated decimal syntax; overflow/underflow become infinity/zero.
+        self.finish_number(text.parse().expect("scanner emits valid decimal syntax"))
     }
 
-    fn scan_escape(&mut self) -> Result<Option<char>, LexError> {
+    fn scan_digits(&mut self, radix: u32, separators: bool) -> Result<String, LexError> {
+        let mut digits = String::new();
+        loop {
+            match self.peek() {
+                Some(c) if c.is_digit(radix) => {
+                    digits.push(c);
+                    self.advance();
+                }
+                Some('_') => {
+                    if !separators
+                        || digits.is_empty()
+                        || !self.peek_at(1).is_some_and(|c| c.is_digit(radix))
+                    {
+                        return Err(LexError::new("numeric separator must occur between digits"));
+                    }
+                    self.advance();
+                }
+                _ => return Ok(digits),
+            }
+        }
+    }
+
+    fn finish_number(&self, number: f64) -> Result<Token, LexError> {
+        if self
+            .peek()
+            .is_some_and(|c| is_ident_start(c) || c.is_ascii_digit() || c == '\\')
+        {
+            return Err(LexError::new(
+                "identifier or digit immediately after numeric literal",
+            ));
+        }
+        Ok(Token::Number(number))
+    }
+
+    fn finish_bigint(&self, digits: &str, radix: u32) -> Result<Token, LexError> {
+        if self
+            .peek()
+            .is_some_and(|c| is_ident_start(c) || c.is_ascii_digit() || c == '\\')
+        {
+            return Err(LexError::new(
+                "identifier or digit immediately after BigInt literal",
+            ));
+        }
+        let value = BigInt::parse_bytes(digits.as_bytes(), radix)
+            .expect("scanner validates BigInt literal digits");
+        Ok(Token::BigInt(value))
+    }
+
+    fn scan_escape(&mut self) -> Result<Option<u32>, LexError> {
         // Caller has already consumed the leading '\\'.
-        let c = self.advance().ok_or_else(|| LexError::new("unterminated escape sequence"))?;
+        let c = self
+            .advance()
+            .ok_or_else(|| LexError::new("unterminated escape sequence"))?;
         Ok(Some(match c {
-            'n' => '\n',
-            't' => '\t',
-            'r' => '\r',
-            'b' => '\u{8}',
-            'f' => '\u{c}',
-            'v' => '\u{b}',
-            '0' => '\0',
-            '\n' => return Ok(None), // line continuation: escaped newline contributes nothing
-            '\'' | '"' | '`' | '\\' | '$' => c,
+            'n' => 0x0a,
+            't' => 0x09,
+            'r' => 0x0d,
+            'b' => 0x08,
+            'f' => 0x0c,
+            'v' => 0x0b,
+            // Annex B.1.2's LegacyOctalEscapeSequence. A leading 0 may
+            // consume two following octal digits; a leading 1-3 can consume
+            // two; and 4-7 can consume one. `\\000`, for example, is one
+            // NUL code unit, not `\\0` followed by two literal zeroes.
+            '0'..='7' => {
+                let first = c.to_digit(8).expect("octal range is valid");
+                let mut value = first;
+                let mut consumed_extra = 0;
+                let limit = if first <= 3 { 2 } else { 1 };
+                while consumed_extra < limit {
+                    let Some(next) = self.peek().filter(|next| ('0'..='7').contains(next)) else {
+                        break;
+                    };
+                    self.advance();
+                    value = value * 8 + next.to_digit(8).expect("octal range is valid");
+                    consumed_extra += 1;
+                }
+                // A bare `\\0` is the ordinary NullEscape. Every other
+                // form here is legacy-only and invalid in strict code.
+                self.legacy_octal_escape = first != 0 || consumed_extra != 0;
+                value
+            }
+            // NonOctalDecimalEscapeSequence is likewise prohibited in
+            // strict code, while preserving Annex B's sloppy-mode cooking.
+            '8' | '9' => {
+                self.legacy_octal_escape = true;
+                c as u32
+            }
+            c if is_line_terminator(c) => {
+                if c == '\r' && self.peek() == Some('\n') {
+                    self.advance();
+                }
+                return Ok(None); // A whole LineTerminatorSequence contributes nothing.
+            }
+            '\'' | '"' | '`' | '\\' | '$' => c as u32,
             'x' => {
-                let hex: String = (0..2).map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\x escape"))).collect::<Result<_, _>>()?;
-                let code = u32::from_str_radix(&hex, 16).map_err(|_| LexError::new(format!("invalid \\x escape '{hex}'")))?;
-                char::from_u32(code).ok_or_else(|| LexError::new("invalid \\x escape codepoint"))?
+                let hex: String = (0..2)
+                    .map(|_| {
+                        self.advance()
+                            .ok_or_else(|| LexError::new("unterminated \\x escape"))
+                    })
+                    .collect::<Result<_, _>>()?;
+                Self::hex_escape(&hex, "\\x")?
             }
             'u' => {
                 if self.peek() == Some('{') {
@@ -355,22 +730,40 @@ impl Tokenizer {
                     while self.peek().is_some_and(|c| c != '}') {
                         hex.push(self.advance().unwrap());
                     }
-                    self.advance().ok_or_else(|| LexError::new("unterminated \\u{...} escape"))?;
-                    let code = u32::from_str_radix(&hex, 16).map_err(|_| LexError::new(format!("invalid \\u{{...}} escape '{hex}'")))?;
-                    char::from_u32(code).ok_or_else(|| LexError::new("invalid \\u{...} escape codepoint"))?
+                    self.advance()
+                        .ok_or_else(|| LexError::new("unterminated \\u{...} escape"))?;
+                    let code = Self::hex_escape(&hex, "\\u{...}")?;
+                    if code > 0x10ffff {
+                        return Err(LexError::new("invalid \\u{...} escape codepoint"));
+                    }
+                    code
                 } else {
-                    let hex: String = (0..4).map(|_| self.advance().ok_or_else(|| LexError::new("unterminated \\u escape"))).collect::<Result<_, _>>()?;
-                    let code = u32::from_str_radix(&hex, 16).map_err(|_| LexError::new(format!("invalid \\u escape '{hex}'")))?;
-                    char::from_u32(code).ok_or_else(|| LexError::new("invalid \\u escape codepoint"))?
+                    let hex: String = (0..4)
+                        .map(|_| {
+                            self.advance()
+                                .ok_or_else(|| LexError::new("unterminated \\u escape"))
+                        })
+                        .collect::<Result<_, _>>()?;
+                    Self::hex_escape(&hex, "\\u")?
                 }
             }
-            other => other, // an unrecognized escape just yields the escaped character itself, matching ECMAScript's `NonEscapeCharacter` fallback
+            other => other as u32, // NonEscapeCharacter, including astral source characters.
         }))
+    }
+
+    fn hex_escape(hex: &str, kind: &str) -> Result<u32, LexError> {
+        // ECMA-262 (2026) §12.9.4 requires HexDigits, not the optional
+        // leading '+' accepted by Rust's from_str_radix.
+        if hex.is_empty() || !hex.bytes().all(|c| c.is_ascii_hexdigit()) {
+            return Err(LexError::new(format!("invalid {kind} escape '{hex}'")));
+        }
+        u32::from_str_radix(hex, 16)
+            .map_err(|_| LexError::new(format!("invalid {kind} escape '{hex}'")))
     }
 
     fn scan_string(&mut self, quote: char) -> Result<Token, LexError> {
         self.advance(); // opening quote
-        let mut out = String::new();
+        let mut out = JsString::default();
         loop {
             match self.peek() {
                 None => return Err(LexError::new("unterminated string literal")),
@@ -378,16 +771,20 @@ impl Tokenizer {
                     self.advance();
                     return Ok(Token::String(out));
                 }
-                Some('\n') => return Err(LexError::new("unterminated string literal (line terminator)")),
+                Some('\n' | '\r') => {
+                    return Err(LexError::new(
+                        "unterminated string literal (line terminator)",
+                    ))
+                }
                 Some('\\') => {
                     self.advance();
                     if let Some(c) = self.scan_escape()? {
-                        out.push(c);
+                        out.push_code_point(c);
                     }
                 }
                 Some(c) => {
                     self.advance();
-                    out.push(c);
+                    out.push_code_point(c as u32);
                 }
             }
         }
@@ -408,14 +805,17 @@ impl Tokenizer {
     fn scan_template(&mut self) -> Result<Token, LexError> {
         let mut quasis = Vec::new();
         let mut raw_expressions = Vec::new();
-        let mut current = String::new();
+        let mut current = JsString::default();
         loop {
             match self.peek() {
                 None => return Err(LexError::new("unterminated template literal")),
                 Some('`') => {
                     self.advance();
                     quasis.push(current);
-                    return Ok(Token::Template { quasis, raw_expressions });
+                    return Ok(Token::Template {
+                        quasis,
+                        raw_expressions,
+                    });
                 }
                 Some('$') if self.peek_at(1) == Some('{') => {
                     self.advance();
@@ -426,133 +826,150 @@ impl Tokenizer {
                 Some('\\') => {
                     self.advance();
                     if let Some(c) = self.scan_escape()? {
-                        current.push(c);
+                        current.push_code_point(c);
                     }
                 }
-                Some(c) => {
+                Some('\r') => {
                     self.advance();
-                    current.push(c);
-                }
-            }
-        }
-    }
-
-    /// Consumes raw source text up to (and including, but not returning)
-    /// the `}` that closes a template placeholder's `${` -- tracking
-    /// brace depth and skipping over nested string/template literals so
-    /// a `}` or a `{`/`}` pair *inside* a nested string or template
-    /// (e.g. `` `${ `${a}` }` `` or `${ "}" }`) doesn't miscount.
-    fn scan_raw_until_matching_brace(&mut self) -> Result<String, LexError> {
-        let mut depth = 1u32;
-        let mut out = String::new();
-        loop {
-            match self.peek() {
-                None => return Err(LexError::new("unterminated template placeholder")),
-                Some('{') => {
-                    depth += 1;
-                    out.push(self.advance().unwrap());
-                }
-                Some('}') => {
-                    depth -= 1;
-                    if depth == 0 {
+                    if self.peek() == Some('\n') {
                         self.advance();
-                        return Ok(out);
                     }
-                    out.push(self.advance().unwrap());
-                }
-                Some(q @ ('"' | '\'')) => {
-                    out.push(q);
-                    self.advance();
-                    self.copy_raw_string_body(q, &mut out)?;
-                }
-                Some('`') => {
-                    out.push('`');
-                    self.advance();
-                    self.copy_raw_template_body(&mut out)?;
+                    current.push_code_point('\n' as u32);
                 }
                 Some(c) => {
-                    out.push(c);
                     self.advance();
+                    current.push_code_point(c as u32);
                 }
             }
         }
     }
 
-    /// Copies a plain string literal's raw source (delimiter already
-    /// consumed by the caller and pushed to `out`) verbatim into `out`,
-    /// including its closing delimiter -- for
-    /// [`Tokenizer::scan_raw_until_matching_brace`]'s brace-counting to
-    /// skip over quoted braces without needing to interpret escapes.
-    fn copy_raw_string_body(&mut self, quote: char, out: &mut String) -> Result<(), LexError> {
+    /// Ask the expression parser which closing brace ends this placeholder.
+    /// Brace counting cannot distinguish a RegExp body, division, comments,
+    /// object literals, or nested templates. Each candidate is a finite prefix
+    /// ending in `}`, so recursive template parsing always consumes less source.
+    fn scan_raw_until_matching_brace(&mut self) -> Result<String, LexError> {
+        let mut out = String::new();
+        while let Some(c) = self.advance() {
+            out.push(c);
+            if c == '}' && crate::parser::closes_template_placeholder(&out) {
+                out.pop();
+                return Ok(out);
+            }
+        }
+        Err(LexError::new(
+            "unterminated or invalid template placeholder",
+        ))
+    }
+
+    fn scan_identifier_or_keyword(&mut self) -> Result<Token, LexError> {
+        let mut text = String::new();
         loop {
-            match self.peek() {
-                None => return Err(LexError::new("unterminated string literal inside template placeholder")),
-                Some(c) if c == quote => {
-                    out.push(c);
-                    self.advance();
-                    return Ok(());
-                }
+            let first = text.is_empty();
+            let character = match self.peek() {
                 Some('\\') => {
-                    out.push('\\');
-                    self.advance();
-                    if let Some(c) = self.advance() {
-                        out.push(c);
-                    }
+                    self.identifier_escaped = true;
+                    self.scan_identifier_escape()?
                 }
-                Some(c) => {
-                    out.push(c);
+                Some(character)
+                    if if first {
+                        is_ident_start(character)
+                    } else {
+                        is_ident_continue(character)
+                    } =>
+                {
                     self.advance();
+                    character
                 }
+                _ => break,
+            };
+            if if first {
+                !is_ident_start(character)
+            } else {
+                !is_ident_continue(character)
+            } {
+                return Err(LexError::new(
+                    "unicode escape does not form a valid identifier character",
+                ));
             }
+            text.push(character);
         }
-    }
-
-    /// Same idea as [`Tokenizer::copy_raw_string_body`], but for a
-    /// nested template literal, recursing into its own `${...}`
-    /// placeholders (via [`Tokenizer::scan_raw_until_matching_brace`])
-    /// so a `{`/`}` nested arbitrarily deep still balances correctly.
-    fn copy_raw_template_body(&mut self, out: &mut String) -> Result<(), LexError> {
-        loop {
-            match self.peek() {
-                None => return Err(LexError::new("unterminated template literal inside template placeholder")),
-                Some('`') => {
-                    out.push('`');
-                    self.advance();
-                    return Ok(());
-                }
-                Some('\\') => {
-                    out.push('\\');
-                    self.advance();
-                    if let Some(c) = self.advance() {
-                        out.push(c);
-                    }
-                }
-                Some('$') if self.peek_at(1) == Some('{') => {
-                    out.push_str("${");
-                    self.advance();
-                    self.advance();
-                    let inner = self.scan_raw_until_matching_brace()?;
-                    out.push_str(&inner);
-                    out.push('}');
-                }
-                Some(c) => {
-                    out.push(c);
-                    self.advance();
-                }
-            }
-        }
-    }
-
-    fn scan_identifier_or_keyword(&mut self) -> Token {
-        let start = self.pos;
-        while self.peek().is_some_and(is_ident_continue) {
-            self.advance();
-        }
-        let text: String = self.input[start..self.pos].iter().collect();
         match Keyword::from_str(&text) {
-            Some(kw) => Token::Keyword(kw),
-            None => Token::Identifier(text),
+            Some(kw) => Ok(Token::Keyword(kw)),
+            None => Ok(Token::Identifier(text)),
         }
+    }
+
+    fn scan_private_identifier(&mut self) -> Result<Token, LexError> {
+        let mut text = String::new();
+        loop {
+            let first = text.is_empty();
+            let character = match self.peek() {
+                Some('\\') => {
+                    self.identifier_escaped = true;
+                    self.scan_identifier_escape()?
+                }
+                Some(character)
+                    if if first {
+                        is_ident_start(character)
+                    } else {
+                        is_ident_continue(character)
+                    } =>
+                {
+                    self.advance();
+                    character
+                }
+                _ => break,
+            };
+            if if first {
+                !is_ident_start(character)
+            } else {
+                !is_ident_continue(character)
+            } {
+                return Err(LexError::new(
+                    "unicode escape does not form a valid private identifier character",
+                ));
+            }
+            text.push(character);
+        }
+        if text.is_empty() {
+            return Err(LexError::new("private identifier requires a name"));
+        }
+        Ok(Token::PrivateIdentifier(text))
+    }
+
+    fn scan_identifier_escape(&mut self) -> Result<char, LexError> {
+        debug_assert_eq!(self.peek(), Some('\\'));
+        self.advance();
+        if self.advance() != Some('u') {
+            return Err(LexError::new("identifier escape must use \\u"));
+        }
+        let code = if self.peek() == Some('{') {
+            self.advance();
+            let mut hex = String::new();
+            while self.peek().is_some_and(|character| character != '}') {
+                hex.push(self.advance().unwrap());
+            }
+            self.advance()
+                .ok_or_else(|| LexError::new("unterminated \\u{...} identifier escape"))?;
+            let code = Self::hex_escape(&hex, "\\u{...}")?;
+            if code > 0x10ffff {
+                return Err(LexError::new(
+                    "invalid \\u{...} identifier escape codepoint",
+                ));
+            }
+            code
+        } else {
+            let hex: String = (0..4)
+                .map(|_| {
+                    self.advance()
+                        .ok_or_else(|| LexError::new("unterminated \\u identifier escape"))
+                })
+                .collect::<Result<_, _>>()?;
+            Self::hex_escape(&hex, "\\u")?
+        };
+        char::from_u32(code)
+            .ok_or_else(|| LexError::new("identifier escape is not a Unicode scalar value"))
     }
 
     fn scan_punct(&mut self) -> Result<Token, LexError> {
@@ -612,7 +1029,15 @@ impl Tokenizer {
                 _ => Punct::Minus,
             },
             '*' => {
-                if self.peek() == Some('=') {
+                if self.peek() == Some('*') {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::StarStarAssign
+                    } else {
+                        Punct::StarStar
+                    }
+                } else if self.peek() == Some('=') {
                     self.advance();
                     Punct::StarAssign
                 } else {
@@ -662,28 +1087,88 @@ impl Tokenizer {
                     Punct::Bang
                 }
             }
-            '<' => two!('=', Punct::LtEq, Punct::Lt),
-            '>' => two!('=', Punct::GtEq, Punct::Gt),
+            '<' => {
+                if self.peek() == Some('<') {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::ShiftLeftAssign
+                    } else {
+                        Punct::ShiftLeft
+                    }
+                } else {
+                    two!('=', Punct::LtEq, Punct::Lt)
+                }
+            }
+            '>' => {
+                if self.peek() == Some('>') {
+                    self.advance();
+                    if self.peek() == Some('>') {
+                        self.advance();
+                        if self.peek() == Some('=') {
+                            self.advance();
+                            Punct::UnsignedShiftRightAssign
+                        } else {
+                            Punct::UnsignedShiftRight
+                        }
+                    } else if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::ShiftRightAssign
+                    } else {
+                        Punct::ShiftRight
+                    }
+                } else {
+                    two!('=', Punct::GtEq, Punct::Gt)
+                }
+            }
             '&' => {
                 if self.peek() == Some('&') {
                     self.advance();
-                    Punct::AndAnd
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::AndAndAssign
+                    } else {
+                        Punct::AndAnd
+                    }
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    Punct::AndAssign
                 } else {
-                    return Err(LexError::new("bitwise '&' is not supported (out of BlueJS's MVP scope)"));
+                    Punct::And
                 }
             }
             '|' => {
                 if self.peek() == Some('|') {
                     self.advance();
-                    Punct::OrOr
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::OrOrAssign
+                    } else {
+                        Punct::OrOr
+                    }
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    Punct::OrAssign
                 } else {
-                    return Err(LexError::new("bitwise '|' is not supported (out of BlueJS's MVP scope)"));
+                    Punct::Or
                 }
             }
+            '^' => two!('=', Punct::XorAssign, Punct::Xor),
+            '~' => Punct::Tilde,
             '?' => {
                 if self.peek() == Some('?') {
                     self.advance();
-                    Punct::QuestionQuestion
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Punct::QuestionQuestionAssign
+                    } else {
+                        Punct::QuestionQuestion
+                    }
+                } else if self.peek() == Some('.')
+                    && !self.peek_at(1).is_some_and(|c| c.is_ascii_digit())
+                {
+                    self.advance();
+                    Punct::QuestionDot
                 } else {
                     Punct::Question
                 }
@@ -719,41 +1204,125 @@ mod tests {
         assert_eq!(tokens("1e3"), vec![Token::Number(1000.0), Token::Eof]);
         assert_eq!(tokens("1.5e-2"), vec![Token::Number(0.015), Token::Eof]);
         assert_eq!(tokens("0"), vec![Token::Number(0.0), Token::Eof]);
+        // Assert token boundaries independently of the full parser/VM.
+        assert_eq!(
+            tokens("0xA_B 0b1_0 0o7_0 07 08 1_0 0.5"),
+            vec![
+                Token::Number(171.0),
+                Token::Number(2.0),
+                Token::Number(56.0),
+                Token::Number(7.0),
+                Token::Number(8.0),
+                Token::Number(10.0),
+                Token::Number(0.5),
+                Token::Eof,
+            ]
+        );
     }
 
     #[test]
-    fn a_trailing_e_with_no_exponent_digits_is_not_consumed_as_an_exponent() {
-        // `1.e` isn't a valid exponent (no digits after 'e'), so the
-        // tokenizer backs out and leaves `e` to be scanned as its own
-        // token, matching real engines' behavior for this edge case.
-        assert_eq!(tokens("1.e"), vec![Token::Number(1.0), Token::Identifier("e".to_string()), Token::Eof]);
+    fn an_exponent_without_digits_is_a_lexical_error() {
+        assert!(Tokenizer::new("1.e").next_spanned().is_err());
+        for source in ["0x", "1_", "123abc"] {
+            assert!(Tokenizer::new(source).next_spanned().is_err(), "{source}");
+        }
+    }
+
+    #[test]
+    fn template_cooking_normalizes_newlines_but_preserves_placeholder_comments() {
+        assert_eq!(
+            tokens("`a\r\nb${1/* } */+2}c\rd`"),
+            vec![
+                Token::Template {
+                    quasis: vec!["a\nb".into(), "c\nd".into()],
+                    raw_expressions: vec!["1/* } */+2".into()]
+                },
+                Token::Eof,
+            ]
+        );
+        for newline in ["\n", "\r", "\r\n", "\u{2028}", "\u{2029}"] {
+            assert_eq!(
+                tokens(&format!("'a\\{newline}b'")),
+                vec![Token::String("ab".into()), Token::Eof]
+            );
+            let mut tokenizer = Tokenizer::new(&format!("/*{newline}*/x"));
+            let spanned = tokenizer.next_spanned().unwrap();
+            assert!(spanned.newline_before);
+            assert_eq!(spanned.token, Token::Identifier("x".into()));
+        }
+        assert!(Tokenizer::new("`${1/* unterminated }`")
+            .next_spanned()
+            .is_err());
     }
 
     #[test]
     fn scans_every_simple_escape_sequence() {
-        assert_eq!(tokens(r"'\t\r\b\f\v\0'"), vec![Token::String("\t\r\u{8}\u{c}\u{b}\0".to_string()), Token::Eof]);
-        assert_eq!(tokens(r"'\q'"), vec![Token::String("q".to_string()), Token::Eof]); // unrecognized escape: falls back to the escaped character itself
+        assert_eq!(
+            tokens(r"'\t\r\b\f\v\0'"),
+            vec![Token::String("\t\r\u{8}\u{c}\u{b}\0".into()), Token::Eof]
+        );
+        assert_eq!(tokens(r"'\q'"), vec![Token::String("q".into()), Token::Eof]);
+        // unrecognized escape: falls back to the escaped character itself
+    }
+
+    #[test]
+    fn scans_legacy_octal_escapes_as_one_escape_sequence() {
+        assert_eq!(
+            tokens(r"'\000\007\010\377\400'"),
+            vec![Token::String("\0\u{7}\u{8}\u{ff} 0".into()), Token::Eof,]
+        );
+
+        let mut tokenizer = Tokenizer::new(r"'\000'");
+        assert!(tokenizer.next_spanned().unwrap().legacy_octal_escape);
+        let mut tokenizer = Tokenizer::new(r"'\0'");
+        assert!(!tokenizer.next_spanned().unwrap().legacy_octal_escape);
+        let mut tokenizer = Tokenizer::new(r"'\8'");
+        assert!(tokenizer.next_spanned().unwrap().legacy_octal_escape);
     }
 
     #[test]
     fn a_backslash_newline_is_a_line_continuation_contributing_no_character() {
-        assert_eq!(tokens("'a\\\nb'"), vec![Token::String("ab".to_string()), Token::Eof]);
+        assert_eq!(
+            tokens("'a\\\nb'"),
+            vec![Token::String("ab".into()), Token::Eof]
+        );
     }
 
     #[test]
     fn scans_a_bare_four_hex_digit_unicode_escape_without_braces() {
-        assert_eq!(tokens("'\\u0041'"), vec![Token::String("A".to_string()), Token::Eof]);
+        assert_eq!(
+            tokens("'\\u0041'"),
+            vec![Token::String("A".into()), Token::Eof]
+        );
     }
 
     #[test]
     fn scans_string_literals_with_escapes() {
-        assert_eq!(tokens(r#""hello""#), vec![Token::String("hello".to_string()), Token::Eof]);
-        assert_eq!(tokens("'hello'"), vec![Token::String("hello".to_string()), Token::Eof]);
-        assert_eq!(tokens(r#""a\nb""#), vec![Token::String("a\nb".to_string()), Token::Eof]);
-        assert_eq!(tokens(r#""a\"b""#), vec![Token::String("a\"b".to_string()), Token::Eof]);
-        assert_eq!(tokens(r"'\u{1F600}'"), vec![Token::String("\u{1F600}".to_string()), Token::Eof]);
-        assert_eq!(tokens(r"'A'"), vec![Token::String("A".to_string()), Token::Eof]);
-        assert_eq!(tokens(r"'\x41'"), vec![Token::String("A".to_string()), Token::Eof]);
+        assert_eq!(
+            tokens(r#""hello""#),
+            vec![Token::String("hello".into()), Token::Eof]
+        );
+        assert_eq!(
+            tokens("'hello'"),
+            vec![Token::String("hello".into()), Token::Eof]
+        );
+        assert_eq!(
+            tokens(r#""a\nb""#),
+            vec![Token::String("a\nb".into()), Token::Eof]
+        );
+        assert_eq!(
+            tokens(r#""a\"b""#),
+            vec![Token::String("a\"b".into()), Token::Eof]
+        );
+        assert_eq!(
+            tokens(r"'\u{1F600}'"),
+            vec![Token::String("\u{1F600}".into()), Token::Eof]
+        );
+        assert_eq!(tokens(r"'A'"), vec![Token::String("A".into()), Token::Eof]);
+        assert_eq!(
+            tokens(r"'\x41'"),
+            vec![Token::String("A".into()), Token::Eof]
+        );
     }
 
     #[test]
@@ -764,14 +1333,65 @@ mod tests {
 
     #[test]
     fn scans_identifiers_and_keywords() {
-        assert_eq!(tokens("foo _bar $baz"), vec![Token::Identifier("foo".to_string()), Token::Identifier("_bar".to_string()), Token::Identifier("$baz".to_string()), Token::Eof]);
-        assert_eq!(tokens("undefined"), vec![Token::Identifier("undefined".to_string()), Token::Eof]);
-        assert_eq!(tokens("let x = true"), vec![Token::Keyword(Keyword::Let), Token::Identifier("x".to_string()), Token::Punct(Punct::Assign), Token::Keyword(Keyword::True), Token::Eof]);
+        assert_eq!(
+            tokens("foo _bar $baz"),
+            vec![
+                Token::Identifier("foo".to_string()),
+                Token::Identifier("_bar".to_string()),
+                Token::Identifier("$baz".to_string()),
+                Token::Eof
+            ]
+        );
+        assert_eq!(
+            tokens(r"\u0065xtends \u{61}sync"),
+            vec![
+                Token::Identifier("extends".to_string()),
+                Token::Identifier("async".to_string()),
+                Token::Eof
+            ]
+        );
+        assert!(Tokenizer::new(r"\u0030").next_spanned().is_err());
+        assert_eq!(
+            tokens("undefined"),
+            vec![Token::Identifier("undefined".to_string()), Token::Eof]
+        );
+        assert_eq!(
+            tokens("let x = true"),
+            vec![
+                Token::Keyword(Keyword::Let),
+                Token::Identifier("x".to_string()),
+                Token::Punct(Punct::Assign),
+                Token::Keyword(Keyword::True),
+                Token::Eof
+            ]
+        );
+        // ECMAScript uses Unicode ID_Start/ID_Continue, rather than Rust's
+        // alphabetic/alphanumeric approximation, and additionally permits
+        // ZWNJ/ZWJ after the first code point.
+        assert_eq!(
+            tokens("℘x a\u{200c}b \\u{2118}\\u{200d}c"),
+            vec![
+                Token::Identifier("℘x".to_string()),
+                Token::Identifier("a\u{200c}b".to_string()),
+                Token::Identifier("℘\u{200d}c".to_string()),
+                Token::Eof,
+            ]
+        );
+        assert!(Tokenizer::new("\u{200c}name").next_spanned().is_err());
     }
 
     #[test]
     fn scans_a_simple_template_literal_with_no_placeholders() {
-        assert_eq!(tokens("`hello`"), vec![Token::Template { quasis: vec!["hello".to_string()], raw_expressions: vec![] }, Token::Eof]);
+        assert_eq!(
+            tokens("`hello`"),
+            vec![
+                Token::Template {
+                    quasis: vec!["hello".into()],
+                    raw_expressions: vec![]
+                },
+                Token::Eof
+            ]
+        );
     }
 
     #[test]
@@ -779,7 +1399,10 @@ mod tests {
         assert_eq!(
             tokens("`a${x}b${y + 1}c`"),
             vec![
-                Token::Template { quasis: vec!["a".to_string(), "b".to_string(), "c".to_string()], raw_expressions: vec!["x".to_string(), "y + 1".to_string()] },
+                Token::Template {
+                    quasis: vec!["a".into(), "b".into(), "c".into()],
+                    raw_expressions: vec!["x".to_string(), "y + 1".to_string()]
+                },
                 Token::Eof
             ]
         );
@@ -787,7 +1410,16 @@ mod tests {
 
     #[test]
     fn template_literal_body_text_resolves_escapes() {
-        assert_eq!(tokens("`a\\nb`"), vec![Token::Template { quasis: vec!["a\nb".to_string()], raw_expressions: vec![] }, Token::Eof]);
+        assert_eq!(
+            tokens("`a\\nb`"),
+            vec![
+                Token::Template {
+                    quasis: vec!["a\nb".into()],
+                    raw_expressions: vec![]
+                },
+                Token::Eof
+            ]
+        );
     }
 
     #[test]
@@ -805,20 +1437,65 @@ mod tests {
 
     #[test]
     fn template_placeholder_nested_string_and_template_bodies_handle_escapes() {
-        // Exercises `copy_raw_string_body`'s and `copy_raw_template_body`'s
+        // Exercises nested strings and templates with
         // own backslash-escape handling (distinct from `scan_escape`,
         // since this is *raw* copying for brace-balancing, not cooking).
-        assert_eq!(tokens(r#"`${ "a\"}" }`"#), vec![Token::Template { quasis: vec![String::new(), String::new()], raw_expressions: vec![" \"a\\\"}\" ".to_string()] }, Token::Eof]);
+        assert_eq!(
+            tokens(r#"`${ "a\"}" }`"#),
+            vec![
+                Token::Template {
+                    quasis: vec![Default::default(), Default::default()],
+                    raw_expressions: vec![" \"a\\\"}\" ".to_string()]
+                },
+                Token::Eof
+            ]
+        );
         let toks = tokens("`${ `a\\`b${1}` }`");
-        assert_eq!(toks, vec![Token::Template { quasis: vec![String::new(), String::new()], raw_expressions: vec![" `a\\`b${1}` ".to_string()] }, Token::Eof]);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Template {
+                    quasis: vec![Default::default(), Default::default()],
+                    raw_expressions: vec![" `a\\`b${1}` ".to_string()]
+                },
+                Token::Eof
+            ]
+        );
     }
 
     #[test]
     fn template_placeholder_can_contain_braces_strings_and_nested_templates() {
-        assert_eq!(tokens("`${ {} }`"), vec![Token::Template { quasis: vec![String::new(), String::new()], raw_expressions: vec![" {} ".to_string()] }, Token::Eof]);
-        assert_eq!(tokens(r#"`${ "}" }`"#), vec![Token::Template { quasis: vec![String::new(), String::new()], raw_expressions: vec![r#" "}" "#.to_string()] }, Token::Eof]);
+        assert_eq!(
+            tokens("`${ {} }`"),
+            vec![
+                Token::Template {
+                    quasis: vec![Default::default(), Default::default()],
+                    raw_expressions: vec![" {} ".to_string()]
+                },
+                Token::Eof
+            ]
+        );
+        assert_eq!(
+            tokens(r#"`${ "}" }`"#),
+            vec![
+                Token::Template {
+                    quasis: vec![Default::default(), Default::default()],
+                    raw_expressions: vec![r#" "}" "#.to_string()]
+                },
+                Token::Eof
+            ]
+        );
         let toks = tokens("`${ `${a}` }`");
-        assert_eq!(toks, vec![Token::Template { quasis: vec![String::new(), String::new()], raw_expressions: vec![" `${a}` ".to_string()] }, Token::Eof]);
+        assert_eq!(
+            toks,
+            vec![
+                Token::Template {
+                    quasis: vec![Default::default(), Default::default()],
+                    raw_expressions: vec![" `${a}` ".to_string()]
+                },
+                Token::Eof
+            ]
+        );
     }
 
     #[test]
@@ -841,30 +1518,121 @@ mod tests {
                 Token::Eof
             ]
         );
-        assert_eq!(tokens("=> ..."), vec![Token::Punct(Punct::Arrow), Token::Punct(Punct::Ellipsis), Token::Eof]);
-        assert_eq!(tokens("++ -- + -"), vec![Token::Punct(Punct::PlusPlus), Token::Punct(Punct::MinusMinus), Token::Punct(Punct::Plus), Token::Punct(Punct::Minus), Token::Eof]);
-        assert_eq!(tokens("&& || ??"), vec![Token::Punct(Punct::AndAnd), Token::Punct(Punct::OrOr), Token::Punct(Punct::QuestionQuestion), Token::Eof]);
-        assert_eq!(tokens("<= >= < >"), vec![Token::Punct(Punct::LtEq), Token::Punct(Punct::GtEq), Token::Punct(Punct::Lt), Token::Punct(Punct::Gt), Token::Eof]);
         assert_eq!(
-            tokens("+= -= *= /= %="),
-            vec![Token::Punct(Punct::PlusAssign), Token::Punct(Punct::MinusAssign), Token::Punct(Punct::StarAssign), Token::Punct(Punct::SlashAssign), Token::Punct(Punct::PercentAssign), Token::Eof]
+            tokens("=> ..."),
+            vec![
+                Token::Punct(Punct::Arrow),
+                Token::Punct(Punct::Ellipsis),
+                Token::Eof
+            ]
         );
-        assert_eq!(tokens("a / b % c"), vec![Token::Identifier("a".to_string()), Token::Punct(Punct::Slash), Token::Identifier("b".to_string()), Token::Punct(Punct::Percent), Token::Identifier("c".to_string()), Token::Eof]);
+        assert_eq!(
+            tokens("++ -- + -"),
+            vec![
+                Token::Punct(Punct::PlusPlus),
+                Token::Punct(Punct::MinusMinus),
+                Token::Punct(Punct::Plus),
+                Token::Punct(Punct::Minus),
+                Token::Eof
+            ]
+        );
+        assert_eq!(
+            tokens("&& || ??"),
+            vec![
+                Token::Punct(Punct::AndAnd),
+                Token::Punct(Punct::OrOr),
+                Token::Punct(Punct::QuestionQuestion),
+                Token::Eof
+            ]
+        );
+        assert_eq!(
+            tokens("<= >= < >"),
+            vec![
+                Token::Punct(Punct::LtEq),
+                Token::Punct(Punct::GtEq),
+                Token::Punct(Punct::Lt),
+                Token::Punct(Punct::Gt),
+                Token::Eof
+            ]
+        );
+        assert_eq!(
+            tokens("+= -= *= **= /= %="),
+            vec![
+                Token::Punct(Punct::PlusAssign),
+                Token::Punct(Punct::MinusAssign),
+                Token::Punct(Punct::StarAssign),
+                Token::Punct(Punct::StarStarAssign),
+                Token::Punct(Punct::SlashAssign),
+                Token::Punct(Punct::PercentAssign),
+                Token::Eof
+            ]
+        );
+        assert_eq!(
+            tokens("a / b % c"),
+            vec![
+                Token::Identifier("a".to_string()),
+                Token::Punct(Punct::Slash),
+                Token::Identifier("b".to_string()),
+                Token::Punct(Punct::Percent),
+                Token::Identifier("c".to_string()),
+                Token::Eof
+            ]
+        );
     }
 
     #[test]
-    fn bitwise_and_and_or_are_rejected_as_out_of_scope() {
-        assert!(Tokenizer::new("a & b").next_spanned().is_ok()); // `a` itself is fine
-        let mut t = Tokenizer::new("&");
-        assert!(t.next_spanned().is_err());
-        let mut t = Tokenizer::new("|");
-        assert!(t.next_spanned().is_err());
+    fn scans_bitwise_shift_and_compound_punctuators_longest_first() {
+        assert_eq!(
+            tokens("& &= | |= ^ ^= ~ << <<= >> >>= >>> >>>="),
+            vec![
+                Token::Punct(Punct::And),
+                Token::Punct(Punct::AndAssign),
+                Token::Punct(Punct::Or),
+                Token::Punct(Punct::OrAssign),
+                Token::Punct(Punct::Xor),
+                Token::Punct(Punct::XorAssign),
+                Token::Punct(Punct::Tilde),
+                Token::Punct(Punct::ShiftLeft),
+                Token::Punct(Punct::ShiftLeftAssign),
+                Token::Punct(Punct::ShiftRight),
+                Token::Punct(Punct::ShiftRightAssign),
+                Token::Punct(Punct::UnsignedShiftRight),
+                Token::Punct(Punct::UnsignedShiftRightAssign),
+                Token::Eof,
+            ]
+        );
     }
 
     #[test]
     fn skips_line_and_block_comments() {
-        assert_eq!(tokens("1 // comment\n2"), vec![Token::Number(1.0), Token::Number(2.0), Token::Eof]);
-        assert_eq!(tokens("1 /* block \n comment */ 2"), vec![Token::Number(1.0), Token::Number(2.0), Token::Eof]);
+        assert_eq!(
+            tokens("1 // comment\n2"),
+            vec![Token::Number(1.0), Token::Number(2.0), Token::Eof]
+        );
+        assert_eq!(
+            tokens("1 /* block \n comment */ 2"),
+            vec![Token::Number(1.0), Token::Number(2.0), Token::Eof]
+        );
+    }
+
+    #[test]
+    fn skips_annex_b_html_comments() {
+        assert_eq!(
+            tokens("<!-- ignored\n1\n  --> ignored\n2"),
+            vec![Token::Number(1.0), Token::Number(2.0), Token::Eof]
+        );
+        // The close spelling remains ordinary punctuator source away from a
+        // line start; accepting it there would change executable code.
+        assert_eq!(
+            tokens("1 --> 2"),
+            vec![
+                Token::Number(1.0),
+                Token::Punct(Punct::MinusMinus),
+                Token::Punct(Punct::Gt),
+                Token::Number(2.0),
+                Token::Eof,
+            ]
+        );
     }
 
     #[test]

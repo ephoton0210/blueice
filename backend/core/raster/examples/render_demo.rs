@@ -19,10 +19,22 @@ fn main() {
     let ua = ua_stylesheet();
     let author = blueice_css::parse(css).rules;
     let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
-    let fragment = layout(&doc, doc.root(), &styles, Constraints { available_width: 500.0 });
+    let fragment = layout(
+        &doc,
+        doc.root(),
+        &styles,
+        Constraints {
+            available_width: 500.0,
+        },
+    );
     let frame = paint(&fragment, &styles);
     let pixmap = rasterize(&frame);
     let path = std::path::Path::new("/tmp/claude-1000/-home-ephoton-git-blueice/2d9fafe2-9d4b-4664-b00a-6644ade23bc5/scratchpad/demo.png");
     pixmap.save_png(path).unwrap();
-    println!("saved {}x{} to {}", pixmap.width, pixmap.height, path.display());
+    println!(
+        "saved {}x{} to {}",
+        pixmap.width,
+        pixmap.height,
+        path.display()
+    );
 }

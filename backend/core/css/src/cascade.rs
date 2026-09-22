@@ -62,7 +62,8 @@ impl ComputedStyle {
     /// actually render at) since it's a real-CSS rule about a
     /// `ComputedStyle` value, not paint- or layout-specific logic.
     pub fn is_bold(&self) -> bool {
-        matches!(self.other.get("font-weight"), Some(Value::Keyword(k)) if k == "bold") || matches!(self.other.get("font-weight"), Some(Value::Number(n)) if *n >= 600.0)
+        matches!(self.other.get("font-weight"), Some(Value::Keyword(k)) if k == "bold")
+            || matches!(self.other.get("font-weight"), Some(Value::Number(n)) if *n >= 600.0)
     }
 
     pub fn is_italic(&self) -> bool {
@@ -100,7 +101,14 @@ impl ComputedStyle {
     }
 }
 
-const INHERITED_PROPERTIES: &[&str] = &["color", "font-family", "font-size", "font-style", "line-height", "text-align"];
+const INHERITED_PROPERTIES: &[&str] = &[
+    "color",
+    "font-family",
+    "font-size",
+    "font-style",
+    "line-height",
+    "text-align",
+];
 
 /// Properties real CSS inherits that don't have a dedicated
 /// [`ComputedStyle`] field (unlike `color`/`font-family`/etc. above) --
@@ -138,7 +146,10 @@ struct Matched<'a> {
 /// every element in `doc`, returning each element [`NodeId`]'s computed
 /// style. Non-element nodes (the document node, text nodes) never
 /// appear in the returned map.
-pub fn cascade(doc: &Document, stylesheets: &[(Origin, &[Rule])]) -> HashMap<NodeId, ComputedStyle> {
+pub fn cascade(
+    doc: &Document,
+    stylesheets: &[(Origin, &[Rule])],
+) -> HashMap<NodeId, ComputedStyle> {
     let mut styles = HashMap::new();
     cascade_subtree(doc, doc.root(), stylesheets, None, &mut styles);
     styles
@@ -184,10 +195,22 @@ fn compute_style_for(
     let mut matched: Vec<Matched> = Vec::new();
     for (origin, rules) in stylesheets {
         for (source_order, rule) in rules.iter().enumerate() {
-            let best_specificity = rule.selectors.iter().filter(|s| matches(doc, node, s)).map(specificity).max();
-            let Some(spec) = best_specificity else { continue };
+            let best_specificity = rule
+                .selectors
+                .iter()
+                .filter(|s| matches(doc, node, s))
+                .map(specificity)
+                .max();
+            let Some(spec) = best_specificity else {
+                continue;
+            };
             for decl in &rule.declarations {
-                matched.push(Matched { origin: *origin, specificity: spec, source_order, declaration: decl });
+                matched.push(Matched {
+                    origin: *origin,
+                    specificity: spec,
+                    source_order,
+                    declaration: decl,
+                });
             }
         }
     }
@@ -200,7 +223,12 @@ fn compute_style_for(
     // reach, rather than a new sort-key tier.
     let inline_declarations = inline_style_declarations(doc, node);
     for decl in &inline_declarations {
-        matched.push(Matched { origin: Origin::Author, specificity: (u32::MAX, 0, 0), source_order: usize::MAX, declaration: decl });
+        matched.push(Matched {
+            origin: Origin::Author,
+            specificity: (u32::MAX, 0, 0),
+            source_order: usize::MAX,
+            declaration: decl,
+        });
     }
 
     // `!important` fully reverses origin precedence (module docs above):
@@ -213,8 +241,17 @@ fn compute_style_for(
     // "reverses" means).
     matched.sort_by_key(|m| {
         let origin_rank = m.origin as u8;
-        let effective_origin_rank = if m.declaration.important { 1 - origin_rank } else { origin_rank };
-        (m.declaration.important, effective_origin_rank, m.specificity, m.source_order)
+        let effective_origin_rank = if m.declaration.important {
+            1 - origin_rank
+        } else {
+            origin_rank
+        };
+        (
+            m.declaration.important,
+            effective_origin_rank,
+            m.specificity,
+            m.source_order,
+        )
     });
 
     let mut winners: HashMap<&str, &Value> = HashMap::new();
@@ -231,29 +268,59 @@ fn compute_style_for(
         .and_then(|v| resolve_font_size(v, parent.font_size_px))
         .unwrap_or(parent.font_size_px);
 
-    style.color = winners.get("color").and_then(|v| resolve_color(v, parent.color)).unwrap_or(parent.color);
+    style.color = winners
+        .get("color")
+        .and_then(|v| resolve_color(v, parent.color))
+        .unwrap_or(parent.color);
 
     style.display = winners
         .get("display")
-        .and_then(|v| if let Value::Keyword(k) = v { Some(k.clone()) } else { None })
+        .and_then(|v| {
+            if let Value::Keyword(k) = v {
+                Some(k.clone())
+            } else {
+                None
+            }
+        })
         .unwrap_or_else(|| default.display.clone());
 
     style.font_family = winners
         .get("font-family")
-        .and_then(|v| if let Value::Keyword(k) = v { Some(k.clone()) } else { None })
+        .and_then(|v| {
+            if let Value::Keyword(k) = v {
+                Some(k.clone())
+            } else {
+                None
+            }
+        })
         .or_else(|| parent.font_family.clone());
 
     style.font_style = winners
         .get("font-style")
-        .and_then(|v| if let Value::Keyword(k) = v { Some(k.clone()) } else { None })
+        .and_then(|v| {
+            if let Value::Keyword(k) = v {
+                Some(k.clone())
+            } else {
+                None
+            }
+        })
         .or_else(|| parent.font_style.clone());
 
     style.text_align = winners
         .get("text-align")
-        .and_then(|v| if let Value::Keyword(k) = v { Some(k.clone()) } else { None })
+        .and_then(|v| {
+            if let Value::Keyword(k) = v {
+                Some(k.clone())
+            } else {
+                None
+            }
+        })
         .or_else(|| parent.text_align.clone());
 
-    style.line_height = winners.get("line-height").map(|v| (*v).clone()).or_else(|| parent.line_height.clone());
+    style.line_height = winners
+        .get("line-height")
+        .map(|v| (*v).clone())
+        .or_else(|| parent.line_height.clone());
 
     for (prop, value) in &winners {
         if INHERITED_PROPERTIES.contains(prop) || *prop == "display" {
@@ -327,7 +394,10 @@ mod tests {
     fn elem(doc: &mut Document, parent: NodeId, tag: &str, attrs: &[(&str, &str)]) -> NodeId {
         let id = doc.create_node(NodeData::Element {
             tag_name: tag.to_string(),
-            attributes: attrs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            attributes: attrs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
         });
         doc.append_child(parent, id);
         id
@@ -358,7 +428,11 @@ mod tests {
         let ua = parse("#x { color: red; }");
         let author = parse("p { color: blue; }");
         let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
-        assert_eq!(styles[&p].color, Color::Rgba(0, 0, 255, 255), "author's rule wins even though UA's #id is more specific");
+        assert_eq!(
+            styles[&p].color,
+            Color::Rgba(0, 0, 255, 255),
+            "author's rule wins even though UA's #id is more specific"
+        );
     }
 
     #[test]
@@ -430,7 +504,10 @@ mod tests {
         let span = elem(&mut doc, div, "span", &[]);
         let author = parse("div { display: none; }");
         let styles = cascade(&doc, &[(Origin::Author, &author)]);
-        assert_eq!(styles[&span].display, "inline", "span keeps the cascade's initial value, not div's display: none");
+        assert_eq!(
+            styles[&span].display, "inline",
+            "span keeps the cascade's initial value, not div's display: none"
+        );
     }
 
     #[test]
@@ -447,8 +524,15 @@ mod tests {
         let span = elem(&mut doc, b, "span", &[]);
         let ua = ua_stylesheet();
         let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
-        assert_eq!(styles[&b].other.get("font-weight"), Some(&Value::Keyword("bold".to_string())));
-        assert_eq!(styles[&span].other.get("font-weight"), Some(&Value::Keyword("bold".to_string())), "span must inherit bold from its <b> ancestor");
+        assert_eq!(
+            styles[&b].other.get("font-weight"),
+            Some(&Value::Keyword("bold".to_string()))
+        );
+        assert_eq!(
+            styles[&span].other.get("font-weight"),
+            Some(&Value::Keyword("bold".to_string())),
+            "span must inherit bold from its <b> ancestor"
+        );
     }
 
     #[test]
@@ -460,7 +544,10 @@ mod tests {
         let ua = ua_stylesheet();
         let author = parse("span { font-weight: normal; }");
         let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
-        assert_eq!(styles[&span].other.get("font-weight"), Some(&Value::Keyword("normal".to_string())));
+        assert_eq!(
+            styles[&span].other.get("font-weight"),
+            Some(&Value::Keyword("normal".to_string()))
+        );
     }
 
     #[test]
@@ -496,7 +583,8 @@ mod tests {
         let div = elem(&mut doc, root, "div", &[]);
         let span = elem(&mut doc, div, "span", &[]);
         let b = elem(&mut doc, span, "b", &[]);
-        let author = parse("div { font-size: 10px; } span { font-size: 2em; } b { font-size: 2em; }");
+        let author =
+            parse("div { font-size: 10px; } span { font-size: 2em; } b { font-size: 2em; }");
         let styles = cascade(&doc, &[(Origin::Author, &author)]);
         assert_eq!(styles[&span].font_size_px, 20.0);
         assert_eq!(styles[&b].font_size_px, 40.0);
@@ -510,7 +598,10 @@ mod tests {
         let p = elem(&mut doc, root, "p", &[]);
         let author = parse("p { color: green; background-color: currentColor; }");
         let styles = cascade(&doc, &[(Origin::Author, &author)]);
-        assert_eq!(styles[&p].other.get("background-color"), Some(&Value::Color(Color::Rgba(0, 128, 0, 255))));
+        assert_eq!(
+            styles[&p].other.get("background-color"),
+            Some(&Value::Color(Color::Rgba(0, 128, 0, 255)))
+        );
     }
 
     #[test]
@@ -521,8 +612,14 @@ mod tests {
         let p = elem(&mut doc, root, "p", &[]);
         let author = parse("p { width: 50%; margin: 10px; }");
         let styles = cascade(&doc, &[(Origin::Author, &author)]);
-        assert_eq!(styles[&p].other.get("width"), Some(&Value::Percentage(50.0)));
-        assert_eq!(styles[&p].other.get("margin-top"), Some(&Value::Length(Length::Px(10.0))));
+        assert_eq!(
+            styles[&p].other.get("width"),
+            Some(&Value::Percentage(50.0))
+        );
+        assert_eq!(
+            styles[&p].other.get("margin-top"),
+            Some(&Value::Length(Length::Px(10.0)))
+        );
     }
 
     #[test]
@@ -533,13 +630,19 @@ mod tests {
         let p = elem(&mut doc, root, "p", &[]);
         let author = parse("span { color: red; }");
         let styles = cascade(&doc, &[(Origin::Author, &author)]);
-        assert_eq!(styles[&p].color, Color::Rgba(0, 0, 0, 255), "initial black, span's rule never matched");
+        assert_eq!(
+            styles[&p].color,
+            Color::Rgba(0, 0, 0, 255),
+            "initial black, span's rule never matched"
+        );
     }
 
     #[test]
     fn text_node_is_never_a_key_in_the_computed_style_map() {
         let mut doc = Document::new();
-        let text = doc.create_node(NodeData::Text { data: "hi".to_string() });
+        let text = doc.create_node(NodeData::Text {
+            data: "hi".to_string(),
+        });
         doc.append_child(doc.root(), text);
         let styles = cascade(&doc, &[]);
         assert!(!styles.contains_key(&text));
@@ -567,8 +670,14 @@ mod tests {
         let h1 = elem(&mut doc, body, "h1", &[]);
         let ua = ua_stylesheet();
         let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
-        assert_eq!(styles[&h1].font_size_px, 32.0, "2em against the initial 16px");
-        assert_eq!(styles[&h1].other.get("font-weight"), Some(&Value::Keyword("bold".to_string())));
+        assert_eq!(
+            styles[&h1].font_size_px, 32.0,
+            "2em against the initial 16px"
+        );
+        assert_eq!(
+            styles[&h1].other.get("font-weight"),
+            Some(&Value::Keyword("bold".to_string()))
+        );
     }
 
     #[test]
@@ -619,10 +728,19 @@ mod tests {
     fn important_inline_style_beats_important_stylesheet_rule_from_same_origin() {
         let mut doc = Document::new();
         let root = doc.root();
-        let p = elem(&mut doc, root, "p", &[("style", "color: green !important;")]);
+        let p = elem(
+            &mut doc,
+            root,
+            "p",
+            &[("style", "color: green !important;")],
+        );
         let author = parse("p { color: red !important; }");
         let styles = cascade(&doc, &[(Origin::Author, &author)]);
-        assert_eq!(styles[&p].color, Color::Rgba(0, 128, 0, 255), "later/more-specific tie broken in inline's favor");
+        assert_eq!(
+            styles[&p].color,
+            Color::Rgba(0, 128, 0, 255),
+            "later/more-specific tie broken in inline's favor"
+        );
     }
 
     #[test]
@@ -709,9 +827,16 @@ mod tests {
         let mut doc = Document::new();
         let root = doc.root();
         let parent = elem(&mut doc, root, "div", &[("style", "opacity: 0.3;")]);
-        let child = doc.create_node(NodeData::Element { tag_name: "span".to_string(), attributes: vec![] });
+        let child = doc.create_node(NodeData::Element {
+            tag_name: "span".to_string(),
+            attributes: vec![],
+        });
         doc.append_child(parent, child);
         let styles = cascade(&doc, &[]);
-        assert_eq!(styles[&child].opacity(), 1.0, "opacity must not inherit from an ancestor");
+        assert_eq!(
+            styles[&child].opacity(),
+            1.0,
+            "opacity must not inherit from an ancestor"
+        );
     }
 }

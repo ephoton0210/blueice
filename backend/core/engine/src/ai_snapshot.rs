@@ -48,12 +48,27 @@ pub(crate) fn build(page: &Page, generation: u64, tab_id: u64) -> AiSnapshot {
     collect(page, doc, doc.root(), None, &mut nodes);
     link_children(&mut nodes);
     compute_occlusion(&mut nodes);
-    AiSnapshot { generation, tab_id, url: page.url().map(str::to_string), scroll_y: page.scroll_y(), nodes }
+    AiSnapshot {
+        generation,
+        tab_id,
+        url: page.url().map(str::to_string),
+        scroll_y: page.scroll_y(),
+        nodes,
+    }
 }
 
-fn collect(page: &Page, doc: &Document, node: NodeId, nearest_represented_ancestor: Option<u64>, out: &mut Vec<AiNode>) {
+fn collect(
+    page: &Page,
+    doc: &Document,
+    node: NodeId,
+    nearest_represented_ancestor: Option<u64>,
+    out: &mut Vec<AiNode>,
+) {
     let represented = to_ai_node(page, doc, node, nearest_represented_ancestor);
-    let next_ancestor = represented.as_ref().map(|n| n.id).or(nearest_represented_ancestor);
+    let next_ancestor = represented
+        .as_ref()
+        .map(|n| n.id)
+        .or(nearest_represented_ancestor);
     if let Some(ai_node) = represented {
         out.push(ai_node);
     }
@@ -63,15 +78,29 @@ fn collect(page: &Page, doc: &Document, node: NodeId, nearest_represented_ancest
 }
 
 fn link_children(nodes: &mut [AiNode]) {
-    let id_to_index: HashMap<u64, usize> = nodes.iter().enumerate().map(|(i, n)| (n.id, i)).collect();
-    let child_links: Vec<(usize, u64)> = nodes.iter().filter_map(|n| n.parent.and_then(|p| id_to_index.get(&p)).map(|&pi| (pi, n.id))).collect();
+    let id_to_index: HashMap<u64, usize> =
+        nodes.iter().enumerate().map(|(i, n)| (n.id, i)).collect();
+    let child_links: Vec<(usize, u64)> = nodes
+        .iter()
+        .filter_map(|n| {
+            n.parent
+                .and_then(|p| id_to_index.get(&p))
+                .map(|&pi| (pi, n.id))
+        })
+        .collect();
     for (parent_index, child_id) in child_links {
         nodes[parent_index].children.push(child_id);
     }
 }
 
 fn to_ai_node(page: &Page, doc: &Document, node: NodeId, parent: Option<u64>) -> Option<AiNode> {
-    let NodeData::Element { tag_name, attributes } = doc.data(node) else { return None };
+    let NodeData::Element {
+        tag_name,
+        attributes,
+    } = doc.data(node)
+    else {
+        return None;
+    };
     let role = infer_role(tag_name, attributes)?;
     let bounds = find_fragment_bounds(page.fragment(), node, 0.0, 0.0)?;
     let (name, name_from) = compute_name(doc, node, tag_name, attributes);
@@ -93,7 +122,10 @@ fn to_ai_node(page: &Page, doc: &Document, node: NodeId, parent: Option<u64>) ->
 }
 
 fn attr<'a>(attributes: &'a [(String, String)], name: &str) -> Option<&'a str> {
-    attributes.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
+    attributes
+        .iter()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v.as_str())
 }
 
 fn has_attr(attributes: &[(String, String)], name: &str) -> bool {
@@ -101,7 +133,11 @@ fn has_attr(attributes: &[(String, String)], name: &str) -> bool {
 }
 
 fn infer_role(tag: &str, attributes: &[(String, String)]) -> Option<Role> {
-    if let Some(level) = tag.strip_prefix('h').and_then(|rest| rest.parse::<u8>().ok()).filter(|l| (1..=6).contains(l)) {
+    if let Some(level) = tag
+        .strip_prefix('h')
+        .and_then(|rest| rest.parse::<u8>().ok())
+        .filter(|l| (1..=6).contains(l))
+    {
         return Some(Role::Heading { level });
     }
     match tag {
@@ -117,18 +153,31 @@ fn infer_role(tag: &str, attributes: &[(String, String)]) -> Option<Role> {
         "li" => Some(Role::ListItem),
         "p" => Some(Role::Paragraph),
         "img" => Some(Role::Image),
-        _ if attr(attributes, "role").is_some() || attr(attributes, "aria-label").is_some() => Some(Role::Generic),
+        _ if attr(attributes, "role").is_some() || attr(attributes, "aria-label").is_some() => {
+            Some(Role::Generic)
+        }
         _ => None,
     }
 }
 
-fn compute_name(doc: &Document, node: NodeId, tag: &str, attributes: &[(String, String)]) -> (Option<String>, Option<NameFrom>) {
+fn compute_name(
+    doc: &Document,
+    node: NodeId,
+    tag: &str,
+    attributes: &[(String, String)],
+) -> (Option<String>, Option<NameFrom>) {
     if let Some(label) = attr(attributes, "aria-label") {
-        return (Some(label.to_string()), Some(NameFrom::Attribute("aria-label".to_string())));
+        return (
+            Some(label.to_string()),
+            Some(NameFrom::Attribute("aria-label".to_string())),
+        );
     }
     if tag == "img" {
         return match attr(attributes, "alt") {
-            Some(alt) => (Some(alt.to_string()), Some(NameFrom::Attribute("alt".to_string()))),
+            Some(alt) => (
+                Some(alt.to_string()),
+                Some(NameFrom::Attribute("alt".to_string())),
+            ),
             None => (None, None),
         };
     }
@@ -147,7 +196,11 @@ fn compute_name(doc: &Document, node: NodeId, tag: &str, attributes: &[(String, 
         return (Some(title.to_string()), Some(NameFrom::Title));
     }
     let text = text_content(doc, node);
-    if text.is_empty() { (None, None) } else { (Some(text), Some(NameFrom::Contents)) }
+    if text.is_empty() {
+        (None, None)
+    } else {
+        (Some(text), Some(NameFrom::Contents))
+    }
 }
 
 /// Scans the whole document for a `<label for="id_attr">` -- one input
@@ -155,7 +208,11 @@ fn compute_name(doc: &Document, node: NodeId, tag: &str, attributes: &[(String, 
 /// only pay for itself on pages with many labeled inputs.
 fn find_label_text_for(doc: &Document, id_attr: &str) -> Option<String> {
     fn walk(doc: &Document, node: NodeId, id_attr: &str) -> Option<String> {
-        if let NodeData::Element { tag_name, attributes } = doc.data(node) {
+        if let NodeData::Element {
+            tag_name,
+            attributes,
+        } = doc.data(node)
+        {
             if tag_name == "label" && attributes.iter().any(|(k, v)| k == "for" && v == id_attr) {
                 let text = text_content(doc, node);
                 if !text.is_empty() {
@@ -163,7 +220,8 @@ fn find_label_text_for(doc: &Document, id_attr: &str) -> Option<String> {
                 }
             }
         }
-        doc.children(node).find_map(|child| walk(doc, child, id_attr))
+        doc.children(node)
+            .find_map(|child| walk(doc, child, id_attr))
     }
     walk(doc, doc.root(), id_attr)
 }
@@ -190,7 +248,10 @@ fn collect_text(doc: &Document, node: NodeId, out: &mut String, is_root: bool) {
             out.push(' ');
             return;
         }
-        NodeData::Element { tag_name, attributes } if !is_root && infer_role(tag_name, attributes).is_some() => return,
+        NodeData::Element {
+            tag_name,
+            attributes,
+        } if !is_root && infer_role(tag_name, attributes).is_some() => return,
         _ => {}
     }
     for child in doc.children(node) {
@@ -198,8 +259,15 @@ fn collect_text(doc: &Document, node: NodeId, out: &mut String, is_root: bool) {
     }
 }
 
-fn compute_state(page: &Page, node: NodeId, tag: &str, attributes: &[(String, String)]) -> NodeState {
-    let checked = (tag == "input" && matches!(attr(attributes, "type"), Some("checkbox") | Some("radio"))).then(|| has_attr(attributes, "checked"));
+fn compute_state(
+    page: &Page,
+    node: NodeId,
+    tag: &str,
+    attributes: &[(String, String)],
+) -> NodeState {
+    let checked = (tag == "input"
+        && matches!(attr(attributes, "type"), Some("checkbox") | Some("radio")))
+    .then(|| has_attr(attributes, "checked"));
     NodeState {
         checked,
         disabled: has_attr(attributes, "disabled"),
@@ -211,7 +279,12 @@ fn compute_state(page: &Page, node: NodeId, tag: &str, attributes: &[(String, St
 }
 
 fn rect_of(node: &AiNode) -> (f64, f64, f64, f64) {
-    (node.bounds.x, node.bounds.y, node.bounds.width, node.bounds.height)
+    (
+        node.bounds.x,
+        node.bounds.y,
+        node.bounds.width,
+        node.bounds.height,
+    )
 }
 
 /// The fraction of `a`'s own area that `b` overlaps -- `0.0` if they
@@ -237,7 +310,8 @@ fn overlap_fraction(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> f64 {
 /// (later in DOM/paint order, per the module docs) for geometric
 /// overlap, keeping the strongest occluder found.
 fn compute_occlusion(nodes: &mut [AiNode]) {
-    let rects: Vec<(u64, (f64, f64, f64, f64))> = nodes.iter().map(|n| (n.id, rect_of(n))).collect();
+    let rects: Vec<(u64, (f64, f64, f64, f64))> =
+        nodes.iter().map(|n| (n.id, rect_of(n))).collect();
     for i in 0..nodes.len() {
         let mut best: Option<(u64, f64)> = None;
         for (later_id, later_rect) in &rects[i + 1..] {
@@ -266,7 +340,10 @@ mod tests {
     }
 
     fn find<'a>(nodes: &'a [AiNode], name: &str) -> &'a AiNode {
-        nodes.iter().find(|n| n.name.as_deref() == Some(name)).unwrap_or_else(|| panic!("no node named {name:?} in {nodes:#?}"))
+        nodes
+            .iter()
+            .find(|n| n.name.as_deref() == Some(name))
+            .unwrap_or_else(|| panic!("no node named {name:?} in {nodes:#?}"))
     }
 
     #[test]
@@ -282,14 +359,22 @@ mod tests {
     fn a_bare_div_with_no_role_is_excluded() {
         let page = page_with(r#"<div style="background-color: red;">x</div>"#);
         let snap = build(&page, 0, 1);
-        assert!(snap.nodes.is_empty(), "a decorative div must not appear: {:#?}", snap.nodes);
+        assert!(
+            snap.nodes.is_empty(),
+            "a decorative div must not appear: {:#?}",
+            snap.nodes
+        );
     }
 
     #[test]
     fn a_display_none_subtree_is_excluded_even_with_a_semantic_role() {
         let page = page_with(r#"<h1 style="display: none;">Hidden</h1>"#);
         let snap = build(&page, 0, 1);
-        assert!(snap.nodes.is_empty(), "display:none content must not appear: {:#?}", snap.nodes);
+        assert!(
+            snap.nodes.is_empty(),
+            "display:none content must not appear: {:#?}",
+            snap.nodes
+        );
     }
 
     #[test]
@@ -318,7 +403,9 @@ mod tests {
         // something to paper over here. Explicit sizing is what makes
         // this test exercise the real pipeline rather than only the
         // naming logic in isolation.
-        let page = page_with(r#"<img src="a.png" alt="A cat" style="display: inline-block; width: 16px; height: 16px;">"#);
+        let page = page_with(
+            r#"<img src="a.png" alt="A cat" style="display: inline-block; width: 16px; height: 16px;">"#,
+        );
         let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "A cat");
         assert_eq!(node.role, Role::Image);
@@ -343,7 +430,8 @@ mod tests {
 
     #[test]
     fn a_checkbox_reports_its_checked_state() {
-        let page = page_with(r#"<label for="c">Agree</label><input id="c" type="checkbox" checked>"#);
+        let page =
+            page_with(r#"<label for="c">Agree</label><input id="c" type="checkbox" checked>"#);
         let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "Agree");
         assert_eq!(node.role, Role::CheckBox);
@@ -356,7 +444,10 @@ mod tests {
         let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "Close dialog");
         assert_eq!(node.role, Role::Button);
-        assert_eq!(node.name_from, Some(NameFrom::Attribute("aria-label".to_string())));
+        assert_eq!(
+            node.name_from,
+            Some(NameFrom::Attribute("aria-label".to_string()))
+        );
     }
 
     #[test]
@@ -387,7 +478,11 @@ mod tests {
         // skipped, not end up parentless.
         let page = page_with("<ul><li><div><p>nested</p></div></li></ul>");
         let snap = build(&page, 0, 1);
-        let li = snap.nodes.iter().find(|n| n.role == Role::ListItem).unwrap();
+        let li = snap
+            .nodes
+            .iter()
+            .find(|n| n.role == Role::ListItem)
+            .unwrap();
         let p = find(&snap.nodes, "nested");
         assert_eq!(p.parent, Some(li.id));
     }
@@ -398,7 +493,7 @@ mod tests {
         let snap = build(&page, 0, 1);
         let node = &snap.nodes[0];
         let real_id = page.doc().root(); // just to confirm `id` is a real, resolvable NodeId
-        assert!(real_id.as_u64() != node.id || true); // root itself isn't represented; sanity that as_u64 exists
+        assert_ne!(real_id.as_u64(), node.id); // root itself isn't represented
         assert!(page.doc().contains(NodeId::from_u64(node.id)));
     }
 
@@ -443,7 +538,10 @@ mod tests {
         assert!(snap.nodes[0].occluded);
         assert_eq!(snap.nodes[0].occluded_by, Some(9999));
         assert_eq!(snap.nodes[0].occluded_fraction, 1.0);
-        assert!(!snap.nodes[1].occluded, "the later node is the occluder, not the occluded");
+        assert!(
+            !snap.nodes[1].occluded,
+            "the later node is the occluder, not the occluded"
+        );
     }
 
     #[test]

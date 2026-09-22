@@ -48,7 +48,12 @@ const RETAINED_GENERATIONS: u64 = 4;
 pub fn write_frame(dir: &Path, generation: u64, bytes: &[u8]) -> io::Result<PathBuf> {
     std::fs::create_dir_all(dir)?;
     let path = dir.join(format!("frame-{generation}.rgba"));
-    let file = OpenOptions::new().read(true).write(true).create(true).truncate(true).open(&path)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&path)?;
     file.set_len(bytes.len() as u64)?;
     if !bytes.is_empty() {
         let mut mmap = unsafe { MmapOptions::new().map_mut(&file)? };
@@ -95,7 +100,8 @@ mod tests {
 
     #[test]
     fn write_frame_creates_the_directory_if_it_does_not_exist_yet() {
-        let dir = std::env::temp_dir().join(format!("blueice-shm-test-missing-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("blueice-shm-test-missing-{}", std::process::id()));
         assert!(!dir.exists());
         write_frame(&dir, 0, &[9, 9, 9]).unwrap();
         assert!(dir.exists());
@@ -115,7 +121,8 @@ mod tests {
 
     #[test]
     fn writing_an_empty_frame_does_not_panic_and_maps_to_an_empty_slice() {
-        let dir = std::env::temp_dir().join(format!("blueice-shm-test-empty-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("blueice-shm-test-empty-{}", std::process::id()));
         let path = write_frame(&dir, 0, &[]).unwrap();
         let mapped = map_frame(&path).unwrap();
         assert_eq!(mapped.len(), 0);
@@ -124,7 +131,8 @@ mod tests {
 
     #[test]
     fn frames_older_than_the_retention_window_are_deleted() {
-        let dir = std::env::temp_dir().join(format!("blueice-shm-test-prune-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("blueice-shm-test-prune-{}", std::process::id()));
         for gen in 1..=RETAINED_GENERATIONS {
             write_frame(&dir, gen, &[gen as u8]).unwrap();
         }
@@ -133,9 +141,19 @@ mod tests {
 
         // One more generation pushes generation 1 out of the window.
         let latest = write_frame(&dir, RETAINED_GENERATIONS + 1, &[99]).unwrap();
-        assert!(!dir.join("frame-1.rgba").exists(), "generation 1 must be pruned once it's outside the retention window");
-        assert!(dir.join("frame-2.rgba").exists(), "generation 2 is still within the window");
-        assert_eq!(&map_frame(&latest).unwrap()[..], &[99], "the just-written generation must still be fully readable");
+        assert!(
+            !dir.join("frame-1.rgba").exists(),
+            "generation 1 must be pruned once it's outside the retention window"
+        );
+        assert!(
+            dir.join("frame-2.rgba").exists(),
+            "generation 2 is still within the window"
+        );
+        assert_eq!(
+            &map_frame(&latest).unwrap()[..],
+            &[99],
+            "the just-written generation must still be fully readable"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -146,7 +164,10 @@ mod tests {
         // generation's file was already removed (or never existed --
         // e.g. right after a restart with a fresh, mostly-empty
         // frame directory).
-        let dir = std::env::temp_dir().join(format!("blueice-shm-test-prune-missing-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "blueice-shm-test-prune-missing-{}",
+            std::process::id()
+        ));
         let result = write_frame(&dir, RETAINED_GENERATIONS + 5, &[1]);
         assert!(result.is_ok());
         let _ = std::fs::remove_dir_all(&dir);

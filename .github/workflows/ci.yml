@@ -5,17 +5,145 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   build-test:
-    name: Build, test, lint
-    runs-on: ubuntu-latest
+    name: Build, test, lint (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    # Empty for a native runner; otherwise the job's steps run inside this
+    # image on the (Ubuntu) runner host.
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every OS/architecture GitHub offers at standard (non-"large")
+        # runner billing, with pinned labels rather than `-latest` aliases so
+        # the covered set never shifts silently. Deliberately omitted: the
+        # `-large`/`-xlarge` runners (paid larger runners), macOS 14
+        # (deprecated).
+        include:
+          # --- Native runners: Linux ---
+          - { label: "Ubuntu 26.04 x86_64", os: ubuntu-26.04 }
+          - { label: "Ubuntu 26.04 arm64", os: ubuntu-26.04-arm }
+          - { label: "Ubuntu 24.04 x86_64", os: ubuntu-24.04 }
+          - { label: "Ubuntu 24.04 arm64", os: ubuntu-24.04-arm }
+          - { label: "Ubuntu 22.04 x86_64", os: ubuntu-22.04 }
+          - { label: "Ubuntu 22.04 arm64", os: ubuntu-22.04-arm }
+          # --- Native runners: Windows ---
+          - { label: "Windows Server 2025 x86_64", os: windows-2025 }
+          - { label: "Windows Server 2022 x86_64", os: windows-2022 }
+          - { label: "Windows 11 arm64", os: windows-11-arm }
+          # Same OSes as above, with the Visual Studio 2026 toolchain instead
+          # of the default one, to cover an MSVC/linker version difference.
+          - { label: "Windows Server 2025 VS2026 x86_64", os: windows-2025-vs2026 }
+          - { label: "Windows 11 VS2026 arm64", os: windows-11-vs2026-arm }
+          # --- Native runners: macOS ---
+          - { label: "macOS 26 arm64", os: macos-26 }
+          - { label: "macOS 26 x86_64", os: macos-26-intel }
+          - { label: "macOS 15 arm64", os: macos-15 }
+          - { label: "macOS 15 x86_64", os: macos-15-intel }
+          # --- Red Hat and SUSE ---
+          # GitHub offers no RHEL or SUSE runner, so these run in the
+          # vendors' own userland images on an Ubuntu runner of the matching
+          # architecture. That covers each distro's glibc, compiler and
+          # package set, but NOT its kernel: the kernel is always the
+          # runner's Ubuntu kernel.
+          - { label: "RHEL UBI 9 x86_64", os: ubuntu-24.04, family: rhel, container: "registry.access.redhat.com/ubi9" }
+          - { label: "RHEL UBI 9 arm64", os: ubuntu-24.04-arm, family: rhel, container: "registry.access.redhat.com/ubi9" }
+          - { label: "RHEL UBI 10 x86_64", os: ubuntu-24.04, family: rhel, container: "registry.access.redhat.com/ubi10" }
+          - { label: "RHEL UBI 10 arm64", os: ubuntu-24.04-arm, family: rhel, container: "registry.access.redhat.com/ubi10" }
+          - { label: "SLE BCI 15.7 x86_64", os: ubuntu-24.04, family: suse, container: "registry.suse.com/bci/bci-base:15.7" }
+          - { label: "SLE BCI 15.7 arm64", os: ubuntu-24.04-arm, family: suse, container: "registry.suse.com/bci/bci-base:15.7" }
+          - { label: "openSUSE Leap 15.6 x86_64", os: ubuntu-24.04, family: suse, container: "registry.opensuse.org/opensuse/leap:15.6" }
+          - { label: "openSUSE Leap 15.6 arm64", os: ubuntu-24.04-arm, family: suse, container: "registry.opensuse.org/opensuse/leap:15.6" }
+          - { label: "openSUSE Tumbleweed x86_64", os: ubuntu-24.04, family: suse, container: "registry.opensuse.org/opensuse/tumbleweed:latest" }
+          - { label: "openSUSE Tumbleweed arm64", os: ubuntu-24.04-arm, family: suse, container: "registry.opensuse.org/opensuse/tumbleweed:latest" }
     steps:
+      # The distro images are minimal: install what `actions/checkout`, the
+      # Rust toolchain (linker, `ring`'s C build), `setup-node`, the CLDR
+      # `cmp` check, the WPT `git clone` and `rust-cache` need. Must run
+      # before checkout so `git` exists for it.
+      - name: Install RHEL prerequisites
+        if: matrix.family == 'rhel'
+        run: |
+          dnf install -y git gcc gcc-c++ make tar gzip xz zstd diffutils tzdata findutils
+          command -v curl >/dev/null || dnf install -y curl
+      - name: Install SUSE prerequisites
+        if: matrix.family == 'suse'
+        run: |
+          zypper --non-interactive install --no-recommends git-core gcc gcc-c++ make tar gzip xz zstd diffutils timezone findutils curl
+          # These images declare no PATH of their own, so the first entry a
+          # later step adds to GITHUB_PATH (rustup's) would become the whole
+          # PATH and `bash` would no longer resolve. Pin the default one.
+          for dir in /usr/local/sbin /usr/local/bin /usr/sbin /usr/bin /sbin /bin; do
+            echo "$dir" >> "$GITHUB_PATH"
+          done
       - uses: actions/checkout@v4
+      # Compile-time fixtures in BlueJS integration tests must come from the
+      # same immutable Test262 revision on every operating system.
+      - name: Checkout pinned Test262 corpus
+        uses: actions/checkout@v4
+        with:
+          repository: tc39/test262
+          ref: 72faf8ec1445c55149615e8b35187830783aba1a
+          path: development/browser_core/reference/test262
+      # The checked-in .b64 provider is a source input, not a build cache.
+      # Rebuild it from its exact CLDR source on every CI platform so a
+      # provider update cannot be generated on one OS and silently diverge on
+      # another.
+      - name: Checkout pinned CLDR JSON provider source
+        uses: actions/checkout@v4
+        with:
+          repository: unicode-org/cldr-json
+          ref: 26a79cb42bfcc90def764102aa2af126d9ef3108
+          path: development/browser_core/reference/cldr-json
+          # The packages live under the repository's own `cldr-json/`
+          # directory, which is also the root the generators are given.
+          sparse-checkout: |
+            cldr-json/cldr-bcp47/bcp47
+            cldr-json/cldr-core
+            cldr-json/cldr-localenames-full/main
+            cldr-json/cldr-dates-full/main
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
+      # Use the same independent ICU implementation on every OS for the
+      # provider-backed NumberFormat differential matrix below.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Compare decompressed payloads, not files: the gzip bytes depend on the
+      # zlib build bundled with a given Node release, while the table inside
+      # is what the pinned CLDR revision actually determines.
+      - name: Verify pinned CLDR provider is reproducible
+        shell: bash
+        run: |
+          cldr=development/browser_core/reference/cldr-json
+          tools=backend/ecma402/tools
+          data=backend/ecma402/src/locale_data
+          node $tools/generate_cldr_display_names.mjs \
+            $cldr/cldr-json $cldr/display_names_data.verify.b64
+          node $tools/compare_cldr_payloads.mjs \
+            $data/display_names_data.b64 $cldr/display_names_data.verify.b64
+          node $tools/generate_cldr_date_time_formats.mjs \
+            $cldr/cldr-json \
+            $cldr/date_time_formats_data.verify.b64 \
+            $cldr/date_time_append_items_data.verify.b64
+          node $tools/compare_cldr_payloads.mjs \
+            $data/date_time_formats_data.b64 $cldr/date_time_formats_data.verify.b64
+          node $tools/compare_cldr_payloads.mjs \
+            $data/date_time_append_items_data.b64 $cldr/date_time_append_items_data.verify.b64
+          node $tools/generate_cldr_locale_information.mjs \
+            $cldr/cldr-json $cldr/locale_information_data.verify.b64
+          node $tools/compare_cldr_payloads.mjs \
+            $data/locale_information_data.b64 $cldr/locale_information_data.verify.b64
+      # Keyed per matrix leg: the distro legs share one runner OS/arch, and
+      # a `target/` (build scripts, C objects) built against one distro's
+      # glibc must never be restored into another's.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.label }}
       # `backend/core/html/tests/wpt_corpus.rs`'s WPT tree-construction
       # gate (see `testing/TEST_PLAN.md`) needs this checked out or it
       # just skips itself -- a sparse partial clone of the one
@@ -29,21 +157,44 @@ jobs:
         run: cargo build --workspace --all-targets
       - name: Test
         run: cargo test --workspace
+      - name: NumberFormat Node differential matrix
+        run: >-
+          cargo test -p blueice-bluejs --test node_differential
+          number_format_matrix_matches_node -- --ignored
+      - name: NumberFormat interval Node differential matrix
+        run: >-
+          cargo test -p blueice-bluejs --test node_differential
+          number_format_range_matrix_matches_node -- --ignored
+      - name: Intl locale-data Node differential matrix
+        run: >-
+          cargo test -p blueice-bluejs --test node_differential
+          intl_locale_data_matrix_matches_node -- --ignored
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
 
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # `cargo llvm-cov --workspace` compiles BlueJS integration tests whose
+      # fixtures are embedded with `include_str!`; use the same immutable
+      # corpus as the cross-platform build-and-test job.
+      - name: Checkout pinned Test262 corpus
+        uses: actions/checkout@v4
+        with:
+          repository: tc39/test262
+          ref: 72faf8ec1445c55149615e8b35187830783aba1a
+          path: development/browser_core/reference/test262
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
       # See development/browser_core/testing/TEST_PLAN.md for the policy
-      # this enforces. Two files are excluded, both for the same reason:
+      # this enforces. Four files are excluded, all for the same reason:
       # a real (non-stub) process entry point whose own logic is already
       # unit-tested elsewhere, leaving only GUI/OS wiring that can't run
       # headlessly in CI. `extension/src/main.rs` is the placeholder
@@ -57,14 +208,23 @@ jobs:
       # socket server has no display dependency, so
       # `engine/tests/core_binary.rs` drives the actual compiled binary
       # as a subprocess and gets real coverage of it in CI.
+      # `mcp-server`'s main and server modules are the corresponding MCP
+      # process/stdio and rmcp macro glue. Their behavior requires a real MCP
+      # wire client and is verified manually; the testable sequencing and
+      # process logic lives in its lib.rs and remains covered.
       - name: Generate coverage and enforce threshold
         run: |
           set -o pipefail
           cargo llvm-cov --workspace \
-            --ignore-filename-regex 'extension/src/main\.rs$|frontend-reference/src/main\.rs$' \
+            --ignore-filename-regex 'extension/src/main\.rs$|frontend-reference/src/main\.rs$|mcp-server/src/main\.rs$|mcp-server/src/server\.rs$' \
             --fail-under-lines 90 \
             --summary-only \
             | tee coverage-summary.txt
+      - name: Enforce BlueJS 88 percent line coverage
+        run: |
+          # Measure BlueJS independently of workspace instrumentation.
+          cargo llvm-cov clean --workspace
+          cargo llvm-cov -p blueice-bluejs --fail-under-lines 88 --summary-only
       - name: Publish summary
         if: always()
         run: |
@@ -74,3 +234,41 @@ jobs:
             cat coverage-summary.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  typescript-oracle:
+    name: BlueTSC TypeScript compatibility oracle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: Swatinem/rust-cache@v2
+      - name: Run the pinned TypeScript 5.9.3 BlueTSC compatibility matrix
+        run: >-
+          npm exec --yes --package typescript@5.9.3 --
+          env BLUEICE_BLUETSC_ORACLE=tsc
+          cargo test -p blueice-bluets --test typescript_oracle -- --ignored
+
+  # The single check branch protection requires. It depends on every other
+  # job and fails unless all of them succeeded, so the build matrix above can
+  # gain, lose or rename legs without the required-check list ever needing an
+  # edit. `if: always()` keeps it from being skipped when a dependency fails
+  # (a skipped required check would read as passing); a cancelled or skipped
+  # dependency counts as a failure too. A matrix job's result here is the
+  # aggregate of all its legs.
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs: [build-test, coverage, typescript-oracle]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every CI job to have succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || { echo "::error::A required CI job did not succeed ($result)"; exit 1; }
+          done
