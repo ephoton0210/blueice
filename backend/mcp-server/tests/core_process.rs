@@ -51,7 +51,54 @@ fn compiler_tool_reply(
     let (_, reply) = text
         .split_once(&marker)
         .expect("compiler result must delimit untrusted metadata before JSON");
-    serde_json::from_str(reply).expect("compiler tool result must retain the IPC reply shape")
+    let envelope: serde_json::Value =
+        serde_json::from_str(reply).expect("compiler tool result must retain the session envelope");
+    serde_json::from_value(
+        envelope
+            .get("reply")
+            .cloned()
+            .expect("compiler tool result must include its source-free reply"),
+    )
+    .expect("compiler tool result must retain the IPC reply shape")
+}
+
+fn compiler_session_id(result: &rmcp::model::CallToolResult) -> String {
+    assert_eq!(result.is_error, Some(false));
+    let text = result
+        .content
+        .first()
+        .and_then(|content| content.as_text())
+        .expect("compiler session capability must return one text result")
+        .text
+        .as_str();
+    let value: serde_json::Value =
+        serde_json::from_str(text).expect("compiler session capability must return JSON");
+    assert_eq!(value.get("available"), Some(&serde_json::Value::Bool(true)));
+    let session = value
+        .get("session")
+        .expect("available compiler capability must include a session receipt");
+    let id = session
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .expect("session receipt must include an opaque id");
+    assert_eq!(id.len(), 64, "session receipt must be a fixed opaque token");
+    assert!(id.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    assert_eq!(
+        session.get("compiler_protocol_version"),
+        Some(&serde_json::json!(
+            blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION
+        ))
+    );
+    let capabilities = session
+        .get("capabilities")
+        .and_then(serde_json::Value::as_array)
+        .expect("session receipt must expose its fixed read-only capabilities");
+    assert_eq!(capabilities.len(), 7);
+    assert!(
+        !text.contains("coreRegisteredAnswer") && !text.contains("core-fixture-dist"),
+        "capability result must remain source/output-free: {text}"
+    );
+    id.to_string()
 }
 
 fn assert_source_free_compiler_tool_result(result: &rmcp::model::CallToolResult) {
@@ -332,12 +379,21 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         .await
         .expect("MCP client must negotiate the in-memory transport");
 
+    let compiler_session = compiler_session_id(
+        &client
+            .call_tool(CallToolRequestParams::new("bluetsc_session_capabilities"))
+            .await
+            .expect("MCP compiler session capability must round-trip"),
+    );
+
     macro_rules! compiler_tool {
         ($name:literal, $arguments:expr) => {{
+            let mut arguments = $arguments;
+            arguments["session_id"] = serde_json::Value::String(compiler_session.clone());
             client
                 .call_tool(
                     CallToolRequestParams::new($name).with_arguments(
-                        $arguments
+                        arguments
                             .as_object()
                             .expect("MCP compiler arguments must be an object")
                             .clone(),
@@ -359,6 +415,54 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         .static_metadata
         .as_ref()
         .expect("successful check must retain source-free static metadata");
+
+    let wrong_session = client
+        .call_tool(
+            CallToolRequestParams::new("debug_list_static_metadata").with_arguments(
+                serde_json::json!({
+                    "session_id": "f".repeat(64),
+                    "project_id": 1,
+                    "generation": check.generation.sequence,
+                    "kind": "symbols",
+                    "limit": 1,
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .expect("mismatched compiler session must receive a structured MCP result");
+    assert_eq!(wrong_session.is_error, Some(true));
+    let wrong_session_text = wrong_session.content[0]
+        .as_text()
+        .expect("mismatched session result must be text")
+        .text
+        .as_str();
+    assert!(wrong_session_text.contains("does not belong to this MCP adapter"));
+    assert!(!wrong_session_text.contains("coreRegisteredAnswer"));
+
+    let unobserved_generation = compiler_tool!(
+        "debug_list_static_metadata",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence + 1,
+            "kind": "symbols",
+            "limit": 1,
+        })
+    );
+    assert_eq!(unobserved_generation.is_error, Some(true));
+    assert_source_free_compiler_tool_result(&unobserved_generation);
+    let blueice_ipc::compiler::CompilerReply::Error { code, message } =
+        compiler_tool_reply(&unobserved_generation)
+    else {
+        panic!("unobserved session generation must fail before compiler IPC")
+    };
+    assert_eq!(
+        code,
+        blueice_ipc::compiler::CompilerErrorCode::StaleGeneration
+    );
+    assert!(message.contains("not observed by this MCP session"));
 
     let mut source_ids = Vec::new();
     let mut type_ids = Vec::new();
@@ -692,6 +796,13 @@ async fn launcher_managed_core_keeps_mcp_browser_and_fixed_compiler_adapters_pai
         .await
         .expect("MCP client must negotiate the in-memory transport");
 
+    let compiler_session = compiler_session_id(
+        &client
+            .call_tool(CallToolRequestParams::new("bluetsc_session_capabilities"))
+            .await
+            .expect("paired MCP compiler session capability must round-trip"),
+    );
+
     let navigate = client
         .call_tool(
             CallToolRequestParams::new("navigate").with_arguments(
@@ -708,7 +819,7 @@ async fn launcher_managed_core_keeps_mcp_browser_and_fixed_compiler_adapters_pai
     let check = client
         .call_tool(
             CallToolRequestParams::new("bluetsc_check").with_arguments(
-                serde_json::json!({ "project_id": 1 })
+                serde_json::json!({ "session_id": compiler_session, "project_id": 1 })
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -759,10 +870,17 @@ async fn launcher_cutover_keeps_mcp_compiler_connections_generation_pinned() {
         .await
         .expect("v1 MCP client must negotiate the in-memory transport");
 
+    let v1_session = compiler_session_id(
+        &client
+            .call_tool(CallToolRequestParams::new("bluetsc_session_capabilities"))
+            .await
+            .expect("v1 MCP compiler session capability must round-trip"),
+    );
+
     let v1_check_result = client
         .call_tool(
             CallToolRequestParams::new("bluetsc_check").with_arguments(
-                serde_json::json!({ "project_id": 1 })
+                serde_json::json!({ "session_id": v1_session, "project_id": 1 })
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -779,6 +897,7 @@ async fn launcher_cutover_keeps_mcp_compiler_connections_generation_pinned() {
         .call_tool(
             CallToolRequestParams::new("debug_list_static_metadata").with_arguments(
                 serde_json::json!({
+                    "session_id": v1_session,
                     "project_id": 1,
                     "generation": v1_check.generation.sequence,
                     "kind": "symbols",
@@ -806,6 +925,7 @@ async fn launcher_cutover_keeps_mcp_compiler_connections_generation_pinned() {
         .call_tool(
             CallToolRequestParams::new("debug_list_static_metadata").with_arguments(
                 serde_json::json!({
+                    "session_id": v1_session,
                     "project_id": 1,
                     "generation": v1_check.generation.sequence,
                     "kind": "symbols",
@@ -850,10 +970,20 @@ async fn launcher_cutover_keeps_mcp_compiler_connections_generation_pinned() {
         .serve(client_transport)
         .await
         .expect("v2 MCP client must negotiate the in-memory transport");
+    let v2_session = compiler_session_id(
+        &client
+            .call_tool(CallToolRequestParams::new("bluetsc_session_capabilities"))
+            .await
+            .expect("v2 MCP compiler session capability must round-trip"),
+    );
+    assert_ne!(
+        v1_session, v2_session,
+        "a newly accepted relay connection must receive a fresh MCP session receipt"
+    );
     let v2_check_result = client
         .call_tool(
             CallToolRequestParams::new("bluetsc_check").with_arguments(
-                serde_json::json!({ "project_id": 1 })
+                serde_json::json!({ "session_id": v2_session, "project_id": 1 })
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -870,6 +1000,7 @@ async fn launcher_cutover_keeps_mcp_compiler_connections_generation_pinned() {
         .call_tool(
             CallToolRequestParams::new("debug_list_static_metadata").with_arguments(
                 serde_json::json!({
+                    "session_id": v2_session,
                     "project_id": 1,
                     "generation": v2_check.generation.sequence,
                     "kind": "symbols",
