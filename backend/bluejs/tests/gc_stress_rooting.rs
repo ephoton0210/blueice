@@ -135,3 +135,19 @@ fn proxy_get_prototype_keeps_the_trap_result_alive_while_the_target_is_checked()
          Object.getPrototypeOf(outer).tag === 'proto'"
     ));
 }
+
+/// `Atomics.waitAsync` allocates its `{async, value}` result record first and
+/// then allocates the Promise (and defines properties, which may collect)
+/// before returning it: the record must stay rooted throughout.
+#[test]
+fn atomics_wait_async_keeps_its_result_record_alive_while_the_promise_is_made() {
+    gc_stress_matches_ordinary(
+        "var view = new Int32Array(new SharedArrayBuffer(4));\
+         var pending = Atomics.waitAsync(view, 0, 0, 20);\
+         var mismatch = Atomics.waitAsync(view, 0, 1);\
+         var immediate = Atomics.waitAsync(view, 0, 0, 0);\
+         pending.async === true && pending.value instanceof Promise\
+           && mismatch.async === false && mismatch.value === 'not-equal'\
+           && immediate.async === false && immediate.value === 'timed-out'",
+    );
+}
