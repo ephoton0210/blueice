@@ -51,12 +51,15 @@ pub enum ExtensionRequest {
     ///
     /// `capability_versions` declares only the capabilities this
     /// extension actually uses, per-capability, e.g. `{"dom:read": 1}`
-    /// -- the two-layer versioning design's second layer. Real
-    /// per-capability `[min, max]` window enforcement against these
-    /// declared versions is explicit future work (see the plan doc's
-    /// "Wiring design" section); this minimal slice's handshake accepts
-    /// any declared versions without checking them.
-    Hello { extension_id: String, capability_versions: BTreeMap<String, u32> },
+    /// -- the two-layer versioning design's second layer. The host
+    /// checks every declaration against its per-capability supported
+    /// window and reports only incompatible entries in
+    /// [`ExtensionReply::HelloAck`]; compatible entries remain usable
+    /// on this connection.
+    Hello {
+        extension_id: String,
+        capability_versions: BTreeMap<String, u32>,
+    },
     /// Query the (for this minimal slice, placeholder) AI-facing
     /// representation, read-only -- requires the `dom:read` capability.
     /// No fields: this minimal slice doesn't wire a real target/query
@@ -75,7 +78,17 @@ pub enum ExtensionRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ExtensionReply {
     /// Reply to [`ExtensionRequest::Hello`].
-    HelloAck,
+    ///
+    /// A version mismatch deliberately does not terminate the whole
+    /// connection: third-party extensions can use a subset of the API,
+    /// so an unsupported `network:intercept` declaration must not stop
+    /// an otherwise compatible `dom:read` extension. Each omitted
+    /// capability was accepted at its declared version. Later requests
+    /// for an entry in `unsupported_capabilities` are denied by the
+    /// host, before checking its manifest grant.
+    HelloAck {
+        unsupported_capabilities: BTreeMap<String, UnsupportedCapabilityVersion>,
+    },
     /// Reply to a granted [`ExtensionRequest::DomRead`].
     DomReadResult { value: String },
     /// Reply to a granted [`ExtensionRequest::DomWrite`].
@@ -85,6 +98,22 @@ pub enum ExtensionReply {
     /// mirroring [`crate::gatekeeper::GatekeeperReply::Rejected`]'s
     /// "structured, not a silent no-op" precedent.
     CapabilityDenied { capability: String, reason: String },
+}
+
+/// A capability declaration the host could not negotiate during an
+/// [`ExtensionRequest::Hello`] handshake. Kept in the protocol reply so
+/// an independently released extension can make an informed fallback
+/// choice rather than infer it from a generic connection failure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UnsupportedCapabilityVersion {
+    /// The host does not implement this capability name at all.
+    UnknownCapability,
+    /// The host implements the capability, but not the declared API
+    /// version. Both bounds are inclusive.
+    OutsideSupportedRange {
+        min_inclusive: u32,
+        max_inclusive: u32,
+    },
 }
 
 pub fn write_extension_request<W: Write>(w: &mut W, msg: &ExtensionRequest) -> io::Result<()> {
@@ -133,10 +162,18 @@ mod tests {
     #[test]
     fn extension_request_round_trips_over_a_real_socket() {
         for req in [
-            ExtensionRequest::Hello { extension_id: "minimal-slice-extension".to_string(), capability_versions: sample_capability_versions() },
-            ExtensionRequest::Hello { extension_id: "some-other-extension".to_string(), capability_versions: BTreeMap::new() },
+            ExtensionRequest::Hello {
+                extension_id: "minimal-slice-extension".to_string(),
+                capability_versions: sample_capability_versions(),
+            },
+            ExtensionRequest::Hello {
+                extension_id: "some-other-extension".to_string(),
+                capability_versions: BTreeMap::new(),
+            },
             ExtensionRequest::DomRead,
-            ExtensionRequest::DomWrite { value: "new content".to_string() },
+            ExtensionRequest::DomWrite {
+                value: "new content".to_string(),
+            },
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_extension_request(&mut a, &req).unwrap();
@@ -147,10 +184,32 @@ mod tests {
     #[test]
     fn extension_reply_round_trips_over_a_real_socket() {
         for reply in [
-            ExtensionReply::HelloAck,
-            ExtensionReply::DomReadResult { value: "placeholder".to_string() },
+            ExtensionReply::HelloAck {
+                unsupported_capabilities: BTreeMap::new(),
+            },
+            ExtensionReply::HelloAck {
+                unsupported_capabilities: BTreeMap::from([
+                    (
+                        "dom:read".to_string(),
+                        UnsupportedCapabilityVersion::OutsideSupportedRange {
+                            min_inclusive: 1,
+                            max_inclusive: 2,
+                        },
+                    ),
+                    (
+                        "future:capability".to_string(),
+                        UnsupportedCapabilityVersion::UnknownCapability,
+                    ),
+                ]),
+            },
+            ExtensionReply::DomReadResult {
+                value: "placeholder".to_string(),
+            },
             ExtensionReply::DomWriteAck,
-            ExtensionReply::CapabilityDenied { capability: "dom:write".to_string(), reason: "not granted".to_string() },
+            ExtensionReply::CapabilityDenied {
+                capability: "dom:write".to_string(),
+                reason: "not granted".to_string(),
+            },
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_extension_reply(&mut a, &reply).unwrap();
@@ -162,10 +221,24 @@ mod tests {
     fn multiple_requests_can_be_written_and_read_in_sequence_on_one_stream() {
         let mut buf = Vec::new();
         write_extension_request(&mut buf, &ExtensionRequest::DomRead).unwrap();
-        write_extension_request(&mut buf, &ExtensionRequest::DomWrite { value: "x".to_string() }).unwrap();
+        write_extension_request(
+            &mut buf,
+            &ExtensionRequest::DomWrite {
+                value: "x".to_string(),
+            },
+        )
+        .unwrap();
         let mut cursor = std::io::Cursor::new(buf);
-        assert_eq!(read_extension_request(&mut cursor).unwrap(), ExtensionRequest::DomRead);
-        assert_eq!(read_extension_request(&mut cursor).unwrap(), ExtensionRequest::DomWrite { value: "x".to_string() });
+        assert_eq!(
+            read_extension_request(&mut cursor).unwrap(),
+            ExtensionRequest::DomRead
+        );
+        assert_eq!(
+            read_extension_request(&mut cursor).unwrap(),
+            ExtensionRequest::DomWrite {
+                value: "x".to_string()
+            }
+        );
     }
 
     #[test]
@@ -193,7 +266,13 @@ mod tests {
     #[test]
     fn reading_a_truncated_frame_is_an_error_not_a_panic() {
         let mut buf = Vec::new();
-        write_extension_reply(&mut buf, &ExtensionReply::HelloAck).unwrap();
+        write_extension_reply(
+            &mut buf,
+            &ExtensionReply::HelloAck {
+                unsupported_capabilities: BTreeMap::new(),
+            },
+        )
+        .unwrap();
         buf.truncate(buf.len() - 1);
         let mut cursor = std::io::Cursor::new(buf);
         assert!(read_extension_reply(&mut cursor).is_err());

@@ -3,13 +3,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `blueice-ai-gatekeeper`: the process binary. Deliberately thin --
-//! all the logic it runs (`handle_one_check`, always replying
-//! `Cleared`) lives in `blueice_ai_gatekeeper`'s `lib.rs`, already
+//! all the logic it runs (`handle_one_check`, applying the versioned
+//! deterministic rule set) lives in `blueice_ai_gatekeeper`'s `lib.rs`, already
 //! covered by its own unit tests against an in-process `UnixStream`
-//! pair. This file is just binding a real `UnixListener` at the
-//! well-known gatekeeper socket path and accepting connections --
-//! matching how `blueice-core`'s own thin binary is structured (see
-//! that crate's `src/bin/blueice-core.rs` docs).
+//! pair. This file is just parsing an optional private socket override,
+//! binding a real `UnixListener`, and accepting connections -- matching
+//! how `blueice-core`'s own thin binary is structured (see that crate's
+//! `src/bin/blueice-core.rs` docs). The override lets `blueice-launcher`
+//! give each supervised browser session its own gatekeeper instead of
+//! competing for the well-known standalone-development socket.
 //!
 //! `core` opens a short-lived, per-check connection per review (connect
 //! -> request -> reply -> disconnect). Each accepted connection runs in its
@@ -20,10 +22,32 @@ use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
 use blueice_ipc::local_socket::{bind_private_listener, ensure_private_socket_dir};
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
+use std::process::ExitCode;
 use std::thread;
 use std::time::{Duration, Instant};
 
 const CHECK_TIMEOUT: Duration = Duration::from_secs(10);
+
+#[derive(Debug, PartialEq)]
+struct Args {
+    socket: PathBuf,
+}
+
+fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
+    let mut socket = None;
+    let mut it = args;
+    while let Some(flag) = it.next() {
+        let mut value = || it.next().ok_or_else(|| format!("{flag} requires a value"));
+        match flag.as_str() {
+            "--socket" => socket = Some(PathBuf::from(value()?)),
+            other => return Err(format!("unrecognized argument: {other}")),
+        }
+    }
+    Ok(Args {
+        socket: socket.unwrap_or_else(default_gatekeeper_socket_path),
+    })
+}
 
 struct DeadlineStream {
     stream: UnixStream,
@@ -32,7 +56,10 @@ struct DeadlineStream {
 
 impl DeadlineStream {
     fn new(stream: UnixStream) -> Self {
-        DeadlineStream { stream, deadline: Instant::now() + CHECK_TIMEOUT }
+        DeadlineStream {
+            stream,
+            deadline: Instant::now() + CHECK_TIMEOUT,
+        }
     }
 }
 
@@ -40,7 +67,10 @@ impl Read for DeadlineStream {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         let remaining = self.deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
-            return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "the gatekeeper request exceeded its deadline"));
+            return Err(io::Error::new(
+                io::ErrorKind::ConnectionAborted,
+                "the gatekeeper request exceeded its deadline",
+            ));
         }
         self.stream.set_read_timeout(Some(remaining))?;
         self.stream.read(buffer)
@@ -57,8 +87,7 @@ impl Write for DeadlineStream {
     }
 }
 
-fn main() -> std::io::Result<()> {
-    let path = default_gatekeeper_socket_path();
+fn run(path: PathBuf) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         ensure_private_socket_dir(parent)?;
     }
@@ -77,4 +106,66 @@ fn main() -> std::io::Result<()> {
         });
     }
     Ok(())
+}
+
+fn main() -> ExitCode {
+    let args = match parse_args(std::env::args().skip(1)) {
+        Ok(args) => args,
+        Err(message) => {
+            eprintln!("blueice-ai-gatekeeper: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if let Err(error) = run(args.socket) {
+        eprintln!("blueice-ai-gatekeeper: {error}");
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(flags: &[&str]) -> Result<Args, String> {
+        parse_args(flags.iter().map(|flag| flag.to_string()))
+    }
+
+    #[test]
+    fn no_flags_uses_the_well_known_standalone_socket() {
+        assert_eq!(
+            args(&[]).unwrap(),
+            Args {
+                socket: default_gatekeeper_socket_path()
+            }
+        );
+    }
+
+    #[test]
+    fn socket_override_is_parsed() {
+        assert_eq!(
+            args(&["--socket", "/tmp/private-gatekeeper.sock"]).unwrap(),
+            Args {
+                socket: PathBuf::from("/tmp/private-gatekeeper.sock")
+            }
+        );
+    }
+
+    #[test]
+    fn a_socket_flag_without_a_value_is_an_error() {
+        assert_eq!(
+            args(&["--socket"]),
+            Err("--socket requires a value".to_string())
+        );
+    }
+
+    #[test]
+    fn an_unknown_argument_is_an_error() {
+        assert_eq!(
+            args(&["--other"]),
+            Err("unrecognized argument: --other".to_string())
+        );
+    }
 }

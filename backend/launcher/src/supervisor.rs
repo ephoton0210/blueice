@@ -11,12 +11,13 @@
 //! inventing a separate coordinator role.
 //!
 //! Deliberately one registry keyed by role name and one small policy
-//! enum, not a special case per process: `core` is `AlwaysResident`
-//! today and `mcp-server` is registered as a typed `IdleTeardown` slot
-//! (real in the data model, not yet wired to an automatic spawn path --
-//! see this crate's own module docs). `downloads` is deliberately *not*
-//! registered until its transfer-aware idle query and graceful shutdown
-//! protocol are wired: a generic time-only kill could lose active work.
+//! enum, not a special case per process: `core` and `ai-gatekeeper` are
+//! `AlwaysResident` today and `mcp-server` is registered as a typed
+//! `IdleTeardown` slot (real in the data model, not yet wired to an
+//! automatic spawn path -- see this crate's own module docs). `downloads`
+//! is deliberately *not* registered until its transfer-aware idle query
+//! and graceful shutdown protocol are wired: a generic time-only kill
+//! could lose active work.
 
 use std::collections::HashMap;
 use std::process::Child;
@@ -83,6 +84,9 @@ impl ProcessRegistry {
     /// * `core` -- `AlwaysResident`, with no child held here (its real
     ///   child is owned and torn down by `SpawnedCore`; see
     ///   [`Self::is_resident`]).
+    /// * `ai-gatekeeper` -- also `AlwaysResident`, with its real child
+    ///   owned by `SpawnedGatekeeper`; a fail-closed checkpoint must not
+    ///   be idle-torn down.
     /// * `mcp-server` -- a typed, inert `IdleTeardown` slot with no
     ///   automatic spawn path yet (`phase-8-live-core-hotswap/PLAN.md`'s
     ///   follow-up).
@@ -93,6 +97,7 @@ impl ProcessRegistry {
     pub fn default_fleet(now: Instant) -> Self {
         let mut registry = ProcessRegistry::new();
         registry.register("core", ProcessPolicy::AlwaysResident, None, now);
+        registry.register("ai-gatekeeper", ProcessPolicy::AlwaysResident, None, now);
         registry.register(
             "mcp-server",
             ProcessPolicy::IdleTeardown {
@@ -321,6 +326,10 @@ mod tests {
 
         assert!(registry.is_resident("core"), "core is AlwaysResident");
         assert!(
+            registry.is_resident("ai-gatekeeper"),
+            "ai-gatekeeper is an always-resident fail-closed checkpoint"
+        );
+        assert!(
             registry
                 .idle_eligible_for_teardown(start + Duration::from_secs(1_000_000))
                 .is_empty(),
@@ -331,22 +340,18 @@ mod tests {
         // deliberately not a slot until a transfer-aware idle query can
         // protect active and queued work from generic SIGKILL teardown.
         assert!(!registry.is_resident("mcp-server"));
-        assert!(
-            registry
-                .set_resident("mcp-server", spawn_dummy_child(), start)
-                .is_none()
-        );
+        assert!(registry
+            .set_resident("mcp-server", spawn_dummy_child(), start)
+            .is_none());
         assert!(registry.is_resident("mcp-server"));
         let mut unowned_downloads = registry
             .set_resident("downloads", spawn_dummy_child(), start)
             .expect("downloads must not be accepted by a time-only teardown registry");
         let _ = unowned_downloads.kill();
         let _ = unowned_downloads.wait();
-        assert!(
-            registry
-                .idle_eligible_for_teardown(start + Duration::from_secs(299))
-                .is_empty()
-        );
+        assert!(registry
+            .idle_eligible_for_teardown(start + Duration::from_secs(299))
+            .is_empty());
         assert_eq!(
             registry.idle_eligible_for_teardown(start + Duration::from_secs(301)),
             vec!["mcp-server".to_string()]
@@ -372,11 +377,9 @@ mod tests {
         registry.mark_active("mcp-server", later);
 
         // 70s after registration, but only 20s after the reset activity -- still not eligible.
-        assert!(
-            registry
-                .idle_eligible_for_teardown(start + Duration::from_secs(70))
-                .is_empty()
-        );
+        assert!(registry
+            .idle_eligible_for_teardown(start + Duration::from_secs(70))
+            .is_empty());
         assert_eq!(
             registry.idle_eligible_for_teardown(later + Duration::from_secs(61)),
             vec!["mcp-server".to_string()]
@@ -399,11 +402,9 @@ mod tests {
             start,
         );
 
-        assert!(
-            registry
-                .idle_eligible_for_teardown(start + Duration::from_secs(1_000_000))
-                .is_empty()
-        );
+        assert!(registry
+            .idle_eligible_for_teardown(start + Duration::from_secs(1_000_000))
+            .is_empty());
     }
 
     #[test]

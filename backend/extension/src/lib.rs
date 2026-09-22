@@ -50,8 +50,11 @@
 //! process from simply declaring a different extension's id. Tracked as
 //! still-open in `phase-9-extension-protocol/PLAN.md`, not solved here.
 
-use blueice_ipc::extension::{read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest};
-use std::collections::{HashMap, HashSet};
+use blueice_ipc::extension::{
+    read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
+    UnsupportedCapabilityVersion,
+};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{self, Read, Write};
 
 /// The one hardcoded extension identity this minimal slice recognizes.
@@ -66,10 +69,51 @@ pub const CAPABILITY_DOM_READ: &str = "dom:read";
 /// *not* granted -- the request that proves server-side denial.
 pub const CAPABILITY_DOM_WRITE: &str = "dom:write";
 
+/// An inclusive API-version interval a host supports for one capability.
+/// A capability grant and a supported version are deliberately separate:
+/// an extension may use a known API version without being authorized to
+/// invoke that capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapabilityVersionWindow {
+    min_inclusive: u32,
+    max_inclusive: u32,
+}
+
+impl CapabilityVersionWindow {
+    /// Creates a valid inclusive version window, or returns `None` when
+    /// its bounds are inverted.
+    pub const fn new(min_inclusive: u32, max_inclusive: u32) -> Option<Self> {
+        if min_inclusive <= max_inclusive {
+            Some(Self {
+                min_inclusive,
+                max_inclusive,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Whether `version` is supported by this interval.
+    pub const fn contains(self, version: u32) -> bool {
+        self.min_inclusive <= version && version <= self.max_inclusive
+    }
+
+    /// The lower inclusive API-version bound.
+    pub const fn min_inclusive(self) -> u32 {
+        self.min_inclusive
+    }
+
+    /// The upper inclusive API-version bound.
+    pub const fn max_inclusive(self) -> u32 {
+        self.max_inclusive
+    }
+}
+
 /// [`ExtensionReply::DomReadResult`]'s value for a granted `DomRead` in
 /// this minimal slice -- a fixed placeholder, not real `Page` state; see
 /// this crate's own module docs for why.
-const PLACEHOLDER_DOM_READ_VALUE: &str = "<blueice-extension-host: no real Page is wired into this minimal slice>";
+const PLACEHOLDER_DOM_READ_VALUE: &str =
+    "<blueice-extension-host: no real Page is wired into this minimal slice>";
 
 /// Which capabilities each connected extension has been granted --
 /// `phase-9-extension-protocol/PLAN.md`'s "Wiring design" describes this
@@ -81,6 +125,7 @@ const PLACEHOLDER_DOM_READ_VALUE: &str = "<blueice-extension-host: no real Page 
 /// still-open future work per the plan doc, not solved here.
 pub struct ExtensionRegistry {
     grants: HashMap<String, HashSet<String>>,
+    supported_versions: HashMap<String, CapabilityVersionWindow>,
 }
 
 impl Default for ExtensionRegistry {
@@ -92,13 +137,30 @@ impl Default for ExtensionRegistry {
 impl ExtensionRegistry {
     /// An empty registry: no extension_id is granted anything.
     pub fn new() -> Self {
-        Self { grants: HashMap::new() }
+        Self {
+            grants: HashMap::new(),
+            supported_versions: HashMap::new(),
+        }
+    }
+
+    /// Registers the API-version window this host implements for a
+    /// capability. Registering a capability does not grant it to any
+    /// extension; use [`Self::grant`] for that separate decision.
+    pub fn register_capability_version_window(
+        &mut self,
+        capability: impl Into<String>,
+        window: CapabilityVersionWindow,
+    ) {
+        self.supported_versions.insert(capability.into(), window);
     }
 
     /// Grants `capability` to `extension_id`, in addition to whatever
     /// it already holds.
     pub fn grant(&mut self, extension_id: impl Into<String>, capability: impl Into<String>) {
-        self.grants.entry(extension_id.into()).or_default().insert(capability.into());
+        self.grants
+            .entry(extension_id.into())
+            .or_default()
+            .insert(capability.into());
     }
 
     /// The actual enforcement point: does `extension_id` currently hold
@@ -107,7 +169,45 @@ impl ExtensionRegistry {
     /// docs for why an unknown identity isn't rejected outright at
     /// handshake time.
     pub fn has_capability(&self, extension_id: &str, capability: &str) -> bool {
-        self.grants.get(extension_id).is_some_and(|caps| caps.contains(capability))
+        self.grants
+            .get(extension_id)
+            .is_some_and(|caps| caps.contains(capability))
+    }
+
+    /// Returns why a declared API version is unavailable, if it cannot
+    /// be negotiated with this host.
+    pub fn unsupported_capability_version(
+        &self,
+        capability: &str,
+        version: u32,
+    ) -> Option<UnsupportedCapabilityVersion> {
+        match self.supported_versions.get(capability).copied() {
+            None => Some(UnsupportedCapabilityVersion::UnknownCapability),
+            Some(window) if !window.contains(version) => {
+                Some(UnsupportedCapabilityVersion::OutsideSupportedRange {
+                    min_inclusive: window.min_inclusive(),
+                    max_inclusive: window.max_inclusive(),
+                })
+            }
+            Some(_) => None,
+        }
+    }
+
+    /// Validates all declarations in one `Hello`, retaining every
+    /// independently unsupported entry for the structured handshake
+    /// reply. This never rejects a compatible declaration merely because
+    /// another capability on the same connection is unavailable.
+    pub fn unsupported_capability_versions(
+        &self,
+        declared_versions: &BTreeMap<String, u32>,
+    ) -> BTreeMap<String, UnsupportedCapabilityVersion> {
+        declared_versions
+            .iter()
+            .filter_map(|(capability, version)| {
+                self.unsupported_capability_version(capability, *version)
+                    .map(|problem| (capability.clone(), problem))
+            })
+            .collect()
     }
 
     /// Seeds the hardcoded single-extension grant this minimal slice
@@ -116,9 +216,63 @@ impl ExtensionRegistry {
     /// `DomWrite` attempt is the concrete proof of server-side denial.
     pub fn minimal_slice() -> Self {
         let mut registry = Self::new();
+        let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
+        registry.register_capability_version_window(CAPABILITY_DOM_READ, v1);
+        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1);
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
         registry
     }
+}
+
+/// Connection-scoped identity plus the subset of capability declarations
+/// whose API version was successfully negotiated. The grant lookup stays
+/// in [`ExtensionRegistry`], so the extension cannot manufacture either
+/// half of an authorization decision in a later request.
+struct ConnectionIdentity {
+    extension_id: String,
+    negotiated_capabilities: HashSet<String>,
+}
+
+fn negotiate_hello(
+    registry: &ExtensionRegistry,
+    extension_id: String,
+    capability_versions: BTreeMap<String, u32>,
+) -> (ConnectionIdentity, ExtensionReply) {
+    let unsupported_capabilities = registry.unsupported_capability_versions(&capability_versions);
+    let negotiated_capabilities = capability_versions
+        .into_keys()
+        .filter(|capability| !unsupported_capabilities.contains_key(capability))
+        .collect();
+
+    (
+        ConnectionIdentity {
+            extension_id,
+            negotiated_capabilities,
+        },
+        ExtensionReply::HelloAck {
+            unsupported_capabilities,
+        },
+    )
+}
+
+fn capability_denial_reason(
+    registry: &ExtensionRegistry,
+    identity: &ConnectionIdentity,
+    capability: &str,
+) -> Option<String> {
+    if !identity.negotiated_capabilities.contains(capability) {
+        return Some(format!(
+            "{} did not negotiate a supported version of {capability}",
+            identity.extension_id
+        ));
+    }
+    if !registry.has_capability(&identity.extension_id, capability) {
+        return Some(format!(
+            "{} is not granted {capability}",
+            identity.extension_id
+        ));
+    }
+    None
 }
 
 /// Serves one extension connection until it disconnects (or sends
@@ -127,18 +281,20 @@ impl ExtensionRegistry {
 /// (rejecting/ending the connection otherwise, mirroring how
 /// `blueice_engine::session`'s `perform_handshake` rejects a non-`Hello`
 /// first message on the external client protocol), replies
-/// [`ExtensionReply::HelloAck`], then loops handling `DomRead`/
+/// [`ExtensionReply::HelloAck`] (including any individually unsupported
+/// capability versions), then loops handling `DomRead`/
 /// `DomWrite` requests -- checking `registry` before executing each,
 /// replying [`ExtensionReply::CapabilityDenied`] for an unauthorized
 /// request rather than a silent no-op or a bare/generic error.
 ///
-/// **A later `Hello`** (once past the initial handshake) is accepted
-/// and just answered with another `HelloAck`, updating which
-/// `extension_id` subsequent requests on this connection are checked
-/// against -- the same "answered again, not re-gating the whole
-/// connection" discipline `run_session`'s own docs describe for a
-/// repeat `Hello` on the external client protocol, applied here to a
-/// long-lived extension connection.
+/// **A later `Hello`** (once past the initial handshake) is accepted,
+/// renegotiates the independently versioned capability set, and answers
+/// with another `HelloAck`, updating which `extension_id` subsequent
+/// requests on this connection are checked against -- the same
+/// "answered again, not re-gating the whole connection" discipline
+/// `run_session`'s own docs describe for a repeat `Hello` on the
+/// external client protocol, applied here to a long-lived extension
+/// connection.
 ///
 /// **Any read failure** (a clean disconnect, or bytes that don't parse
 /// as a well-formed [`ExtensionRequest`]) ends the connection by
@@ -152,11 +308,18 @@ impl ExtensionRegistry {
 /// to treat that the same as an ordinary disconnect rather than
 /// escalate it, the same choice `run_session` already made for the
 /// analogous case on the external protocol.
-pub fn handle_extension_connection<S: Read + Write>(registry: &ExtensionRegistry, stream: &mut S) -> io::Result<()> {
-    let mut extension_id = match read_extension_request(stream) {
-        Ok(ExtensionRequest::Hello { extension_id, .. }) => {
-            write_extension_reply(stream, &ExtensionReply::HelloAck)?;
-            extension_id
+pub fn handle_extension_connection<S: Read + Write>(
+    registry: &ExtensionRegistry,
+    stream: &mut S,
+) -> io::Result<()> {
+    let mut identity = match read_extension_request(stream) {
+        Ok(ExtensionRequest::Hello {
+            extension_id,
+            capability_versions,
+        }) => {
+            let (identity, reply) = negotiate_hello(registry, extension_id, capability_versions);
+            write_extension_reply(stream, &reply)?;
+            identity
         }
         Ok(_) => return Ok(()), // first message wasn't Hello: reject by ending the connection
         Err(_) => return Ok(()), // disconnected, or sent something unparseable, before ever completing the handshake
@@ -168,34 +331,48 @@ pub fn handle_extension_connection<S: Read + Write>(registry: &ExtensionRegistry
             Err(_) => return Ok(()),
         };
         match request {
-            ExtensionRequest::Hello { extension_id: new_id, .. } => {
-                extension_id = new_id;
-                write_extension_reply(stream, &ExtensionReply::HelloAck)?;
+            ExtensionRequest::Hello {
+                extension_id,
+                capability_versions,
+            } => {
+                let (new_identity, reply) =
+                    negotiate_hello(registry, extension_id, capability_versions);
+                write_extension_reply(stream, &reply)?;
+                identity = new_identity;
             }
             ExtensionRequest::DomRead => {
-                if registry.has_capability(&extension_id, CAPABILITY_DOM_READ) {
-                    write_extension_reply(stream, &ExtensionReply::DomReadResult { value: PLACEHOLDER_DOM_READ_VALUE.to_string() })?;
-                } else {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_DOM_READ)
+                {
                     write_extension_reply(
                         stream,
                         &ExtensionReply::CapabilityDenied {
                             capability: CAPABILITY_DOM_READ.to_string(),
-                            reason: format!("{extension_id} is not granted {CAPABILITY_DOM_READ}"),
+                            reason,
+                        },
+                    )?;
+                } else {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::DomReadResult {
+                            value: PLACEHOLDER_DOM_READ_VALUE.to_string(),
                         },
                     )?;
                 }
             }
             ExtensionRequest::DomWrite { value: _ } => {
-                if registry.has_capability(&extension_id, CAPABILITY_DOM_WRITE) {
-                    write_extension_reply(stream, &ExtensionReply::DomWriteAck)?;
-                } else {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE)
+                {
                     write_extension_reply(
                         stream,
                         &ExtensionReply::CapabilityDenied {
                             capability: CAPABILITY_DOM_WRITE.to_string(),
-                            reason: format!("{extension_id} is not granted {CAPABILITY_DOM_WRITE}"),
+                            reason,
                         },
                     )?;
+                } else {
+                    write_extension_reply(stream, &ExtensionReply::DomWriteAck)?;
                 }
             }
         }
@@ -211,7 +388,29 @@ mod tests {
     use std::thread;
 
     fn hello(extension_id: &str) -> ExtensionRequest {
-        ExtensionRequest::Hello { extension_id: extension_id.to_string(), capability_versions: BTreeMap::new() }
+        hello_with_capabilities(
+            extension_id,
+            [(CAPABILITY_DOM_READ, 1), (CAPABILITY_DOM_WRITE, 1)],
+        )
+    }
+
+    fn hello_with_capabilities(
+        extension_id: &str,
+        capabilities: impl IntoIterator<Item = (&'static str, u32)>,
+    ) -> ExtensionRequest {
+        ExtensionRequest::Hello {
+            extension_id: extension_id.to_string(),
+            capability_versions: capabilities
+                .into_iter()
+                .map(|(capability, version)| (capability.to_string(), version))
+                .collect(),
+        }
+    }
+
+    fn empty_hello_ack() -> ExtensionReply {
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
     }
 
     #[test]
@@ -237,16 +436,138 @@ mod tests {
     }
 
     #[test]
+    fn capability_version_window_has_inclusive_validated_bounds() {
+        let window = CapabilityVersionWindow::new(1, 2).unwrap();
+        assert!(window.contains(1));
+        assert!(window.contains(2));
+        assert!(!window.contains(0));
+        assert!(!window.contains(3));
+        assert!(CapabilityVersionWindow::new(2, 1).is_none());
+    }
+
+    #[test]
+    fn a_hello_reports_only_unsupported_capabilities_and_keeps_compatible_ones_usable() {
+        let registry = ExtensionRegistry::minimal_slice();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_DOM_READ, 1), ("future:capability", 1)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::HelloAck {
+                unsupported_capabilities: BTreeMap::from([(
+                    "future:capability".to_string(),
+                    UnsupportedCapabilityVersion::UnknownCapability,
+                )]),
+            }
+        );
+
+        // An independently unsupported future capability must not end a
+        // connection that successfully negotiated dom:read.
+        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomReadResult {
+                value: PLACEHOLDER_DOM_READ_VALUE.to_string()
+            }
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn an_incompatible_version_is_reported_and_cannot_be_used_after_handshake() {
+        let registry = ExtensionRegistry::minimal_slice();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 2)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::HelloAck {
+                unsupported_capabilities: BTreeMap::from([(
+                    CAPABILITY_DOM_READ.to_string(),
+                    UnsupportedCapabilityVersion::OutsideSupportedRange {
+                        min_inclusive: 1,
+                        max_inclusive: 1
+                    },
+                )]),
+            }
+        );
+
+        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, reason } => {
+                assert_eq!(capability, CAPABILITY_DOM_READ);
+                assert!(reason.contains("did not negotiate a supported version"));
+            }
+            other => panic!("expected CapabilityDenied, got {other:?}"),
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn a_granted_capability_must_still_be_declared_and_version_negotiated() {
+        let registry = ExtensionRegistry::minimal_slice();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 1)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+
+        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, reason } => {
+                assert_eq!(capability, CAPABILITY_DOM_READ);
+                assert!(reason.contains("did not negotiate a supported version"));
+            }
+            other => panic!("expected CapabilityDenied, got {other:?}"),
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
     fn a_granted_dom_read_succeeds_after_handshake() {
         let registry = ExtensionRegistry::minimal_slice();
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
 
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomReadResult { value: PLACEHOLDER_DOM_READ_VALUE.to_string() });
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomReadResult {
+                value: PLACEHOLDER_DOM_READ_VALUE.to_string()
+            }
+        );
 
         drop(client);
         handle.join().unwrap().unwrap();
@@ -259,9 +580,18 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
 
-        write_extension_request(&mut client, &ExtensionRequest::DomWrite { value: "hijacked".to_string() }).unwrap();
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::DomWrite {
+                value: "hijacked".to_string(),
+            },
+        )
+        .unwrap();
         match read_extension_reply(&mut client).unwrap() {
             ExtensionReply::CapabilityDenied { capability, reason } => {
                 assert_eq!(capability, CAPABILITY_DOM_WRITE);
@@ -286,13 +616,30 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
 
-        write_extension_request(&mut client, &ExtensionRequest::DomWrite { value: "x".to_string() }).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::CapabilityDenied { .. }));
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::DomWrite {
+                value: "x".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { .. }
+        ));
 
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomReadResult { value: PLACEHOLDER_DOM_READ_VALUE.to_string() });
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomReadResult {
+                value: PLACEHOLDER_DOM_READ_VALUE.to_string()
+            }
+        );
 
         drop(client);
         handle.join().unwrap().unwrap();
@@ -305,11 +652,16 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello("never-registered-extension")).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
 
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
         match read_extension_reply(&mut client).unwrap() {
-            ExtensionReply::CapabilityDenied { capability, .. } => assert_eq!(capability, CAPABILITY_DOM_READ),
+            ExtensionReply::CapabilityDenied { capability, .. } => {
+                assert_eq!(capability, CAPABILITY_DOM_READ)
+            }
             other => panic!("expected CapabilityDenied, got {other:?}"),
         }
 
@@ -351,18 +703,32 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello("some-other-extension")).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
 
         // Not yet granted anything under this first identity.
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::CapabilityDenied { .. }));
+        assert!(matches!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { .. }
+        ));
 
         // Re-identify as the granted extension on the same connection.
         write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
 
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomReadResult { value: PLACEHOLDER_DOM_READ_VALUE.to_string() });
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomReadResult {
+                value: PLACEHOLDER_DOM_READ_VALUE.to_string()
+            }
+        );
 
         drop(client);
         handle.join().unwrap().unwrap();
@@ -375,7 +741,10 @@ mod tests {
         let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
 
         write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
 
         // A truncated frame: a length prefix promising more bytes than
         // are ever sent.
@@ -399,7 +768,10 @@ mod tests {
             let (mut client, mut server) = UnixStream::pair().unwrap();
             let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
             write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
-            assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::HelloAck);
+            assert_eq!(
+                read_extension_reply(&mut client).unwrap(),
+                empty_hello_ack()
+            );
             drop(client);
             handle.join().unwrap().unwrap();
         }

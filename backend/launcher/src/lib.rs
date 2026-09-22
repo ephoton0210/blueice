@@ -52,7 +52,7 @@ use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -282,6 +282,11 @@ struct Broker {
     /// Bumped by [`perform_swap`] *before* the old core connection is
     /// closed -- see [`spawn_generation_tagged_broadcast`]'s docs.
     generation: Arc<AtomicU64>,
+    /// At most one cutover may own v1 capture, v2 replay, and the
+    /// eventual writer/process swap at a time. Without this gate, two
+    /// simultaneous control connections could capture different v1
+    /// states and race to replace the same active core.
+    cutover_gate: CutoverGate,
     /// The `core` process currently backing this broker. `None` only in
     /// the brief window while [`run_broker`] is tearing everything
     /// down at the very end. Both `run_broker`'s final cleanup and
@@ -300,11 +305,48 @@ struct Broker {
     /// `core` instances would let their independently-zeroed
     /// `generation` counters collide on the same frame filename.
     frame_dir: PathBuf,
+    /// The private, always-resident gatekeeper this launcher spawned
+    /// before v1. Every replacement core receives the same path, so a
+    /// cutover cannot accidentally turn the fail-closed navigation
+    /// checkpoint into an unreachable default socket.
+    gatekeeper_socket: PathBuf,
     /// Signaled exactly once, by whichever generation-tagged broadcast
     /// thread's own death is NOT a deliberate cutover supersession --
     /// what [`run_broker`] blocks on to know when the whole launcher
     /// should exit.
     done: Sender<()>,
+}
+
+/// A small RAII gate for the one operation that must be globally
+/// serialized within a broker: a v1 → v2 cutover. Releasing it in
+/// [`Drop`] covers all fail-closed early returns in [`cutover`].
+struct CutoverGate {
+    in_progress: AtomicBool,
+}
+
+impl CutoverGate {
+    fn new() -> Self {
+        Self {
+            in_progress: AtomicBool::new(false),
+        }
+    }
+
+    fn try_acquire(&self) -> Option<CutoverGuard<'_>> {
+        self.in_progress
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .ok()
+            .map(|_| CutoverGuard { gate: self })
+    }
+}
+
+struct CutoverGuard<'a> {
+    gate: &'a CutoverGate,
+}
+
+impl Drop for CutoverGuard<'_> {
+    fn drop(&mut self) {
+        self.gate.in_progress.store(false, Ordering::Release);
+    }
 }
 
 /// A generous but bounded wait for [`capture_v1_tabs`]'s `Tabs` reply --
@@ -612,6 +654,10 @@ fn perform_swap(broker: &Arc<Broker>, v2: SpawnedCore, target_generation: u64) {
 /// "Wiring design" for why no retry policy exists yet. v1 is never
 /// touched until every step through the health check has succeeded.
 fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
+    let Some(_guard) = broker.cutover_gate.try_acquire() else {
+        return control::ControlReply::CutoverBusy;
+    };
+
     let captured_tabs =
         match capture_v1_tabs(&broker.core_writer, &broker.clients, TAB_CAPTURE_TIMEOUT) {
             Ok(tabs) => tabs,
@@ -620,7 +666,12 @@ fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
 
     let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
     let frame_dir = v2_frame_dir(&broker.frame_dir, target_generation);
-    let mut v2 = match SpawnedCore::spawn(broker.width, broker.height, &frame_dir) {
+    let mut v2 = match SpawnedCore::spawn_with_gatekeeper(
+        broker.width,
+        broker.height,
+        &frame_dir,
+        &broker.gatekeeper_socket,
+    ) {
         Ok(v2) => v2,
         Err(e) => {
             return control::ControlReply::CutoverFailed {
@@ -685,6 +736,7 @@ pub fn run_broker(
     core: SpawnedCore,
     width: f64,
     height: f64,
+    gatekeeper_socket: PathBuf,
 ) -> io::Result<()> {
     let frame_dir = core.frame_dir.clone();
     let core_writer = Arc::new(Mutex::new(core.stream.try_clone()?));
@@ -697,10 +749,12 @@ pub fn run_broker(
         core_writer: Arc::clone(&core_writer),
         clients: Arc::clone(&clients),
         generation: Arc::clone(&generation),
+        cutover_gate: CutoverGate::new(),
         active_core: Mutex::new(Some(core)),
         width,
         height,
         frame_dir,
+        gatekeeper_socket,
         done: done_tx.clone(),
     });
 
@@ -788,6 +842,25 @@ fn sibling_bluejs_binary(this_exe: &Path) -> PathBuf {
     dir.join(name)
 }
 
+/// The always-resident safety-gatekeeper daemon lives beside `core` and
+/// BlueJS. Resolve it relative to the launcher rather than `$PATH`, so
+/// one installed BlueIce release never launches another release's policy
+/// process by accident.
+fn sibling_gatekeeper_binary(this_exe: &Path) -> PathBuf {
+    let name = if cfg!(windows) {
+        "blueice-ai-gatekeeper.exe"
+    } else {
+        "blueice-ai-gatekeeper"
+    };
+    let dir = this_exe.parent().unwrap_or_else(|| Path::new("."));
+    let dir = if dir.file_name().is_some_and(|n| n == "deps") {
+        dir.parent().unwrap_or(dir)
+    } else {
+        dir
+    };
+    dir.join(name)
+}
+
 /// A path for `core`'s *internal* socket -- never exposed to external
 /// clients, which only ever see the rendezvous socket this launcher
 /// itself listens on. Includes a monotonic counter alongside the PID:
@@ -814,6 +887,23 @@ fn unique_internal_script_socket_path() -> PathBuf {
     ))
 }
 
+/// A per-launcher private socket for its one always-resident
+/// gatekeeper. It is deliberately not the well-known standalone socket:
+/// multiple launchers may run at once, each with its own supervised
+/// process and independent shutdown lifecycle.
+fn unique_internal_gatekeeper_socket_path() -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    // `ai-gatekeeper` deliberately binds only within a private socket
+    // directory. Do not use `temp_dir()` directly here: it can be an
+    // OS-managed shared directory whose mode the gatekeeper must not
+    // chmod merely to create one per-launcher socket.
+    blueice_ipc::local_socket::default_socket_dir().join(format!(
+        "blueice-launcher-gatekeeper-{}-{n}.sock",
+        std::process::id()
+    ))
+}
+
 fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
@@ -823,6 +913,53 @@ fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
         thread::sleep(Duration::from_millis(20));
     }
     false
+}
+
+/// The local deterministic rule-base process a launcher owns for its
+/// full lifetime. It is intentionally separate from [`SpawnedCore`]:
+/// a core hot-swap must preserve the same mandatory checkpoint instead
+/// of creating a safety gap between v1 and v2.
+pub struct SpawnedGatekeeper {
+    child: Child,
+    socket_path: PathBuf,
+}
+
+impl SpawnedGatekeeper {
+    pub fn spawn() -> io::Result<Self> {
+        let this_exe = std::env::current_exe()?;
+        let gatekeeper_bin = sibling_gatekeeper_binary(&this_exe);
+        let socket_path = unique_internal_gatekeeper_socket_path();
+        let _ = std::fs::remove_file(&socket_path);
+
+        let mut child = Command::new(&gatekeeper_bin)
+            .arg("--socket")
+            .arg(&socket_path)
+            .spawn()?;
+        if !wait_for_socket(&socket_path, Duration::from_secs(5)) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&socket_path);
+            return Err(io::Error::other(format!(
+                "blueice-ai-gatekeeper never created its socket at {}",
+                socket_path.display()
+            )));
+        }
+        Ok(Self { child, socket_path })
+    }
+
+    /// The private socket path every core managed by this launcher must
+    /// use for its mandatory gatekeeper checks.
+    pub fn socket_path(&self) -> &Path {
+        &self.socket_path
+    }
+}
+
+impl Drop for SpawnedGatekeeper {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let _ = std::fs::remove_file(&self.socket_path);
+    }
 }
 
 /// A `core` process this launcher spawned and owns privately: killed
@@ -839,7 +976,24 @@ pub struct SpawnedCore {
 }
 
 impl SpawnedCore {
+    /// Spawns a standalone core using the conventional gatekeeper
+    /// socket. Launcher-managed cores should use
+    /// [`Self::spawn_with_gatekeeper`] with their private supervised
+    /// gatekeeper instead.
     pub fn spawn(width: f64, height: f64, frame_dir: &Path) -> io::Result<Self> {
+        let gatekeeper_socket = blueice_ipc::gatekeeper::default_gatekeeper_socket_path();
+        Self::spawn_with_gatekeeper(width, height, frame_dir, &gatekeeper_socket)
+    }
+
+    /// Spawns a core wired to `gatekeeper_socket`, which must be a
+    /// live, launcher-supervised mandatory checkpoint for production
+    /// launcher use.
+    pub fn spawn_with_gatekeeper(
+        width: f64,
+        height: f64,
+        frame_dir: &Path,
+        gatekeeper_socket: &Path,
+    ) -> io::Result<Self> {
         let this_exe = std::env::current_exe()?;
         let core_bin = sibling_core_binary(&this_exe);
         let bluejs_bin = sibling_bluejs_binary(&this_exe);
@@ -857,6 +1011,8 @@ impl SpawnedCore {
             .arg(height.to_string())
             .arg("--frame-dir")
             .arg(frame_dir)
+            .arg("--gatekeeper-socket")
+            .arg(gatekeeper_socket)
             .arg("--script-socket")
             .arg(&script_socket_path)
             .spawn()?;
@@ -931,6 +1087,23 @@ impl Drop for SpawnedCore {
 mod tests {
     use super::*;
     use blueice_ipc::*;
+
+    #[test]
+    fn cutover_gate_allows_only_one_in_flight_cutover_and_releases_on_drop() {
+        let gate = CutoverGate::new();
+        let first = gate
+            .try_acquire()
+            .expect("the first cutover must acquire the gate");
+        assert!(
+            gate.try_acquire().is_none(),
+            "a concurrent cutover must be rejected while the first owns the gate"
+        );
+        drop(first);
+        assert!(
+            gate.try_acquire().is_some(),
+            "a later cutover must be able to proceed after the first returns"
+        );
+    }
 
     #[test]
     fn forward_client_to_core_relays_one_message_then_stops_on_disconnect() {

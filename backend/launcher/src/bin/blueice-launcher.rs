@@ -16,7 +16,8 @@
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
 use blueice_launcher::supervisor::ProcessRegistry;
 use blueice_launcher::{
-    SpawnedCore, default_control_socket_path, default_rendezvous_socket_path, run_broker,
+    default_control_socket_path, default_rendezvous_socket_path, run_broker, SpawnedCore,
+    SpawnedGatekeeper,
 };
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
@@ -115,7 +116,20 @@ fn main() -> ExitCode {
         std::env::temp_dir().join(format!("blueice-launcher-frames-{}", std::process::id()))
     });
 
-    let core = match SpawnedCore::spawn(args.width, args.height, &frame_dir) {
+    let gatekeeper = match SpawnedGatekeeper::spawn() {
+        Ok(gatekeeper) => gatekeeper,
+        Err(e) => {
+            eprintln!("blueice-launcher: failed to spawn blueice-ai-gatekeeper: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let core = match SpawnedCore::spawn_with_gatekeeper(
+        args.width,
+        args.height,
+        &frame_dir,
+        gatekeeper.socket_path(),
+    ) {
         Ok(core) => core,
         Err(e) => {
             eprintln!("blueice-launcher: failed to spawn blueice-core: {e}");
@@ -126,7 +140,8 @@ fn main() -> ExitCode {
     // `phase-8-live-core-hotswap/PLAN.md`'s fleet-memory-supervisor
     // minimal first slice: the roles this launcher supervises are
     // registered in one place, `ProcessRegistry::default_fleet` (`core`
-    // `AlwaysResident`; `mcp-server` an inert `IdleTeardown` slot).
+    // and `ai-gatekeeper` `AlwaysResident`; `mcp-server` an inert
+    // `IdleTeardown` slot).
     // Downloads stays outside this generic time-only supervisor until
     // it exposes an idle query that proves no transfer is active/queued.
     let registry = Arc::new(Mutex::new(ProcessRegistry::default_fleet(Instant::now())));
@@ -180,10 +195,18 @@ fn main() -> ExitCode {
     // including spawning/health-checking/swapping in a fresh v2 on a
     // `Cutover` control request, and tearing down whichever `core` is
     // currently active before it returns.
-    let result = run_broker(listener, control_listener, core, args.width, args.height);
+    let result = run_broker(
+        listener,
+        control_listener,
+        core,
+        args.width,
+        args.height,
+        gatekeeper.socket_path().to_path_buf(),
+    );
 
     let _ = std::fs::remove_file(&args.rendezvous_socket);
     let _ = std::fs::remove_file(&args.control_socket);
+    drop(gatekeeper);
 
     match result {
         Ok(()) => ExitCode::SUCCESS,
