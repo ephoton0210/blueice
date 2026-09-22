@@ -661,6 +661,14 @@ fn main() -> ExitCode {
                     format!("failed to connect to explicit BlueJS child host: {error}"),
                 )
             })?;
+            // The private child path keeps its ordinary immediate execution
+            // schedule unless this core also owns the independent debugger
+            // listener. Selecting both at trusted startup activates only the
+            // bounded root-classic lifecycle; it does not expose a child VM,
+            // source, bytecode, values, or generic interruption operation.
+            if debugger_socket.is_some() {
+                javascript_executor.enable_debugger_execution_control();
+            }
             session::run_session_with_script_and_debugger_requests_and_out_of_process_javascript_executor(
                 &mut tabs,
                 &mut stream,

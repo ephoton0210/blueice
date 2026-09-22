@@ -61,6 +61,12 @@ const INLINE_CHILD_RESOLVER_FINGERPRINT: &str = "core-inline-page-host-v1";
 /// that a private child identifier cannot become a public protocol identity.
 const CORE_CHILD_DEBUGGER_ID_NAMESPACE_START: u64 = 1 << 63;
 
+/// A socket peer may need several session turns to discover a newly admitted
+/// program and arm its one root safe point, but it cannot turn that discovery
+/// protocol into an unbounded page-execution lease. This is intentionally a
+/// core-owned fixed budget, not a public debugger parameter.
+const MAX_OOP_DEBUGGER_EXECUTION_DEFERRALS_PER_DOCUMENT: usize = 64;
+
 /// One connected, authenticated private page-host transport. It intentionally
 /// owns no child process: `blueice-launcher` remains the supervisor and must
 /// reap the child after core disconnects or exits.
@@ -437,6 +443,10 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     /// constructor and defaults to false for the existing page-host path.
     native_debugger_execution_control: bool,
     hold_pending_debugger_execution_once: bool,
+    /// Remaining one-turn discovery/configuration deferrals keyed by the
+    /// document that received them. Realm replacement and close discard the
+    /// budget with every other OOP debugger lifetime record.
+    debugger_execution_deferrals: BTreeMap<TabId, DebuggerExecutionDeferral>,
     live_documents: BTreeMap<TabId, LiveDocument>,
     /// Core-minted public debugger identities keyed by the child-private
     /// program IDs they represent. Child IDs are transport keys only and can
@@ -452,6 +462,12 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
 struct CoreDebuggerProgram {
     program_handle: u64,
     program_generation: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DebuggerExecutionDeferral {
+    document_generation: u64,
+    remaining: usize,
 }
 
 impl OutOfProcessJavaScriptPageExecutor<PageHostConnection> {
@@ -503,6 +519,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             external_source_authorizer: None,
             native_debugger_execution_control: false,
             hold_pending_debugger_execution_once: false,
+            debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
@@ -516,8 +533,21 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
     /// documents by one lifecycle turn for exact root-classic debugger arms.
     pub fn new_with_debugger_execution_control(child: C) -> Self {
         let mut executor = Self::new(child);
-        executor.native_debugger_execution_control = true;
+        executor.enable_debugger_execution_control();
         executor
+    }
+
+    /// Enables the bounded root-classic debugger lifecycle on an executor
+    /// that was already constructed by a trusted core startup path. This is
+    /// intentionally a host-construction choice: callers still need the
+    /// separate private debugger transport, and page/front-end traffic never
+    /// receives this executor or a capability selector for it.
+    ///
+    /// Keeping this as a construction-time transformation lets the one fixed
+    /// external-source authorizer and the one fixed debugger lifecycle compose
+    /// without adding a page-controlled profile or a second child connection.
+    pub fn enable_debugger_execution_control(&mut self) {
+        self.native_debugger_execution_control = true;
     }
 
     /// Wraps a caller-owned child connection and the only external-source
@@ -532,6 +562,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             external_source_authorizer: Some(Box::new(authorizer)),
             native_debugger_execution_control: false,
             hold_pending_debugger_execution_once: false,
+            debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
@@ -634,6 +665,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 .child
                 .close_realm(tab_id.as_u64(), document.document_generation);
         }
+        self.debugger_execution_deferrals.remove(&tab_id);
         self.debugger_programs.remove(&tab_id);
     }
 
@@ -678,8 +710,17 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             .map(|script| (script.ordinal, script.language, script.kind))
             .collect();
         let result = self.child.synchronize_document(document);
+        let mut child_synchronized = false;
         match result {
-            Ok(PageHostReply::Synchronized { reports, .. }) => {
+            Ok(PageHostReply::Synchronized {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                reports,
+                ..
+            }) if reply_tab_id == tab_id.as_u64()
+                && reply_generation == identity.document_generation =>
+            {
+                child_synchronized = true;
                 for report in reports {
                     match child_report(report) {
                         ChildExecutionReport::JavaScript(report) => local_reports.push(report),
@@ -706,6 +747,10 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                     );
                 }
             }
+            // A same-shape acknowledgement for a different realm is not a
+            // synchronization success. In particular, it cannot seed a core
+            // debugger deferral budget or retain a public/private program
+            // mapping that could later be mistaken for this replacement.
             Ok(_) | Err(_) => {
                 self.close_page(tab_id);
                 for (ordinal, language, kind) in inline_scripts {
@@ -728,6 +773,17 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         }
         for report in local_blue_ts_reports {
             self.push_blue_ts_report(report);
+        }
+        if self.native_debugger_execution_control && child_synchronized {
+            self.debugger_execution_deferrals.insert(
+                tab_id,
+                DebuggerExecutionDeferral {
+                    document_generation: identity.document_generation,
+                    remaining: MAX_OOP_DEBUGGER_EXECUTION_DEFERRALS_PER_DOCUMENT,
+                },
+            );
+        } else {
+            self.debugger_execution_deferrals.remove(&tab_id);
         }
         self.debugger_programs.remove(&tab_id);
         self.live_documents.insert(tab_id, identity);
@@ -806,7 +862,20 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
 
     fn hold_pending_debugger_execution_once(&mut self) {
         if self.native_debugger_execution_control {
-            self.hold_pending_debugger_execution_once = true;
+            let mut preserved_a_live_document = false;
+            for (tab_id, document) in &self.live_documents {
+                let Some(deferral) = self.debugger_execution_deferrals.get_mut(tab_id) else {
+                    continue;
+                };
+                if deferral.document_generation != document.document_generation
+                    || deferral.remaining == 0
+                {
+                    continue;
+                }
+                deferral.remaining -= 1;
+                preserved_a_live_document = true;
+            }
+            self.hold_pending_debugger_execution_once = preserved_a_live_document;
         }
     }
 }
@@ -2345,6 +2414,83 @@ mod tests {
         }
     }
 
+    /// Records only the lifecycle advance requests needed to prove that a
+    /// debugger discovery peer receives a finite grace budget rather than an
+    /// execution lease. It deliberately implements no debugger inspection
+    /// operation, so no VM/source/bytecode surface is added by this test.
+    #[derive(Default)]
+    struct DeferralBudgetChild {
+        advances: Vec<(u64, u64)>,
+    }
+
+    impl PageHostClient for DeferralBudgetChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::Synchronized {
+                tab_id: document.tab_id,
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            })
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmClosed {
+                tab_id,
+                document_generation,
+            })
+        }
+
+        fn debugger_execution_control_available(&self) -> bool {
+            true
+        }
+
+        fn advance_debugger_execution(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.advances.push((tab_id, document_generation));
+            Ok(PageHostReply::DebuggerExecutionAdvanced {
+                tab_id,
+                document_generation,
+                reports: Vec::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn oop_debugger_discovery_deferrals_are_finite_per_document() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>let pendingDebuggerAdmission = true;</script>",
+            "https://example.test/pending-debugger.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new_with_debugger_execution_control(
+            DeferralBudgetChild::default(),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        // One hold is accepted for each of the fixed number of session turns,
+        // matching a debugger peer that asks one discovery/configuration
+        // question per core tick. The next request cannot keep the document
+        // pending; core advances it through the child lifecycle instead.
+        for _ in 0..MAX_OOP_DEBUGGER_EXECUTION_DEFERRALS_PER_DOCUMENT {
+            executor.hold_pending_debugger_execution_once();
+            executor.synchronize_and_execute(&tabs).unwrap();
+        }
+        assert!(executor.child.advances.is_empty());
+
+        executor.hold_pending_debugger_execution_once();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(executor.child.advances, vec![(tab_id.as_u64(), 1)]);
+    }
+
     #[test]
     fn immutable_core_authorizer_routes_external_javascript_and_bluets_graphs_to_real_child() {
         let (path, token, child) = spawn_child();
@@ -3181,6 +3327,65 @@ mod tests {
         shutdown_child(&path, &token);
         child.join().unwrap();
         let _ = std::fs::remove_file(path);
+    }
+
+    /// A hostile authenticated child still cannot acknowledge a different
+    /// realm and make core treat the requested document as eligible for any
+    /// debugger lifecycle record.
+    struct MismatchedSynchronizationChild;
+
+    impl PageHostClient for MismatchedSynchronizationChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::Synchronized {
+                tab_id: document.tab_id.saturating_add(1),
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            })
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmClosed {
+                tab_id,
+                document_generation,
+            })
+        }
+
+        fn debugger_execution_control_available(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn mismatched_child_synchronization_cannot_seed_oop_debugger_lifecycle() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>let childLifecycleSecret = 1;</script>",
+            "https://example.test/hostile-child.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new_with_debugger_execution_control(
+            MismatchedSynchronizationChild,
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert!(!executor.debugger_has_live_realm(tab_id, 1));
+        assert!(executor.debugger_execution_deferrals.is_empty());
+        assert_eq!(
+            executor.drain_reports_for_tab(tab_id),
+            vec![JavaScriptPageExecutionReport::Rejected {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                ordinal: 0,
+                kind: BlueJsPageScriptKind::Classic,
+                category: "out-of-process JavaScript host is unavailable",
+            }]
+        );
     }
 
     struct MismatchedDebuggerChild;

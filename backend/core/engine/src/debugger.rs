@@ -135,6 +135,21 @@ impl DebuggerRequestReceiver {
                         | DebuggerReply::RootSafePointBreakpointArmed { .. }
                         | DebuggerReply::ExecutionResumed { .. }
                 );
+            // A state observation after the bounded lifecycle has already
+            // left `Pending` must not renew the scheduler hold. In particular
+            // a peer may observe the promised one-turn `Resuming` state, but
+            // must not keep that root frame suspended by polling it. Location
+            // discovery/configuration replies retain their existing admission
+            // turn behavior; OOP hosts additionally cap those turns locally.
+            let reply_keeps_pending_entry = !matches!(
+                &reply,
+                DebuggerReply::ExecutionState {
+                    state: DebuggerExecutionState::Paused { .. }
+                        | DebuggerExecutionState::Resuming
+                        | DebuggerExecutionState::Completed,
+                    ..
+                }
+            );
             // `Resuming` is a public, source-free state rather than a reply
             // synonym. Preserve it for one owner-session turn after the
             // successful response so a socket peer can observe the exact
@@ -145,7 +160,7 @@ impl DebuggerRequestReceiver {
             let _ = envelope.reply.send(reply);
             if executes_or_releases_entry {
                 advance_pending_entry = true;
-            } else {
+            } else if reply_keeps_pending_entry {
                 preserve_pending_entry = true;
             }
             dispatched += 1;

@@ -2004,12 +2004,12 @@ fn real_subprocess_installs_the_fixed_core_http_profile_in_the_private_page_host
 }
 
 #[test]
-fn real_subprocess_proxies_only_exact_oop_breakpoint_configuration() {
+fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
     // This crosses both real sockets: the public debugger reaches the core
     // session, which in turn reaches the separately owned BlueJS child over
-    // its private capability-authenticated page-host transport. In
-    // particular, `SetBreakpoint` must not accidentally grow into a pause or
-    // VM-inspection proxy merely because the child owns the program.
+    // its private capability-authenticated page-host transport. The explicit
+    // debugger listener activates only the root-classic state machine: it
+    // must never become generic child interruption or VM inspection.
     const PAGE_SECRET: &str = "OOP_DEBUGGER_BREAKPOINT_SECRET_DO_NOT_DISCLOSE";
     let socket_path = unique_socket_path("oop-debugger-core");
     let debugger_socket_path = unique_socket_path("oop-debugger-host");
@@ -2030,7 +2030,11 @@ fn real_subprocess_proxies_only_exact_oop_breakpoint_configuration() {
         let mut request = [0u8; 1024];
         let _ = stream.read(&mut request);
         let body = format!(
-            "<main>private page host debugger</main><script>const secret = '{PAGE_SECRET}';</script>"
+            concat!(
+                "<main>private page host debugger</main><script>const secret = '{}'; ",
+                "let checkpoint = secret; globalThis.finished = checkpoint;</script>"
+            ),
+            PAGE_SECRET,
         );
         stream
             .write_all(
@@ -2123,9 +2127,17 @@ fn real_subprocess_proxies_only_exact_oop_breakpoint_configuration() {
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
             && report.detail.contains("does not interrupt execution")
     }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::PauseResume
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+            && report.detail.contains("root frame")
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::Breakpoints
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+            && report.detail.contains("root-code-unit")
+    }));
     for capability in [
-        blueice_ipc::debugger::DebuggerCapability::Breakpoints,
-        blueice_ipc::debugger::DebuggerCapability::PauseResume,
         blueice_ipc::debugger::DebuggerCapability::Stepping,
         blueice_ipc::debugger::DebuggerCapability::Stack,
         blueice_ipc::debugger::DebuggerCapability::Scopes,
@@ -2148,17 +2160,26 @@ fn real_subprocess_proxies_only_exact_oop_breakpoint_configuration() {
         }
         reply => panic!("expected opaque OOP program, got {reply:?}"),
     };
-    let safe_point = match debugger_request(
+    assert!(
+        program.program_handle >= (1 << 63),
+        "the public debugger must never receive the child-private program ID"
+    );
+    let safe_points = match debugger_request(
         &mut debugger,
         &blueice_ipc::debugger::DebuggerRequest::ListSafePoints { program },
         PAGE_SECRET,
     ) {
-        blueice_ipc::debugger::DebuggerReply::SafePoints(safe_points) => safe_points
-            .into_iter()
-            .find(|safe_point| safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset == 0)
-            .expect("OOP program must expose its exact root safe point"),
+        blueice_ipc::debugger::DebuggerReply::SafePoints(safe_points) => safe_points,
         reply => panic!("expected OOP safe points, got {reply:?}"),
     };
+    let safe_point = *safe_points
+        .iter()
+        .find(|safe_point| safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset == 0)
+        .expect("OOP program must expose its exact root entry safe point");
+    let root_safe_point = *safe_points
+        .iter()
+        .find(|safe_point| safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset != 0)
+        .expect("OOP program must expose a resumable non-entry root safe point");
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -2208,6 +2229,72 @@ fn real_subprocess_proxies_only_exact_oop_breakpoint_configuration() {
             ..
         }
     ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ArmRootSafePointBreakpoint {
+                safe_point: root_safe_point,
+            },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::RootSafePointBreakpointArmed {
+            safe_point: root_safe_point,
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Paused {
+                safe_point: root_safe_point,
+            },
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ResumeExecution { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionResumed { program }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Resuming,
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
+        }
+    );
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();

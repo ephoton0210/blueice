@@ -52,10 +52,13 @@ program-location enumeration and exact compiler-verified BlueJS safe-point
 validation for a live JavaScript realm. Every request remains tab, document,
 and program-generation bound. It also owns a bounded, idempotent exact
 breakpoint-configuration table that is cleaned up on realm replacement. When
-the same core process selects `--inline-bluejs` and a debugger socket, the
+the same core process selects `--inline-bluejs` or its trusted out-of-process
+child route and a debugger socket, the
 post-navigation admission turn does not immediately execute the declaration;
 each handshaken bounded discovery/configuration request retains one further
 session turn so the peer can learn and arm its exact root code-unit safe point.
+For the out-of-process route those deferrals have a fixed 64-turn budget per
+document, so repeated discovery cannot become an execution lease.
 `ArmEntryBreakpoint` remains the instruction-zero compatibility form. v5
 `ArmRootSafePointBreakpoint` starts a pending classic declaration, then stops
 immediately before its verified non-entry root instruction and retains the
@@ -177,8 +180,9 @@ The initial implementation completes the work that has no BlueJS dependency befo
   `ProgramLocations` and the deliberately narrower
   `BreakpointConfiguration` capability are available only at that live seam;
   the latter is an idempotent bounded table cleared at realm replacement, not
-  a general VM interruption mechanism. With both `--inline-bluejs` and the
-  debugger socket, v5 also offers `ArmRootSafePointBreakpoint`,
+  a general VM interruption mechanism. With either `--inline-bluejs` or the
+  trusted out-of-process child route plus the debugger socket, v5 also offers
+  `ArmRootSafePointBreakpoint`,
   `GetExecutionState`, and `ResumeExecution` for a pending classic
   declaration's exact root-code-unit boundary; `ArmEntryBreakpoint` remains
   the zero-offset compatibility form. A non-entry arm runs BlueJS to that
@@ -273,16 +277,22 @@ The initial implementation completes the work that has no BlueJS dependency befo
   one before reminting a public record. Replacement and close discard both
   private and core mappings. The route deliberately does not proxy
   generic interruption, stepping, VM frames, stacks, scopes, values, bytecode,
-  or source. A separately core-selected, default-off document lifecycle does
-  now defer document-order declarations for one turn and can arm a pending
+  or source. A core-owned debugger socket selects the otherwise default-off
+  document lifecycle, which defers document-order declarations for one turn
+  and can arm a pending
   classic program at one exact root-code-unit point. It reports only
   `Pending`/`Paused`/`Resuming`/`Completed`; core revalidates the paused private
   tuple before reminting it publicly, and only a later core-owned advance turn
   resumes the same root frame. `ArmEntryBreakpoint`, modules, child code units,
-  re-arms/loop hits, and nested interruption remain unavailable. DOM/event
-  callbacks, URL or import-map resolution, an in-process equivalent or broader
+  re-arms/loop hits, and nested interruption remain unavailable.
+  Out-of-process discovery/configuration can consume at most 64 such deferred
+  turns for a document, after which core advances it even if the peer keeps
+  querying. DOM/event callbacks, URL or import-map resolution, broader
   deployment HTTP policy, and page-selected compiler
-  profiles remain open.
+  profiles remain open. The launcher does not yet own a stable public debugger
+  listener or relay debugger sessions across a core cutover; a client must
+  treat the generation-owned core debugger socket and all its opaque handles
+  as closed at that boundary.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.
 - The [BlueTS test report](TEST_REPORT.md) records the complete per-platform test-suite results, the TypeScript 5.9.3 oracle matrix and per-file line coverage for `blueice-bluets` and `blueice-bluets-bluejs` (2026-09-21).
 

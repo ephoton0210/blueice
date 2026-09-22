@@ -59,8 +59,10 @@ tab, document generation, private program, or safe point does not exactly
 match that mapping; it checks exact child echoes for set/clear and revalidates
 every listed private record before re-minting it. The child table is capped at
 256 idempotent records and is discarded on realm replacement or close. The
-child has no pause/resume, stepping, stack/scope/value/source/bytecode
-operation. The child route also has a concrete but deliberately narrow
+ordinary child route has no pause/resume, stepping,
+stack/scope/value/source/bytecode operation. When the same trusted core also
+owns a debugger socket, it selects only the bounded root-classic lifecycle;
+the child route also has a concrete but deliberately narrow
 startup-only `HttpOutOfProcessPageScriptSourceAuthorizer`: core fixes a
 same-document-origin or one canonical exact-origin rule, owner
 URL-to-SHA-256 manifest, and module/depth/per-module/graph byte limits before
@@ -384,12 +386,15 @@ or second module resolver to bypass them.
   `ProgramLocations` is `available` only for an enabled, live JavaScript page
   realm; it remains `planned` otherwise. v5 additionally exposes
   `ArmRootSafePointBreakpoint`, `GetExecutionState`, and `ResumeExecution`
-  only when `--inline-bluejs` is paired with the private debugger socket.
+  only when `--inline-bluejs` or the trusted out-of-process child route is
+  paired with the private debugger socket.
   `ArmEntryBreakpoint` remains the zero-offset compatibility operation. The
   admission turn never immediately executes the new declaration; each
   handshaken bounded discovery/configuration request keeps it pending through
   one further session turn, so a peer can learn and arm an exact root-code-unit
-  boundary. A successful `ResumeExecution` similarly exposes the source-free
+  boundary. The out-of-process route caps those deferrals at 64 session turns
+  per document, so discovery is not an execution lease. A successful
+  `ResumeExecution` similarly exposes the source-free
   `Resuming` state for one bounded session turn before an idle scheduler turn
   resumes the retained frame; this is observability, not an execution lease.
   `ArmRootSafePointBreakpoint` starts a pending classic script and
@@ -427,18 +432,24 @@ or second module resolver to bypass them.
   program/safe-point tuple; `ListBreakpoints` is capped and core independently
   revalidates every returned tuple before it re-mints the public reply. Any
   reply with another tab, document generation, program, or safe point is
-  rejected. A separately core-selected (default-off) v6 document lifecycle
-  may defer document-order declarations for one turn, then arm only a pending
+  rejected. A core-owned debugger socket selects the otherwise default-off v6
+  document lifecycle, which may defer document-order declarations for one
+  turn, then arm only a pending
   classic program at an exact root-code-unit safe point. The child returns
   only `Pending`/`Paused`/`Resuming`/`Completed`; core validates the paused
   private tuple again before publishing its reminted public tuple, and only a
   later core-owned advance turn can resume the same root frame. It does not
-  proxy `ArmEntryBreakpoint`, generic interruption, modules, child code
+  let polling a non-`Pending` state renew that hold; the OOP route additionally
+  has the fixed 64-turn per-document discovery/configuration budget. It does
+  not proxy `ArmEntryBreakpoint`, generic interruption, modules, child code
   units, re-arms/loop hits, stepping, stacks, scopes, exception policy, or
   values. Real Unix-socket child/core tests cover location discovery, exact
   validation, configuration lifecycle, non-entry root pause/resume, cross-tab
   rejection, malformed response rejection, and navigation-stale rejection
-  without source, bytecode, or runtime-value leaks.
+  without source, bytecode, or runtime-value leaks. The launcher does not yet
+  provide a stable public debugger listener across core cutover: its
+  generation-owned debugger socket and all opaque handles fail closed when
+  that core ends.
 
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm
