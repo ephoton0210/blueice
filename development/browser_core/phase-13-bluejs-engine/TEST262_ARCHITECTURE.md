@@ -2,11 +2,13 @@
 
 Requested 2026-09-10. Status: **full inventory measured; full conformance remains open**. This is the implementation order for the [edition 17 track](ECMASCRIPT_2026.md). The [recorded analysis](TEST262_ANALYSIS_REPORT.md) includes all workstream counts, common diagnostics, representative cases and executable hashes. The existing `test262-summary.json` only groups outcomes by top-level directory and feature. It does not establish failure root causes or architectural priority.
 
-## Platform provenance and current validation (2026-09-19)
+## Platform provenance and current validation (updated 2026-09-22)
 
-The available local verification host is Ubuntu 24.04.3 LTS under WSL2 (`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), rather than Ubuntu 24.04.4. On 2026-09-19, the complete inventory was rerun with eight workers and completed in 685.257 seconds. Its current Ubuntu 24.04.3 result is 96,203 pass, 6,714 fail and 9 timeout across all 102,926 modes. The grouped evidence is documented in [the Ubuntu Test262 report](TEST262_LINUX_REPORT.md).
+**The rest of this document is a chronological implementation backlog/log: dated sections below describe the state at the time they were written, including the specific gaps (e.g. the former native `propertyHelper.js`/`isConstructor.js` overrides around line 487, and the "source-text retention" `Function.prototype.toString` gap around lines 439/453) that a later pass of this same project has since closed. For the CURRENT state, see CLAUDE.md's Phase 13 paragraph, [the current triage](TEST262_ANALYSIS_REPORT.md) and [the Ubuntu report](TEST262_LINUX_REPORT.md), not the historical narrative below.**
 
-macOS and Windows remain pending later real runs. Ubuntu evidence is not a cross-platform conformance claim and must not be used to infer parity.
+The most recent complete inventory was measured 2026-09-22 on Ubuntu 24.04.4 LTS under WSL2 (`x86_64-unknown-linux-gnu`, Rust/Cargo 1.95.0), on `feature/test262-remaining-failures` at commit `9decbb3` (not yet merged to `main`): **102,859 pass, 67 fail, 0 timeout** across all 102,926 modes, completed in 810.668 seconds with 4 jobs. The grouped evidence, the root-cause breakdown of the 67 remaining failures and full provenance are in [the Ubuntu Test262 report](TEST262_LINUX_REPORT.md) and [the triage report](TEST262_ANALYSIS_REPORT.md).
+
+macOS and Windows remain pending a re-run against this commit. Ubuntu/WSL2 evidence is not a cross-platform conformance claim and must not be used to infer parity.
 
 ## Evidence and classification contract
 
