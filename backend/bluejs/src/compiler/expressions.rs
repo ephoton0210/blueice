@@ -274,7 +274,7 @@ impl Compiler {
                             None
                         };
                         if let Some(slot) = self.resolve(name) {
-                            if self.bytecode.dynamic_eval_slots.contains(&slot) {
+                            if self.bytecode.bindings[slot as usize].eval_var {
                                 self.emit(Opcode::DeleteDynamicBinding, slot)?;
                             } else {
                                 self.constant(Value::Bool(false))?;

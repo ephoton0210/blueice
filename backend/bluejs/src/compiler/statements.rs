@@ -1492,7 +1492,12 @@ impl Compiler {
                     self.names.last().unwrap()[name]
                 };
                 if kind == DeclKind::Var {
-                    self.emit(Opcode::StoreBinding, slot)?;
+                    let store = if self.bytecode.bindings[slot as usize].eval_var {
+                        Opcode::StoreEvalVar
+                    } else {
+                        Opcode::StoreBinding
+                    };
+                    self.emit(store, slot)?;
                     self.emit(Opcode::Pop, 0)?;
                 } else {
                     self.emit(Opcode::InitializeBinding, slot)?;

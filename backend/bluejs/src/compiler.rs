@@ -514,6 +514,9 @@ pub(crate) fn compile_eval(
                     .copied()
             })
             .collect();
+        for &slot in &compiler.bytecode.dynamic_eval_slots {
+            compiler.bytecode.bindings[slot as usize].eval_var = true;
+        }
     }
     if has_using_declaration(&program.body) {
         return Err(CompileError::InvalidSyntax(
@@ -695,6 +698,7 @@ impl Compiler {
                 ),
                 lexical: kind != DeclKind::Var,
                 catch_parameter: false,
+                eval_var: false,
             });
             names.insert(name, slot);
             slots.push(slot);

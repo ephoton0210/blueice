@@ -1095,6 +1095,7 @@ impl Compiler {
                 strict_immutable: false,
                 lexical: true,
                 catch_parameter: false,
+                eval_var: false,
             });
             child.bytecode.self_slot = Some(slot);
         }
@@ -1111,6 +1112,7 @@ impl Compiler {
                 strict_immutable: true,
                 lexical: true,
                 catch_parameter: false,
+                eval_var: false,
             });
             child.bytecode.self_slot = Some(slot);
         }

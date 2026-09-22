@@ -104,6 +104,12 @@ opcodes! {
     SetLiteralPrototype: 1, 0;
     SetCompletion: 1, 0;
     ClearCompletion: 1, 0;
+    // Stores the value on top of the stack (left in place) into the eval-created
+    // `var` slot named by the operand as the initialization of its `var`
+    // declaration. It differs from `StoreBinding` only when the binding was
+    // deleted in the meantime (`var x = delete x`): the reference was resolved
+    // before the initializer ran, so the store recreates the binding.
+    StoreEvalVar: 5, 0;
     // Sets the VM's runtime strictness flag (operand 1 strict, 0 sloppy) for
     // code that is strict inside an otherwise sloppy function: a class's
     // heritage and computed keys.
@@ -374,6 +380,11 @@ pub(crate) struct Binding {
     /// Annex B lets a direct eval in the immediately containing catch block
     /// redeclare a simple catch parameter with `var` or a function.
     pub catch_parameter: bool,
+    /// A `var` or function that a sloppy direct eval created: unlike any other
+    /// variable it is deletable. Closures and nested evals capture the
+    /// binding with this flag, so `delete name` reaches the binding from
+    /// there and, once deleted, the name resolves outward again.
+    pub eval_var: bool,
 }
 
 /// A linked import's local slot.  The VM replaces that slot's cell with the

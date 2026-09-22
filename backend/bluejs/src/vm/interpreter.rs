@@ -1154,22 +1154,14 @@ impl Vm {
                         let value = self.pop();
                         self.store_binding(operand, value)?;
                     }
-                    Opcode::StoreBinding => {
-                        // ECMA-262 §9.1.1.1.5: TDZ takes precedence over the
-                        // immutable-binding assignment error, including const.
-                        let name = &code.bindings[operand].name;
+                    Opcode::StoreBinding | Opcode::StoreEvalVar => {
                         let value = self.stack.last().expect("store has a value").clone();
-                        if !self.store_dynamic_eval_shadowing_binding(operand, name, value)? {
-                            if self.binding_value(operand)?.is_none() {
-                                return Err(RuntimeError::ReferenceError(name.clone()));
-                            }
-                            if binding_allows_assignment(&code.bindings[operand], code.strict)? {
-                                self.store_binding(
-                                    operand,
-                                    self.stack.last().expect("store has a value").clone(),
-                                )?;
-                            }
-                        }
+                        self.assign_binding_slot(
+                            code,
+                            operand,
+                            value,
+                            instruction.opcode == Opcode::StoreEvalVar,
+                        )?;
                     }
                     Opcode::StoreBindingReference => {
                         let (target, marker, value, result) = if operand == 0 {
@@ -1194,13 +1186,19 @@ impl Vm {
                         let slot = slot as usize;
                         match marker {
                             Value::Null => {
-                                if self.binding_value(slot)?.is_none() {
-                                    return Err(RuntimeError::ReferenceError(
-                                        code.bindings[slot].name.clone(),
-                                    ));
-                                }
-                                if binding_allows_assignment(&code.bindings[slot], code.strict)? {
-                                    self.store_binding(slot, value.clone())?;
+                                if self.eval_var_deleted(slot)? {
+                                    let name = &code.bindings[slot].name;
+                                    self.assign_unbound_name(name, value.clone(), code.strict)?;
+                                } else {
+                                    if self.binding_value(slot)?.is_none() {
+                                        return Err(RuntimeError::ReferenceError(
+                                            code.bindings[slot].name.clone(),
+                                        ));
+                                    }
+                                    if binding_allows_assignment(&code.bindings[slot], code.strict)?
+                                    {
+                                        self.store_binding(slot, value.clone())?;
+                                    }
                                 }
                             }
                             Value::Object(cell) => self.store_global_cell(cell, value.clone())?,
@@ -1305,8 +1303,7 @@ impl Vm {
                         self.stack.push(outcome);
                     }
                     Opcode::DeleteDynamicBinding => {
-                        let name = &code.bindings[operand].name;
-                        let deleted = self.delete_dynamic_eval_binding(name)?;
+                        let deleted = self.delete_eval_var(operand)?;
                         self.stack.push(Value::Bool(deleted));
                     }
                     Opcode::EnterScope => {

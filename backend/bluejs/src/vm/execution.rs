@@ -548,6 +548,198 @@ impl Vm {
         Ok(true)
     }
 
+    /// Whether `slot` is an eval-created `var` whose binding was deleted (its
+    /// cell then has no value): closures still hold the cell, but the name
+    /// resolves outward again.
+    pub(super) fn eval_var_deleted(&self, slot: usize) -> Result<bool, RuntimeError> {
+        if !self
+            .binding_metadata
+            .get(slot)
+            .is_some_and(|binding| binding.eval_var)
+        {
+            return Ok(false);
+        }
+        let Some(&cell) = self.cells.get(&slot) else {
+            return Ok(false);
+        };
+        Ok(self.heap.get_own(cell, "value")?.is_none())
+    }
+
+    /// PutValue for a reference that resolved to binding slot `slot`.
+    /// `recreate` marks the initialization of an eval `var` declaration: its
+    /// reference was resolved before the initializer ran, so a binding the
+    /// initializer deleted (`var x = delete x`) is created again, where a
+    /// later assignment to the deleted name would not resolve to it.
+    pub(super) fn assign_binding_slot(
+        &mut self,
+        code: &Bytecode,
+        slot: usize,
+        value: Value,
+        recreate: bool,
+    ) -> Result<(), RuntimeError> {
+        let name = &code.bindings[slot].name;
+        if self.store_dynamic_eval_shadowing_binding(slot, name, value.clone())? {
+            return Ok(());
+        }
+        if self.eval_var_deleted(slot)? {
+            return if recreate {
+                self.recreate_eval_var(slot, value)
+            } else {
+                self.assign_unbound_name(name, value, code.strict)
+            };
+        }
+        // ECMA-262 §9.1.1.1.5: TDZ takes precedence over the immutable-binding
+        // assignment error, including const.
+        if self.binding_value(slot)?.is_none() {
+            return Err(RuntimeError::ReferenceError(name.clone()));
+        }
+        if binding_allows_assignment(&code.bindings[slot], code.strict)? {
+            self.store_binding(slot, value)?;
+        }
+        Ok(())
+    }
+
+    /// PutValue for a name that no static binding resolves: an eval-created
+    /// binding, a global binding or a property of the global object (created
+    /// when missing, except in strict code).
+    pub(super) fn assign_unbound_name(
+        &mut self,
+        name: &str,
+        value: Value,
+        strict: bool,
+    ) -> Result<(), RuntimeError> {
+        if self.set_dynamic_eval_binding(name, value.clone())?
+            || self.set_global_binding(name, value.clone())?
+        {
+            return Ok(());
+        }
+        let global = self.global("globalThis")?;
+        let global_id = global.object_id().expect("globalThis is an object");
+        let key: PropertyName = name.into();
+        self.materialize_lexical_global(global_id, name)?;
+        if strict && !self.has_property(global_id, &key)? {
+            return Err(RuntimeError::ReferenceError(name.into()));
+        }
+        self.set_property(&global, &key, &value)
+    }
+
+    /// Creates again an eval `var` binding that its own initializer deleted.
+    /// Only the declaring eval code can do this: its own slot tells whether
+    /// the variable environment is the global one or a function's.
+    fn recreate_eval_var(&mut self, slot: usize, value: Value) -> Result<(), RuntimeError> {
+        let name = self.binding_metadata[slot].name.clone();
+        let Some(&cell) = self.cells.get(&slot) else {
+            return Ok(());
+        };
+        if self.script_global_slots.contains_key(&slot) {
+            let global = self
+                .global("globalThis")?
+                .object_id()
+                .expect("globalThis is an object");
+            let defined = self.with_roots(|heap| {
+                heap.define_own_property(
+                    global,
+                    name.as_str(),
+                    PropertyDescriptor::data(value.clone(), true, true, true),
+                )
+            })?;
+            if !defined {
+                return Ok(());
+            }
+            let root = self.heap.root(cell)?;
+            self.with_roots(|heap| heap.set(cell, "value", value))?;
+            self.global_bindings.insert(
+                name,
+                GlobalBinding {
+                    cell,
+                    mutable: true,
+                    strict_immutable: false,
+                    property: true,
+                    _root: root,
+                },
+            );
+        } else if self.eval_dynamic_slots.contains_key(&slot) {
+            self.with_roots(|heap| heap.set(cell, "value", value))?;
+            self.dynamic_eval_bindings.insert(
+                name.clone(),
+                DynamicEvalBinding {
+                    cell,
+                    shadowed_cells: Vec::new(),
+                },
+            );
+            if let Some(env) = self.parameter_eval_env {
+                self.stack.push(Value::Object(cell));
+                let recorded =
+                    self.with_roots(|heap| heap.set(env, name.as_str(), Value::Object(cell)));
+                self.stack.pop();
+                recorded?;
+            }
+        } else {
+            self.assign_unbound_name(&name, value, false)?;
+        }
+        Ok(())
+    }
+
+    /// `delete name` for a name that statically resolved to an eval-created
+    /// `var` or function binding. The binding is removed from whichever
+    /// environment holds it (a function's eval variables or the global
+    /// object) and its cell loses its value, so every closure that captured
+    /// the cell sees the name resolve outward. A binding that is already gone
+    /// is looked up again like any unresolved name.
+    pub(super) fn delete_eval_var(&mut self, slot: usize) -> Result<bool, RuntimeError> {
+        let name = self.binding_metadata[slot].name.clone();
+        let Some(&cell) = self.cells.get(&slot) else {
+            return self.delete_unbound_name(&name);
+        };
+        if self.heap.get_own(cell, "value")?.is_none() {
+            return self.delete_unbound_name(&name);
+        }
+        let global_binding = self
+            .global_bindings
+            .get(&name)
+            .is_some_and(|binding| binding.cell == cell && binding.property);
+        if global_binding {
+            return self.delete_unbound_name(&name);
+        }
+        self.remove_eval_binding(&name, cell)?;
+        Ok(true)
+    }
+
+    /// Removes the eval-created binding `name` whose cell is `cell` from
+    /// every record of it: the function's eval variables, the variable
+    /// environment object closures capture, and the cell's own value.
+    fn remove_eval_binding(&mut self, name: &str, cell: ObjectId) -> Result<(), RuntimeError> {
+        if self
+            .dynamic_eval_bindings
+            .get(name)
+            .is_some_and(|binding| binding.cell == cell)
+        {
+            self.dynamic_eval_bindings.remove(name);
+        } else {
+            for bindings in self.dynamic_eval_outer_bindings.iter_mut().rev() {
+                if bindings
+                    .get(name)
+                    .is_some_and(|binding| binding.cell == cell)
+                {
+                    bindings.remove(name);
+                    break;
+                }
+            }
+        }
+        for object in self.with_objects.clone() {
+            let Some(id) = object.object_id() else {
+                continue;
+            };
+            if self.is_parameter_eval_env(id)
+                && self.heap.get_own(id, name)? == Some(Value::Object(cell))
+            {
+                self.heap.delete(id, name)?;
+            }
+        }
+        self.heap.delete(cell, "value")?;
+        Ok(())
+    }
+
     pub(super) fn delete_dynamic_eval_binding(&mut self, name: &str) -> Result<bool, RuntimeError> {
         let binding = self.dynamic_eval_bindings.remove(name).or_else(|| {
             self.dynamic_eval_outer_bindings
@@ -633,6 +825,9 @@ impl Vm {
         let deleted = self.object_delete(global, &name.into())?;
         if deleted {
             if let Some(binding) = self.global_bindings.remove(name) {
+                // Closures that captured the cell see the name resolve
+                // outward, not the stale value.
+                self.heap.delete(binding.cell, "value")?;
                 self.heap.unroot(binding._root)?;
             }
         }

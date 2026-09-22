@@ -92,6 +92,7 @@ impl Vm {
             strict_immutable: true,
             lexical: false,
             catch_parameter: false,
+            eval_var: false,
         });
         code.scopes.push(vec![0]);
         // No function-declaration prefix exists to hoist, so the whole
