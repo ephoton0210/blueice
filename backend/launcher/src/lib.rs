@@ -87,24 +87,27 @@ mod unix {
         }
     }
 
-    // A tiny, deliberately minimal stand-in for `libc::getuid()` rather than
-    // adding a whole `libc` dependency for one syscall: reads the real UID
-    // via the `/proc/self/status` line every Linux (BlueIce's only
-    // currently-supported target -- see `blueice-core`'s own `UnixListener`
-    // dependency, already Unix-only) exposes, falling back to the process
-    // ID if that ever fails so the path is still unique per-process rather
-    // than panicking.
+    // A direct `extern "C"` declaration of the real POSIX `getuid()`
+    // syscall, rather than parsing Linux's `/proc/self/status` (this
+    // function's prior implementation): that file exists only on Linux,
+    // so every other Unix `core`/`ai-gatekeeper`/`blueice-launcher`
+    // actually run on -- macOS included -- silently fell back to
+    // `std::process::id()`, this *process's own PID*, which is not a UID
+    // and is never the same across two different processes. That made
+    // `rendezvous_socket_dir` non-functional as a discovery mechanism
+    // anywhere but Linux: `core` and an external client compute two
+    // different, unshared directories and can never find each other's
+    // socket (`libc_getuid_matches_the_real_process_uid_reported_by_a_second_independent_process`
+    // below reproduces this against a real second process). `getuid()`
+    // itself is a trivial, argument-free, always-succeeds POSIX syscall
+    // on every Unix BlueIce targets, so declaring it directly avoids
+    // adding the whole `libc` crate as a dependency for this one call.
+    extern "C" {
+        fn getuid() -> u32;
+    }
+
     unsafe fn libc_getuid() -> u32 {
-        std::fs::read_to_string("/proc/self/status")
-            .ok()
-            .and_then(|status| {
-                status
-                    .lines()
-                    .find_map(|line| line.strip_prefix("Uid:"))
-                    .and_then(|rest| rest.split_whitespace().next())
-                    .and_then(|s| s.parse().ok())
-            })
-            .unwrap_or_else(std::process::id)
+        getuid()
     }
 
     /// One [`ServerMessage`] reply as relayed through the broker's
@@ -1265,6 +1268,30 @@ mod unix {
             // same launcher process (v1 at startup, v2 during cutover) --
             // PID alone would collide, so this must also vary per call.
             assert_ne!(unique_internal_socket_path(), unique_internal_socket_path());
+        }
+
+        #[test]
+        fn libc_getuid_matches_the_real_process_uid_reported_by_a_second_independent_process() {
+            // See the identical test/fix in `blueice-ipc`'s
+            // `gatekeeper.rs` (this helper is duplicated from there) for
+            // the full explanation: the old `/proc/self/status` parse
+            // fell back to `std::process::id()` -- this process's own
+            // PID, not a UID -- everywhere that Linux-only file doesn't
+            // exist, which made `rendezvous_socket_dir` non-functional
+            // as a discovery mechanism on macOS: `core` and an external
+            // client computed two different, unshared socket
+            // directories. Checked against a real independent process
+            // (`id -u`), not just this same process's own idea of its UID.
+            let here = unsafe { libc_getuid() };
+            let output = std::process::Command::new("id")
+                .arg("-u")
+                .output()
+                .expect("`id -u` must run for this test to mean anything");
+            let there: u32 = String::from_utf8_lossy(&output.stdout)
+                .trim()
+                .parse()
+                .expect("`id -u` must print a plain number");
+            assert_eq!(here, there, "libc_getuid must agree with a real independent process's own getuid(), not this process's PID");
         }
 
         #[test]

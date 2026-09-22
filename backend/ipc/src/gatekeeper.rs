@@ -95,20 +95,32 @@ pub fn default_gatekeeper_socket_path() -> PathBuf {
 
 // Duplicated from `blueice-launcher`'s identical helper rather than
 // shared via a common dependency -- see that crate's own docs for why
-// (~10 lines, and the two crates' socket-path helpers are otherwise
+// (~2 lines, and the two crates' socket-path helpers are otherwise
 // independent enough that sharing them would be more indirection than
 // the duplication costs).
+//
+// A direct `extern "C"` declaration of the real POSIX `getuid()`
+// syscall, rather than parsing Linux's `/proc/self/status` (this
+// function's own prior implementation): that file exists only on
+// Linux, so every other Unix `core`/`ai-gatekeeper`/`blueice-launcher`
+// actually run on -- macOS included -- silently fell back to
+// `std::process::id()`, this *process's own PID*, which is not a UID
+// and is never the same across two different processes. That made
+// `default_gatekeeper_socket_path` non-functional as a discovery
+// mechanism anywhere but Linux: `core` and a separately started
+// `ai-gatekeeper` compute two different, unshared paths and can never
+// find each other, so every gatekeeper check silently fails closed
+// (`libc_getuid_matches_the_real_process_uid_reported_by_a_second_independent_process`
+// below reproduces this against a real second process). `getuid()`
+// itself is a trivial, argument-free, always-succeeds POSIX syscall on
+// every Unix BlueIce targets, so declaring it directly avoids adding
+// the whole `libc` crate as a dependency for this one call.
+extern "C" {
+    fn getuid() -> u32;
+}
+
 unsafe fn libc_getuid() -> u32 {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|status| {
-            status
-                .lines()
-                .find_map(|line| line.strip_prefix("Uid:"))
-                .and_then(|rest| rest.split_whitespace().next())
-                .and_then(|s| s.parse().ok())
-        })
-        .unwrap_or_else(std::process::id)
+    getuid()
 }
 
 #[cfg(all(test, unix))]
@@ -178,6 +190,33 @@ mod tests {
                 url: "https://b.example".to_string()
             }
         );
+    }
+
+    #[test]
+    fn libc_getuid_matches_the_real_process_uid_reported_by_a_second_independent_process() {
+        // `libc_getuid` used to parse Linux's `/proc/self/status`,
+        // falling back to `std::process::id()` (this *process's own
+        // PID*, not a UID at all) everywhere that file doesn't exist --
+        // every non-Linux Unix, macOS included. That fallback made
+        // `default_gatekeeper_socket_path` non-functional as a discovery
+        // mechanism there: `core` and a separately started
+        // `ai-gatekeeper` are two different processes with two different
+        // PIDs, so they computed two different, unshared socket paths
+        // and could never find each other -- silently failing every
+        // gatekeeper check closed. A real `getuid()` must return the
+        // same value regardless of which process asks, which this test
+        // checks against a real independent process (`id -u`) rather
+        // than only against this same process's own idea of its UID.
+        let here = unsafe { libc_getuid() };
+        let output = std::process::Command::new("id")
+            .arg("-u")
+            .output()
+            .expect("`id -u` must run for this test to mean anything");
+        let there: u32 = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse()
+            .expect("`id -u` must print a plain number");
+        assert_eq!(here, there, "libc_getuid must agree with a real independent process's own getuid(), not this process's PID");
     }
 
     #[test]

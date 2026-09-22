@@ -25,10 +25,12 @@ git -C test262 checkout 72faf8ec1445c55149615e8b35187830783aba1a
 
 ```sh
 git clone --filter=blob:none --sparse --depth 1 https://github.com/web-platform-tests/wpt.git
-cd wpt && git sparse-checkout set html/syntax/parsing
+cd wpt && git sparse-checkout set html/syntax/parsing css/css-color css/support fonts
 ```
 
 The tree-construction `.dat` files (the `#data`/`#errors`/`#document`/`#document-fragment` format `blueice-testing`'s fixture parser already reads unmodified) live under `wpt/html/syntax/parsing/resources/`. Historically these lived in the standalone `html5lib/html5lib-tests` repo; that repo's own `README.md` now says they moved here. Used by `backend/core/html/tests/wpt_corpus.rs` -- see that file's module docs and `testing/TEST_PLAN.md`'s "WPT tree-construction corpus" section for how it's run and what it found.
+
+`wpt/css/css-color/` is the pilot corpus for `phase-27-css-wpt-conformance/PLAN.md` -- real WPT CSS reftests (`<link rel="match"|"mismatch" href="...">`), compared by rendering both the test and its reference through BlueIce's own pipeline rather than against a second engine (see that phase's own doc for why this needs no Puppeteer/Chromium dependency, unlike Phase 15). `css/support/` and `fonts/` are shared resources a handful of those reftests reference by root-absolute path (`/css/support/...`, `/fonts/ahem.css`); widen the `sparse-checkout set` line above to add another CSS suite directory (e.g. `css/css-backgrounds`) the same way, rather than a separate clone.
 
 **`v8/` is separate from `chromium/` on purpose.** Chromium's own repo doesn't contain V8's source directly — Chromium pulls it in via its `DEPS` file (a `gclient sync`-managed external, pinned to a specific commit), which a plain `git clone` of the Chromium repo does not fetch. V8 develops in its own repository, so it's cloned independently here rather than expected to appear under `chromium/v8/`. (The same is true of several other Chromium dependencies — e.g. Skia, ANGLE — if research ever needs one of those, clone it the same way rather than looking for it inside `chromium/`.)
 
