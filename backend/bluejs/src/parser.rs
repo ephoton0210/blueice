@@ -191,6 +191,25 @@ pub(crate) fn closes_template_placeholder(source: &str) -> bool {
         })
 }
 
+/// A label on a function declaration in a StatementList (Annex B.3.2) has no
+/// effect: the declaration is hoisted and scoped exactly like an unlabelled
+/// one, and no `break` can name a label that has no statements. Dropping the
+/// labels lets every later phase treat the two forms alike. (A labelled
+/// function in a statement position, `if (x) l: function f() {}`, is not a
+/// list item and stays rejected.)
+fn unlabel_function_declaration(statement: Stmt) -> Stmt {
+    let Stmt::Labelled { label, item } = statement else {
+        return statement;
+    };
+    match unlabel_function_declaration(*item) {
+        function @ Stmt::FunctionDecl(_) => function,
+        other => Stmt::Labelled {
+            label,
+            item: Box::new(other),
+        },
+    }
+}
+
 /// The words reserved only in strict mode code (§13.1.1), which the tokenizer
 /// keeps as plain identifiers.
 fn is_strict_reserved_word(name: &str) -> bool {
@@ -609,7 +628,7 @@ impl Parser {
         prologue: &mut DirectivePrologue,
     ) -> Result<Stmt, ParseError> {
         let start = self.pos;
-        let statement = self.parse_statement()?;
+        let statement = unlabel_function_declaration(self.parse_statement()?);
         if !prologue.open {
             return Ok(statement);
         }

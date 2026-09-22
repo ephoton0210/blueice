@@ -1041,24 +1041,12 @@ impl Compiler {
             Stmt::ClassDecl(_) => Err(CompileError::InvalidSyntax(
                 "a labelled statement cannot contain a class declaration",
             )),
-            Stmt::FunctionDecl(function)
-                if self.bytecode.strict || function.generator || function.is_async =>
-            {
-                Err(CompileError::InvalidSyntax(
-                    "invalid labelled function declaration",
-                ))
-            }
-            Stmt::FunctionDecl(function) => {
-                // Annex B permits this sloppy-mode form. Its binding is
-                // var-scoped, while creation occurs when the label executes.
-                self.function(function, false)?;
-                let slot = self
-                    .resolve(function.name.as_ref().expect("declaration has a name"))
-                    .unwrap();
-                self.emit(Opcode::StoreBinding, slot)?;
-                self.emit(Opcode::Pop, 0)?;
-                Ok(())
-            }
+            // A labelled function declaration in a statement list was
+            // unlabelled by the parser (Annex B.3.2), so this is one in a
+            // position that takes a Statement, or a generator/async function.
+            Stmt::FunctionDecl(_) => Err(CompileError::InvalidSyntax(
+                "invalid labelled function declaration",
+            )),
             _ => {
                 self.loops.push(Loop {
                     labels,
