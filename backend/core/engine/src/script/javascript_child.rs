@@ -7,11 +7,13 @@
 //!
 //! The core connects only when its operator supplied the private child socket
 //! and one-time session capability. For each loaded HTTP(S) document it
-//! deliberately authorizes only discovered **inline** standard JavaScript:
-//! core mints a canonical identity, a one-module closed graph, and the fixed
-//! resolver fingerprint before sending it to the child. External `src` remains
-//! a source-free rejection; this adapter never fetches, resolves a URL, or
-//! expands the child's authority. It installs only fixed copied JavaScript
+//! mints a canonical identity, a one-module closed graph, and the fixed
+//! resolver fingerprint for inline declarations. An external declaration
+//! remains a source-free rejection unless the immutable core-owned authorizer
+//! selected at executor startup supplies its complete closed graph. Core copies
+//! that graph into the private protocol; neither this adapter nor the child
+//! fetches, resolves a URL/import map, reads a filesystem, or falls back to a
+//! second source loader. It installs only fixed copied JavaScript
 //! document-text/origin callbacks; it installs no document object, DOM/event
 //! object, IPC, storage, network, URL, resolver, or page-selected binding in
 //! the child realm.
@@ -22,16 +24,22 @@ use super::{
     BlueJsPageScriptKind, CombinedPageScriptDeclaration, CombinedPageScriptLanguage,
 };
 use crate::script::javascript::{
-    BlueTsPageExecutionReport, JavaScriptPageDebuggerError, JavaScriptPageDebuggerProgram,
-    JavaScriptPageDebuggerSafePoint, JavaScriptPageExecutionReport,
+    AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerError,
+    JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint, JavaScriptPageExecutionReport,
     PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
+};
+use crate::script::page_source_authorizer::AuthorizedPageScriptGraph;
+pub use crate::script::page_source_authorizer::{
+    AuthorizedOutOfProcessPageScriptGraph, OutOfProcessPageScriptSourceAuthorizationError,
+    OutOfProcessPageScriptSourceAuthorizer, OutOfProcessPageScriptSourceRequest,
 };
 use crate::{Page, TabId, TabManager};
 use blueice_ipc::page_host::{
     self, PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDocument,
     PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostReply,
     PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
-    PageHostScriptOutcome, PageHostSource, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+    PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
+    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
 };
 use blueice_net::canonical_http_origin;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -222,11 +230,13 @@ struct LiveDocument {
 ///
 /// This is intentionally not constructed by the default session. It makes a
 /// document executable only after the core process selected the child channel
-/// at startup. The currently implemented core authorizer accepts inline
-/// scripts only; a future production loader may add an independently reviewed
-/// external graph authority rather than teaching this type URL resolution.
+/// at startup. The default constructor admits inline scripts only. Its
+/// separately named opt-in constructor accepts one immutable core-owned
+/// external graph authorizer; this type itself never gains URL resolution or
+/// source-loading authority.
 pub struct OutOfProcessJavaScriptPageExecutor<C> {
     child: C,
+    external_source_authorizer: Option<Box<dyn OutOfProcessPageScriptSourceAuthorizer>>,
     live_documents: BTreeMap<TabId, LiveDocument>,
     /// Core-minted public debugger identities keyed by the child-private
     /// program IDs they represent. Child IDs are transport keys only and can
@@ -254,6 +264,21 @@ impl OutOfProcessJavaScriptPageExecutor<PageHostConnection> {
             session_token,
         )?))
     }
+
+    /// Connects an explicitly configured child route with one immutable
+    /// core-owned external source authority. The authorizer is fixed for this
+    /// executor's lifetime; no document, script, or frontend request can
+    /// select or replace it.
+    pub fn connect_with_external_source_authorizer(
+        socket_path: &Path,
+        session_token: &str,
+        authorizer: impl OutOfProcessPageScriptSourceAuthorizer + 'static,
+    ) -> io::Result<Self> {
+        Ok(Self::with_external_source_authorizer(
+            PageHostConnection::connect(socket_path, session_token)?,
+            authorizer,
+        ))
+    }
 }
 
 impl<C> OutOfProcessJavaScriptPageExecutor<C> {
@@ -263,6 +288,26 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
     pub fn new(child: C) -> Self {
         Self {
             child,
+            external_source_authorizer: None,
+            live_documents: BTreeMap::new(),
+            debugger_programs: BTreeMap::new(),
+            next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
+            next_debugger_program_generation: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
+            reports: VecDeque::new(),
+            blue_ts_reports: VecDeque::new(),
+        }
+    }
+
+    /// Wraps a caller-owned child connection and the only external-source
+    /// authority it may use. The authorizer is intentionally installed only
+    /// here and exposed only through immutable authorization calls.
+    pub fn with_external_source_authorizer(
+        child: C,
+        authorizer: impl OutOfProcessPageScriptSourceAuthorizer + 'static,
+    ) -> Self {
+        Self {
+            child,
+            external_source_authorizer: Some(Box::new(authorizer)),
             live_documents: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
@@ -383,8 +428,17 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 return;
             }
         };
-        let (document, mut local_reports, mut local_blue_ts_reports) =
-            inline_authorized_document(tab_id, &identity, snapshot, declarations);
+        let document_url = page
+            .url()
+            .expect("a page with a live child identity always has a URL");
+        let (document, mut local_reports, mut local_blue_ts_reports) = authorized_document(
+            tab_id,
+            &identity,
+            snapshot,
+            document_url,
+            declarations,
+            self.external_source_authorizer.as_deref(),
+        );
         let inline_scripts: Vec<_> = document
             .scripts
             .iter()
@@ -701,11 +755,13 @@ fn child_debugger_reply_error(reply: &PageHostReply) -> JavaScriptPageDebuggerEr
     }
 }
 
-fn inline_authorized_document(
+fn authorized_document(
     tab_id: TabId,
     identity: &LiveDocument,
     snapshot: PageHostDocumentSnapshot,
+    document_url: &str,
     declarations: Vec<CombinedPageScriptDeclaration>,
+    external_source_authorizer: Option<&dyn OutOfProcessPageScriptSourceAuthorizer>,
 ) -> (
     PageHostDocument,
     Vec<JavaScriptPageExecutionReport>,
@@ -736,24 +792,42 @@ fn inline_authorized_document(
                 });
             }
             CombinedPageScriptDeclaration::External {
-                ordinal, language, ..
-            } => match language {
-                CombinedPageScriptLanguage::JavaScript(kind) => reports.push(rejected_report(
-                    tab_id,
-                    identity.document_generation,
+                ordinal,
+                language,
+                src,
+            } => match authorize_external_graph(
+                tab_id,
+                identity.document_generation,
+                ordinal,
+                language,
+                document_url,
+                src,
+                external_source_authorizer,
+            ) {
+                Ok(graph) => scripts.push(PageHostScript {
                     ordinal,
-                    kind,
-                    "external JavaScript declarations require an authorized loader",
-                )),
-                CombinedPageScriptLanguage::BlueTs(kind) => {
-                    blue_ts_reports.push(rejected_blue_ts_report(
+                    language: child_language(language),
+                    kind: child_kind(language),
+                    graph,
+                }),
+                Err(category) => match language {
+                    CombinedPageScriptLanguage::JavaScript(kind) => reports.push(rejected_report(
                         tab_id,
                         identity.document_generation,
                         ordinal,
                         kind,
-                        "external BlueTS declarations require an authorized loader",
-                    ))
-                }
+                        category,
+                    )),
+                    CombinedPageScriptLanguage::BlueTs(kind) => {
+                        blue_ts_reports.push(rejected_blue_ts_report(
+                            tab_id,
+                            identity.document_generation,
+                            ordinal,
+                            kind,
+                            category,
+                        ))
+                    }
+                },
             },
         }
     }
@@ -767,6 +841,163 @@ fn inline_authorized_document(
         reports,
         blue_ts_reports,
     )
+}
+
+/// Obtains a graph only through the startup-selected core authorizer and
+/// converts the typed result into the private child wire record. This adapter
+/// deliberately has no fallback graph, URL normalization, import-map lookup,
+/// cache lookup, network operation, or filesystem operation of its own.
+#[allow(clippy::too_many_arguments)]
+fn authorize_external_graph(
+    tab_id: TabId,
+    document_generation: u64,
+    ordinal: u32,
+    language: CombinedPageScriptLanguage,
+    document_url: &str,
+    declared_src: String,
+    authorizer: Option<&dyn OutOfProcessPageScriptSourceAuthorizer>,
+) -> Result<PageHostModuleGraph, &'static str> {
+    let Some(authorizer) = authorizer else {
+        return Err(external_loader_required_category(language));
+    };
+    let graph = authorizer
+        .authorize(&OutOfProcessPageScriptSourceRequest {
+            tab_id,
+            document_generation,
+            ordinal,
+            language,
+            document_url: document_url.to_string(),
+            declared_src,
+        })
+        .map_err(|_| external_authorization_rejected_category(language))?;
+    let graph = match (language, graph) {
+        (
+            CombinedPageScriptLanguage::JavaScript(_),
+            AuthorizedOutOfProcessPageScriptGraph::JavaScript(graph),
+        ) => page_host_graph_from_javascript(graph),
+        (
+            CombinedPageScriptLanguage::BlueTs(_),
+            AuthorizedOutOfProcessPageScriptGraph::BlueTs(graph),
+        ) => page_host_graph_from_bluets(graph),
+        _ => return Err(external_authorization_rejected_category(language)),
+    };
+    if !valid_page_host_graph(&graph) {
+        return Err(external_authorization_rejected_category(language));
+    }
+    Ok(graph)
+}
+
+fn external_loader_required_category(language: CombinedPageScriptLanguage) -> &'static str {
+    match language {
+        CombinedPageScriptLanguage::JavaScript(_) => {
+            "external JavaScript declarations require an authorized loader"
+        }
+        CombinedPageScriptLanguage::BlueTs(_) => {
+            "external BlueTS declarations require an authorized loader"
+        }
+    }
+}
+
+fn external_authorization_rejected_category(language: CombinedPageScriptLanguage) -> &'static str {
+    match language {
+        CombinedPageScriptLanguage::JavaScript(_) => {
+            "external JavaScript source authorization rejected the page script"
+        }
+        CombinedPageScriptLanguage::BlueTs(_) => {
+            "external BlueTS source authorization rejected the page script"
+        }
+    }
+}
+
+/// Copies the existing typed JavaScript graph without changing any selected
+/// canonical module ID, static edge, or resolver-policy fingerprint.
+fn page_host_graph_from_javascript(graph: AuthorizedJavaScriptModuleGraph) -> PageHostModuleGraph {
+    PageHostModuleGraph {
+        entry: graph.entry().to_string(),
+        modules: graph
+            .authorized_modules()
+            .map(|module| PageHostSource::new(module.canonical_module_id(), module.source()))
+            .collect(),
+        resolutions: graph
+            .authorized_resolutions()
+            .map(|resolution| PageHostStaticResolution {
+                from_module: resolution.from_module,
+                specifier: resolution.specifier,
+                canonical_target: resolution.canonical_target,
+            })
+            .collect(),
+        resolver_fingerprint: graph.resolver_fingerprint().to_string(),
+    }
+}
+
+/// Copies the existing typed BlueTS graph without exposing its loader as an
+/// ambient resolver to either the child or the page.
+fn page_host_graph_from_bluets(graph: AuthorizedPageScriptGraph) -> PageHostModuleGraph {
+    let AuthorizedPageScriptGraph {
+        entry,
+        loader,
+        resolver_fingerprint,
+    } = graph;
+    PageHostModuleGraph {
+        entry,
+        modules: loader
+            .authorized_modules()
+            .map(|(module_id, source)| PageHostSource::new(module_id, source))
+            .collect(),
+        resolutions: loader
+            .authorized_resolutions()
+            .map(
+                |(from_module, specifier, canonical_target)| PageHostStaticResolution {
+                    from_module: from_module.to_string(),
+                    specifier: specifier.to_string(),
+                    canonical_target: canonical_target.to_string(),
+                },
+            )
+            .collect(),
+        resolver_fingerprint,
+    }
+}
+
+/// Rejects malformed typed-graph conversions before the core sends a document
+/// to the child. The child repeats independent graph, hash, budget, syntax,
+/// and static-edge validation after the protocol boundary, so a malformed or
+/// tampered wire record cannot acquire an implicit fallback resolver.
+fn valid_page_host_graph(graph: &PageHostModuleGraph) -> bool {
+    if graph.entry.is_empty()
+        || graph.entry.contains('\0')
+        || graph.resolver_fingerprint.trim().is_empty()
+        || graph.resolver_fingerprint.contains('\0')
+    {
+        return false;
+    }
+    let mut modules = BTreeSet::new();
+    for source in &graph.modules {
+        if source.canonical_module_id.is_empty()
+            || source.canonical_module_id.contains('\0')
+            || source.source_hash != page_host::source_hash(&source.source)
+            || !modules.insert(source.canonical_module_id.as_str())
+        {
+            return false;
+        }
+    }
+    if !modules.contains(graph.entry.as_str()) {
+        return false;
+    }
+    let mut resolutions = BTreeSet::new();
+    graph.resolutions.iter().all(|resolution| {
+        !resolution.from_module.is_empty()
+            && !resolution.specifier.is_empty()
+            && !resolution.canonical_target.is_empty()
+            && !resolution.from_module.contains('\0')
+            && !resolution.specifier.contains('\0')
+            && !resolution.canonical_target.contains('\0')
+            && modules.contains(resolution.from_module.as_str())
+            && modules.contains(resolution.canonical_target.as_str())
+            && resolutions.insert((
+                resolution.from_module.as_str(),
+                resolution.specifier.as_str(),
+            ))
+    })
 }
 
 /// Builds the only document values that the core may serialize as child
@@ -1109,11 +1340,14 @@ fn blue_ts_report_ordinal(report: &BlueTsPageExecutionReport) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::script::javascript::{AuthorizedJavaScriptModule, AuthorizedJavaScriptResolution};
+    use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution};
     use blueice_launcher::bluejs_host::{
         bind_bluejs_host_socket, serve_bluejs_host_listener, BlueJsChildHost,
     };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Arc, Mutex};
     use std::thread;
 
     fn unique_socket_path(label: &str) -> PathBuf {
@@ -1167,6 +1401,207 @@ mod tests {
         );
     }
 
+    fn external_javascript_graph() -> AuthorizedJavaScriptModuleGraph {
+        AuthorizedJavaScriptModuleGraph::new(
+            "https://cdn.example.test/assets/external.js",
+            [AuthorizedJavaScriptModule::new(
+                "https://cdn.example.test/assets/external.js",
+                "globalThis.externalJavaScript = 41;",
+            )
+            .unwrap()],
+            [],
+            "core-external-javascript-policy-v1",
+        )
+        .unwrap()
+    }
+
+    fn external_bluets_graph() -> AuthorizedPageScriptGraph {
+        let entry = "https://cdn.example.test/assets/external.ts";
+        let dependency = "https://cdn.example.test/assets/answer.ts";
+        let loader = AuthorizedModuleLoader::new(
+            [
+                AuthorizedModule::new(
+                    entry,
+                    "import { answer } from './answer.ts'; export const result: number = answer;",
+                ),
+                AuthorizedModule::new(dependency, "export const answer: number = 41;"),
+            ],
+            [AuthorizedModuleResolution::new(
+                entry,
+                "./answer.ts",
+                dependency,
+            )],
+        )
+        .unwrap();
+        AuthorizedPageScriptGraph::new(entry, loader, "core-external-bluets-policy-v1").unwrap()
+    }
+
+    struct ExternalGraphsAuthorizer {
+        requests: Arc<Mutex<Vec<OutOfProcessPageScriptSourceRequest>>>,
+    }
+
+    impl OutOfProcessPageScriptSourceAuthorizer for ExternalGraphsAuthorizer {
+        fn authorize(
+            &self,
+            request: &OutOfProcessPageScriptSourceRequest,
+        ) -> Result<
+            AuthorizedOutOfProcessPageScriptGraph,
+            OutOfProcessPageScriptSourceAuthorizationError,
+        > {
+            self.requests.lock().unwrap().push(request.clone());
+            match (
+                request.document_generation,
+                request.ordinal,
+                request.language,
+                request.document_url.as_str(),
+                request.declared_src.as_str(),
+            ) {
+                (
+                    1,
+                    0,
+                    CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Classic),
+                    "https://example.test/app/index.html",
+                    "/assets/external.js",
+                ) => Ok(AuthorizedOutOfProcessPageScriptGraph::JavaScript(
+                    external_javascript_graph(),
+                )),
+                (
+                    1,
+                    1,
+                    CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Module),
+                    "https://example.test/app/index.html",
+                    "/assets/external.ts",
+                ) => Ok(AuthorizedOutOfProcessPageScriptGraph::BlueTs(
+                    external_bluets_graph(),
+                )),
+                _ => Err(OutOfProcessPageScriptSourceAuthorizationError::new(
+                    "unexpected private test authorization request",
+                )),
+            }
+        }
+    }
+
+    struct DeniedAndInvalidGraphsAuthorizer;
+
+    impl OutOfProcessPageScriptSourceAuthorizer for DeniedAndInvalidGraphsAuthorizer {
+        fn authorize(
+            &self,
+            request: &OutOfProcessPageScriptSourceRequest,
+        ) -> Result<
+            AuthorizedOutOfProcessPageScriptGraph,
+            OutOfProcessPageScriptSourceAuthorizationError,
+        > {
+            match request.language {
+                CombinedPageScriptLanguage::JavaScript(_) => {
+                    Err(OutOfProcessPageScriptSourceAuthorizationError::new(
+                        "private policy denied https://secret.example.test/denied.js",
+                    ))
+                }
+                CombinedPageScriptLanguage::BlueTs(_) => {
+                    Ok(AuthorizedOutOfProcessPageScriptGraph::BlueTs(
+                        AuthorizedPageScriptGraph::new(
+                            "https://secret.example.test/invalid.ts",
+                            AuthorizedModuleLoader::new([], []).unwrap(),
+                            "invalid-test-policy-v1",
+                        )
+                        .unwrap(),
+                    ))
+                }
+            }
+        }
+    }
+
+    struct MissingStaticEdgeAuthorizer;
+
+    impl OutOfProcessPageScriptSourceAuthorizer for MissingStaticEdgeAuthorizer {
+        fn authorize(
+            &self,
+            request: &OutOfProcessPageScriptSourceRequest,
+        ) -> Result<
+            AuthorizedOutOfProcessPageScriptGraph,
+            OutOfProcessPageScriptSourceAuthorizationError,
+        > {
+            if request.language
+                != CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Module)
+            {
+                return Err(OutOfProcessPageScriptSourceAuthorizationError::new(
+                    "unexpected private test authorization request",
+                ));
+            }
+            Ok(AuthorizedOutOfProcessPageScriptGraph::JavaScript(
+                AuthorizedJavaScriptModuleGraph::new(
+                    "https://cdn.example.test/assets/missing-edge.js",
+                    [AuthorizedJavaScriptModule::new(
+                        "https://cdn.example.test/assets/missing-edge.js",
+                        "import './not-authorized.js';",
+                    )
+                    .unwrap()],
+                    [],
+                    "core-no-fallback-policy-v1",
+                )
+                .unwrap(),
+            ))
+        }
+    }
+
+    struct NavigationAuthorizer {
+        requests: Arc<Mutex<Vec<OutOfProcessPageScriptSourceRequest>>>,
+    }
+
+    impl OutOfProcessPageScriptSourceAuthorizer for NavigationAuthorizer {
+        fn authorize(
+            &self,
+            request: &OutOfProcessPageScriptSourceRequest,
+        ) -> Result<
+            AuthorizedOutOfProcessPageScriptGraph,
+            OutOfProcessPageScriptSourceAuthorizationError,
+        > {
+            self.requests.lock().unwrap().push(request.clone());
+            let (document_url, entry, source, fingerprint) = match request.document_generation {
+                1 => (
+                    "https://first.example.test/one",
+                    "https://cdn.example.test/assets/first.js",
+                    "globalThis.firstExternalGeneration = 1;",
+                    "core-navigation-policy-one-v1",
+                ),
+                2 => (
+                    "https://second.example.test/two",
+                    "https://cdn.example.test/assets/second.js",
+                    concat!(
+                        "if (typeof globalThis.firstExternalGeneration !== 'undefined') ",
+                        "throw new Error('stale realm');",
+                        "globalThis.secondExternalGeneration = 2;"
+                    ),
+                    "core-navigation-policy-two-v1",
+                ),
+                _ => {
+                    return Err(OutOfProcessPageScriptSourceAuthorizationError::new(
+                        "unexpected private test document generation",
+                    ));
+                }
+            };
+            if request.ordinal != 0
+                || request.language
+                    != CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Classic)
+                || request.document_url != document_url
+                || request.declared_src != "/assets/navigation.js"
+            {
+                return Err(OutOfProcessPageScriptSourceAuthorizationError::new(
+                    "unexpected private test authorization request",
+                ));
+            }
+            Ok(AuthorizedOutOfProcessPageScriptGraph::JavaScript(
+                AuthorizedJavaScriptModuleGraph::new(
+                    entry,
+                    [AuthorizedJavaScriptModule::new(entry, source).unwrap()],
+                    Vec::<AuthorizedJavaScriptResolution>::new(),
+                    fingerprint,
+                )
+                .unwrap(),
+            ))
+        }
+    }
+
     #[derive(Default)]
     struct RecordingChild {
         documents: Vec<PageHostDocument>,
@@ -1199,6 +1634,246 @@ mod tests {
                 document_generation,
             })
         }
+    }
+
+    #[test]
+    fn immutable_core_authorizer_routes_external_javascript_and_bluets_graphs_to_real_child() {
+        let (path, token, child) = spawn_child();
+        let (tabs, tab_id) = loaded_tabs(
+            concat!(
+                "<script src=\"/assets/external.js\"></script>",
+                "<script type=\"application/x-blueice-typescript-module\" src=\"/assets/external.ts\"></script>",
+                "<script>if (globalThis.externalJavaScript !== 41) throw new Error('order');</script>"
+            ),
+            "https://example.test/app/index.html",
+        );
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+                &path,
+                &token,
+                ExternalGraphsAuthorizer {
+                    requests: Arc::clone(&requests),
+                },
+            )
+            .unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert_eq!(
+            executor.drain_reports_for_tab(tab_id),
+            vec![
+                JavaScriptPageExecutionReport::Executed {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 0,
+                    kind: BlueJsPageScriptKind::Classic,
+                },
+                JavaScriptPageExecutionReport::Executed {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 2,
+                    kind: BlueJsPageScriptKind::Classic,
+                },
+            ]
+        );
+        assert_eq!(
+            executor.drain_blue_ts_reports_for_tab(tab_id),
+            vec![BlueTsPageExecutionReport::Executed {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                ordinal: 1,
+                kind: DirectPageScriptKind::Module,
+            }]
+        );
+        assert_eq!(
+            requests.lock().unwrap().as_slice(),
+            [
+                OutOfProcessPageScriptSourceRequest {
+                    tab_id,
+                    document_generation: 1,
+                    ordinal: 0,
+                    language: CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Classic,),
+                    document_url: "https://example.test/app/index.html".to_string(),
+                    declared_src: "/assets/external.js".to_string(),
+                },
+                OutOfProcessPageScriptSourceRequest {
+                    tab_id,
+                    document_generation: 1,
+                    ordinal: 1,
+                    language: CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Module),
+                    document_url: "https://example.test/app/index.html".to_string(),
+                    declared_src: "/assets/external.ts".to_string(),
+                },
+            ]
+        );
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn external_authorizer_denial_and_invalid_graph_are_source_free_in_real_child_route() {
+        let (path, token, child) = spawn_child();
+        let (tabs, tab_id) = loaded_tabs(
+            concat!(
+                "<script src=\"https://secret.example.test/denied.js\"></script>",
+                "<script type=\"application/x-blueice-typescript\" src=\"https://secret.example.test/invalid.ts\"></script>"
+            ),
+            "https://example.test/app/index.html",
+        );
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+                &path,
+                &token,
+                DeniedAndInvalidGraphsAuthorizer,
+            )
+            .unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        let reports = executor.drain_reports_for_tab(tab_id);
+        let blue_ts_reports = executor.drain_blue_ts_reports_for_tab(tab_id);
+        assert!(matches!(
+            reports.as_slice(),
+            [JavaScriptPageExecutionReport::Rejected {
+                category: "external JavaScript source authorization rejected the page script",
+                ..
+            }]
+        ));
+        assert!(matches!(
+            blue_ts_reports.as_slice(),
+            [BlueTsPageExecutionReport::Rejected {
+                category: "external BlueTS source authorization rejected the page script",
+                ..
+            }]
+        ));
+        let observed = format!("{reports:?}{blue_ts_reports:?}");
+        assert!(!observed.contains("secret.example.test"));
+        assert!(!observed.contains("invalid.ts"));
+        assert!(!observed.contains("private policy"));
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn missing_authorized_static_edge_has_no_child_resolver_fallback() {
+        let (path, token, child) = spawn_child();
+        let (tabs, tab_id) = loaded_tabs(
+            concat!(
+                "<script type=\"module\" src=\"/assets/missing-edge.js\"></script>",
+                "<script>globalThis.afterMissingEdge = true;</script>"
+            ),
+            "https://example.test/app/index.html",
+        );
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+                &path,
+                &token,
+                MissingStaticEdgeAuthorizer,
+            )
+            .unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert_eq!(
+            executor.drain_reports_for_tab(tab_id),
+            vec![
+                JavaScriptPageExecutionReport::Rejected {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 0,
+                    kind: BlueJsPageScriptKind::Module,
+                    category: "authorized JavaScript graph is missing a static resolution",
+                },
+                JavaScriptPageExecutionReport::Executed {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 1,
+                    kind: BlueJsPageScriptKind::Classic,
+                },
+            ]
+        );
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn external_authorization_is_rechecked_and_old_child_realm_is_invalidated_on_navigation() {
+        let (path, token, child) = spawn_child();
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<script src=\"/assets/navigation.js\"></script>",
+            "https://first.example.test/one",
+        );
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+                &path,
+                &token,
+                NavigationAuthorizer {
+                    requests: Arc::clone(&requests),
+                },
+            )
+            .unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert!(matches!(
+            executor.drain_reports_for_tab(tab_id).as_slice(),
+            [JavaScriptPageExecutionReport::Executed {
+                document_generation: 1,
+                ordinal: 0,
+                ..
+            }]
+        ));
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script src=\"/assets/navigation.js\"></script>",
+            Some("https://second.example.test/two".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert!(matches!(
+            executor.drain_reports_for_tab(tab_id).as_slice(),
+            [JavaScriptPageExecutionReport::Executed {
+                document_generation: 2,
+                ordinal: 0,
+                ..
+            }]
+        ));
+        assert_eq!(
+            requests
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|request| (
+                    request.document_generation,
+                    request.ordinal,
+                    request.document_url.as_str(),
+                    request.declared_src.as_str(),
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    1,
+                    0,
+                    "https://first.example.test/one",
+                    "/assets/navigation.js"
+                ),
+                (
+                    2,
+                    0,
+                    "https://second.example.test/two",
+                    "/assets/navigation.js"
+                ),
+            ]
+        );
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

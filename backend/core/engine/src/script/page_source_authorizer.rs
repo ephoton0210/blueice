@@ -9,7 +9,10 @@
 //! then return the resulting *closed* graph here. This module performs no I/O,
 //! URL resolution, or fallback module lookup itself.
 
-use super::direct_page::DirectPageScriptKind;
+use super::{
+    direct_page::DirectPageScriptKind, javascript::AuthorizedJavaScriptModuleGraph,
+    CombinedPageScriptLanguage,
+};
 use crate::TabId;
 use blueice_bluets::AuthorizedModuleLoader;
 use std::fmt;
@@ -117,3 +120,75 @@ impl fmt::Display for PageScriptSourceAuthorizationError {
 }
 
 impl std::error::Error for PageScriptSourceAuthorizationError {}
+
+/// The exact core-owned context supplied when authorizing one external
+/// declaration for the private out-of-process page child. `document_url` and
+/// `declared_src` are page data, not pre-authorized identities: an
+/// implementation must apply its own origin, integrity, fetch/cache, and
+/// resource policy before it returns a graph.
+///
+/// The request's language includes its exact grammar kind, and the tab,
+/// document generation, and DOM-order ordinal are all supplied by the live
+/// core document. A page cannot construct this record, choose an authorizer,
+/// or carry an authorization from one declaration or navigation to another.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutOfProcessPageScriptSourceRequest {
+    pub tab_id: TabId,
+    pub document_generation: u64,
+    pub ordinal: u32,
+    pub language: CombinedPageScriptLanguage,
+    pub document_url: String,
+    pub declared_src: String,
+}
+
+/// One complete graph selected by an out-of-process page-source authorizer.
+///
+/// The two variants deliberately reuse the existing JavaScript and BlueTS
+/// closed-graph types. Core validates that the returned variant matches the
+/// parser-selected declaration language before it copies exact canonical IDs,
+/// source bytes, static edges, and resolver fingerprint into the private
+/// child protocol.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthorizedOutOfProcessPageScriptGraph {
+    JavaScript(AuthorizedJavaScriptModuleGraph),
+    BlueTs(AuthorizedPageScriptGraph),
+}
+
+/// The sole optional authority for external declarations in the supervised
+/// child route. It is selected once when the executor is constructed, stored
+/// privately, and queried immutably; page content cannot replace it or obtain
+/// its fetch, cache, integrity, or resolver capabilities.
+///
+/// Returning an error denies only this declaration. Its private detail is
+/// never copied to an execution report or sent to the child.
+pub trait OutOfProcessPageScriptSourceAuthorizer {
+    fn authorize(
+        &self,
+        request: &OutOfProcessPageScriptSourceRequest,
+    ) -> Result<AuthorizedOutOfProcessPageScriptGraph, OutOfProcessPageScriptSourceAuthorizationError>;
+}
+
+/// Private owner-side source-authorization failure for the child route.
+///
+/// The text may include policy, URL, cache, or integrity detail, so it must
+/// not cross the source-free report or child-protocol boundaries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutOfProcessPageScriptSourceAuthorizationError {
+    message: String,
+}
+
+impl OutOfProcessPageScriptSourceAuthorizationError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for OutOfProcessPageScriptSourceAuthorizationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for OutOfProcessPageScriptSourceAuthorizationError {}

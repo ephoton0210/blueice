@@ -55,6 +55,33 @@ fn blue_ts_classic(ordinal: u32, source: &str) -> PageHostScript {
     }
 }
 
+fn blue_ts_module_with_dependency(ordinal: u32) -> PageHostScript {
+    let entry = "https://cdn.example.test/assets/external.ts";
+    let dependency = "https://cdn.example.test/assets/answer.ts";
+    let mut graph = graph(
+        entry,
+        vec![
+            PageHostSource::new(
+                entry,
+                "import { answer } from './answer.ts'; export const result: number = answer;",
+            ),
+            PageHostSource::new(dependency, "export const answer: number = 41;"),
+        ],
+    );
+    graph.resolver_fingerprint = "core-external-bluets-policy-v1".to_string();
+    graph.resolutions.push(PageHostStaticResolution {
+        from_module: entry.to_string(),
+        specifier: "./answer.ts".to_string(),
+        canonical_target: dependency.to_string(),
+    });
+    PageHostScript {
+        ordinal,
+        language: PageHostScriptLanguage::BlueTs,
+        kind: PageHostScriptKind::Module,
+        graph,
+    }
+}
+
 #[test]
 fn launcher_spawns_an_isolated_host_that_executes_closed_graphs_and_reaps_cleanly() {
     assert!(
@@ -132,6 +159,100 @@ fn launcher_spawns_an_isolated_host_that_executes_closed_graphs_and_reaps_cleanl
         !private_socket.exists(),
         "launcher must clean the private child socket after a clean shutdown"
     );
+}
+
+#[test]
+fn launcher_child_executes_external_language_graphs_rejects_missing_edges_and_invalidates_navigation(
+) {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let mut host = SpawnedBlueJsHost::spawn()
+        .expect("launcher must start and authenticate an isolated BlueJS child");
+    let external_js = "https://cdn.example.test/assets/external.js";
+    let missing_edge = "https://cdn.example.test/assets/missing-edge.js";
+    let mut missing_edge_graph = graph(
+        missing_edge,
+        vec![PageHostSource::new(
+            missing_edge,
+            "import './not-authorized.js';",
+        )],
+    );
+    missing_edge_graph.resolver_fingerprint = "core-no-fallback-policy-v1".to_string();
+    let reply = host
+        .synchronize_document(document(
+            1,
+            vec![
+                PageHostScript {
+                    ordinal: 0,
+                    language: PageHostScriptLanguage::JavaScript,
+                    kind: PageHostScriptKind::Classic,
+                    graph: PageHostModuleGraph {
+                        resolver_fingerprint: "core-external-javascript-policy-v1".to_string(),
+                        ..graph(
+                            external_js,
+                            vec![PageHostSource::new(
+                                external_js,
+                                "globalThis.externalFirstGeneration = 1;",
+                            )],
+                        )
+                    },
+                },
+                blue_ts_module_with_dependency(1),
+                PageHostScript {
+                    ordinal: 2,
+                    language: PageHostScriptLanguage::JavaScript,
+                    kind: PageHostScriptKind::Module,
+                    graph: missing_edge_graph,
+                },
+            ],
+        ))
+        .expect("the child must execute only supplied external graphs");
+    assert!(matches!(
+        reply,
+        PageHostReply::Synchronized { reports, .. }
+            if reports.len() == 3
+                && reports[0].outcome == PageHostScriptOutcome::Executed
+                && reports[1].outcome == PageHostScriptOutcome::Executed
+                && matches!(reports[2].outcome, PageHostScriptOutcome::Rejected { .. })
+    ));
+
+    let second = "https://cdn.example.test/assets/second.js";
+    let reply = host
+        .synchronize_document(document(
+            2,
+            vec![PageHostScript {
+                ordinal: 0,
+                language: PageHostScriptLanguage::JavaScript,
+                kind: PageHostScriptKind::Classic,
+                graph: PageHostModuleGraph {
+                    resolver_fingerprint: "core-navigation-policy-two-v1".to_string(),
+                    ..graph(
+                        second,
+                        vec![PageHostSource::new(
+                            second,
+                            concat!(
+                                "if (typeof globalThis.externalFirstGeneration !== 'undefined') ",
+                                "throw new Error('stale realm');",
+                                "globalThis.externalSecondGeneration = 2;"
+                            ),
+                        )],
+                    )
+                },
+            }],
+        ))
+        .expect("the child must replace its old realm on navigation");
+    assert!(matches!(
+        reply,
+        PageHostReply::Synchronized { reports, .. }
+            if matches!(
+                reports.as_slice(),
+                [report] if report.outcome == PageHostScriptOutcome::Executed
+            )
+    ));
+    host.shutdown()
+        .expect("launcher must obtain child shutdown acknowledgement");
 }
 
 #[test]

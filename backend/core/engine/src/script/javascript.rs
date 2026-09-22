@@ -397,6 +397,31 @@ impl AuthorizedJavaScriptModuleGraph {
     pub fn resolver_fingerprint(&self) -> &str {
         &self.resolver_fingerprint
     }
+
+    /// Iterates the exact source records selected when this closed graph was
+    /// constructed. The iterator grants neither a resolver nor any source
+    /// acquisition authority; a trusted owner may use it only to copy the
+    /// already-authorized graph into another private execution transport.
+    pub fn authorized_modules(&self) -> impl Iterator<Item = &AuthorizedJavaScriptModule> {
+        self.modules.values()
+    }
+
+    /// Iterates the exact static edges selected when this closed graph was
+    /// constructed. It does not resolve any new specifier or expose the
+    /// executor's internal resolution map for mutation.
+    pub fn authorized_resolutions(
+        &self,
+    ) -> impl Iterator<Item = AuthorizedJavaScriptResolution> + '_ {
+        self.resolutions
+            .iter()
+            .map(
+                |((from_module, specifier), target)| AuthorizedJavaScriptResolution {
+                    from_module: from_module.clone(),
+                    specifier: specifier.clone(),
+                    canonical_target: target.clone(),
+                },
+            )
+    }
 }
 
 /// Structural rejection for an authorized JavaScript graph.

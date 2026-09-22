@@ -26,7 +26,13 @@ declaration at a verified non-entry root instruction while retaining its VM
 root frame; it is not arbitrary interpreter suspension or stepping.
 A launcher-supervised, capability-authenticated out-of-process BlueJS child
 can execute caller-authorized inline JavaScript and explicit BlueTS declarations
-in one bounded realm and DOM order. For each core-verified document it also
+in one bounded realm and DOM order. Its default core route rejects external
+`src`; an explicitly selected immutable core-owned
+`OutOfProcessPageScriptSourceAuthorizer` can instead admit a complete existing
+typed JavaScript or BlueTS graph for the exact live declaration tuple. Core
+copies that graph's canonical IDs, static edges, source bytes, and resolver
+fingerprint to the child, which independently validates it and has no resolver
+or source-loading fallback. For each core-verified document it also
 installs immutable `blueiceDocumentText()` and
 `blueiceDocumentOrigin()` copied snapshots: core validates their matching
 1 MiB/4 KiB string contracts before serialization and the child repeats both
@@ -40,17 +46,20 @@ outcomes in the existing separate source-free JavaScript and BlueTS report
 lanes, and closes child realms on navigation/tab removal. `blueice-launcher
 --out-of-process-bluejs` creates that child/capability pair itself for each
 core generation and reaps it on ordinary shutdown or cutover; the default
-launcher leaves the mode disabled. Its private page-host v4 transport now also
-permits only source-free debugger location discovery: after core verifies the
-authenticated child owns the exact live tab/document realm, it lists bounded
-child-private program/safe-point IDs and revalidates one exact tuple. Core
-remints every public debugger program handle/generation in a disjoint namespace
-and rejects any child reply whose tab, document generation, private program, or
-safe point does not exactly match that mapping. The child has no breakpoint
-configuration, pause/resume, stepping, stack/scope/value/source/bytecode
-operation. The remaining boundary has no general DOM or event surface beyond
-those two copied strings, production external source authority, arbitrary
-debugger interruption/pause/runtime control, or MCP project-registration path.
+launcher leaves the mode disabled. An immutable core-owned startup authorizer
+may additionally supply one exact closed external JavaScript or BlueTS graph;
+the child still does not fetch, resolve, or fall back itself. Its private
+page-host v4 transport also permits only source-free debugger location
+discovery: after core verifies the authenticated child owns the exact live
+tab/document realm, it lists bounded child-private program/safe-point IDs and
+revalidates one exact tuple. Core remints every public debugger program
+handle/generation in a disjoint namespace and rejects any child reply whose
+tab, document generation, private program, or safe point does not exactly
+match that mapping. The child has no breakpoint configuration, pause/resume,
+stepping, stack/scope/value/source/bytecode operation. The remaining boundary
+has no general DOM or event surface beyond the copied strings, no production
+fetch/cache/integrity implementation, arbitrary debugger interruption/pause/
+runtime control, or MCP project-registration path.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
 syntax matrix while an earlier item prevents an already-supported program from
@@ -182,9 +191,11 @@ or second module resolver to bypass them.
   the authenticated classic-plus-static-ESM route and clean shutdown.
   `blueice-launcher --out-of-process-bluejs` now creates a fresh child and
   private capability pair for each core generation, passes it only to that
-  core's startup boundary, forwards loaded HTTP(S) inline declarations through
-  the core adapter, and reaps the child/socket on shutdown or cutover. Version
-  3 has no page-selected binding profile or capability field: core supplies
+  core's startup boundary, forwards loaded HTTP(S) inline declarations and,
+  only when the startup-selected immutable core authorizer supplies a complete
+  typed closed graph, external declarations through the core adapter, and
+  reaps the child/socket on shutdown or cutover. Version 3 has no page-selected
+  binding profile or capability field: core supplies
   exactly a copied document-text snapshot and canonical tuple-origin snapshot
   only after its existing `dom.document-text`/`dom.document-origin` pure
   contracts accept them. The child repeats the same 1 MiB/4 KiB byte limits
@@ -196,16 +207,17 @@ or second module resolver to bypass them.
   network, IPC, source/result value, or capability crosses that boundary. The
   launcher-to-core-to-child regression proves inline classic and module
   execution, explicit BlueTS direct lowering in the same realm and DOM order,
-  source-free external-`src` rejection, no injected DOM/fetch
-  binding, no endpoint reflection through the frontend broker, and both
-  generations' cleanup. Its shared `blueice-bluets-bluejs` fixed typing
+  source-free default/denied/invalid external-`src` rejection, immutable
+  core-authorized JavaScript and BlueTS graphs, no static-edge fallback, no
+  injected DOM/fetch binding, no endpoint reflection through the frontend
+  broker, and both generations' cleanup. Its shared `blueice-bluets-bluejs` fixed typing
   artifact is generated from the exact two-callback runtime inventory and
   provides BlueTS only `blueiceDocumentText(): string` and
   `blueiceDocumentOrigin(): string`; unit and real-child regressions prove a
   typed call executes through direct lowering and `fetch` is a source-free
   rejection, while the unit regression also rejects invalid callback arity.
-  It does not grant child fetch,
-  URL/import-map resolution, or external graph authority. Production fetch/cache/
+  It does not grant the child fetch, URL/import-map resolution, a filesystem,
+  or external graph authority beyond the supplied graph. Production fetch/cache/
   integrity authority, host-wide
   memory accounting, native debugger
   attachment, and general JavaScript DOM-object/event binding remain open, so
@@ -530,11 +542,13 @@ or second module resolver to bypass them.
   page source, diagnostics, bytecode, or runtime values. The binary subprocess
   regression covers that opt-in mode across real HTTP navigation, a classic
   declaration, a module declaration, and a static rejection. The separate
-  launcher-managed host now shares one BlueTS/JavaScript realm only for its
-  fixed snapshot profile; it now has only the core-proxied source-free
-  debugger location attachment described above, no debugger control/general
-  DOM surface, and no external-source authority. No concrete fetch/cache/integrity implementation
-  or general external graph policy exists. The closed-graph direct bridge
+  launcher-managed host now shares one BlueTS/JavaScript realm for its fixed
+  snapshot profile and, only with an immutable core-owned startup authorizer,
+  supplied closed external graphs. It also has only the core-proxied,
+  source-free debugger location attachment described above: no debugger
+  control or general DOM surface. No concrete fetch/cache/integrity
+  implementation or general external graph policy exists. The closed-graph
+  direct bridge
   integration is complete; those broader page-host responsibilities remain
   separate open prerequisites.
 

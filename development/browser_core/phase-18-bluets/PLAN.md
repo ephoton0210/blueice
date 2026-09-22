@@ -193,8 +193,18 @@ The initial implementation completes the work that has no BlueJS dependency befo
   only an `AuthorizedModuleLoader` derived from that graph and child-fixed
   checked options before `blueice-bluets-bluejs` directly attaches it to the
   same `BlueJsPageRuntime`. It redacts child outcomes into separate existing
-  JavaScript/BlueTS report lanes, rejects external `src` without reflecting it,
-  and sends exact realm closes on navigation or tab removal.
+  JavaScript/BlueTS report lanes and sends exact realm closes on navigation or
+  tab removal. Its default constructor rejects external `src` without
+  reflecting it. The separately named startup-only constructor accepts one
+  immutable core-owned `OutOfProcessPageScriptSourceAuthorizer`; it receives
+  the exact tab/document-generation/DOM ordinal/parser language-and-kind/raw
+  URL/`src` tuple and may return only an existing typed closed JavaScript or
+  BlueTS graph. Core checks the returned language, copies its exact canonical
+  IDs, static edges, source bytes, and resolver fingerprint into
+  `PageHostModuleGraph`, then rejects a malformed graph or authorizer failure
+  source-free. The child revalidates the graph and never fetches, resolves a
+  URL/import map, reads a filesystem, or gains the authorizer's cache,
+  integrity, or network authority. A missing static edge has no fallback.
   `SpawnedBlueJsHost::spawn_for_core` preserves launcher supervision while
   handing that configuration to one trusted core. `blueice-launcher
   --out-of-process-bluejs` creates the child itself and retains it as part of
@@ -213,16 +223,20 @@ The initial implementation completes the work that has no BlueJS dependency befo
   renamed, or page-selected binding fails closed before compiler admission;
   `document`, `fetch`, URL, resolver, and object APIs remain untyped and
   unavailable. This still is not a general DOM surface.
-  The v4 channel additionally carries only source-free debugger-location
-  operations: list retained programs, list a fixed bounded set of
-  compiler-recorded safe points, and validate one exact tuple. The child mints
-  private IDs only; core verifies an exact live child realm, remints every
-  public program handle/generation in a disjoint core namespace, and rejects
-  mismatched tab/document/program/safe-point replies. The route deliberately
-  does not proxy breakpoints, pause/resume, stepping, VM frames, stacks,
-  scopes, values, bytecode, or source.
-  DOM/event callbacks, URL or import-map resolution, external graph authority,
-  and page-selected compiler profiles remain open.
+  An immutable core-owned startup authorizer may supply an exact closed
+  external JavaScript or BlueTS graph; core validates and copies that graph
+  into the child protocol, while the child still has no fetch, URL-resolution,
+  import-map, filesystem, or fallback authority. The v4 channel additionally
+  carries only source-free debugger-location operations: list retained
+  programs, list a fixed bounded set of compiler-recorded safe points, and
+  validate one exact tuple. The child mints private IDs only; core verifies an
+  exact live child realm, remints every public program handle/generation in a
+  disjoint core namespace, and rejects mismatched tab/document/program/safe-
+  point replies. The route deliberately does not proxy breakpoints,
+  pause/resume, stepping, VM frames, stacks, scopes, values, bytecode, or
+  source. DOM/event callbacks, URL or import-map resolution, a production
+  fetch/cache/integrity authorizer implementation, and page-selected compiler
+  profiles remain open.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.
 - The [BlueTS test report](TEST_REPORT.md) records the complete per-platform test-suite results, the TypeScript 5.9.3 oracle matrix and per-file line coverage for `blueice-bluets` and `blueice-bluets-bluejs` (2026-09-21).
 
