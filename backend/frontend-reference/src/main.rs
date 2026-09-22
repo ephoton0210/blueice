@@ -27,18 +27,21 @@
 //! touches `core` at all, which is the point: visibility is purely a
 //! `frontend`-side, windowing-layer concern.
 //!
-//! A fourth stdin command, `credits`, navigates to `core`'s built-in
+//! Stdin commands include `credits`, which navigates to `core`'s built-in
 //! `about:credits` page (`blueice_engine::credits`) -- BlueIce's
-//! Help/About/Credits screen (`phase-4-human-rendering-path/PLAN.md`).
+//! Help/About/Credits screen (`phase-4-human-rendering-path/PLAN.md`) -- and
+//! Phase 16's `tab-new`/`tab-close`/`tab N` plus group commands. They remain
+//! a testable stand-in for native menu/toolbar controls.
 //! `frontend` doesn't depend on `blueice-engine` to know that URL --
 //! like any other URL sent over `ClientMessage::Navigate`, it's just a
 //! string this process and `core` both happen to agree on, the same
 //! way a real platform-native frontend (not necessarily even Rust)
 //! would.
 
-use blueice_ipc::downloads::{DownloadsClient, TransferInfo, default_downloads_socket_path};
-use blueice_ipc::{ClientMessage, ServerMessage, shm};
+use blueice_ipc::downloads::{default_downloads_socket_path, DownloadsClient, TransferInfo};
+use blueice_ipc::{shm, ClientMessage, ServerMessage, TabGroupSummary, TabSummary};
 use softbuffer::{Context, Surface};
+use std::collections::{HashMap, HashSet};
 use std::io::BufRead;
 use std::num::NonZeroU32;
 use std::os::unix::net::UnixStream;
@@ -148,12 +151,37 @@ const CREDITS_URL: &str = "about:credits";
 /// DOWNLOADS_URL`) -- duplicated for the same reason as `CREDITS_URL`.
 const DOWNLOADS_URL: &str = "about:downloads";
 
+/// Native window chrome is local to this frontend. `core` receives page
+/// coordinates below it, while the tab strip itself is rendered here from the
+/// same core-owned tab/group state an MCP observer can inspect.
+const TAB_STRIP_HEIGHT: u32 = 34;
+const TAB_WIDTH: u32 = 150;
+const GROUP_HEADER_WIDTH: u32 = 104;
+const NEW_TAB_WIDTH: u32 = 32;
+const CHROME_BG: u32 = 0x0020_2228;
+const TAB_BG: u32 = 0x0035_3943;
+const SELECTED_TAB_BG: u32 = 0x0053_5968;
+const TEXT: u32 = 0x00E8_EAF0;
+
 #[derive(Debug)]
 enum UserEvent {
-    Server(ServerMessage),
+    Server {
+        tab_id: Option<u64>,
+        request_id: Option<u64>,
+        message: ServerMessage,
+    },
     Disconnected,
     SetVisible(bool),
     Navigate(String),
+    OpenTab,
+    CloseSelectedTab,
+    SelectTab(u64),
+    SetTabGroup {
+        tab_id: u64,
+        group_id: Option<u64>,
+    },
+    GroupCommand(ClientMessage),
+    ToggleGroup(u64),
     /// `download <url>`: ask the downloads process to fetch a URL.
     StartDownload(String),
     Quit,
@@ -166,37 +194,141 @@ struct CurrentFrame {
     pixels_xrgb: Vec<u32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Rect {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+impl Rect {
+    fn contains(self, x: f64, y: f64) -> bool {
+        x >= f64::from(self.x)
+            && y >= f64::from(self.y)
+            && x < f64::from(self.x.saturating_add(self.width))
+            && y < f64::from(self.y.saturating_add(self.height))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TabStripHit {
+    Select(u64),
+    Close(u64),
+    ToggleGroup(u64),
+    NewTab,
+}
+
+#[derive(Debug, Clone)]
+enum TabStripItem {
+    Group {
+        rect: Rect,
+        group_id: u64,
+        color: u32,
+        label: String,
+    },
+    Tab {
+        rect: Rect,
+        tab_id: u64,
+        selected: bool,
+        color: Option<u32>,
+        label: String,
+    },
+}
+
+/// The frontend's display-local tab strip. `selected_tab` is deliberately not
+/// sent to core: another observer is free to display a different tab.
+struct TabStrip {
+    items: Vec<TabStripItem>,
+    new_tab: Rect,
+}
+
 struct App {
     core: Child,
     writer: UnixStream,
     window: Option<Rc<Window>>,
     surface: Option<Surface<Rc<Window>, Rc<Window>>>,
-    frame: Option<CurrentFrame>,
+    frames: HashMap<u64, CurrentFrame>,
+    tabs: Vec<TabSummary>,
+    groups: Vec<TabGroupSummary>,
+    selected_tab: Option<u64>,
+    pending_open: HashSet<u64>,
+    next_request_id: u64,
+    window_size: (u32, u32),
     cursor: (f64, f64),
     locale: &'static str,
 }
 
 impl App {
-    fn send(&mut self, msg: &ClientMessage) {
-        if let Err(e) = blueice_ipc::write_client_message(&mut self.writer, msg) {
+    fn send_unscoped(&mut self, msg: &ClientMessage) {
+        if let Err(e) =
+            blueice_ipc::write_client_message_with_ids(&mut self.writer, None, None, msg)
+        {
             eprintln!("blueice-frontend: failed to send {msg:?}: {e}");
         }
     }
 
-    fn apply_frame(&mut self, shm_path: &str, width: u32, height: u32, generation: u64) {
-        if let Some(existing) = &self.frame {
+    fn send_selected(&mut self, msg: &ClientMessage) {
+        if let Err(e) = blueice_ipc::write_client_message_with_ids(
+            &mut self.writer,
+            self.selected_tab,
+            None,
+            msg,
+        ) {
+            eprintln!("blueice-frontend: failed to send {msg:?}: {e}");
+        }
+    }
+
+    fn send_selected_to(&mut self, tab_id: u64, msg: &ClientMessage) {
+        if let Err(e) =
+            blueice_ipc::write_client_message_with_ids(&mut self.writer, Some(tab_id), None, msg)
+        {
+            eprintln!("blueice-frontend: failed to send {msg:?}: {e}");
+        }
+    }
+
+    fn send_unscoped_with_request(&mut self, msg: &ClientMessage) -> Option<u64> {
+        self.next_request_id += 1;
+        let request_id = self.next_request_id;
+        match blueice_ipc::write_client_message_with_ids(
+            &mut self.writer,
+            None,
+            Some(request_id),
+            msg,
+        ) {
+            Ok(()) => Some(request_id),
+            Err(e) => {
+                eprintln!("blueice-frontend: failed to send {msg:?}: {e}");
+                None
+            }
+        }
+    }
+
+    fn apply_frame(
+        &mut self,
+        tab_id: u64,
+        shm_path: &str,
+        width: u32,
+        height: u32,
+        generation: u64,
+    ) {
+        if let Some(existing) = self.frames.get(&tab_id) {
             if generation <= existing.generation {
                 return; // stale frame, already superseded
             }
         }
         match shm::map_frame(Path::new(shm_path)) {
             Ok(mapped) => {
-                self.frame = Some(CurrentFrame {
-                    width,
-                    height,
-                    generation,
-                    pixels_xrgb: rgba_to_xrgb(&mapped),
-                });
+                self.frames.insert(
+                    tab_id,
+                    CurrentFrame {
+                        width,
+                        height,
+                        generation,
+                        pixels_xrgb: rgba_to_xrgb(&mapped),
+                    },
+                );
+                self.selected_tab.get_or_insert(tab_id);
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
@@ -205,24 +337,528 @@ impl App {
         }
     }
 
+    fn selected_frame(&self) -> Option<&CurrentFrame> {
+        self.selected_tab
+            .and_then(|tab_id| self.frames.get(&tab_id))
+    }
+
+    fn replace_tabs(&mut self, tabs: Vec<TabSummary>) {
+        self.tabs = tabs;
+        self.frames
+            .retain(|id, _| self.tabs.iter().any(|tab| tab.id == *id));
+        if self
+            .selected_tab
+            .is_some_and(|selected| !self.tabs.iter().any(|tab| tab.id == selected))
+        {
+            self.selected_tab = self.tabs.first().map(|tab| tab.id);
+        }
+        if self.selected_tab.is_none() {
+            self.selected_tab = self.tabs.first().map(|tab| tab.id);
+        }
+        self.refresh_title();
+        self.request_redraw();
+    }
+
+    fn upsert_tab(&mut self, tab: TabSummary) {
+        if let Some(existing) = self.tabs.iter_mut().find(|current| current.id == tab.id) {
+            *existing = tab;
+        } else {
+            self.tabs.push(tab);
+        }
+    }
+
+    fn remove_tab(&mut self, tab_id: u64) {
+        self.tabs.retain(|tab| tab.id != tab_id);
+        self.frames.remove(&tab_id);
+        if self.selected_tab == Some(tab_id) {
+            self.selected_tab = self.tabs.first().map(|tab| tab.id);
+        }
+        self.refresh_title();
+        self.request_redraw();
+    }
+
+    fn replace_groups(&mut self, groups: Vec<TabGroupSummary>) {
+        self.groups = groups;
+        self.refresh_title();
+        self.request_redraw();
+    }
+
+    fn upsert_group(&mut self, group: TabGroupSummary) {
+        if let Some(existing) = self
+            .groups
+            .iter_mut()
+            .find(|current| current.id == group.id)
+        {
+            *existing = group;
+        } else {
+            self.groups.push(group);
+        }
+        self.refresh_title();
+        self.request_redraw();
+    }
+
+    fn close_group(&mut self, group_id: u64) {
+        self.groups.retain(|group| group.id != group_id);
+        for tab in &mut self.tabs {
+            if tab.group_id == Some(group_id) {
+                tab.group_id = None;
+            }
+        }
+        self.refresh_title();
+        self.request_redraw();
+    }
+
+    fn set_tab_group_local(&mut self, tab_id: u64, group_id: Option<u64>) {
+        if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == tab_id) {
+            tab.group_id = group_id;
+        }
+        self.refresh_title();
+        self.request_redraw();
+    }
+
+    fn request_redraw(&self) {
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+    }
+
+    fn refresh_title(&self) {
+        let Some(window) = &self.window else { return };
+        let selected = self
+            .selected_tab
+            .and_then(|id| self.tabs.iter().find(|tab| tab.id == id));
+        let group_name = selected
+            .and_then(|tab| tab.group_id)
+            .and_then(|id| self.groups.iter().find(|group| group.id == id))
+            .map(|group| format!("{} · ", group.name))
+            .unwrap_or_default();
+        let page = selected
+            .and_then(|tab| tab.url.as_deref())
+            .unwrap_or("new tab");
+        window.set_title(&format!("BlueIce — {group_name}{page}"));
+    }
+
+    fn open_tab(&mut self) {
+        if let Some(request_id) =
+            self.send_unscoped_with_request(&ClientMessage::OpenTab { url: None })
+        {
+            self.pending_open.insert(request_id);
+        }
+    }
+
+    fn toggle_group(&mut self, group_id: u64) {
+        if let Some(group) = self.groups.iter().find(|group| group.id == group_id) {
+            self.send_unscoped(&ClientMessage::SetTabGroupCollapsed {
+                group_id,
+                collapsed: !group.collapsed,
+            });
+        }
+    }
+
     fn redraw(&mut self) {
-        let (Some(window), Some(surface), Some(frame)) =
-            (&self.window, &mut self.surface, &self.frame)
-        else {
+        let Some(window) = &self.window else {
             return;
         };
-        let (Some(w), Some(h)) = (NonZeroU32::new(frame.width), NonZeroU32::new(frame.height))
-        else {
+        let size = window.inner_size();
+        let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else {
+            return;
+        };
+        let strip = tab_strip(&self.tabs, &self.groups, self.selected_tab, size.width);
+        let pixels = compose_window(size.width, size.height, self.selected_frame(), &strip);
+        let Some(surface) = &mut self.surface else {
             return;
         };
         if surface.resize(w, h).is_err() {
             return;
         }
         if let Ok(mut buffer) = surface.buffer_mut() {
-            buffer.copy_from_slice(&frame.pixels_xrgb);
+            buffer.copy_from_slice(&pixels);
             let _ = buffer.present();
         }
         window.pre_present_notify();
+    }
+}
+
+impl TabStrip {
+    fn hit(&self, x: f64, y: f64) -> Option<TabStripHit> {
+        for item in self.items.iter().rev() {
+            match item {
+                TabStripItem::Group { rect, group_id, .. } if rect.contains(x, y) => {
+                    return Some(TabStripHit::ToggleGroup(*group_id));
+                }
+                TabStripItem::Tab { rect, tab_id, .. } if rect.contains(x, y) => {
+                    if x >= f64::from(rect.x.saturating_add(rect.width).saturating_sub(18)) {
+                        return Some(TabStripHit::Close(*tab_id));
+                    }
+                    return Some(TabStripHit::Select(*tab_id));
+                }
+                _ => {}
+            }
+        }
+        self.new_tab.contains(x, y).then_some(TabStripHit::NewTab)
+    }
+}
+
+fn tab_strip(
+    tabs: &[TabSummary],
+    groups: &[TabGroupSummary],
+    selected_tab: Option<u64>,
+    window_width: u32,
+) -> TabStrip {
+    let mut items = Vec::new();
+    let mut seen_groups = HashSet::new();
+    let mut x = 0;
+    let available_width = window_width.saturating_sub(NEW_TAB_WIDTH);
+    for tab in tabs {
+        let group = tab
+            .group_id
+            .and_then(|group_id| groups.iter().find(|group| group.id == group_id));
+        if let Some(group) = group {
+            if seen_groups.insert(group.id) {
+                push_group_item(&mut items, group, &mut x, available_width);
+            }
+            if group.collapsed {
+                continue;
+            }
+        }
+        let rect = Rect {
+            x,
+            y: 0,
+            width: TAB_WIDTH.min(available_width.saturating_sub(x)),
+            height: TAB_STRIP_HEIGHT,
+        };
+        items.push(TabStripItem::Tab {
+            rect,
+            tab_id: tab.id,
+            selected: selected_tab == Some(tab.id),
+            color: group.map(|group| parse_group_color(&group.color)),
+            label: tab_label(tab),
+        });
+        x = x.saturating_add(TAB_WIDTH);
+    }
+    // An empty group is still useful shared organization, and must remain
+    // visible so a human can expand/delete it after an AI creates it.
+    for group in groups {
+        if seen_groups.insert(group.id) {
+            push_group_item(&mut items, group, &mut x, available_width);
+        }
+    }
+    TabStrip {
+        items,
+        new_tab: Rect {
+            x: window_width.saturating_sub(NEW_TAB_WIDTH),
+            y: 0,
+            width: NEW_TAB_WIDTH,
+            height: TAB_STRIP_HEIGHT,
+        },
+    }
+}
+
+fn push_group_item(
+    items: &mut Vec<TabStripItem>,
+    group: &TabGroupSummary,
+    x: &mut u32,
+    available_width: u32,
+) {
+    let rect = Rect {
+        x: *x,
+        y: 0,
+        width: GROUP_HEADER_WIDTH.min(available_width.saturating_sub(*x)),
+        height: TAB_STRIP_HEIGHT,
+    };
+    items.push(TabStripItem::Group {
+        rect,
+        group_id: group.id,
+        color: parse_group_color(&group.color),
+        label: if group.collapsed {
+            format!("▶ {}", group.name)
+        } else {
+            format!("▼ {}", group.name)
+        },
+    });
+    *x = x.saturating_add(GROUP_HEADER_WIDTH);
+}
+
+fn tab_label(tab: &TabSummary) -> String {
+    tab.url
+        .as_deref()
+        .and_then(|url| url.split("//").nth(1).or(Some(url)))
+        .unwrap_or("new tab")
+        .chars()
+        .take(18)
+        .collect()
+}
+
+fn parse_group_color(color: &str) -> u32 {
+    u32::from_str_radix(color.strip_prefix('#').unwrap_or_default(), 16).unwrap_or(0x007C_8799)
+}
+
+fn compose_window(
+    width: u32,
+    height: u32,
+    frame: Option<&CurrentFrame>,
+    strip: &TabStrip,
+) -> Vec<u32> {
+    let mut pixels = vec![0x00FF_FFFF; width as usize * height as usize];
+    if let Some(frame) = frame {
+        let copy_width = width.min(frame.width) as usize;
+        let copy_height = height.saturating_sub(TAB_STRIP_HEIGHT).min(frame.height) as usize;
+        for row in 0..copy_height {
+            let destination = (row + TAB_STRIP_HEIGHT as usize) * width as usize;
+            let source = row * frame.width as usize;
+            pixels[destination..destination + copy_width]
+                .copy_from_slice(&frame.pixels_xrgb[source..source + copy_width]);
+        }
+    }
+    draw_rect(
+        &mut pixels,
+        width,
+        height,
+        Rect {
+            x: 0,
+            y: 0,
+            width,
+            height: TAB_STRIP_HEIGHT.min(height),
+        },
+        CHROME_BG,
+    );
+    for item in &strip.items {
+        match item {
+            TabStripItem::Group {
+                rect, color, label, ..
+            } => {
+                draw_rect(&mut pixels, width, height, *rect, 0x002B_303A);
+                draw_rect(
+                    &mut pixels,
+                    width,
+                    height,
+                    Rect { width: 5, ..*rect },
+                    *color,
+                );
+                draw_label(
+                    &mut pixels,
+                    width,
+                    height,
+                    rect.x + 9,
+                    rect.y + 12,
+                    label,
+                    TEXT,
+                );
+            }
+            TabStripItem::Tab {
+                rect,
+                selected,
+                color,
+                label,
+                ..
+            } => {
+                draw_rect(
+                    &mut pixels,
+                    width,
+                    height,
+                    *rect,
+                    if *selected { SELECTED_TAB_BG } else { TAB_BG },
+                );
+                if let Some(color) = color {
+                    draw_rect(
+                        &mut pixels,
+                        width,
+                        height,
+                        Rect { height: 3, ..*rect },
+                        *color,
+                    );
+                }
+                draw_label(
+                    &mut pixels,
+                    width,
+                    height,
+                    rect.x + 7,
+                    rect.y + 12,
+                    label,
+                    TEXT,
+                );
+                draw_close(
+                    &mut pixels,
+                    width,
+                    height,
+                    rect.x + rect.width.saturating_sub(12),
+                    12,
+                );
+            }
+        }
+    }
+    draw_label(
+        &mut pixels,
+        width,
+        height,
+        strip.new_tab.x + 11,
+        12,
+        "+",
+        TEXT,
+    );
+    pixels
+}
+
+fn draw_rect(pixels: &mut [u32], width: u32, height: u32, rect: Rect, color: u32) {
+    let right = rect.x.saturating_add(rect.width).min(width);
+    let bottom = rect.y.saturating_add(rect.height).min(height);
+    for y in rect.y.min(height)..bottom {
+        let start = y as usize * width as usize + rect.x.min(width) as usize;
+        let end = y as usize * width as usize + right as usize;
+        pixels[start..end].fill(color);
+    }
+}
+
+fn draw_close(pixels: &mut [u32], width: u32, height: u32, x: u32, y: u32) {
+    for offset in 0..7 {
+        set_pixel(pixels, width, height, x + offset, y + offset, TEXT);
+        set_pixel(pixels, width, height, x + 6 - offset, y + offset, TEXT);
+    }
+}
+
+fn draw_label(pixels: &mut [u32], width: u32, height: u32, x: u32, y: u32, text: &str, color: u32) {
+    for (index, character) in text.chars().take(15).enumerate() {
+        let glyph_x = x + index as u32 * 6;
+        for (row, bits) in glyph(character).iter().enumerate() {
+            for column in 0..5 {
+                if bits & (1 << (4 - column)) != 0 {
+                    set_pixel(
+                        pixels,
+                        width,
+                        height,
+                        glyph_x + column,
+                        y + row as u32,
+                        color,
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn set_pixel(pixels: &mut [u32], width: u32, height: u32, x: u32, y: u32, color: u32) {
+    if x < width && y < height {
+        pixels[y as usize * width as usize + x as usize] = color;
+    }
+}
+
+fn glyph(character: char) -> [u8; 7] {
+    match character.to_ascii_uppercase() {
+        'A' => [0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0],
+        'B' => [
+            0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110,
+        ],
+        'C' => [
+            0b01111, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b01111,
+        ],
+        'D' => [
+            0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110,
+        ],
+        'E' => [
+            0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111,
+        ],
+        'F' => [
+            0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000,
+        ],
+        'G' => [
+            0b01111, 0b10000, 0b10000, 0b10111, 0b10001, 0b10001, 0b01111,
+        ],
+        'H' => [
+            0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001,
+        ],
+        'I' => [
+            0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b11111,
+        ],
+        'J' => [
+            0b00001, 0b00001, 0b00001, 0b00001, 0b10001, 0b10001, 0b01110,
+        ],
+        'K' => [
+            0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001,
+        ],
+        'L' => [
+            0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111,
+        ],
+        'M' => [
+            0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001,
+        ],
+        'N' => [
+            0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001,
+        ],
+        'O' => [
+            0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110,
+        ],
+        'P' => [
+            0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000,
+        ],
+        'Q' => [
+            0b01110, 0b10001, 0b10001, 0b10001, 0b10101, 0b10010, 0b01101,
+        ],
+        'R' => [
+            0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001,
+        ],
+        'S' => [
+            0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110,
+        ],
+        'T' => [
+            0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100,
+        ],
+        'U' => [
+            0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110,
+        ],
+        'V' => [
+            0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100,
+        ],
+        'W' => [
+            0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b10101, 0b01010,
+        ],
+        'X' => [
+            0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001,
+        ],
+        'Y' => [
+            0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100,
+        ],
+        'Z' => [
+            0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b11111,
+        ],
+        '0' => [
+            0b01110, 0b10011, 0b10101, 0b10101, 0b11001, 0b10001, 0b01110,
+        ],
+        '1' => [
+            0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110,
+        ],
+        '2' => [
+            0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111,
+        ],
+        '3' => [
+            0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110,
+        ],
+        '4' => [
+            0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010,
+        ],
+        '5' => [
+            0b11111, 0b10000, 0b10000, 0b11110, 0b00001, 0b00001, 0b11110,
+        ],
+        '6' => [
+            0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110,
+        ],
+        '7' => [
+            0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000,
+        ],
+        '8' => [
+            0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110,
+        ],
+        '9' => [
+            0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b11100,
+        ],
+        '-' => [0, 0, 0, 0b11111, 0, 0, 0],
+        '.' => [0, 0, 0, 0, 0, 0b01100, 0b01100],
+        '/' => [0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0, 0],
+        ':' => [0, 0b01100, 0b01100, 0, 0b01100, 0b01100, 0],
+        '+' => [0, 0b00100, 0b00100, 0b11111, 0b00100, 0b00100, 0],
+        ' ' => [0; 7],
+        _ => [
+            0b11111, 0b10001, 0b00110, 0b00100, 0b00110, 0b10001, 0b11111,
+        ],
     }
 }
 
@@ -241,8 +877,17 @@ impl ApplicationHandler<UserEvent> for App {
         let context = Context::new(window.clone()).expect("failed to create softbuffer context");
         let surface =
             Surface::new(&context, window.clone()).expect("failed to create softbuffer surface");
+        self.window_size = (window.inner_size().width, window.inner_size().height);
         self.window = Some(window);
         self.surface = Some(surface);
+        let (width, height) = self.window_size;
+        if width > 0 && height > TAB_STRIP_HEIGHT {
+            self.send_selected(&ClientMessage::Resize {
+                width,
+                height: height - TAB_STRIP_HEIGHT,
+            });
+        }
+        self.refresh_title();
         self.redraw();
     }
 
@@ -254,13 +899,14 @@ impl ApplicationHandler<UserEvent> for App {
     ) {
         match event {
             WindowEvent::CloseRequested => {
-                self.send(&ClientMessage::Shutdown);
+                self.send_unscoped(&ClientMessage::Shutdown);
                 event_loop.exit();
             }
             WindowEvent::Resized(size) if size.width > 0 && size.height > 0 => {
-                self.send(&ClientMessage::Resize {
+                self.window_size = (size.width, size.height);
+                self.send_selected(&ClientMessage::Resize {
                     width: size.width,
-                    height: size.height,
+                    height: size.height.saturating_sub(TAB_STRIP_HEIGHT).max(1),
                 });
             }
             WindowEvent::RedrawRequested => self.redraw(),
@@ -270,10 +916,12 @@ impl ApplicationHandler<UserEvent> for App {
                 // truth for "what's hovered" -- see
                 // `phase-1-ai-representation-layer/PLAN.md` §4 and
                 // `blueice_ipc::ClientMessage::Hover`'s own docs.
-                self.send(&ClientMessage::Hover {
-                    x: position.x,
-                    y: position.y,
-                });
+                if position.y >= f64::from(TAB_STRIP_HEIGHT) {
+                    self.send_selected(&ClientMessage::Hover {
+                        x: position.x,
+                        y: position.y - f64::from(TAB_STRIP_HEIGHT),
+                    });
+                }
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -281,14 +929,41 @@ impl ApplicationHandler<UserEvent> for App {
                 ..
             } => {
                 let (x, y) = self.cursor;
-                self.send(&ClientMessage::Click { x, y });
+                if y < f64::from(TAB_STRIP_HEIGHT) {
+                    let strip = tab_strip(
+                        &self.tabs,
+                        &self.groups,
+                        self.selected_tab,
+                        self.window_size.0,
+                    );
+                    match strip.hit(x, y) {
+                        Some(TabStripHit::Select(tab_id)) => {
+                            self.selected_tab = Some(tab_id);
+                            self.refresh_title();
+                            self.request_redraw();
+                        }
+                        Some(TabStripHit::Close(tab_id)) => {
+                            self.send_selected_to(tab_id, &ClientMessage::CloseTab);
+                        }
+                        Some(TabStripHit::ToggleGroup(group_id)) => {
+                            self.toggle_group(group_id);
+                        }
+                        Some(TabStripHit::NewTab) => self.open_tab(),
+                        None => {}
+                    }
+                } else {
+                    self.send_selected(&ClientMessage::Click {
+                        x,
+                        y: y - f64::from(TAB_STRIP_HEIGHT),
+                    });
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let delta_y = match delta {
                     MouseScrollDelta::LineDelta(_, y) => -y as f64 * 20.0,
                     MouseScrollDelta::PixelDelta(pos) => -pos.y,
                 };
-                self.send(&ClientMessage::Scroll { delta_y });
+                self.send_selected(&ClientMessage::Scroll { delta_y });
             }
             _ => {}
         }
@@ -296,67 +971,85 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
-            UserEvent::Server(ServerMessage::FrameReady {
-                shm_path,
-                width,
-                height,
-                generation,
-            }) => {
-                self.apply_frame(&shm_path, width, height, generation);
-            }
-            UserEvent::Server(ServerMessage::Navigated { url }) => {
-                if let Some(window) = &self.window {
-                    window.set_title(&blueice_i18n::translate(
-                        self.locale,
-                        "frontend",
-                        "window-title-navigated",
-                        &[("url", &url)],
-                    ));
+            UserEvent::Server {
+                tab_id,
+                request_id,
+                message,
+            } => match message {
+                ServerMessage::FrameReady {
+                    shm_path,
+                    width,
+                    height,
+                    generation,
+                } => {
+                    if let Some(tab_id) = tab_id {
+                        self.apply_frame(tab_id, &shm_path, width, height, generation);
+                    }
                 }
-            }
-            UserEvent::Server(ServerMessage::Error { message }) => {
-                eprintln!("blueice-frontend: core reported an error: {message}");
-            }
-            // `phase-7-local-ai/PLAN.md`'s gatekeeper: a navigation
-            // `core` didn't let through. This reference frontend has no
-            // UI for the "detailed risk explanation" the plan calls
-            // for yet -- surfaced the same minimal way `Error` is,
-            // pending that real UI work.
-            UserEvent::Server(ServerMessage::GatekeeperBlocked {
-                reason,
-                category,
-                url,
-            }) => {
-                eprintln!(
-                    "blueice-frontend: core's gatekeeper blocked {url} ({category}): {reason}"
-                );
-            }
-            // This reference frontend has no AI-facing consumer of its
-            // own -- a Representation/Dom only arrives if something
-            // else sharing this connection asked for one. An AI-facing
-            // client (or the differential-testing harness,
-            // `TEST_PLAN.md`) would consume these directly rather than
-            // routing them through a human window. `Hello` past the
-            // initial handshake (see `main`) is likewise nothing this
-            // window needs to react to -- a second external client
-            // sharing this connection via `blueice-launcher`'s broker
-            // handshaking on its own doesn't change anything here.
-            // `Unknown` is the forward-compatibility fallback (plan §3).
-            // `TabOpened`/`TabClosed`/`Tabs`
-            // (`phase-16-multi-tab-and-tab-groups/PLAN.md`) are likewise
-            // ignored here -- this reference frontend has no tab-strip
-            // UI yet (Milestone C2, deliberately deferred), so it only
-            // ever shows the one implicit default tab's frames, the
-            // same way it always has.
-            UserEvent::Server(
+                ServerMessage::Navigated { url } => {
+                    if let Some(tab_id) = tab_id {
+                        if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == tab_id) {
+                            tab.url = Some(url);
+                        }
+                    }
+                    self.refresh_title();
+                    self.request_redraw();
+                }
+                ServerMessage::TabOpened { tab_id, url } => {
+                    self.upsert_tab(TabSummary {
+                        id: tab_id,
+                        url,
+                        group_id: None,
+                    });
+                    if request_id.is_some_and(|id| self.pending_open.remove(&id)) {
+                        self.selected_tab = Some(tab_id);
+                    }
+                    self.refresh_title();
+                    self.request_redraw();
+                }
+                ServerMessage::TabClosed { tab_id } => self.remove_tab(tab_id),
+                ServerMessage::Tabs(tabs) => self.replace_tabs(tabs),
+                ServerMessage::TabGroupCreated(group) | ServerMessage::TabGroupUpdated(group) => {
+                    self.upsert_group(group);
+                }
+                ServerMessage::TabGroupAssigned { tab_id, group_id } => {
+                    self.set_tab_group_local(tab_id, group_id);
+                }
+                ServerMessage::TabGroupClosed { group_id } => self.close_group(group_id),
+                ServerMessage::TabGroups(groups) => self.replace_groups(groups),
+                ServerMessage::Error { message } => {
+                    eprintln!("blueice-frontend: core reported an error: {message}");
+                }
+                // `phase-7-local-ai/PLAN.md`'s gatekeeper: a navigation
+                // `core` didn't let through. This reference frontend has no
+                // UI for the "detailed risk explanation" the plan calls
+                // for yet -- surfaced the same minimal way `Error` is,
+                // pending that real UI work.
+                ServerMessage::GatekeeperBlocked {
+                    reason,
+                    category,
+                    url,
+                } => {
+                    eprintln!(
+                        "blueice-frontend: core's gatekeeper blocked {url} ({category}): {reason}"
+                    );
+                }
+                // This reference frontend has no AI-facing consumer of its
+                // own -- a Representation/Dom only arrives if something
+                // else sharing this connection asked for one. An AI-facing
+                // client (or the differential-testing harness,
+                // `TEST_PLAN.md`) would consume these directly rather than
+                // routing them through a human window. `Hello` past the
+                // initial handshake (see `main`) is likewise nothing this
+                // window needs to react to -- a second external client
+                // sharing this connection via `blueice-launcher`'s broker
+                // handshaking on its own doesn't change anything here.
+                // `Unknown` is the forward-compatibility fallback (plan §3).
                 ServerMessage::Representation(_)
                 | ServerMessage::Dom(_)
                 | ServerMessage::Hello { .. }
-                | ServerMessage::Unknown
-                | ServerMessage::TabOpened { .. }
-                | ServerMessage::TabClosed { .. }
-                | ServerMessage::Tabs(_),
-            ) => {}
+                | ServerMessage::Unknown => {}
+            },
             UserEvent::Disconnected => {
                 eprintln!("blueice-frontend: core disconnected");
                 event_loop.exit();
@@ -365,16 +1058,37 @@ impl ApplicationHandler<UserEvent> for App {
                 if let Some(window) = &self.window {
                     window.set_visible(visible);
                 }
-                self.send(&ClientMessage::Chrome(
+                self.send_unscoped(&ClientMessage::Chrome(
                     blueice_ipc::ChromeCommand::SetVisible(visible),
                 ));
             }
-            UserEvent::Navigate(url) => self.send(&ClientMessage::Navigate {
+            UserEvent::Navigate(url) => self.send_selected(&ClientMessage::Navigate {
                 url: navigation_url(&url, self.locale),
             }),
+            UserEvent::OpenTab => self.open_tab(),
+            UserEvent::CloseSelectedTab => {
+                if let Some(tab_id) = self.selected_tab {
+                    self.send_selected_to(tab_id, &ClientMessage::CloseTab);
+                }
+            }
+            UserEvent::SelectTab(tab_id) => {
+                if self.tabs.iter().any(|tab| tab.id == tab_id) {
+                    self.selected_tab = Some(tab_id);
+                    self.refresh_title();
+                    self.request_redraw();
+                } else {
+                    eprintln!("blueice-frontend: unknown tab {tab_id}");
+                }
+            }
+            UserEvent::SetTabGroup { tab_id, group_id } => {
+                self.send_selected_to(tab_id, &ClientMessage::SetTabGroup { group_id })
+            }
+            UserEvent::GroupCommand(message) => self.send_unscoped(&message),
+            UserEvent::ToggleGroup(group_id) => self.toggle_group(group_id),
             UserEvent::StartDownload(url) => {
                 // Blocking I/O (and possibly starting a process): off the UI thread.
-                std::thread::spawn(move || match start_download(&url) {
+                std::thread::spawn(move || {
+                    match start_download(&url) {
                     Ok(transfer) => eprintln!(
                         "blueice-frontend: download {} queued for {} (type `downloads` to watch it)",
                         transfer.id, transfer.url
@@ -382,10 +1096,11 @@ impl ApplicationHandler<UserEvent> for App {
                     Err(message) => {
                         eprintln!("blueice-frontend: could not start the download: {message}")
                     }
+                }
                 });
             }
             UserEvent::Quit => {
-                self.send(&ClientMessage::Shutdown);
+                self.send_unscoped(&ClientMessage::Shutdown);
                 event_loop.exit();
             }
         }
@@ -471,12 +1186,92 @@ fn start_download(url: &str) -> Result<TransferInfo, String> {
 /// so this mapping is a plain unit-testable function, not something
 /// only exercisable by actually piping into the process's stdin.
 fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
-    match line.trim() {
+    let line = line.trim();
+    match line {
         "show" => Some(UserEvent::SetVisible(true)),
         "hide" => Some(UserEvent::SetVisible(false)),
         "credits" => Some(UserEvent::Navigate(CREDITS_URL.to_string())),
         "downloads" => Some(UserEvent::Navigate(DOWNLOADS_URL.to_string())),
+        "tab-new" => Some(UserEvent::OpenTab),
+        "tab-close" => Some(UserEvent::CloseSelectedTab),
         "quit" => Some(UserEvent::Quit),
+        other if other.strip_prefix("tab ").is_some() => other["tab ".len()..]
+            .trim()
+            .parse()
+            .ok()
+            .map(UserEvent::SelectTab),
+        other if other.strip_prefix("group-new ").is_some() => {
+            let words: Vec<_> = other["group-new ".len()..].split_whitespace().collect();
+            let (Some((color, name_words)), true) = (words.split_last(), words.len() >= 2) else {
+                eprintln!("blueice-frontend: group-new needs a name and #RRGGBB color");
+                return None;
+            };
+            Some(UserEvent::GroupCommand(ClientMessage::CreateTabGroup {
+                name: name_words.join(" "),
+                color: (*color).to_string(),
+            }))
+        }
+        other if other.strip_prefix("group-add ").is_some() => {
+            let mut words = other["group-add ".len()..].split_whitespace();
+            match (
+                words.next().and_then(|word| word.parse().ok()),
+                words.next().and_then(|word| word.parse().ok()),
+                words.next(),
+            ) {
+                (Some(tab_id), Some(group_id), None) => Some(UserEvent::SetTabGroup {
+                    tab_id,
+                    group_id: Some(group_id),
+                }),
+                _ => {
+                    eprintln!("blueice-frontend: group-add needs <tab-id> <group-id>");
+                    None
+                }
+            }
+        }
+        other if other.strip_prefix("group-remove ").is_some() => other["group-remove ".len()..]
+            .trim()
+            .parse()
+            .ok()
+            .map(|tab_id| UserEvent::SetTabGroup {
+                tab_id,
+                group_id: None,
+            }),
+        other if other.strip_prefix("group-rename ").is_some() => {
+            let mut words = other["group-rename ".len()..].split_whitespace();
+            let group_id = words.next().and_then(|word| word.parse().ok())?;
+            let name = words.collect::<Vec<_>>().join(" ");
+            (!name.is_empty()).then_some(UserEvent::GroupCommand(ClientMessage::RenameTabGroup {
+                group_id,
+                name,
+            }))
+        }
+        other if other.strip_prefix("group-color ").is_some() => {
+            let mut words = other["group-color ".len()..].split_whitespace();
+            match (
+                words.next().and_then(|word| word.parse().ok()),
+                words.next(),
+                words.next(),
+            ) {
+                (Some(group_id), Some(color), None) => {
+                    Some(UserEvent::GroupCommand(ClientMessage::SetTabGroupColor {
+                        group_id,
+                        color: color.to_string(),
+                    }))
+                }
+                _ => None,
+            }
+        }
+        other if other.strip_prefix("group-collapse ").is_some() => other
+            ["group-collapse ".len()..]
+            .trim()
+            .parse()
+            .ok()
+            .map(UserEvent::ToggleGroup),
+        other if other.strip_prefix("group-close ").is_some() => other["group-close ".len()..]
+            .trim()
+            .parse()
+            .ok()
+            .map(|group_id| UserEvent::GroupCommand(ClientMessage::CloseTabGroup { group_id })),
         other
             if other
                 .strip_prefix("download")
@@ -495,7 +1290,7 @@ fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
         }
         other if !other.is_empty() => {
             eprintln!(
-                "blueice-frontend: unrecognized command {other:?} (try show/hide/credits/downloads/download <url>/quit)"
+                "blueice-frontend: unrecognized command {other:?} (try tab-new/tab-close/tab <id>/group-new <name> <#RRGGBB>/group-add <tab-id> <group-id>/quit)"
             );
             None
         }
@@ -503,9 +1298,9 @@ fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
     }
 }
 
-/// Reads `show`/`hide`/`credits`/`downloads`/`download <url>`/`quit` lines from stdin and forwards
-/// them as events -- see module docs for why stdin stands in for a
-/// real AI-facing control channel here.
+/// Reads visibility/page/download commands plus Phase 16's `tab-*` and
+/// `group-*` controls from stdin and forwards them as events -- see module
+/// docs for why stdin stands in for a native control channel here.
 fn spawn_stdin_commands(proxy: EventLoopProxy<UserEvent>) {
     std::thread::spawn(move || {
         let stdin = std::io::stdin();
@@ -521,18 +1316,23 @@ fn spawn_stdin_commands(proxy: EventLoopProxy<UserEvent>) {
 }
 
 fn spawn_server_reader(mut reader: UnixStream, proxy: EventLoopProxy<UserEvent>) {
-    std::thread::spawn(move || {
-        loop {
-            match blueice_ipc::read_server_message(&mut reader) {
-                Ok(msg) => {
-                    if proxy.send_event(UserEvent::Server(msg)).is_err() {
-                        break;
-                    }
-                }
-                Err(_) => {
-                    let _ = proxy.send_event(UserEvent::Disconnected);
+    std::thread::spawn(move || loop {
+        match blueice_ipc::read_server_message_with_ids(&mut reader) {
+            Ok((tab_id, request_id, message)) => {
+                if proxy
+                    .send_event(UserEvent::Server {
+                        tab_id,
+                        request_id,
+                        message,
+                    })
+                    .is_err()
+                {
                     break;
                 }
+            }
+            Err(_) => {
+                let _ = proxy.send_event(UserEvent::Disconnected);
+                break;
             }
         }
     });
@@ -595,11 +1395,19 @@ fn main() {
         writer,
         window: None,
         surface: None,
-        frame: None,
+        frames: HashMap::new(),
+        tabs: Vec::new(),
+        groups: Vec::new(),
+        selected_tab: None,
+        pending_open: HashSet::new(),
+        next_request_id: 0,
+        window_size: (800, 600),
         cursor: (0.0, 0.0),
         locale,
     };
-    app.send(&ClientMessage::Navigate { url });
+    app.send_unscoped(&ClientMessage::ListTabs);
+    app.send_unscoped(&ClientMessage::ListTabGroups);
+    app.send_selected(&ClientMessage::Navigate { url });
 
     event_loop
         .run_app(&mut app)
@@ -680,6 +1488,99 @@ mod tests {
     #[test]
     fn stdin_quit_command_maps_to_quit() {
         assert!(matches!(stdin_line_to_event("quit"), Some(UserEvent::Quit)));
+    }
+
+    #[test]
+    fn stdin_tab_commands_keep_selection_frontend_local() {
+        assert!(matches!(
+            stdin_line_to_event("tab-new"),
+            Some(UserEvent::OpenTab)
+        ));
+        assert!(matches!(
+            stdin_line_to_event("tab-close"),
+            Some(UserEvent::CloseSelectedTab)
+        ));
+        assert!(matches!(
+            stdin_line_to_event("tab 42"),
+            Some(UserEvent::SelectTab(42))
+        ));
+        assert!(stdin_line_to_event("tab nope").is_none());
+    }
+
+    #[test]
+    fn stdin_group_commands_address_tabs_and_groups_explicitly() {
+        assert!(matches!(
+            stdin_line_to_event("group-new Work #4f8cff"),
+            Some(UserEvent::GroupCommand(ClientMessage::CreateTabGroup { name, color }))
+                if name == "Work" && color == "#4f8cff"
+        ));
+        assert!(matches!(
+            stdin_line_to_event("group-add 2 7"),
+            Some(UserEvent::SetTabGroup {
+                tab_id: 2,
+                group_id: Some(7)
+            })
+        ));
+        assert!(matches!(
+            stdin_line_to_event("group-remove 2"),
+            Some(UserEvent::SetTabGroup {
+                tab_id: 2,
+                group_id: None
+            })
+        ));
+        assert!(matches!(
+            stdin_line_to_event("group-collapse 7"),
+            Some(UserEvent::ToggleGroup(7))
+        ));
+    }
+
+    #[test]
+    fn tab_strip_hides_collapsed_members_but_keeps_group_header_clickable() {
+        let tabs = vec![
+            TabSummary {
+                id: 1,
+                url: Some("https://one.example".to_string()),
+                group_id: Some(9),
+            },
+            TabSummary {
+                id: 2,
+                url: Some("https://two.example".to_string()),
+                group_id: None,
+            },
+        ];
+        let groups = vec![TabGroupSummary {
+            id: 9,
+            name: "Research".to_string(),
+            color: "#4f8cff".to_string(),
+            collapsed: true,
+        }];
+        let strip = tab_strip(&tabs, &groups, Some(1), 500);
+        assert!(matches!(
+            strip.items[0],
+            TabStripItem::Group { group_id: 9, .. }
+        ));
+        assert!(
+            !strip
+                .items
+                .iter()
+                .any(|item| matches!(item, TabStripItem::Tab { tab_id: 1, .. })),
+            "collapsed group member is hidden from this frontend's strip"
+        );
+        assert_eq!(strip.hit(10.0, 10.0), Some(TabStripHit::ToggleGroup(9)));
+    }
+
+    #[test]
+    fn compose_window_reserves_tab_strip_and_offsets_the_selected_frame() {
+        let frame = CurrentFrame {
+            width: 2,
+            height: 2,
+            generation: 1,
+            pixels_xrgb: vec![0x0011_2233; 4],
+        };
+        let strip = tab_strip(&[], &[], None, 2);
+        let pixels = compose_window(2, TAB_STRIP_HEIGHT + 2, Some(&frame), &strip);
+        assert_eq!(pixels[0], CHROME_BG);
+        assert_eq!(pixels[TAB_STRIP_HEIGHT as usize * 2], 0x0011_2233);
     }
 
     #[test]
@@ -788,8 +1689,8 @@ mod tests {
 
     fn fake_downloads_process(socket: &Path) -> std::thread::JoinHandle<()> {
         use blueice_ipc::downloads::{
-            DOWNLOADS_PROTOCOL_VERSION, DownloadsReply, DownloadsRequest, read_downloads_request,
-            write_downloads_reply,
+            read_downloads_request, write_downloads_reply, DownloadsReply, DownloadsRequest,
+            DOWNLOADS_PROTOCOL_VERSION,
         };
         let listener = std::os::unix::net::UnixListener::bind(socket).unwrap();
         std::thread::spawn(move || {

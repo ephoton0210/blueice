@@ -17,20 +17,20 @@
 //! only `Serialize`, which `blueice-ipc`'s wire types already derive.
 
 use crate::downloads::{
-    CallError, DownloadsHandle, parse_state, transfer_json, transfer_list_json,
-    wrap_untrusted_transfer_content,
+    parse_state, transfer_json, transfer_list_json, wrap_untrusted_transfer_content, CallError,
+    DownloadsHandle,
 };
 use crate::{CoreConnection, CoreProcess};
 use base64::Engine;
 use blueice_bluejs::{analyze, run_batch};
-use blueice_ipc::NodeAction;
 use blueice_ipc::downloads::{ClientError, DownloadsClient, TransferInfo};
+use blueice_ipc::NodeAction;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
     CallToolResult, ContentBlock as Content, Implementation, ServerCapabilities, ServerInfo,
 };
 use rmcp::schemars;
-use rmcp::{ErrorData, ServerHandler, tool, tool_handler, tool_router};
+use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler};
 use serde::Deserialize;
 use std::io;
 use std::os::unix::net::UnixStream;
@@ -89,6 +89,47 @@ struct OpenTabParams {
 struct CloseTabParams {
     /// From a prior `open_tab`/`list_tabs` call.
     tab_id: u64,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct CreateTabGroupParams {
+    /// A concise, human-visible group label.
+    name: String,
+    /// Canonical CSS #RRGGBB group color, for example "#4f8cff".
+    color: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct SetTabGroupParams {
+    /// The tab to add to or remove from a group.
+    tab_id: u64,
+    /// The target group. Omit or pass null to leave the tab ungrouped.
+    group_id: Option<u64>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct TabGroupIdParams {
+    /// From create_tab_group or list_tab_groups.
+    group_id: u64,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct RenameTabGroupParams {
+    group_id: u64,
+    name: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct SetTabGroupColorParams {
+    group_id: u64,
+    /// Canonical CSS #RRGGBB group color.
+    color: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct SetTabGroupCollapsedParams {
+    group_id: u64,
+    collapsed: bool,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -228,6 +269,34 @@ fn outcome_to_result(outcome: crate::ToolOutcome) -> CallToolResult {
         CallToolResult::error(vec![Content::text(text)])
     } else {
         CallToolResult::success(vec![Content::text(text)])
+    }
+}
+
+fn tab_group_outcome_to_result(outcome: crate::TabGroupOutcome) -> CallToolResult {
+    match outcome {
+        crate::TabGroupOutcome::Group(group) => {
+            let text = serde_json::to_string_pretty(&group).unwrap_or_else(|_| "{}".to_string());
+            CallToolResult::success(vec![Content::text(crate::wrap_untrusted_page_content(
+                &text,
+            ))])
+        }
+        crate::TabGroupOutcome::Assigned { tab_id, group_id } => {
+            let text = serde_json::to_string_pretty(
+                &serde_json::json!({ "tab_id": tab_id, "group_id": group_id }),
+            )
+            .unwrap_or_else(|_| "{}".to_string());
+            CallToolResult::success(vec![Content::text(crate::wrap_untrusted_page_content(
+                &text,
+            ))])
+        }
+        crate::TabGroupOutcome::Closed { group_id } => {
+            CallToolResult::success(vec![Content::text(format!(
+                "tab group {group_id} closed; its member tabs remain open and ungrouped"
+            ))])
+        }
+        crate::TabGroupOutcome::Error(message) => {
+            CallToolResult::error(vec![Content::text(message)])
+        }
     }
 }
 
@@ -557,6 +626,105 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
+        description = "List core-owned tab groups (id, name, #RRGGBB color, collapsed state). Grouping is shared with the human tab strip; it is not an MCP-local current-tab setting."
+    )]
+    async fn list_tab_groups(&self) -> Result<CallToolResult, ErrorData> {
+        match blocking(self.core.clone(), |conn| conn.list_tab_groups()).await? {
+            Ok(groups) => {
+                let text =
+                    serde_json::to_string_pretty(&groups).unwrap_or_else(|_| "[]".to_string());
+                Ok(CallToolResult::success(vec![Content::text(
+                    crate::wrap_untrusted_page_content(&text),
+                )]))
+            }
+            Err(message) => Ok(CallToolResult::error(vec![Content::text(message)])),
+        }
+    }
+
+    #[tool(
+        description = "Create a named, colored tab group shared with the human frontend. color must be a CSS #RRGGBB value, for example #4f8cff."
+    )]
+    async fn create_tab_group(
+        &self,
+        Parameters(CreateTabGroupParams { name, color }): Parameters<CreateTabGroupParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| {
+            conn.create_tab_group(&name, &color)
+        })
+        .await?;
+        Ok(tab_group_outcome_to_result(outcome))
+    }
+
+    #[tool(
+        description = "Add a tab to a shared tab group, or remove it from any group by omitting group_id. This never changes which tab another observer is viewing."
+    )]
+    async fn set_tab_group(
+        &self,
+        Parameters(SetTabGroupParams { tab_id, group_id }): Parameters<SetTabGroupParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| {
+            conn.set_tab_group(tab_id, group_id)
+        })
+        .await?;
+        Ok(tab_group_outcome_to_result(outcome))
+    }
+
+    #[tool(description = "Rename a shared tab group.")]
+    async fn rename_tab_group(
+        &self,
+        Parameters(RenameTabGroupParams { group_id, name }): Parameters<RenameTabGroupParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| {
+            conn.rename_tab_group(group_id, &name)
+        })
+        .await?;
+        Ok(tab_group_outcome_to_result(outcome))
+    }
+
+    #[tool(description = "Set a shared tab group's CSS #RRGGBB color.")]
+    async fn set_tab_group_color(
+        &self,
+        Parameters(SetTabGroupColorParams { group_id, color }): Parameters<SetTabGroupColorParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| {
+            conn.set_tab_group_color(group_id, &color)
+        })
+        .await?;
+        Ok(tab_group_outcome_to_result(outcome))
+    }
+
+    #[tool(
+        description = "Collapse or expand a shared tab group in tab strips. Collapsing never closes or suspends its tabs."
+    )]
+    async fn set_tab_group_collapsed(
+        &self,
+        Parameters(SetTabGroupCollapsedParams {
+            group_id,
+            collapsed,
+        }): Parameters<SetTabGroupCollapsedParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| {
+            conn.set_tab_group_collapsed(group_id, collapsed)
+        })
+        .await?;
+        Ok(tab_group_outcome_to_result(outcome))
+    }
+
+    #[tool(
+        description = "Remove a shared tab group. Its member tabs stay open and become ungrouped."
+    )]
+    async fn close_tab_group(
+        &self,
+        Parameters(TabGroupIdParams { group_id }): Parameters<TabGroupIdParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| {
+            conn.close_tab_group(group_id)
+        })
+        .await?;
+        Ok(tab_group_outcome_to_result(outcome))
+    }
+
+    #[tool(
         description = "Start downloading a file over HTTP(S), anonymous FTP as ftp://host/path, SFTP as sftp://user@host/path, or explicit FTPS as ftps://user@host/path, with BlueIce's built-in download manager. HTTP(S) and SFTP can use several connections at once; only HTTP(S) retains a partial file after a pause when the server supplies a validator. FTP-family transfers are single-stream and restart from the beginning after a pause. SFTP verifies the host against known-hosts and can use an SSH agent, a configured private key, or a saved password; FTPS verifies the TLS certificate and can use a saved password. Passwords in URLs are refused, and credential-setting is intentionally a local stdin-only CLI operation rather than an MCP tool. \
         Returns as soon as the transfer is queued -- it does NOT wait for the download to finish; read progress with get_transfer or list_transfers. \
         Every download passes through the local gatekeeper hook and can end up 'blocked' instead of downloading (the result says why). SECURITY LIMITATION: the current gatekeeper is an always-clear stub, and private or link-local network URLs are not blocked in this phase; do not treat this as malware scanning, authorization, or SSRF protection. \
@@ -758,6 +926,9 @@ impl ServerHandler for BlueIceMcpServer {
                  takes an optional tab_id (omit it to act on the single default tab). There is no 'current tab' \
                  tracked by core itself -- a human's frontend and this MCP client may be looking at different \
                  tabs simultaneously, so always pass tab_id explicitly once more than one tab is open. \
+                 create_tab_group/set_tab_group/rename_tab_group/set_tab_group_color/set_tab_group_collapsed/\
+                 close_tab_group/list_tab_groups manage named, colored group state shared with the human tab \
+                 strip; groups never create a global active tab, and closing a group leaves its tabs open. \
                  Downloads: download_file starts a multi-connection, resumable download and returns at once; watch it \
                  with get_transfer/list_transfers (each result opens with a one-sentence summary, then the full record: \
                  progress, speed, ETA, per-segment state, retries, errors, and an event log saying what happened and why), \

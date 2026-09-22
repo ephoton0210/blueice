@@ -50,6 +50,56 @@ impl TabId {
     }
 }
 
+/// Stable identity for a tab group. Like [`TabId`], it is monotonic and never
+/// reused, so a delayed group command can never accidentally mutate a later,
+/// unrelated group that happened to occupy an old array slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct GroupId(u64);
+
+impl GroupId {
+    pub fn as_u64(self) -> u64 {
+        self.0
+    }
+
+    pub fn from_u64(id: u64) -> GroupId {
+        GroupId(id)
+    }
+}
+
+/// Core-owned, observer-independent tab-group state. Selection is
+/// intentionally absent: which member a particular frontend displays belongs
+/// to that frontend, while this shared organization belongs to the session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TabGroup {
+    id: GroupId,
+    name: String,
+    color: String,
+    collapsed: bool,
+}
+
+impl TabGroup {
+    pub fn id(&self) -> GroupId {
+        self.id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn color(&self) -> &str {
+        &self.color
+    }
+
+    pub fn collapsed(&self) -> bool {
+        self.collapsed
+    }
+}
+
+struct Tab {
+    page: Page,
+    group_id: Option<GroupId>,
+}
+
 /// `core`'s collection of [`Page`]s. Always has a [`TabManager::
 /// default_tab`] identity fixed at construction -- used when a
 /// `ClientMessage`'s envelope carries no explicit `tab_id`, reproducing
@@ -63,13 +113,17 @@ impl TabId {
 /// same as any other stale ID -- one consistent failure mode, not a
 /// special case.
 pub struct TabManager {
-    tabs: HashMap<TabId, Page>,
+    tabs: HashMap<TabId, Tab>,
     /// Insertion order, for a deterministic `ListTabs` reply --
     /// `HashMap` iteration order isn't stable, and a browser's tab list
     /// visibly ordered by creation is the whole point of a tab list.
     order: Vec<TabId>,
     next_tab_id: u64,
     default_tab: TabId,
+    groups: HashMap<GroupId, TabGroup>,
+    /// Creation order gives `ListTabGroups` stable, browser-like ordering.
+    group_order: Vec<GroupId>,
+    next_group_id: u64,
     /// The one physical window's current size -- every tab shares it
     /// (there is one `frontend` window regardless of tab count), so a
     /// newly [`TabManager::open_tab`]-ed tab starts at whatever the
@@ -88,8 +142,25 @@ impl TabManager {
     pub fn new(viewport_width: f64, viewport_height: f64) -> Self {
         let default_tab = TabId(1);
         let mut tabs = HashMap::new();
-        tabs.insert(default_tab, Page::new(viewport_width, viewport_height));
-        TabManager { tabs, order: vec![default_tab], next_tab_id: 2, default_tab, viewport_width, viewport_height, downloads: None }
+        tabs.insert(
+            default_tab,
+            Tab {
+                page: Page::new(viewport_width, viewport_height),
+                group_id: None,
+            },
+        );
+        TabManager {
+            tabs,
+            order: vec![default_tab],
+            next_tab_id: 2,
+            default_tab,
+            groups: HashMap::new(),
+            group_order: Vec::new(),
+            next_group_id: 1,
+            viewport_width,
+            viewport_height,
+            downloads: None,
+        }
     }
 
     pub fn default_tab(&self) -> TabId {
@@ -103,7 +174,13 @@ impl TabManager {
         self.next_tab_id += 1;
         let mut page = Page::new(self.viewport_width, self.viewport_height);
         page.set_downloads_source(self.downloads.clone());
-        self.tabs.insert(id, page);
+        self.tabs.insert(
+            id,
+            Tab {
+                page,
+                group_id: None,
+            },
+        );
         self.order.push(id);
         id
     }
@@ -111,8 +188,8 @@ impl TabManager {
     /// Where every tab's `about:downloads` reads from -- applied to the
     /// tabs that exist now and to every tab opened later.
     pub fn set_downloads_source(&mut self, source: Arc<DownloadsSource>) {
-        for page in self.tabs.values_mut() {
-            page.set_downloads_source(Some(source.clone()));
+        for tab in self.tabs.values_mut() {
+            tab.page.set_downloads_source(Some(source.clone()));
         }
         self.downloads = Some(source);
     }
@@ -136,11 +213,11 @@ impl TabManager {
     }
 
     pub fn get(&self, id: TabId) -> Option<&Page> {
-        self.tabs.get(&id)
+        self.tabs.get(&id).map(|tab| &tab.page)
     }
 
     pub fn get_mut(&mut self, id: TabId) -> Option<&mut Page> {
-        self.tabs.get_mut(&id)
+        self.tabs.get_mut(&id).map(|tab| &mut tab.page)
     }
 
     /// Every currently-open tab's ID, in creation order.
@@ -155,6 +232,95 @@ impl TabManager {
     pub fn set_window_size(&mut self, width: f64, height: f64) {
         self.viewport_width = width;
         self.viewport_height = height;
+    }
+
+    /// Reflows every live tab to the one physical frontend window's content
+    /// size. There is no active tab in core, so eagerly updating every page is
+    /// the only policy that keeps a newly selected background tab from showing
+    /// a stale viewport. The caller owns frame publication and can tag the
+    /// selected tab's response with its request id.
+    pub fn resize_all(&mut self, width: f64, height: f64) {
+        self.set_window_size(width, height);
+        for tab in self.tabs.values_mut() {
+            tab.page.resize(width, height);
+        }
+    }
+
+    /// Creates a group in deterministic creation order. Validation of the
+    /// wire-facing name/color form lives in `session.rs`; this domain object
+    /// simply owns the resulting shared state.
+    pub fn create_group(&mut self, name: String, color: String) -> GroupId {
+        let id = GroupId(self.next_group_id);
+        self.next_group_id += 1;
+        self.groups.insert(
+            id,
+            TabGroup {
+                id,
+                name,
+                color,
+                collapsed: false,
+            },
+        );
+        self.group_order.push(id);
+        id
+    }
+
+    pub fn group(&self, id: GroupId) -> Option<&TabGroup> {
+        self.groups.get(&id)
+    }
+
+    pub fn groups(&self) -> impl Iterator<Item = &TabGroup> {
+        self.group_order.iter().filter_map(|id| self.groups.get(id))
+    }
+
+    pub fn tab_group(&self, tab_id: TabId) -> Option<GroupId> {
+        self.tabs.get(&tab_id).and_then(|tab| tab.group_id)
+    }
+
+    /// Assigns an existing tab to an existing group, or removes an existing
+    /// tab from its group. Callers validate both IDs first, keeping this small
+    /// domain API free of protocol-specific error wording.
+    pub fn set_tab_group(&mut self, tab_id: TabId, group_id: Option<GroupId>) {
+        self.tabs
+            .get_mut(&tab_id)
+            .expect("caller validates tab before assigning a group")
+            .group_id = group_id;
+    }
+
+    pub fn rename_group(&mut self, id: GroupId, name: String) {
+        self.groups
+            .get_mut(&id)
+            .expect("caller validates group before renaming it")
+            .name = name;
+    }
+
+    pub fn set_group_color(&mut self, id: GroupId, color: String) {
+        self.groups
+            .get_mut(&id)
+            .expect("caller validates group before recoloring it")
+            .color = color;
+    }
+
+    pub fn set_group_collapsed(&mut self, id: GroupId, collapsed: bool) {
+        self.groups
+            .get_mut(&id)
+            .expect("caller validates group before collapsing it")
+            .collapsed = collapsed;
+    }
+
+    /// Removes a group but deliberately preserves all of its tabs. The
+    /// frontend can immediately render those former members as ungrouped.
+    pub fn close_group(&mut self, id: GroupId) -> bool {
+        if self.groups.remove(&id).is_none() {
+            return false;
+        }
+        self.group_order.retain(|&group_id| group_id != id);
+        for tab in self.tabs.values_mut() {
+            if tab.group_id == Some(id) {
+                tab.group_id = None;
+            }
+        }
+        true
     }
 }
 
@@ -175,7 +341,10 @@ mod tests {
         let new_id = tabs.open_tab();
         assert_ne!(new_id, tabs.default_tab());
         assert!(tabs.get(new_id).is_some());
-        assert_eq!(tabs.ids().collect::<Vec<_>>(), vec![tabs.default_tab(), new_id]);
+        assert_eq!(
+            tabs.ids().collect::<Vec<_>>(),
+            vec![tabs.default_tab(), new_id]
+        );
     }
 
     #[test]
@@ -184,7 +353,10 @@ mod tests {
         let first = tabs.open_tab();
         assert!(tabs.close_tab(first));
         let second = tabs.open_tab();
-        assert_ne!(first, second, "a closed tab's id must never be reissued to an unrelated later tab");
+        assert_ne!(
+            first, second,
+            "a closed tab's id must never be reissued to an unrelated later tab"
+        );
     }
 
     #[test]
@@ -239,16 +411,90 @@ mod tests {
     fn the_downloads_source_reaches_existing_and_newly_opened_tabs() {
         let mut tabs = TabManager::new(300.0, 200.0);
         let before = tabs.open_tab();
-        assert!(tabs.downloads_source().is_none() && tabs.get(before).unwrap().downloads_source().is_none());
+        assert!(
+            tabs.downloads_source().is_none()
+                && tabs.get(before).unwrap().downloads_source().is_none()
+        );
 
-        let source = Arc::new(DownloadsSource::without_spawner(std::path::PathBuf::from("/nonexistent/downloads.sock")));
+        let source = Arc::new(DownloadsSource::without_spawner(std::path::PathBuf::from(
+            "/nonexistent/downloads.sock",
+        )));
         tabs.set_downloads_source(source.clone());
         let after = tabs.open_tab();
         for id in [tabs.default_tab(), before, after] {
-            let page_source = tabs.get(id).unwrap().downloads_source().unwrap_or_else(|| panic!("tab {id:?} has no source"));
-            assert!(Arc::ptr_eq(page_source, &source), "every tab shares the one source");
+            let page_source = tabs
+                .get(id)
+                .unwrap()
+                .downloads_source()
+                .unwrap_or_else(|| panic!("tab {id:?} has no source"));
+            assert!(
+                Arc::ptr_eq(page_source, &source),
+                "every tab shares the one source"
+            );
         }
         assert!(Arc::ptr_eq(tabs.downloads_source().unwrap(), &source));
     }
 
+    #[test]
+    fn groups_are_ordered_and_tab_membership_is_independent_of_page_state() {
+        let mut tabs = TabManager::new(300.0, 200.0);
+        let second = tabs.open_tab();
+        let research = tabs.create_group("Research".to_string(), "#4f8cff".to_string());
+        let reference = tabs.create_group("Reference".to_string(), "#f06a6a".to_string());
+        tabs.set_tab_group(second, Some(research));
+
+        assert_eq!(tabs.tab_group(second), Some(research));
+        assert_eq!(
+            tabs.groups().map(|group| group.id()).collect::<Vec<_>>(),
+            vec![research, reference]
+        );
+        assert_eq!(tabs.group(research).unwrap().name(), "Research");
+        assert_eq!(tabs.group(research).unwrap().color(), "#4f8cff");
+        assert!(!tabs.group(research).unwrap().collapsed());
+        assert!(
+            tabs.get(second).is_some(),
+            "grouping never replaces the page"
+        );
+    }
+
+    #[test]
+    fn closing_a_group_ungroups_but_never_closes_its_tabs() {
+        let mut tabs = TabManager::new(300.0, 200.0);
+        let second = tabs.open_tab();
+        let group = tabs.create_group("Work".to_string(), "#2fa36b".to_string());
+        tabs.set_tab_group(tabs.default_tab(), Some(group));
+        tabs.set_tab_group(second, Some(group));
+
+        assert!(tabs.close_group(group));
+        assert!(tabs.get(tabs.default_tab()).is_some());
+        assert!(tabs.get(second).is_some());
+        assert_eq!(tabs.tab_group(tabs.default_tab()), None);
+        assert_eq!(tabs.tab_group(second), None);
+        assert!(tabs.groups().next().is_none());
+        assert!(!tabs.close_group(group));
+    }
+
+    #[test]
+    fn resize_all_keeps_background_tabs_ready_for_selection() {
+        let mut tabs = TabManager::new(300.0, 200.0);
+        let background = tabs.open_tab();
+        tabs.resize_all(640.0, 480.0);
+        assert_eq!(
+            tabs.get(tabs.default_tab()).unwrap().viewport_size(),
+            (640.0, 480.0)
+        );
+        assert_eq!(
+            tabs.get(background).unwrap().viewport_size(),
+            (640.0, 480.0)
+        );
+    }
+
+    #[test]
+    fn group_ids_never_reuse_a_closed_groups_identity() {
+        let mut tabs = TabManager::new(300.0, 200.0);
+        let first = tabs.create_group("First".to_string(), "#111111".to_string());
+        assert!(tabs.close_group(first));
+        let second = tabs.create_group("Second".to_string(), "#222222".to_string());
+        assert_ne!(first, second);
+    }
 }

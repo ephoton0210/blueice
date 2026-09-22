@@ -50,13 +50,13 @@
 //! around the loop again," never as a disconnect (every *other* read
 //! error still means disconnect, exactly as before gating existed).
 
-use crate::downloads_page::{DownloadsView, downloads_html, is_downloads_url};
+use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsView};
 use crate::gatekeeper_client::{self, NavOutcome};
 use crate::script::ScriptScheduler;
-use crate::{Page, TabId, TabManager};
+use crate::{GroupId, Page, TabGroup, TabId, TabManager};
 use blueice_dom::NodeId;
 use blueice_ipc::downloads::TransferInfo;
-use blueice_ipc::{ClientMessage, NodeAction, ServerMessage, TabSummary, shm};
+use blueice_ipc::{shm, ClientMessage, NodeAction, ServerMessage, TabGroupSummary, TabSummary};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -123,7 +123,7 @@ fn is_timeout(err: &io::Error) -> bool {
 /// client's session too.
 ///
 /// **Multi-tab addressing** (`phase-16-multi-tab-and-tab-groups/
-/// PLAN.md`'s minimal first slice): every per-tab-scoped message
+/// PLAN.md`): every per-tab-scoped message
 /// (`Navigate`, `Resize`, `Click`, `Hover`, `Scroll`,
 /// `GetRepresentation`, `ActOn`, `Highlight`, `GetDom`, `CloseTab`) is
 /// addressed by the envelope's `tab_id` -- `None` resolves to
@@ -132,9 +132,12 @@ fn is_timeout(err: &io::Error) -> bool {
 /// `tab_id` (explicit or defaulted) that doesn't resolve to a live tab
 /// replies [`ServerMessage::Error`] -- a protocol-addressing error, not
 /// the harmless no-op a stale `NodeId` already gets in [`Page::act`].
-/// `OpenTab`/`ListTabs` aren't scoped to an existing tab at all (there's
-/// no "current tab" concept `core` tracks -- see [`TabManager`]'s own
-/// docs for why) and ignore any `tab_id` on the envelope.
+/// `Resize` still validates its addressed tab, but then eagerly relayouts all
+/// live tabs for the one physical frontend viewport. Tab/group list and
+/// group-property operations aren't scoped to an existing tab at all (there's
+/// no "current tab" concept `core` tracks -- see [`TabManager`]'s own docs
+/// for why) and ignore any `tab_id` on the envelope; only `SetTabGroup` is
+/// explicitly tab-addressed.
 pub fn run_session<S: Read + Write + ReadTimeout>(
     tabs: &mut TabManager,
     stream: &mut S,
@@ -228,15 +231,27 @@ pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
                     ClientMessage::Resize { width, height } => {
-                        tabs.set_window_size(width as f64, height as f64);
-                        match tabs.get_mut(target) {
-                            Some(page) => {
-                                page.resize(width as f64, height as f64);
-                                send_frame(
-                                    page, stream, frame_dir, generation, reply_tab, request_id,
-                                )?;
-                            }
-                            None => write_unknown_tab_error(stream, request_id, target)?,
+                        if tabs.get(target).is_none() {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        }
+                        // A native frontend has one physical content viewport,
+                        // not one viewport per selected tab. Eagerly reflowing
+                        // every Page here keeps a background tab display-ready
+                        // when that frontend later selects it; there is still
+                        // no core "active tab" state.
+                        tabs.resize_all(width as f64, height as f64);
+                        let resized: Vec<TabId> = tabs.ids().collect();
+                        for id in resized {
+                            let page = tabs.get_mut(id).expect("ids only yields live tabs");
+                            send_frame(
+                                page,
+                                stream,
+                                frame_dir,
+                                generation,
+                                Some(id.as_u64()),
+                                (id == target).then_some(request_id).flatten(),
+                            )?;
                         }
                     }
                     ClientMessage::Click { x, y } => {
@@ -370,8 +385,10 @@ pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
                             }
                         } else {
                             if is_value_change {
-                                let _ = script_scheduler.dispatch_event(tabs, target, node, "input");
-                                let _ = script_scheduler.dispatch_event(tabs, target, node, "change");
+                                let _ =
+                                    script_scheduler.dispatch_event(tabs, target, node, "input");
+                                let _ =
+                                    script_scheduler.dispatch_event(tabs, target, node, "change");
                             }
                             let page = tabs
                                 .get_mut(target)
@@ -418,12 +435,168 @@ pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
                             .map(|id| TabSummary {
                                 id: id.as_u64(),
                                 url: tabs.get(id).and_then(Page::url).map(str::to_string),
+                                group_id: tabs.tab_group(id).map(GroupId::as_u64),
                             })
                             .collect();
                         blueice_ipc::write_server_message_with_id(
                             stream,
                             request_id,
                             &ServerMessage::Tabs(summaries),
+                        )?;
+                    }
+                    ClientMessage::CreateTabGroup { name, color } => {
+                        let name = match validate_group_name(name) {
+                            Ok(name) => name,
+                            Err(message) => {
+                                write_error(stream, None, request_id, message)?;
+                                continue;
+                            }
+                        };
+                        let color = match validate_group_color(color) {
+                            Ok(color) => color,
+                            Err(message) => {
+                                write_error(stream, None, request_id, message)?;
+                                continue;
+                            }
+                        };
+                        let id = tabs.create_group(name, color);
+                        let summary = tab_group_summary(
+                            tabs.group(id).expect("a just-created group is live"),
+                        );
+                        blueice_ipc::write_server_message_with_id(
+                            stream,
+                            request_id,
+                            &ServerMessage::TabGroupCreated(summary),
+                        )?;
+                    }
+                    ClientMessage::SetTabGroup { group_id } => {
+                        if tabs.get(target).is_none() {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        }
+                        let group_id = group_id.map(GroupId::from_u64);
+                        if let Some(group_id) = group_id {
+                            if tabs.group(group_id).is_none() {
+                                write_error(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    format!("unknown tab group {}", group_id.as_u64()),
+                                )?;
+                                continue;
+                            }
+                        }
+                        tabs.set_tab_group(target, group_id);
+                        blueice_ipc::write_server_message_with_ids(
+                            stream,
+                            reply_tab,
+                            request_id,
+                            &ServerMessage::TabGroupAssigned {
+                                tab_id: target.as_u64(),
+                                group_id: group_id.map(GroupId::as_u64),
+                            },
+                        )?;
+                    }
+                    ClientMessage::RenameTabGroup { group_id, name } => {
+                        let id = GroupId::from_u64(group_id);
+                        if tabs.group(id).is_none() {
+                            write_error(
+                                stream,
+                                None,
+                                request_id,
+                                format!("unknown tab group {group_id}"),
+                            )?;
+                            continue;
+                        }
+                        let name = match validate_group_name(name) {
+                            Ok(name) => name,
+                            Err(message) => {
+                                write_error(stream, None, request_id, message)?;
+                                continue;
+                            }
+                        };
+                        tabs.rename_group(id, name);
+                        let summary =
+                            tab_group_summary(tabs.group(id).expect("group remains live"));
+                        blueice_ipc::write_server_message_with_id(
+                            stream,
+                            request_id,
+                            &ServerMessage::TabGroupUpdated(summary),
+                        )?;
+                    }
+                    ClientMessage::SetTabGroupColor { group_id, color } => {
+                        let id = GroupId::from_u64(group_id);
+                        if tabs.group(id).is_none() {
+                            write_error(
+                                stream,
+                                None,
+                                request_id,
+                                format!("unknown tab group {group_id}"),
+                            )?;
+                            continue;
+                        }
+                        let color = match validate_group_color(color) {
+                            Ok(color) => color,
+                            Err(message) => {
+                                write_error(stream, None, request_id, message)?;
+                                continue;
+                            }
+                        };
+                        tabs.set_group_color(id, color);
+                        let summary =
+                            tab_group_summary(tabs.group(id).expect("group remains live"));
+                        blueice_ipc::write_server_message_with_id(
+                            stream,
+                            request_id,
+                            &ServerMessage::TabGroupUpdated(summary),
+                        )?;
+                    }
+                    ClientMessage::SetTabGroupCollapsed {
+                        group_id,
+                        collapsed,
+                    } => {
+                        let id = GroupId::from_u64(group_id);
+                        if tabs.group(id).is_none() {
+                            write_error(
+                                stream,
+                                None,
+                                request_id,
+                                format!("unknown tab group {group_id}"),
+                            )?;
+                            continue;
+                        }
+                        tabs.set_group_collapsed(id, collapsed);
+                        let summary =
+                            tab_group_summary(tabs.group(id).expect("group remains live"));
+                        blueice_ipc::write_server_message_with_id(
+                            stream,
+                            request_id,
+                            &ServerMessage::TabGroupUpdated(summary),
+                        )?;
+                    }
+                    ClientMessage::CloseTabGroup { group_id } => {
+                        let id = GroupId::from_u64(group_id);
+                        if !tabs.close_group(id) {
+                            write_error(
+                                stream,
+                                None,
+                                request_id,
+                                format!("unknown tab group {group_id}"),
+                            )?;
+                            continue;
+                        }
+                        blueice_ipc::write_server_message_with_id(
+                            stream,
+                            request_id,
+                            &ServerMessage::TabGroupClosed { group_id },
+                        )?;
+                    }
+                    ClientMessage::ListTabGroups => {
+                        let groups = tabs.groups().map(tab_group_summary).collect();
+                        blueice_ipc::write_server_message_with_id(
+                            stream,
+                            request_id,
+                            &ServerMessage::TabGroups(groups),
                         )?;
                     }
                     // Chrome commands (window show/hide) operate on
@@ -491,6 +664,44 @@ impl ScriptScheduler for NoScriptScheduler {
     fn run_document_scripts(&mut self, _: &mut TabManager, _: TabId) -> Result<(), String> {
         Ok(())
     }
+}
+
+fn tab_group_summary(group: &TabGroup) -> TabGroupSummary {
+    TabGroupSummary {
+        id: group.id().as_u64(),
+        name: group.name().to_string(),
+        color: group.color().to_string(),
+        collapsed: group.collapsed(),
+    }
+}
+
+/// Group names are rendered into the native tab strip, so normalize away
+/// accidental surrounding whitespace and keep the label compact enough for
+/// that chrome. The raw pages those tabs show remain entirely unrelated to
+/// this metadata.
+fn validate_group_name(name: String) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("tab group name must not be empty".to_string());
+    }
+    if name.chars().count() > 80 {
+        return Err("tab group name must be at most 80 characters".to_string());
+    }
+    Ok(name.to_string())
+}
+
+/// Groups use a small canonical color form rather than a frontend-specific
+/// palette index or arbitrary CSS. That keeps the shared core state portable
+/// between this reference frontend and future native frontends.
+fn validate_group_color(color: String) -> Result<String, String> {
+    let color = color.trim();
+    let valid = color.len() == 7
+        && color.starts_with('#')
+        && color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit);
+    if !valid {
+        return Err("tab group color must be a CSS #RRGGBB value".to_string());
+    }
+    Ok(color.to_ascii_lowercase())
 }
 
 /// How often a tab showing `about:downloads` asks the downloads process for
@@ -1168,12 +1379,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(generation, 0);
-        assert!(
-            tabs.get(tab_id)
-                .unwrap()
-                .dom_dump()
-                .contains("last successful list")
-        );
+        assert!(tabs
+            .get(tab_id)
+            .unwrap()
+            .dom_dump()
+            .contains("last successful list"));
 
         refresher
             .apply(
@@ -1191,12 +1401,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(generation, 1);
-        assert!(
-            tabs.get(tab_id)
-                .unwrap()
-                .dom_dump()
-                .contains("The downloads service is not running")
-        );
+        assert!(tabs
+            .get(tab_id)
+            .unwrap()
+            .dom_dump()
+            .contains("The downloads service is not running"));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1587,12 +1796,10 @@ mod tests {
             panic!("expected Representation, got {reply:?}")
         };
         assert_eq!(snapshot.generation, frame_generation);
-        assert!(
-            snapshot
-                .nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("Go"))
-        );
+        assert!(snapshot
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("Go")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -2209,6 +2416,178 @@ mod tests {
     }
 
     #[test]
+    fn tab_groups_are_shared_session_state_and_closing_one_ungroups_its_tabs() {
+        let dir = temp_frame_dir("tab-groups");
+        let gatekeeper = clearing_gatekeeper("tab-groups");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::CreateTabGroup {
+                name: "  Research  ".to_string(),
+                color: "#4F8cFf".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::TabGroupCreated(TabGroupSummary {
+                id: 1,
+                name: "Research".to_string(),
+                color: "#4f8cff".to_string(),
+                collapsed: false,
+            })
+        );
+
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(1),
+            None,
+            &ClientMessage::SetTabGroup { group_id: Some(1) },
+        )
+        .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::TabGroupAssigned {
+                tab_id: 1,
+                group_id: Some(1),
+            }
+        );
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::RenameTabGroup {
+                group_id: 1,
+                name: "Reference".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::TabGroupUpdated(TabGroupSummary {
+                id: 1,
+                name: "Reference".to_string(),
+                color: "#4f8cff".to_string(),
+                collapsed: false,
+            })
+        );
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::SetTabGroupColor {
+                group_id: 1,
+                color: "#ff6600".to_string(),
+            },
+        )
+        .unwrap();
+        let recolored = blueice_ipc::read_server_message(&mut client).unwrap();
+        assert!(matches!(
+            recolored,
+            ServerMessage::TabGroupUpdated(TabGroupSummary { ref color, .. }) if color == "#ff6600"
+        ));
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::SetTabGroupCollapsed {
+                group_id: 1,
+                collapsed: true,
+            },
+        )
+        .unwrap();
+        let collapsed = blueice_ipc::read_server_message(&mut client).unwrap();
+        assert!(matches!(
+            collapsed,
+            ServerMessage::TabGroupUpdated(TabGroupSummary {
+                collapsed: true,
+                ..
+            })
+        ));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Tabs(ref tabs) if tabs == &vec![TabSummary { id: 1, url: None, group_id: Some(1) }]
+        ));
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabGroups).unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::TabGroups(ref groups) if groups.len() == 1 && groups[0].collapsed
+        ));
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::CloseTabGroup { group_id: 1 },
+        )
+        .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::TabGroupClosed { group_id: 1 }
+        );
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Tabs(ref tabs) if tabs[0].group_id.is_none()
+        ));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn resize_eagerly_reflows_background_tabs_without_creating_an_active_tab() {
+        let dir = temp_frame_dir("resize-background-tabs");
+        let gatekeeper = clearing_gatekeeper("resize-background-tabs");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None })
+            .unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::TabOpened { tab_id: 2, .. }
+        ));
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(1),
+            None,
+            &ClientMessage::Resize {
+                width: 640,
+                height: 480,
+            },
+        )
+        .unwrap();
+        let first = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        let second = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        let mut resized = [first, second];
+        resized.sort_by_key(|(tab_id, _, _)| *tab_id);
+        assert!(matches!(
+            &resized[..],
+            [
+                (Some(1), _, ServerMessage::FrameReady { .. }),
+                (Some(2), _, ServerMessage::FrameReady { .. }),
+            ]
+        ));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn open_tab_with_a_url_navigates_it_and_sends_a_frame() {
         let dir = temp_frame_dir("open-tab-with-url");
         let gatekeeper = clearing_gatekeeper("open-tab-with-url");
@@ -2275,12 +2654,10 @@ mod tests {
             panic!("expected Representation, got {reply:?}")
         };
         assert_eq!(snapshot.tab_id, new_id);
-        assert!(
-            snapshot
-                .nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("opened via url"))
-        );
+        assert!(snapshot
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("opened via url")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -2386,11 +2763,10 @@ mod tests {
             snap.scroll_y, 0.0,
             "scrolling tab_two must not move tab_one's scroll position"
         );
-        assert!(
-            snap.nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("tab one"))
-        );
+        assert!(snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("tab one")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -2736,12 +3112,10 @@ mod tests {
         else {
             panic!("expected Representation")
         };
-        assert!(
-            !snap
-                .nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("malicious page"))
-        );
+        assert!(!snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("malicious page")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -3014,11 +3388,10 @@ mod tests {
         else {
             panic!("expected Representation")
         };
-        assert!(
-            snap.nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("second page"))
-        );
+        assert!(snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("second page")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -3199,11 +3572,10 @@ mod tests {
         else {
             panic!("expected Representation")
         };
-        assert!(
-            snap.nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("still the old page"))
-        );
+        assert!(snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("still the old page")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -3212,11 +3584,11 @@ mod tests {
 
     // ---- about:downloads: navigation and live refresh -----------------------
 
-    use crate::downloads_page::DownloadsSource;
     use crate::downloads_page::test_support::{
-        FakeState, Scratch as DownloadsScratch, fake_downloads_live,
+        fake_downloads_live, FakeState, Scratch as DownloadsScratch,
     };
-    use blueice_ipc::downloads::{DOWNLOADS_PROTOCOL_VERSION, TransferInfo, TransferState};
+    use crate::downloads_page::DownloadsSource;
+    use blueice_ipc::downloads::{TransferInfo, TransferState, DOWNLOADS_PROTOCOL_VERSION};
     use std::sync::{Arc, Mutex};
 
     fn dl(id: u64, name: &str, state: TransferState, done: u64) -> TransferInfo {
@@ -3425,8 +3797,8 @@ mod tests {
             ServerMessage::Navigated { .. }
         ));
         let ServerMessage::FrameReady {
-            shm_path: quiet_path,
-            generation: quiet_generation,
+            shm_path: mut quiet_path,
+            generation: mut quiet_generation,
             ..
         } = blueice_ipc::read_server_message(&mut client).unwrap()
         else {
@@ -3457,10 +3829,12 @@ mod tests {
             }
         }
 
+        // Resizing the one physical window now eagerly reflows both tabs.
         // More than the old global retention window's worth of downloads-tab
-        // renders must leave tab one's frame on disk. The fake process has an
-        // active transfer, so this is the same two-tab shape as a live panel;
-        // deterministic resizes avoid a wall-clock wait for five poll ticks.
+        // renders must still leave tab one's *latest* frame on disk. The fake
+        // process has an active transfer, so this is the same two-tab shape
+        // as a live panel; deterministic resizes avoid a wall-clock wait for
+        // five poll ticks.
         for width in 201..=205 {
             blueice_ipc::write_client_message_with_ids(
                 &mut client,
@@ -3469,13 +3843,31 @@ mod tests {
                 &ClientMessage::Resize { width, height: 300 },
             )
             .unwrap();
-            loop {
+            let mut saw_downloads_frame = false;
+            let mut saw_quiet_frame = false;
+            while !saw_downloads_frame || !saw_quiet_frame {
                 let (tab_id, _, message) =
                     blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
-                if matches!(message, ServerMessage::FrameReady { width: rendered_width, height: 300, .. } if rendered_width == width)
-                    && tab_id == Some(downloads_tab)
-                {
-                    break;
+                match message {
+                    ServerMessage::FrameReady {
+                        width: rendered_width,
+                        height: 300,
+                        ..
+                    } if tab_id == Some(downloads_tab) && rendered_width == width => {
+                        saw_downloads_frame = true;
+                    }
+                    ServerMessage::FrameReady {
+                        shm_path,
+                        width: rendered_width,
+                        height: 300,
+                        generation,
+                    } if tab_id == Some(1) && rendered_width == width => {
+                        quiet_path = shm_path;
+                        quiet_generation = generation;
+                        saw_quiet_frame = true;
+                    }
+                    ServerMessage::FrameReady { .. } => {}
+                    other => panic!("unexpected message while resizing tabs: {other:?}"),
                 }
             }
         }

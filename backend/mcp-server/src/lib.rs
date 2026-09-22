@@ -30,7 +30,8 @@
 //! leave a reply on the wire for the next call to misinterpret.
 
 use blueice_ipc::{
-    AiSnapshot, ChromeCommand, ClientMessage, NodeAction, ServerMessage, TabSummary,
+    AiSnapshot, ChromeCommand, ClientMessage, NodeAction, ServerMessage, TabGroupSummary,
+    TabSummary,
 };
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -76,6 +77,17 @@ pub enum OpenTabOutcome {
 #[derive(Debug, Clone, PartialEq)]
 pub enum CloseTabOutcome {
     Closed,
+    Error(String),
+}
+
+/// Result for the core-owned tab-group tools. Unlike selection, groups are
+/// shared session state, so an MCP caller receives the same object a native
+/// frontend will render in its tab strip.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TabGroupOutcome {
+    Group(TabGroupSummary),
+    Assigned { tab_id: u64, group_id: Option<u64> },
+    Closed { group_id: u64 },
     Error(String),
 }
 
@@ -199,7 +211,12 @@ impl<S: Read + Write> CoreConnection<S> {
                 // the same reason.
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
-                | ServerMessage::Tabs(_) => {}
+                | ServerMessage::Tabs(_)
+                | ServerMessage::TabGroupCreated(_)
+                | ServerMessage::TabGroupUpdated(_)
+                | ServerMessage::TabGroupAssigned { .. }
+                | ServerMessage::TabGroupClosed { .. }
+                | ServerMessage::TabGroups(_) => {}
             }
         }
     }
@@ -271,7 +288,12 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
-                | ServerMessage::Tabs(_) => {}
+                | ServerMessage::Tabs(_)
+                | ServerMessage::TabGroupCreated(_)
+                | ServerMessage::TabGroupUpdated(_)
+                | ServerMessage::TabGroupAssigned { .. }
+                | ServerMessage::TabGroupClosed { .. }
+                | ServerMessage::TabGroups(_) => {}
             }
         }
 
@@ -360,7 +382,12 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
-                | ServerMessage::Tabs(_) => {}
+                | ServerMessage::Tabs(_)
+                | ServerMessage::TabGroupCreated(_)
+                | ServerMessage::TabGroupUpdated(_)
+                | ServerMessage::TabGroupAssigned { .. }
+                | ServerMessage::TabGroupClosed { .. }
+                | ServerMessage::TabGroups(_) => {}
             }
         }
     }
@@ -412,7 +439,12 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
-                | ServerMessage::Tabs(_) => {}
+                | ServerMessage::Tabs(_)
+                | ServerMessage::TabGroupCreated(_)
+                | ServerMessage::TabGroupUpdated(_)
+                | ServerMessage::TabGroupAssigned { .. }
+                | ServerMessage::TabGroupClosed { .. }
+                | ServerMessage::TabGroups(_) => {}
             }
         }
     }
@@ -510,7 +542,12 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabClosed { .. }
-                | ServerMessage::Tabs(_) => {}
+                | ServerMessage::Tabs(_)
+                | ServerMessage::TabGroupCreated(_)
+                | ServerMessage::TabGroupUpdated(_)
+                | ServerMessage::TabGroupAssigned { .. }
+                | ServerMessage::TabGroupClosed { .. }
+                | ServerMessage::TabGroups(_) => {}
             }
         }
     }
@@ -559,7 +596,12 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
-                | ServerMessage::Tabs(_) => {}
+                | ServerMessage::Tabs(_)
+                | ServerMessage::TabGroupCreated(_)
+                | ServerMessage::TabGroupUpdated(_)
+                | ServerMessage::TabGroupAssigned { .. }
+                | ServerMessage::TabGroupClosed { .. }
+                | ServerMessage::TabGroups(_) => {}
             }
         }
     }
@@ -607,7 +649,182 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::Hello { .. }
                 | ServerMessage::Unknown
                 | ServerMessage::TabOpened { .. }
-                | ServerMessage::TabClosed { .. } => {}
+                | ServerMessage::TabClosed { .. }
+                | ServerMessage::TabGroupCreated(_)
+                | ServerMessage::TabGroupUpdated(_)
+                | ServerMessage::TabGroupAssigned { .. }
+                | ServerMessage::TabGroupClosed { .. }
+                | ServerMessage::TabGroups(_) => {}
+            }
+        }
+    }
+
+    /// Sends a group-management message and waits only for its correlated
+    /// response. It deliberately has no implicit tab selection: only
+    /// `SetTabGroup` passes an explicit `tab_id`; every other group operation
+    /// is scoped directly by its group id.
+    fn group_request(
+        &mut self,
+        tab_id: Option<u64>,
+        message: ClientMessage,
+    ) -> io::Result<TabGroupOutcome> {
+        let request_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_ids(
+            &mut self.stream,
+            tab_id,
+            Some(request_id),
+            &message,
+        )?;
+        loop {
+            let (frame_tab_id, reply_id, message) =
+                blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+            if reply_id != Some(request_id) {
+                continue;
+            }
+            match message {
+                ServerMessage::TabGroupCreated(group) | ServerMessage::TabGroupUpdated(group) => {
+                    return Ok(TabGroupOutcome::Group(group));
+                }
+                ServerMessage::TabGroupAssigned { tab_id, group_id } => {
+                    return Ok(TabGroupOutcome::Assigned { tab_id, group_id });
+                }
+                ServerMessage::TabGroupClosed { group_id } => {
+                    return Ok(TabGroupOutcome::Closed { group_id });
+                }
+                ServerMessage::Error { message } => return Ok(TabGroupOutcome::Error(message)),
+                ServerMessage::FrameReady {
+                    shm_path,
+                    width,
+                    height,
+                    generation,
+                } => self.record_frame(
+                    frame_tab_id,
+                    FrameInfo {
+                        shm_path,
+                        width,
+                        height,
+                        generation,
+                    },
+                    true,
+                ),
+                ServerMessage::GatekeeperBlocked { .. }
+                | ServerMessage::Navigated { .. }
+                | ServerMessage::Dom(_)
+                | ServerMessage::Representation(_)
+                | ServerMessage::Hello { .. }
+                | ServerMessage::Unknown
+                | ServerMessage::TabOpened { .. }
+                | ServerMessage::TabClosed { .. }
+                | ServerMessage::Tabs(_)
+                | ServerMessage::TabGroups(_) => {}
+            }
+        }
+    }
+
+    pub fn create_tab_group(&mut self, name: &str, color: &str) -> io::Result<TabGroupOutcome> {
+        self.group_request(
+            None,
+            ClientMessage::CreateTabGroup {
+                name: name.to_string(),
+                color: color.to_string(),
+            },
+        )
+    }
+
+    pub fn set_tab_group(
+        &mut self,
+        tab_id: u64,
+        group_id: Option<u64>,
+    ) -> io::Result<TabGroupOutcome> {
+        self.group_request(Some(tab_id), ClientMessage::SetTabGroup { group_id })
+    }
+
+    pub fn rename_tab_group(&mut self, group_id: u64, name: &str) -> io::Result<TabGroupOutcome> {
+        self.group_request(
+            None,
+            ClientMessage::RenameTabGroup {
+                group_id,
+                name: name.to_string(),
+            },
+        )
+    }
+
+    pub fn set_tab_group_color(
+        &mut self,
+        group_id: u64,
+        color: &str,
+    ) -> io::Result<TabGroupOutcome> {
+        self.group_request(
+            None,
+            ClientMessage::SetTabGroupColor {
+                group_id,
+                color: color.to_string(),
+            },
+        )
+    }
+
+    pub fn set_tab_group_collapsed(
+        &mut self,
+        group_id: u64,
+        collapsed: bool,
+    ) -> io::Result<TabGroupOutcome> {
+        self.group_request(
+            None,
+            ClientMessage::SetTabGroupCollapsed {
+                group_id,
+                collapsed,
+            },
+        )
+    }
+
+    pub fn close_tab_group(&mut self, group_id: u64) -> io::Result<TabGroupOutcome> {
+        self.group_request(None, ClientMessage::CloseTabGroup { group_id })
+    }
+
+    pub fn list_tab_groups(&mut self) -> io::Result<Result<Vec<TabGroupSummary>, String>> {
+        let request_id = self.next_request_id();
+        blueice_ipc::write_client_message_with_id(
+            &mut self.stream,
+            Some(request_id),
+            &ClientMessage::ListTabGroups,
+        )?;
+        loop {
+            let (frame_tab_id, reply_id, message) =
+                blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
+            if reply_id != Some(request_id) {
+                continue;
+            }
+            match message {
+                ServerMessage::TabGroups(groups) => return Ok(Ok(groups)),
+                ServerMessage::Error { message } => return Ok(Err(message)),
+                ServerMessage::FrameReady {
+                    shm_path,
+                    width,
+                    height,
+                    generation,
+                } => self.record_frame(
+                    frame_tab_id,
+                    FrameInfo {
+                        shm_path,
+                        width,
+                        height,
+                        generation,
+                    },
+                    true,
+                ),
+                ServerMessage::GatekeeperBlocked { .. }
+                | ServerMessage::Navigated { .. }
+                | ServerMessage::Dom(_)
+                | ServerMessage::Representation(_)
+                | ServerMessage::Hello { .. }
+                | ServerMessage::Unknown
+                | ServerMessage::TabOpened { .. }
+                | ServerMessage::TabClosed { .. }
+                | ServerMessage::Tabs(_)
+                | ServerMessage::TabGroupCreated(_)
+                | ServerMessage::TabGroupUpdated(_)
+                | ServerMessage::TabGroupAssigned { .. }
+                | ServerMessage::TabGroupClosed { .. } => {}
             }
         }
     }
@@ -1679,10 +1896,15 @@ mod tests {
                 reply(
                     s,
                     &ServerMessage::Tabs(vec![
-                        TabSummary { id: 1, url: None },
+                        TabSummary {
+                            id: 1,
+                            url: None,
+                            group_id: None,
+                        },
                         TabSummary {
                             id: 2,
                             url: Some("https://example.com".to_string()),
+                            group_id: Some(3),
                         },
                     ]),
                 );
@@ -1694,12 +1916,93 @@ mod tests {
         assert_eq!(
             tabs,
             vec![
-                TabSummary { id: 1, url: None },
+                TabSummary {
+                    id: 1,
+                    url: None,
+                    group_id: None
+                },
                 TabSummary {
                     id: 2,
-                    url: Some("https://example.com".to_string())
+                    url: Some("https://example.com".to_string()),
+                    group_id: Some(3),
                 }
             ]
+        );
+    }
+
+    #[test]
+    fn tab_group_methods_round_trip_the_shared_core_state() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![
+                Box::new(|msg, stream| {
+                    assert_eq!(
+                        msg,
+                        ClientMessage::CreateTabGroup {
+                            name: "Research".to_string(),
+                            color: "#4f8cff".to_string(),
+                        }
+                    );
+                    reply(
+                        stream,
+                        &ServerMessage::TabGroupCreated(TabGroupSummary {
+                            id: 3,
+                            name: "Research".to_string(),
+                            color: "#4f8cff".to_string(),
+                            collapsed: false,
+                        }),
+                    );
+                }),
+                Box::new(|msg, stream| {
+                    assert_eq!(msg, ClientMessage::SetTabGroup { group_id: Some(3) });
+                    reply_tab(
+                        stream,
+                        2,
+                        &ServerMessage::TabGroupAssigned {
+                            tab_id: 2,
+                            group_id: Some(3),
+                        },
+                    );
+                }),
+                Box::new(|msg, stream| {
+                    assert!(matches!(msg, ClientMessage::ListTabGroups));
+                    reply(
+                        stream,
+                        &ServerMessage::TabGroups(vec![TabGroupSummary {
+                            id: 3,
+                            name: "Research".to_string(),
+                            color: "#4f8cff".to_string(),
+                            collapsed: false,
+                        }]),
+                    );
+                }),
+                Box::new(|msg, stream| {
+                    assert_eq!(msg, ClientMessage::CloseTabGroup { group_id: 3 });
+                    reply(stream, &ServerMessage::TabGroupClosed { group_id: 3 });
+                }),
+            ],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        assert!(matches!(
+            conn.create_tab_group("Research", "#4f8cff").unwrap(),
+            TabGroupOutcome::Group(TabGroupSummary { id: 3, .. })
+        ));
+        assert_eq!(
+            conn.set_tab_group(2, Some(3)).unwrap(),
+            TabGroupOutcome::Assigned {
+                tab_id: 2,
+                group_id: Some(3),
+            }
+        );
+        assert!(matches!(
+            conn.list_tab_groups().unwrap(),
+            Ok(groups) if groups.len() == 1 && groups[0].id == 3
+        ));
+        assert_eq!(
+            conn.close_tab_group(3).unwrap(),
+            TabGroupOutcome::Closed { group_id: 3 }
         );
     }
 

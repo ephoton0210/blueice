@@ -22,7 +22,7 @@ use blueice_css::{Origin, cascade, ua_stylesheet};
 use blueice_paint::Frame;
 
 pub use page::{Page, ScriptClassListOperation};
-pub use tabs::{TabId, TabManager};
+pub use tabs::{GroupId, TabGroup, TabId, TabManager};
 
 /// One-shot render: parse `html`, cascade with `css` (an explicit
 /// stylesheet, e.g. from a test fixture) plus any `<style>` tags found

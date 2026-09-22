@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress — minimal first slice done: multi-tab support inside `core` (wire-protocol `tab_id` addressing, `TabManager`, no navigation history beyond what a single `Page` already lacks). `frontend-reference`'s tab-strip UI and tab groups are both explicitly deferred — see "What this slice deliberately does not do" below.
+**Status**: Done — `core` owns independently addressed tabs and shared tab groups; the reference frontend renders a tab strip with frontend-local selection, and MCP exposes the same group state. Per-tab history remains a separate future feature.
 
 ## Objective
 
@@ -16,7 +16,7 @@ Let `core` manage more than one navigable context ("tab") at once, addressed ind
 
 `core`'s own doc comment says it "accepts exactly one client connection, then exits" — it would be easy to assume multi-tab needs that to change. It doesn't. `blueice-launcher` (`phase-8-live-core-hotswap/PLAN.md`'s minimal first slice) already solved "many external clients sharing one `core` connection": the launcher holds the one connection `core` will ever see and fans arbitrarily many external clients (`frontend`, `mcp-server`, tests) through it. Multi-tab is entirely about what *that one already-existing connection's session loop* manages state-wise — many `Page`s instead of one — and needs zero change to how many connections `core` accepts.
 
-## Minimal first slice: multi-tab inside `core`, no `frontend` UI yet
+## Foundation: multi-tab inside `core`
 
 **Wire protocol** (`backend/ipc/src/lib.rs`): extends the envelope pattern already built for `request_id` (`phase-8-live-core-hotswap/PLAN.md`'s protocol_version/request-ID follow-up) — `ClientEnvelope`/`ServerEnvelope` gain `tab_id: Option<u64>` the same way (`#[serde(default, skip_serializing_if = "Option::is_none")]`). `None` means "the default tab" (the one tab `core` creates at startup), reproducing pre-Phase-16 single-`Page` behavior byte-for-byte — every pre-existing test in `blueice-ipc`/`session.rs`/the launcher's own tests keeps passing unmodified, the same backward-compatibility property `request_id` already established.
 
@@ -45,12 +45,17 @@ The engine/protocol slice above landed first with `blueice-mcp-server` unchanged
 - `open_tab`/`list_tabs` results go through the same `wrap_untrusted_page_content` every other page-content tool result does (tab URLs are page-influenced too) -- see `phase-12-mcp-server/PLAN.md`'s own checklist item on this.
 - Also found and fixed while adding a second real-subprocess test in `core_process.rs`: `unique_socket_path()` was keyed only by process ID, not actually unique across multiple `CoreProcess::spawn` calls within one process (e.g. two `#[test]`s in the same binary, which Rust runs concurrently by default) -- added a monotonic counter alongside the PID.
 
-## What this slice deliberately does not do
+## Completed follow-up: human tab strip, groups, and shared viewport policy
 
-- **`frontend-reference`'s tab-strip UI** — a `HashMap<tab_id, CurrentFrame>` plus a `selected_tab`, stdin tab commands (`tab-new`/`tab-close`/`tab N`) as a next step before a real graphical tab strip, following the same "stdin stands in for a real AI-facing/UI control channel" precedent the reference frontend's existing `show`/`hide`/`credits` commands already set. Deferred as its own follow-up slice — the engine/protocol side needed to prove out first.
-- **Tab groups** — `TabGroup { id, name, color, collapsed }`, core-owned session state exposed over IPC the same way `Highlight` already is (not `frontend`-local: an AI agent organizing multi-tab work needs its groupings visible to a human watching the same session, and vice versa — the same reasoning that already keeps `Highlight` core-owned rather than frontend-local, per `phase-1-ai-representation-layer/PLAN.md` §4's "AI-to-human sync" framing). `TabManager` would gain `groups: HashMap<GroupId, TabGroup>` and each tab a `group_id: Option<u64>`; `TabSummary`/`ListTabs` already reserves a `group_id` field for this. New messages: `CreateTabGroup`/`SetTabGroup`/`RenameTabGroup`/`SetTabGroupColor`/`SetTabGroupCollapsed`/`CloseTabGroup`/`ListTabGroups`. Strictly downstream of tabs existing as a collection; not started.
-- **Per-tab navigation history** (back/forward) — no navigation history exists for a single page today either; multi-tab doesn't newly require it, and it's out of scope here unless separately requested.
-- **Per-tab viewport/relayout policy for background tabs** — today every `Resize` is `tab_id`-tagged and only relayouts that one tab, so a background tab keeps its last-known layout until next addressed; whether that's the right policy long-term (vs. eagerly relaying out background tabs) is left for when the frontend tab-strip work makes it observable.
+`frontend-reference` keeps `HashMap<tab_id, CurrentFrame>` and a deliberately frontend-local `selected_tab`: opening or navigating a tab through another observer does not steal the human window's selection. It renders a compact graphical strip with group color bars, labels, collapse toggles, tab close affordances, and a new-tab button; page input coordinates are offset below that native chrome. The stdin control seam remains useful for headless/manual operation: `tab-new`, `tab-close`, `tab N`, `group-new <name> <#RRGGBB>`, `group-add <tab-id> <group-id>`, `group-remove <tab-id>`, `group-rename`, `group-color`, `group-collapse`, and `group-close`.
+
+Groups are core-owned `TabGroup { id, name, color, collapsed }` records with monotonic `GroupId`s. A tab carries `group_id: Option<u64>` in `TabSummary`; closing a group deliberately keeps its member tabs open and makes them ungrouped. IPC exposes `CreateTabGroup`, `SetTabGroup`, `RenameTabGroup`, `SetTabGroupColor`, `SetTabGroupCollapsed`, `CloseTabGroup`, and `ListTabGroups`, with explicit replies. `blueice-mcp-server` exposes matching tools, so an AI can create/organize/collapse the exact group data the human strip renders without either layer gaining a global active-tab pointer.
+
+`Resize` now eagerly reflows every live `Page` to the one physical window's content viewport and publishes a per-tab frame. This is the chosen background-tab policy: selecting a previously background tab never reveals its old layout. The requested tab remains only the request-correlated frame; there is still no core-selected tab.
+
+## Still out of scope
+
+- **Per-tab navigation history** (back/forward) — no navigation history exists for a single page today either; multi-tab doesn't newly require it, and it remains separate work.
 
 ## Checklist
 
@@ -73,8 +78,8 @@ The engine/protocol slice above landed first with `blueice-mcp-server` unchanged
 - [x] Fix a real, exposed-by-a-new-test bug: `unique_socket_path()` collided across concurrent `#[test]`s in the same process (keyed only by PID)
 - [x] 12 new unit tests (`lib.rs`) + 1 real-subprocess test (`tests/core_process.rs`'s `open_tab_list_tabs_and_close_tab_round_trip_over_a_real_core`)
 
-**Deferred (recorded, not forgotten):**
+**Follow-up completion:**
 
-- [ ] `frontend-reference` tab-strip UI
-- [ ] Tab groups (`TabGroup`, `CreateTabGroup`/etc., core-owned session state)
-- [ ] Revisit background-tab relayout policy once the frontend tab strip makes it observable
+- [x] `frontend-reference` tab-strip UI: per-tab frame cache, frontend-local selection, graphical strip, page-coordinate offset, and stdin controls
+- [x] Tab groups: core-owned `TabGroup`/`GroupId`, `TabSummary.group_id`, lifecycle IPC, frontend rendering, and MCP tools
+- [x] Background-tab relayout policy: eagerly reflow and frame every live tab for the shared physical viewport
