@@ -679,6 +679,12 @@ impl Compiler {
                 }
                 if let Some(value) = value {
                     self.expression(value)?;
+                    if self.bytecode.generator && self.bytecode.async_function {
+                        // In an async generator `return value` awaits `value`
+                        // before completing (§14.10.1); a bare `return` does
+                        // not.
+                        self.emit(Opcode::Await, 0)?;
+                    }
                 } else {
                     self.constant(Value::Undefined)?;
                 }
@@ -1461,12 +1467,31 @@ impl Compiler {
     /// BindingInitialization for every identifier in `pattern`.  The bytecode
     /// keeps iterator records on the stack while descending into an array
     /// pattern so abrupt completions can close every active iterator.
+    /// Whether a `var` binding of `name` here is resolved through the
+    /// enclosing `with` objects (ResolveBinding), rather than being a plain
+    /// function-level variable: it is not shadowed by a binding declared
+    /// inside the innermost `with`.
+    fn var_binding_resolves_through_with(&self, kind: DeclKind, name: &str) -> bool {
+        kind == DeclKind::Var
+            && self.with_depth != 0
+            && self.resolve_inside_innermost_with(name).is_none()
+    }
+
     pub(super) fn bind_pattern(
         &mut self,
         pattern: &Pattern,
         kind: DeclKind,
     ) -> Result<(), CompileError> {
         match pattern {
+            // A `var` binding inside `with` is resolved through the object
+            // environments first (ResolveBinding), so its value can land on a
+            // with object instead of the variable.
+            Pattern::Identifier(name) if self.var_binding_resolves_through_with(kind, name) => {
+                let index = self.name_constant(name)?;
+                self.emit(Opcode::ResolveWithReference, index)?;
+                self.emit(Opcode::StoreResolvedWithReference, 0)?;
+                self.emit(Opcode::Pop, 0)?;
+            }
             Pattern::Identifier(name) => {
                 let slot = if kind == DeclKind::Var {
                     let resolved = self
@@ -1528,9 +1553,28 @@ impl Compiler {
                             default,
                         } => {
                             self.property_key(key)?;
-                            self.emit(Opcode::DestructureProperty, 0)?;
-                            self.binding_pattern_default(default.as_ref(), value)?;
-                            self.bind_pattern(value, kind)?;
+                            match value {
+                                // KeyedBindingInitialization resolves the
+                                // binding before the value is read from the
+                                // source (observable through a Proxy `has`
+                                // trap), and the write goes to that reference.
+                                Pattern::Identifier(name)
+                                    if self.var_binding_resolves_through_with(kind, name) =>
+                                {
+                                    let index = self.name_constant(name)?;
+                                    self.emit(Opcode::Dup, 0)?;
+                                    self.emit(Opcode::ResolveWithReference, index)?;
+                                    self.emit(Opcode::DestructurePropertyReference, 0)?;
+                                    self.binding_pattern_default(default.as_ref(), value)?;
+                                    self.emit(Opcode::StoreWithReference, 0)?;
+                                    self.emit(Opcode::Pop, 0)?;
+                                }
+                                _ => {
+                                    self.emit(Opcode::DestructureProperty, 0)?;
+                                    self.binding_pattern_default(default.as_ref(), value)?;
+                                    self.bind_pattern(value, kind)?;
+                                }
+                            }
                         }
                         ObjectPatternProp::Rest(pattern) => {
                             self.emit(Opcode::ObjectRest, 0)?;

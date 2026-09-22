@@ -87,3 +87,42 @@ fn round_is_exact_near_the_edge_of_the_mantissa() {
         })()"#,
     );
 }
+
+/// `Math.acosh` and `Math.atanh` are fdlibm-accurate (within a couple of ulps)
+/// even where the textbook `ln(x + sqrt(x*x - 1))` and `ln_1p(2x / (1 - x))`
+/// formulas lose most of their digits: `acosh` just above 1 and `atanh` of a
+/// negative argument close to -1. Expected values are correctly rounded
+/// references.
+#[test]
+fn acosh_and_atanh_stay_accurate_near_their_singularities() {
+    assert_true(
+        r#"(function() {
+          const f = new Float64Array(2), u = new BigInt64Array(f.buffer);
+          const ulps = (a, b) => { f[0] = a; f[1] = b; const d = u[0] - u[1]; return d < 0n ? -d : d; };
+          const near = (name, actual, expected, tolerance) => {
+            const error = ulps(actual, expected);
+            return error <= BigInt(tolerance) ? null : `${name}: got ${actual}, expected ${expected} (${error} ulps)`;
+          };
+          const failures = [
+            near("acosh(1.0000014305114746)", Math.acosh(1.0000014305114746), 0.0016914556651292944, 2),
+            near("acosh(1.000007152557373)", Math.acosh(1.000007152557373), 0.003782208044661295, 2),
+            near("acosh(1.0000000001)", Math.acosh(1.0000000001), 0.000014142136208675862, 2),
+            near("acosh(1e300)", Math.acosh(1e300), 691.4686750787737, 2),
+            near("atanh(-0.9999983310699463)", Math.atanh(-0.9999983310699463), -6.998237084679027, 2),
+            near("atanh(-0.999992847442627)", Math.atanh(-0.999992847442627), -6.2705920974657525, 2),
+            near("atanh(0.999992847442627)", Math.atanh(0.999992847442627), 6.2705920974657525, 2),
+            near("atanh(3 / 5)", Math.atanh(3 / 5), Math.log(2), 2),
+          ].filter(Boolean);
+          if (failures.length) return failures.join("; ");
+          // Edge values.
+          if (Math.acosh(1) !== 0 || !Object.is(Math.acosh(1), 0)) return "acosh(1)";
+          if (Math.acosh(Infinity) !== Infinity) return "acosh(Infinity)";
+          if (!Number.isNaN(Math.acosh(0.999)) || !Number.isNaN(Math.acosh(NaN)) || !Number.isNaN(Math.acosh(-Infinity))) return "acosh NaN cases";
+          if (Math.atanh(1) !== Infinity || Math.atanh(-1) !== -Infinity) return "atanh(±1)";
+          if (!Object.is(Math.atanh(-0), -0) || !Object.is(Math.atanh(0), 0)) return "atanh(±0)";
+          if (!Object.is(Math.atanh(-1e-300), -1e-300)) return "atanh tiny";
+          if (!Number.isNaN(Math.atanh(1.0000001)) || !Number.isNaN(Math.atanh(-2)) || !Number.isNaN(Math.atanh(NaN))) return "atanh NaN cases";
+          return true;
+        })()"#,
+    );
+}

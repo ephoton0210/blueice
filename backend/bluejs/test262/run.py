@@ -977,8 +977,50 @@ def format_progress(completed, total, counts, active, now, checkpoint=False):
     )
 
 
+# Finite fixtures whose real size exceeds the default per-string ceiling
+# (1 MiB), the default managed-heap ceiling (16 MiB, which also caps an
+# ArrayBuffer), the dispatch budget or the wall deadline. Each entry is exact
+# path only and keeps the fixture bounded: it is roughly 3-4x the measured
+# minimum (README, "Large finite fixtures"), never "unlimited". Keys are
+# `string_limit` and `heap_limit` in bytes, `instruction_budget` in dispatches
+# and `timeout` in seconds; an absent key leaves that default alone.
+LARGE_FIXTURE_RESOURCES = {
+    # new DataView(new ArrayBuffer(20 * 1024 * 1024)); the heap needs 21 MiB.
+    "staging/sm/extensions/dataview.js": {"heap_limit": 64 * 1024 * 1024},
+    # Two regular expressions with a 2**24-zero braced escape, built by eval
+    # and by the RegExp constructor: 32 MiB strings, a 36 MiB heap, 2.2 s.
+    "staging/sm/RegExp/unicode-braced.js": {
+        "string_limit": 128 * 1024 * 1024,
+        "heap_limit": 128 * 1024 * 1024,
+        "timeout": 20,
+    },
+    "staging/sm/RegExp/unicode-class-braced.js": {
+        "string_limit": 128 * 1024 * 1024,
+        "heap_limit": 128 * 1024 * 1024,
+        "timeout": 20,
+    },
+    # eval of 2**21, about 2**22 and about 2**22 empty blocks: 16 MiB of
+    # source, a 36 MiB heap, 20-30 million dispatches, about 25 s.
+    "staging/sm/regress/regress-610026.js": {
+        "string_limit": 64 * 1024 * 1024,
+        "heap_limit": 128 * 1024 * 1024,
+        "instruction_budget": 100_000_000,
+        "timeout": 90,
+    },
+}
+
+
+def large_fixture_limits(relative):
+    """The adapter request's `string_limit`/`heap_limit` for an exact path."""
+    large = LARGE_FIXTURE_RESOURCES.get(relative, {})
+    return {key: large[key] for key in ("string_limit", "heap_limit") if key in large}
+
+
 def instruction_budget(data, default, relative=None, source=""):
     """Keep standard tail-call conformance probes within a bounded budget."""
+    large = LARGE_FIXTURE_RESOURCES.get(relative, {})
+    if "instruction_budget" in large:
+        return max(default, large["instruction_budget"])
     if relative in TEMPORAL_CALENDAR_MATRIX_FIXTURES:
         return max(default, TEMPORAL_CALENDAR_MATRIX_INSTRUCTION_BUDGET)
     if relative in ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES:
@@ -1026,6 +1068,9 @@ def instruction_budget(data, default, relative=None, source=""):
 
 def case_timeout(data, default, relative=None, source=""):
     """Return a bounded, metadata-derived wall deadline for a Test262 mode."""
+    large = LARGE_FIXTURE_RESOURCES.get(relative, {})
+    if "timeout" in large:
+        return max(default, large["timeout"])
     if relative in SM_TYPED_ARRAY_LONG_FIXTURES:
         return max(default, SM_TYPED_ARRAY_LONG_TIMEOUT)
     if relative in TYPED_ARRAY_DETACH_COERCION_FIXTURES:
@@ -1346,6 +1391,7 @@ def main():
                     request["string_limit"] = fixture_string_limit(relative)
                 if relative == STRING_CASE_MAPPING_FIXTURE:
                     request["heap_limit"] = STRING_CASE_MAPPING_HEAP_LIMIT
+                request.update(large_fixture_limits(relative))
                 has_dynamic_import_expression = bool(
                     DYNAMIC_IMPORT_EXPRESSION.search(source_for_execution)
                 )

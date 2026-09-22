@@ -143,6 +143,9 @@ opcodes! {
     ResolveWithReference: 5, 0;
     LoadWithReference: 1, 0;
     StoreWithReference: 1, 0;
+    // Like StoreWithReference, for a reference resolved *after* the value:
+    // stack `value, target, marker`. Leaves the value.
+    StoreResolvedWithReference: 1, 0;
     // `name++` etc. on a `ResolveWithReference` pair. Operand bit 0:
     // decrement; bit 1: prefix.
     UpdateWithReference: 5, 0;
