@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress. `backend/bluets` provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix; `backend/bluets-bluejs` proves direct classic-script and resolver-preserving ESM graph lowering to public BlueJS AST/bytecode without reparsing emitted JavaScript. A core startup owner can register closed projects in `CoreCompilerProjectCatalog`, seal it before the core session begins, and optionally expose opaque `describe`/`check`/static-type/symbol/source-provenance/reifiable-contract queries through a separately handshaken v2 `blueice-core --compiler-socket`; validation accepts only bounded data snapshots against an exact retained static generation. The reference binary has only a compiled-in closed integration profile, and MCP must be explicitly connected to that bounded service. `blueice-launcher --out-of-process-bluejs` now creates and supervises a separate, capability-authenticated BlueJS child for each core generation, routes loaded HTTP(S) inline JavaScript and explicit BlueTS declarations in DOM order into one bounded realm, and reaps it on shutdown or cutover. BlueTS gets only a caller-authorized closed graph and a child-fixed checked policy, then directly lowers into that realm without emitted-JavaScript reparse. No page/frontend/log can configure or reflect the child capability; the default launcher does not enable it. The child has no DOM/event binding, fetch/cache, URL/import-map resolution, or external graph authority. The opt-in debugger socket provides generation-checked source-free program/safe-point discovery, lifecycle-bound breakpoint configuration, and the narrow root-entry pause/resume seam; it does not expose stepping, stack, scope, or runtime values. Remaining prerequisites include production source/cache/integrity policy, bytecode source-map aggregation, launcher compiler-catalog distribution/authorization and update/output elevation, fuller negotiated MCP surface, and native debugger execution.
+**Status**: In progress. `backend/bluets` provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix; `backend/bluets-bluejs` proves direct classic-script and resolver-preserving ESM graph lowering to public BlueJS AST/bytecode without reparsing emitted JavaScript. A core startup owner can register closed projects in `CoreCompilerProjectCatalog`, seal it before the core session begins, and optionally expose opaque `describe`/`check`/static-type/symbol/source-provenance/reifiable-contract queries through a separately handshaken v2 `blueice-core --compiler-socket`; validation accepts only bounded data snapshots against an exact retained static generation. The reference binary has only a compiled-in closed integration profile, and MCP must be explicitly connected to that bounded service. `blueice-launcher --out-of-process-bluejs` now creates and supervises a separate, capability-authenticated BlueJS child for each core generation, routes loaded HTTP(S) inline JavaScript and explicit BlueTS declarations in DOM order into one bounded realm, and reaps it on shutdown or cutover. BlueTS gets only a caller-authorized closed graph and a child-fixed checked policy, then directly lowers into that realm without emitted-JavaScript reparse. No page/frontend/log can configure or reflect the child capability; the default launcher does not enable it. The child has no DOM/event binding, fetch/cache, URL/import-map resolution, or external graph authority. The opt-in debugger socket provides generation-checked source-free program/safe-point discovery, lifecycle-bound breakpoint configuration, and one-shot root-code-unit pause/resume for pending classic scripts; it does not expose modules, nested frames, stepping, stack, scope, or runtime values. Remaining prerequisites include production source/cache/integrity policy, bytecode source-map aggregation, launcher compiler-catalog distribution/authorization and update/output elevation, fuller negotiated MCP surface, and native debugger execution.
 
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
@@ -31,12 +31,15 @@ breakpoint-configuration table that is cleaned up on realm replacement. When
 the same core process selects `--inline-bluejs` and a debugger socket, the
 post-navigation admission turn does not immediately execute the declaration;
 each handshaken bounded discovery/configuration request retains one further
-session turn so the peer can learn and arm its exact root-code-unit
-instruction-zero location. An arm stops it before BlueJS begins. The owner can
-then observe source-free state and resume it once. This is not arbitrary
-interpreter suspension: there is no saved VM frame, operand stack,
-handler, GC-root, source/bytecode, stack, scope, or runtime-value exposure;
-step and non-entry breakpoint interruption remain absent.
+session turn so the peer can learn and arm its exact root code-unit safe point.
+`ArmEntryBreakpoint` remains the instruction-zero compatibility form. v5
+`ArmRootSafePointBreakpoint` starts a pending classic declaration, then stops
+immediately before its verified non-entry root instruction and retains the
+actual root interpreter frame until one resume. The owner can observe only
+source-free state and resume it once. This is not arbitrary interpreter
+suspension: modules/top-level await, child code units, re-arming/loop hits,
+stepping, stack/scope/exception/object inspection, source or bytecode access,
+and runtime-value exposure remain absent.
 
 ## Objective
 
