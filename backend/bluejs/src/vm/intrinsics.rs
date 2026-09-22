@@ -4,7 +4,11 @@
 
 //! Lazy installation of the foundational realm intrinsics.
 
-use super::*;
+use crate::heap::ArrayIteratorKind;
+use crate::native::{self, NativeFunction};
+use crate::{JsString, JsSymbol, ObjectId, PropertyName, Value};
+
+use super::{RuntimeError, Vm};
 
 impl Vm {
     pub(super) fn string_intrinsics(&mut self) -> Result<(ObjectId, ObjectId), RuntimeError> {

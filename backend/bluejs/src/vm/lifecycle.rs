@@ -4,7 +4,13 @@
 
 //! VM construction and public realm-execution entry points.
 
-use super::*;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::rc::Rc;
+
+use crate::{Bytecode, Heap, HeapError, ImportPhase, Value};
+
+use super::{test262_agents, RuntimeError, Vm, VmConfig};
 
 impl Default for Vm {
     fn default() -> Self {

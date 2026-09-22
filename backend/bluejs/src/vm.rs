@@ -7,7 +7,7 @@
 //! safepoints. The collector itself additionally protects store inputs.
 
 use crate::bytecode::{Binding, ModuleExport, ModuleImportName};
-use crate::heap::{ArrayIteratorKind, GeneratorState, PrivateElement};
+use crate::heap::{GeneratorState, PrivateElement};
 use crate::native::{self, NativeFunction};
 use crate::primitive;
 use crate::{
