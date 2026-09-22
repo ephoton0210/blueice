@@ -54,8 +54,15 @@ use blueice_ipc::extension::{
     read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
     UnsupportedCapabilityVersion,
 };
+use blueice_ipc::gatekeeper::{
+    default_gatekeeper_socket_path, read_gatekeeper_reply, write_gatekeeper_request,
+    GatekeeperReply, GatekeeperRequest,
+};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{self, Read, Write};
+use std::os::unix::net::UnixStream;
+use std::path::Path;
+use std::time::Duration;
 
 /// The one hardcoded extension identity this minimal slice recognizes.
 /// A real, non-spoofable, manifest-derived identity scheme is still-open
@@ -68,6 +75,10 @@ pub const CAPABILITY_DOM_READ: &str = "dom:read";
 /// The capability this slice's one hardcoded extension is deliberately
 /// *not* granted -- the request that proves server-side denial.
 pub const CAPABILITY_DOM_WRITE: &str = "dom:write";
+
+/// Registering network interception is high-risk and therefore always
+/// needs a cleared gatekeeper review after ordinary capability checks.
+pub const CAPABILITY_NETWORK_INTERCEPT: &str = "network:intercept";
 
 /// An inclusive API-version interval a host supports for one capability.
 /// A capability grant and a supported version are deliberately separate:
@@ -114,6 +125,8 @@ impl CapabilityVersionWindow {
 /// this crate's own module docs for why.
 const PLACEHOLDER_DOM_READ_VALUE: &str =
     "<blueice-extension-host: no real Page is wired into this minimal slice>";
+
+const GATEKEEPER_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Which capabilities each connected extension has been granted --
 /// `phase-9-extension-protocol/PLAN.md`'s "Wiring design" describes this
@@ -212,13 +225,16 @@ impl ExtensionRegistry {
 
     /// Seeds the hardcoded single-extension grant this minimal slice
     /// ships: [`MINIMAL_SLICE_EXTENSION_ID`] gets [`CAPABILITY_DOM_READ`]
-    /// only -- deliberately *not* [`CAPABILITY_DOM_WRITE`], so a
-    /// `DomWrite` attempt is the concrete proof of server-side denial.
+    /// only -- deliberately *not* [`CAPABILITY_DOM_WRITE`] or
+    /// [`CAPABILITY_NETWORK_INTERCEPT`], so a `DomWrite` or
+    /// `NetworkIntercept` attempt is a concrete proof of server-side
+    /// denial.
     pub fn minimal_slice() -> Self {
         let mut registry = Self::new();
         let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1);
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1);
+        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1);
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
         registry
     }
@@ -275,6 +291,33 @@ fn capability_denial_reason(
     None
 }
 
+fn check_extension_action(
+    gatekeeper_socket: &Path,
+    extension_id: &str,
+    capability: &str,
+    detail: String,
+) -> Result<GatekeeperReply, String> {
+    let mut stream = UnixStream::connect(gatekeeper_socket)
+        .map_err(|error| format!("could not connect to the gatekeeper: {error}"))?;
+    stream
+        .set_read_timeout(Some(GATEKEEPER_CHECK_TIMEOUT))
+        .map_err(|error| format!("could not configure the gatekeeper read deadline: {error}"))?;
+    stream
+        .set_write_timeout(Some(GATEKEEPER_CHECK_TIMEOUT))
+        .map_err(|error| format!("could not configure the gatekeeper write deadline: {error}"))?;
+    write_gatekeeper_request(
+        &mut stream,
+        &GatekeeperRequest::CheckExtensionAction {
+            extension_id: extension_id.to_string(),
+            capability: capability.to_string(),
+            detail,
+        },
+    )
+    .map_err(|error| format!("could not send the extension action for review: {error}"))?;
+    read_gatekeeper_reply(&mut stream)
+        .map_err(|error| format!("could not read the gatekeeper decision: {error}"))
+}
+
 /// Serves one extension connection until it disconnects (or sends
 /// something this minimal slice can't make sense of -- see below):
 /// requires [`ExtensionRequest::Hello`] as the very first message
@@ -283,7 +326,7 @@ fn capability_denial_reason(
 /// first message on the external client protocol), replies
 /// [`ExtensionReply::HelloAck`] (including any individually unsupported
 /// capability versions), then loops handling `DomRead`/
-/// `DomWrite` requests -- checking `registry` before executing each,
+/// `DomWrite`/`NetworkIntercept` requests -- checking `registry` before executing each,
 /// replying [`ExtensionReply::CapabilityDenied`] for an unauthorized
 /// request rather than a silent no-op or a bare/generic error.
 ///
@@ -310,6 +353,19 @@ fn capability_denial_reason(
 /// analogous case on the external protocol.
 pub fn handle_extension_connection<S: Read + Write>(
     registry: &ExtensionRegistry,
+    stream: &mut S,
+) -> io::Result<()> {
+    let gatekeeper_socket = default_gatekeeper_socket_path();
+    handle_extension_connection_with_gatekeeper(registry, &gatekeeper_socket, stream)
+}
+
+/// Like [`handle_extension_connection`], but routes high-risk extension
+/// actions through an explicit gatekeeper socket. The launcher and tests
+/// pass an isolated path; the public convenience function above retains
+/// the conventional standalone-development default.
+pub fn handle_extension_connection_with_gatekeeper<S: Read + Write>(
+    registry: &ExtensionRegistry,
+    gatekeeper_socket: &Path,
     stream: &mut S,
 ) -> io::Result<()> {
     let mut identity = match read_extension_request(stream) {
@@ -360,7 +416,7 @@ pub fn handle_extension_connection<S: Read + Write>(
                     )?;
                 }
             }
-            ExtensionRequest::DomWrite { value: _ } => {
+            ExtensionRequest::DomWrite { value: _, target } => {
                 if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE)
                 {
@@ -371,8 +427,89 @@ pub fn handle_extension_connection<S: Read + Write>(
                             reason,
                         },
                     )?;
+                } else if target.requires_gatekeeper_review() {
+                    match check_extension_action(
+                        gatekeeper_socket,
+                        &identity.extension_id,
+                        CAPABILITY_DOM_WRITE,
+                        target.gatekeeper_detail().expect(
+                            "only gatekeeper-triggering targets reach extension action review",
+                        ),
+                    ) {
+                        Ok(GatekeeperReply::Cleared) => {
+                            write_extension_reply(stream, &ExtensionReply::DomWriteAck)?;
+                        }
+                        Ok(GatekeeperReply::Rejected { reason, category }) => {
+                            write_extension_reply(
+                                stream,
+                                &ExtensionReply::GatekeeperBlocked {
+                                    capability: CAPABILITY_DOM_WRITE.to_string(),
+                                    reason,
+                                    category,
+                                },
+                            )?;
+                        }
+                        Err(reason) => {
+                            write_extension_reply(
+                                stream,
+                                &ExtensionReply::GatekeeperBlocked {
+                                    capability: CAPABILITY_DOM_WRITE.to_string(),
+                                    reason,
+                                    category: "gatekeeper-unavailable".to_string(),
+                                },
+                            )?;
+                        }
+                    }
                 } else {
                     write_extension_reply(stream, &ExtensionReply::DomWriteAck)?;
+                }
+            }
+            ExtensionRequest::NetworkIntercept => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                            reason,
+                        },
+                    )?;
+                } else {
+                    // This protocol's minimal slice deliberately does not
+                    // carry an extension-defined interception rule yet.
+                    // Fixed metadata proves the review boundary without
+                    // opening an unbounded extension-to-reviewer text path.
+                    match check_extension_action(
+                        gatekeeper_socket,
+                        &identity.extension_id,
+                        CAPABILITY_NETWORK_INTERCEPT,
+                        "action=register-intercept".to_string(),
+                    ) {
+                        Ok(GatekeeperReply::Cleared) => {
+                            write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?;
+                        }
+                        Ok(GatekeeperReply::Rejected { reason, category }) => {
+                            write_extension_reply(
+                                stream,
+                                &ExtensionReply::GatekeeperBlocked {
+                                    capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                    reason,
+                                    category,
+                                },
+                            )?;
+                        }
+                        Err(reason) => {
+                            write_extension_reply(
+                                stream,
+                                &ExtensionReply::GatekeeperBlocked {
+                                    capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                    reason,
+                                    category: "gatekeeper-unavailable".to_string(),
+                                },
+                            )?;
+                        }
+                    }
                 }
             }
         }
@@ -382,10 +519,52 @@ pub fn handle_extension_connection<S: Read + Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_ipc::extension::{read_extension_reply, write_extension_request};
+    use blueice_ipc::extension::{read_extension_reply, write_extension_request, DomWriteTarget};
+    use blueice_ipc::gatekeeper::{read_gatekeeper_request, write_gatekeeper_reply};
     use std::collections::BTreeMap;
-    use std::os::unix::net::UnixStream;
+    use std::os::unix::net::{UnixListener, UnixStream};
+    use std::path::PathBuf;
     use std::thread;
+
+    fn unique_gatekeeper_socket(_label: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        // The temp-dir prefix can already be long on Darwin, whose
+        // Unix-domain socket path limit is small. The counter and pid
+        // make this concise leaf sufficient for independent tests.
+        blueice_ipc::local_socket::default_socket_dir()
+            .join(format!("extg-{}-{n}", std::process::id()))
+    }
+
+    fn start_gatekeeper(
+        label: &str,
+        reply: GatekeeperReply,
+    ) -> (PathBuf, thread::JoinHandle<GatekeeperRequest>) {
+        let socket = unique_gatekeeper_socket(label);
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).unwrap();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_gatekeeper_request(&mut stream).unwrap();
+            write_gatekeeper_reply(&mut stream, &reply).unwrap();
+            request
+        });
+        (socket, handle)
+    }
+
+    fn registry_with_dom_write_granted() -> ExtensionRegistry {
+        let mut registry = ExtensionRegistry::minimal_slice();
+        registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE);
+        registry
+    }
+
+    fn registry_with_network_intercept_granted() -> ExtensionRegistry {
+        let mut registry = ExtensionRegistry::minimal_slice();
+        registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT);
+        registry
+    }
 
     fn hello(extension_id: &str) -> ExtensionRequest {
         hello_with_capabilities(
@@ -418,6 +597,7 @@ mod tests {
         let registry = ExtensionRegistry::minimal_slice();
         assert!(registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
         assert!(!registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE));
+        assert!(!registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT));
     }
 
     #[test]
@@ -589,6 +769,7 @@ mod tests {
             &mut client,
             &ExtensionRequest::DomWrite {
                 value: "hijacked".to_string(),
+                target: DomWriteTarget::Document,
             },
         )
         .unwrap();
@@ -598,6 +779,197 @@ mod tests {
                 assert!(!reason.is_empty());
             }
             other => panic!("expected CapabilityDenied, got {other:?}"),
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn a_form_input_write_is_reviewed_and_a_gatekeeper_rejection_blocks_it() {
+        let registry = registry_with_dom_write_granted();
+        let (gatekeeper_socket, gatekeeper) = start_gatekeeper(
+            "reject-form-input",
+            GatekeeperReply::Rejected {
+                reason: "credential-shaped field requires confirmation".to_string(),
+                category: "sensitive-extension-action".to_string(),
+            },
+        );
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_gatekeeper(&registry, &socket_for_handler, &mut server)
+        });
+
+        write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::DomWrite {
+                value: "a secret the host must not inspect".to_string(),
+                target: DomWriteTarget::FormInput {
+                    input_type: "password".to_string(),
+                },
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::GatekeeperBlocked {
+                capability: CAPABILITY_DOM_WRITE.to_string(),
+                reason: "credential-shaped field requires confirmation".to_string(),
+                category: "sensitive-extension-action".to_string(),
+            }
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_DOM_WRITE.to_string(),
+                detail: "target=form-input; input_type=password".to_string(),
+            }
+        );
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn a_generic_dom_write_skips_review_but_a_missing_reviewer_blocks_network_causing_writes() {
+        let registry = registry_with_dom_write_granted();
+        let unavailable_socket = unique_gatekeeper_socket("unavailable");
+        let _ = std::fs::remove_file(&unavailable_socket);
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = unavailable_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_gatekeeper(&registry, &socket_for_handler, &mut server)
+        });
+
+        write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+
+        // A non-triggering document write stays local and does not need
+        // a live gatekeeper connection.
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::DomWrite {
+                value: "cosmetic text".to_string(),
+                target: DomWriteTarget::Document,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomWriteAck
+        );
+
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::DomWrite {
+                value: "submit".to_string(),
+                target: DomWriteTarget::NetworkCausing {
+                    action: "form-submit".to_string(),
+                },
+            },
+        )
+        .unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::GatekeeperBlocked {
+                capability,
+                reason,
+                category,
+            } => {
+                assert_eq!(capability, CAPABILITY_DOM_WRITE);
+                assert_eq!(category, "gatekeeper-unavailable");
+                assert!(reason.contains("could not connect"));
+            }
+            other => panic!("expected fail-closed GatekeeperBlocked, got {other:?}"),
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn a_network_intercept_registration_is_reviewed_before_it_is_acknowledged() {
+        let registry = registry_with_network_intercept_granted();
+        let (gatekeeper_socket, gatekeeper) =
+            start_gatekeeper("clear-network-intercept", GatekeeperReply::Cleared);
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_gatekeeper(&registry, &socket_for_handler, &mut server)
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 1)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+
+        write_extension_request(&mut client, &ExtensionRequest::NetworkIntercept).unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::NetworkInterceptAck
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                detail: "action=register-intercept".to_string(),
+            }
+        );
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn an_ungranted_network_intercept_never_reaches_an_unavailable_gatekeeper() {
+        let registry = ExtensionRegistry::minimal_slice();
+        let unavailable_socket = unique_gatekeeper_socket("ungranted-network-intercept");
+        let _ = std::fs::remove_file(&unavailable_socket);
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = unavailable_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_gatekeeper(&registry, &socket_for_handler, &mut server)
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 1)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(&mut client, &ExtensionRequest::NetworkIntercept).unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, reason } => {
+                assert_eq!(capability, CAPABILITY_NETWORK_INTERCEPT);
+                assert!(reason.contains("not granted"));
+            }
+            other => panic!("expected CapabilityDenied before gatekeeper review, got {other:?}"),
         }
 
         drop(client);
@@ -625,6 +997,7 @@ mod tests {
             &mut client,
             &ExtensionRequest::DomWrite {
                 value: "x".to_string(),
+                target: DomWriteTarget::Document,
             },
         )
         .unwrap();

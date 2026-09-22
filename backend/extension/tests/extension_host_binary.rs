@@ -136,6 +136,7 @@ fn a_granted_capability_succeeds_and_an_ungranted_one_is_denied_over_a_real_proc
         &mut stream,
         &ExtensionRequest::DomWrite {
             value: "attacker-controlled content".to_string(),
+            target: blueice_ipc::extension::DomWriteTarget::Document,
         },
     )
     .unwrap();

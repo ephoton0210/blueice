@@ -50,7 +50,24 @@ pub enum GatekeeperRequest {
     /// type" (`phase-7-local-ai/PLAN.md`'s risk taxonomy). Both hints
     /// are optional because a server may not send them (a chunked
     /// response with no `Content-Type`); the review still has to happen.
-    CheckDownload { url: String, file_name: String, content_type: Option<String>, total_bytes: Option<u64> },
+    CheckDownload {
+        url: String,
+        file_name: String,
+        content_type: Option<String>,
+        total_bytes: Option<u64>,
+    },
+    /// A high-risk action initiated by a process-isolated extension.
+    /// The capability-enforcing host constructs `detail` from reviewed
+    /// action metadata rather than accepting a second arbitrary detail
+    /// field from the extension process. The initial trigger set is
+    /// intentionally narrow: `network:intercept` registrations and
+    /// `dom:write` operations targeting a form/input or causing a
+    /// network action (Phase 9's resolved design).
+    CheckExtensionAction {
+        extension_id: String,
+        capability: String,
+        detail: String,
+    },
 }
 
 /// `ai-gatekeeper`'s reply to one [`GatekeeperRequest`]. Either stage
@@ -108,8 +125,13 @@ mod tests {
     #[test]
     fn gatekeeper_request_round_trips_over_a_real_socket() {
         for req in [
-            GatekeeperRequest::CheckUrl { url: "https://example.com".to_string() },
-            GatekeeperRequest::CheckContent { url: "https://example.com".to_string(), html: "<p>hi</p>".to_string() },
+            GatekeeperRequest::CheckUrl {
+                url: "https://example.com".to_string(),
+            },
+            GatekeeperRequest::CheckContent {
+                url: "https://example.com".to_string(),
+                html: "<p>hi</p>".to_string(),
+            },
             GatekeeperRequest::CheckDownload {
                 url: "https://example.com/setup.exe".to_string(),
                 file_name: "setup.exe".to_string(),
@@ -118,7 +140,17 @@ mod tests {
             },
             // The probe may not learn a type or a size (a chunked response
             // with no `Content-Type`), and the review still has to happen.
-            GatekeeperRequest::CheckDownload { url: "https://example.com/blob".to_string(), file_name: "blob".to_string(), content_type: None, total_bytes: None },
+            GatekeeperRequest::CheckDownload {
+                url: "https://example.com/blob".to_string(),
+                file_name: "blob".to_string(),
+                content_type: None,
+                total_bytes: None,
+            },
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: "minimal-slice-extension".to_string(),
+                capability: "dom:write".to_string(),
+                detail: "target=form-input; input_type=password".to_string(),
+            },
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_gatekeeper_request(&mut a, &req).unwrap();
@@ -128,7 +160,13 @@ mod tests {
 
     #[test]
     fn gatekeeper_reply_round_trips_over_a_real_socket() {
-        for reply in [GatekeeperReply::Cleared, GatekeeperReply::Rejected { reason: "phishing-shaped domain".to_string(), category: "known-bad-domain".to_string() }] {
+        for reply in [
+            GatekeeperReply::Cleared,
+            GatekeeperReply::Rejected {
+                reason: "phishing-shaped domain".to_string(),
+                category: "known-bad-domain".to_string(),
+            },
+        ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_gatekeeper_reply(&mut a, &reply).unwrap();
             assert_eq!(read_gatekeeper_reply(&mut b).unwrap(), reply);
@@ -138,11 +176,33 @@ mod tests {
     #[test]
     fn multiple_requests_can_be_written_and_read_in_sequence_on_one_stream() {
         let mut buf = Vec::new();
-        write_gatekeeper_request(&mut buf, &GatekeeperRequest::CheckUrl { url: "https://a.example".to_string() }).unwrap();
-        write_gatekeeper_request(&mut buf, &GatekeeperRequest::CheckUrl { url: "https://b.example".to_string() }).unwrap();
+        write_gatekeeper_request(
+            &mut buf,
+            &GatekeeperRequest::CheckUrl {
+                url: "https://a.example".to_string(),
+            },
+        )
+        .unwrap();
+        write_gatekeeper_request(
+            &mut buf,
+            &GatekeeperRequest::CheckUrl {
+                url: "https://b.example".to_string(),
+            },
+        )
+        .unwrap();
         let mut cursor = std::io::Cursor::new(buf);
-        assert_eq!(read_gatekeeper_request(&mut cursor).unwrap(), GatekeeperRequest::CheckUrl { url: "https://a.example".to_string() });
-        assert_eq!(read_gatekeeper_request(&mut cursor).unwrap(), GatekeeperRequest::CheckUrl { url: "https://b.example".to_string() });
+        assert_eq!(
+            read_gatekeeper_request(&mut cursor).unwrap(),
+            GatekeeperRequest::CheckUrl {
+                url: "https://a.example".to_string()
+            }
+        );
+        assert_eq!(
+            read_gatekeeper_request(&mut cursor).unwrap(),
+            GatekeeperRequest::CheckUrl {
+                url: "https://b.example".to_string()
+            }
+        );
     }
 
     #[test]

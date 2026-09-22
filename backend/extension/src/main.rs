@@ -20,7 +20,8 @@
 //! one hardcoded extension in this slice, so there's no concurrency to
 //! prove yet.
 
-use blueice_extension_host::{handle_extension_connection, ExtensionRegistry};
+use blueice_extension_host::{handle_extension_connection_with_gatekeeper, ExtensionRegistry};
+use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -28,6 +29,7 @@ use std::process::ExitCode;
 #[derive(Debug, PartialEq)]
 struct Args {
     socket: PathBuf,
+    gatekeeper_socket: PathBuf,
 }
 
 /// Takes an injectable argument iterator (rather than reading
@@ -36,18 +38,23 @@ struct Args {
 /// reason (see that binary's docs).
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut socket = None;
+    let mut gatekeeper_socket = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or_else(|| format!("{flag} requires a value"));
         match flag.as_str() {
             "--socket" => socket = Some(PathBuf::from(value()?)),
+            "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
 
     let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
-    Ok(Args { socket })
+    Ok(Args {
+        socket,
+        gatekeeper_socket: gatekeeper_socket.unwrap_or_else(default_gatekeeper_socket_path),
+    })
 }
 
 fn main() -> ExitCode {
@@ -68,14 +75,21 @@ fn main() -> ExitCode {
     let listener = match UnixListener::bind(&args.socket) {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("blueice-extension-host: failed to bind {}: {e}", args.socket.display());
+            eprintln!(
+                "blueice-extension-host: failed to bind {}: {e}",
+                args.socket.display()
+            );
             return ExitCode::FAILURE;
         }
     };
 
     let registry = ExtensionRegistry::minimal_slice();
     for mut stream in listener.incoming().flatten() {
-        let _ = handle_extension_connection(&registry, &mut stream);
+        let _ = handle_extension_connection_with_gatekeeper(
+            &registry,
+            &args.gatekeeper_socket,
+            &mut stream,
+        );
     }
 
     let _ = std::fs::remove_file(&args.socket);
@@ -97,16 +111,53 @@ mod tests {
 
     #[test]
     fn socket_flag_is_parsed() {
-        assert_eq!(args(&["--socket", "/tmp/x.sock"]).unwrap(), Args { socket: PathBuf::from("/tmp/x.sock") });
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock"]).unwrap(),
+            Args {
+                socket: PathBuf::from("/tmp/x.sock"),
+                gatekeeper_socket: default_gatekeeper_socket_path()
+            }
+        );
     }
 
     #[test]
     fn a_flag_missing_its_value_is_an_error() {
-        assert_eq!(args(&["--socket"]), Err("--socket requires a value".to_string()));
+        assert_eq!(
+            args(&["--socket"]),
+            Err("--socket requires a value".to_string())
+        );
+    }
+
+    #[test]
+    fn a_gatekeeper_socket_override_is_parsed() {
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--gatekeeper-socket",
+                "/tmp/gatekeeper.sock"
+            ])
+            .unwrap(),
+            Args {
+                socket: PathBuf::from("/tmp/x.sock"),
+                gatekeeper_socket: PathBuf::from("/tmp/gatekeeper.sock")
+            }
+        );
+    }
+
+    #[test]
+    fn a_gatekeeper_socket_flag_missing_its_value_is_an_error() {
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", "--gatekeeper-socket"]),
+            Err("--gatekeeper-socket requires a value".to_string())
+        );
     }
 
     #[test]
     fn an_unrecognized_flag_is_an_error() {
-        assert_eq!(args(&["--socket", "/tmp/x.sock", "--bogus"]), Err("unrecognized argument: --bogus".to_string()));
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", "--bogus"]),
+            Err("unrecognized argument: --bogus".to_string())
+        );
     }
 }

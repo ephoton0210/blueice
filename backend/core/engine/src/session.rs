@@ -3530,6 +3530,11 @@ mod tests {
                             "navigation never sends a download check; that stage belongs to the downloads process"
                         )
                     }
+                    blueice_ipc::gatekeeper::GatekeeperRequest::CheckExtensionAction { .. } => {
+                        unreachable!(
+                            "navigation never sends an extension action check; that stage belongs to the extension host"
+                        )
+                    }
                 };
                 let _ = blueice_ipc::gatekeeper::write_gatekeeper_reply(&mut stream, &reply);
             }

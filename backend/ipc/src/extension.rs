@@ -70,8 +70,85 @@ pub enum ExtensionRequest {
     /// capability, deliberately not granted to this minimal slice's one
     /// hardcoded extension, so this is the request that proves
     /// server-side denial. `value` is a trivial stand-in for whatever a
-    /// real write payload eventually looks like.
-    DomWrite { value: String },
+    /// real write payload eventually looks like. Only writes with a
+    /// [`DomWriteTarget::FormInput`] or
+    /// [`DomWriteTarget::NetworkCausing`] target require a gatekeeper
+    /// action review; a generic document mutation does not.
+    DomWrite {
+        value: String,
+        #[serde(default)]
+        target: DomWriteTarget,
+    },
+    /// Registers a network interception rule -- requires the
+    /// `network:intercept` capability. Registering interception at all
+    /// is high-risk, so the host always routes this request through the
+    /// gatekeeper after capability authorization and before any rule is
+    /// installed. The eventual declarative rule representation is out
+    /// of scope for this minimal protocol slice; the boundary is proved
+    /// here with an explicit registration operation rather than an
+    /// extension-controlled free-form rule payload.
+    NetworkIntercept,
+}
+
+/// The risk-relevant target of a [`ExtensionRequest::DomWrite`]. The
+/// default preserves wire compatibility with the original, generic
+/// `DomWrite { value }` request: an older extension has not represented
+/// either a form-input or network-causing action, so it remains a
+/// non-triggering document mutation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DomWriteTarget {
+    /// A generic document mutation with no form or network effect.
+    #[default]
+    Document,
+    /// Writes a form/input control. `input_type` is structured metadata
+    /// (for example `text`, `email`, or `password`), not the field value.
+    FormInput { input_type: String },
+    /// Causes a network-facing effect, such as submitting a form. The
+    /// short action label is metadata for gatekeeper review.
+    NetworkCausing { action: String },
+}
+
+impl DomWriteTarget {
+    /// Whether this target is in Phase 9's resolved gatekeeper trigger
+    /// list.
+    pub const fn requires_gatekeeper_review(&self) -> bool {
+        matches!(self, Self::FormInput { .. } | Self::NetworkCausing { .. })
+    }
+
+    /// A bounded, structured diagnostic passed to the gatekeeper. The
+    /// extension-provided write value itself is intentionally excluded:
+    /// the reviewer needs the action class, not arbitrary untrusted text
+    /// that could become a second prompt-injection surface.
+    pub fn gatekeeper_detail(&self) -> Option<String> {
+        match self {
+            Self::Document => None,
+            Self::FormInput { input_type } => Some(format!(
+                "target=form-input; input_type={}",
+                safe_metadata_label(input_type)
+            )),
+            Self::NetworkCausing { action } => Some(format!(
+                "target=network-causing; action={}",
+                safe_metadata_label(action)
+            )),
+        }
+    }
+}
+
+/// Limits extension-controlled action metadata before it crosses into
+/// the gatekeeper process. It is intentionally a small ASCII label,
+/// not a free-form text channel to an eventual model reviewer.
+fn safe_metadata_label(value: &str) -> String {
+    let label: String = value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+        .take(64)
+        .collect();
+    if label.is_empty() {
+        "unknown".to_string()
+    } else {
+        label
+    }
 }
 
 /// The capability-enforcing side's reply to one [`ExtensionRequest`].
@@ -93,6 +170,19 @@ pub enum ExtensionReply {
     DomReadResult { value: String },
     /// Reply to a granted [`ExtensionRequest::DomWrite`].
     DomWriteAck,
+    /// Reply to a granted and gatekeeper-cleared
+    /// [`ExtensionRequest::NetworkIntercept`] registration.
+    NetworkInterceptAck,
+    /// A high-risk, otherwise-authorized extension action was rejected
+    /// by the Phase 7 gatekeeper, or the gatekeeper was unavailable and
+    /// the host therefore failed closed. Kept distinct from
+    /// [`Self::CapabilityDenied`]: authorization succeeded, but this
+    /// concrete invocation did not clear safety review.
+    GatekeeperBlocked {
+        capability: String,
+        reason: String,
+        category: String,
+    },
     /// Reply to any capability-checked request the sending extension
     /// isn't granted -- a structured block, not a bare/generic error,
     /// mirroring [`crate::gatekeeper::GatekeeperReply::Rejected`]'s
@@ -173,7 +263,15 @@ mod tests {
             ExtensionRequest::DomRead,
             ExtensionRequest::DomWrite {
                 value: "new content".to_string(),
+                target: DomWriteTarget::Document,
             },
+            ExtensionRequest::DomWrite {
+                value: "secret".to_string(),
+                target: DomWriteTarget::FormInput {
+                    input_type: "password".to_string(),
+                },
+            },
+            ExtensionRequest::NetworkIntercept,
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
             write_extension_request(&mut a, &req).unwrap();
@@ -206,6 +304,12 @@ mod tests {
                 value: "placeholder".to_string(),
             },
             ExtensionReply::DomWriteAck,
+            ExtensionReply::NetworkInterceptAck,
+            ExtensionReply::GatekeeperBlocked {
+                capability: "dom:write".to_string(),
+                reason: "review rejected the form action".to_string(),
+                category: "sensitive-extension-action".to_string(),
+            },
             ExtensionReply::CapabilityDenied {
                 capability: "dom:write".to_string(),
                 reason: "not granted".to_string(),
@@ -225,6 +329,7 @@ mod tests {
             &mut buf,
             &ExtensionRequest::DomWrite {
                 value: "x".to_string(),
+                target: DomWriteTarget::Document,
             },
         )
         .unwrap();
@@ -236,8 +341,52 @@ mod tests {
         assert_eq!(
             read_extension_request(&mut cursor).unwrap(),
             ExtensionRequest::DomWrite {
-                value: "x".to_string()
+                value: "x".to_string(),
+                target: DomWriteTarget::Document,
             }
+        );
+    }
+
+    #[test]
+    fn an_old_dom_write_without_target_defaults_to_a_non_triggering_document_target() {
+        let old_json = br#"{"DomWrite":{"value":"legacy"}}"#;
+        let mut framed = Vec::new();
+        framed.extend_from_slice(&(old_json.len() as u32).to_le_bytes());
+        framed.extend_from_slice(old_json);
+        assert_eq!(
+            read_extension_request(&mut std::io::Cursor::new(framed)).unwrap(),
+            ExtensionRequest::DomWrite {
+                value: "legacy".to_string(),
+                target: DomWriteTarget::Document,
+            }
+        );
+    }
+
+    #[test]
+    fn only_form_input_and_network_causing_writes_require_a_gatekeeper_review() {
+        assert!(!DomWriteTarget::Document.requires_gatekeeper_review());
+        assert!(DomWriteTarget::FormInput {
+            input_type: "email".to_string()
+        }
+        .requires_gatekeeper_review());
+        assert!(DomWriteTarget::NetworkCausing {
+            action: "form-submit".to_string()
+        }
+        .requires_gatekeeper_review());
+        assert_eq!(DomWriteTarget::Document.gatekeeper_detail(), None);
+        assert_eq!(
+            DomWriteTarget::FormInput {
+                input_type: "password".to_string()
+            }
+            .gatekeeper_detail(),
+            Some("target=form-input; input_type=password".to_string())
+        );
+        assert_eq!(
+            DomWriteTarget::NetworkCausing {
+                action: "submit\u{200b}; steal everything".to_string()
+            }
+            .gatekeeper_detail(),
+            Some("target=network-causing; action=submitstealeverything".to_string())
         );
     }
 

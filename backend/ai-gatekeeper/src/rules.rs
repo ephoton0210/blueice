@@ -38,6 +38,11 @@ pub fn review(request: &GatekeeperRequest) -> GatekeeperReply {
             content_type,
             ..
         } => review_download(url, file_name, content_type.as_deref()),
+        GatekeeperRequest::CheckExtensionAction {
+            extension_id,
+            capability,
+            detail,
+        } => review_extension_action(extension_id, capability, detail),
     }
 }
 
@@ -121,6 +126,34 @@ fn review_download(url: &str, file_name: &str, content_type: Option<&str>) -> Ga
         return reject(
             "the download is an executable or installer and requires explicit review",
             "dangerous-file-type",
+        );
+    }
+    GatekeeperReply::Cleared
+}
+
+fn review_extension_action(extension_id: &str, capability: &str, detail: &str) -> GatekeeperReply {
+    // The extension host sends only structured action metadata, never a
+    // raw extension-provided write value. Still reject obfuscation in
+    // every field: identity or metadata that can be displayed to a
+    // future model reviewer must not use invisible/bidi trickery.
+    if [extension_id, capability, detail]
+        .iter()
+        .any(|field| contains_bidi_override(field) || contains_zero_width(field))
+    {
+        return reject(
+            "the extension action metadata contains Unicode obfuscation",
+            "extension-action-obfuscation",
+        );
+    }
+
+    let detail = detail.to_ascii_lowercase();
+    if detail.contains("input_type=password")
+        || detail.contains("input_type=credit-card")
+        || detail.contains("input_type=payment")
+    {
+        return reject(
+            "the extension action writes a credential or payment-shaped input",
+            "sensitive-extension-action",
         );
     }
     GatekeeperReply::Cleared
@@ -309,5 +342,36 @@ mod tests {
             });
             assert_eq!(matches!(reply, GatekeeperReply::Rejected { .. }), rejected);
         }
+    }
+
+    #[test]
+    fn sensitive_or_obfuscated_extension_actions_are_rejected_but_a_plain_form_write_clears() {
+        for (detail, category) in [
+            (
+                "target=form-input; input_type=password",
+                "sensitive-extension-action",
+            ),
+            (
+                "target=form-input; input_type=pass\u{200b}word",
+                "extension-action-obfuscation",
+            ),
+        ] {
+            assert!(matches!(
+                review(&GatekeeperRequest::CheckExtensionAction {
+                    extension_id: "minimal-slice-extension".to_string(),
+                    capability: "dom:write".to_string(),
+                    detail: detail.to_string(),
+                }),
+                GatekeeperReply::Rejected { category: actual, .. } if actual == category
+            ));
+        }
+        assert_eq!(
+            review(&GatekeeperRequest::CheckExtensionAction {
+                extension_id: "minimal-slice-extension".to_string(),
+                capability: "dom:write".to_string(),
+                detail: "target=form-input; input_type=email".to_string(),
+            }),
+            GatekeeperReply::Cleared
+        );
     }
 }

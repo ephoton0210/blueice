@@ -286,6 +286,7 @@ mod tests {
                     GatekeeperRequest::CheckUrl { .. } => GatekeeperReply::Cleared,
                     GatekeeperRequest::CheckContent { .. } => GatekeeperReply::Rejected { reason: "hidden text".to_string(), category: "prompt-injection".to_string() },
                     GatekeeperRequest::CheckDownload { .. } => unreachable!("navigation never sends a download check; that stage belongs to the downloads process"),
+                    GatekeeperRequest::CheckExtensionAction { .. } => unreachable!("navigation never sends an extension action check; that stage belongs to the extension host"),
                 };
                 let _ = write_gatekeeper_reply(&mut stream, &reply);
             }
