@@ -1475,6 +1475,7 @@ impl Compiler {
                         .rev()
                         .find_map(|slots| slots.get(name))
                         .copied()
+                        .or_else(|| self.eval_catch_parameter_slot(name))
                         .or_else(|| self.names[self.local_scope].get(name).copied())
                         .or_else(|| self.resolve(name));
                     let Some(slot) = resolved else {
@@ -1549,6 +1550,20 @@ impl Compiler {
             }
         }
         Ok(())
+    }
+
+    /// Annex B.3.4: the initializer of a `var` in eval code, whose caller is
+    /// inside a catch block with a simple parameter of the same name, assigns
+    /// that catch parameter. The parameter is nearer than the variable
+    /// environment the var itself is declared in.
+    fn eval_catch_parameter_slot(&self, name: &str) -> Option<u32> {
+        if self.function {
+            return None;
+        }
+        let slot = *self.names.first()?.get(name)?;
+        self.bytecode.bindings[slot as usize]
+            .catch_parameter
+            .then_some(slot)
     }
 
     /// Leaves the array-pattern iterator record below one element value.  A
