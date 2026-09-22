@@ -743,6 +743,24 @@ mod unix {
             )
         }
 
+        /// Connects to one already-running core control socket without
+        /// spawning a fallback process.  This is for an embedding that owns
+        /// both the browser and compiler endpoints and must keep them bound
+        /// to the same core lifetime.
+        pub(crate) fn connect_existing(core_socket: &Path) -> io::Result<Self> {
+            let stream = std::os::unix::net::UnixStream::connect(core_socket)?;
+            Self::from_shared_stream(stream)
+        }
+
+        fn from_shared_stream(stream: std::os::unix::net::UnixStream) -> io::Result<Self> {
+            let mut conn = CoreConnection::new(stream);
+            conn.handshake()?;
+            Ok(CoreProcess {
+                ownership: CoreOwnership::Shared,
+                conn: Arc::new(Mutex::new(conn)),
+            })
+        }
+
         /// The testable half of [`CoreProcess::connect`], taking the
         /// rendezvous path as a parameter instead of always resolving
         /// [`blueice_launcher::default_rendezvous_socket_path`] -- lets a
@@ -752,15 +770,10 @@ mod unix {
         /// parallel test execution, since env vars are global process
         /// state).
         fn connect_to(rendezvous_socket: &Path, width: u32, height: u32) -> io::Result<Self> {
-            if let Ok(stream) = std::os::unix::net::UnixStream::connect(rendezvous_socket) {
-                let mut conn = CoreConnection::new(stream);
-                conn.handshake()?;
-                return Ok(CoreProcess {
-                    ownership: CoreOwnership::Shared,
-                    conn: Arc::new(Mutex::new(conn)),
-                });
+            match std::os::unix::net::UnixStream::connect(rendezvous_socket) {
+                Ok(stream) => Self::from_shared_stream(stream),
+                Err(_) => Self::spawn(width, height),
             }
-            Self::spawn(width, height)
         }
 
         pub fn spawn(width: u32, height: u32) -> io::Result<Self> {

@@ -22,3 +22,4 @@ tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net", "i
 [dev-dependencies]
 blueice-bluets = { path = "../bluets" }
 blueice-engine = { path = "../core/engine" }
+rmcp = { version = "3.2.0", features = ["client"] }

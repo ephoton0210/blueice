@@ -1167,6 +1167,28 @@ impl BlueIceMcpServer {
         })
     }
 
+    /// Connects the MCP browser and compiler adapters to two endpoints owned
+    /// by the same already-running core.  Unlike
+    /// [`Self::connect_with_compiler_socket`], this never attaches to a
+    /// launcher rendezvous socket or spawns a fallback browser process, so
+    /// the fixed browser and compiler views cannot accidentally describe
+    /// different core lifetimes.  Both endpoints still expose only their
+    /// existing query/control protocols; this constructor cannot register a
+    /// project, supply source, or grant build/write authority.
+    pub fn connect_with_core_and_compiler_sockets(
+        core_socket: &Path,
+        compiler_socket: &Path,
+    ) -> io::Result<Self> {
+        let core = CoreProcess::connect_existing(core_socket)?;
+        let stream = UnixStream::connect(compiler_socket)?;
+        let mut compiler = CompilerConnection::new(stream);
+        compiler.handshake()?;
+        Ok(Self {
+            core,
+            compiler: Some(Arc::new(Mutex::new(compiler))),
+        })
+    }
+
     fn conn(&self) -> Arc<Mutex<CoreConnection<UnixStream>>> {
         self.core.conn.clone()
     }

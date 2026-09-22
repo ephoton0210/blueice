@@ -730,8 +730,11 @@ or second module resolver to bypass them.
   deliberately open.
 
   MCP read foundation delivered: `blueice-mcp-server` now has a distinct
-  `CompilerConnection` client and an explicit
-  `BlueIceMcpServer::connect_with_compiler_socket` construction path. After
+  `CompilerConnection` client and explicit
+  `BlueIceMcpServer::connect_with_compiler_socket` and paired
+  `connect_with_core_and_compiler_sockets` construction paths. The paired
+  path attaches both adapters to one already-running core and never falls
+  back to an unrelated browser process. After
   the separate compiler `Hello` negotiation, `bluetsc_check`,
   `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
   `debug_get_provenance`, `debug_get_contract`, and
@@ -743,9 +746,13 @@ or second module resolver to bypass them.
   ordinary browser-only `BlueIceMcpServer::spawn` path has no compiler
   connection: these tools report a fixed unavailable result and cannot
   manufacture a local registration or invoke BlueTSC. An end-to-end fixture
-  now proves that this `CompilerConnection` reaches a sealed core-owned catalog
-  only through its worker-to-session hand-off after a separate compiler `Hello`;
-  it cannot use the connection to re-open startup registration. There is still
+  now proves through the actual MCP `tools/call` boundary that the paired
+  connection reaches a sealed core-owned catalog only through its
+  worker-to-session hand-off after a separate compiler `Hello`, pages every
+  source/type/symbol/contract ID collection, follows every ID through its
+  exact query, and rejects cross-kind, replayed, and stale cursors without
+  source text. It cannot use the connection to re-open startup registration.
+  There is still
   no launcher-owned catalog distribution or authorization, no remote
   registration/update/source/filesystem/resolver/plugin/options authority, no
   `bluetsc_build`, no artifact/declaration/source-map/source response, and no

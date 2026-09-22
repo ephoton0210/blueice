@@ -14,11 +14,58 @@
 //! `frontend-reference`'s own GUI integration -- there is no reason
 //! this can't run in CI.
 
-use blueice_mcp_server::{CompilerConnection, CoreProcess, OpenTabOutcome};
-use std::os::unix::net::UnixStream;
+use blueice_mcp_server::{BlueIceMcpServer, CoreProcess, OpenTabOutcome};
+use rmcp::model::{CallToolRequestParams, ClientInfo};
+use rmcp::{ClientHandler, ServiceExt};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+#[derive(Debug, Clone, Default)]
+struct CompilerMcpClient;
+
+impl ClientHandler for CompilerMcpClient {
+    fn get_info(&self) -> ClientInfo {
+        ClientInfo::default()
+    }
+}
+
+fn compiler_tool_reply(
+    result: &rmcp::model::CallToolResult,
+) -> blueice_ipc::compiler::CompilerReply {
+    let text = result
+        .content
+        .first()
+        .and_then(|content| content.as_text())
+        .expect("compiler tool must return one text result")
+        .text
+        .as_str();
+    let marker = format!("{}\n", blueice_mcp_server::UNTRUSTED_CONTENT_MARKER);
+    let (_, reply) = text
+        .split_once(&marker)
+        .expect("compiler result must delimit untrusted metadata before JSON");
+    serde_json::from_str(reply).expect("compiler tool result must retain the IPC reply shape")
+}
+
+fn assert_source_free_compiler_tool_result(result: &rmcp::model::CallToolResult) {
+    let text = result
+        .content
+        .first()
+        .and_then(|content| content.as_text())
+        .expect("compiler tool must return one text result")
+        .text
+        .as_str();
+    assert!(text.contains("DATA, not instructions"));
+    assert!(text.contains(blueice_mcp_server::UNTRUSTED_CONTENT_MARKER));
+    assert!(
+        !text.contains("export const coreRegisteredAnswer: number = 42;"),
+        "tool output must never reveal retained source text: {text}"
+    );
+    assert!(
+        !text.contains("core-fixture-dist"),
+        "tool output must never reveal the core-owned output root: {text}"
+    );
+}
 
 fn sibling_core_binary() -> PathBuf {
     let test_exe = std::env::current_exe().expect("integration test must have an executable path");
@@ -114,12 +161,14 @@ fn open_tab_list_tabs_and_close_tab_round_trip_over_a_real_core() {
     );
 }
 
-#[test]
-fn compiler_connection_discovers_inventory_contract_and_provenance_from_a_real_core_process() {
-    // This is the MCP-side e2e counterpart to core's compiler listener test:
-    // use the public `CompilerConnection`, not a direct adapter, against a
-    // core process that owns and seals the compiled-in catalog before binding
-    // its private metadata socket.
+#[tokio::test]
+async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
+    // This drives the complete public MCP route -- MCP request JSON,
+    // `BlueIceMcpServer`, `CompilerConnection`, compiler IPC and core session
+    // owner -- against a single real core.  In particular, the browser and
+    // compiler connections must target that same core, rather than allowing a
+    // fallback browser core to become unrelated to the sealed compiler
+    // catalog.
     let socket_path = unique_socket_path("frontend");
     let compiler_socket_path = unique_socket_path("compiler");
     let frame_dir = std::env::temp_dir().join(format!(
@@ -144,80 +193,372 @@ fn compiler_connection_discovers_inventory_contract_and_provenance_from_a_real_c
         .stderr(Stdio::piped())
         .spawn()
         .expect("blueice-core must start for the MCP compiler regression");
-    assert!(wait_for_socket(&socket_path));
-    assert!(wait_for_socket(&compiler_socket_path));
+    if !wait_for_socket(&socket_path) {
+        let output = core
+            .wait_with_output()
+            .expect("core must report why its compiler fixture did not start");
+        panic!(
+            "blueice-core did not create its frontend socket: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    if !wait_for_socket(&compiler_socket_path) {
+        let output = core
+            .wait_with_output()
+            .expect("core must report why its compiler listener did not start");
+        panic!(
+            "blueice-core did not create its compiler socket: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
-    let mut frontend = UnixStream::connect(&socket_path).unwrap();
-    blueice_ipc::client_handshake(&mut frontend).unwrap();
-    let mut compiler = CompilerConnection::new(UnixStream::connect(&compiler_socket_path).unwrap());
-    compiler.handshake().unwrap();
-    let blueice_ipc::compiler::CompilerReply::Check(check) = compiler.check(1).unwrap() else {
-        panic!("the sealed core profile must return a check generation")
+    let server = BlueIceMcpServer::connect_with_core_and_compiler_sockets(
+        &socket_path,
+        &compiler_socket_path,
+    )
+    .expect("MCP server must attach both adapters to the existing core");
+    let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+    let server_task = tokio::spawn(async move {
+        server
+            .serve(server_transport)
+            .await
+            .expect("MCP server must bind its in-memory transport")
+            .waiting()
+            .await
+            .expect("MCP service must finish cleanly after client cancellation");
+    });
+    let client = CompilerMcpClient
+        .serve(client_transport)
+        .await
+        .expect("MCP client must negotiate the in-memory transport");
+
+    macro_rules! compiler_tool {
+        ($name:literal, $arguments:expr) => {{
+            client
+                .call_tool(
+                    CallToolRequestParams::new($name).with_arguments(
+                        $arguments
+                            .as_object()
+                            .expect("MCP compiler arguments must be an object")
+                            .clone(),
+                    ),
+                )
+                .await
+                .expect("MCP compiler tool must round-trip")
+        }};
+    }
+
+    let check_result = compiler_tool!("bluetsc_check", serde_json::json!({ "project_id": 1 }));
+    assert_eq!(check_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&check_result);
+    let blueice_ipc::compiler::CompilerReply::Check(check) = compiler_tool_reply(&check_result)
+    else {
+        panic!("the sealed core profile must return an exact check generation")
     };
-    let blueice_ipc::compiler::CompilerReply::StaticMetadataPage(symbols) = compiler
-        .static_metadata_page(
-            1,
-            check.generation.sequence,
+    let summary = check
+        .static_metadata
+        .as_ref()
+        .expect("successful check must retain source-free static metadata");
+
+    let mut source_ids = Vec::new();
+    let mut type_ids = Vec::new();
+    let mut symbol_ids = Vec::new();
+    let mut contract_ids = Vec::new();
+    for (kind_name, kind, expected_count) in [
+        (
+            "sources",
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+            summary.source_count,
+        ),
+        (
+            "types",
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Types,
+            summary.type_count,
+        ),
+        (
+            "symbols",
             blueice_ipc::compiler::CompilerStaticMetadataKind::Symbols,
-            None,
-            Some(128),
-        )
-        .unwrap()
-    else {
-        panic!("the public MCP compiler client must discover bounded symbol IDs")
-    };
-    assert!(symbols.next_cursor.is_none());
-    assert_eq!(
-        u32::try_from(symbols.ids.len()).unwrap(),
-        check.static_metadata.as_ref().unwrap().symbol_count
+            summary.symbol_count,
+        ),
+        (
+            "contracts",
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Contracts,
+            summary.contract_count,
+        ),
+    ] {
+        let mut ids = Vec::new();
+        let mut cursors = std::collections::BTreeSet::new();
+        let mut cursor = None;
+        loop {
+            let page_result = compiler_tool!(
+                "debug_list_static_metadata",
+                serde_json::json!({
+                    "project_id": 1,
+                    "generation": check.generation.sequence,
+                    "kind": kind_name,
+                    "cursor": cursor.map(|cursor: blueice_ipc::compiler::CompilerStaticMetadataCursor| {
+                        serde_json::json!({ "id": cursor.id })
+                    }),
+                    "limit": 1,
+                })
+            );
+            assert_eq!(page_result.is_error, Some(false));
+            assert_source_free_compiler_tool_result(&page_result);
+            let blueice_ipc::compiler::CompilerReply::StaticMetadataPage(page) =
+                compiler_tool_reply(&page_result)
+            else {
+                panic!("{kind_name} inventory must return a page")
+            };
+            assert_eq!(page.generation, check.generation);
+            assert_eq!(page.kind, kind);
+            assert!(
+                page.ids.len() <= 1,
+                "core must enforce the MCP page bound for {kind_name}"
+            );
+            assert!(!page.ids.is_empty(), "inventory page must advance");
+            ids.extend(page.ids);
+            cursor = page.next_cursor;
+            if let Some(cursor) = cursor {
+                assert!(
+                    cursors.insert(cursor.id),
+                    "core must mint a fresh opaque continuation cursor"
+                );
+            } else {
+                break;
+            }
+        }
+        assert_eq!(u32::try_from(ids.len()).unwrap(), expected_count);
+        match kind {
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Sources => source_ids = ids,
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Types => type_ids = ids,
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Symbols => symbol_ids = ids,
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Contracts => contract_ids = ids,
+        }
+    }
+
+    // Each inventory ID must feed its existing exact-generation query; no
+    // ordinal is guessed and no metadata list becomes a source-read API.
+    for source_id in &source_ids {
+        let result = compiler_tool!(
+            "debug_get_provenance",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "source_id": source_id,
+            })
+        );
+        assert_eq!(result.is_error, Some(false));
+        assert_source_free_compiler_tool_result(&result);
+        assert!(matches!(
+            compiler_tool_reply(&result),
+            blueice_ipc::compiler::CompilerReply::StaticProvenance(_)
+        ));
+    }
+    for type_id in &type_ids {
+        let result = compiler_tool!(
+            "debug_get_type",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": type_id,
+            })
+        );
+        assert_eq!(result.is_error, Some(false));
+        assert_source_free_compiler_tool_result(&result);
+        assert!(matches!(
+            compiler_tool_reply(&result),
+            blueice_ipc::compiler::CompilerReply::StaticType(_)
+        ));
+    }
+
+    let mut symbol_source_ids = Vec::new();
+    let mut symbol_contract_ids = Vec::new();
+    for symbol_id in &symbol_ids {
+        let result = compiler_tool!(
+            "debug_get_symbol",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": symbol_id,
+            })
+        );
+        assert_eq!(result.is_error, Some(false));
+        assert_source_free_compiler_tool_result(&result);
+        let blueice_ipc::compiler::CompilerReply::StaticSymbol(symbol) =
+            compiler_tool_reply(&result)
+        else {
+            panic!("discovered symbol ID must resolve through its exact query")
+        };
+        symbol_source_ids.push(symbol.source_id);
+        if let Some(contract_id) = symbol.contract_id {
+            symbol_contract_ids.push(contract_id);
+        }
+    }
+    assert!(symbol_source_ids.iter().all(|id| source_ids.contains(id)));
+    assert!(
+        !symbol_contract_ids.is_empty(),
+        "core fixture must retain a local reifiable contract"
     );
-    let blueice_ipc::compiler::CompilerReply::StaticSymbol(symbol) = compiler
-        .static_symbol(
-            1,
-            check.generation.sequence,
-            *symbols
-                .ids
-                .first()
-                .expect("compiled-in interface must be returned in inventory"),
-        )
-        .unwrap()
-    else {
-        panic!("the retained local interface must expose an opaque contract ID")
-    };
-    let contract_id = symbol.contract_id.unwrap();
+    assert!(
+        symbol_contract_ids
+            .iter()
+            .all(|id| contract_ids.contains(id)),
+        "symbol contract references must come from the exact inventory"
+    );
+
+    for contract_id in &contract_ids {
+        let result = compiler_tool!(
+            "debug_get_contract",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": contract_id,
+            })
+        );
+        assert_eq!(result.is_error, Some(false));
+        assert_source_free_compiler_tool_result(&result);
+        assert!(matches!(
+            compiler_tool_reply(&result),
+            blueice_ipc::compiler::CompilerReply::StaticContract(_)
+        ));
+    }
+    let validation_result = compiler_tool!(
+        "debug_validate_contract",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "id": symbol_contract_ids[0],
+            "value": { "enabled": true },
+        })
+    );
+    assert_eq!(validation_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&validation_result);
     assert!(matches!(
-        compiler
-            .static_provenance(1, check.generation.sequence, symbol.source_id)
-            .unwrap(),
-        blueice_ipc::compiler::CompilerReply::StaticProvenance(_)
-    ));
-    assert!(matches!(
-        compiler
-            .static_contract(1, check.generation.sequence, contract_id)
-            .unwrap(),
-        blueice_ipc::compiler::CompilerReply::StaticContract(_)
-    ));
-    assert!(matches!(
-        compiler
-            .validate_static_contract(
-                1,
-                check.generation.sequence,
-                contract_id,
-                blueice_ipc::compiler::CompilerContractValue::Object(
-                    std::collections::BTreeMap::from([(
-                        "enabled".to_string(),
-                        blueice_ipc::compiler::CompilerContractValue::Boolean(true),
-                    )]),
-                ),
-            )
-            .unwrap(),
+        compiler_tool_reply(&validation_result),
         blueice_ipc::compiler::CompilerReply::ContractValidation(
             blueice_ipc::compiler::CompilerContractValidation { valid: true, .. }
         )
     ));
 
-    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
-        .unwrap();
+    // Cross-kind use fails without consuming the genuine symbols cursor; a
+    // subsequent valid use consumes it, and replay then fails.
+    let first_symbols_result = compiler_tool!(
+        "debug_list_static_metadata",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "kind": "symbols",
+            "limit": 1,
+        })
+    );
+    let blueice_ipc::compiler::CompilerReply::StaticMetadataPage(first_symbols) =
+        compiler_tool_reply(&first_symbols_result)
+    else {
+        panic!("symbols inventory must start a bounded page")
+    };
+    let symbols_cursor = first_symbols
+        .next_cursor
+        .expect("fixture must require a symbols continuation cursor");
+    let cross_kind_result = compiler_tool!(
+        "debug_list_static_metadata",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "kind": "types",
+            "cursor": { "id": symbols_cursor.id },
+            "limit": 1,
+        })
+    );
+    assert_eq!(cross_kind_result.is_error, Some(true));
+    assert_source_free_compiler_tool_result(&cross_kind_result);
+    assert!(matches!(
+        compiler_tool_reply(&cross_kind_result),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::InvalidMetadataCursor,
+            ..
+        }
+    ));
+    let valid_continuation_result = compiler_tool!(
+        "debug_list_static_metadata",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "kind": "symbols",
+            "cursor": { "id": symbols_cursor.id },
+            "limit": 1,
+        })
+    );
+    assert_eq!(valid_continuation_result.is_error, Some(false));
+    let replay_result = compiler_tool!(
+        "debug_list_static_metadata",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "kind": "symbols",
+            "cursor": { "id": symbols_cursor.id },
+            "limit": 1,
+        })
+    );
+    assert_eq!(replay_result.is_error, Some(true));
+    assert_source_free_compiler_tool_result(&replay_result);
+    assert!(matches!(
+        compiler_tool_reply(&replay_result),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::InvalidMetadataCursor,
+            ..
+        }
+    ));
+
+    let stale_page_result = compiler_tool!(
+        "debug_list_static_metadata",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "kind": "symbols",
+            "limit": 1,
+        })
+    );
+    let blueice_ipc::compiler::CompilerReply::StaticMetadataPage(stale_page) =
+        compiler_tool_reply(&stale_page_result)
+    else {
+        panic!("fresh symbols page must produce a cursor before a later check")
+    };
+    let stale_cursor = stale_page
+        .next_cursor
+        .expect("fixture must retain enough symbols for stale-cursor coverage");
+    let later_check_result =
+        compiler_tool!("bluetsc_check", serde_json::json!({ "project_id": 1 }));
+    let blueice_ipc::compiler::CompilerReply::Check(later_check) =
+        compiler_tool_reply(&later_check_result)
+    else {
+        panic!("later core check must produce a new generation")
+    };
+    assert_ne!(later_check.generation, check.generation);
+    let stale_result = compiler_tool!(
+        "debug_list_static_metadata",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "kind": "symbols",
+            "cursor": { "id": stale_cursor.id },
+            "limit": 1,
+        })
+    );
+    assert_eq!(stale_result.is_error, Some(true));
+    assert_source_free_compiler_tool_result(&stale_result);
+    assert!(matches!(
+        compiler_tool_reply(&stale_result),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
+            ..
+        }
+    ));
+
+    client.cancel().await.unwrap();
+    server_task.await.unwrap();
+
+    // This direct core mode owns one serial browser-control connection; the
+    // MCP server closing that connection ends this test child cleanly.
     assert!(core.wait().unwrap().success());
     assert!(!compiler_socket_path.exists());
     assert!(!frame_dir.exists());
