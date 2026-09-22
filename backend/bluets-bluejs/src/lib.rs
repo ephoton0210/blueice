@@ -1141,6 +1141,12 @@ fn lower_function(
         body,
         generator: false,
         is_async: false,
+        // This function is synthesized from BlueTSC's own lowered AST, not
+        // parsed from BlueJS-tokenized source text, so it has no
+        // `[[SourceText]]`: `Function.prototype.toString` reports it as a
+        // NativeFunction, matching how the compiler treats every other
+        // synthesized function.
+        source_text: Default::default(),
     }))
 }
 
