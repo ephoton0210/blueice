@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Design started — added at the user's request. BlueIce currently has multi-tab IPC/MCP control and a Puppeteer-driven *Chromium differential-test harness*, but it has no DevTools endpoint, page debugger, Selenium/WebDriver server, Playwright-compatible client surface, Postman-like API/SOAP client, `fetch`, `XMLHttpRequest`, or script-originated request path.
+**Status**: In progress — design fully resolved; Slice 1 item 1 (the versioned `blueice_ipc::automation` protocol: capability negotiation, controller leases, error taxonomy, event sequencing) is implemented, see "Wiring design" below. BlueIce still has no `core`-owned automation service that speaks this protocol, no DevTools endpoint, page debugger, Selenium/WebDriver server, Playwright-compatible client surface, Postman-like API/SOAP client, `fetch`, `XMLHttpRequest`, or script-originated request path.
 
 ## Objective
 
@@ -143,6 +143,24 @@ The default external endpoint is a per-user Unix socket protected by filesystem 
 
 [Phase 12's network-and-data MCP contract](../phase-12-mcp-server/NETWORK_DATA_ENVIRONMENT.md) maps this one native request/PJAX/API-workspace service and Phase 19's XML/XSD/XHTML/JSON/YAML document services to target-bound AI tools, resources and events. It adds no alternate request client, parser, schema engine or authority: `network_*` observes/controls the native page path, `api_*` invokes only registered API-workspace operations, and `dev_*` validates immutable registered documents.
 
+## Wiring design (resolved 2026-09-22)
+
+Slice 1 item 1 (`Define AutomationCommand/AutomationReply/AutomationEvent, capabilities negotiation, error taxonomy, context/tab identities, event sequencing and controller leases in blueice_ipc`) is implemented: `backend/ipc/src/automation.rs`, a new internal wire protocol distinct from the external `ClientMessage`/`ServerMessage` protocol, the same way `blueice_ipc::extension` and `blueice_ipc::gatekeeper` are their own protocols rather than variants bolted onto the client-facing one — see that file's own module docs for why. This is a minimal first slice in the same deliberate sense Phases 7/8/9 used it: the structural concerns (protocol version, `Hello` handshake, capability negotiation, controller-lease exclusivity, a closed error taxonomy, per-context event sequencing) are real; each of the plan's seven command groups above has one or two representative commands, not the full surface its own section eventually describes.
+
+What exists:
+
+- `AUTOMATION_PROTOCOL_VERSION`, independent of the external client protocol's own `PROTOCOL_VERSION` and every other internal protocol's version in this crate.
+- `Capability` (`Lifecycle`/`Inspection`/`LocatorsAndWaiting`/`Input`/`ScriptRuntime`/`NetworkAndTracing`/`ApiWorkspace`) — a closed enum matching the plan's own seven semantic groups, not a free-form extension-defined string.
+- `AutomationRequest::Hello { client_name, requested_capabilities }` / `AutomationReply::HelloAck { protocol_version, granted_capabilities }` — the long-lived handshake this protocol needs (unlike `blueice_ipc::gatekeeper`'s deliberately handshake-less one-shot shape).
+- `BrowserContextId`, plus `CreateContext`/`CloseContext` — the identity `TabManager`'s eventual `BrowserContextId -> TabId -> Page` layer (Slice 1 item 2, not yet done) will own; a newtype over the same representation `tab_id` already uses on the wire.
+- One or two representative commands per group: `GetDom` (inspection, reusing `blueice_dom::dump`'s existing format), `ResolveLocator` (locators), `Click` (input, reusing `NodeAction::Click`'s semantics), `Evaluate` (script/runtime — a wire-shape placeholder; no real BlueJS execution wired up yet), `SubscribeNetworkEvents` (network/tracing), `ApiWorkspaceSend` (API workspace).
+- `ControllerLease` and `AcquireControllerLease`/`ReleaseControllerLease` — the exclusivity token every mutating command requires per the plan's own rule, shaped as a typed capability token crossing the wire (the same "a token proves the precondition, not a runtime convention" pattern `phase-7-local-ai/PLAN.md`'s `GatekeeperClearance` established for an in-process capability, applied here at the protocol-message level).
+- `AutomationError` (`CapabilityNotGranted`/`NoControllerLease`/`NoSuchTarget`/`StaleHandle`/`Unsupported`/`Internal`) — a closed taxonomy a client can branch on, matching `GatekeeperReply::Rejected`/`ExtensionReply::CapabilityDenied`'s "structured, never a bare string" precedent.
+- `AutomationEvent` (`Navigated`/`ConsoleMessage`/`NetworkRequestStarted`/`NetworkRequestFinished`), each carrying `context_id` and a monotonic per-context `sequence` a client can use to detect a gap.
+- `default_automation_socket_path()` — this protocol's own internal per-user socket, distinct from every other internal protocol's; declares the real POSIX `getuid()` directly via `extern "C"` from the start (rather than the Linux-only `/proc/self/status` parse `blueice_ipc::gatekeeper`, `blueice-launcher` and `blueice_ipc::extension` each had before `feature/css-wpt-conformance`'s fix — see that branch's own commit for the concrete cross-process failure this avoids), verified against a real independent process (`id -u`) the same way.
+
+Not yet done, left to later Slice 1 items and beyond: the actual `core`-owned automation service that enforces this protocol (capability granting, lease exclusivity, real command execution) — this slice defines the wire shape only, the same "protocol before the process that speaks it" order `blueice_ipc::extension` followed for Phase 9's own minimal slice; the `blueice-automation` adapter process; `TabManager`'s real `BrowserContextId` ownership layer (Slice 1 item 2); real BlueJS evaluation, DOM/AX/style/layout inspection beyond `GetDom`, locator waiting predicates, and every later slice's own surface (debugger, SOAP, WebDriver/BiDi, CDP, the Fetch/XHR request-service refactor, PJAX tracing).
+
 ## Delivery order and acceptance
 
 ### Slice 1 — foundations and safe inspection
@@ -194,7 +212,7 @@ The default external endpoint is a per-user Unix socket protected by filesystem 
 - [x] Decide that DevTools, Playwright-shaped workflows, Selenium/WebDriver and CDP compatibility share one native automation service
 - [x] Decide that Fetch/XHR share one `core`-owned request service and that BlueJS has no direct socket access
 - [x] Define the compatibility, security, event-ordering and staged-delivery contracts above
-- [ ] Define and implement the versioned `blueice_ipc::automation`, `blueice_ipc::network` and `blueice_ipc::debugger` modules and public error/capability schemas
+- [x] Define and implement the versioned `blueice_ipc::automation` module and public error/capability schema (`backend/ipc/src/automation.rs`) — see "Wiring design" above. `blueice_ipc::network` and `blueice_ipc::debugger` (Slice 4 and Slice 2's own channels) are not started
 - [ ] Refactor `TabManager` around browser contexts while retaining the current default-tab wire compatibility
 - [ ] Build the local, authenticated automation adapter and inspection/locator/input slice
 - [ ] Build the first-party DevTools Elements, Accessibility, Console, Network and Sources panels
