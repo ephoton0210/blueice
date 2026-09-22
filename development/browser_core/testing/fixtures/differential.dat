@@ -1,0 +1,15 @@
+BlueIce fixture corpus -- additions curated specifically for Phase 15's
+Chromium differential harness. They remain ordinary shared #data fixtures:
+the browser-independent oracle checks their live DOM/screenshot result, while
+other pipeline-stage tests can add their own sections later without a second
+corpus or format.
+
+#data
+<div id="target">before</div>
+<script>
+const target = document.querySelector('#target');
+target.textContent = 'script-ran';
+</script>
+
+#data
+<div>left<!-- discarded comment -->right</div>

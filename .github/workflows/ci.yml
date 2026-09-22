@@ -77,3 +77,54 @@ jobs:
             cat coverage-summary.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  chromium-differential:
+    name: Chromium differential
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: differential-testing/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+      # Install Chrome for Testing explicitly rather than relying on a package
+      # postinstall hook. This keeps the browser revision visible in CI and
+      # works with npm configurations that disallow lifecycle scripts.
+      - name: Install differential-test dependencies
+        working-directory: differential-testing
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm ci
+      - name: Install Chrome for Testing
+        run: npm exec --prefix differential-testing puppeteer browsers install chrome
+      - name: Build BlueIce subprocesses
+        run: cargo build --workspace --all-targets
+      - name: Check harness helpers
+        working-directory: differential-testing
+        run: npm test
+      # compare.js and trend.js intentionally have no similarity threshold:
+      # known MVP rendering gaps are evidence to review, not test failures.
+      - name: Capture and compare against Chromium
+        working-directory: differential-testing
+        run: npm run differential
+      - name: Publish differential trend
+        if: always()
+        run: |
+          {
+            echo '### Chromium differential trend'
+            if [ -f differential-testing/output/trend.md ]; then
+              cat differential-testing/output/trend.md
+            else
+              echo 'No trend report was produced; inspect the failed harness step above.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload differential artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-differential
+          path: differential-testing/output
+          if-no-files-found: ignore

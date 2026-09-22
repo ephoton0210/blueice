@@ -15,7 +15,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BlueIceClient } from "./blueice-client.js";
-import { FIXTURES_DIR, loadFixtures } from "./fixtures.js";
+import { BlueIceRuntime } from "./blueice-runtime.js";
+import { FIXTURES_DIR, htmlForFixture, loadFixtures } from "./fixtures.js";
 import { serveHtml } from "./serve-fixture.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -26,7 +27,7 @@ function sanitizeForFilesystem(name) {
 }
 
 async function captureFixture(client, fixture) {
-  const server = await serveHtml(fixture.sections.data);
+  const server = await serveHtml(htmlForFixture(fixture));
   try {
     const { error } = await client.navigate(server.url);
     if (error) {
@@ -54,22 +55,25 @@ async function main() {
     throw new Error(`no fixtures found in ${FIXTURES_DIR}`);
   }
 
+  const runtime = await BlueIceRuntime.ensureReady();
   const client = new BlueIceClient();
-  await client.connect();
-  mkdirSync(OUTPUT_DIR, { recursive: true });
-
-  let failures = 0;
+  let connected = false;
   try {
+    await client.connect();
+    connected = true;
+    mkdirSync(OUTPUT_DIR, { recursive: true });
+
+    let failures = 0;
     for (const fixture of fixtures) {
       const ok = await captureFixture(client, fixture);
       if (!ok) failures += 1;
     }
+    console.log(`done: ${fixtures.length - failures}/${fixtures.length} fixture(s) captured successfully`);
+    if (failures > 0) process.exitCode = 1;
   } finally {
-    await client.close();
+    if (connected) await client.close();
+    await runtime.close();
   }
-
-  console.log(`done: ${fixtures.length - failures}/${fixtures.length} fixture(s) captured successfully`);
-  if (failures > 0) process.exitCode = 1;
 }
 
 main().catch((err) => {

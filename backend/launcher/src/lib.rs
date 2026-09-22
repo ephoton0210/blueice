@@ -43,9 +43,9 @@ pub mod supervisor;
 pub use control::default_control_socket_path;
 
 use blueice_ipc::{
-    ClientMessage, ServerMessage, TabSummary, read_client_message_with_ids,
-    read_server_message_with_id, read_server_message_with_ids, write_client_message_with_id,
-    write_client_message_with_ids, write_server_message_with_ids,
+    read_client_message_with_ids, read_server_message_with_id, read_server_message_with_ids,
+    write_client_message_with_id, write_client_message_with_ids, write_server_message_with_ids,
+    ClientMessage, ServerMessage, TabSummary,
 };
 use std::io;
 use std::net::Shutdown;
@@ -74,30 +74,13 @@ pub fn default_rendezvous_socket_path() -> PathBuf {
 /// directory without duplicating the `XDG_RUNTIME_DIR`/`/tmp` fallback
 /// logic.
 pub(crate) fn rendezvous_socket_dir() -> PathBuf {
-    match std::env::var_os("XDG_RUNTIME_DIR") {
+    match std::env::var_os("XDG_RUNTIME_DIR").filter(|dir| !dir.is_empty()) {
         Some(dir) => PathBuf::from(dir).join("blueice"),
-        None => std::env::temp_dir().join(format!("blueice-{}", unsafe { libc_getuid() })),
+        None => std::env::temp_dir().join(format!(
+            "blueice-{}",
+            blueice_ipc::local_socket::current_uid()
+        )),
     }
-}
-
-// A tiny, deliberately minimal stand-in for `libc::getuid()` rather than
-// adding a whole `libc` dependency for one syscall: reads the real UID
-// via the `/proc/self/status` line every Linux (BlueIce's only
-// currently-supported target -- see `blueice-core`'s own `UnixListener`
-// dependency, already Unix-only) exposes, falling back to the process
-// ID if that ever fails so the path is still unique per-process rather
-// than panicking.
-unsafe fn libc_getuid() -> u32 {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|status| {
-            status
-                .lines()
-                .find_map(|line| line.strip_prefix("Uid:"))
-                .and_then(|rest| rest.split_whitespace().next())
-                .and_then(|s| s.parse().ok())
-        })
-        .unwrap_or_else(std::process::id)
 }
 
 /// One [`ServerMessage`] reply as relayed through the broker's
@@ -1253,6 +1236,10 @@ mod tests {
     fn default_rendezvous_socket_path_is_per_user_not_system_wide() {
         let path = default_rendezvous_socket_path();
         assert_eq!(path.file_name().unwrap(), "core.sock");
+        assert_eq!(
+            path,
+            blueice_ipc::local_socket::default_socket_dir().join("core.sock")
+        );
         // must not resolve to a single fixed system-wide path regardless
         // of environment -- it has to vary by runtime dir or uid.
         assert_ne!(path, PathBuf::from("/core.sock"));

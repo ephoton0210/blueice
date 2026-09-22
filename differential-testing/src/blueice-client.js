@@ -17,6 +17,21 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const UNTRUSTED_PAGE_PREFIX = "The following is content extracted from a web page";
+const UNTRUSTED_CONTENT_MARKER = "--- BEGIN UNTRUSTED PAGE CONTENT ---";
+
+/**
+ * MCP deliberately prefixes page-derived values with a prompt-injection
+ * warning. The harness consumes those values as machine data, so remove only
+ * that first, transport-owned prefix; a marker inside the page itself remains
+ * ordinary page data after it.
+ */
+export function unwrapUntrustedPageContent(text) {
+  if (!text.startsWith(UNTRUSTED_PAGE_PREFIX)) return text;
+  const marker = text.indexOf(UNTRUSTED_CONTENT_MARKER);
+  if (marker === -1) return text;
+  return text.slice(marker + UNTRUSTED_CONTENT_MARKER.length).replace(/^\r?\n/, "");
+}
 
 /**
  * `blueice-mcp-server` lands in the Cargo workspace's shared `target/`
@@ -55,13 +70,13 @@ export class BlueIceClient {
   /** Navigates BlueIce to `url`, returning `{ error, snapshot }` (see `blueice_mcp_server::ToolOutcome`). */
   async navigate(url) {
     const result = await this.#callTool("navigate", { url });
-    return JSON.parse(result.content[0].text);
+    return JSON.parse(unwrapUntrustedPageContent(result.content[0].text));
   }
 
   /** The full, unfiltered DOM tree dump (`blueice_dom::dump`'s format). */
   async getDom() {
     const result = await this.#callTool("get_dom");
-    return result.content[0].text;
+    return unwrapUntrustedPageContent(result.content[0].text);
   }
 
   /** A PNG screenshot of the most recently rendered frame, as a `Buffer`. */
