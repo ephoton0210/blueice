@@ -61,11 +61,9 @@ impl Vm {
             if index != 0 {
                 parameters.push(',');
             }
-            parameters.push_str(&self.coerce_string(argument)?.to_utf8().map_err(|_| {
-                RuntimeError::SyntaxError(
-                    "Function parameter contains an unpaired surrogate".into(),
-                )
-            })?);
+            parameters.push_str(&crate::source_encoding::encode(
+                &self.coerce_string(argument)?,
+            ));
         }
         let prefix = match kind {
             DynamicFunctionKind::Normal => "function anonymous(",
@@ -74,9 +72,7 @@ impl Vm {
             DynamicFunctionKind::AsyncGenerator => "async function* anonymous(",
         };
         let body = match args.last() {
-            Some(body) => self.coerce_string(body)?.to_utf8().map_err(|_| {
-                RuntimeError::SyntaxError("Function body contains an unpaired surrogate".into())
-            })?,
+            Some(body) => crate::source_encoding::encode(&self.coerce_string(body)?),
             None => String::new(),
         };
         // Dynamic parameter text is parsed as its own grammar production.
@@ -94,8 +90,8 @@ impl Vm {
         // boundary can still make the joined source parse (`Function("/*",
         // "*/) {")`), so each side is also checked against an empty other side.
         let parse_wrapper = |source: &str| -> Result<crate::ast::Program, RuntimeError> {
-            let program =
-                crate::parse(source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+            let program = crate::parser::parse_encoded(source)
+                .map_err(|error| RuntimeError::SyntaxError(error.message))?;
             // Anything but the one wrapper declaration means the text closed
             // the function early (`Function("} function f() {")`).
             match program.body.as_slice() {

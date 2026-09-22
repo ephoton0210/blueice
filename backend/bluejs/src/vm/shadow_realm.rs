@@ -204,11 +204,9 @@ impl Vm {
         // ordinarily `self`, or (through `Test262`'s own foreign-call
         // membrane) another realm's `Vm` when `evaluate` was reached via a
         // cross-realm facade, with no extra work required here.
-        let source_text = source_text.to_utf8().map_err(|_| {
-            RuntimeError::SyntaxError("script source contains an unpaired surrogate".into())
-        })?;
-        let program =
-            crate::parse(&source_text).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let source_text = crate::source_encoding::encode(&source_text);
+        let program = crate::parser::parse_encoded(&source_text)
+            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let code = crate::compile(&program)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         // `this_id` names a live record (checked above), so this record is

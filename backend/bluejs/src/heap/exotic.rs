@@ -133,9 +133,12 @@ impl Heap {
 
     /// The source text `Function.prototype.toString` returns for a function
     /// created from source, or `None` for any other object.
-    pub(crate) fn function_source_text(&self, object: ObjectId) -> Result<Option<&str>, HeapError> {
+    pub(crate) fn function_source_text(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<JsString>, HeapError> {
         Ok(match &self.object(object)?.kind {
-            ObjectKind::Closure { code, .. } => code.source_text.as_str(),
+            ObjectKind::Closure { code, .. } => code.source_text.to_js_string(),
             _ => None,
         })
     }
