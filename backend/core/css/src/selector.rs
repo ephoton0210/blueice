@@ -272,6 +272,41 @@ fn matches_from(doc: &Document, selector: &ComplexSelector, i: usize, node: Node
     }
 }
 
+/// Parses `selector_text` and returns every node in `doc` it matches,
+/// in document (pre-)order -- a `querySelectorAll`-shaped entry point
+/// over this module's own tokenizer/parser/matcher, for a caller (e.g.
+/// `blueice-engine`'s automation-service locator resolution,
+/// `phase-17-automation-devtools-and-ajax/PLAN.md`) that needs to
+/// resolve a selector against a live document without reaching into
+/// this crate's internal `tokenizer`/`selector` modules directly -- the
+/// same "one CSS implementation, not a second one bolted on by a
+/// caller" principle [`crate::cascade`] itself already follows. `Err`
+/// only for a selector this crate's parser can't make sense of at all
+/// (an empty/unparseable selector list); a selector that parses but
+/// matches nothing is `Ok(vec![])`, a different, unremarkable outcome.
+pub fn select(doc: &Document, selector_text: &str) -> Result<Vec<NodeId>, String> {
+    let tokens = crate::tokenizer::tokenize(selector_text);
+    let selectors = parse_selector_list(&tokens);
+    if selectors.is_empty() {
+        return Err(format!("could not parse selector: {selector_text:?}"));
+    }
+    let mut found = Vec::new();
+    select_into(doc, doc.root(), &selectors, &mut found);
+    Ok(found)
+}
+
+fn select_into(doc: &Document, node: NodeId, selectors: &[ComplexSelector], out: &mut Vec<NodeId>) {
+    if selectors
+        .iter()
+        .any(|selector| matches(doc, node, selector))
+    {
+        out.push(node);
+    }
+    for child in doc.children(node) {
+        select_into(doc, child, selectors, out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -554,5 +589,42 @@ mod tests {
         });
         doc.append_child(root, text);
         assert!(!matches(&doc, text, &one("*")));
+    }
+
+    #[test]
+    fn select_finds_the_one_matching_element_by_id() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let button = elem(&mut doc, "button", &[("id", "save")]);
+        doc.append_child(root, button);
+        assert_eq!(select(&doc, "#save").unwrap(), vec![button]);
+    }
+
+    #[test]
+    fn select_returns_every_match_in_document_pre_order() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let a = elem(&mut doc, "p", &[("class", "note")]);
+        let b = elem(&mut doc, "div", &[]);
+        let c = elem(&mut doc, "p", &[("class", "note")]);
+        doc.append_child(root, a);
+        doc.append_child(root, b);
+        doc.append_child(b, c);
+        assert_eq!(select(&doc, ".note").unwrap(), vec![a, c]);
+    }
+
+    #[test]
+    fn select_on_a_selector_matching_nothing_is_ok_with_an_empty_list() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let p = elem(&mut doc, "p", &[]);
+        doc.append_child(root, p);
+        assert_eq!(select(&doc, ".does-not-exist").unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn select_on_an_unparseable_selector_is_an_error() {
+        let doc = Document::new();
+        assert!(select(&doc, "").is_err());
     }
 }

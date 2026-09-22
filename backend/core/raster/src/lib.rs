@@ -135,6 +135,27 @@ impl Pixmap {
         }
     }
 
+    /// Encodes this pixmap as PNG bytes in memory -- the shared
+    /// implementation behind [`Pixmap::save_png`] and used directly by
+    /// callers with no reason to touch the filesystem at all, e.g.
+    /// `blueice_engine::automation_service`'s `Screenshot` command
+    /// (base64-encoded onto a JSON wire reply) and `blueice-mcp-server`'s
+    /// own `screenshot` tool, which previously round-tripped through a
+    /// temp file for the same in-memory bytes this returns directly.
+    pub fn encode_png(&self) -> std::io::Result<Vec<u8>> {
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut bytes, self.width, self.height);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().map_err(std::io::Error::other)?;
+            writer
+                .write_image_data(&self.pixels)
+                .map_err(std::io::Error::other)?;
+        }
+        Ok(bytes)
+    }
+
     /// Encodes this pixmap as a PNG file -- not needed by the reference
     /// frontend itself (it blits straight from `pixels`), but a
     /// deliberately-kept public capability: it's how this crate's own
@@ -142,14 +163,7 @@ impl Pixmap {
     /// (during development, or for a future automated screenshot
     /// comparison) rather than only by per-pixel assertions.
     pub fn save_png(&self, path: &std::path::Path) -> std::io::Result<()> {
-        let file = std::fs::File::create(path)?;
-        let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), self.width, self.height);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header().map_err(std::io::Error::other)?;
-        writer
-            .write_image_data(&self.pixels)
-            .map_err(std::io::Error::other)
+        std::fs::write(path, self.encode_png()?)
     }
 }
 
@@ -432,5 +446,43 @@ mod tests {
         assert_eq!(info.width, 3);
         assert_eq!(info.height, 3);
         assert_eq!(&buf[0..4], &[10, 20, 30, 255]);
+    }
+
+    #[test]
+    fn encode_png_produces_the_same_decodable_bytes_as_save_png() {
+        let pixmap = rasterize(&frame(
+            2.0,
+            2.0,
+            vec![PaintCommand::Rect {
+                rect: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
+                color: Color::Rgba(1, 2, 3, 255),
+            }],
+        ));
+
+        let in_memory = pixmap.encode_png().unwrap();
+        let decoder = png::Decoder::new(std::io::Cursor::new(&in_memory));
+        let mut reader = decoder.read_info().unwrap();
+        let mut buf = vec![0; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut buf).unwrap();
+        assert_eq!(info.width, 2);
+        assert_eq!(info.height, 2);
+        assert_eq!(&buf[0..4], &[1, 2, 3, 255]);
+
+        let path = std::env::temp_dir().join(format!(
+            "blueice-raster-test-encode-png-{}.png",
+            std::process::id()
+        ));
+        pixmap.save_png(&path).unwrap();
+        let from_file = std::fs::read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(
+            in_memory, from_file,
+            "save_png must produce exactly the bytes encode_png returns"
+        );
     }
 }

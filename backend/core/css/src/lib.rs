@@ -21,6 +21,11 @@
 //! - [`cascade`] -- combine one or more stylesheets (in [`Origin`]
 //!   order) with a `blueice_dom::Document` into a per-element
 //!   [`ComputedStyle`] map, ready for `blueice-layout` once it exists.
+//! - [`select`] -- a `querySelectorAll`-shaped entry point for a caller
+//!   that needs to resolve a selector against a live document directly
+//!   (e.g. `blueice-engine`'s automation-service locator resolution,
+//!   `phase-17-automation-devtools-and-ajax/PLAN.md`), rather than as
+//!   part of the cascade.
 
 mod cascade;
 mod parser;
@@ -30,7 +35,7 @@ mod value;
 
 pub use cascade::{cascade, ua_stylesheet, ComputedStyle, Origin};
 pub use parser::{Declaration, Rule};
-pub use selector::{ComplexSelector, Compound, SimpleSelector, Specificity};
+pub use selector::{select, ComplexSelector, Compound, SimpleSelector, Specificity};
 pub use value::{Color, Length, Value};
 
 /// A parsed CSS stylesheet: its rules, in source order. Not yet matched
