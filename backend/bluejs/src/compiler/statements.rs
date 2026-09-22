@@ -519,15 +519,25 @@ impl Compiler {
             self.emit(Opcode::StoreBinding, slot)?;
             self.emit(Opcode::Pop, 0)?;
         }
-        // Annex B.3.2/B.3.3 only supplies the legacy outer var for
-        // ordinary functions. Generator and async declarations stay
-        // exclusively lexical even in sloppy code.
-        if matches!(statement, Stmt::FunctionDecl(_)) && is_annex_b_function(function) {
-            if let Some(outer) = self.annex_b_outer_var_slot(slot) {
-                self.emit(Opcode::GetBinding, slot)?;
-                self.emit(Opcode::StoreBinding, outer)?;
-                self.emit(Opcode::Pop, 0)?;
-            }
+        Ok(())
+    }
+
+    /// Annex B.3.2/B.3.3: evaluating a block-level function declaration
+    /// copies the block's function value to the legacy outer var, at the
+    /// place the declaration stands (the block binding itself is initialized
+    /// when the block is entered). Only ordinary functions have the outer var;
+    /// generator and async declarations stay exclusively lexical.
+    fn annex_b_outer_var_assignment(&mut self, function: &Function) -> Result<(), CompileError> {
+        if !is_annex_b_function(function) {
+            return Ok(());
+        }
+        let Some(slot) = function.name.as_ref().and_then(|name| self.resolve(name)) else {
+            return Ok(());
+        };
+        if let Some(outer) = self.annex_b_outer_var_slot(slot) {
+            self.emit(Opcode::GetBinding, slot)?;
+            self.emit(Opcode::StoreBinding, outer)?;
+            self.emit(Opcode::Pop, 0)?;
         }
         Ok(())
     }
@@ -626,7 +636,8 @@ impl Compiler {
                 result?;
                 self.emit(Opcode::LeaveWith, 0)?;
             }
-            Stmt::FunctionDecl(_) | Stmt::ModuleDefaultFunction { .. } => {}
+            Stmt::FunctionDecl(function) => self.annex_b_outer_var_assignment(function)?,
+            Stmt::ModuleDefaultFunction { .. } => {}
             Stmt::ClassDecl(class) => {
                 // The declaration's own binding is initialized once the whole
                 // class has been evaluated; the class body sees the separate
