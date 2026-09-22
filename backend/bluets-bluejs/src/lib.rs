@@ -1195,6 +1195,10 @@ fn lower_function(
         body,
         generator: false,
         is_async: false,
+        // This AST is lowered from TypeScript rather than parsed as
+        // JavaScript source. It must not manufacture a JavaScript
+        // `[[SourceText]]` range for Function.prototype.toString.
+        source_text: bluejs::SourceText::default(),
     }))
 }
 

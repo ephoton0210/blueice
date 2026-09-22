@@ -194,6 +194,27 @@ fn lowers_typed_local_functions_and_direct_calls() {
 }
 
 #[test]
+fn direct_lowered_functions_do_not_forge_javascript_source_text() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function identity(value: number): number { return value; } identity(42);",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(bluejs::Program { body }) = artifact.program else {
+        panic!("a direct script must lower to a script program");
+    };
+    let bluejs::Stmt::FunctionDecl(function) = &body[0] else {
+        panic!("the first lowered statement must be the local function");
+    };
+
+    assert_eq!(function.source_text.as_str(), None);
+}
+
+#[test]
 fn lowers_boolean_comparison_logical_and_unary_expressions() {
     let artifact = compile_direct_script(
         ENTRY,
