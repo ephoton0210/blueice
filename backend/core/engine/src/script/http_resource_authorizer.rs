@@ -56,6 +56,22 @@ const MAX_RESOURCE_URL_BYTES: usize = 2048;
 const FETCH_TIMEOUT: Duration = Duration::from_secs(5);
 const AUTHORIZER_VERSION: &str = "core-page-http-resource-authorizer-v1";
 
+/// The only named HTTP page-script policy that the reference core can select
+/// during startup. The name carries no URL, manifest, resolver, path, or
+/// fetch input: it identifies the fixed profile below and is useful solely
+/// for the private launcher-to-core bootstrap seam.
+pub const CORE_HTTP_PAGE_SCRIPT_FIXTURE_PROFILE: &str = "core-page-http-fixture-v1";
+
+/// The sole external declaration admitted by
+/// [`CoreHttpPageScriptFixtureAuthorizer`]. This is a fixed absolute path
+/// below the live document's canonical origin, not a page-selected prefix or
+/// a resolver rule.
+pub const CORE_HTTP_PAGE_SCRIPT_FIXTURE_PATH: &str = "/.blueice/core-page-http-fixture-v1.js";
+
+const CORE_HTTP_PAGE_SCRIPT_FIXTURE_INTEGRITY: &str =
+    "sha256:8d37f21c5b7f6b5813a24dffcbd02a475c41ed8ed6fd1a1b276f325ac0b049aa";
+const MAX_CORE_HTTP_PAGE_SCRIPT_FIXTURE_ORIGINS: usize = 16;
+
 /// A canonical same-origin rule selected by the core owner at startup.
 ///
 /// [`Self::same_document_origin`] permits only the canonical origin of the
@@ -233,6 +249,125 @@ impl HttpScriptResourcePolicy {
 pub struct HttpOutOfProcessPageScriptSourceAuthorizer {
     policy: HttpScriptResourcePolicy,
     cache: RefCell<BTreeMap<ResourceCacheKey, CachedResource>>,
+}
+
+/// Fixed core startup profile which installs the HTTP authorizer on the real
+/// out-of-process page-execution route without accepting resource policy from
+/// a page, frontend, MCP peer, or launcher CLI.
+///
+/// The immutable policy admits exactly one classic JavaScript declaration at
+/// [`CORE_HTTP_PAGE_SCRIPT_FIXTURE_PATH`] and pins its SHA-256 value above.
+/// The document's canonical origin supplies only the live same-origin tuple:
+/// it does not select a path, manifest entry, resolver, or source. A private
+/// per-origin inner authorizer retains M8's verified-resource cache and
+/// constructs the final closed graph before core copies it to the child.
+///
+/// This deliberately small profile is an integration fixture, not a general
+/// deployment loader. Adding application policy requires a separately owned
+/// startup configuration channel with its own authorization design.
+pub struct CoreHttpPageScriptFixtureAuthorizer {
+    authorizers_by_document_origin:
+        RefCell<BTreeMap<String, HttpOutOfProcessPageScriptSourceAuthorizer>>,
+}
+
+impl CoreHttpPageScriptFixtureAuthorizer {
+    /// Constructs the one compiled-in, immutable profile. There are no
+    /// parameters because its declaration path, integrity expectation, limits,
+    /// and origin relationship are all fixed by this build.
+    pub fn new() -> Self {
+        Self {
+            authorizers_by_document_origin: RefCell::new(BTreeMap::new()),
+        }
+    }
+
+    fn authorizer_for_document_origin(
+        &self,
+        document_origin: &str,
+    ) -> Result<(), OutOfProcessPageScriptSourceAuthorizationError> {
+        if self
+            .authorizers_by_document_origin
+            .borrow()
+            .contains_key(document_origin)
+        {
+            return Ok(());
+        }
+        if self.authorizers_by_document_origin.borrow().len()
+            >= MAX_CORE_HTTP_PAGE_SCRIPT_FIXTURE_ORIGINS
+        {
+            return Err(OutOfProcessPageScriptSourceAuthorizationError::new(
+                "fixed core HTTP page-script profile reached its origin limit",
+            ));
+        }
+        let entry = format!("{document_origin}{CORE_HTTP_PAGE_SCRIPT_FIXTURE_PATH}");
+        let manifest = HttpScriptIntegrityManifest::new([(
+            entry,
+            CORE_HTTP_PAGE_SCRIPT_FIXTURE_INTEGRITY.to_string(),
+        )])
+        .map_err(|_| {
+            OutOfProcessPageScriptSourceAuthorizationError::new(
+                "fixed core HTTP page-script profile is invalid",
+            )
+        })?;
+        let origin_rule = HttpScriptResourceOriginRule::exact_origin(document_origin.to_string())
+            .map_err(|_| {
+            OutOfProcessPageScriptSourceAuthorizationError::new(
+                "fixed core HTTP page-script profile is invalid",
+            )
+        })?;
+        let policy = HttpScriptResourcePolicy::new(
+            origin_rule,
+            manifest,
+            HttpScriptResourceLimits {
+                max_modules_per_graph: 1,
+                max_module_depth: 1,
+                max_module_source_bytes: 16 * 1024,
+                max_graph_source_bytes: 16 * 1024,
+            },
+        )
+        .map_err(|_| {
+            OutOfProcessPageScriptSourceAuthorizationError::new(
+                "fixed core HTTP page-script profile is invalid",
+            )
+        })?;
+        self.authorizers_by_document_origin.borrow_mut().insert(
+            document_origin.to_string(),
+            HttpOutOfProcessPageScriptSourceAuthorizer::new(policy),
+        );
+        Ok(())
+    }
+}
+
+impl Default for CoreHttpPageScriptFixtureAuthorizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OutOfProcessPageScriptSourceAuthorizer for CoreHttpPageScriptFixtureAuthorizer {
+    fn authorize(
+        &self,
+        request: &OutOfProcessPageScriptSourceRequest,
+    ) -> Result<AuthorizedOutOfProcessPageScriptGraph, OutOfProcessPageScriptSourceAuthorizationError>
+    {
+        if request.language != CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Classic)
+            || request.declared_src != CORE_HTTP_PAGE_SCRIPT_FIXTURE_PATH
+        {
+            return Err(OutOfProcessPageScriptSourceAuthorizationError::new(
+                "fixed core HTTP page-script profile denied the declaration",
+            ));
+        }
+        let document_origin = canonical_http_origin(&request.document_url).map_err(|_| {
+            OutOfProcessPageScriptSourceAuthorizationError::new(
+                "fixed core HTTP page-script profile denied the document",
+            )
+        })?;
+        self.authorizer_for_document_origin(&document_origin)?;
+        self.authorizers_by_document_origin
+            .borrow()
+            .get(&document_origin)
+            .expect("installed fixture authorizer must remain present")
+            .authorize(request)
+    }
 }
 
 impl HttpOutOfProcessPageScriptSourceAuthorizer {
@@ -1049,5 +1184,30 @@ mod tests {
             zero_depth,
         )
         .is_err());
+    }
+
+    #[test]
+    fn fixed_core_profile_rejects_every_declaration_except_its_compiled_classic_path() {
+        let authorizer = CoreHttpPageScriptFixtureAuthorizer::new();
+        let request = |language, declared_src: &str| OutOfProcessPageScriptSourceRequest {
+            tab_id: crate::TabId::from_u64(1),
+            document_generation: 1,
+            ordinal: 0,
+            language,
+            document_url: "http://127.0.0.1:45678/app/index.html".to_string(),
+            declared_src: declared_src.to_string(),
+        };
+        assert!(authorizer
+            .authorize(&request(
+                CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Classic),
+                "/not-the-fixed-profile.js",
+            ))
+            .is_err());
+        assert!(authorizer
+            .authorize(&request(
+                CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Module),
+                CORE_HTTP_PAGE_SCRIPT_FIXTURE_PATH,
+            ))
+            .is_err());
     }
 }

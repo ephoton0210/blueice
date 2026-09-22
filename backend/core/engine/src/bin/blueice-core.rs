@@ -89,6 +89,10 @@ struct Args {
     /// Per-spawn capability supplied by the trusted launcher/supervisor. This
     /// is never reflected to frontend/page code or printed by this binary.
     out_of_process_bluejs_token: Option<String>,
+    /// A private launcher-to-core selector for one compiled-in external page
+    /// script profile. It accepts only a fixed profile identifier; it never
+    /// accepts a URL, manifest, resolver, path, source, or fetch setting.
+    out_of_process_bluejs_page_script_profile: Option<String>,
 }
 
 /// Takes an injectable argument iterator (rather than reading
@@ -113,6 +117,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut inline_bluejs = false;
     let mut out_of_process_bluejs_socket = None;
     let mut out_of_process_bluejs_token = None;
+    let mut out_of_process_bluejs_page_script_profile = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -141,6 +146,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 out_of_process_bluejs_socket = Some(PathBuf::from(value()?))
             }
             "--out-of-process-bluejs-token" => out_of_process_bluejs_token = Some(value()?),
+            "--out-of-process-bluejs-page-script-profile" => {
+                out_of_process_bluejs_page_script_profile = Some(value()?)
+            }
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
@@ -160,6 +168,21 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         .is_some_and(str::is_empty)
     {
         return Err("--out-of-process-bluejs-token must not be empty".to_string());
+    }
+    if out_of_process_bluejs_page_script_profile.is_some() && out_of_process_bluejs_socket.is_none()
+    {
+        return Err(
+            "--out-of-process-bluejs-page-script-profile requires the private out-of-process BlueJS host"
+                .to_string(),
+        );
+    }
+    if let Some(profile) = out_of_process_bluejs_page_script_profile.as_deref() {
+        if profile != script::http_resource_authorizer::CORE_HTTP_PAGE_SCRIPT_FIXTURE_PROFILE {
+            return Err(
+                "--out-of-process-bluejs-page-script-profile must name the fixed core HTTP page-script profile"
+                    .to_string(),
+            );
+        }
     }
     if out_of_process_bluejs_socket.is_some() && (inline_bluets_profile.is_some() || inline_bluejs)
     {
@@ -188,6 +211,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         inline_bluejs,
         out_of_process_bluejs_socket,
         out_of_process_bluejs_token,
+        out_of_process_bluejs_page_script_profile,
     })
 }
 
@@ -461,6 +485,8 @@ fn main() -> ExitCode {
     let inline_bluejs = args.inline_bluejs;
     let out_of_process_bluejs_socket = args.out_of_process_bluejs_socket.clone();
     let out_of_process_bluejs_token = args.out_of_process_bluejs_token.clone();
+    let out_of_process_bluejs_page_script_profile =
+        args.out_of_process_bluejs_page_script_profile.clone();
 
     // The optional compiler catalog is populated before *any* listener is
     // bound. After `seal`, only its session owner can dispatch opaque query
@@ -614,16 +640,27 @@ fn main() -> ExitCode {
             out_of_process_bluejs_socket.as_deref(),
             out_of_process_bluejs_token.as_deref(),
         ) {
-            let mut javascript_executor =
-                script::javascript_child::OutOfProcessJavaScriptPageExecutor::connect(
+            let mut javascript_executor = match out_of_process_bluejs_page_script_profile.as_deref()
+            {
+                None => script::javascript_child::OutOfProcessJavaScriptPageExecutor::connect(
                     socket, token,
-                )
-                .map_err(|error| {
-                    io::Error::new(
-                        io::ErrorKind::PermissionDenied,
-                        format!("failed to connect to explicit BlueJS child host: {error}"),
+                ),
+                Some(script::http_resource_authorizer::CORE_HTTP_PAGE_SCRIPT_FIXTURE_PROFILE) => {
+                    script::javascript_child::OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+                        socket,
+                        token,
+                        script::http_resource_authorizer::CoreHttpPageScriptFixtureAuthorizer::new(),
                     )
-                })?;
+                }
+                // `parse_args` rejects every other value before this point.
+                Some(_) => unreachable!("page script profile was validated during argument parsing"),
+            }
+            .map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    format!("failed to connect to explicit BlueJS child host: {error}"),
+                )
+            })?;
             session::run_session_with_script_and_debugger_requests_and_out_of_process_javascript_executor(
                 &mut tabs,
                 &mut stream,
@@ -749,6 +786,7 @@ mod tests {
         assert!(!parsed.inline_bluejs);
         assert_eq!(parsed.out_of_process_bluejs_socket, None);
         assert_eq!(parsed.out_of_process_bluejs_token, None);
+        assert_eq!(parsed.out_of_process_bluejs_page_script_profile, None);
     }
 
     #[test]
@@ -792,6 +830,7 @@ mod tests {
                 inline_bluejs: false,
                 out_of_process_bluejs_socket: None,
                 out_of_process_bluejs_token: None,
+                out_of_process_bluejs_page_script_profile: None,
             }
         );
     }
@@ -857,6 +896,55 @@ mod tests {
                 "--out-of-process-bluejs-socket and --out-of-process-bluejs-token must be provided together"
                     .to_string()
             )
+        );
+    }
+
+    #[test]
+    fn out_of_process_http_profile_is_fixed_and_requires_the_private_host() {
+        let profile = script::http_resource_authorizer::CORE_HTTP_PAGE_SCRIPT_FIXTURE_PROFILE;
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--out-of-process-bluejs-page-script-profile",
+                profile,
+            ]),
+            Err(
+                "--out-of-process-bluejs-page-script-profile requires the private out-of-process BlueJS host"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--out-of-process-bluejs-socket",
+                "/tmp/bluejs-host.sock",
+                "--out-of-process-bluejs-token",
+                "launcher-issued-capability",
+                "--out-of-process-bluejs-page-script-profile",
+                "https://page.example.test/not-a-profile.js",
+            ]),
+            Err(
+                "--out-of-process-bluejs-page-script-profile must name the fixed core HTTP page-script profile"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--out-of-process-bluejs-socket",
+                "/tmp/bluejs-host.sock",
+                "--out-of-process-bluejs-token",
+                "launcher-issued-capability",
+                "--out-of-process-bluejs-page-script-profile",
+                profile,
+            ])
+            .unwrap()
+            .out_of_process_bluejs_page_script_profile
+            .as_deref(),
+            Some(profile)
         );
     }
 

@@ -25,6 +25,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -1859,6 +1860,142 @@ fn real_subprocess_routes_an_explicit_page_lifecycle_to_the_private_bluejs_host(
 
     blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
     assert!(core.wait().unwrap().success());
+    shutdown_private_bluejs_host(&host_socket, &host_token);
+    host.join().unwrap();
+    let _ = std::fs::remove_file(&host_socket);
+    assert!(!socket_path.exists());
+    assert!(!frame_dir.exists());
+}
+
+#[test]
+fn real_subprocess_installs_the_fixed_core_http_profile_in_the_private_page_host() {
+    // This covers the actual production ownership chain: a trusted startup
+    // selector reaches core, core constructs its fixed manifest authorizer,
+    // and only the resulting closed graph crosses the private page-host
+    // protocol. The dynamically chosen loopback port is page data, not a
+    // profile input: the compiled policy permits just its fixed path and
+    // integrity at the live document's same canonical origin.
+    const FIXTURE_PATH: &str = "/.blueice/core-page-http-fixture-v1.js";
+    const FIXTURE_SOURCE: &str = "globalThis.corePageHttpFixture = 42;";
+    let socket_path = unique_socket_path("ohp");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-oop-http-profile-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("ohp-gk");
+    let (host_socket, host_token, host) = spawn_private_bluejs_host("oop-http-profile");
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let requested_paths = Arc::new(Mutex::new(Vec::new()));
+    let observed_paths = Arc::clone(&requested_paths);
+    let server = thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let bytes = stream.read(&mut request).unwrap();
+            let path = std::str::from_utf8(&request[..bytes])
+                .unwrap()
+                .lines()
+                .next()
+                .and_then(|line| line.split_whitespace().nth(1))
+                .unwrap()
+                .to_string();
+            observed_paths.lock().unwrap().push(path.clone());
+            let (content_type, body) = match path.as_str() {
+                "/app/index.html" => (
+                    "text/html",
+                    concat!(
+                        "<main>core HTTP profile</main>",
+                        "<script src=\"/.blueice/core-page-http-fixture-v1.js\"></script>",
+                        "<script>if (globalThis.corePageHttpFixture !== 42) throw new Error('fixture');</script>"
+                    ),
+                ),
+                FIXTURE_PATH => ("application/javascript", FIXTURE_SOURCE),
+                _ => ("text/plain", "missing fixture resource"),
+            };
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+    });
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+            "--out-of-process-bluejs-socket",
+            host_socket.to_str().unwrap(),
+            "--out-of-process-bluejs-token",
+            &host_token,
+            "--out-of-process-bluejs-page-script-profile",
+            "core-page-http-fixture-v1",
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("must spawn core with the fixed HTTP page-script profile");
+
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut stream).unwrap();
+    let url = format!("http://{addr}/app/index.html");
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url }
+    );
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
+    ));
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueJsScriptReports,
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::BlueJsScriptReports(vec![
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 0,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 1,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+        ])
+    );
+    assert_eq!(
+        requested_paths.lock().unwrap().as_slice(),
+        ["/app/index.html", FIXTURE_PATH]
+    );
+
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(core.wait().unwrap().success());
+    server.join().unwrap();
     shutdown_private_bluejs_host(&host_socket, &host_token);
     host.join().unwrap();
     let _ = std::fs::remove_file(&host_socket);

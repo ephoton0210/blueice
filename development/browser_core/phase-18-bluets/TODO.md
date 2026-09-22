@@ -70,7 +70,16 @@ integrity, disallows redirects, and parses only manifest-covered static edges.
 Its verified private cache uses deterministic URL/integrity/language keys and
 the finished graph fingerprint covers the whole policy. The page, child,
 frontend, and MCP receive neither that authority nor its cache/manifest—only
-a completed graph. The remaining boundary has no general DOM or event surface
+a completed graph. The real core-to-child route can now also select one fixed
+compiled `core-page-http-fixture-v1` profile at trusted startup: it permits
+only one classic JavaScript path with one baked SHA-256 value below the live
+document's canonical origin. The public launcher CLI has no switch for that
+profile, and the private startup selector carries only its fixed name—not a
+URL, manifest, resolver, source, path, or fetch setting. A real core
+subprocess/HTTP/child-host regression proves that core builds the closed graph
+before its private handoff. This is an integration fixture, not general
+application-resource distribution. The remaining boundary has no general DOM
+or event surface
 beyond the copied strings, arbitrary debugger interruption/pause/runtime
 control, or MCP project-registration path.
 
@@ -406,7 +415,7 @@ or second module resolver to bypass them.
   `ArmEntryBreakpoint` subprocess route remains the v4 compatibility
   acceptance.
 
-  The launcher-supervised child has a distinct, narrower v5 private page-host
+  The launcher-supervised child has a distinct v6 private page-host
   proxy for the public `ProgramLocations` and `BreakpointConfiguration`
   families. Core first
   resolves the public browser-context/tab/document generation, then requires
@@ -418,12 +427,18 @@ or second module resolver to bypass them.
   program/safe-point tuple; `ListBreakpoints` is capped and core independently
   revalidates every returned tuple before it re-mints the public reply. Any
   reply with another tab, document generation, program, or safe point is
-  rejected. The child route reports only `BreakpointConfiguration` available;
-  `Breakpoints`, `PauseResume`, stepping, stacks, scopes, exception policy,
-  and values remain planned, and it accepts none of their requests. Real Unix-
-  socket child/core tests cover location discovery, exact validation, cross-tab
-  rejection, malformed response rejection, configuration lifecycle, and
-  navigation-stale rejection without source, bytecode, or runtime-value leaks.
+  rejected. A separately core-selected (default-off) v6 document lifecycle
+  may defer document-order declarations for one turn, then arm only a pending
+  classic program at an exact root-code-unit safe point. The child returns
+  only `Pending`/`Paused`/`Resuming`/`Completed`; core validates the paused
+  private tuple again before publishing its reminted public tuple, and only a
+  later core-owned advance turn can resume the same root frame. It does not
+  proxy `ArmEntryBreakpoint`, generic interruption, modules, child code
+  units, re-arms/loop hits, stepping, stacks, scopes, exception policy, or
+  values. Real Unix-socket child/core tests cover location discovery, exact
+  validation, configuration lifecycle, non-entry root pause/resume, cross-tab
+  rejection, malformed response rejection, and navigation-stale rejection
+  without source, bytecode, or runtime-value leaks.
 
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm

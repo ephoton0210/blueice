@@ -81,6 +81,12 @@ mod unix {
     pub struct CoreLaunchOptions {
         gatekeeper_socket: Option<PathBuf>,
         supervise_out_of_process_bluejs: bool,
+        /// Requests the one fixed, compiled-in HTTP page-script profile from
+        /// the core while retaining the normal launcher-owned child setup.
+        /// This is deliberately a boolean fixture selector rather than a
+        /// resource-policy carrier: callers cannot supply URLs, manifests,
+        /// resolvers, paths, sources, or fetch settings.
+        core_http_page_script_fixture: bool,
         /// A caller-selected Unix endpoint for the one fixed, core-owned
         /// compiler project profile.  The profile is deliberately not an API
         /// field: neither a launcher caller nor its CLI can choose a source,
@@ -103,6 +109,20 @@ mod unix {
         /// value through this API.
         pub fn supervise_out_of_process_bluejs(mut self) -> Self {
             self.supervise_out_of_process_bluejs = true;
+            self
+        }
+
+        /// Starts the launcher-supervised page host with core's sole fixed
+        /// HTTP page-script integration fixture.
+        ///
+        /// The public `blueice-launcher` CLI deliberately has no equivalent
+        /// switch. This trusted embedding API selects only a compiled profile
+        /// identity; its resource path, integrity manifest, origin relation,
+        /// resolver policy, byte limits, and fetch behavior remain inside the
+        /// core binary and cannot be caller supplied.
+        pub fn supervise_out_of_process_bluejs_with_core_http_fixture(mut self) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self.core_http_page_script_fixture = true;
             self
         }
 
@@ -1375,6 +1395,11 @@ mod unix {
                     .arg(config.socket_path())
                     .arg("--out-of-process-bluejs-token")
                     .arg(config.session_token());
+            }
+            if options.core_http_page_script_fixture {
+                command
+                    .arg("--out-of-process-bluejs-page-script-profile")
+                    .arg("core-page-http-fixture-v1");
             }
             if let Some(compiler_socket) = &compiler_private_socket_path {
                 command

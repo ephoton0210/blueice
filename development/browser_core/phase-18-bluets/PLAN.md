@@ -251,7 +251,17 @@ The initial implementation completes the work that has no BlueJS dependency befo
   bytes under deterministic URL/integrity/language keys, and derives a
   policy-complete resolver fingerprint. Core copies only the finished graph
   into the child protocol, while the child still has no fetch, URL-resolution,
-  import-map, filesystem, cache, manifest, or fallback authority. The v5
+  import-map, filesystem, cache, manifest, or fallback authority. The real
+  core lifecycle can select exactly one compiled
+  `core-page-http-fixture-v1` profile through a private launcher-to-core
+  startup selector: it fixes one same-origin classic JavaScript path and its
+  SHA-256 expectation, then constructs the regular HTTP authorizer inside
+  core before any page executes. Neither the public launcher CLI nor that
+  selector accepts URLs, manifests, resolvers, source, paths, or fetch
+  settings; the per-document origin only instantiates the fixed same-origin
+  policy. A subprocess regression crosses core, a real HTTP origin, and the
+  supervised child to prove the finished graph handoff. This is a bounded
+  integration fixture, not a general application-resource profile. The v5
   channel additionally carries source-free debugger-location operations (list
   retained programs, list a fixed bounded set of compiler-recorded safe
   points, and validate one exact tuple) and a 256-record exact-breakpoint
