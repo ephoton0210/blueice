@@ -242,23 +242,66 @@ fn parse_own_date_string(source: &str) -> Option<f64> {
     (parts.year == year && parts.month == month && parts.day == day).then_some(value)
 }
 
+/// The year of an ISO date string, and what follows it: four digits, or a
+/// sign and six digits (`-000000` is not a year).
+fn parse_date_year(source: &str) -> Option<(i128, &str)> {
+    if let Some(rest) = source.strip_prefix('+') {
+        parse_date_number(rest, 6)
+    } else if let Some(rest) = source.strip_prefix('-') {
+        let (year, rest) = parse_date_number(rest, 6)?;
+        (year != 0).then_some((-year, rest))
+    } else {
+        parse_date_number(source, 4)
+    }
+}
+
+/// The milliseconds of a fraction of a second and what follows it: one or
+/// more digits, of which only the first three count.
+fn parse_date_fraction(source: &str) -> Option<(i128, &str)> {
+    let width = source.bytes().take_while(u8::is_ascii_digit).count();
+    if width == 0 {
+        return None;
+    }
+    let digits = &source[..width.min(3)];
+    let milliseconds = digits.parse::<i128>().ok()? * 10_i128.pow(3 - digits.len() as u32);
+    Some((milliseconds, &source[width..]))
+}
+
+/// The time value of the fields of a Date Time String, or `None` when a field
+/// is out of range or the day does not exist in that month.
+fn date_time_from_fields(
+    (year, month, day): (i128, i128, i128),
+    (hour, minute, second, millisecond): (i128, i128, i128, i128),
+    offset_minutes: i128,
+) -> Option<f64> {
+    if !(1..=12).contains(&month)
+        || !(0..=24).contains(&hour)
+        || minute > 59
+        || second > 59
+        || (hour == 24 && (minute != 0 || second != 0 || millisecond != 0))
+    {
+        return None;
+    }
+    // The day is checked on its own: "24:00" is the end of that day, which
+    // is a time on the next one.
+    let day_start = days_from_civil(year, month, day) as f64 * MILLISECONDS_PER_DAY;
+    let parts = date_parts(day_start)?;
+    if parts.year != year || parts.month != month || parts.day != day {
+        return None;
+    }
+    let local_time = day_start
+        + hour as f64 * 3_600_000.0
+        + minute as f64 * 60_000.0
+        + second as f64 * 1_000.0
+        + millisecond as f64;
+    Some(time_clip(local_time - offset_minutes as f64 * 60_000.0))
+}
+
 fn parse_iso_date(source: &str) -> Option<f64> {
     // ISO 8601's canonical Date Time String Format is the interoperable Date
     // parse subset. Date-only input is UTC; a time without an offset uses the
     // host local zone, which BlueJS currently defines as UTC.
-    let (year, rest, negative_extended_year) = if let Some(rest) = source.strip_prefix('+') {
-        let (year, rest) = parse_date_number(rest, 6)?;
-        (year, rest, false)
-    } else if let Some(rest) = source.strip_prefix('-') {
-        let (year, rest) = parse_date_number(rest, 6)?;
-        (-year, rest, year == 0)
-    } else {
-        let (year, rest) = parse_date_number(source, 4)?;
-        (year, rest, false)
-    };
-    if negative_extended_year {
-        return None;
-    }
+    let (year, rest) = parse_date_year(source)?;
     if rest.is_empty() && !source.starts_with(['+', '-']) {
         return Some(date_from_parts(year, 0, 1, 0, 0, 0, 0));
     }
@@ -283,20 +326,7 @@ fn parse_iso_date(source: &str) -> Option<f64> {
             second = parsed_second;
             rest = after_second;
             if let Some(after_fraction) = rest.strip_prefix('.') {
-                let width = after_fraction
-                    .bytes()
-                    .take_while(u8::is_ascii_digit)
-                    .count();
-                if width == 0 {
-                    return None;
-                }
-                let fraction = &after_fraction[..width];
-                let mut milliseconds = fraction[..fraction.len().min(3)].parse::<i128>().ok()?;
-                for _ in fraction.len().min(3)..3 {
-                    milliseconds *= 10;
-                }
-                millisecond = milliseconds;
-                rest = &after_fraction[width..];
+                (millisecond, rest) = parse_date_fraction(after_fraction)?;
             }
         }
         if rest == "Z" {
@@ -318,24 +348,72 @@ fn parse_iso_date(source: &str) -> Option<f64> {
             return None;
         }
     }
-    if !(1..=12).contains(&month)
-        || !(0..=24).contains(&hour)
-        || minute > 59
-        || second > 59
-        || (hour == 24 && (minute != 0 || second != 0 || millisecond != 0))
-    {
+    date_time_from_fields(
+        (year, month, day),
+        (hour, minute, second, millisecond),
+        offset_minutes,
+    )
+}
+
+/// One or two ASCII digits and what follows them.
+fn parse_short_date_number(source: &str) -> Option<(i128, &str)> {
+    let width = source.bytes().take_while(u8::is_ascii_digit).count().min(2);
+    if width == 0 {
         return None;
     }
-    let local_time = days_from_civil(year, month, day) as f64 * MILLISECONDS_PER_DAY
-        + hour as f64 * 3_600_000.0
-        + minute as f64 * 60_000.0
-        + second as f64 * 1_000.0
-        + millisecond as f64;
-    let parts = date_parts(local_time)?;
-    if parts.year != year || parts.month != month || parts.day != day {
-        return None;
+    Some((source[..width].parse().ok()?, &source[width..]))
+}
+
+// Date.parse may accept more than the ISO format. Like SpiderMonkey and V8,
+// also read the ISO format with a space in place of the `T` and with one or
+// two digits in the month, the day and each time field ("1997-3-8 1:1:1"),
+// and with an offset written `+hh`, `+hhmm` or `+hh:mm`. A `T` keeps the
+// strict format (which parse_iso_date reads), and a time is required.
+fn parse_spaced_date(source: &str) -> Option<f64> {
+    let (year, rest) = parse_date_year(source)?;
+    let (month, rest) = parse_short_date_number(rest.strip_prefix('-')?)?;
+    let (day, rest) = parse_short_date_number(rest.strip_prefix('-')?)?;
+    let (hour, rest) = parse_short_date_number(rest.strip_prefix(' ')?)?;
+    let (minute, mut rest) = parse_short_date_number(rest.strip_prefix(':')?)?;
+    let (mut second, mut millisecond) = (0, 0);
+    if let Some(after_colon) = rest.strip_prefix(':') {
+        (second, rest) = parse_short_date_number(after_colon)?;
+        if let Some(after_fraction) = rest.strip_prefix('.') {
+            (millisecond, rest) = parse_date_fraction(after_fraction)?;
+        }
     }
-    Some(time_clip(local_time - offset_minutes as f64 * 60_000.0))
+    let offset_minutes = if rest.is_empty() || rest == "Z" {
+        0
+    } else {
+        let sign = match rest.chars().next()? {
+            '+' => 1,
+            '-' => -1,
+            _ => return None,
+        };
+        let (offset_hour, rest) = parse_date_number(&rest[1..], 2)?;
+        let (offset_minute, rest) = if rest.is_empty() {
+            (0, rest)
+        } else {
+            parse_date_number(rest.strip_prefix(':').unwrap_or(rest), 2)?
+        };
+        if !rest.is_empty() || offset_hour > 23 || offset_minute > 59 {
+            return None;
+        }
+        sign * (offset_hour * 60 + offset_minute)
+    };
+    date_time_from_fields(
+        (year, month, day),
+        (hour, minute, second, millisecond),
+        offset_minutes,
+    )
+}
+
+/// The time value of a Date string: the ISO format, the two formats
+/// `toString` and `toUTCString` print, or the spaced variant above.
+fn parse_date_string(source: &str) -> Option<f64> {
+    parse_iso_date(source)
+        .or_else(|| parse_own_date_string(source))
+        .or_else(|| parse_spaced_date(source))
 }
 
 fn date_from_parts(
@@ -403,7 +481,7 @@ impl Vm {
                                 string
                                     .to_utf8()
                                     .ok()
-                                    .and_then(|string| parse_iso_date(&string))
+                                    .and_then(|string| parse_date_string(&string))
                                     .unwrap_or(f64::NAN)
                             } else {
                                 time_clip(self.coerce_number(&primitive)?)
@@ -413,7 +491,7 @@ impl Vm {
                         string
                             .to_utf8()
                             .ok()
-                            .and_then(|string| parse_iso_date(&string))
+                            .and_then(|string| parse_date_string(&string))
                             .unwrap_or(f64::NAN)
                     } else {
                         time_clip(self.coerce_number(value)?)
@@ -445,7 +523,7 @@ impl Vm {
             value
                 .to_utf8()
                 .ok()
-                .and_then(|value| parse_iso_date(&value).or_else(|| parse_own_date_string(&value)))
+                .and_then(|value| parse_date_string(&value))
                 .unwrap_or(f64::NAN),
         ))
     }

@@ -215,7 +215,6 @@ impl Vm {
                 "Generator next requires a generator".into(),
             ));
         };
-        self.async_delegated_yield = false;
         let state = self.heap.take_generator_state(*generator)?;
         let (
             code,
@@ -559,7 +558,6 @@ impl Vm {
                             })
                     });
                 yielded_delegate_result = delegate.is_some();
-                self.async_delegated_yield = async_delegate.is_some();
                 let state = GeneratorState::Suspended {
                     code,
                     pc,
@@ -954,6 +952,10 @@ impl Vm {
         let name = match kind {
             AsyncGeneratorDelegateKind::Return => "return",
             AsyncGeneratorDelegateKind::Throw => "throw",
+            AsyncGeneratorDelegateKind::AwaitReturn
+            | AsyncGeneratorDelegateKind::AwaitReturnNoMethod => {
+                unreachable!("an await is not forwarded to a delegate")
+            }
         };
         let method = match self.get_method(&iterator, &name.into()) {
             Ok(method) => method,
@@ -973,20 +975,32 @@ impl Vm {
                 ));
             }
             // GetMethod already observed the delegate's `return` property.
-            // The abrupt completion still crosses the outer generator's
-            // finally records.  `generator_resume` owns both that cleanup
-            // and the completed-start special case. The delegate itself is
-            // not closed: unwinding the generator would otherwise ask it for
-            // `return` a second time.
+            // The yield* step for a delegate without `return` awaits the
+            // operand once more and then returns it: the completion still
+            // crosses the outer generator's finally records. The delegate
+            // itself is not closed: unwinding the generator would otherwise
+            // ask it for `return` a second time.
             self.with_roots(|heap| heap.set(record, "done", Value::Bool(true)))?;
-            return self
-                .generator_resume(
-                    &Value::Object(generator),
-                    None,
-                    Some(target),
-                    Some(Completion::Return(value)),
-                )
-                .map(Some);
+            return match self.start_async_generator_await(
+                generator,
+                target,
+                AsyncGeneratorDelegateKind::AwaitReturnNoMethod,
+                value,
+            ) {
+                Ok(()) => Ok(Some(Value::Undefined)),
+                // PromiseResolve threw: the throw is raised at the `yield*`
+                // at once, with no turn in between.
+                Err(error) => {
+                    let reason = self.error_value(error)?;
+                    self.generator_resume(
+                        &Value::Object(generator),
+                        None,
+                        Some(target),
+                        Some(Completion::Throw(RuntimeError::Thrown(reason))),
+                    )
+                    .map(Some)
+                }
+            };
         }
         // A delegate method that throws (or whose result cannot be turned
         // into a promise) is an abrupt completion of the `yield*`: like a
@@ -1039,11 +1053,27 @@ impl Vm {
                     target,
                     kind,
                 }),
+            // Await always crosses a job boundary, including for an answer
+            // that is not a promise or is already settled.
             PromiseAwaitStatus::Fulfilled(value) => {
-                self.finish_async_generator_delegate(generator, target, kind, value, true)?
+                self.promise_jobs
+                    .push_back(PromiseJob::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        kind,
+                        value,
+                        fulfilled: true,
+                    });
             }
             PromiseAwaitStatus::Rejected(value) => {
-                self.finish_async_generator_delegate(generator, target, kind, value, false)?
+                self.promise_jobs
+                    .push_back(PromiseJob::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        kind,
+                        value,
+                        fulfilled: false,
+                    });
             }
         }
         Ok(Some(Value::Undefined))
@@ -1145,9 +1175,54 @@ impl Vm {
                         return self.await_async_generator_yield(generator, request.target, result);
                     }
                     AsyncGeneratorCompletion::Throw(value) => PromiseStatus::Rejected(value),
+                    AsyncGeneratorCompletion::ReturnAwaited(_)
+                    | AsyncGeneratorCompletion::ResumeReturn(_)
+                    | AsyncGeneratorCompletion::ResumeThrow(_) => {
+                        unreachable!("only a generator that ran can hold a resumed request")
+                    }
                 };
                 self.complete_async_generator_request(generator, request.target, completion)?;
                 continue;
+            }
+
+            // A return or throw request to a generator that has not started
+            // completes it first (the request then behaves as one to a
+            // finished generator: a return awaits its operand, a throw
+            // rejects).
+            if matches!(
+                request.completion,
+                AsyncGeneratorCompletion::Return(_) | AsyncGeneratorCompletion::Throw(_)
+            ) && self.async_generator_is_suspended_start(generator)?
+            {
+                self.heap
+                    .set_generator_state(generator, GeneratorState::Done)?;
+                self.set_async_generator_status(generator, AsyncGeneratorStatus::Completed)?;
+                continue;
+            }
+            // AsyncGeneratorUnwrapYieldResumption: a return request to a
+            // generator suspended at a `yield` awaits its operand first. A
+            // rejection then arrives as a throw at the `yield`, and an
+            // operand whose PromiseResolve throws does so at once.
+            if let AsyncGeneratorCompletion::Return(value) = &request.completion {
+                match self.start_async_generator_await(
+                    generator,
+                    request.target,
+                    AsyncGeneratorDelegateKind::AwaitReturn,
+                    value.clone(),
+                ) {
+                    Ok(()) => {
+                        return self
+                            .set_async_generator_status(generator, AsyncGeneratorStatus::Awaiting);
+                    }
+                    Err(error) => {
+                        let reason = self.error_value(error)?;
+                        self.replace_async_generator_request(
+                            generator,
+                            AsyncGeneratorCompletion::Throw(reason),
+                        )?;
+                        continue;
+                    }
+                }
             }
 
             self.set_async_generator_status(generator, AsyncGeneratorStatus::Executing)?;
@@ -1156,7 +1231,10 @@ impl Vm {
                 AsyncGeneratorCompletion::Next(value) => {
                     self.generator_next(&receiver, Some(value), Some(request.target))
                 }
-                AsyncGeneratorCompletion::Return(value) => {
+                AsyncGeneratorCompletion::Return(_) => {
+                    unreachable!("a return request awaits its operand first")
+                }
+                AsyncGeneratorCompletion::ReturnAwaited(value) => {
                     match self.async_generator_delegate_request(
                         generator,
                         request.target,
@@ -1164,22 +1242,27 @@ impl Vm {
                         value.clone(),
                     ) {
                         Ok(Some(result)) => Ok(result),
-                        Ok(None) => {
-                            let completion =
-                                self.async_generator_return_completion(generator, value);
-                            match completion {
-                                Ok(completion) => self.generator_resume(
-                                    &receiver,
-                                    None,
-                                    Some(request.target),
-                                    Some(completion),
-                                ),
-                                Err(error) => Err(error),
-                            }
-                        }
+                        Ok(None) => self.generator_resume(
+                            &receiver,
+                            None,
+                            Some(request.target),
+                            Some(Completion::Return(value)),
+                        ),
                         Err(error) => Err(error),
                     }
                 }
+                AsyncGeneratorCompletion::ResumeReturn(value) => self.generator_resume(
+                    &receiver,
+                    None,
+                    Some(request.target),
+                    Some(Completion::Return(value)),
+                ),
+                AsyncGeneratorCompletion::ResumeThrow(value) => self.generator_resume(
+                    &receiver,
+                    None,
+                    Some(request.target),
+                    Some(Completion::Throw(RuntimeError::Thrown(value))),
+                ),
                 AsyncGeneratorCompletion::Throw(value) => {
                     match self.async_generator_delegate_request(
                         generator,
@@ -1230,33 +1313,135 @@ impl Vm {
         }
     }
 
-    /// The completion injected into a generator by `return(value)`. A generator
-    /// suspended at a `yield` awaits the operand *inside* its body, so a value
-    /// whose PromiseResolve throws (a hostile `constructor` getter) becomes a
-    /// throw completion at the `yield`, where the body may catch it; otherwise
-    /// the resolved promise is returned and awaited when the generator
-    /// finishes. A generator that has not started has no body to throw into.
-    fn async_generator_return_completion(
+    /// Whether `generator` has not run yet (suspended-start).
+    fn async_generator_is_suspended_start(
         &mut self,
         generator: ObjectId,
-        value: Value,
-    ) -> Result<Completion, RuntimeError> {
+    ) -> Result<bool, RuntimeError> {
         let state = self.heap.take_generator_state(generator)?;
-        let suspended = matches!(state, GeneratorState::Suspended { .. });
+        let start = matches!(state, GeneratorState::Start { .. });
         self.heap.set_generator_state(generator, state)?;
-        if !suspended {
-            return Ok(Completion::Return(value));
-        }
+        Ok(start)
+    }
+
+    /// Replaces the completion of the request at the head of the queue (the
+    /// request keeps its promise and its place) and makes the generator
+    /// resumable again.
+    fn replace_async_generator_request(
+        &mut self,
+        generator: ObjectId,
+        completion: AsyncGeneratorCompletion,
+    ) -> Result<(), RuntimeError> {
+        let mut control = self
+            .heap
+            .async_generator_control(generator)?
+            .ok_or_else(|| RuntimeError::TypeError("Async generator receiver required".into()))?;
+        control
+            .requests
+            .front_mut()
+            .ok_or(RuntimeError::Unsupported("missing async generator request"))?
+            .completion = completion;
+        control.status = AsyncGeneratorStatus::SuspendedYield;
+        self.heap.set_async_generator_control(generator, control)?;
+        Ok(())
+    }
+
+    /// Await(value) on behalf of the request at the head of the queue:
+    /// PromiseResolve, then a continuation that always runs in a later job
+    /// (the promise is never inspected synchronously). `Err` means
+    /// PromiseResolve itself threw, before anything was scheduled.
+    fn start_async_generator_await(
+        &mut self,
+        generator: ObjectId,
+        target: ObjectId,
+        kind: AsyncGeneratorDelegateKind,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
         let base = self.stack.len();
-        self.stack.push(value.clone());
-        let resolved = self.promise_resolve(value);
+        self.stack.extend([
+            Value::Object(generator),
+            Value::Object(target),
+            value.clone(),
+        ]);
+        let outcome = (|| {
+            let promise = self.promise_resolve(value)?;
+            self.stack.push(promise.clone());
+            let promise = promise
+                .object_id()
+                .expect("Promise.resolve always returns a Promise");
+            match self
+                .promises
+                .get(&promise)
+                .expect("Promise.resolve registers its Promise")
+                .status
+                .clone_for_await()
+            {
+                PromiseAwaitStatus::Pending => self
+                    .promises
+                    .get_mut(&promise)
+                    .expect("checked pending Promise exists")
+                    .reactions
+                    .push(PromiseReaction::AsyncGeneratorDelegate {
+                        generator,
+                        target,
+                        kind,
+                    }),
+                PromiseAwaitStatus::Fulfilled(value) => {
+                    self.promise_jobs
+                        .push_back(PromiseJob::AsyncGeneratorDelegate {
+                            generator,
+                            target,
+                            kind,
+                            value,
+                            fulfilled: true,
+                        });
+                }
+                PromiseAwaitStatus::Rejected(value) => {
+                    self.promise_jobs
+                        .push_back(PromiseJob::AsyncGeneratorDelegate {
+                            generator,
+                            target,
+                            kind,
+                            value,
+                            fulfilled: false,
+                        });
+                }
+            }
+            Ok(())
+        })();
         self.stack.truncate(base);
-        match resolved {
-            Ok(promise) => Ok(Completion::Return(promise)),
-            Err(error) => Ok(Completion::Throw(RuntimeError::Thrown(
-                self.error_value(error)?,
-            ))),
-        }
+        outcome
+    }
+
+    /// The continuation of [`Vm::start_async_generator_await`]: the awaited
+    /// operand is now known, so the request that was waiting for it becomes
+    /// the completion it stands for, and the scheduler carries on.
+    fn resume_after_async_generator_await(
+        &mut self,
+        generator: ObjectId,
+        kind: AsyncGeneratorDelegateKind,
+        value: Value,
+        fulfilled: bool,
+    ) -> Result<(), RuntimeError> {
+        let completion = match (kind, fulfilled) {
+            (AsyncGeneratorDelegateKind::AwaitReturn, true) => {
+                AsyncGeneratorCompletion::ReturnAwaited(value)
+            }
+            // A rejected operand is a throw completion at the `yield`, which
+            // a `yield*` forwards to its delegate like any other throw.
+            (AsyncGeneratorDelegateKind::AwaitReturn, false) => {
+                AsyncGeneratorCompletion::Throw(value)
+            }
+            (AsyncGeneratorDelegateKind::AwaitReturnNoMethod, true) => {
+                AsyncGeneratorCompletion::ResumeReturn(value)
+            }
+            (AsyncGeneratorDelegateKind::AwaitReturnNoMethod, false) => {
+                AsyncGeneratorCompletion::ResumeThrow(value)
+            }
+            _ => unreachable!("only the two await kinds resume a queued request"),
+        };
+        self.replace_async_generator_request(generator, completion)?;
+        self.resume_async_generator_next(generator)
     }
 
     /// Async generator methods append one request and return its capability.
@@ -1325,25 +1510,18 @@ impl Vm {
         result
     }
 
-    /// Completes the request whose generator run just produced `result`: a
-    /// value yielded through `yield*` is delivered as is (AsyncGeneratorYield
-    /// of IteratorValue(innerResult) has no Await), everything else awaits
-    /// its value first.
+    /// Completes the request whose generator run just produced `result` (a
+    /// yielded value or the return value) and moves on to the next one. The
+    /// body has already awaited whatever the specification awaits there
+    /// (`yield` and `return` operands), so the result is delivered as is.
     pub(in super::super) fn finish_async_generator_run(
         &mut self,
         generator: ObjectId,
         target: ObjectId,
         result: Value,
     ) -> Result<(), RuntimeError> {
-        if std::mem::take(&mut self.async_delegated_yield) {
-            self.complete_async_generator_request(
-                generator,
-                target,
-                PromiseStatus::Fulfilled(result),
-            )?;
-            return self.resume_async_generator_next(generator);
-        }
-        self.await_async_generator_yield(generator, target, result)
+        self.complete_async_generator_request(generator, target, PromiseStatus::Fulfilled(result))?;
+        self.resume_async_generator_next(generator)
     }
 
     /// Implements the Await in AsyncGeneratorYield. The generator is already
@@ -1461,6 +1639,13 @@ impl Vm {
         result: Value,
         fulfilled: bool,
     ) -> Result<(), RuntimeError> {
+        if matches!(
+            kind,
+            AsyncGeneratorDelegateKind::AwaitReturn
+                | AsyncGeneratorDelegateKind::AwaitReturnNoMethod
+        ) {
+            return self.resume_after_async_generator_await(generator, kind, result, fulfilled);
+        }
         // A rejected delegate call, or a result that is not an object, is an
         // abrupt completion of the `yield*` expression: it is thrown at the
         // `yield*` site (the delegate is finished and not closed again).
@@ -1588,6 +1773,10 @@ impl Vm {
                         self.resume_async_generator_next(generator)
                     }
                 }
+            }
+            AsyncGeneratorDelegateKind::AwaitReturn
+            | AsyncGeneratorDelegateKind::AwaitReturnNoMethod => {
+                unreachable!("handled before the delegate's answer is read")
             }
         }
     }

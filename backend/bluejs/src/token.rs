@@ -227,6 +227,12 @@ impl LexError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpannedToken {
     pub token: Token,
+    /// Where the token's first character sits, as a character offset from the
+    /// start of the source (after the whitespace and comments before it). The
+    /// token ends where the tokenizer's [`Tokenizer::position`] is once it has
+    /// been scanned; a function's source text (its `[[SourceText]]`) is the
+    /// range from the start of its first token to the end of its last.
+    pub start: usize,
     pub newline_before: bool,
     /// Whether this IdentifierName used a Unicode escape.  Contextual
     /// keywords such as `await` cannot be escaped when the grammar requires
@@ -550,9 +556,11 @@ impl Tokenizer {
         self.identifier_escaped = false;
         self.legacy_octal_escape = false;
         self.string_escaped = false;
+        let start = self.pos;
         let token = self.next_token()?;
         Ok(SpannedToken {
             token,
+            start,
             newline_before,
             identifier_escaped: self.identifier_escaped,
             legacy_octal_escape: self.legacy_octal_escape,
@@ -1695,6 +1703,25 @@ mod tests {
         let mut t = Tokenizer::new("1\n2");
         assert!(!t.next_spanned().unwrap().newline_before);
         assert!(t.next_spanned().unwrap().newline_before);
+    }
+
+    #[test]
+    fn spanned_tokens_record_where_they_start() {
+        // Offsets count characters (not UTF-8 bytes or UTF-16 units) from the
+        // start of the source, and skip the whitespace and comments before a
+        // token; the tokenizer position after a token is where it ends.
+        let source = "  foo /* c */ 'b\u{1F600}r' // x\n\u{3042}\u{3044}";
+        let mut t = Tokenizer::new(source);
+        let mut spans = Vec::new();
+        loop {
+            let spanned = t.next_spanned().unwrap();
+            if spanned.token == Token::Eof {
+                break;
+            }
+            spans.push((spanned.start, t.position()));
+        }
+        assert_eq!(spans, vec![(2, 5), (14, 19), (25, 27)]);
+        assert_eq!(t.next_spanned().unwrap().start, 27);
     }
 
     #[test]

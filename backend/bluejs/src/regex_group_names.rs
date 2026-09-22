@@ -173,17 +173,19 @@ fn join_pairs(points: &[u32], spans: &[Range<usize>]) -> Vec<u32> {
 
 /// The pattern as `regress` should read it: one point per code point with the
 /// `u` and `v` flags, one per UTF-16 code unit without them, and in both
-/// cases with the group-name adjustments described in the module comment.
+/// cases with the group-name adjustments described in the module comment and
+/// the escape adjustments of `regex_escapes`.
 pub(crate) fn regress_points(source: &[u16], flags: &str) -> Vec<u32> {
     let unicode = flags.contains(['u', 'v']);
     let unicode_sets = flags.contains('v');
-    let mut points: Vec<u32> = if unicode {
+    let points: Vec<u32> = if unicode {
         char::decode_utf16(source.iter().copied())
             .map(|c| c.map_or_else(|e| u32::from(e.unpaired_surrogate()), |c| c as u32))
             .collect()
     } else {
         source.iter().map(|&unit| u32::from(unit)).collect()
     };
+    let mut points = crate::regex_escapes::adjust_escapes(points, flags);
     if !points.contains(&u32::from(b'<')) {
         return points;
     }

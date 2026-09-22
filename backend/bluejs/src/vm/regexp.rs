@@ -237,6 +237,10 @@ impl Vm {
     /// `construct` selects `self.new_target` as NewTarget; otherwise NewTarget
     /// is `%RegExp%` itself. `pattern_is_regexp` must already have been
     /// computed (IsRegExp is observable and precedes the slot reads).
+    ///
+    /// The observable order is: read `source`/`flags` of a regexp-like
+    /// pattern, RegExpAlloc's `newTarget.prototype` lookup, and only then
+    /// ToString of the pattern and of the flags (RegExpInitialize).
     fn regexp_allocate(
         &mut self,
         pattern: &Value,
@@ -244,56 +248,64 @@ impl Vm {
         flags: &Value,
         construct: bool,
     ) -> Result<Value, RuntimeError> {
-        let (source, flags) = if let Some((source, existing_flags)) = self.regexp_slots(pattern)? {
-            (
-                source,
-                if *flags == Value::Undefined {
-                    existing_flags.into()
+        let base = self.stack.len();
+        let result = (|| {
+            let (source, flags) =
+                if let Some((source, existing_flags)) = self.regexp_slots(pattern)? {
+                    (
+                        Value::String(source),
+                        if *flags == Value::Undefined {
+                            Value::String(existing_flags.into())
+                        } else {
+                            flags.clone()
+                        },
+                    )
+                } else if pattern_is_regexp {
+                    let source = self.get_property(pattern, &"source".into())?;
+                    self.stack.push(source.clone());
+                    let flags = if *flags == Value::Undefined {
+                        self.get_property(pattern, &"flags".into())?
+                    } else {
+                        flags.clone()
+                    };
+                    (source, flags)
                 } else {
-                    self.coerce_string(flags)?
-                },
-            )
-        } else if pattern_is_regexp {
-            let source = self.get_property(pattern, &"source".into())?;
+                    (pattern.clone(), flags.clone())
+                };
             self.stack.push(source.clone());
-            let flags = if *flags == Value::Undefined {
-                self.get_property(pattern, &"flags".into())?
+            self.stack.push(flags.clone());
+            let constructor = self.regexp_global()?;
+            let prototype = self
+                .get_property(&constructor, &"prototype".into())?
+                .object_id()
+                .unwrap();
+            let prototype = if construct {
+                self.constructor_prototype(prototype)?
             } else {
-                flags.clone()
+                prototype
             };
-            (self.coerce_string(&source)?, self.coerce_string(&flags)?)
-        } else {
-            (
-                if *pattern == Value::Undefined {
-                    JsString::default()
-                } else {
-                    self.coerce_string(pattern)?
-                },
-                if *flags == Value::Undefined {
-                    JsString::default()
-                } else {
-                    self.coerce_string(flags)?
-                },
-            )
-        };
-        self.check_string(&Value::String(source.clone()))?;
-        let mut regexp = RegExp::compile_with_timeout(source, &flags, self.config.regex_timeout)?;
-        let constructor = self.regexp_global()?;
-        regexp.legacy_features = !construct || self.new_target == constructor;
-        let prototype = self
-            .get_property(&constructor, &"prototype".into())?
-            .object_id()
-            .unwrap();
-        let prototype = if construct {
-            self.constructor_prototype(prototype)?
-        } else {
-            prototype
-        };
-        let object = self.with_roots(|heap| heap.alloc_regexp(Rc::new(regexp), prototype))?;
-        self.stack.push(Value::Object(object));
-        self.define_data(object, "lastIndex", Value::Number(0.0), true, false, false)?;
-        self.stack.pop();
-        Ok(Value::Object(object))
+            self.stack.push(Value::Object(prototype));
+            let source = if source == Value::Undefined {
+                JsString::default()
+            } else {
+                self.coerce_string(&source)?
+            };
+            let flags = if flags == Value::Undefined {
+                JsString::default()
+            } else {
+                self.coerce_string(&flags)?
+            };
+            self.check_string(&Value::String(source.clone()))?;
+            let mut regexp =
+                RegExp::compile_with_timeout(source, &flags, self.config.regex_timeout)?;
+            regexp.legacy_features = !construct || self.new_target == constructor;
+            let object = self.with_roots(|heap| heap.alloc_regexp(Rc::new(regexp), prototype))?;
+            self.stack.push(Value::Object(object));
+            self.define_data(object, "lastIndex", Value::Number(0.0), true, false, false)?;
+            Ok(Value::Object(object))
+        })();
+        self.stack.truncate(base);
+        result
     }
 
     /// B.2.4.1 RegExp.prototype.compile ( pattern, flags ). A RegExp object
@@ -655,13 +667,19 @@ impl Vm {
                 "RegExp exec requires a RegExp".into(),
             ));
         };
-        let Some(regexp) = self.heap.regexp(*id)? else {
+        if self.heap.regexp(*id)?.is_none() {
             return Err(RuntimeError::TypeError(
                 "RegExp exec requires a RegExp".into(),
             ));
-        };
+        }
         let last_index = self.get_property(receiver, &"lastIndex".into())?;
         let last_index = self.coerce_length(&last_index)?;
+        // ToLength(lastIndex) can run user code that recompiles the RegExp
+        // (`compile`): RegExpBuiltinExec reads [[OriginalFlags]] and
+        // [[RegExpMatcher]] only after it.
+        let Some(regexp) = self.heap.regexp(*id)? else {
+            unreachable!("a RegExp keeps its matcher slot for its whole life")
+        };
         let stateful = regexp.flags.contains(['g', 'y']);
         let start = if stateful { last_index as usize } else { 0 };
         self.charge_step()?;

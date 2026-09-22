@@ -1583,7 +1583,7 @@ impl Vm {
                 self.restore_module_execution(ambient);
                 self.call_depth = ambient_call_depth;
                 let result = self.iterator_result(value, true)?;
-                self.await_async_generator_yield(generator, target, result)
+                self.finish_async_generator_run(generator, target, result)
             }
             Ok(InterpreterExit::Yield {
                 value,
@@ -1604,7 +1604,6 @@ impl Vm {
                                 }
                             })
                         });
-                let delegated = async_delegate.is_some();
                 let state = GeneratorState::Suspended {
                     code,
                     pc,
@@ -1642,7 +1641,6 @@ impl Vm {
                 self.restore_module_execution(ambient);
                 self.call_depth = ambient_call_depth;
                 let result = self.iterator_result(value, false)?;
-                self.async_delegated_yield = delegated;
                 self.finish_async_generator_run(generator, target, result)
             }
             Ok(InterpreterExit::Await {
