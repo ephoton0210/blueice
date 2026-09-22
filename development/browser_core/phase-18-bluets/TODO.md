@@ -127,10 +127,35 @@ or second module resolver to bypass them.
   rejection retains neither a partial program nor a bytecode charge. This is an
   in-process,
   no-general-DOM-object-or-event-binding
-  foundation: no launcher-managed/out-of-process BlueJS process, production
-  fetch/cache/integrity authorizer, shared JavaScript/BlueTS realm, host-wide
-  memory accounting, or general JavaScript DOM-object/event binding is
-  claimed, so the prerequisite remains open.
+  foundation. A separate launcher-owned process foundation now also exists:
+  `blueice_ipc::page_host` defines a private v1 capability-authenticated
+  launcher-to-child transport, and the `blueice-bluejs-host` child owns its
+  own `BlueJsPageRuntime`, tab/document-generation table, program registry,
+  and fixed realm/program/bytecode limits. A private frame is capped at
+  12 MiB before payload allocation; a document is capped at 8 MiB source,
+  each module at 1 MiB, and each graph at eight modules. It accepts only a complete
+  caller-authorized document record containing canonical source IDs, exact
+  source bytes and hashes, a non-empty resolver-policy fingerprint, and all
+  static `(from, specifier) -> canonical-target` records. It recomputes each
+  v1 source hash, rejects duplicate/dangling/missing resolution records, and
+  rewrites static ESM requests only to the supplied canonical targets; it
+  never fetches, opens a URL/file, performs relative/import-map/package
+  resolution, or receives DOM/IPC callbacks. The launcher creates an owner-
+  only private socket plus per-spawn `/dev/urandom` capability token,
+  authenticates before dispatch, supervises/reaps the child, and removes its
+  socket on clean or forced teardown. The child returns bounded source-free
+  reports and aggregate realm accounting only; same-generation sync is
+  idempotent, a stale generation cannot close or inspect a successor, and a
+  missing module edge is rejected before any graph program is retained. Unit
+  tests cover those rules, and a real launcher-spawned child regression proves
+  the authenticated classic-plus-static-ESM route and clean shutdown. This is
+  deliberately not yet a core page-pipeline adapter: no live `Page`
+  declaration is forwarded through the launcher child, no document binding is
+  copied across, and no child process is enabled by the normal launcher
+  command. Production fetch/cache/integrity authority, core-to-child
+  lifecycle routing, shared JavaScript/BlueTS realm, host-wide memory
+  accounting, native debugger attachment, and general JavaScript
+  DOM-object/event binding remain open, so the prerequisite remains open.
 
   Acceptance: a page fixture can run a supported JavaScript classic script and
   module in its own realm; navigation/reload invalidates old program handles;

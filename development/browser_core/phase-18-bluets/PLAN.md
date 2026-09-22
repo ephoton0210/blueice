@@ -6,6 +6,14 @@
 
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
+`blueice-launcher` now also has an isolated `blueice-bluejs-host` child behind
+a private versioned, per-spawn-capability-authenticated IPC protocol. The child
+owns bounded BlueJS tab realms and accepts only complete caller-authorized
+source/resolver graphs, returning source-free outcomes and aggregate accounting.
+It is not yet connected to core's live page-loader/navigation lifecycle, so it
+is process/supervision evidence rather than a claim that normal page scripts
+already run out of process.
+
 ## Objective
 
 Let a BlueIce page opt in to TypeScript source without a build-time `.js` artifact, while also providing BlueTSC for projects that need to compile TypeScript to portable JavaScript. Both paths preserve the reasons to author code in TypeScript: deterministic static diagnostics, source-level debugging, and—where data crosses a trust boundary—runtime validation of an explicit, reifiable contract.

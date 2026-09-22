@@ -34,6 +34,7 @@ pub mod compiler;
 pub mod debugger;
 pub mod extension;
 pub mod gatekeeper;
+pub mod page_host;
 pub mod script;
 pub mod shm;
 
@@ -337,25 +338,36 @@ fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
 }
 
 fn read_frame_bytes<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
-    read_frame_bytes_bounded(r, u32::MAX as usize)
+    read_frame_bytes_with_limit(r, usize::MAX)
 }
 
-/// Reads one framed payload while rejecting an advertised size before it can
-/// allocate. Protocols with independently documented response limits use this
-/// instead of trusting their peer's four-byte length prefix.
-fn read_frame_bytes_bounded<R: Read>(r: &mut R, maximum_bytes: usize) -> io::Result<Vec<u8>> {
+/// Reads one framed payload while rejecting an oversized length before any
+/// payload allocation. Private protocol modules with materially larger source
+/// records use this instead of trusting an unbounded `u32` length from their
+/// peer. It is crate-visible so every protocol still shares the same partial-
+/// read/timeout framing discipline below.
+pub(crate) fn read_frame_bytes_with_limit<R: Read>(
+    r: &mut R,
+    max_bytes: usize,
+) -> io::Result<Vec<u8>> {
     let mut len_bytes = [0u8; 4];
     read_exact_no_progress_loss(r, &mut len_bytes)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
-    if len > maximum_bytes {
+    if len > max_bytes {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "framed message exceeds protocol byte limit",
+            format!("frame length {len} exceeds protocol limit {max_bytes}"),
         ));
     }
     let mut buf = vec![0u8; len];
     read_exact_no_progress_loss(r, &mut buf)?;
     Ok(buf)
+}
+
+/// Reads one framed payload while rejecting an advertised size before it can
+/// allocate. Retained for compiler IPC's independently documented bound.
+fn read_frame_bytes_bounded<R: Read>(r: &mut R, maximum_bytes: usize) -> io::Result<Vec<u8>> {
+    read_frame_bytes_with_limit(r, maximum_bytes)
 }
 
 /// Like [`Read::read_exact`], but a read *timeout* that occurs after

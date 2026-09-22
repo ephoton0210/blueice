@@ -3,6 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #[cfg(unix)]
+pub mod bluejs_host;
+#[cfg(unix)]
 pub mod control;
 #[cfg(unix)]
 pub mod memory_pressure;
