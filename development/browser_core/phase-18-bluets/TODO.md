@@ -841,13 +841,22 @@ or second module resolver to bypass them.
   source/type/symbol/contract ID collection, follows every ID through its
   exact query, and rejects cross-kind, replayed, and stale cursors without
   source text. It cannot use the connection to re-open startup registration.
+  `bluetsc_session_capabilities` truthfully reports whether the compiler
+  adapter is attached and, when it is, returns one fresh opaque receipt for
+  that accepted relay stream and the fixed seven read-only operations. Every
+  compiler tool echoes and requires that receipt; static queries additionally
+  require the exact generation first observed by `bluetsc_check` under the
+  same receipt. A mismatched or unobserved generation fails source-free, and
+  receipt/session state is never retargeted on launcher cutover.
   There is still
   no general launcher-owned catalog distribution or authorization beyond the
   one fixed closed profile, no remote registration/update/source/filesystem/
   resolver/plugin/options authority, no `bluetsc_build`, no artifact/
   declaration/source-map/source response, and no output write or elevation.
-  Lowering/bytecode provenance, broader capability negotiation, session
-  lifecycle, and the full MCP tool set remain open.
+  The delivered `bluetsc_session_capabilities` receipt/generation gate covers
+  this adapter's current connection lifecycle. Lowering/bytecode provenance,
+  core-owned cross-process session attestation, broader MCP negotiation, and
+  the full MCP tool set remain open.
 
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
   no-emit-on-error guarantee; responses are generation/fingerprint bound,
@@ -858,8 +867,8 @@ or second module resolver to bypass them.
   `debug_get_provenance`, `debug_get_contract`, and
   `debug_validate_contract` now adapt the native query service, not shell
   endpoints or a second compiler. Still add `bluetsc_build` only alongside an
-  explicit output-write capability, then complete documented capability
-  negotiation, session generations, authorization, broader result pagination,
+  explicit output-write capability, then complete core-owned capability/session
+  negotiation across adapters, authorization, broader result pagination,
   untrusted-content handling, and build-write elevation. Static metadata ID
   pagination is already bounded and generation-bound; its returned JSON is
   framed as untrusted project-controlled metadata.
