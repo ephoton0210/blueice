@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "backend/ai-gatekeeper",
+    "backend/automation",
     "backend/bluejs",
     "backend/ecma402",
     "backend/bluets",
