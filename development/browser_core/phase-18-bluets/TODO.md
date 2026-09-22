@@ -19,13 +19,14 @@ top-level lowering spans to verified BlueJS safe points, plus an in-process
 page host with two read-only document-oriented profiles. `blueice-core` can
 now opt into one such profile for inline declarations, and expose only
 source-free per-tab outcomes through its control plane. The opt-in JavaScript
-host now also supports a bounded private debugger program-location inventory
-and exact live safe-point validation. A launcher-supervised,
+host now also supports a bounded private debugger program-location inventory,
+exact live safe-point validation, and lifecycle-bound breakpoint configuration.
+A launcher-supervised,
 capability-authenticated out-of-process BlueJS child can execute a bounded,
 caller-authorized document graph, but core does not yet route its live page
 lifecycle into that child. The remaining boundary has no general DOM or event
-surface, live page-data contract boundary, debugger pause/runtime control, or
-MCP project-registration path.
+surface, live page-data contract boundary, debugger interruption or
+pause/runtime control, or MCP project-registration path.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
 syntax matrix while an earlier item prevents an already-supported program from

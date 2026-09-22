@@ -189,9 +189,10 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
 fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session() {
     // The debugger protocol must remain separate from both frontend and DOM
     // script IPC, but it still has to validate a target against the session's
-    // actual document lifecycle. The narrow program-location operation is
-    // installed only for the explicit in-process JavaScript host; breakpoint
-    // control and every VM-inspection operation remain deliberately planned.
+    // actual document lifecycle. The narrow program-location and exact
+    // breakpoint-configuration operations are installed only for the explicit
+    // in-process JavaScript host; breakpoint interruption and every
+    // VM-inspection operation remain deliberately planned.
     let socket_path = unique_socket_path("debugger-core");
     let debugger_socket_path = unique_socket_path("debugger-host");
     let frame_dir = std::env::temp_dir().join(format!(
@@ -350,11 +351,20 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         report.capability == blueice_ipc::debugger::DebuggerCapability::ProgramLocations
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
+    assert!(first_capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::BreakpointConfiguration
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+            && report.detail.contains("does not interrupt execution")
+    }));
     assert!(first_capabilities
         .reports
         .iter()
         .filter(|report| {
-            report.capability != blueice_ipc::debugger::DebuggerCapability::ProgramLocations
+            !matches!(
+                report.capability,
+                blueice_ipc::debugger::DebuggerCapability::ProgramLocations
+                    | blueice_ipc::debugger::DebuggerCapability::BreakpointConfiguration
+            )
         })
         .all(|report| { report.state == blueice_ipc::debugger::DebuggerCapabilityState::Planned }));
 
@@ -401,6 +411,42 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
     );
     blueice_ipc::debugger::write_debugger_request(
         &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::SetBreakpoint {
+            safe_point: first_safe_point,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::BreakpointSet {
+            safe_point: first_safe_point,
+        }
+    );
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListBreakpoints { realm: first_realm },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::Breakpoints(vec![first_safe_point])
+    );
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ClearBreakpoint {
+            safe_point: first_safe_point,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::BreakpointCleared {
+            safe_point: first_safe_point,
+            was_present: true,
+        }
+    );
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
         &blueice_ipc::debugger::DebuggerRequest::ValidateSafePoint {
             safe_point: blueice_ipc::debugger::DebuggerSafePoint {
                 bytecode_offset: u32::MAX,
@@ -415,6 +461,20 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
             code: blueice_ipc::debugger::DebuggerErrorCode::InvalidSafePoint,
             ..
         }
+    ));
+
+    // Keep one configuration record until navigation so the next request
+    // proves it cannot survive the document-generation transition.
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::SetBreakpoint {
+            safe_point: first_safe_point,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::BreakpointSet { .. }
     ));
 
     blueice_ipc::write_client_message(
@@ -453,6 +513,18 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         &blueice_ipc::debugger::DebuggerRequest::ListSafePoints {
             program: first_program,
         },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListBreakpoints { realm: first_realm },
     )
     .unwrap();
     assert!(matches!(

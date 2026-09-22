@@ -22,13 +22,14 @@ use blueice_bluejs::{
     BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1, BlueJsSourceIdentity,
     CompileError, HostFunctionError, HostValue, ParseError, RuntimeError, Value,
 };
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 
 mod debugger_support;
-use debugger_support::DebuggerProgramRecord;
+use debugger_support::{DebuggerBreakpointRecord, DebuggerProgramRecord};
 pub use debugger_support::{
-    JavaScriptPageDebuggerError, JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
+    JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError, JavaScriptPageDebuggerProgram,
+    JavaScriptPageDebuggerSafePoint,
 };
 
 /// The maximum number of source-free results retained for core observation.
@@ -50,6 +51,10 @@ pub struct JavaScriptPageExecutorConfig {
     /// one reply for an admitted program. It is fixed by the core host before
     /// page execution; a page cannot request a wider inventory.
     pub max_debugger_safe_points_per_program: usize,
+    /// Maximum exact breakpoint records retained for one live JavaScript
+    /// realm. This bounds configuration storage only; it does not create a
+    /// VM pause or execution-control capability.
+    pub max_debugger_breakpoints_per_realm: usize,
 }
 
 impl Default for JavaScriptPageExecutorConfig {
@@ -60,6 +65,7 @@ impl Default for JavaScriptPageExecutorConfig {
             max_modules_per_graph: 128,
             binding_contract_limits: CoreScriptBindingContractLimits::default(),
             max_debugger_safe_points_per_program: 4_096,
+            max_debugger_breakpoints_per_realm: 256,
         }
     }
 }
@@ -359,6 +365,7 @@ pub struct JavaScriptPageExecutor {
     live_documents: BTreeMap<TabId, LivePageIdentity>,
     observed_documents: BTreeMap<TabId, u64>,
     debugger_programs: BTreeMap<TabId, Vec<DebuggerProgramRecord>>,
+    debugger_breakpoints: BTreeMap<TabId, BTreeSet<DebuggerBreakpointRecord>>,
     next_debugger_program_handle: u64,
     reports: VecDeque<JavaScriptPageExecutionReport>,
 }
@@ -383,6 +390,8 @@ impl JavaScriptPageExecutor {
             || config.max_modules_per_graph == 0
             || config.max_debugger_safe_points_per_program == 0
             || u32::try_from(config.max_debugger_safe_points_per_program).is_err()
+            || config.max_debugger_breakpoints_per_realm == 0
+            || u32::try_from(config.max_debugger_breakpoints_per_realm).is_err()
         {
             return Err(JavaScriptPageExecutorError::InvalidConfiguration);
         }
@@ -395,6 +404,7 @@ impl JavaScriptPageExecutor {
             live_documents: BTreeMap::new(),
             observed_documents: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
+            debugger_breakpoints: BTreeMap::new(),
             next_debugger_program_handle: 1,
             reports: VecDeque::new(),
         })
@@ -516,6 +526,7 @@ impl JavaScriptPageExecutor {
     fn close_page(&mut self, tab_id: TabId) {
         self.live_documents.remove(&tab_id);
         self.debugger_programs.remove(&tab_id);
+        self.debugger_breakpoints.remove(&tab_id);
         self.runtime.close_realm(tab_id.as_u64());
     }
 
@@ -530,6 +541,7 @@ impl JavaScriptPageExecutor {
             Some(current) if current == &identity => {}
             Some(_) => {
                 self.debugger_programs.remove(&tab_id);
+                self.debugger_breakpoints.remove(&tab_id);
                 self.runtime
                     .navigate(tab_id.as_u64(), identity.origin.clone())
                     .map_err(JavaScriptPageExecutorError::PageRuntime)?

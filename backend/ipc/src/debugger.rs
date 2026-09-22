@@ -8,9 +8,10 @@
 //! public automation protocol. It gives `core` and an out-of-process BlueJS
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
-//! and bounded opaque program-location operations. A host must report every
-//! operation as [`DebuggerCapabilityState::Available`] only after it implements
-//! the native behavior; a location reply is not evidence that pause, stack,
+//! bounded opaque program-location operations, and exact breakpoint
+//! configuration. A host must report every operation as
+//! [`DebuggerCapabilityState::Available`] only after it implements the native
+//! behavior; a configured breakpoint is not evidence that pause, stack,
 //! scope, or value inspection already exists.
 
 use serde::{Deserialize, Serialize};
@@ -19,7 +20,7 @@ use std::io::{self, Read, Write};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 2;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 3;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -79,6 +80,12 @@ pub enum DebuggerCapability {
     /// instruction boundaries, then revalidate an exact tuple. This does not
     /// pause or inspect a VM.
     ProgramLocations,
+    /// Install, enumerate, and remove exact generation-bound breakpoint
+    /// records. Configuration alone neither starts nor interrupts execution.
+    BreakpointConfiguration,
+    /// A breakpoint interrupt/pause hook. This remains distinct from
+    /// [`Self::BreakpointConfiguration`] so a host cannot imply that a stored
+    /// record has stopped a synchronous VM.
     Breakpoints,
     PauseResume,
     Stepping,
@@ -121,14 +128,18 @@ pub struct DebuggerCapabilities {
     /// Maximum instruction boundaries returned by one `ListSafePoints`
     /// operation. This limit does not grant a caller source or bytecode.
     pub max_safe_points_per_program: u32,
+    /// Maximum exact breakpoint records retained for one page realm. This
+    /// does not grant a caller pause, execution, or runtime-value authority.
+    pub max_breakpoints_per_realm: u32,
 }
 
 /// Core's requests to the out-of-process BlueJS debugger host.
 ///
 /// Command families are deliberately added only with real native behavior.
 /// The first non-discovery family resolves opaque programs and exact
-/// compiler-verified instruction boundaries; it remains distinct from any
-/// later breakpoint/pause operation.
+/// compiler-verified instruction boundaries. The second is exact, bounded
+/// breakpoint configuration; it remains distinct from a later
+/// breakpoint-interrupt/pause operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DebuggerRequest {
     Hello {
@@ -158,6 +169,21 @@ pub enum DebuggerRequest {
     ValidateSafePoint {
         safe_point: DebuggerSafePoint,
     },
+    /// Stores one exact, already compiler-verified breakpoint record for the
+    /// current program generation. It does not execute or interrupt a VM.
+    SetBreakpoint {
+        safe_point: DebuggerSafePoint,
+    },
+    /// Lists only exact breakpoint records currently retained by one live
+    /// realm. The records carry no source, bytecode, VM object, or value.
+    ListBreakpoints {
+        realm: DebuggerPageRealm,
+    },
+    /// Removes one exact current breakpoint record. Removal is idempotent,
+    /// but its target must still name a live compiler-verified boundary.
+    ClearBreakpoint {
+        safe_point: DebuggerSafePoint,
+    },
     /// Catch-all for a newer request variant. Like the frontend protocol, a
     /// receiver preserves connection framing and replies with `Unsupported`
     /// rather than deserializing an unknown command as an unrelated request.
@@ -178,6 +204,14 @@ pub enum DebuggerReply {
     SafePoints(Vec<DebuggerSafePoint>),
     SafePointValidated {
         safe_point: DebuggerSafePoint,
+    },
+    BreakpointSet {
+        safe_point: DebuggerSafePoint,
+    },
+    Breakpoints(Vec<DebuggerSafePoint>),
+    BreakpointCleared {
+        safe_point: DebuggerSafePoint,
+        was_present: bool,
     },
     Unsupported {
         operation: String,
@@ -224,6 +258,9 @@ pub fn negotiate(request: &DebuggerRequest) -> DebuggerReply {
         | DebuggerRequest::ListPrograms { .. }
         | DebuggerRequest::ListSafePoints { .. }
         | DebuggerRequest::ValidateSafePoint { .. }
+        | DebuggerRequest::SetBreakpoint { .. }
+        | DebuggerRequest::ListBreakpoints { .. }
+        | DebuggerRequest::ClearBreakpoint { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
             message: "debugger protocol requires Hello as its first request".to_string(),
@@ -292,6 +329,29 @@ mod tests {
                     bytecode_offset: 0,
                 },
             },
+            DebuggerRequest::SetBreakpoint {
+                safe_point: DebuggerSafePoint {
+                    program: DebuggerProgram {
+                        realm: realm(),
+                        program_handle: 12,
+                        program_generation: 5,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 0,
+                },
+            },
+            DebuggerRequest::ListBreakpoints { realm: realm() },
+            DebuggerRequest::ClearBreakpoint {
+                safe_point: DebuggerSafePoint {
+                    program: DebuggerProgram {
+                        realm: realm(),
+                        program_handle: 12,
+                        program_generation: 5,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 0,
+                },
+            },
             DebuggerRequest::Unknown,
         ] {
             let (mut sender, mut receiver) = UnixStream::pair().unwrap();
@@ -303,14 +363,15 @@ mod tests {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
             realm: realm(),
             reports: vec![DebuggerCapabilityReport {
-                capability: DebuggerCapability::Breakpoints,
-                state: DebuggerCapabilityState::Planned,
-                detail: "native breakpoint execution is not installed".to_string(),
+                capability: DebuggerCapability::BreakpointConfiguration,
+                state: DebuggerCapabilityState::Available,
+                detail: "exact breakpoint configuration is installed".to_string(),
             }],
             max_stack_frames: 64,
             max_scope_bindings: 256,
             max_value_preview_bytes: 4_096,
             max_safe_points_per_program: 4_096,
+            max_breakpoints_per_realm: 256,
         });
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
@@ -335,6 +396,12 @@ mod tests {
             DebuggerReply::Programs(vec![program]),
             DebuggerReply::SafePoints(vec![safe_point]),
             DebuggerReply::SafePointValidated { safe_point },
+            DebuggerReply::BreakpointSet { safe_point },
+            DebuggerReply::Breakpoints(vec![safe_point]),
+            DebuggerReply::BreakpointCleared {
+                safe_point,
+                was_present: true,
+            },
         ] {
             let (mut sender, mut receiver) = UnixStream::pair().unwrap();
             write_debugger_reply(&mut sender, &reply).unwrap();
@@ -352,7 +419,7 @@ mod tests {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
             }
         );
-        for unsupported_version in [1, DEBUGGER_PROTOCOL_VERSION + 1] {
+        for unsupported_version in [1, 2, DEBUGGER_PROTOCOL_VERSION + 1] {
             assert!(matches!(
                 negotiate(&DebuggerRequest::Hello {
                     protocol_version: unsupported_version,

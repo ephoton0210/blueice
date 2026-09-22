@@ -45,6 +45,11 @@ const MAX_VALUE_PREVIEW_BYTES: u32 = 4_096;
 /// turning debugger discovery into an unbounded bytecode inventory channel.
 const DEFAULT_MAX_SAFE_POINTS_PER_PROGRAM: usize = 4_096;
 
+/// A debugger peer cannot turn a realm into an unbounded persistent
+/// breakpoint-record store. This fallback applies only when no JavaScript
+/// executor is present to report its core-selected limit.
+const DEFAULT_MAX_BREAKPOINTS_PER_REALM: usize = 256;
+
 /// Sender owned by a debugger-socket worker. It forwards one decoded request
 /// to the session thread and waits for that thread's target-checked reply.
 #[derive(Clone)]
@@ -95,7 +100,7 @@ impl DebuggerRequestReceiver {
     pub fn dispatch_pending(
         &self,
         tabs: &TabManager,
-        javascript_executor: Option<&JavaScriptPageExecutor>,
+        mut javascript_executor: Option<&mut JavaScriptPageExecutor>,
     ) -> usize {
         let mut dispatched = 0;
         while dispatched < MAX_DEBUGGER_REQUESTS_PER_SESSION_TICK {
@@ -104,7 +109,7 @@ impl DebuggerRequestReceiver {
             };
             let reply = handle_debugger_request_with_javascript_executor(
                 tabs,
-                javascript_executor,
+                javascript_executor.as_deref_mut(),
                 envelope.request,
             );
             let _ = envelope.reply.send(reply);
@@ -127,20 +132,31 @@ pub fn handle_debugger_request(tabs: &TabManager, request: DebuggerRequest) -> D
 /// worker never sees a VM, source, bytecode, or page object.
 pub fn handle_debugger_request_with_javascript_executor(
     tabs: &TabManager,
-    javascript_executor: Option<&JavaScriptPageExecutor>,
+    javascript_executor: Option<&mut JavaScriptPageExecutor>,
     request: DebuggerRequest,
 ) -> DebuggerReply {
     match request {
         DebuggerRequest::ListPageRealms => list_page_realms(tabs),
         DebuggerRequest::DescribeCapabilities { realm } => {
-            describe_capabilities(tabs, javascript_executor, realm)
+            describe_capabilities(tabs, javascript_executor.as_deref(), realm)
         }
-        DebuggerRequest::ListPrograms { realm } => list_programs(tabs, javascript_executor, realm),
+        DebuggerRequest::ListPrograms { realm } => {
+            list_programs(tabs, javascript_executor.as_deref(), realm)
+        }
         DebuggerRequest::ListSafePoints { program } => {
-            list_safe_points(tabs, javascript_executor, program)
+            list_safe_points(tabs, javascript_executor.as_deref(), program)
         }
         DebuggerRequest::ValidateSafePoint { safe_point } => {
-            validate_safe_point(tabs, javascript_executor, safe_point)
+            validate_safe_point(tabs, javascript_executor.as_deref(), safe_point)
+        }
+        DebuggerRequest::SetBreakpoint { safe_point } => {
+            set_breakpoint(tabs, javascript_executor, safe_point)
+        }
+        DebuggerRequest::ListBreakpoints { realm } => {
+            list_breakpoints(tabs, javascript_executor.as_deref(), realm)
+        }
+        DebuggerRequest::ClearBreakpoint { safe_point } => {
+            clear_breakpoint(tabs, javascript_executor, safe_point)
         }
         DebuggerRequest::Hello { .. } => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -191,16 +207,21 @@ fn describe_capabilities(
     let max_safe_points_per_program = javascript_executor
         .map(JavaScriptPageExecutor::max_debugger_safe_points_per_program)
         .unwrap_or(DEFAULT_MAX_SAFE_POINTS_PER_PROGRAM);
+    let max_breakpoints_per_realm = javascript_executor
+        .map(JavaScriptPageExecutor::max_debugger_breakpoints_per_realm)
+        .unwrap_or(DEFAULT_MAX_BREAKPOINTS_PER_REALM);
 
     DebuggerReply::Capabilities(DebuggerCapabilities {
         protocol_version: DEBUGGER_PROTOCOL_VERSION,
         realm,
-        reports: planned_capability_reports(program_locations_available),
+        reports: capability_reports(program_locations_available),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
         max_value_preview_bytes: MAX_VALUE_PREVIEW_BYTES,
         max_safe_points_per_program: u32::try_from(max_safe_points_per_program)
             .expect("native debugger safe-point reply cap fits the wire type"),
+        max_breakpoints_per_realm: u32::try_from(max_breakpoints_per_realm)
+            .expect("native debugger breakpoint reply cap fits the wire type"),
     })
 }
 
@@ -332,10 +353,124 @@ fn validate_safe_point(
     }
 }
 
+fn set_breakpoint(
+    tabs: &TabManager,
+    javascript_executor: Option<&mut JavaScriptPageExecutor>,
+    safe_point: DebuggerSafePoint,
+) -> DebuggerReply {
+    if !safe_point.is_well_formed() {
+        return invalid_safe_point_target();
+    }
+    let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    let Some(executor) = javascript_executor else {
+        return unavailable_breakpoint_configuration();
+    };
+    if !executor.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation) {
+        return unavailable_breakpoint_configuration();
+    }
+    match executor.set_debugger_breakpoint(
+        tab_id,
+        safe_point.program.realm.realm_generation,
+        safe_point.program.program_handle,
+        safe_point.program.program_generation,
+        safe_point.code_unit_ordinal,
+        safe_point.bytecode_offset,
+    ) {
+        Ok(()) => DebuggerReply::BreakpointSet { safe_point },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn list_breakpoints(
+    tabs: &TabManager,
+    javascript_executor: Option<&JavaScriptPageExecutor>,
+    realm: DebuggerPageRealm,
+) -> DebuggerReply {
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    let Some(executor) = javascript_executor else {
+        return unavailable_breakpoint_configuration();
+    };
+    if !executor.debugger_has_live_realm(tab_id, realm.realm_generation) {
+        return unavailable_breakpoint_configuration();
+    }
+    match executor.debugger_breakpoints(tab_id, realm.realm_generation) {
+        Ok(breakpoints) => DebuggerReply::Breakpoints(
+            breakpoints
+                .into_iter()
+                .map(|breakpoint| DebuggerSafePoint {
+                    program: DebuggerProgram {
+                        realm,
+                        program_handle: breakpoint.program_handle,
+                        program_generation: breakpoint.program_generation,
+                    },
+                    code_unit_ordinal: breakpoint.code_unit_ordinal,
+                    bytecode_offset: breakpoint.bytecode_offset,
+                })
+                .collect(),
+        ),
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn clear_breakpoint(
+    tabs: &TabManager,
+    javascript_executor: Option<&mut JavaScriptPageExecutor>,
+    safe_point: DebuggerSafePoint,
+) -> DebuggerReply {
+    if !safe_point.is_well_formed() {
+        return invalid_safe_point_target();
+    }
+    let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    let Some(executor) = javascript_executor else {
+        return unavailable_breakpoint_configuration();
+    };
+    if !executor.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation) {
+        return unavailable_breakpoint_configuration();
+    }
+    match executor.clear_debugger_breakpoint(
+        tab_id,
+        safe_point.program.realm.realm_generation,
+        safe_point.program.program_handle,
+        safe_point.program.program_generation,
+        safe_point.code_unit_ordinal,
+        safe_point.bytecode_offset,
+    ) {
+        Ok(was_present) => DebuggerReply::BreakpointCleared {
+            safe_point,
+            was_present,
+        },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn invalid_safe_point_target() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::InvalidTarget,
+        message: "invalid debugger safe-point target".to_string(),
+    }
+}
+
 fn unavailable_program_locations() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
         message: "native debugger program locations require an enabled live JavaScript page realm"
+            .to_string(),
+    }
+}
+
+fn unavailable_breakpoint_configuration() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "native breakpoint configuration requires an enabled live JavaScript page realm"
             .to_string(),
     }
 }
@@ -361,6 +496,10 @@ fn debugger_program_error(error: JavaScriptPageDebuggerError) -> DebuggerReply {
             DebuggerErrorCode::ResourceLimit,
             "too many verified debugger safe points for one program",
         ),
+        JavaScriptPageDebuggerError::BreakpointLimit => (
+            DebuggerErrorCode::ResourceLimit,
+            "too many native breakpoint records for one page realm",
+        ),
     };
     DebuggerReply::Error {
         code,
@@ -368,7 +507,7 @@ fn debugger_program_error(error: JavaScriptPageDebuggerError) -> DebuggerReply {
     }
 }
 
-fn planned_capability_reports(program_locations_available: bool) -> Vec<DebuggerCapabilityReport> {
+fn capability_reports(program_locations_available: bool) -> Vec<DebuggerCapabilityReport> {
     [
         (
             DebuggerCapability::ProgramLocations,
@@ -384,9 +523,22 @@ fn planned_capability_reports(program_locations_available: bool) -> Vec<Debugger
             },
         ),
         (
+            DebuggerCapability::BreakpointConfiguration,
+            if program_locations_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if program_locations_available {
+                "bounded exact breakpoint configuration is installed; it does not interrupt execution"
+            } else {
+                "exact breakpoint configuration requires an enabled JavaScript page realm"
+            },
+        ),
+        (
             DebuggerCapability::Breakpoints,
             DebuggerCapabilityState::Planned,
-            "native breakpoint execution is not installed",
+            "native breakpoint interruption is not installed",
         ),
         (
             DebuggerCapability::PauseResume,
@@ -553,7 +705,7 @@ mod tests {
         let DebuggerReply::Capabilities(capabilities) =
             handle_debugger_request_with_javascript_executor(
                 &tabs,
-                Some(&executor),
+                Some(&mut executor),
                 DebuggerRequest::DescribeCapabilities { realm: first_realm },
             )
         else {
@@ -566,13 +718,24 @@ mod tests {
         assert!(capabilities
             .reports
             .iter()
-            .filter(|report| report.capability != DebuggerCapability::ProgramLocations)
+            .filter(|report| {
+                !matches!(
+                    report.capability,
+                    DebuggerCapability::ProgramLocations
+                        | DebuggerCapability::BreakpointConfiguration
+                )
+            })
             .all(|report| report.state == DebuggerCapabilityState::Planned));
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::BreakpointConfiguration
+                && report.state == DebuggerCapabilityState::Available
+                && report.detail.contains("does not interrupt execution")
+        }));
 
         let DebuggerReply::Programs(first_programs) =
             handle_debugger_request_with_javascript_executor(
                 &tabs,
-                Some(&executor),
+                Some(&mut executor),
                 DebuggerRequest::ListPrograms { realm: first_realm },
             )
         else {
@@ -585,7 +748,7 @@ mod tests {
         let DebuggerReply::SafePoints(safe_points) =
             handle_debugger_request_with_javascript_executor(
                 &tabs,
-                Some(&executor),
+                Some(&mut executor),
                 DebuggerRequest::ListSafePoints {
                     program: first_program,
                 },
@@ -600,17 +763,71 @@ mod tests {
         assert_eq!(
             handle_debugger_request_with_javascript_executor(
                 &tabs,
-                Some(&executor),
+                Some(&mut executor),
                 DebuggerRequest::ValidateSafePoint { safe_point },
             ),
             DebuggerReply::SafePointValidated { safe_point }
+        );
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::SetBreakpoint { safe_point },
+            ),
+            DebuggerReply::BreakpointSet { safe_point }
+        );
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ListBreakpoints { realm: first_realm },
+            ),
+            DebuggerReply::Breakpoints(vec![safe_point])
+        );
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ClearBreakpoint { safe_point },
+            ),
+            DebuggerReply::BreakpointCleared {
+                safe_point,
+                was_present: true,
+            }
+        );
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ClearBreakpoint { safe_point },
+            ),
+            DebuggerReply::BreakpointCleared {
+                safe_point,
+                was_present: false,
+            }
         );
 
         assert!(matches!(
             handle_debugger_request_with_javascript_executor(
                 &tabs,
-                Some(&executor),
+                Some(&mut executor),
                 DebuggerRequest::ValidateSafePoint {
+                    safe_point: DebuggerSafePoint {
+                        bytecode_offset: u32::MAX,
+                        ..safe_point
+                    },
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidSafePoint,
+                ..
+            }
+        ));
+        assert!(matches!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::SetBreakpoint {
                     safe_point: DebuggerSafePoint {
                         bytecode_offset: u32::MAX,
                         ..safe_point
@@ -626,11 +843,30 @@ mod tests {
         assert!(matches!(
             handle_debugger_request_with_javascript_executor(
                 &tabs,
-                Some(&executor),
+                Some(&mut executor),
                 DebuggerRequest::ListSafePoints {
                     program: DebuggerProgram {
                         realm: second_realm,
                         ..first_program
+                    },
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+        assert!(matches!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::SetBreakpoint {
+                    safe_point: DebuggerSafePoint {
+                        program: DebuggerProgram {
+                            realm: second_realm,
+                            ..first_program
+                        },
+                        ..safe_point
                     },
                 },
             ),
@@ -648,7 +884,7 @@ mod tests {
         assert!(matches!(
             handle_debugger_request_with_javascript_executor(
                 &tabs,
-                Some(&executor),
+                Some(&mut executor),
                 DebuggerRequest::ListSafePoints {
                     program: first_program,
                 },

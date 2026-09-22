@@ -4,9 +4,10 @@
 
 //! Private native-debugger support for the bounded JavaScript page executor.
 //!
-//! This module deliberately owns only opaque identity translation and exact
-//! safe-point validation. Page lifecycle, source authorization, binding
-//! installation, and execution remain in the parent executor.
+//! This module deliberately owns only opaque identity translation, exact
+//! safe-point validation, and bounded breakpoint configuration. Page
+//! lifecycle, source authorization, binding installation, and execution
+//! remain in the parent executor.
 
 use super::*;
 
@@ -27,6 +28,17 @@ pub struct JavaScriptPageDebuggerSafePoint {
     pub bytecode_offset: u32,
 }
 
+/// One source-free, exact breakpoint record retained for a live program. A
+/// configured record does not imply that the synchronous page runtime has
+/// paused or can resume at this location.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerBreakpoint {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+}
+
 /// Fixed failure categories for debugger requests resolved by the current
 /// bounded JavaScript page host. None carries page-controlled source or a VM
 /// value across the debugger boundary.
@@ -37,6 +49,7 @@ pub enum JavaScriptPageDebuggerError {
     StaleProgram,
     InvalidSafePoint,
     ResourceLimit,
+    BreakpointLimit,
 }
 
 /// Internal association between a core-minted debugger identity and one live
@@ -47,6 +60,17 @@ pub(super) struct DebuggerProgramRecord {
     program_handle: u64,
     program_generation: u64,
     bluejs_handle: BlueJsProgramHandle,
+}
+
+/// Internal orderable form of a source-free breakpoint record. It excludes
+/// BlueJS handles, source identities, bytecode, VM state, and result values.
+/// The parent drops the complete set before a realm successor becomes live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct DebuggerBreakpointRecord {
+    program_handle: u64,
+    program_generation: u64,
+    code_unit_ordinal: u32,
+    bytecode_offset: u32,
 }
 
 impl JavaScriptPageExecutor {
@@ -64,6 +88,13 @@ impl JavaScriptPageExecutor {
     /// may receive for a program in this executor.
     pub fn max_debugger_safe_points_per_program(&self) -> usize {
         self.config.max_debugger_safe_points_per_program
+    }
+
+    /// The maximum number of exact breakpoint configuration records the core
+    /// retains for one live realm. This is a storage limit, not an execution
+    /// or pause limit.
+    pub fn max_debugger_breakpoints_per_realm(&self) -> usize {
+        self.config.max_debugger_breakpoints_per_realm
     }
 
     /// Returns only opaque debugger program identities for one exact live
@@ -159,6 +190,99 @@ impl JavaScriptPageExecutor {
             .map_err(debugger_page_runtime_error)
     }
 
+    /// Stores one exact compiler-verified breakpoint record for a current
+    /// opaque program generation. This is intentionally idempotent: retrying
+    /// a request cannot consume additional bounded realm storage. It neither
+    /// executes page code nor changes the synchronous VM's control flow.
+    pub fn set_debugger_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        self.validate_debugger_safe_point(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+            code_unit_ordinal,
+            bytecode_offset,
+        )?;
+        let breakpoint = DebuggerBreakpointRecord {
+            program_handle,
+            program_generation,
+            code_unit_ordinal,
+            bytecode_offset,
+        };
+        let max_breakpoints = self.config.max_debugger_breakpoints_per_realm;
+        let breakpoints = self.debugger_breakpoints.entry(tab_id).or_default();
+        if !breakpoints.contains(&breakpoint) && breakpoints.len() == max_breakpoints {
+            return Err(JavaScriptPageDebuggerError::BreakpointLimit);
+        }
+        breakpoints.insert(breakpoint);
+        Ok(())
+    }
+
+    /// Returns the exact, source-free breakpoint configuration retained for a
+    /// current realm. The records are sorted by opaque identity and compiler
+    /// boundary, never by source text or a VM address.
+    pub fn debugger_breakpoints(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerBreakpoint>, JavaScriptPageDebuggerError> {
+        self.require_live_debugger_realm(tab_id, document_generation)?;
+        Ok(self
+            .debugger_breakpoints
+            .get(&tab_id)
+            .into_iter()
+            .flatten()
+            .map(|breakpoint| JavaScriptPageDebuggerBreakpoint {
+                program_handle: breakpoint.program_handle,
+                program_generation: breakpoint.program_generation,
+                code_unit_ordinal: breakpoint.code_unit_ordinal,
+                bytecode_offset: breakpoint.bytecode_offset,
+            })
+            .collect())
+    }
+
+    /// Removes one current exact breakpoint record after revalidating its
+    /// complete program-generation and compiler-boundary tuple. An already
+    /// absent exact record returns `false`; a stale/malformed target remains
+    /// an error rather than silently affecting a successor program.
+    pub fn clear_debugger_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<bool, JavaScriptPageDebuggerError> {
+        self.validate_debugger_safe_point(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+            code_unit_ordinal,
+            bytecode_offset,
+        )?;
+        Ok(self
+            .debugger_breakpoints
+            .get_mut(&tab_id)
+            .is_some_and(|breakpoints| {
+                breakpoints.remove(&DebuggerBreakpointRecord {
+                    program_handle,
+                    program_generation,
+                    code_unit_ordinal,
+                    bytecode_offset,
+                })
+            }))
+    }
+
     pub(super) fn register_debugger_programs(
         &mut self,
         tab_id: TabId,
@@ -227,5 +351,144 @@ fn debugger_page_runtime_error(error: BlueJsPageRuntimeError) -> JavaScriptPageD
     match error {
         BlueJsPageRuntimeError::SafePointLimit { .. } => JavaScriptPageDebuggerError::ResourceLimit,
         _ => JavaScriptPageDebuggerError::StaleProgram,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn loaded_tabs(html: &str, url: &str) -> (TabManager, TabId) {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id)
+            .unwrap()
+            .load_html_str(html, Some(url.to_string()));
+        (tabs, tab_id)
+    }
+
+    #[test]
+    fn breakpoint_configuration_is_exact_bounded_idempotent_and_realm_scoped() {
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<script>const first = 1; const second = 2;</script>",
+            "https://example.test/breakpoint-configuration.html",
+        );
+        let mut executor = JavaScriptPageExecutor::with_config(JavaScriptPageExecutorConfig {
+            max_debugger_breakpoints_per_realm: 1,
+            ..JavaScriptPageExecutorConfig::default()
+        })
+        .unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let program = executor.debugger_programs(tab_id, 1).unwrap()[0];
+        let safe_points = executor
+            .debugger_safe_points(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+            )
+            .unwrap();
+        let first = *safe_points
+            .first()
+            .expect("the compiled declaration has a first safe point");
+        let second = *safe_points
+            .iter()
+            .find(|safe_point| *safe_point != &first)
+            .expect("the two declarations provide distinct safe points");
+
+        executor
+            .set_debugger_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                first.code_unit_ordinal,
+                first.bytecode_offset,
+            )
+            .unwrap();
+        // A socket retry cannot consume an additional bounded record.
+        executor
+            .set_debugger_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                first.code_unit_ordinal,
+                first.bytecode_offset,
+            )
+            .unwrap();
+        assert_eq!(
+            executor.debugger_breakpoints(tab_id, 1).unwrap(),
+            vec![JavaScriptPageDebuggerBreakpoint {
+                program_handle: program.program_handle,
+                program_generation: program.program_generation,
+                code_unit_ordinal: first.code_unit_ordinal,
+                bytecode_offset: first.bytecode_offset,
+            }]
+        );
+        assert_eq!(
+            executor.set_debugger_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                second.code_unit_ordinal,
+                second.bytecode_offset,
+            ),
+            Err(JavaScriptPageDebuggerError::BreakpointLimit)
+        );
+        assert_eq!(
+            executor.clear_debugger_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                first.code_unit_ordinal,
+                u32::MAX,
+            ),
+            Err(JavaScriptPageDebuggerError::InvalidSafePoint)
+        );
+        assert!(executor
+            .clear_debugger_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                first.code_unit_ordinal,
+                first.bytecode_offset,
+            )
+            .unwrap());
+        assert!(!executor
+            .clear_debugger_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                first.code_unit_ordinal,
+                first.bytecode_offset,
+            )
+            .unwrap());
+        executor
+            .set_debugger_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                second.code_unit_ordinal,
+                second.bytecode_offset,
+            )
+            .unwrap();
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script>const successor = 3;</script>",
+            Some("https://example.test/breakpoint-successor.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.debugger_breakpoints(tab_id, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert!(executor.debugger_breakpoints(tab_id, 2).unwrap().is_empty());
     }
 }

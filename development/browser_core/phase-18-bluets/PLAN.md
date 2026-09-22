@@ -17,8 +17,11 @@ already run out of process.
 The opt-in debugger socket now additionally supports source-free opaque
 program-location enumeration and exact compiler-verified BlueJS safe-point
 validation for a live JavaScript realm. Every request remains tab, document,
-and program-generation bound. It does not pause or step execution, install a
-breakpoint, or expose source, bytecode, a stack, scope, or runtime value.
+and program-generation bound. It also owns a bounded, idempotent exact
+breakpoint-configuration table that is cleaned up on realm replacement; this
+configuration is not an interruption hook. It does not pause or step
+execution, expose source or bytecode, or expose a stack, scope, or runtime
+value.
 
 ## Objective
 
@@ -117,19 +120,26 @@ The initial implementation completes the work that has no BlueJS dependency befo
   process evidence for the two installed immutable result boundaries, not
   general strict-runtime contract, allocation, provenance, or foreign-data
   enforcement.
-- `blueice_engine::debugger` is the core-side discovery dispatcher for the
-  versioned debugger IPC. `blueice-core --debugger-socket <path>` accepts a
-  separate peer, performs its independent `Hello` negotiation, and forwards
-  later requests through a bounded worker-to-session channel. `ListPageRealms`
+- `blueice_engine::debugger` is the core-side dispatcher for the versioned
+  debugger IPC. `blueice-core --debugger-socket <path>` accepts a separate
+  peer, performs its independent `Hello` negotiation, and forwards later
+  requests through a bounded worker-to-session channel. `ListPageRealms`
   returns at most 128 loaded tab/document-generation identities, with no URL,
   source, program, bytecode, or runtime value; an over-cap list fails closed.
-  The session validates the default browser context, tab, and exact current
-  document generation before returning a planned-only capability document; it
-  rejects a replacement document's old target as stale. The real-process
-  regression verifies this transport/lifecycle route and target refresh. No
-  capability is available, and the boundary has no BlueJS program/bytecode
-  inspection, breakpoint, pause, stack, scope, exception, or runtime-value
-  operation yet.
+  With a selected live `--inline-bluejs` executor, the session additionally
+  serves `ListPrograms`, bounded `ListSafePoints`, `ValidateSafePoint`, and v3
+  `SetBreakpoint`/`ListBreakpoints`/`ClearBreakpoint` from the exact tab-owned
+  BlueJS registry. These return or retain opaque core-minted program IDs and
+  instruction-boundary tuples only; they reject wrong tab, realm, program
+  generation, and non-boundary inputs instead of remapping them.
+  `ProgramLocations` and the deliberately narrower
+  `BreakpointConfiguration` capability are available only at that live seam;
+  the latter is an idempotent bounded table cleared at realm replacement, not
+  a VM interruption mechanism. Breakpoint interruption, pause, step, stack,
+  scope, exception, and runtime-value features remain planned. The boundary
+  has no source disclosure, bytecode extraction, paused-state control, or
+  debugger evaluation. The real-process regression verifies the transport,
+  lifecycle, and stale-target routes.
 - A parsed `Page` now discovers the explicit non-portable `application/x-blueice-typescript` and `application/x-blueice-typescript-module` declarations in document order, retaining inline source or an external `src` as data. It never grants loading authority or evaluates them: a future page loader must apply origin, feature-profile, integrity, resolver, and resource policy before assembling the `AuthorizedModuleLoader` for direct admission.
 - As a deliberately bounded normal-page fixture seam, `DirectPageScriptHost::execute_inline` may admit one inline declaration only. It derives a canonical module ID from core tab/document-generation/declaration identities and creates a one-module closed loader, so it neither embeds caller text in an identity nor reads an external source. `DirectPageInlineExecutor` can invoke that seam automatically only when a core owner explicitly selects it. By default it rejects and reports external `src` without reflecting the page-controlled URL; `PageScriptSourceAuthorizer` is the sole optional core-owned authority that can turn that declaration into a supplied closed graph plus resolver fingerprint. The executor never fetches, resolves, or falls back itself. A real fetch/cache/integrity implementation, remaining host bindings, and an out-of-process host remain open.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.

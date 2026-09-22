@@ -413,20 +413,29 @@ not provide page-lifetime automation, diagnostics/contracts retention, source
 authorization, stack locations, scopes, runtime type inspection, pause
 mechanics, or debugger IPC.
 
-`blueice_ipc::debugger` now defines the separately framed v2 native debugger
+`blueice_ipc::debugger` now defines the separately framed v3 native debugger
 boundary. Its realm, program, and safe-point tuples include exact generations,
 and its capability response distinguishes `available`, `planned`, and
-`unsupported`. The v2 handshake rejects v1 peers before they receive the
-expanded capability/reply shapes. A core session that explicitly owns a live `--inline-bluejs`
-executor now serves source-free `ListPrograms`, bounded `ListSafePoints`, and
-`ValidateSafePoint` operations by resolving core-minted opaque program IDs
-through `BlueJsPageRuntime`'s exact tab-owned registry. A returned
-`(code-unit, offset)` is a compiler-verified instruction boundary, not source
-text or bytecode contents; wrong tab/realm/program generation and malformed
-boundaries fail closed. The narrow `ProgramLocations` capability does not
-attach a pause hook, set a breakpoint, execute a program, reveal a VM handle,
-or provide stack/scope/value behavior. A host MUST NOT advertise those later
-capabilities until the corresponding native path exists.
+`unsupported`. The v3 handshake rejects v1 and v2 peers before they receive
+the expanded capability/reply shapes. A core session that explicitly owns a
+live `--inline-bluejs` executor now serves source-free `ListPrograms`, bounded
+`ListSafePoints`, and `ValidateSafePoint` operations by resolving core-minted
+opaque program IDs through `BlueJsPageRuntime`'s exact tab-owned registry. A
+returned `(code-unit, offset)` is a compiler-verified instruction boundary,
+not source text or bytecode contents; wrong tab/realm/program generation and
+malformed boundaries fail closed. The same live executor serves bounded,
+idempotent `SetBreakpoint`, `ListBreakpoints`, and `ClearBreakpoint`
+configuration operations. A configuration record contains only the exact
+opaque safe-point tuple, is revalidated before insertion/removal, and is
+dropped before its tab realm is navigated, replaced, or closed. The available
+`BreakpointConfiguration` capability means only this lifecycle-bound table;
+the broad `Breakpoints`, pause/resume, stepping, stack, scope, and value
+capabilities remain planned. In particular, the eager synchronous page
+executor has no remote learn/install window before a newly admitted script's
+only normal execution, and BlueJS does not retain a VM continuation, so a
+stored record MUST NOT be presented as a breakpoint hit or paused state. A
+host MUST NOT advertise those later capabilities until the corresponding
+native path exists.
 
 Adding a host API is additive only when it preserves existing binding IDs and declaration meanings. Removing or changing a public declaration requires a new host API major version and a new compatible feature profile. A compiler may target a declared older profile only when the host explicitly supplies its matching generated manifest; it may never infer API availability from the installed BlueJS version.
 
@@ -434,7 +443,7 @@ Adding a host API is additive only when it preserves existing binding IDs and de
 
 The first structured classic-script and resolver-preserving module-graph bridge has landed. Direct-page activation remains gated on its owner providing:
 
-1. Extend the shipped source-free program-location wire path into production page-host ownership and pause-capable debugger execution. The current opt-in core seam validates only exact live JavaScript program locations; it has no source-level page map, breakpoint hook, pause control, or out-of-process ownership.
+1. Extend the shipped source-free program-location and lifecycle-bound breakpoint-configuration wire path into production page-host ownership and pause-capable debugger execution. The current opt-in core seam validates exact live JavaScript locations and retains exact breakpoint records, but has no source-level page map, breakpoint hook, pause control, or out-of-process ownership.
 2. Bridge conformance fixtures extending the shipped no-emitted-JavaScript-reparse proof to exact origin/module preservation and deterministic bytecode-map ordering.
 3. Preserve the host-schema invariant for every future binding: its generated `lib.blueice.d.ts` declaration, exact profile inventory, BlueJS installation, and static/runtime absence behavior must be covered together. The shipped `core-script-document-text-v1` and `core-script-document-context-v1` profiles meet this rule: the direct-page compiler rejects their globals under the empty profile before VM admission, and an unconfigured BlueJS realm rejects them at runtime.
 4. Debugger tests for breakpoint binding, step/exception locations, stale-map rejection and the distinction between a static TypeScript type and a runtime BlueJS value.
