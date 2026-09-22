@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress. `backend/bluets` provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix; `backend/bluets-bluejs` proves direct classic-script and resolver-preserving ESM graph lowering to public BlueJS AST/bytecode without reparsing emitted JavaScript. A core startup owner can register closed projects in `CoreCompilerProjectCatalog`, seal it before the core session begins, and optionally expose opaque `describe`/`check`/static-type/symbol/source-provenance/reifiable-contract queries plus bounded static-ID inventory pages through a separately handshaken v2 `blueice-core --compiler-socket`; inventory cursors are one-shot and exact-generation/kind-bound, while validation accepts only bounded data snapshots against an exact retained static generation. The reference binary has only a compiled-in closed integration profile, and MCP must be explicitly connected to that bounded service. `blueice-launcher --out-of-process-bluejs` now creates and supervises a separate, capability-authenticated BlueJS child for each core generation, routes loaded HTTP(S) inline JavaScript and explicit BlueTS declarations in DOM order into one bounded realm, and reaps it on shutdown or cutover. For each core-verified document, the child installs only JavaScript's immutable `blueiceDocumentText()` and `blueiceDocumentOrigin()` primitive snapshots after core and child enforce the same fixed contracts and canonical origin spelling. BlueTS still gets only a caller-authorized closed graph and a child-fixed checked policy; it has no verified ambient typing artifact for those bindings, so direct calls remain rejected rather than advertised. No page/frontend/log can configure or reflect the child capability; the default launcher does not enable it. The child has no DOM/event binding beyond those copied strings, fetch/cache, URL/import-map resolution, or external graph authority. The opt-in debugger socket provides generation-checked source-free program/safe-point discovery, lifecycle-bound breakpoint configuration, and one-shot root-code-unit pause/resume for pending classic scripts; it does not expose modules, nested frames, stepping, stack, scope, or runtime values. Remaining prerequisites include production source/cache/integrity policy, bytecode source-map aggregation, launcher compiler-catalog distribution/authorization and update/output elevation, fuller negotiated MCP surface, and native debugger execution.
+**Status**: In progress. `backend/bluets` provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix; `backend/bluets-bluejs` proves direct classic-script and resolver-preserving ESM graph lowering to public BlueJS AST/bytecode without reparsing emitted JavaScript. A core startup owner can register closed projects in `CoreCompilerProjectCatalog`, seal it before the core session begins, and optionally expose opaque `describe`/`check`/static-type/symbol/source-provenance/reifiable-contract queries plus bounded static-ID inventory pages through a separately handshaken v2 `blueice-core --compiler-socket`; inventory cursors are one-shot and exact-generation/kind-bound, while validation accepts only bounded data snapshots against an exact retained static generation. The reference binary has only a compiled-in closed integration profile, and MCP must be explicitly connected to that bounded service. `blueice-launcher --out-of-process-bluejs` now creates and supervises a separate, capability-authenticated BlueJS child for each core generation, routes loaded HTTP(S) inline JavaScript and explicit BlueTS declarations in DOM order into one bounded realm, and reaps it on shutdown or cutover. For each core-verified document, the child installs only immutable `blueiceDocumentText()` and `blueiceDocumentOrigin()` primitive snapshots after core and child enforce the same fixed contracts and canonical origin spelling. A shared generated and inventory-verified `core-script-document-context-v1` declaration lets the child-fixed checked BlueTS profile call exactly those two callbacks through direct AST lowering; it cannot select or widen the profile. No page/frontend/log can configure or reflect the child capability; the default launcher does not enable it. The child has no DOM/event binding beyond those copied strings, fetch/cache, URL/import-map resolution, or external graph authority. The opt-in debugger socket provides generation-checked source-free program/safe-point discovery, lifecycle-bound breakpoint configuration, and one-shot root-code-unit pause/resume for pending classic scripts; it does not expose modules, nested frames, stepping, stack, scope, or runtime values. Remaining prerequisites include production source/cache/integrity policy, bytecode source-map aggregation, launcher compiler-catalog distribution/authorization and update/output elevation, fuller negotiated MCP surface, and native debugger execution.
 
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
@@ -18,8 +18,10 @@ lowering with no ambient declarations or page-selected resolver/compiler
 options. Its v3 document record has no profile/capability selector: the core
 must validate and supply exactly one copied document-text snapshot and one
 canonical HTTP(S)-origin snapshot, and the child repeats their fixed byte and
-canonical-spelling checks before installing JavaScript-only primitive
-callbacks. Navigation and close destroy that VM and its copied strings. The
+canonical-spelling checks before installing the two primitive callbacks.
+Navigation and close destroy that VM and its copied strings. The shared fixed
+typing artifact is generated from the same callback inventory and is the only
+ambient declaration admitted to the child BlueTS compiler. The
 explicit
 `blueice-launcher --out-of-process-bluejs` mode creates that endpoint and token
 per core generation, passes them only to its core child, and retains the
@@ -203,9 +205,14 @@ The initial implementation completes the work that has no BlueJS dependency befo
   canonical HTTP(S) tuple). The child repeats those limits and canonical
   spelling checks, installs no other binding, and destroys both copies on
   navigation or close. It receives no DOM object, URL, resolver, fetch/cache,
-  IPC, or page-selected capability. BlueTS has no verified matching ambient
-  artifact on this route, so direct calls to either snapshot binding remain
-  checked-profile rejections rather than a supported BlueTS host surface.
+  IPC, or page-selected capability. `blueice-bluets-bluejs` owns the one fixed
+  generated `core-script-document-context-v1` artifact shared by the core
+  catalog and child: its byte-checked declaration and exact callback inventory
+  make only `blueiceDocumentText(): string` and
+  `blueiceDocumentOrigin(): string` ambient to child BlueTS. A missing, extra,
+  renamed, or page-selected binding fails closed before compiler admission;
+  `document`, `fetch`, URL, resolver, and object APIs remain untyped and
+  unavailable. This still is not a general DOM surface.
   DOM/event callbacks, URL or import-map resolution, external graph authority,
   and page-selected compiler profiles remain open.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.

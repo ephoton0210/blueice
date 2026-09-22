@@ -42,6 +42,19 @@ fn document(generation: u64, scripts: Vec<PageHostScript>) -> PageHostDocument {
     }
 }
 
+fn blue_ts_classic(ordinal: u32, source: &str) -> PageHostScript {
+    let source_id = format!("blueice://page/typed-{ordinal}.ts");
+    PageHostScript {
+        ordinal,
+        language: PageHostScriptLanguage::BlueTs,
+        kind: PageHostScriptKind::Classic,
+        graph: graph(
+            &source_id,
+            vec![PageHostSource::new(source_id.clone(), source)],
+        ),
+    }
+}
+
 #[test]
 fn launcher_spawns_an_isolated_host_that_executes_closed_graphs_and_reaps_cleanly() {
     assert!(
@@ -164,6 +177,66 @@ fn launcher_child_binds_only_the_core_document_snapshots_and_returns_no_value() 
     assert!(
         !format!("{reply:?}").contains("test document snapshot"),
         "the source-free protocol reply must not disclose a callback result"
+    );
+    host.shutdown()
+        .expect("launcher must obtain child shutdown acknowledgement");
+}
+
+#[test]
+fn launcher_child_types_only_the_verified_snapshot_callbacks_for_bluets() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let mut host = SpawnedBlueJsHost::spawn()
+        .expect("launcher must start and authenticate an isolated BlueJS child");
+    let verifier_id = "blueice://page/typed-snapshot-verifier.js";
+    let reply = host
+        .synchronize_document(document(
+            1,
+            vec![
+                // The type annotation prevents a JavaScript parser from
+                // accepting this source; execution proves direct lowering.
+                blue_ts_classic(
+                    0,
+                    concat!(
+                        "const typedSnapshot: string = blueiceDocumentText();",
+                        "const typedOrigin: string = blueiceDocumentOrigin();"
+                    ),
+                ),
+                PageHostScript {
+                    ordinal: 1,
+                    language: PageHostScriptLanguage::JavaScript,
+                    kind: PageHostScriptKind::Classic,
+                    graph: graph(
+                        verifier_id,
+                        vec![PageHostSource::new(
+                            verifier_id,
+                            concat!(
+                                "if (typedSnapshot !== 'test document snapshot') throw 'text';",
+                                "if (typedOrigin !== 'https://example.test') throw 'origin';"
+                            ),
+                        )],
+                    ),
+                },
+                blue_ts_classic(2, "fetch('https://example.test/');"),
+            ],
+        ))
+        .expect("private host request must receive a reply");
+    assert!(matches!(
+        &reply,
+        PageHostReply::Synchronized { reports, .. }
+            if reports.len() == 3
+                && reports[0].language == PageHostScriptLanguage::BlueTs
+                && reports[0].outcome == PageHostScriptOutcome::Executed
+                && reports[1].language == PageHostScriptLanguage::JavaScript
+                && reports[1].outcome == PageHostScriptOutcome::Executed
+                && reports[2].language == PageHostScriptLanguage::BlueTs
+                && matches!(reports[2].outcome, PageHostScriptOutcome::Rejected { .. })
+    ));
+    assert!(
+        !format!("{reply:?}").contains("test document snapshot"),
+        "source-free reports must not disclose typed callback results"
     );
     host.shutdown()
         .expect("launcher must obtain child shutdown acknowledgement");

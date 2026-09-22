@@ -21,6 +21,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
 mod debug_attachment;
+pub mod page_host_typings;
 mod page_runtime;
 pub use debug_attachment::{
     DirectDebugAttachmentError, DirectDebugRegistry, DirectDebugRetentionLimits,

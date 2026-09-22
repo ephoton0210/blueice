@@ -22,6 +22,9 @@ use blueice_bluets::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
     RuntimePolicy,
 };
+use blueice_bluets_bluejs::page_host_typings::{
+    page_host_document_runtime_bindings_v1, PageHostDocumentTypingsV1,
+};
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectModuleGraph,
     DirectScript,
@@ -356,33 +359,56 @@ fn validated_document_origin(
 }
 
 /// Installs exactly the two core-selected immutable JavaScript callbacks. The
-/// registrar deliberately exposes no VM operation, DOM node, resolver, URL,
-/// fetch, IPC, or object handle. Captured Rust strings are copied snapshots
-/// and page arguments are rejected before a callback can return either one.
+/// shared generated BlueTS artifact verifies this same inventory before it can
+/// become an ambient module for a child compilation. The registrar deliberately
+/// exposes no VM operation, DOM node, resolver, URL, fetch, IPC, or object
+/// handle. Captured Rust strings are copied snapshots and page arguments are
+/// rejected before a callback can return either one.
 fn install_document_snapshot_bindings(
     runtime: &mut BlueJsPageRuntime,
     tab_id: u64,
     snapshot: &PageHostDocumentSnapshot,
 ) -> Result<(), BlueJsPageRuntimeError> {
+    let artifact = PageHostDocumentTypingsV1::generate();
+    let binding_inventory = page_host_document_runtime_bindings_v1();
+    artifact
+        .verify_runtime_bindings(&binding_inventory)
+        .map_err(|_| BlueJsPageRuntimeError::InvalidConfiguration)?;
     let document_text = snapshot.document_text.clone();
     let document_origin = snapshot.document_origin.clone();
     runtime.configure_realm_bindings(tab_id, move |bindings| {
-        bindings.install_global_function(
-            "blueiceDocumentOrigin",
-            0,
-            move |arguments: &[HostValue]| {
-                require_no_arguments(arguments, "blueiceDocumentOrigin")?;
-                Ok(HostValue::String(document_origin.clone().into()))
-            },
-        )?;
-        bindings.install_global_function(
-            "blueiceDocumentText",
-            0,
-            move |arguments: &[HostValue]| {
-                require_no_arguments(arguments, "blueiceDocumentText")?;
-                Ok(HostValue::String(document_text.clone().into()))
-            },
-        )
+        for binding in binding_inventory {
+            match (binding.stable_id, binding.runtime_binding_id) {
+                ("dom.document-origin", "global.blueiceDocumentOrigin") => {
+                    let document_origin = document_origin.clone();
+                    bindings.install_global_function(
+                        "blueiceDocumentOrigin",
+                        0,
+                        move |arguments: &[HostValue]| {
+                            require_no_arguments(arguments, "blueiceDocumentOrigin")?;
+                            Ok(HostValue::String(document_origin.clone().into()))
+                        },
+                    )?;
+                }
+                ("dom.document-text", "global.blueiceDocumentText") => {
+                    let document_text = document_text.clone();
+                    bindings.install_global_function(
+                        "blueiceDocumentText",
+                        0,
+                        move |arguments: &[HostValue]| {
+                            require_no_arguments(arguments, "blueiceDocumentText")?;
+                            Ok(HostValue::String(document_text.clone().into()))
+                        },
+                    )?;
+                }
+                _ => {
+                    return Err(RuntimeError::Unsupported(
+                        "page-host typing inventory has no callback installer",
+                    ));
+                }
+            }
+        }
+        Ok(())
     })
 }
 
@@ -502,15 +528,16 @@ fn prepare_module_graph(
 
 /// Prepares an explicit BlueTS classic declaration through the same closed
 /// caller-authorized graph validation used for JavaScript. The compiler sees
-/// no filesystem, URL, import-map, profile, ambient declaration, or callback
-/// authority: it receives only this in-memory loader and child-fixed options.
+/// no filesystem, URL, import-map, page-selected profile, or callback
+/// authority. Its only ambient declaration comes from the shared generated
+/// artifact for the two child-fixed copied snapshot callbacks.
 fn prepare_bluets_classic(graph: PageHostModuleGraph) -> Result<DirectScript, &'static str> {
     let modules = validate_graph(&graph)?;
     if modules.len() != 1 || !graph.resolutions.is_empty() {
         return Err("classic BlueTS source graph is not closed");
     }
     let loader = bluets_loader(&graph, modules)?;
-    compile_direct_script(&graph.entry, &loader, bluets_compiler_options(&graph))
+    compile_direct_script(&graph.entry, &loader, bluets_compiler_options(&graph)?)
         .map_err(bluets_bridge_category)
 }
 
@@ -522,7 +549,7 @@ fn prepare_bluets_module_graph(
     let modules = validate_graph(&graph)?;
     validate_resolutions(&graph, &modules)?;
     let loader = bluets_loader(&graph, modules)?;
-    compile_direct_module_graph(&graph.entry, &loader, bluets_compiler_options(&graph))
+    compile_direct_module_graph(&graph.entry, &loader, bluets_compiler_options(&graph)?)
         .map_err(bluets_bridge_category)
 }
 
@@ -546,11 +573,16 @@ fn bluets_loader(
     .map_err(|_| "authorized BlueTS graph is invalid")
 }
 
-fn bluets_compiler_options(graph: &PageHostModuleGraph) -> CompilerOptions {
+fn bluets_compiler_options(graph: &PageHostModuleGraph) -> Result<CompilerOptions, &'static str> {
+    let artifact = PageHostDocumentTypingsV1::generate();
+    let ambient_declaration = artifact
+        .verified_ambient_module(&page_host_document_runtime_bindings_v1())
+        .map_err(|_| "verified page-host BlueTS typings are unavailable")?;
     let mut options = CompilerOptions {
         runtime_policy: RuntimePolicy::Checked,
         resolver_fingerprint: graph.resolver_fingerprint.clone(),
         require_declared_global_calls: true,
+        ambient_declaration_modules: vec![ambient_declaration],
         ..CompilerOptions::default()
     };
     // The transport and BlueJS child already use the smaller page-host source
@@ -558,7 +590,7 @@ fn bluets_compiler_options(graph: &PageHostModuleGraph) -> CompilerOptions {
     // substantially more work than the closed graph the child admitted.
     options.limits.max_modules = MAX_MODULES_PER_GRAPH;
     options.limits.max_total_source_bytes = MAX_SOURCE_BYTES_PER_DOCUMENT;
-    options
+    Ok(options)
 }
 
 fn execute_bluets_classic(
@@ -1397,24 +1429,48 @@ mod tests {
     }
 
     #[test]
-    fn bluets_document_snapshot_calls_remain_rejected_without_verified_typings() {
+    fn bluets_uses_the_verified_snapshot_profile_and_rejects_untyped_globals() {
         let mut host = BlueJsChildHost::default();
         let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
-            document: document(1, vec![blue_ts_classic(0, "blueiceDocumentText();")]),
+            document: document(
+                1,
+                vec![
+                    // The annotation is invalid JavaScript syntax, so this
+                    // success also preserves direct BlueTS-to-BlueJS lowering.
+                    blue_ts_classic(
+                        0,
+                        concat!(
+                            "const snapshotText: string = blueiceDocumentText();",
+                            "const snapshotOrigin: string = blueiceDocumentOrigin();"
+                        ),
+                    ),
+                    classic(
+                        1,
+                        concat!(
+                            "if (snapshotText !== 'test document snapshot') throw 'text';",
+                            "if (snapshotOrigin !== 'https://example.test') throw 'origin';"
+                        ),
+                    ),
+                    // The fixed declaration contains neither fetch nor a
+                    // general document object. Both compile attempts fail
+                    // before a program is admitted to the child realm.
+                    blue_ts_classic(2, "fetch('https://example.test/');"),
+                    blue_ts_classic(3, "blueiceDocumentText(1);"),
+                ],
+            ),
         });
         assert!(matches!(
             reply,
             PageHostReply::Synchronized {
                 reports,
                 ..
-            } if matches!(
-                reports.as_slice(),
-                [PageHostScriptReport {
-                    language: PageHostScriptLanguage::BlueTs,
-                    outcome: PageHostScriptOutcome::Rejected { .. },
-                    ..
-                }]
-            )
+            } if reports.len() == 4
+                && reports[0].language == PageHostScriptLanguage::BlueTs
+                && reports[0].outcome == PageHostScriptOutcome::Executed
+                && reports[1].language == PageHostScriptLanguage::JavaScript
+                && reports[1].outcome == PageHostScriptOutcome::Executed
+                && matches!(reports[2].outcome, PageHostScriptOutcome::Rejected { .. })
+                && matches!(reports[3].outcome, PageHostScriptOutcome::Rejected { .. })
         ));
     }
 

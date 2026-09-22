@@ -27,14 +27,15 @@ root frame; it is not arbitrary interpreter suspension or stepping.
 A launcher-supervised, capability-authenticated out-of-process BlueJS child
 can execute caller-authorized inline JavaScript and explicit BlueTS declarations
 in one bounded realm and DOM order. For each core-verified document it also
-installs JavaScript-only immutable `blueiceDocumentText()` and
+installs immutable `blueiceDocumentText()` and
 `blueiceDocumentOrigin()` copied snapshots: core validates their matching
 1 MiB/4 KiB string contracts before serialization and the child repeats both
 budgets plus canonical HTTP(S)-origin spelling before creating a realm. BlueTS
 receives only the closed supplied graph and a child-fixed checked compiler
 policy, then lowers directly into that realm without emitted-JavaScript
-reparse; because it has no verified ambient artifact for those snapshots, its
-direct calls remain explicit compilation rejections. The core route keeps its
+reparse. A shared generated and exact-inventory-verified
+`core-script-document-context-v1` declaration admits calls only to those two
+snapshot functions; page code cannot select, alter, or extend it. The core route keeps its
 outcomes in the existing separate source-free JavaScript and BlueTS report
 lanes, and closes child realms on navigation/tab removal. `blueice-launcher
 --out-of-process-bluejs` creates that child/capability pair itself for each
@@ -189,12 +190,14 @@ or second module resolver to bypass them.
   execution, explicit BlueTS direct lowering in the same realm and DOM order,
   source-free external-`src` rejection, no injected DOM/fetch
   binding, no endpoint reflection through the frontend broker, and both
-  generations' cleanup. Although ordinary BlueTS direct lowering remains
-  available for its closed graph, this route deliberately ships no verified
-  BlueTS ambient typing artifact for the JavaScript callbacks; direct
-  `blueiceDocumentText()`/`blueiceDocumentOrigin()` calls remain rejected
-  rather than being implied by a shared VM. It does not grant child fetch, URL/
-  import-map resolution, or external graph authority. Production fetch/cache/
+  generations' cleanup. Its shared `blueice-bluets-bluejs` fixed typing
+  artifact is generated from the exact two-callback runtime inventory and
+  provides BlueTS only `blueiceDocumentText(): string` and
+  `blueiceDocumentOrigin(): string`; unit and real-child regressions prove a
+  typed call executes through direct lowering and `fetch` is a source-free
+  rejection, while the unit regression also rejects invalid callback arity.
+  It does not grant child fetch,
+  URL/import-map resolution, or external graph authority. Production fetch/cache/
   integrity authority, host-wide
   memory accounting, native debugger
   attachment, and general JavaScript DOM-object/event binding remain open, so
@@ -505,8 +508,9 @@ or second module resolver to bypass them.
   page source, diagnostics, bytecode, or runtime values. The binary subprocess
   regression covers that opt-in mode across real HTTP navigation, a classic
   declaration, a module declaration, and a static rejection. The separate
-  launcher-managed BlueJS process remains JavaScript-only and does not yet
-  own a shared BlueTS realm. No concrete fetch/cache/integrity implementation
+  launcher-managed host now shares one BlueTS/JavaScript realm only for its
+  fixed snapshot profile; it still has no debugger attachment, general DOM
+  surface, or external-source authority. No concrete fetch/cache/integrity implementation
   or general external graph policy exists. The closed-graph direct bridge
   integration is complete; those broader page-host responsibilities remain
   separate open prerequisites.

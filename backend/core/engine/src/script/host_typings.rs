@@ -12,6 +12,7 @@
 //! globals by themselves.
 
 use blueice_bluets::ModuleSource;
+use blueice_bluets_bluejs::page_host_typings::page_host_document_context_bindings_v1;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -30,7 +31,9 @@ pub const CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1: &str = "core-script-document-tex
 
 /// A read-only page-context profile. It exposes only the canonical origin and
 /// a copied document-text snapshot; it is not a general `document` object.
-pub const CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1: &str = "core-script-document-context-v1";
+/// The profile identity and binding schema are shared with the isolated child
+/// so BlueTS cannot be typed against a different callback inventory there.
+pub use blueice_bluets_bluejs::page_host_typings::PAGE_HOST_DOCUMENT_CONTEXT_PROFILE_V1 as CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1;
 
 /// Core host API version associated with [`CORE_SCRIPT_EMPTY_PROFILE_V1`].
 pub const CORE_SCRIPT_HOST_API_VERSION_V1: &str = "blueice-core-script-v1";
@@ -291,26 +294,20 @@ pub fn core_script_host_type_catalog() -> HostTypeSurfaceCatalogV1 {
             BLUEICE_HOST_TYPINGS_LANGUAGE_VERSION_V1,
             CORE_SCRIPT_HOST_API_VERSION_V1,
             CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1,
-            vec![
-                HostTypeBindingV1::new(
-                    "dom.document-origin",
-                    "declare function blueiceDocumentOrigin(): string;",
-                    HostBindingRoleV1::Value,
-                    "global.blueiceDocumentOrigin",
-                    "dom-read",
-                    "document-origin",
-                    CORE_SCRIPT_HOST_API_VERSION_V1,
-                ),
-                HostTypeBindingV1::new(
-                    "dom.document-text",
-                    "declare function blueiceDocumentText(): string;",
-                    HostBindingRoleV1::Value,
-                    "global.blueiceDocumentText",
-                    "dom-read",
-                    "document-text",
-                    CORE_SCRIPT_HOST_API_VERSION_V1,
-                ),
-            ],
+            page_host_document_context_bindings_v1()
+                .iter()
+                .map(|binding| {
+                    HostTypeBindingV1::new(
+                        binding.stable_id,
+                        binding.declaration,
+                        HostBindingRoleV1::Value,
+                        binding.runtime_binding_id,
+                        binding.capability,
+                        binding.feature_flag,
+                        binding.first_host_api_version,
+                    )
+                })
+                .collect(),
         ),
     ])
     .expect("the built-in core script host profile is valid")
@@ -743,6 +740,8 @@ mod tests {
         let artifact = core_script_host_type_catalog()
             .generate(CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1)
             .unwrap();
+        let child_artifact =
+            blueice_bluets_bluejs::page_host_typings::PageHostDocumentTypingsV1::generate();
         assert_eq!(
             artifact.declaration_source,
             include_str!(
@@ -766,6 +765,22 @@ mod tests {
                 .map(|binding| binding.runtime_binding_id.as_str())
                 .collect::<Vec<_>>(),
             ["global.blueiceDocumentOrigin", "global.blueiceDocumentText"]
+        );
+        assert_eq!(
+            artifact.declaration_source,
+            child_artifact.declaration_source
+        );
+        assert_eq!(
+            artifact
+                .runtime_bindings
+                .iter()
+                .map(|binding| binding.runtime_binding_id.as_str())
+                .collect::<Vec<_>>(),
+            child_artifact
+                .runtime_bindings
+                .iter()
+                .map(|binding| binding.runtime_binding_id)
+                .collect::<Vec<_>>()
         );
     }
 
