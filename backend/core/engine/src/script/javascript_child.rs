@@ -1340,11 +1340,18 @@ fn blue_ts_report_ordinal(report: &BlueTsPageExecutionReport) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::script::http_resource_authorizer::{
+        sha256_integrity, HttpOutOfProcessPageScriptSourceAuthorizer, HttpScriptIntegrityManifest,
+        HttpScriptResourceLimits, HttpScriptResourceOriginRule, HttpScriptResourcePolicy,
+    };
     use crate::script::javascript::{AuthorizedJavaScriptModule, AuthorizedJavaScriptResolution};
     use blueice_bluets::{AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution};
     use blueice_launcher::bluejs_host::{
         bind_bluejs_host_socket, serve_bluejs_host_listener, BlueJsChildHost,
     };
+    use std::collections::BTreeMap;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
@@ -1399,6 +1406,86 @@ mod tests {
             page_host::read_page_host_reply(&mut stream).unwrap(),
             PageHostReply::ShutdownAck
         );
+    }
+
+    #[derive(Clone)]
+    struct HttpTestResponse {
+        status: &'static str,
+        content_type: Option<&'static str>,
+        extra_headers: Vec<(&'static str, &'static str)>,
+        body: String,
+    }
+
+    impl HttpTestResponse {
+        fn script(content_type: &'static str, body: impl Into<String>) -> Self {
+            Self {
+                status: "200 OK",
+                content_type: Some(content_type),
+                extra_headers: Vec::new(),
+                body: body.into(),
+            }
+        }
+
+        fn redirect(location: &'static str) -> Self {
+            Self {
+                status: "302 Found",
+                content_type: None,
+                extra_headers: vec![("Location", location)],
+                body: String::new(),
+            }
+        }
+
+        fn write_to(&self, stream: &mut std::net::TcpStream) {
+            let mut response = format!(
+                "HTTP/1.1 {}\r\nContent-Length: {}\r\nConnection: close\r\n",
+                self.status,
+                self.body.len()
+            );
+            if let Some(content_type) = self.content_type {
+                response.push_str(&format!("Content-Type: {content_type}\r\n"));
+            }
+            for (name, value) in &self.extra_headers {
+                response.push_str(&format!("{name}: {value}\r\n"));
+            }
+            response.push_str("\r\n");
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.write_all(self.body.as_bytes()).unwrap();
+        }
+    }
+
+    fn spawn_local_resource_server(
+        responses: BTreeMap<String, HttpTestResponse>,
+        expected_requests: usize,
+    ) -> (String, Arc<Mutex<Vec<String>>>, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let requested = Arc::new(Mutex::new(Vec::new()));
+        let observed = Arc::clone(&requested);
+        let thread = thread::spawn(move || {
+            for _ in 0..expected_requests {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buffer = [0u8; 4096];
+                let bytes = stream.read(&mut buffer).unwrap();
+                let request = std::str::from_utf8(&buffer[..bytes]).unwrap();
+                let path = request
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .unwrap()
+                    .to_string();
+                observed.lock().unwrap().push(path.clone());
+                responses
+                    .get(&path)
+                    .unwrap_or(&HttpTestResponse {
+                        status: "404 Not Found",
+                        content_type: None,
+                        extra_headers: Vec::new(),
+                        body: String::new(),
+                    })
+                    .write_to(&mut stream);
+            }
+        });
+        (origin, requested, thread)
     }
 
     fn external_javascript_graph() -> AuthorizedJavaScriptModuleGraph {
@@ -1711,6 +1798,219 @@ mod tests {
         shutdown_child(&path, &token);
         child.join().unwrap();
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn startup_http_authorizer_builds_closed_classic_module_and_bluets_graphs_source_free() {
+        let classic = "globalThis.externalClassic = (globalThis.externalClassic || 40) + 1;";
+        let javascript_entry =
+            "import { answer } from './answer.js'; globalThis.externalModule = answer;";
+        let javascript_dependency = "export const answer = 42;";
+        let bluets_entry =
+            "import { answer } from './answer.ts'; export const result: number = answer;";
+        let bluets_dependency = "export const answer: number = 41;";
+        let integrity_mismatch = "globalThis.redactedIntegrityMarker = 'private bytes';";
+        let bad_mime = "globalThis.redactedMimeMarker = 'private bytes';";
+        let mut responses = BTreeMap::new();
+        responses.insert(
+            "/assets/classic.js".to_string(),
+            HttpTestResponse::script("text/javascript; charset=utf-8", classic),
+        );
+        responses.insert(
+            "/assets/main.js".to_string(),
+            HttpTestResponse::script("application/javascript", javascript_entry),
+        );
+        responses.insert(
+            "/assets/answer.js".to_string(),
+            HttpTestResponse::script("application/javascript", javascript_dependency),
+        );
+        responses.insert(
+            "/assets/main.ts".to_string(),
+            HttpTestResponse::script("text/typescript", bluets_entry),
+        );
+        responses.insert(
+            "/assets/answer.ts".to_string(),
+            HttpTestResponse::script("application/typescript", bluets_dependency),
+        );
+        responses.insert(
+            "/assets/bad-integrity.js".to_string(),
+            HttpTestResponse::script("application/javascript", integrity_mismatch),
+        );
+        responses.insert(
+            "/assets/bad-mime.js".to_string(),
+            HttpTestResponse::script("text/plain", bad_mime),
+        );
+        responses.insert(
+            "/assets/redirect.js".to_string(),
+            HttpTestResponse::redirect("/assets/classic.js"),
+        );
+        // Eight requests: the repeated classic declaration uses the private
+        // `(URL, integrity, MIME lane)` cache key, and the cross-origin URL
+        // is rejected before any network I/O.
+        let (origin, requested, server) = spawn_local_resource_server(responses, 8);
+        let resource = |path: &str| format!("{origin}{path}");
+        let manifest = HttpScriptIntegrityManifest::new([
+            (
+                resource("/assets/classic.js"),
+                sha256_integrity(classic.as_bytes()),
+            ),
+            (
+                resource("/assets/main.js"),
+                sha256_integrity(javascript_entry.as_bytes()),
+            ),
+            (
+                resource("/assets/answer.js"),
+                sha256_integrity(javascript_dependency.as_bytes()),
+            ),
+            (
+                resource("/assets/main.ts"),
+                sha256_integrity(bluets_entry.as_bytes()),
+            ),
+            (
+                resource("/assets/answer.ts"),
+                sha256_integrity(bluets_dependency.as_bytes()),
+            ),
+            (
+                resource("/assets/bad-integrity.js"),
+                sha256_integrity(b"owner-selected different bytes"),
+            ),
+            (
+                resource("/assets/bad-mime.js"),
+                sha256_integrity(bad_mime.as_bytes()),
+            ),
+            (
+                resource("/assets/redirect.js"),
+                sha256_integrity(b"redirect body is not admitted"),
+            ),
+            (
+                "http://127.0.0.1:1/cross-origin.js".to_string(),
+                sha256_integrity(b"not fetched"),
+            ),
+        ])
+        .unwrap();
+        let policy = HttpScriptResourcePolicy::new(
+            HttpScriptResourceOriginRule::same_document_origin(),
+            manifest,
+            HttpScriptResourceLimits::default(),
+        )
+        .unwrap();
+        let authorizer = HttpOutOfProcessPageScriptSourceAuthorizer::new(policy);
+        let (path, token, child) = spawn_child();
+        let (tabs, tab_id) = loaded_tabs(
+            concat!(
+                "<script src=\"/assets/classic.js\"></script>",
+                "<script type=\"module\" src=\"/assets/main.js\"></script>",
+                "<script type=\"application/x-blueice-typescript-module\" src=\"/assets/main.ts\"></script>",
+                "<script src=\"/assets/classic.js\"></script>",
+                "<script src=\"/assets/bad-integrity.js\"></script>",
+                "<script type=\"module\" src=\"/assets/bad-mime.js\"></script>",
+                "<script src=\"/assets/redirect.js\"></script>",
+                "<script src=\"http://127.0.0.1:1/cross-origin.js\"></script>",
+                "<script>if (globalThis.externalClassic !== 42 || globalThis.externalModule !== 42) throw 'graph';</script>"
+            ),
+            &format!("{origin}/app/index.html"),
+        );
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::connect_with_external_source_authorizer(
+                &path, &token, authorizer,
+            )
+            .unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        let reports = executor.drain_reports_for_tab(tab_id);
+        assert_eq!(
+            reports,
+            vec![
+                JavaScriptPageExecutionReport::Executed {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 0,
+                    kind: BlueJsPageScriptKind::Classic,
+                },
+                JavaScriptPageExecutionReport::Executed {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 1,
+                    kind: BlueJsPageScriptKind::Module,
+                },
+                JavaScriptPageExecutionReport::Executed {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 3,
+                    kind: BlueJsPageScriptKind::Classic,
+                },
+                JavaScriptPageExecutionReport::Rejected {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 4,
+                    kind: BlueJsPageScriptKind::Classic,
+                    category: "external JavaScript source authorization rejected the page script",
+                },
+                JavaScriptPageExecutionReport::Rejected {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 5,
+                    kind: BlueJsPageScriptKind::Module,
+                    category: "external JavaScript source authorization rejected the page script",
+                },
+                JavaScriptPageExecutionReport::Rejected {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 6,
+                    kind: BlueJsPageScriptKind::Classic,
+                    category: "external JavaScript source authorization rejected the page script",
+                },
+                JavaScriptPageExecutionReport::Rejected {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 7,
+                    kind: BlueJsPageScriptKind::Classic,
+                    category: "external JavaScript source authorization rejected the page script",
+                },
+                JavaScriptPageExecutionReport::Executed {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 8,
+                    kind: BlueJsPageScriptKind::Classic,
+                },
+            ]
+        );
+        assert_eq!(
+            executor.drain_blue_ts_reports_for_tab(tab_id),
+            vec![BlueTsPageExecutionReport::Executed {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                ordinal: 2,
+                kind: DirectPageScriptKind::Module,
+            }]
+        );
+        let source_free = format!("{reports:?}");
+        for protected in [
+            "redactedIntegrityMarker",
+            "redactedMimeMarker",
+            "bad-integrity.js",
+            "bad-mime.js",
+            "redirect.js",
+            "cross-origin.js",
+        ] {
+            assert!(!source_free.contains(protected));
+        }
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+        server.join().unwrap();
+        let requested = requested.lock().unwrap();
+        assert_eq!(requested.len(), 8);
+        assert_eq!(
+            requested
+                .iter()
+                .filter(|path| path.as_str() == "/assets/classic.js")
+                .count(),
+            1
+        );
+        assert!(!requested.iter().any(|path| path.contains("cross-origin")));
     }
 
     #[test]

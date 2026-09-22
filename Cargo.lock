@@ -235,6 +235,7 @@ dependencies = [
  "blueice-raster",
  "blueice-testing",
  "serde_json",
+ "ureq",
 ]
 
 [[package]]

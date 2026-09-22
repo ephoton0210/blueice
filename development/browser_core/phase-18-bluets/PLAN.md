@@ -6,6 +6,23 @@
 
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
+The supervised-child route now also has its first concrete external-resource
+authority: `HttpOutOfProcessPageScriptSourceAuthorizer` is immutable core
+startup configuration, never page/frontend/child/MCP input. It fixes either a
+canonical same-document-origin rule or one canonical exact origin, a canonical
+URL-to-lowercase-SHA-256 manifest, and fixed module/depth/per-module/graph-byte
+bounds. It accepts only direct `200`, identity-encoded UTF-8 responses with an
+allowed JavaScript or BlueTS MIME type and a matching bounded `Content-Length`;
+redirects, missing integrity, cross-origin targets under the same-origin rule,
+ambiguous URL forms, and over-limit graphs fail closed. Core parses only the
+manifest-covered static JavaScript/BlueTS edges, uses deterministic
+`(canonical URL, expected SHA-256, language MIME lane)` cache keys, and derives
+the resolver fingerprint from the full policy. It transfers only that closed
+graph to the child; the child still receives no HTTP/cache/manifest/resolver
+capability. A real loopback HTTP plus supervised-child test covers classic,
+JavaScript module, and BlueTS module graphs; cache reuse; integrity, MIME,
+redirect, and cross-origin denials; and source-free reports.
+
 `blueice-launcher` now also has an isolated `blueice-bluejs-host` child behind
 a private versioned, per-spawn-capability-authenticated IPC protocol. The child
 owns bounded BlueJS tab realms and accepts only complete caller-authorized
@@ -182,7 +199,7 @@ The initial implementation completes the work that has no BlueJS dependency befo
   targets fail closed, and checks that its debugger replies never reflect
   fixture source/completion data, VM values, or BlueJS opcode data.
 - A parsed `Page` now discovers the explicit non-portable `application/x-blueice-typescript` and `application/x-blueice-typescript-module` declarations in document order, retaining inline source or an external `src` as data. It never grants loading authority or evaluates them: a future page loader must apply origin, feature-profile, integrity, resolver, and resource policy before assembling the `AuthorizedModuleLoader` for direct admission.
-- As a deliberately bounded normal-page fixture seam, `DirectPageScriptHost::execute_inline` may admit one inline declaration only. It derives a canonical module ID from core tab/document-generation/declaration identities and creates a one-module closed loader, so it neither embeds caller text in an identity nor reads an external source. `DirectPageInlineExecutor` can invoke that seam automatically only when a core owner explicitly selects it. By default it rejects and reports external `src` without reflecting the page-controlled URL; `PageScriptSourceAuthorizer` is the sole optional core-owned authority that can turn that declaration into a supplied closed graph plus resolver fingerprint. The executor never fetches, resolves, or falls back itself. A real fetch/cache/integrity implementation and remaining host bindings remain open.
+- As a deliberately bounded normal-page fixture seam, `DirectPageScriptHost::execute_inline` may admit one inline declaration only. It derives a canonical module ID from core tab/document-generation/declaration identities and creates a one-module closed loader, so it neither embeds caller text in an identity nor reads an external source. `DirectPageInlineExecutor` can invoke that seam automatically only when a core owner explicitly selects it. By default it rejects and reports external `src` without reflecting the page-controlled URL; `PageScriptSourceAuthorizer` is the sole optional core-owned authority that can turn that declaration into a supplied closed graph plus resolver fingerprint. The executor never fetches, resolves, or falls back itself. The concrete HTTP(S) authority currently applies only to the separately supervised child route; an equivalent in-process policy and remaining host bindings remain open.
 - The out-of-process portion now has a deliberately narrow shared-realm
   bridge: `OutOfProcessJavaScriptPageExecutor`, selected only when core
   receives both a trusted child endpoint and its per-spawn capability token,
@@ -223,10 +240,18 @@ The initial implementation completes the work that has no BlueJS dependency befo
   renamed, or page-selected binding fails closed before compiler admission;
   `document`, `fetch`, URL, resolver, and object APIs remain untyped and
   unavailable. This still is not a general DOM surface.
-  An immutable core-owned startup authorizer may supply an exact closed
-  external JavaScript or BlueTS graph; core validates and copies that graph
+  `HttpOutOfProcessPageScriptSourceAuthorizer` now creates the closed graph
+  itself under a fixed startup policy: canonical same-document origin or one
+  canonical owner-selected origin, a URL/SHA-256 manifest, and fixed resource
+  bounds. It accepts only a direct `200`, identity-encoded UTF-8 response with
+  a language-approved MIME type and matching bounded `Content-Length`; it
+  rejects redirects, missing manifest records, bad integrity, ambiguous/bare
+  static URL forms, and over-depth/count/byte graphs. It parses manifest-
+  covered JavaScript and BlueTS static edges, privately caches only verified
+  bytes under deterministic URL/integrity/language keys, and derives a
+  policy-complete resolver fingerprint. Core copies only the finished graph
   into the child protocol, while the child still has no fetch, URL-resolution,
-  import-map, filesystem, or fallback authority. The v4 channel additionally
+  import-map, filesystem, cache, manifest, or fallback authority. The v4 channel additionally
   carries only source-free debugger-location operations: list retained
   programs, list a fixed bounded set of compiler-recorded safe points, and
   validate one exact tuple. The child mints private IDs only; core verifies an
@@ -234,8 +259,8 @@ The initial implementation completes the work that has no BlueJS dependency befo
   disjoint core namespace, and rejects mismatched tab/document/program/safe-
   point replies. The route deliberately does not proxy breakpoints,
   pause/resume, stepping, VM frames, stacks, scopes, values, bytecode, or
-  source. DOM/event callbacks, URL or import-map resolution, a production
-  fetch/cache/integrity authorizer implementation, and page-selected compiler
+  source. DOM/event callbacks, URL or import-map resolution, an in-process
+  equivalent or broader deployment HTTP policy, and page-selected compiler
   profiles remain open.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.
 - The [BlueTS test report](TEST_REPORT.md) records the complete per-platform test-suite results, the TypeScript 5.9.3 oracle matrix and per-file line coverage for `blueice-bluets` and `blueice-bluets-bluejs` (2026-09-21).

@@ -57,9 +57,18 @@ handle/generation in a disjoint namespace and rejects any child reply whose
 tab, document generation, private program, or safe point does not exactly
 match that mapping. The child has no breakpoint configuration, pause/resume,
 stepping, stack/scope/value/source/bytecode operation. The remaining boundary
-has no general DOM or event surface beyond the copied strings, no production
-fetch/cache/integrity implementation, arbitrary debugger interruption/pause/
-runtime control, or MCP project-registration path.
+has no general DOM or event surface beyond the copied strings, arbitrary
+debugger interruption/pause/runtime control, or MCP project-registration path.
+The child route now also has a concrete but deliberately narrow startup-only
+`HttpOutOfProcessPageScriptSourceAuthorizer`: core fixes a same-document-origin
+or one canonical exact-origin rule, owner URL-to-SHA-256 manifest, and
+module/depth/per-module/graph byte limits before an executor exists. It admits
+only direct `200`, identity-encoded UTF-8 JavaScript/BlueTS MIME responses with
+matching bounded `Content-Length` and integrity, disallows redirects, and
+parses only manifest-covered static edges. Its verified private cache uses
+deterministic URL/integrity/language keys and the finished graph fingerprint
+covers the whole policy. The page, child, frontend, and MCP receive neither
+that authority nor its cache/manifest—only a completed graph.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
 syntax matrix while an earlier item prevents an already-supported program from
@@ -217,8 +226,12 @@ or second module resolver to bypass them.
   typed call executes through direct lowering and `fetch` is a source-free
   rejection, while the unit regression also rejects invalid callback arity.
   It does not grant the child fetch, URL/import-map resolution, a filesystem,
-  or external graph authority beyond the supplied graph. Production fetch/cache/
-  integrity authority, host-wide
+  or external graph authority beyond the supplied graph. The concrete
+  child-only HTTP(S) authority now verifies a startup-selected URL/SHA-256
+  manifest, direct response policy, and a parsed closed static graph; its real
+  loopback process regression covers cache reuse plus integrity/MIME/redirect/
+  cross-origin denials without source reflection. Owner deployment
+  configuration, an in-process equivalent, host-wide
   memory accounting, native debugger
   attachment, and general JavaScript DOM-object/event binding remain open, so
   the prerequisite remains open.
@@ -546,8 +559,10 @@ or second module resolver to bypass them.
   snapshot profile and, only with an immutable core-owned startup authorizer,
   supplied closed external graphs. It also has only the core-proxied,
   source-free debugger location attachment described above: no debugger
-  control or general DOM surface. No concrete fetch/cache/integrity
-  implementation or general external graph policy exists. The closed-graph
+  control or general DOM surface. A concrete narrowly scoped child HTTP(S)
+  fetch/cache/integrity policy now exists, but no general external graph
+  policy, redirect/credential/import-map support, or in-process counterpart
+  exists. The closed-graph
   direct bridge
   integration is complete; those broader page-host responsibilities remain
   separate open prerequisites.

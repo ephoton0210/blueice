@@ -28,6 +28,11 @@ pub mod direct_page;
 /// `core-script-document-text-v1` is the one checked-in profile with a
 /// matching direct-page runtime binding.
 pub mod host_typings;
+/// Immutable startup-configured HTTP(S) resource authority for the optional
+/// launcher-supervised page host. It returns closed graphs only and exposes no
+/// network or resolver capability to page code.
+#[cfg(unix)]
+pub mod http_resource_authorizer;
 pub mod inline_runner;
 pub mod javascript;
 #[cfg(unix)]
