@@ -26,10 +26,12 @@ validation for a live JavaScript realm. Every request remains tab, document,
 and program-generation bound. It also owns a bounded, idempotent exact
 breakpoint-configuration table that is cleaned up on realm replacement. When
 the same core process selects `--inline-bluejs` and a debugger socket, the
-first scheduler turn admits a declaration and the next permits an exact
-root-code-unit instruction-zero breakpoint to stop it before BlueJS begins.
-The owner can then observe source-free state and resume it once. This is not
-arbitrary interpreter suspension: there is no saved VM frame, operand stack,
+post-navigation admission turn does not immediately execute the declaration;
+each handshaken bounded discovery/configuration request retains one further
+session turn so the peer can learn and arm its exact root-code-unit
+instruction-zero location. An arm stops it before BlueJS begins. The owner can
+then observe source-free state and resume it once. This is not arbitrary
+interpreter suspension: there is no saved VM frame, operand stack,
 handler, GC-root, source/bytecode, stack, scope, or runtime-value exposure;
 step and non-entry breakpoint interruption remain absent.
 

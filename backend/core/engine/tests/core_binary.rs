@@ -526,6 +526,15 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
             && report.detail.contains("does not interrupt execution")
     }));
+    for capability in [
+        blueice_ipc::debugger::DebuggerCapability::Breakpoints,
+        blueice_ipc::debugger::DebuggerCapability::PauseResume,
+    ] {
+        assert!(first_capabilities.reports.iter().any(|report| {
+            report.capability == capability
+                && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+        }));
+    }
     assert!(first_capabilities
         .reports
         .iter()
@@ -534,6 +543,8 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
                 report.capability,
                 blueice_ipc::debugger::DebuggerCapability::ProgramLocations
                     | blueice_ipc::debugger::DebuggerCapability::BreakpointConfiguration
+                    | blueice_ipc::debugger::DebuggerCapability::Breakpoints
+                    | blueice_ipc::debugger::DebuggerCapability::PauseResume
             )
         })
         .all(|report| { report.state == blueice_ipc::debugger::DebuggerCapabilityState::Planned }));
@@ -560,9 +571,10 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
     .unwrap();
     let first_safe_point = match blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap()
     {
-        blueice_ipc::debugger::DebuggerReply::SafePoints(safe_points) => *safe_points
-            .first()
-            .expect("the compiled page program has a safe point"),
+        blueice_ipc::debugger::DebuggerReply::SafePoints(safe_points) => safe_points
+            .into_iter()
+            .find(|safe_point| safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset == 0)
+            .expect("the compiled page program has a root entry safe point"),
         other => panic!("expected verified debugger safe points, got {other:?}"),
     };
     assert_eq!(first_safe_point.program, first_program);
@@ -577,6 +589,65 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
         blueice_ipc::debugger::DebuggerReply::SafePointValidated {
             safe_point: first_safe_point,
+        }
+    );
+    // The core process has not entered this program yet: with the debugger
+    // socket selected, its page scheduler gives this handshaken peer one turn
+    // to arm the compiler-verified root instruction boundary.
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ArmEntryBreakpoint {
+            safe_point: first_safe_point,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::BreakpointArmed {
+            safe_point: first_safe_point,
+        }
+    );
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::GetExecutionState {
+            program: first_program,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program: first_program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Paused {
+                safe_point: first_safe_point,
+            },
+        }
+    );
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ResumeExecution {
+            program: first_program,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::ExecutionResumed {
+            program: first_program,
+        }
+    );
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::GetExecutionState {
+            program: first_program,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program: first_program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
         }
     );
     blueice_ipc::debugger::write_debugger_request(

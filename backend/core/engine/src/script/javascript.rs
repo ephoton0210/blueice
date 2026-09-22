@@ -406,6 +406,11 @@ pub struct JavaScriptPageExecutor {
     pending_debugger_executions: BTreeMap<TabId, VecDeque<PendingDebuggerExecution>>,
     debugger_execution_states:
         BTreeMap<TabId, BTreeMap<DebuggerProgramKey, DebuggerExecutionStatus>>,
+    /// A handshaken debugger discovery request gets one further core-session
+    /// boundary to inspect an admitted declaration and arm its exact entry
+    /// location. This is consumed by the next lifecycle synchronization; an
+    /// idle session still starts the declaration normally.
+    hold_pending_debugger_execution_once: bool,
     next_debugger_program_handle: u64,
     reports: VecDeque<JavaScriptPageExecutionReport>,
 }
@@ -447,6 +452,7 @@ impl JavaScriptPageExecutor {
             debugger_breakpoints: BTreeMap::new(),
             pending_debugger_executions: BTreeMap::new(),
             debugger_execution_states: BTreeMap::new(),
+            hold_pending_debugger_execution_once: false,
             next_debugger_program_handle: 1,
             reports: VecDeque::new(),
         })
@@ -472,8 +478,23 @@ impl JavaScriptPageExecutor {
         tabs: &TabManager,
     ) -> Result<(), JavaScriptPageExecutorError> {
         self.close_removed_tabs(tabs);
-        self.drive_debugger_executions();
         let tab_ids: Vec<_> = tabs.ids().collect();
+        // Reconcile replacement before advancing a deferred program. A
+        // declaration from the superseded document must be discarded rather
+        // than execute during the new document's first lifecycle turn.
+        for tab_id in &tab_ids {
+            let Some(page) = tabs.get(*tab_id) else {
+                continue;
+            };
+            if self.observed_documents.get(tab_id) != Some(&page.document_generation())
+                && self.live_documents.contains_key(tab_id)
+            {
+                self.close_page(*tab_id);
+            }
+        }
+        if !std::mem::take(&mut self.hold_pending_debugger_execution_once) {
+            self.drive_debugger_executions();
+        }
         for tab_id in tab_ids {
             let Some(page) = tabs.get(tab_id) else {
                 continue;

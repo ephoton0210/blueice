@@ -308,11 +308,13 @@ or second module resolver to bypass them.
   `ProgramLocations` is `available` only for an enabled, live JavaScript page
   realm; it remains `planned` otherwise. v4 additionally exposes
   `ArmEntryBreakpoint`, `GetExecutionState`, and `ResumeExecution` only when
-  `--inline-bluejs` is paired with the private debugger socket. Admission is
-  deferred by one session turn; a peer can arm only the exact root code-unit
-  instruction-zero boundary of a still-pending declaration. The session owner
-  then reports `Paused` before calling the ordinary BlueJS VM entry point and
-  accepts resume only from that state. The reply contains no source, bytecode,
+  `--inline-bluejs` is paired with the private debugger socket. The admission
+  turn never immediately executes the new declaration; each handshaken bounded
+  discovery/configuration request keeps it pending through one further session
+  turn, so a peer can learn and arm only its exact root code-unit instruction-
+  zero boundary. The session owner then reports `Paused` before calling the
+  ordinary BlueJS VM entry point and accepts resume only from that state. The
+  reply contains no source, bytecode,
   stack, scope, object, or completion value. The root-entry continuation is
   deliberately zero-execution: it does not serialize interpreter frames,
   operand stack, handlers, GC roots, or nested calls. `Breakpoints` and

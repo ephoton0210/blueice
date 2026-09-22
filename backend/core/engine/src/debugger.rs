@@ -105,17 +105,39 @@ impl DebuggerRequestReceiver {
         mut javascript_executor: Option<&mut JavaScriptPageExecutor>,
     ) -> usize {
         let mut dispatched = 0;
+        let mut preserve_pending_entry = false;
+        let mut advance_pending_entry = false;
         while dispatched < MAX_DEBUGGER_REQUESTS_PER_SESSION_TICK {
             let Ok(envelope) = self.0.try_recv() else {
                 break;
             };
+            let executes_or_releases_entry = matches!(
+                &envelope.request,
+                DebuggerRequest::ArmEntryBreakpoint { .. }
+                    | DebuggerRequest::ResumeExecution { .. }
+            );
             let reply = handle_debugger_request_with_javascript_executor(
                 tabs,
                 javascript_executor.as_deref_mut(),
                 envelope.request,
             );
             let _ = envelope.reply.send(reply);
+            if executes_or_releases_entry {
+                advance_pending_entry = true;
+            } else {
+                preserve_pending_entry = true;
+            }
             dispatched += 1;
+        }
+        // A page declaration is admitted before a remote peer can learn its
+        // opaque program identity. Give each discovery/configuration reply one
+        // more session boundary to send the next bounded request; otherwise a
+        // normal idle synchronization begins it. Arm and resume deliberately
+        // consume that boundary so their requested state transition happens.
+        if preserve_pending_entry && !advance_pending_entry {
+            if let Some(executor) = javascript_executor {
+                executor.hold_pending_debugger_execution_once();
+            }
         }
         dispatched
     }

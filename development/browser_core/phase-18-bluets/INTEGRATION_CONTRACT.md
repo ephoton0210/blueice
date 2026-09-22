@@ -429,11 +429,13 @@ configuration operations. A configuration record contains only the exact
 opaque safe-point tuple, is revalidated before insertion/removal, and is
 dropped before its tab realm is navigated, replaced, or closed. The available
 `BreakpointConfiguration` capability means only this lifecycle-bound table.
-When the core has both `--inline-bluejs` and a private debugger socket, it
-additionally defers a newly admitted declaration by one session turn. v4's
-`ArmEntryBreakpoint` accepts only that declaration's exact compiler-verified
-root-code-unit instruction-zero boundary; the session owner reports a
-source-free `Paused` state before the ordinary BlueJS VM entry point runs.
+When the core has both `--inline-bluejs` and a private debugger socket, its
+post-navigation admission turn does not immediately execute a newly admitted
+declaration. Each handshaken bounded discovery/configuration request retains it
+through one further session turn, so v4's `ArmEntryBreakpoint` can accept only
+that declaration's exact compiler-verified root-code-unit instruction-zero
+boundary; the session owner reports a source-free `Paused` state before the
+ordinary BlueJS VM entry point runs.
 `GetExecutionState` and `ResumeExecution` expose only pending/paused/resuming/
 completed state and cannot inject a value or exception. This is a real but
 zero-execution continuation: it does not preserve a live interpreter frame,

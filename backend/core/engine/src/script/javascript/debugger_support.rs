@@ -157,6 +157,23 @@ impl JavaScriptPageExecutor {
         self.config.native_debugger_execution_control
     }
 
+    /// Preserves one pending root-entry declaration across the next lifecycle
+    /// synchronization after a handshaken debugger discovery request. The
+    /// request receiver uses this bounded one-turn hold so a peer can obtain
+    /// the opaque program and verified entry location before ordinary idle
+    /// scheduling starts it. An arm or resume request deliberately does not
+    /// take this hold: its following lifecycle turn must pause or execute.
+    pub(crate) fn hold_pending_debugger_execution_once(&mut self) {
+        if self.debugger_execution_control_available()
+            && self
+                .pending_debugger_executions
+                .values()
+                .any(|pending| !pending.is_empty())
+        {
+            self.hold_pending_debugger_execution_once = true;
+        }
+    }
+
     /// Returns only opaque debugger program identities for one exact live
     /// tab/document realm. The result has no source, canonical module ID,
     /// bytecode, completion value, or VM object identity.

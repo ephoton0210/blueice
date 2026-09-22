@@ -722,8 +722,9 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
             Err(_) => return Ok(()),       // client disconnected without an explicit Shutdown
         }
 
+        let mut synchronized_after_completion = false;
         while let Ok(completion) = completion_rx.try_recv() {
-            apply_completion(
+            synchronized_after_completion |= apply_completion(
                 tabs,
                 stream,
                 frame_dir,
@@ -748,7 +749,14 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                 .service
                 .dispatch_pending(compiler_requests.receiver);
         }
-        synchronize_page_script_runtime(&mut page_script_runtime, tabs)?;
+        // `apply_completion` already synchronized the just-admitted document
+        // before publishing its navigation reply. Do not immediately run a
+        // second lifecycle turn here: that would make a newly admitted
+        // root-entry debugger program execute before its peer can even ask
+        // for the opaque location needed to arm it.
+        if !synchronized_after_completion {
+            synchronize_page_script_runtime(&mut page_script_runtime, tabs)?;
+        }
     }
 }
 
@@ -1029,7 +1037,7 @@ fn apply_completion<S: Write>(
     pending_nav_seq: &HashMap<TabId, u64>,
     completion: Completion,
     page_script_runtime: &mut PageScriptRuntime<'_>,
-) -> io::Result<()> {
+) -> io::Result<bool> {
     let Completion {
         tab_id,
         seq,
@@ -1038,10 +1046,10 @@ fn apply_completion<S: Write>(
         outcome,
     } = completion;
     if pending_nav_seq.get(&tab_id) != Some(&seq) {
-        return Ok(()); // superseded by a later navigation to this tab
+        return Ok(false); // superseded by a later navigation to this tab
     }
     if tabs.get(tab_id).is_none() {
-        return Ok(()); // the tab closed while this navigation was pending
+        return Ok(false); // the tab closed while this navigation was pending
     }
     let reply_tab = Some(tab_id.as_u64());
     match outcome {
@@ -1069,7 +1077,8 @@ fn apply_completion<S: Write>(
                 request_id,
                 &kind,
                 tab_id.as_u64(),
-            )
+            )?;
+            Ok(true)
         }
         NavOutcome::GatekeeperBlocked {
             reason,
@@ -1084,8 +1093,11 @@ fn apply_completion<S: Write>(
                 category,
                 url,
             },
-        ),
-        NavOutcome::FetchFailed { message } => write_error(stream, reply_tab, request_id, message),
+        )
+        .map(|()| false),
+        NavOutcome::FetchFailed { message } => {
+            write_error(stream, reply_tab, request_id, message).map(|()| false)
+        }
     }
 }
 
