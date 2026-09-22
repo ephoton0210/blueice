@@ -98,7 +98,15 @@ impl Vm {
         if !linked.get(module).is_none_or(|record| record.evaluated) {
             return Ok(false);
         }
-        for (other, record) in linked {
+        // `linked` is a HashMap. Its order cannot affect cycle discovery:
+        // although this predicate only returns a boolean today, retaining a
+        // canonical traversal makes a future diagnostic here reproducible.
+        let mut candidates: Vec<_> = linked.keys().collect();
+        candidates.sort_unstable();
+        for other in candidates {
+            let record = linked
+                .get(other)
+                .expect("module key was collected from this map");
             if other != module
                 && !record.evaluated
                 && Self::module_reaches(module, other, modules, &mut HashSet::new())?
