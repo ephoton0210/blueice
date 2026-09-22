@@ -1295,8 +1295,11 @@ impl Vm {
                                 let Value::Object(id) = object else {
                                     unreachable!("with objects are objects")
                                 };
-                                outcome =
-                                    Value::Bool(self.object_delete(id, &name.as_str().into())?);
+                                outcome = Value::Bool(if self.is_parameter_eval_env(id) {
+                                    self.delete_eval_env_var(id, &name)?
+                                } else {
+                                    self.object_delete(id, &name.as_str().into())?
+                                });
                                 break;
                             }
                         }

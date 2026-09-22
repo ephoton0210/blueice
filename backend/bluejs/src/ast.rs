@@ -785,6 +785,12 @@ pub(crate) fn params_contain_direct_eval(params: &[Param]) -> bool {
     })
 }
 
+/// Whether a direct `eval(...)` call belongs to a function body's own
+/// evaluation (not to a nested function or arrow).
+pub(crate) fn body_contains_direct_eval(body: &[Stmt]) -> bool {
+    stmts_contain_super(body, SuperSearch::DirectEval)
+}
+
 /// Whether an ordinary function's parameters or body can observe the
 /// function's own `arguments` object: a lexical reference to the name (arrow
 /// functions inside it share the object; nested ordinary functions have their

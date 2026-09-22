@@ -740,6 +740,28 @@ impl Vm {
         Ok(())
     }
 
+    /// `delete name` where the name was found in a function's variable
+    /// environment object (see `new_parameter_eval_env`): deleting an eval
+    /// variable is always possible.
+    pub(super) fn delete_eval_env_var(
+        &mut self,
+        env: ObjectId,
+        name: &str,
+    ) -> Result<bool, RuntimeError> {
+        let Some(cell) = self
+            .heap
+            .get_own(env, name)?
+            .and_then(|value| value.object_id())
+        else {
+            return Ok(true);
+        };
+        self.remove_eval_binding(name, cell)?;
+        // The binding may be missing from the environment of the frame that
+        // is running (a closure), so drop this record of it in any case.
+        self.heap.delete(env, name)?;
+        Ok(true)
+    }
+
     pub(super) fn delete_dynamic_eval_binding(&mut self, name: &str) -> Result<bool, RuntimeError> {
         let binding = self.dynamic_eval_bindings.remove(name).or_else(|| {
             self.dynamic_eval_outer_bindings
@@ -1580,12 +1602,17 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         for &slot in &code.dynamic_eval_slots {
             let binding = &code.bindings[slot as usize];
+            // Without a variable environment object of its own, a function's
+            // static references to a captured name are redirected to the eval
+            // var that shadows it; with one, the name resolves through the
+            // environment before the captured binding.
             let shadowed_cells: Vec<_> = code
                 .captures
                 .iter()
                 .enumerate()
                 .filter_map(|(captured_slot, _)| {
-                    (code.bindings[captured_slot].name == binding.name)
+                    (self.parameter_eval_env.is_none()
+                        && code.bindings[captured_slot].name == binding.name)
                         .then(|| self.cells.get(&captured_slot).copied())
                         .flatten()
                 })
