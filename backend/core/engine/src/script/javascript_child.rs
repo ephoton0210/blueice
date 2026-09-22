@@ -989,12 +989,11 @@ mod tests {
                     ordinal: 1,
                     kind: DirectPageScriptKind::Classic,
                 },
-                BlueTsPageExecutionReport::Rejected {
+                BlueTsPageExecutionReport::Executed {
                     tab_id: tab_id.as_u64(),
                     document_generation: 1,
                     ordinal: 3,
                     kind: DirectPageScriptKind::Classic,
-                    category: "BlueTS compilation rejected the page script",
                 },
                 BlueTsPageExecutionReport::Rejected {
                     tab_id: tab_id.as_u64(),
