@@ -339,6 +339,12 @@ opcodes! {
     Instanceof: 1, 0;
     In: 1, 0;
     TypeofName: 5, 0;
+    // `typeof name` where `name` resolves to a slot that a sloppy direct
+    // eval created (deletable at runtime): reading it never throws, even
+    // once `delete name` has removed the binding and no outer scope has it
+    // either -- ECMA-262 §13.5.3's `typeof` on an unresolvable reference is
+    // `"undefined"`, not a ReferenceError (a TDZ binding is never eval_var).
+    TypeofBinding: 5, 0;
     // A lexical binding reference is resolved before an assignment's RHS.
     // Direct eval can add a same-named var binding during that RHS, so the
     // reference needs to retain its original target until PutValue.

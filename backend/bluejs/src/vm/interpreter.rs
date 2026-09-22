@@ -1126,6 +1126,13 @@ impl Vm {
                             })?;
                         self.stack.push(value);
                     }
+                    Opcode::TypeofBinding => {
+                        let value = self
+                            .eval_aware_binding_value(operand, &code.bindings[operand].name)?
+                            .unwrap_or(Value::Undefined);
+                        self.stack
+                            .push(Value::String(self.typeof_value(&value)?.into()));
+                    }
                     Opcode::ResolveBindingReference => {
                         let slot = operand;
                         let dynamic = self.cells.get(&slot).and_then(|cell| {

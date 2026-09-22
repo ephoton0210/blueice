@@ -108,3 +108,14 @@ fn deleting_the_var_in_its_own_initializer_neither_throws_nor_leaks() {
         text("undefined")
     );
 }
+
+#[test]
+fn typeof_a_deleted_eval_var_is_undefined_without_a_nested_eval() {
+    assert_eq!(
+        evaluate(
+            "var f = eval(\"var gone = 1; delete gone; (function () { return typeof gone; })\");
+             f()"
+        ),
+        text("undefined")
+    );
+}
