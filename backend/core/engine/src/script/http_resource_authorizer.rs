@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Startup-configured HTTP(S) authority for out-of-process page scripts.
+//! Startup-configured HTTP(S) authority for closed page-script graphs.
 //!
 //! This is deliberately a *resource manifest*, not a browser loader.  Core
 //! selects an immutable origin rule, a canonical URL-to-SHA-256 manifest, and
@@ -18,8 +18,8 @@
 //! arbitrary headers, dynamic imports, import maps, credentials, query
 //! strings, fragments, and encoded/ambiguous path spellings are all outside
 //! this first production source authority.  In particular, this module never
-//! hands HTTP, cache, URL, or manifest access to a page, the supervised child,
-//! or MCP.
+//! hands HTTP, cache, URL, or manifest access to a page, an in-process
+//! executor, the supervised child, or MCP.
 
 use super::{
     direct_page::DirectPageScriptKind,
@@ -29,7 +29,8 @@ use super::{
     page_source_authorizer::{
         AuthorizedOutOfProcessPageScriptGraph, AuthorizedPageScriptGraph,
         OutOfProcessPageScriptSourceAuthorizationError, OutOfProcessPageScriptSourceAuthorizer,
-        OutOfProcessPageScriptSourceRequest,
+        OutOfProcessPageScriptSourceRequest, PageScriptSourceAuthorizationError,
+        PageScriptSourceAuthorizer, PageScriptSourceRequest,
     },
     BlueJsPageScriptKind, CombinedPageScriptLanguage,
 };
@@ -239,13 +240,16 @@ impl HttpScriptResourcePolicy {
     }
 }
 
-/// Core startup-configured HTTP(S) source authority for the supervised child.
+/// Core startup-configured HTTP(S) source authority for a closed page graph.
 ///
 /// Its only mutable state is a private cache of already integrity-checked,
 /// immutable source bytes. Cache keys include the canonical URL, expected
 /// SHA-256, and language MIME lane, which makes cache reuse deterministic and
 /// prevents an accepted JavaScript response from being reused as BlueTS (or
-/// vice versa). The cache has no public read API.
+/// vice versa). The cache has no public read API. It implements both the
+/// in-process and out-of-process authorizer traits; both adapters call the
+/// same graph builder and therefore cannot drift in fetch, integrity, URL,
+/// static-edge, or resource-limit policy.
 pub struct HttpOutOfProcessPageScriptSourceAuthorizer {
     policy: HttpScriptResourcePolicy,
     cache: RefCell<BTreeMap<ResourceCacheKey, CachedResource>>,
@@ -576,6 +580,36 @@ impl OutOfProcessPageScriptSourceAuthorizer for HttpOutOfProcessPageScriptSource
     {
         self.authorize_graph(request)
             .map_err(|error| OutOfProcessPageScriptSourceAuthorizationError::new(error.to_string()))
+    }
+}
+
+/// Reuses the exact immutable HTTP resource policy for the bounded
+/// in-process BlueTS page route. That route has no JavaScript declaration
+/// lane, so it always requests the BlueTS variant and accepts no fallback
+/// graph. The detailed failure remains owner-private: `DirectPageInlineExecutor`
+/// reduces it to its existing source-free report category.
+impl PageScriptSourceAuthorizer for HttpOutOfProcessPageScriptSourceAuthorizer {
+    fn authorize(
+        &mut self,
+        request: &PageScriptSourceRequest,
+    ) -> Result<AuthorizedPageScriptGraph, PageScriptSourceAuthorizationError> {
+        let request = OutOfProcessPageScriptSourceRequest {
+            tab_id: request.tab_id,
+            document_generation: request.document_generation,
+            ordinal: request.ordinal,
+            language: CombinedPageScriptLanguage::BlueTs(request.kind),
+            document_url: request.document_url.clone(),
+            declared_src: request.declared_src.clone(),
+        };
+        match self.authorize_graph(&request) {
+            Ok(AuthorizedOutOfProcessPageScriptGraph::BlueTs(graph)) => Ok(graph),
+            Ok(AuthorizedOutOfProcessPageScriptGraph::JavaScript(_)) => {
+                Err(PageScriptSourceAuthorizationError::new(
+                    "HTTP authorizer produced an unsupported direct-page graph",
+                ))
+            }
+            Err(error) => Err(PageScriptSourceAuthorizationError::new(error.to_string())),
+        }
     }
 }
 
@@ -1209,5 +1243,90 @@ mod tests {
                 CORE_HTTP_PAGE_SCRIPT_FIXTURE_PATH,
             ))
             .is_err());
+    }
+
+    #[test]
+    fn in_process_adapter_uses_the_same_manifest_checked_bluets_graph_builder() {
+        let source = "export const answer: number = 42;";
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut request);
+            std::io::Write::write_all(
+                &mut stream,
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/typescript; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{source}",
+                    source.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        });
+        let entry = format!("http://{address}/assets/main.ts");
+        let policy = HttpScriptResourcePolicy::new(
+            HttpScriptResourceOriginRule::same_document_origin(),
+            HttpScriptIntegrityManifest::new([(
+                entry.clone(),
+                sha256_integrity(source.as_bytes()),
+            )])
+            .unwrap(),
+            HttpScriptResourceLimits::default(),
+        )
+        .unwrap();
+        let fingerprint = policy.resolver_fingerprint().to_string();
+        let mut authorizer = HttpOutOfProcessPageScriptSourceAuthorizer::new(policy);
+
+        let graph = PageScriptSourceAuthorizer::authorize(
+            &mut authorizer,
+            &PageScriptSourceRequest {
+                tab_id: crate::TabId::from_u64(1),
+                document_generation: 1,
+                ordinal: 0,
+                kind: DirectPageScriptKind::Module,
+                document_url: format!("http://{address}/app/index.html"),
+                declared_src: "/assets/main.ts".to_string(),
+            },
+        )
+        .unwrap();
+        server.join().unwrap();
+
+        assert_eq!(graph.entry, entry);
+        assert_eq!(graph.resolver_fingerprint, fingerprint);
+        assert_eq!(graph.loader.module_count(), 1);
+    }
+
+    #[test]
+    fn in_process_adapter_denies_cross_origin_before_any_fetch() {
+        let entry = "https://example.test/assets/main.ts";
+        let policy = HttpScriptResourcePolicy::new(
+            HttpScriptResourceOriginRule::same_document_origin(),
+            HttpScriptIntegrityManifest::new([(
+                entry.to_string(),
+                sha256_integrity(b"export const answer: number = 42;"),
+            )])
+            .unwrap(),
+            HttpScriptResourceLimits::default(),
+        )
+        .unwrap();
+        let mut authorizer = HttpOutOfProcessPageScriptSourceAuthorizer::new(policy);
+
+        let error = PageScriptSourceAuthorizer::authorize(
+            &mut authorizer,
+            &PageScriptSourceRequest {
+                tab_id: crate::TabId::from_u64(1),
+                document_generation: 1,
+                ordinal: 0,
+                kind: DirectPageScriptKind::Module,
+                document_url: "https://example.test/app/index.html".to_string(),
+                declared_src: "https://attacker.test/secret.ts".to_string(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "resource origin is not permitted by the startup policy"
+        );
     }
 }

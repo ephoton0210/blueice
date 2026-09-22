@@ -6,6 +6,10 @@ use super::*;
 use crate::script::{
     direct_page::{DirectInlinePageScriptRequest, DirectPageScriptHost},
     host_typings::{HostTypeSurfaceCatalogV1, HostTypeSurfaceV1},
+    http_resource_authorizer::{
+        sha256_integrity, HttpOutOfProcessPageScriptSourceAuthorizer, HttpScriptIntegrityManifest,
+        HttpScriptResourceLimits, HttpScriptResourceOriginRule, HttpScriptResourcePolicy,
+    },
     inline_runner::{DirectPageInlineExecutor, DirectPageScriptExecutionReport},
     javascript::JavaScriptPageExecutor,
     page_source_authorizer::{
@@ -183,6 +187,25 @@ fn external_graph_page_executor() -> DirectPageInlineExecutor {
         "session-external-runner-empty-v1",
         CompilerOptions::default(),
         SessionExternalGraphAuthorizer,
+    )
+    .unwrap()
+}
+
+fn http_external_graph_page_executor(
+    authorizer: HttpOutOfProcessPageScriptSourceAuthorizer,
+) -> DirectPageInlineExecutor {
+    let profiles = HostTypeSurfaceCatalogV1::new([HostTypeSurfaceV1::new(
+        LANGUAGE_VERSION,
+        "session-http-external-runner-v1",
+        "session-http-external-runner-empty-v1",
+        Vec::new(),
+    )])
+    .unwrap();
+    DirectPageInlineExecutor::with_external_source_authorizer(
+        profiles,
+        "session-http-external-runner-empty-v1",
+        CompilerOptions::default(),
+        authorizer,
     )
     .unwrap()
 }
@@ -607,6 +630,104 @@ fn authorized_external_blue_ts_module_graph_executes_after_a_real_session_naviga
     handle.join().unwrap();
     let (debug_record_count, reports) = result_receiver.recv().unwrap();
     assert_eq!(debug_record_count, 2);
+    assert!(matches!(
+        reports.as_slice(),
+        [DirectPageScriptExecutionReport::Executed {
+            ordinal: 0,
+            kind: crate::script::direct_page::DirectPageScriptKind::Module,
+            ..
+        }]
+    ));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn http_manifest_authorizes_an_external_bluets_graph_after_a_real_session_navigation() {
+    let dir = temp_frame_dir("http-authorized-external-blue-ts-page-pipeline");
+    std::fs::create_dir_all(&dir).unwrap();
+    let gatekeeper = clearing_gatekeeper("http-authorized-external-blue-ts-page-pipeline");
+    let source = "export const answer: number = 42;";
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let entry = format!("http://{address}/assets/main.ts");
+    let policy = HttpScriptResourcePolicy::new(
+        HttpScriptResourceOriginRule::same_document_origin(),
+        HttpScriptIntegrityManifest::new([(entry, sha256_integrity(source.as_bytes()))]).unwrap(),
+        HttpScriptResourceLimits::default(),
+    )
+    .unwrap();
+    let server = thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let request_len = std::io::Read::read(&mut stream, &mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..request_len]);
+            let (content_type, body) = if request.starts_with("GET /assets/main.ts ") {
+                ("application/typescript", source)
+            } else {
+                (
+                    "text/html",
+                    "<script type=\"application/x-blueice-typescript-module\" src=\"/assets/main.ts\"></script>",
+                )
+            };
+            std::io::Write::write_all(
+                &mut stream,
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        }
+    });
+
+    let (mut client, mut server_stream) = client_pair();
+    let dir_for_thread = dir.clone();
+    let (result_sender, result_receiver) = mpsc::sync_channel(1);
+    let handle = thread::spawn(move || {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let mut generation = 0;
+        let mut executor = http_external_graph_page_executor(
+            HttpOutOfProcessPageScriptSourceAuthorizer::new(policy),
+        );
+        run_session_with_script_requests_and_inline_page_executor(
+            &mut tabs,
+            &mut server_stream,
+            &dir_for_thread,
+            &mut generation,
+            &gatekeeper,
+            None,
+            Some(&mut executor),
+        )
+        .unwrap();
+        result_sender
+            .send((executor.debug_record_count(), executor.drain_reports()))
+            .unwrap();
+    });
+    handshake(&mut client);
+
+    blueice_ipc::write_client_message(
+        &mut client,
+        &ClientMessage::Navigate {
+            url: format!("http://{address}/app/index.html"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut client).unwrap(),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut client).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
+    blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+
+    handle.join().unwrap();
+    server.join().unwrap();
+    let (debug_record_count, reports) = result_receiver.recv().unwrap();
+    assert_eq!(debug_record_count, 1);
     assert!(matches!(
         reports.as_slice(),
         [DirectPageScriptExecutionReport::Executed {

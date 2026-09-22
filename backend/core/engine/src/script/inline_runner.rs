@@ -518,6 +518,11 @@ impl std::error::Error for DirectPageInlineExecutorError {}
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::super::http_resource_authorizer::{
+        sha256_integrity, HttpOutOfProcessPageScriptSourceAuthorizer, HttpScriptIntegrityManifest,
+        HttpScriptResourceLimits, HttpScriptResourceOriginRule, HttpScriptResourcePolicy,
+    };
     use super::*;
     use crate::script::host_typings::{
         core_script_host_type_catalog, HostTypeSurfaceV1, CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1,
@@ -841,6 +846,49 @@ mod tests {
             "external BlueTS declarations require an authorized loader"
         );
         assert!(!message.contains("untrusted"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn http_authorized_direct_route_rejects_cross_origin_src_without_reflection() {
+        let entry = "https://example.test/assets/main.ts";
+        let policy = HttpScriptResourcePolicy::new(
+            HttpScriptResourceOriginRule::same_document_origin(),
+            HttpScriptIntegrityManifest::new([(
+                entry.to_string(),
+                sha256_integrity(b"export const answer: number = 42;"),
+            )])
+            .unwrap(),
+            HttpScriptResourceLimits::default(),
+        )
+        .unwrap();
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script type=\"application/x-blueice-typescript-module\" src=\"https://attacker.test/secret.ts\"></script>",
+            Some("https://example.test/app/index.html".to_string()),
+        );
+        let mut executor = DirectPageInlineExecutor::with_external_source_authorizer(
+            profiles(),
+            "inline-runner-empty-v1",
+            CompilerOptions::default(),
+            HttpOutOfProcessPageScriptSourceAuthorizer::new(policy),
+        )
+        .unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert_eq!(executor.debug_record_count(), 0);
+        let Some(DirectPageScriptExecutionReport::Rejected { message, .. }) =
+            executor.reports().front()
+        else {
+            panic!("the cross-origin declaration must produce one rejection")
+        };
+        assert_eq!(
+            message,
+            "external BlueTS source authorization rejected the page script"
+        );
+        assert!(!message.contains("attacker"));
     }
 
     #[test]
