@@ -1,0 +1,13 @@
+{
+  "name": "@blueice/automation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript browser/context/page/locator client for blueice_ipc::automation (phase-17-automation-devtools-and-ajax/PLAN.md, Slice 1 item 4). Runs as plain TypeScript under Node's native type-stripping (Node 24+) -- no build step, no bundler, no compiler dependency for this minimal slice.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.ts\""
+  }
+}
