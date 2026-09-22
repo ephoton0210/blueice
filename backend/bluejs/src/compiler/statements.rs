@@ -1182,6 +1182,12 @@ impl Compiler {
         // switch-local binding.
         self.expression(discriminant)?;
         self.enter_scope(lexical, &vars, false)?;
+        // BlockDeclarationInstantiation covers the whole CaseBlock: every
+        // function declared in any case clause exists before the first case
+        // runs.
+        for case in cases {
+            self.function_declarations(&case.consequent)?;
+        }
 
         let mut case_entries = vec![None; cases.len()];
         for (index, case) in cases.iter().enumerate() {
@@ -1229,7 +1235,7 @@ impl Compiler {
         });
         for (case, jump) in cases.iter().zip(body_jumps) {
             self.patch(jump, self.offset()?);
-            self.statements(&case.consequent)?;
+            self.statements_after_function_declarations(&case.consequent)?;
         }
         let end = self.offset()?;
         self.patch(no_match_exit, end);
