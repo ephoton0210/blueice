@@ -18,13 +18,13 @@
 //! it" ([`Page::render_visible`]), not overflow/clipping during layout
 //! itself.
 
-use crate::downloads_page::{DownloadsSource, DownloadsView, downloads_html, is_downloads_url};
-use blueice_css::{ComputedStyle, Origin, Rule, cascade, ua_stylesheet};
+use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsSource, DownloadsView};
+use blueice_css::{cascade, ua_stylesheet, ComputedStyle, Origin, Rule};
 use blueice_dom::{Document, NodeData, NodeId};
 use blueice_ipc::{AiSnapshot, NodeAction};
-use blueice_layout::{Constraints, Fragment, layout};
-use blueice_paint::{Color, Frame, PaintCommand, Rect, paint};
-use blueice_raster::{Pixmap, rasterize};
+use blueice_layout::{layout, Constraints, Fragment};
+use blueice_paint::{paint, Color, Frame, PaintCommand, Rect};
+use blueice_raster::{rasterize, Pixmap};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use url::Url;
@@ -62,8 +62,23 @@ pub struct Page {
 
 impl Page {
     pub fn new(viewport_width: f64, viewport_height: f64) -> Self {
+        Self::new_continuing_from(viewport_width, viewport_height, 0)
+    }
+
+    /// Creates a page whose first DOM node starts at `next_node_id`. This is
+    /// crate-visible because [`crate::TabManager`] retains complete pages for
+    /// session history: a replacement page in one tab must continue after the
+    /// highest ID in every retained entry, just as [`Self::load_html`] already
+    /// continues after the page it replaces. Otherwise a stale node ID from a
+    /// page in that tab's Back/Forward cache could be misdirected at an
+    /// unrelated document.
+    pub(crate) fn new_continuing_from(
+        viewport_width: f64,
+        viewport_height: f64,
+        next_node_id: u64,
+    ) -> Self {
         Page {
-            doc: Document::new(),
+            doc: Document::new_continuing_from(next_node_id),
             styles: HashMap::new(),
             fragment: Fragment::empty_block(),
             ua: ua_stylesheet(),
@@ -668,6 +683,12 @@ impl Page {
         &self.doc
     }
 
+    /// The first node ID a subsequent replacement document would have to use
+    /// to avoid reusing any ID currently present in this page.
+    pub(crate) fn next_node_id(&self) -> u64 {
+        self.doc.next_node_id()
+    }
+
     pub(crate) fn fragment(&self) -> &Fragment {
         &self.fragment
     }
@@ -1027,12 +1048,11 @@ mod tests {
         let mut page = Page::new(320.0, 200.0);
         page.load_html_str("<p>hi</p>", Some("about:blank".to_string()));
         assert_eq!(page.url(), Some("about:blank"));
-        assert!(
-            page.render()
-                .commands
-                .iter()
-                .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi"))
-        );
+        assert!(page
+            .render()
+            .commands
+            .iter()
+            .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi")));
     }
 
     #[test]
@@ -1179,12 +1199,11 @@ mod tests {
         });
         let mut page = Page::new(320.0, 200.0);
         page.navigate(&format!("http://{addr}")).unwrap();
-        assert!(
-            page.render()
-                .commands
-                .iter()
-                .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "fetched"))
-        );
+        assert!(page
+            .render()
+            .commands
+            .iter()
+            .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "fetched")));
     }
 
     fn distinct_line_count(frame: &Frame) -> usize {
@@ -1325,8 +1344,8 @@ mod tests {
 
     // ---- about:downloads ------------------------------------------------
 
+    use crate::downloads_page::test_support::{fake_downloads, Scratch};
     use crate::downloads_page::DownloadsSource;
-    use crate::downloads_page::test_support::{Scratch, fake_downloads};
     use blueice_ipc::downloads::{TransferInfo, TransferState};
     use std::sync::Arc;
 
@@ -1377,8 +1396,8 @@ mod tests {
     }
 
     #[test]
-    fn about_downloads_says_the_service_is_not_running_when_there_is_no_source_or_it_is_unreachable()
-     {
+    fn about_downloads_says_the_service_is_not_running_when_there_is_no_source_or_it_is_unreachable(
+    ) {
         let mut without = Page::new(400.0, 300.0);
         without.navigate("about:downloads").unwrap();
         assert!(
@@ -1392,11 +1411,9 @@ mod tests {
         let dir = Scratch::new("page-dead");
         let mut unreachable = page_reading(dir.socket()); // nothing listens there
         unreachable.navigate("about:downloads").unwrap();
-        assert!(
-            unreachable
-                .dom_dump()
-                .contains("The downloads service is not running")
-        );
+        assert!(unreachable
+            .dom_dump()
+            .contains("The downloads service is not running"));
         assert!(
             !unreachable.dom_dump().contains("No downloads yet."),
             "unreachable is not the same as empty"

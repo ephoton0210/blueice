@@ -157,6 +157,7 @@ const DOWNLOADS_URL: &str = "about:downloads";
 const TAB_STRIP_HEIGHT: u32 = 34;
 const TAB_WIDTH: u32 = 150;
 const GROUP_HEADER_WIDTH: u32 = 104;
+const HISTORY_BUTTON_WIDTH: u32 = 26;
 const NEW_TAB_WIDTH: u32 = 32;
 const CHROME_BG: u32 = 0x0020_2228;
 const TAB_BG: u32 = 0x0035_3943;
@@ -173,6 +174,8 @@ enum UserEvent {
     Disconnected,
     SetVisible(bool),
     Navigate(String),
+    GoBack,
+    GoForward,
     OpenTab,
     CloseSelectedTab,
     SelectTab(u64),
@@ -213,6 +216,8 @@ impl Rect {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TabStripHit {
+    GoBack,
+    GoForward,
     Select(u64),
     Close(u64),
     ToggleGroup(u64),
@@ -240,6 +245,10 @@ enum TabStripItem {
 /// sent to core: another observer is free to display a different tab.
 struct TabStrip {
     items: Vec<TabStripItem>,
+    back: Rect,
+    forward: Rect,
+    can_go_back: bool,
+    can_go_forward: bool,
     new_tab: Rect,
 }
 
@@ -250,6 +259,10 @@ struct App {
     surface: Option<Surface<Rc<Window>, Rc<Window>>>,
     frames: HashMap<u64, CurrentFrame>,
     tabs: Vec<TabSummary>,
+    /// Core-owned availability for each tab's session-history controls. This
+    /// is queried independently from `ListTabs` so it can change without any
+    /// tab lifecycle event, while selected-tab chrome stays local here.
+    history: HashMap<u64, (bool, bool)>,
     groups: Vec<TabGroupSummary>,
     selected_tab: Option<u64>,
     pending_open: HashSet<u64>,
@@ -346,6 +359,8 @@ impl App {
         self.tabs = tabs;
         self.frames
             .retain(|id, _| self.tabs.iter().any(|tab| tab.id == *id));
+        self.history
+            .retain(|id, _| self.tabs.iter().any(|tab| tab.id == *id));
         if self
             .selected_tab
             .is_some_and(|selected| !self.tabs.iter().any(|tab| tab.id == selected))
@@ -370,6 +385,7 @@ impl App {
     fn remove_tab(&mut self, tab_id: u64) {
         self.tabs.retain(|tab| tab.id != tab_id);
         self.frames.remove(&tab_id);
+        self.history.remove(&tab_id);
         if self.selected_tab == Some(tab_id) {
             self.selected_tab = self.tabs.first().map(|tab| tab.id);
         }
@@ -446,6 +462,10 @@ impl App {
         }
     }
 
+    fn request_history_state(&mut self, tab_id: u64) {
+        self.send_selected_to(tab_id, &ClientMessage::GetHistoryState);
+    }
+
     fn toggle_group(&mut self, group_id: u64) {
         if let Some(group) = self.groups.iter().find(|group| group.id == group_id) {
             self.send_unscoped(&ClientMessage::SetTabGroupCollapsed {
@@ -463,7 +483,13 @@ impl App {
         let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else {
             return;
         };
-        let strip = tab_strip(&self.tabs, &self.groups, self.selected_tab, size.width);
+        let strip = tab_strip(
+            &self.tabs,
+            &self.groups,
+            self.selected_tab,
+            &self.history,
+            size.width,
+        );
         let pixels = compose_window(size.width, size.height, self.selected_frame(), &strip);
         let Some(surface) = &mut self.surface else {
             return;
@@ -481,6 +507,12 @@ impl App {
 
 impl TabStrip {
     fn hit(&self, x: f64, y: f64) -> Option<TabStripHit> {
+        if self.back.contains(x, y) {
+            return self.can_go_back.then_some(TabStripHit::GoBack);
+        }
+        if self.forward.contains(x, y) {
+            return self.can_go_forward.then_some(TabStripHit::GoForward);
+        }
         for item in self.items.iter().rev() {
             match item {
                 TabStripItem::Group { rect, group_id, .. } if rect.contains(x, y) => {
@@ -503,11 +535,27 @@ fn tab_strip(
     tabs: &[TabSummary],
     groups: &[TabGroupSummary],
     selected_tab: Option<u64>,
+    history: &HashMap<u64, (bool, bool)>,
     window_width: u32,
 ) -> TabStrip {
     let mut items = Vec::new();
     let mut seen_groups = HashSet::new();
-    let mut x = 0;
+    let (can_go_back, can_go_forward) = selected_tab
+        .and_then(|id| history.get(&id).copied())
+        .unwrap_or_default();
+    let back = Rect {
+        x: 0,
+        y: 0,
+        width: HISTORY_BUTTON_WIDTH,
+        height: TAB_STRIP_HEIGHT,
+    };
+    let forward = Rect {
+        x: HISTORY_BUTTON_WIDTH,
+        y: 0,
+        width: HISTORY_BUTTON_WIDTH,
+        height: TAB_STRIP_HEIGHT,
+    };
+    let mut x = HISTORY_BUTTON_WIDTH.saturating_mul(2);
     let available_width = window_width.saturating_sub(NEW_TAB_WIDTH);
     for tab in tabs {
         let group = tab
@@ -545,6 +593,10 @@ fn tab_strip(
     }
     TabStrip {
         items,
+        back,
+        forward,
+        can_go_back,
+        can_go_forward,
         new_tab: Rect {
             x: window_width.saturating_sub(NEW_TAB_WIDTH),
             y: 0,
@@ -686,6 +738,27 @@ fn compose_window(
                 );
             }
         }
+    }
+    for (rect, label, enabled) in [
+        (strip.back, "B", strip.can_go_back),
+        (strip.forward, "F", strip.can_go_forward),
+    ] {
+        draw_rect(
+            &mut pixels,
+            width,
+            height,
+            rect,
+            if enabled { TAB_BG } else { CHROME_BG },
+        );
+        draw_label(
+            &mut pixels,
+            width,
+            height,
+            rect.x + 10,
+            12,
+            label,
+            if enabled { TEXT } else { 0x0063_6875 },
+        );
     }
     draw_label(
         &mut pixels,
@@ -934,9 +1007,16 @@ impl ApplicationHandler<UserEvent> for App {
                         &self.tabs,
                         &self.groups,
                         self.selected_tab,
+                        &self.history,
                         self.window_size.0,
                     );
                     match strip.hit(x, y) {
+                        Some(TabStripHit::GoBack) => {
+                            self.send_selected(&ClientMessage::GoBack);
+                        }
+                        Some(TabStripHit::GoForward) => {
+                            self.send_selected(&ClientMessage::GoForward);
+                        }
                         Some(TabStripHit::Select(tab_id)) => {
                             self.selected_tab = Some(tab_id);
                             self.refresh_title();
@@ -991,6 +1071,7 @@ impl ApplicationHandler<UserEvent> for App {
                         if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == tab_id) {
                             tab.url = Some(url);
                         }
+                        self.request_history_state(tab_id);
                     }
                     self.refresh_title();
                     self.request_redraw();
@@ -1001,6 +1082,7 @@ impl ApplicationHandler<UserEvent> for App {
                         url,
                         group_id: None,
                     });
+                    self.request_history_state(tab_id);
                     if request_id.is_some_and(|id| self.pending_open.remove(&id)) {
                         self.selected_tab = Some(tab_id);
                     }
@@ -1008,7 +1090,22 @@ impl ApplicationHandler<UserEvent> for App {
                     self.request_redraw();
                 }
                 ServerMessage::TabClosed { tab_id } => self.remove_tab(tab_id),
-                ServerMessage::Tabs(tabs) => self.replace_tabs(tabs),
+                ServerMessage::Tabs(tabs) => {
+                    self.replace_tabs(tabs);
+                    let ids: Vec<u64> = self.tabs.iter().map(|tab| tab.id).collect();
+                    for tab_id in ids {
+                        self.request_history_state(tab_id);
+                    }
+                }
+                ServerMessage::HistoryState {
+                    can_go_back,
+                    can_go_forward,
+                } => {
+                    if let Some(tab_id) = tab_id {
+                        self.history.insert(tab_id, (can_go_back, can_go_forward));
+                        self.request_redraw();
+                    }
+                }
                 ServerMessage::TabGroupCreated(group) | ServerMessage::TabGroupUpdated(group) => {
                     self.upsert_group(group);
                 }
@@ -1065,6 +1162,8 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::Navigate(url) => self.send_selected(&ClientMessage::Navigate {
                 url: navigation_url(&url, self.locale),
             }),
+            UserEvent::GoBack => self.send_selected(&ClientMessage::GoBack),
+            UserEvent::GoForward => self.send_selected(&ClientMessage::GoForward),
             UserEvent::OpenTab => self.open_tab(),
             UserEvent::CloseSelectedTab => {
                 if let Some(tab_id) = self.selected_tab {
@@ -1192,6 +1291,8 @@ fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
         "hide" => Some(UserEvent::SetVisible(false)),
         "credits" => Some(UserEvent::Navigate(CREDITS_URL.to_string())),
         "downloads" => Some(UserEvent::Navigate(DOWNLOADS_URL.to_string())),
+        "back" => Some(UserEvent::GoBack),
+        "forward" => Some(UserEvent::GoForward),
         "tab-new" => Some(UserEvent::OpenTab),
         "tab-close" => Some(UserEvent::CloseSelectedTab),
         "quit" => Some(UserEvent::Quit),
@@ -1397,6 +1498,7 @@ fn main() {
         surface: None,
         frames: HashMap::new(),
         tabs: Vec::new(),
+        history: HashMap::new(),
         groups: Vec::new(),
         selected_tab: None,
         pending_open: HashSet::new(),
@@ -1535,6 +1637,31 @@ mod tests {
     }
 
     #[test]
+    fn stdin_back_and_forward_commands_map_to_the_tab_addressed_history_events() {
+        assert!(matches!(
+            stdin_line_to_event("back"),
+            Some(UserEvent::GoBack)
+        ));
+        assert!(matches!(
+            stdin_line_to_event("forward"),
+            Some(UserEvent::GoForward)
+        ));
+    }
+
+    #[test]
+    fn tab_strip_enables_only_the_selected_tabs_available_history_direction() {
+        let tabs = vec![TabSummary {
+            id: 7,
+            url: Some("about:credits".to_string()),
+            group_id: None,
+        }];
+        let history = HashMap::from([(7, (true, false))]);
+        let strip = tab_strip(&tabs, &[], Some(7), &history, 300);
+        assert_eq!(strip.hit(10.0, 10.0), Some(TabStripHit::GoBack));
+        assert_eq!(strip.hit(36.0, 10.0), None);
+    }
+
+    #[test]
     fn tab_strip_hides_collapsed_members_but_keeps_group_header_clickable() {
         let tabs = vec![
             TabSummary {
@@ -1554,7 +1681,7 @@ mod tests {
             color: "#4f8cff".to_string(),
             collapsed: true,
         }];
-        let strip = tab_strip(&tabs, &groups, Some(1), 500);
+        let strip = tab_strip(&tabs, &groups, Some(1), &HashMap::new(), 500);
         assert!(matches!(
             strip.items[0],
             TabStripItem::Group { group_id: 9, .. }
@@ -1566,7 +1693,7 @@ mod tests {
                 .any(|item| matches!(item, TabStripItem::Tab { tab_id: 1, .. })),
             "collapsed group member is hidden from this frontend's strip"
         );
-        assert_eq!(strip.hit(10.0, 10.0), Some(TabStripHit::ToggleGroup(9)));
+        assert_eq!(strip.hit(62.0, 10.0), Some(TabStripHit::ToggleGroup(9)));
     }
 
     #[test]
@@ -1577,7 +1704,7 @@ mod tests {
             generation: 1,
             pixels_xrgb: vec![0x0011_2233; 4],
         };
-        let strip = tab_strip(&[], &[], None, 2);
+        let strip = tab_strip(&[], &[], None, &HashMap::new(), 2);
         let pixels = compose_window(2, TAB_STRIP_HEIGHT + 2, Some(&frame), &strip);
         assert_eq!(pixels[0], CHROME_BG);
         assert_eq!(pixels[TAB_STRIP_HEIGHT as usize * 2], 0x0011_2233);

@@ -1442,6 +1442,7 @@ mod tests {
                 &ServerMessage::Tabs(vec![TabSummary {
                     id: 1,
                     url: Some("about:blank".to_string()),
+                    group_id: None,
                 }]),
             )
             .unwrap();
@@ -1453,7 +1454,8 @@ mod tests {
             tabs,
             vec![TabSummary {
                 id: 1,
-                url: Some("about:blank".to_string())
+                url: Some("about:blank".to_string()),
+                group_id: None,
             }]
         );
         responder.join().unwrap();
@@ -1557,12 +1559,18 @@ mod tests {
             TabSummary {
                 id: 1,
                 url: Some("about:blank".to_string()),
+                group_id: None,
             },
             TabSummary {
                 id: 2,
                 url: Some("about:credits".to_string()),
+                group_id: None,
             },
-            TabSummary { id: 3, url: None },
+            TabSummary {
+                id: 3,
+                url: None,
+                group_id: None,
+            },
         ];
         let responder = thread::spawn(move || {
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
@@ -1641,7 +1649,11 @@ mod tests {
     #[test]
     fn replay_tabs_skips_the_first_tab_entirely_if_it_has_no_url() {
         let (mut stream, server) = UnixStream::pair().unwrap();
-        let tabs = vec![TabSummary { id: 1, url: None }];
+        let tabs = vec![TabSummary {
+            id: 1,
+            url: None,
+            group_id: None,
+        }];
 
         replay_tabs(&mut stream, &tabs).unwrap();
 
@@ -1659,6 +1671,7 @@ mod tests {
         let tabs = vec![TabSummary {
             id: 1,
             url: Some("http://bad".to_string()),
+            group_id: None,
         }];
         let responder = thread::spawn(move || {
             let (_, req, _msg) = read_client_message_with_ids(&mut server).unwrap();
@@ -1681,10 +1694,15 @@ mod tests {
     fn replay_tabs_aborts_on_a_gatekeeper_blocked_reply_for_a_later_tab() {
         let (mut stream, mut server) = UnixStream::pair().unwrap();
         let tabs = vec![
-            TabSummary { id: 1, url: None },
+            TabSummary {
+                id: 1,
+                url: None,
+                group_id: None,
+            },
             TabSummary {
                 id: 2,
                 url: Some("http://bad".to_string()),
+                group_id: None,
             },
         ];
         let responder = thread::spawn(move || {
@@ -1713,6 +1731,7 @@ mod tests {
         let tabs = vec![TabSummary {
             id: 1,
             url: Some("http://bad".to_string()),
+            group_id: None,
         }];
         let responder = thread::spawn(move || {
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
@@ -1744,6 +1763,7 @@ mod tests {
         let tabs = vec![TabSummary {
             id: 1,
             url: Some("about:blank".to_string()),
+            group_id: None,
         }];
         let responder = thread::spawn(move || {
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
@@ -1787,6 +1807,7 @@ mod tests {
         let expected = vec![TabSummary {
             id: 1,
             url: Some("about:blank".to_string()),
+            group_id: None,
         }];
         let responder = thread::spawn(move || {
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
@@ -1816,6 +1837,7 @@ mod tests {
                 &ServerMessage::Tabs(vec![TabSummary {
                     id: 99,
                     url: Some("about:blank".to_string()),
+                    group_id: None,
                 }]),
             )
             .unwrap();
@@ -1831,6 +1853,7 @@ mod tests {
         let expected = vec![TabSummary {
             id: 1,
             url: Some("about:blank".to_string()),
+            group_id: None,
         }];
         let responder = thread::spawn(move || {
             let (_, req, msg) = read_client_message_with_ids(&mut server).unwrap();
@@ -1842,6 +1865,7 @@ mod tests {
                 &ServerMessage::Tabs(vec![TabSummary {
                     id: 99,
                     url: Some("about:blank".to_string()),
+                    group_id: None,
                 }]),
             )
             .unwrap();
@@ -1857,6 +1881,7 @@ mod tests {
         let expected = vec![TabSummary {
             id: 1,
             url: Some("about:blank".to_string()),
+            group_id: None,
         }];
         let responder = thread::spawn(move || {
             let (_, req, _msg) = read_client_message_with_ids(&mut server).unwrap();

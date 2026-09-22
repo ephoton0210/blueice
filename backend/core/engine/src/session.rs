@@ -124,7 +124,7 @@ fn is_timeout(err: &io::Error) -> bool {
 ///
 /// **Multi-tab addressing** (`phase-16-multi-tab-and-tab-groups/
 /// PLAN.md`): every per-tab-scoped message
-/// (`Navigate`, `Resize`, `Click`, `Hover`, `Scroll`,
+/// (`Navigate`, `GoBack`, `GoForward`, `Resize`, `Click`, `Hover`, `Scroll`,
 /// `GetRepresentation`, `ActOn`, `Highlight`, `GetDom`, `CloseTab`) is
 /// addressed by the envelope's `tab_id` -- `None` resolves to
 /// [`TabManager::default_tab`], reproducing pre-Phase-16 single-`Page`
@@ -212,24 +212,88 @@ pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
                     ClientMessage::Hello { protocol_version } => {
                         reply_hello(stream, request_id, protocol_version)?
                     }
-                    ClientMessage::Navigate { url } => match tabs.get_mut(target) {
-                        Some(page) => begin_gated_navigation(
-                            page,
+                    ClientMessage::Navigate { url } => {
+                        if tabs.get(target).is_none() {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                        } else {
+                            begin_gated_navigation(
+                                tabs,
+                                stream,
+                                frame_dir,
+                                generation,
+                                reply_tab,
+                                request_id,
+                                target,
+                                url,
+                                PendingKind::Navigate,
+                                &mut pending_nav_seq,
+                                &mut downloads_refresher,
+                                &completion_tx,
+                                gatekeeper_socket,
+                            )?;
+                        }
+                    }
+                    history_message @ (ClientMessage::GoBack | ClientMessage::GoForward) => {
+                        if tabs.get(target).is_none() {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        }
+                        let going_back = matches!(history_message, ClientMessage::GoBack);
+                        let moved = if going_back {
+                            tabs.go_back(target)
+                        } else {
+                            tabs.go_forward(target)
+                        };
+                        if !moved {
+                            let direction = if going_back { "back" } else { "forward" };
+                            write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                format!("cannot go {direction}: no {direction} history entry"),
+                            )?;
+                            continue;
+                        }
+                        // A restoration is itself a newer navigation for this
+                        // tab. A delayed network fetch that was started before
+                        // it must never overwrite the restored history entry.
+                        supersede_pending_navigation(&mut pending_nav_seq, target);
+                        if tabs
+                            .get(target)
+                            .and_then(Page::url)
+                            .is_some_and(is_downloads_url)
+                        {
+                            downloads_refresher.begin_visit(target);
+                        }
+                        reply_success(
+                            tabs,
                             stream,
                             frame_dir,
                             generation,
                             reply_tab,
                             request_id,
+                            &PendingKind::Navigate,
                             target,
-                            url,
-                            PendingKind::Navigate,
-                            &mut pending_nav_seq,
-                            &mut downloads_refresher,
-                            &completion_tx,
-                            gatekeeper_socket,
-                        )?,
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
+                        )?;
+                    }
+                    ClientMessage::GetHistoryState => {
+                        let Some(can_go_back) = tabs.can_go_back(target) else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        let can_go_forward = tabs
+                            .can_go_forward(target)
+                            .expect("a live tab has a history state");
+                        blueice_ipc::write_server_message_with_ids(
+                            stream,
+                            reply_tab,
+                            request_id,
+                            &ServerMessage::HistoryState {
+                                can_go_back,
+                                can_go_forward,
+                            },
+                        )?;
+                    }
                     ClientMessage::Resize { width, height } => {
                         if tabs.get(target).is_none() {
                             write_unknown_tab_error(stream, request_id, target)?;
@@ -271,11 +335,8 @@ pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
                             .unwrap_or_default();
                         if !event.default_prevented {
                             if let Some(href) = href {
-                                let page = tabs
-                                    .get_mut(target)
-                                    .expect("a script event cannot close a core-owned tab");
                                 begin_gated_navigation(
-                                    page,
+                                    tabs,
                                     stream,
                                     frame_dir,
                                     generation,
@@ -354,11 +415,8 @@ pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
                                 .unwrap_or_default();
                             if !event.default_prevented {
                                 if let Some(href) = href {
-                                    let page = tabs
-                                        .get_mut(target)
-                                        .expect("a script event cannot close a core-owned tab");
                                     begin_gated_navigation(
-                                        page,
+                                        tabs,
                                         stream,
                                         frame_dir,
                                         generation,
@@ -622,6 +680,7 @@ pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
                 generation,
                 &pending_nav_seq,
                 completion,
+                &mut downloads_refresher,
                 script_scheduler,
             )?;
         }
@@ -902,6 +961,16 @@ struct Completion {
     outcome: NavOutcome,
 }
 
+/// Advances a tab's navigation epoch and returns it. Any outstanding fetch
+/// tagged with an earlier epoch is no longer allowed to apply: this is used
+/// not only for a new URL navigation, but also for restoring a history entry
+/// while an earlier URL fetch is still in flight.
+fn supersede_pending_navigation(pending_nav_seq: &mut HashMap<TabId, u64>, tab_id: TabId) -> u64 {
+    let seq = pending_nav_seq.entry(tab_id).or_insert(0);
+    *seq += 1;
+    *seq
+}
+
 /// Starts a gated navigation to `url` for `tab_id`. Built-in `about:`
 /// pages ([`crate::page::built_in_page`]) are handled entirely
 /// synchronously here -- loaded directly and replied to before this
@@ -924,7 +993,7 @@ struct Completion {
 /// discard a stale/superseded completion.
 #[allow(clippy::too_many_arguments)]
 fn begin_gated_navigation<S: Write>(
-    page: &mut Page,
+    tabs: &mut TabManager,
     stream: &mut S,
     frame_dir: &Path,
     generation: &mut u64,
@@ -938,28 +1007,22 @@ fn begin_gated_navigation<S: Write>(
     completion_tx: &mpsc::Sender<Completion>,
     gatekeeper_socket: &Path,
 ) -> io::Result<()> {
-    if is_downloads_url(&url) {
-        downloads_refresher.begin_visit(tab_id);
-    }
-    if page.load_built_in(&url) {
+    if tabs.navigate_to_built_in(tab_id, &url) {
+        // A synchronous trusted navigation can still supersede a network
+        // fetch that was already in flight for this tab.
+        supersede_pending_navigation(pending_nav_seq, tab_id);
+        if is_downloads_url(&url) {
+            downloads_refresher.begin_visit(tab_id);
+        }
         return reply_success(
-            page,
-            stream,
-            frame_dir,
-            generation,
-            reply_tab,
-            request_id,
-            &kind,
-            tab_id.as_u64(),
+            tabs, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id,
         );
     }
     if let Err(e) = blueice_net::validate_url_scheme(&url) {
         return write_error(stream, reply_tab, request_id, e.to_string());
     }
 
-    let seq = pending_nav_seq.entry(tab_id).or_insert(0);
-    *seq += 1;
-    let this_seq = *seq;
+    let this_seq = supersede_pending_navigation(pending_nav_seq, tab_id);
 
     let tx = completion_tx.clone();
     let socket = gatekeeper_socket.to_path_buf();
@@ -984,15 +1047,18 @@ fn begin_gated_navigation<S: Write>(
 /// looks like.
 #[allow(clippy::too_many_arguments)]
 fn reply_success<S: Write>(
-    page: &mut Page,
+    tabs: &mut TabManager,
     stream: &mut S,
     frame_dir: &Path,
     generation: &mut u64,
     reply_tab: Option<u64>,
     request_id: Option<u64>,
     kind: &PendingKind,
-    tab_id: u64,
+    tab_id: TabId,
 ) -> io::Result<()> {
+    let page = tabs
+        .get_mut(tab_id)
+        .expect("a navigation reply requires a live tab");
     match kind {
         PendingKind::Navigate => reply_navigated(page, stream, reply_tab, request_id)?,
         PendingKind::OpenTab => blueice_ipc::write_server_message_with_ids(
@@ -1000,7 +1066,7 @@ fn reply_success<S: Write>(
             reply_tab,
             request_id,
             &ServerMessage::TabOpened {
-                tab_id,
+                tab_id: tab_id.as_u64(),
                 url: page.url().map(str::to_string),
             },
         )?,
@@ -1018,6 +1084,7 @@ fn reply_success<S: Write>(
 /// `completion` never touched `Page`/`TabManager` state itself; this
 /// (called only from the main loop) is the one place a gated
 /// navigation's result actually lands.
+#[allow(clippy::too_many_arguments)]
 fn apply_completion<S: Write>(
     tabs: &mut TabManager,
     stream: &mut S,
@@ -1025,6 +1092,7 @@ fn apply_completion<S: Write>(
     generation: &mut u64,
     pending_nav_seq: &HashMap<TabId, u64>,
     completion: Completion,
+    downloads_refresher: &mut DownloadsRefresher,
     script_scheduler: &mut dyn ScriptScheduler,
 ) -> io::Result<()> {
     let Completion {
@@ -1047,29 +1115,17 @@ fn apply_completion<S: Write>(
             final_url,
             html,
         } => {
-            {
-                let page = tabs
-                    .get_mut(tab_id)
-                    .expect("the tab was checked immediately above");
-                page.apply_fetched(clearance, &final_url, &html);
+            tabs.apply_fetched_navigation(tab_id, clearance, &final_url, &html);
+            if is_downloads_url(&final_url) {
+                downloads_refresher.begin_visit(tab_id);
             }
             // A script failure is page-local: its completed DOM mutations
             // remain visible, while core still sends the navigation frame and
             // keeps serving every other tab. This is the out-of-process crash
             // containment rule in the ordinary runtime-error case too.
             let _ = script_scheduler.run_document_scripts(tabs, tab_id);
-            let page = tabs
-                .get_mut(tab_id)
-                .expect("script execution cannot close a core-owned tab");
             reply_success(
-                page,
-                stream,
-                frame_dir,
-                generation,
-                reply_tab,
-                request_id,
-                &kind,
-                tab_id.as_u64(),
+                tabs, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id,
             )
         }
         NavOutcome::GatekeeperBlocked {
@@ -1125,11 +1181,8 @@ fn handle_open_tab<S: Write>(
             },
         );
     };
-    let page = tabs
-        .get_mut(new_id)
-        .expect("a tab this function just created must exist");
     begin_gated_navigation(
-        page,
+        tabs,
         stream,
         frame_dir,
         generation,
@@ -1301,7 +1354,8 @@ mod tests {
 
     #[test]
     fn a_same_url_downloads_navigation_invalidates_its_previous_render_cache() {
-        let tab_id = TabId::from_u64(7);
+        let mut tabs = TabManager::new(100.0, 100.0);
+        let tab_id = tabs.default_tab();
         let mut refresher = DownloadsRefresher::default();
         refresher
             .seen_url
@@ -1314,14 +1368,13 @@ mod tests {
             .due
             .insert(tab_id, Instant::now() + Duration::from_secs(1));
 
-        let mut page = Page::new(100.0, 100.0);
         let dir = temp_frame_dir("same-downloads-url");
         std::fs::create_dir_all(&dir).unwrap();
         let (tx, _rx) = mpsc::channel();
         let mut wire = Vec::new();
         let mut generation = 0;
         begin_gated_navigation(
-            &mut page,
+            &mut tabs,
             &mut wire,
             &dir,
             &mut generation,
@@ -1337,7 +1390,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(page.url(), Some("about:downloads"));
+        assert_eq!(tabs.get(tab_id).unwrap().url(), Some("about:downloads"));
         assert_eq!(refresher.visit[&tab_id], 42);
         assert!(!refresher.rendered.contains_key(&tab_id));
         assert!(!refresher.seen_url.contains_key(&tab_id));
@@ -2034,7 +2087,7 @@ mod tests {
         assert_eq!(
             navigated,
             ServerMessage::Navigated {
-                url: "about:blank".to_string()
+                url: "about:blank".to_string(),
             }
         );
         let _frame = blueice_ipc::read_server_message(&mut client).unwrap();
@@ -2393,6 +2446,7 @@ mod tests {
         let ServerMessage::TabOpened {
             tab_id: new_id,
             url,
+            ..
         } = blueice_ipc::read_server_message(&mut client).unwrap()
         else {
             panic!("expected TabOpened")
@@ -2409,6 +2463,132 @@ mod tests {
             after.iter().map(|t| t.id).collect::<Vec<_>>(),
             vec![before[0].id, new_id]
         );
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn back_and_forward_restore_only_the_addressed_tabs_history() {
+        let dir = temp_frame_dir("per-tab-history");
+        let gatekeeper = clearing_gatekeeper("per-tab-history");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        // Two visits in tab 1 create a real back stack. Built-in pages keep
+        // this test deterministic while exercising the same history commit
+        // path a cleared network navigation uses.
+        for url in ["about:credits", "about:downloads"] {
+            blueice_ipc::write_client_message(
+                &mut client,
+                &ClientMessage::Navigate {
+                    url: url.to_string(),
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                blueice_ipc::read_server_message(&mut client).unwrap(),
+                ServerMessage::Navigated {
+                    url: url.to_string()
+                }
+            );
+            assert!(matches!(
+                blueice_ipc::read_server_message(&mut client).unwrap(),
+                ServerMessage::FrameReady { .. }
+            ));
+        }
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::OpenTab { url: None })
+            .unwrap();
+        let ServerMessage::TabOpened {
+            tab_id: tab_two, ..
+        } = blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected TabOpened")
+        };
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(tab_two),
+            None,
+            &ClientMessage::Navigate {
+                url: "about:blank".to_string(),
+            },
+        )
+        .unwrap();
+        let (reply_tab, _, navigated) =
+            blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert_eq!(reply_tab, Some(tab_two));
+        assert_eq!(
+            navigated,
+            ServerMessage::Navigated {
+                url: "about:blank".to_string()
+            }
+        );
+        assert!(matches!(
+            blueice_ipc::read_server_message_with_ids(&mut client)
+                .unwrap()
+                .2,
+            ServerMessage::FrameReady { .. }
+        ));
+
+        // Going back in tab 1 must leave tab 2's distinct visit untouched.
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GoBack).unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated {
+                url: "about:credits".to_string()
+            }
+        );
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+
+        blueice_ipc::write_client_message_with_ids(
+            &mut client,
+            Some(tab_two),
+            None,
+            &ClientMessage::GetHistoryState,
+        )
+        .unwrap();
+        let (reply_tab, _, state) = blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert_eq!(reply_tab, Some(tab_two));
+        assert_eq!(
+            state,
+            ServerMessage::HistoryState {
+                can_go_back: true,
+                can_go_forward: false,
+            },
+            "tab 1's Back must not alter tab 2's history position"
+        );
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetHistoryState).unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::HistoryState {
+                can_go_back: true,
+                can_go_forward: true,
+            }
+        );
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GoForward).unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated {
+                url: "about:downloads".to_string()
+            }
+        );
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -2513,7 +2693,11 @@ mod tests {
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabs).unwrap();
         assert!(matches!(
             blueice_ipc::read_server_message(&mut client).unwrap(),
-            ServerMessage::Tabs(ref tabs) if tabs == &vec![TabSummary { id: 1, url: None, group_id: Some(1) }]
+            ServerMessage::Tabs(ref tabs) if tabs == &vec![TabSummary {
+                id: 1,
+                url: None,
+                group_id: Some(1),
+            }]
         ));
         blueice_ipc::write_client_message(&mut client, &ClientMessage::ListTabGroups).unwrap();
         assert!(matches!(
@@ -2629,6 +2813,7 @@ mod tests {
         let ServerMessage::TabOpened {
             tab_id: new_id,
             url: opened_url,
+            ..
         } = blueice_ipc::read_server_message(&mut client).unwrap()
         else {
             panic!("expected TabOpened")
@@ -3633,7 +3818,7 @@ mod tests {
         assert_eq!(
             blueice_ipc::read_server_message(client).unwrap(),
             ServerMessage::Navigated {
-                url: url.to_string()
+                url: url.to_string(),
             }
         );
         let ServerMessage::FrameReady { generation, .. } =
@@ -4082,7 +4267,7 @@ mod tests {
         client
             .set_read_timeout(Some(Duration::from_secs(10)))
             .unwrap();
-        let ServerMessage::Navigated { url } =
+        let ServerMessage::Navigated { url, .. } =
             blueice_ipc::read_server_message(&mut client).unwrap()
         else {
             panic!("expected Navigated")

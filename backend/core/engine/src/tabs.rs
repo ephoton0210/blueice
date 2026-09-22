@@ -96,7 +96,14 @@ impl TabGroup {
 }
 
 struct Tab {
+    /// The document currently exposed by this tab. Previous and next entries
+    /// are retained as full `Page`s rather than URLs: going back must restore
+    /// the page state that was actually left (DOM mutations, form values and
+    /// scroll position), not turn a local history operation into a new network
+    /// request whose result may have changed or no longer be available.
     page: Page,
+    back: Vec<Page>,
+    forward: Vec<Page>,
     group_id: Option<GroupId>,
 }
 
@@ -146,6 +153,8 @@ impl TabManager {
             default_tab,
             Tab {
                 page: Page::new(viewport_width, viewport_height),
+                back: Vec::new(),
+                forward: Vec::new(),
                 group_id: None,
             },
         );
@@ -178,6 +187,8 @@ impl TabManager {
             id,
             Tab {
                 page,
+                back: Vec::new(),
+                forward: Vec::new(),
                 group_id: None,
             },
         );
@@ -190,6 +201,9 @@ impl TabManager {
     pub fn set_downloads_source(&mut self, source: Arc<DownloadsSource>) {
         for tab in self.tabs.values_mut() {
             tab.page.set_downloads_source(Some(source.clone()));
+            for page in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
+                page.set_downloads_source(Some(source.clone()));
+            }
         }
         self.downloads = Some(source);
     }
@@ -220,6 +234,110 @@ impl TabManager {
         self.tabs.get_mut(&id).map(|tab| &mut tab.page)
     }
 
+    /// Whether this tab has a previous session-history entry. History belongs
+    /// to the tab, never to `TabManager` globally: one observer can move tab 2
+    /// back while tab 1 stays exactly where another observer left it.
+    pub fn can_go_back(&self, id: TabId) -> Option<bool> {
+        self.tabs.get(&id).map(|tab| !tab.back.is_empty())
+    }
+
+    /// Whether this tab has a next session-history entry.
+    pub fn can_go_forward(&self, id: TabId) -> Option<bool> {
+        self.tabs.get(&id).map(|tab| !tab.forward.is_empty())
+    }
+
+    /// Moves `id` to its immediately preceding session-history entry without
+    /// fetching or re-running navigation. The departing live page becomes the
+    /// next entry, preserving its state for a subsequent [`Self::go_forward`].
+    pub fn go_back(&mut self, id: TabId) -> bool {
+        let Some(tab) = self.tabs.get_mut(&id) else {
+            return false;
+        };
+        let Some(previous) = tab.back.pop() else {
+            return false;
+        };
+        let current = std::mem::replace(&mut tab.page, previous);
+        tab.forward.push(current);
+        true
+    }
+
+    /// Moves `id` to its immediately following session-history entry without
+    /// fetching. Symmetric with [`Self::go_back`].
+    pub fn go_forward(&mut self, id: TabId) -> bool {
+        let Some(tab) = self.tabs.get_mut(&id) else {
+            return false;
+        };
+        let Some(next) = tab.forward.pop() else {
+            return false;
+        };
+        let current = std::mem::replace(&mut tab.page, next);
+        tab.back.push(current);
+        true
+    }
+
+    /// Applies a trusted built-in navigation as a new session-history entry.
+    /// `false` means `url` was not one of BlueIce's built-in pages; callers
+    /// must then validate/gate an ordinary network navigation instead.
+    pub(crate) fn navigate_to_built_in(&mut self, id: TabId, url: &str) -> bool {
+        let mut next = self.new_history_page(id);
+        if !next.load_built_in(url) {
+            return false;
+        }
+        self.replace_current(id, next);
+        true
+    }
+
+    /// Commits an already-gated, already-fetched network document as a new
+    /// history entry. The clearance type keeps this path unavailable to
+    /// callers that have not passed the gatekeeper.
+    pub(crate) fn apply_fetched_navigation(
+        &mut self,
+        id: TabId,
+        clearance: crate::gatekeeper_client::GatekeeperClearance,
+        url: &str,
+        html: &str,
+    ) {
+        let mut next = self.new_history_page(id);
+        next.apply_fetched(clearance, url, html);
+        self.replace_current(id, next);
+    }
+
+    /// Allocates a replacement page with the physical window's current size,
+    /// the same shared downloads source every live tab uses, and a node-ID
+    /// range beyond *all* retained entries of this one tab. `NodeId` remains
+    /// intentionally page-local across different tabs, but it must never be
+    /// reused between documents a single tab can restore from history.
+    fn new_history_page(&self, id: TabId) -> Page {
+        let tab = self
+            .tabs
+            .get(&id)
+            .expect("callers validate a tab before creating a history entry");
+        let next_node_id = std::iter::once(&tab.page)
+            .chain(tab.back.iter())
+            .chain(tab.forward.iter())
+            .map(Page::next_node_id)
+            .max()
+            .expect("a live tab always has a current page");
+        let mut page =
+            Page::new_continuing_from(self.viewport_width, self.viewport_height, next_node_id);
+        page.set_downloads_source(self.downloads.clone());
+        page
+    }
+
+    /// Replacing the current document is the one operation that creates a
+    /// new branch in a tab's history. Any forward entries are deliberately
+    /// discarded, just as a browser does after navigating from a page reached
+    /// via Back.
+    fn replace_current(&mut self, id: TabId, next: Page) {
+        let tab = self
+            .tabs
+            .get_mut(&id)
+            .expect("callers validate a tab before committing navigation");
+        let previous = std::mem::replace(&mut tab.page, next);
+        tab.back.push(previous);
+        tab.forward.clear();
+    }
+
     /// Every currently-open tab's ID, in creation order.
     pub fn ids(&self) -> impl Iterator<Item = TabId> + '_ {
         self.order.iter().copied()
@@ -243,6 +361,12 @@ impl TabManager {
         self.set_window_size(width, height);
         for tab in self.tabs.values_mut() {
             tab.page.resize(width, height);
+            // Back/forward entries are restored without a network round trip,
+            // so keep their retained layouts at the one physical window's
+            // current viewport too. They are not framed until restored.
+            for page in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
+                page.resize(width, height);
+            }
         }
     }
 
@@ -487,6 +611,126 @@ mod tests {
             tabs.get(background).unwrap().viewport_size(),
             (640.0, 480.0)
         );
+    }
+
+    #[test]
+    fn each_tab_owns_an_independent_back_and_forward_stack() {
+        let mut tabs = TabManager::new(300.0, 200.0);
+        let first = tabs.default_tab();
+        let second = tabs.open_tab();
+
+        assert!(tabs.navigate_to_built_in(first, "about:credits"));
+        assert!(tabs.navigate_to_built_in(second, "about:downloads"));
+        assert_eq!(tabs.can_go_back(first), Some(true));
+        assert_eq!(tabs.can_go_back(second), Some(true));
+        assert_eq!(tabs.can_go_forward(first), Some(false));
+
+        assert!(tabs.go_back(first));
+        assert_eq!(tabs.get(first).unwrap().url(), None);
+        assert_eq!(tabs.can_go_back(first), Some(false));
+        assert_eq!(tabs.can_go_forward(first), Some(true));
+        assert_eq!(
+            tabs.get(second).unwrap().url(),
+            Some("about:downloads"),
+            "going back in one tab must not move another tab"
+        );
+        assert_eq!(tabs.can_go_forward(second), Some(false));
+
+        assert!(tabs.go_forward(first));
+        assert_eq!(tabs.get(first).unwrap().url(), Some("about:credits"));
+        assert_eq!(tabs.can_go_forward(first), Some(false));
+    }
+
+    #[test]
+    fn a_fresh_navigation_after_back_discards_only_that_tabs_forward_entries() {
+        let mut tabs = TabManager::new(300.0, 200.0);
+        let tab = tabs.default_tab();
+        assert!(tabs.navigate_to_built_in(tab, "about:credits"));
+        assert!(tabs.navigate_to_built_in(tab, "about:downloads"));
+        assert!(tabs.go_back(tab));
+        assert_eq!(tabs.get(tab).unwrap().url(), Some("about:credits"));
+        assert_eq!(tabs.can_go_forward(tab), Some(true));
+
+        assert!(tabs.navigate_to_built_in(tab, "about:blank"));
+        assert_eq!(tabs.get(tab).unwrap().url(), Some("about:blank"));
+        assert_eq!(tabs.can_go_forward(tab), Some(false));
+        assert!(!tabs.go_forward(tab));
+    }
+
+    #[test]
+    fn restoring_history_keeps_the_left_pages_dom_state_instead_of_refetching() {
+        let mut tabs = TabManager::new(300.0, 200.0);
+        let tab = tabs.default_tab();
+        tabs.get_mut(tab).unwrap().load_html_str(
+            "<input id='draft' value='kept locally'><p>original document</p>",
+            Some("https://example.test/original".to_string()),
+        );
+        assert!(tabs.navigate_to_built_in(tab, "about:credits"));
+        assert!(tabs.go_back(tab));
+        let dom = tabs.get(tab).unwrap().dom_dump();
+        assert!(dom.contains("kept locally"));
+        assert!(dom.contains("original document"));
+        assert_eq!(
+            tabs.get(tab).unwrap().url(),
+            Some("https://example.test/original")
+        );
+    }
+
+    #[test]
+    fn new_history_documents_never_reuse_node_ids_from_retained_entries() {
+        let mut tabs = TabManager::new(300.0, 200.0);
+        let tab = tabs.default_tab();
+        tabs.get_mut(tab).unwrap().load_html_str(
+            "<button>first</button>",
+            Some("https://example.test/first".to_string()),
+        );
+        let first_ids: std::collections::HashSet<u64> = tabs
+            .get(tab)
+            .unwrap()
+            .snapshot(0, tab.as_u64())
+            .nodes
+            .into_iter()
+            .map(|node| node.id)
+            .collect();
+
+        assert!(tabs.navigate_to_built_in(tab, "about:credits"));
+        let second_ids: std::collections::HashSet<u64> = tabs
+            .get(tab)
+            .unwrap()
+            .snapshot(0, tab.as_u64())
+            .nodes
+            .into_iter()
+            .map(|node| node.id)
+            .collect();
+        assert!(first_ids.is_disjoint(&second_ids));
+
+        // A new branch after Back clears the forward *history*, but must still
+        // allocate beyond the retained document it just displaced; an old
+        // client-side NodeId cannot be redirected to this replacement page.
+        assert!(tabs.go_back(tab));
+        assert!(tabs.navigate_to_built_in(tab, "about:credits?lang=zh-TW"));
+        let branch_ids: std::collections::HashSet<u64> = tabs
+            .get(tab)
+            .unwrap()
+            .snapshot(0, tab.as_u64())
+            .nodes
+            .into_iter()
+            .map(|node| node.id)
+            .collect();
+        assert!(first_ids.is_disjoint(&branch_ids));
+        assert!(second_ids.is_disjoint(&branch_ids));
+    }
+
+    #[test]
+    fn retained_history_entries_reflow_with_the_shared_window() {
+        let mut tabs = TabManager::new(300.0, 200.0);
+        let tab = tabs.default_tab();
+        assert!(tabs.navigate_to_built_in(tab, "about:credits"));
+        tabs.resize_all(640.0, 480.0);
+        assert!(tabs.go_back(tab));
+        assert_eq!(tabs.get(tab).unwrap().viewport_size(), (640.0, 480.0));
+        assert!(tabs.go_forward(tab));
+        assert_eq!(tabs.get(tab).unwrap().viewport_size(), (640.0, 480.0));
     }
 
     #[test]

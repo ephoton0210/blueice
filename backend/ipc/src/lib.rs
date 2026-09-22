@@ -90,6 +90,18 @@ pub enum ClientMessage {
     Navigate {
         url: String,
     },
+    /// Restore the addressed tab's preceding session-history entry. This is
+    /// intentionally a tab-addressed page operation, never a global "active
+    /// tab" command: separate frontend and MCP observers may be working in
+    /// different tabs at the same time.
+    GoBack,
+    /// Restore the addressed tab's following session-history entry.
+    GoForward,
+    /// Requests whether the addressed tab can currently go backward and/or
+    /// forward, replied to with [`ServerMessage::HistoryState`]. Kept
+    /// separate from `ListTabs`: history availability can change without a
+    /// tab being opened, closed, or selected.
+    GetHistoryState,
     /// The viewport size changed; `core` re-lays-out at the new width.
     Resize {
         width: u32,
@@ -242,6 +254,12 @@ pub enum ServerMessage {
     /// following any redirects.
     Navigated {
         url: String,
+    },
+    /// Reply to [`ClientMessage::GetHistoryState`]. Like every page reply it
+    /// is envelope-addressed to a concrete tab, never a global active tab.
+    HistoryState {
+        can_go_back: bool,
+        can_go_forward: bool,
     },
     /// Reply to [`ClientMessage::GetRepresentation`].
     Representation(AiSnapshot),
@@ -648,6 +666,8 @@ mod tests {
             ClientMessage::Navigate {
                 url: "https://example.com".to_string(),
             },
+            ClientMessage::GoBack,
+            ClientMessage::GoForward,
             ClientMessage::Resize {
                 width: 800,
                 height: 600,
@@ -714,6 +734,10 @@ mod tests {
             },
             ServerMessage::Navigated {
                 url: "https://example.com/".to_string(),
+            },
+            ServerMessage::HistoryState {
+                can_go_back: true,
+                can_go_forward: false,
             },
             ServerMessage::Representation(AiSnapshot {
                 generation: 42,
@@ -984,9 +1008,10 @@ mod tests {
     }
 
     #[test]
-    fn an_older_tabs_reply_without_group_id_defaults_to_ungrouped() {
-        // Adding tab groups must not make a new frontend/MCP client reject a
-        // `Tabs` reply from a Phase-16 core that predates this additive field.
+    fn an_older_tabs_reply_without_additive_fields_defaults_safely() {
+        // Group membership and history availability are additive Phase-16
+        // fields, so a newer frontend/MCP client must still accept a reply
+        // from a core that predates either addition.
         let payload = br#"{"message":{"Tabs":[{"id":1,"url":null}]}}"#;
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&(payload.len() as u32).to_le_bytes());

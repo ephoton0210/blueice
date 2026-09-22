@@ -381,6 +381,28 @@ impl BlueIceMcpServer {
         Ok(outcome_to_result(outcome))
     }
 
+    #[tool(
+        description = "Restore the previous session-history entry for a tab and return its restored page representation. Omit tab_id only for the default tab."
+    )]
+    async fn go_back(
+        &self,
+        Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| conn.go_back(tab_id)).await?;
+        Ok(outcome_to_result(outcome))
+    }
+
+    #[tool(
+        description = "Restore the next session-history entry for a tab and return its restored page representation. Omit tab_id only for the default tab."
+    )]
+    async fn go_forward(
+        &self,
+        Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let outcome = blocking(self.core.clone(), move |conn| conn.go_forward(tab_id)).await?;
+        Ok(outcome_to_result(outcome))
+    }
+
     #[tool(description = "Get the current page's representation without performing any action")]
     async fn get_page_representation(
         &self,

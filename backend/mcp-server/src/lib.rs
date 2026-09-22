@@ -216,7 +216,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupUpdated(_)
                 | ServerMessage::TabGroupAssigned { .. }
                 | ServerMessage::TabGroupClosed { .. }
-                | ServerMessage::TabGroups(_) => {}
+                | ServerMessage::TabGroups(_)
+                | ServerMessage::HistoryState { .. } => {}
             }
         }
     }
@@ -293,7 +294,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupUpdated(_)
                 | ServerMessage::TabGroupAssigned { .. }
                 | ServerMessage::TabGroupClosed { .. }
-                | ServerMessage::TabGroups(_) => {}
+                | ServerMessage::TabGroups(_)
+                | ServerMessage::HistoryState { .. } => {}
             }
         }
 
@@ -308,6 +310,19 @@ impl<S: Read + Write> CoreConnection<S> {
                 url: url.to_string(),
             },
         )
+    }
+
+    /// Restore the previous session-history entry for `tab_id` and return the
+    /// restored accessibility snapshot. The core, rather than this adapter,
+    /// owns the history stack, so this cannot accidentally move a different
+    /// observer's tab.
+    pub fn go_back(&mut self, tab_id: Option<u64>) -> io::Result<ToolOutcome> {
+        self.send_navigation_and_wait(tab_id, ClientMessage::GoBack)
+    }
+
+    /// Restore the next session-history entry for `tab_id`.
+    pub fn go_forward(&mut self, tab_id: Option<u64>) -> io::Result<ToolOutcome> {
+        self.send_navigation_and_wait(tab_id, ClientMessage::GoForward)
     }
 
     pub fn act(
@@ -387,7 +402,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupUpdated(_)
                 | ServerMessage::TabGroupAssigned { .. }
                 | ServerMessage::TabGroupClosed { .. }
-                | ServerMessage::TabGroups(_) => {}
+                | ServerMessage::TabGroups(_)
+                | ServerMessage::HistoryState { .. } => {}
             }
         }
     }
@@ -444,7 +460,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupUpdated(_)
                 | ServerMessage::TabGroupAssigned { .. }
                 | ServerMessage::TabGroupClosed { .. }
-                | ServerMessage::TabGroups(_) => {}
+                | ServerMessage::TabGroups(_)
+                | ServerMessage::HistoryState { .. } => {}
             }
         }
     }
@@ -484,7 +501,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 continue;
             }
             match message {
-                ServerMessage::TabOpened { tab_id, url } => {
+                ServerMessage::TabOpened { tab_id, url, .. } => {
                     let expects_frame = url.is_some();
                     outcome = Some(OpenTabOutcome::Opened { tab_id, url });
                     if !expects_frame {
@@ -547,7 +564,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupUpdated(_)
                 | ServerMessage::TabGroupAssigned { .. }
                 | ServerMessage::TabGroupClosed { .. }
-                | ServerMessage::TabGroups(_) => {}
+                | ServerMessage::TabGroups(_)
+                | ServerMessage::HistoryState { .. } => {}
             }
         }
     }
@@ -601,6 +619,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupUpdated(_)
                 | ServerMessage::TabGroupAssigned { .. }
                 | ServerMessage::TabGroupClosed { .. }
+                | ServerMessage::HistoryState { .. }
                 | ServerMessage::TabGroups(_) => {}
             }
         }
@@ -654,7 +673,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupUpdated(_)
                 | ServerMessage::TabGroupAssigned { .. }
                 | ServerMessage::TabGroupClosed { .. }
-                | ServerMessage::TabGroups(_) => {}
+                | ServerMessage::TabGroups(_)
+                | ServerMessage::HistoryState { .. } => {}
             }
         }
     }
@@ -716,7 +736,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabOpened { .. }
                 | ServerMessage::TabClosed { .. }
                 | ServerMessage::Tabs(_)
-                | ServerMessage::TabGroups(_) => {}
+                | ServerMessage::TabGroups(_)
+                | ServerMessage::HistoryState { .. } => {}
             }
         }
     }
@@ -824,7 +845,8 @@ impl<S: Read + Write> CoreConnection<S> {
                 | ServerMessage::TabGroupCreated(_)
                 | ServerMessage::TabGroupUpdated(_)
                 | ServerMessage::TabGroupAssigned { .. }
-                | ServerMessage::TabGroupClosed { .. } => {}
+                | ServerMessage::TabGroupClosed { .. }
+                | ServerMessage::HistoryState { .. } => {}
             }
         }
     }
@@ -1220,6 +1242,52 @@ mod tests {
         assert_eq!(outcome.error, None);
         assert_eq!(outcome.snapshot.generation, 1);
         assert_eq!(conn.last_frame(Some(1)).unwrap().generation, 1);
+    }
+
+    #[test]
+    fn go_back_uses_the_same_navigation_completion_barrier_and_returns_restored_state() {
+        let (client, server) = UnixStream::pair().unwrap();
+        fake_core(
+            server,
+            vec![
+                Box::new(|msg, s| {
+                    assert!(matches!(msg, ClientMessage::GoBack));
+                    reply(
+                        s,
+                        &ServerMessage::Navigated {
+                            url: "https://example.com/previous".to_string(),
+                        },
+                    );
+                    reply_tab(
+                        s,
+                        7,
+                        &ServerMessage::FrameReady {
+                            shm_path: "/tmp/previous".to_string(),
+                            width: 10,
+                            height: 10,
+                            generation: 4,
+                        },
+                    );
+                }),
+                Box::new(|msg, s| {
+                    assert!(matches!(msg, ClientMessage::GetRepresentation));
+                    let mut snapshot = sample_snapshot(4);
+                    snapshot.tab_id = 7;
+                    snapshot.url = Some("https://example.com/previous".to_string());
+                    reply(s, &ServerMessage::Representation(snapshot));
+                }),
+            ],
+        );
+
+        let mut conn = CoreConnection::new(client);
+        let outcome = conn.go_back(Some(7)).unwrap();
+        assert_eq!(outcome.error, None);
+        assert_eq!(outcome.snapshot.tab_id, 7);
+        assert_eq!(
+            outcome.snapshot.url.as_deref(),
+            Some("https://example.com/previous")
+        );
+        assert_eq!(conn.last_frame(Some(7)).unwrap().generation, 4);
     }
 
     #[test]
