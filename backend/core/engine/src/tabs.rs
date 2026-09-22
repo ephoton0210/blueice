@@ -95,15 +95,80 @@ impl TabGroup {
     }
 }
 
+/// The behavior to use when a tab leaves a history entry. Reloading is the
+/// normal browser behavior: traversing the entry fetches its URL again, so the
+/// result can reflect a changed server. Snapshot retention is intentionally
+/// opt-in, for callers that value a locally renderable historical view over a
+/// fresh network document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HistorySnapshotMode {
+    /// Retain only the entry URL; Back/Forward fetches it again.
+    #[default]
+    Reload,
+    /// Retain the whole page as a displayable, no-network snapshot.
+    Snapshot,
+}
+
+/// A direction within one tab's session history. This is crate-visible rather
+/// than wire-visible: IPC deliberately keeps Back/Forward as separate unit
+/// variants, while the engine uses one type to share its commit logic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HistoryDirection {
+    Back,
+    Forward,
+}
+
+/// What a history entry needs before it can become the current page. Kept
+/// separate from [`HistoryEntry`] so callers never receive an owned `Page`
+/// until they have chosen the explicit snapshot restoration path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HistoryDestination {
+    /// A retained page can be displayed without consulting the network.
+    Snapshot,
+    /// Fetch this URL again. `None` is the initial blank document.
+    Reload(Option<String>),
+}
+
+/// One item in a tab's history. A `Page` is only retained when snapshot mode
+/// was explicitly enabled; the default path stores just a URL and therefore
+/// cannot accidentally turn a history traversal into an offline cache.
+enum HistoryEntry {
+    Reload { url: Option<String> },
+    Snapshot(Box<Page>),
+}
+
+impl HistoryEntry {
+    fn from_page(page: Page, mode: HistorySnapshotMode) -> Self {
+        match mode {
+            HistorySnapshotMode::Reload => HistoryEntry::Reload {
+                url: page.url().map(str::to_string),
+            },
+            HistorySnapshotMode::Snapshot => HistoryEntry::Snapshot(Box::new(page)),
+        }
+    }
+
+    fn snapshot_mut(&mut self) -> Option<&mut Page> {
+        match self {
+            HistoryEntry::Reload { .. } => None,
+            HistoryEntry::Snapshot(page) => Some(page.as_mut()),
+        }
+    }
+
+    fn snapshot(&self) -> Option<&Page> {
+        match self {
+            HistoryEntry::Reload { .. } => None,
+            HistoryEntry::Snapshot(page) => Some(page.as_ref()),
+        }
+    }
+}
+
 struct Tab {
-    /// The document currently exposed by this tab. Previous and next entries
-    /// are retained as full `Page`s rather than URLs: going back must restore
-    /// the page state that was actually left (DOM mutations, form values and
-    /// scroll position), not turn a local history operation into a new network
-    /// request whose result may have changed or no longer be available.
+    /// The document currently exposed by this tab. Prior and next entries are
+    /// URL records by default; a full `Page` is retained only under the
+    /// explicit [`HistorySnapshotMode::Snapshot`] policy.
     page: Page,
-    back: Vec<Page>,
-    forward: Vec<Page>,
+    back: Vec<HistoryEntry>,
+    forward: Vec<HistoryEntry>,
     group_id: Option<GroupId>,
 }
 
@@ -140,6 +205,9 @@ pub struct TabManager {
     /// Handed to every tab (existing and future) so `about:downloads` works
     /// in any of them.
     downloads: Option<Arc<DownloadsSource>>,
+    /// Whether leaving an entry retains a locally displayable page snapshot,
+    /// rather than the default URL-only history record.
+    history_snapshot_mode: HistorySnapshotMode,
 }
 
 impl TabManager {
@@ -147,6 +215,21 @@ impl TabManager {
     /// that never sends `OpenTab` sees identical behavior to before
     /// this phase existed.
     pub fn new(viewport_width: f64, viewport_height: f64) -> Self {
+        Self::new_with_history_snapshot_mode(
+            viewport_width,
+            viewport_height,
+            HistorySnapshotMode::Reload,
+        )
+    }
+
+    /// Creates a manager with explicitly selected history retention. The
+    /// ordinary constructor deliberately selects [`HistorySnapshotMode::Reload`]
+    /// so opening an old entry has normal URL-reload semantics.
+    pub fn new_with_history_snapshot_mode(
+        viewport_width: f64,
+        viewport_height: f64,
+        history_snapshot_mode: HistorySnapshotMode,
+    ) -> Self {
         let default_tab = TabId(1);
         let mut tabs = HashMap::new();
         tabs.insert(
@@ -169,7 +252,12 @@ impl TabManager {
             viewport_width,
             viewport_height,
             downloads: None,
+            history_snapshot_mode,
         }
+    }
+
+    pub fn history_snapshot_mode(&self) -> HistorySnapshotMode {
+        self.history_snapshot_mode
     }
 
     pub fn default_tab(&self) -> TabId {
@@ -201,8 +289,10 @@ impl TabManager {
     pub fn set_downloads_source(&mut self, source: Arc<DownloadsSource>) {
         for tab in self.tabs.values_mut() {
             tab.page.set_downloads_source(Some(source.clone()));
-            for page in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
-                page.set_downloads_source(Some(source.clone()));
+            for entry in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
+                if let Some(page) = entry.snapshot_mut() {
+                    page.set_downloads_source(Some(source.clone()));
+                }
             }
         }
         self.downloads = Some(source);
@@ -246,32 +336,57 @@ impl TabManager {
         self.tabs.get(&id).map(|tab| !tab.forward.is_empty())
     }
 
-    /// Moves `id` to its immediately preceding session-history entry without
-    /// fetching or re-running navigation. The departing live page becomes the
-    /// next entry, preserving its state for a subsequent [`Self::go_forward`].
-    pub fn go_back(&mut self, id: TabId) -> bool {
-        let Some(tab) = self.tabs.get_mut(&id) else {
-            return false;
-        };
-        let Some(previous) = tab.back.pop() else {
-            return false;
-        };
-        let current = std::mem::replace(&mut tab.page, previous);
-        tab.forward.push(current);
-        true
+    /// Returns what a history traversal needs to do before committing. The
+    /// initial blank entry is rebuilt locally rather than fetched.
+    pub(crate) fn history_destination(
+        &self,
+        id: TabId,
+        direction: HistoryDirection,
+    ) -> Option<HistoryDestination> {
+        let tab = self.tabs.get(&id)?;
+        let entry = match direction {
+            HistoryDirection::Back => tab.back.last(),
+            HistoryDirection::Forward => tab.forward.last(),
+        }?;
+        match entry {
+            HistoryEntry::Reload { url } => Some(HistoryDestination::Reload(url.clone())),
+            HistoryEntry::Snapshot(_) => Some(HistoryDestination::Snapshot),
+        }
     }
 
-    /// Moves `id` to its immediately following session-history entry without
-    /// fetching. Symmetric with [`Self::go_back`].
-    pub fn go_forward(&mut self, id: TabId) -> bool {
+    /// Restores the selected snapshot entry. The `false` result means this
+    /// entry is URL-only and must go through the normal navigation path.
+    pub(crate) fn restore_history_snapshot(
+        &mut self,
+        id: TabId,
+        direction: HistoryDirection,
+    ) -> bool {
+        let mode = self.history_snapshot_mode;
         let Some(tab) = self.tabs.get_mut(&id) else {
             return false;
         };
-        let Some(next) = tab.forward.pop() else {
+        let is_snapshot = match direction {
+            HistoryDirection::Back => tab.back.last(),
+            HistoryDirection::Forward => tab.forward.last(),
+        }
+        .is_some_and(|entry| matches!(entry, HistoryEntry::Snapshot(_)));
+        if !is_snapshot {
             return false;
+        }
+        let target = match direction {
+            HistoryDirection::Back => tab.back.pop(),
+            HistoryDirection::Forward => tab.forward.pop(),
+        }
+        .expect("a checked history entry still exists");
+        let HistoryEntry::Snapshot(next) = target else {
+            unreachable!("the checked history entry is a snapshot");
         };
-        let current = std::mem::replace(&mut tab.page, next);
-        tab.back.push(current);
+        let current = std::mem::replace(&mut tab.page, *next);
+        let departure = HistoryEntry::from_page(current, mode);
+        match direction {
+            HistoryDirection::Back => tab.forward.push(departure),
+            HistoryDirection::Forward => tab.back.push(departure),
+        }
         true
     }
 
@@ -283,7 +398,7 @@ impl TabManager {
         if !next.load_built_in(url) {
             return false;
         }
-        self.replace_current(id, next);
+        self.replace_current_as_new_navigation(id, next);
         true
     }
 
@@ -299,7 +414,50 @@ impl TabManager {
     ) {
         let mut next = self.new_history_page(id);
         next.apply_fetched(clearance, url, html);
-        self.replace_current(id, next);
+        self.replace_current_as_new_navigation(id, next);
+    }
+
+    /// Rebuilds an addressed built-in history entry without creating a new
+    /// branch. `false` means the entry isn't built in and must be gated and
+    /// fetched like an ordinary URL.
+    pub(crate) fn navigate_history_to_built_in(
+        &mut self,
+        id: TabId,
+        direction: HistoryDirection,
+        url: &str,
+    ) -> bool {
+        let mut next = self.new_history_page(id);
+        if !next.load_built_in(url) {
+            return false;
+        }
+        self.replace_current_from_history(id, direction, next)
+    }
+
+    /// Restores the initial blank history entry. It is intentionally local:
+    /// an absent URL does not denote a network resource to fetch.
+    pub(crate) fn navigate_history_to_blank(
+        &mut self,
+        id: TabId,
+        direction: HistoryDirection,
+    ) -> bool {
+        let next = self.new_history_page(id);
+        self.replace_current_from_history(id, direction, next)
+    }
+
+    /// Commits a cleared, fetched document into the entry selected before the
+    /// asynchronous request started. Unlike [`Self::apply_fetched_navigation`]
+    /// this moves the history cursor and does not clear the opposite branch.
+    pub(crate) fn apply_fetched_history_navigation(
+        &mut self,
+        id: TabId,
+        direction: HistoryDirection,
+        clearance: crate::gatekeeper_client::GatekeeperClearance,
+        url: &str,
+        html: &str,
+    ) -> bool {
+        let mut next = self.new_history_page(id);
+        next.apply_fetched(clearance, url, html);
+        self.replace_current_from_history(id, direction, next)
     }
 
     /// Allocates a replacement page with the physical window's current size,
@@ -313,8 +471,8 @@ impl TabManager {
             .get(&id)
             .expect("callers validate a tab before creating a history entry");
         let next_node_id = std::iter::once(&tab.page)
-            .chain(tab.back.iter())
-            .chain(tab.forward.iter())
+            .chain(tab.back.iter().filter_map(HistoryEntry::snapshot))
+            .chain(tab.forward.iter().filter_map(HistoryEntry::snapshot))
             .map(Page::next_node_id)
             .max()
             .expect("a live tab always has a current page");
@@ -328,14 +486,44 @@ impl TabManager {
     /// new branch in a tab's history. Any forward entries are deliberately
     /// discarded, just as a browser does after navigating from a page reached
     /// via Back.
-    fn replace_current(&mut self, id: TabId, next: Page) {
+    fn replace_current_as_new_navigation(&mut self, id: TabId, next: Page) {
+        let mode = self.history_snapshot_mode;
         let tab = self
             .tabs
             .get_mut(&id)
             .expect("callers validate a tab before committing navigation");
         let previous = std::mem::replace(&mut tab.page, next);
-        tab.back.push(previous);
+        tab.back.push(HistoryEntry::from_page(previous, mode));
         tab.forward.clear();
+    }
+
+    /// Replaces the live page with an already-loaded history destination. The
+    /// target is removed from one stack and the departing page is appended to
+    /// the other, preserving the normal Back/Forward cursor shape.
+    fn replace_current_from_history(
+        &mut self,
+        id: TabId,
+        direction: HistoryDirection,
+        next: Page,
+    ) -> bool {
+        let mode = self.history_snapshot_mode;
+        let Some(tab) = self.tabs.get_mut(&id) else {
+            return false;
+        };
+        let target = match direction {
+            HistoryDirection::Back => tab.back.pop(),
+            HistoryDirection::Forward => tab.forward.pop(),
+        };
+        if target.is_none() {
+            return false;
+        }
+        let current = std::mem::replace(&mut tab.page, next);
+        let departure = HistoryEntry::from_page(current, mode);
+        match direction {
+            HistoryDirection::Back => tab.forward.push(departure),
+            HistoryDirection::Forward => tab.back.push(departure),
+        }
+        true
     }
 
     /// Every currently-open tab's ID, in creation order.
@@ -361,11 +549,13 @@ impl TabManager {
         self.set_window_size(width, height);
         for tab in self.tabs.values_mut() {
             tab.page.resize(width, height);
-            // Back/forward entries are restored without a network round trip,
-            // so keep their retained layouts at the one physical window's
-            // current viewport too. They are not framed until restored.
-            for page in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
-                page.resize(width, height);
+            // Snapshot entries are restored without a network round trip, so
+            // keep their retained layouts at the one physical window's current
+            // viewport too. URL-only entries have no retained page to resize.
+            for entry in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
+                if let Some(page) = entry.snapshot_mut() {
+                    page.resize(width, height);
+                }
             }
         }
     }
@@ -613,6 +803,21 @@ mod tests {
         );
     }
 
+    fn traverse_built_in_history(tabs: &mut TabManager, tab: TabId, direction: HistoryDirection) {
+        match tabs.history_destination(tab, direction) {
+            Some(HistoryDestination::Snapshot) => {
+                assert!(tabs.restore_history_snapshot(tab, direction))
+            }
+            Some(HistoryDestination::Reload(None)) => {
+                assert!(tabs.navigate_history_to_blank(tab, direction))
+            }
+            Some(HistoryDestination::Reload(Some(url))) => {
+                assert!(tabs.navigate_history_to_built_in(tab, direction, &url))
+            }
+            None => panic!("expected a history entry"),
+        }
+    }
+
     #[test]
     fn each_tab_owns_an_independent_back_and_forward_stack() {
         let mut tabs = TabManager::new(300.0, 200.0);
@@ -625,7 +830,12 @@ mod tests {
         assert_eq!(tabs.can_go_back(second), Some(true));
         assert_eq!(tabs.can_go_forward(first), Some(false));
 
-        assert!(tabs.go_back(first));
+        assert_eq!(
+            tabs.history_destination(first, HistoryDirection::Back),
+            Some(HistoryDestination::Reload(None)),
+            "the default history policy rebuilds the initial blank page"
+        );
+        traverse_built_in_history(&mut tabs, first, HistoryDirection::Back);
         assert_eq!(tabs.get(first).unwrap().url(), None);
         assert_eq!(tabs.can_go_back(first), Some(false));
         assert_eq!(tabs.can_go_forward(first), Some(true));
@@ -636,7 +846,7 @@ mod tests {
         );
         assert_eq!(tabs.can_go_forward(second), Some(false));
 
-        assert!(tabs.go_forward(first));
+        traverse_built_in_history(&mut tabs, first, HistoryDirection::Forward);
         assert_eq!(tabs.get(first).unwrap().url(), Some("about:credits"));
         assert_eq!(tabs.can_go_forward(first), Some(false));
     }
@@ -647,18 +857,21 @@ mod tests {
         let tab = tabs.default_tab();
         assert!(tabs.navigate_to_built_in(tab, "about:credits"));
         assert!(tabs.navigate_to_built_in(tab, "about:downloads"));
-        assert!(tabs.go_back(tab));
+        traverse_built_in_history(&mut tabs, tab, HistoryDirection::Back);
         assert_eq!(tabs.get(tab).unwrap().url(), Some("about:credits"));
         assert_eq!(tabs.can_go_forward(tab), Some(true));
 
         assert!(tabs.navigate_to_built_in(tab, "about:blank"));
         assert_eq!(tabs.get(tab).unwrap().url(), Some("about:blank"));
         assert_eq!(tabs.can_go_forward(tab), Some(false));
-        assert!(!tabs.go_forward(tab));
+        assert_eq!(
+            tabs.history_destination(tab, HistoryDirection::Forward),
+            None
+        );
     }
 
     #[test]
-    fn restoring_history_keeps_the_left_pages_dom_state_instead_of_refetching() {
+    fn default_history_entries_retain_urls_and_require_a_reload() {
         let mut tabs = TabManager::new(300.0, 200.0);
         let tab = tabs.default_tab();
         tabs.get_mut(tab).unwrap().load_html_str(
@@ -666,7 +879,34 @@ mod tests {
             Some("https://example.test/original".to_string()),
         );
         assert!(tabs.navigate_to_built_in(tab, "about:credits"));
-        assert!(tabs.go_back(tab));
+        assert_eq!(tabs.history_snapshot_mode(), HistorySnapshotMode::Reload);
+        assert_eq!(
+            tabs.history_destination(tab, HistoryDirection::Back),
+            Some(HistoryDestination::Reload(Some(
+                "https://example.test/original".to_string()
+            )))
+        );
+        assert!(
+            !tabs.restore_history_snapshot(tab, HistoryDirection::Back),
+            "the default policy must not silently use the stale in-memory DOM"
+        );
+    }
+
+    #[test]
+    fn explicit_snapshot_history_restores_the_left_pages_dom_state() {
+        let mut tabs =
+            TabManager::new_with_history_snapshot_mode(300.0, 200.0, HistorySnapshotMode::Snapshot);
+        let tab = tabs.default_tab();
+        tabs.get_mut(tab).unwrap().load_html_str(
+            "<input id='draft' value='kept locally'><p>original document</p>",
+            Some("https://example.test/original".to_string()),
+        );
+        assert!(tabs.navigate_to_built_in(tab, "about:credits"));
+        assert_eq!(
+            tabs.history_destination(tab, HistoryDirection::Back),
+            Some(HistoryDestination::Snapshot)
+        );
+        assert!(tabs.restore_history_snapshot(tab, HistoryDirection::Back));
         let dom = tabs.get(tab).unwrap().dom_dump();
         assert!(dom.contains("kept locally"));
         assert!(dom.contains("original document"));
@@ -677,8 +917,9 @@ mod tests {
     }
 
     #[test]
-    fn new_history_documents_never_reuse_node_ids_from_retained_entries() {
-        let mut tabs = TabManager::new(300.0, 200.0);
+    fn snapshot_history_documents_never_reuse_node_ids_from_retained_entries() {
+        let mut tabs =
+            TabManager::new_with_history_snapshot_mode(300.0, 200.0, HistorySnapshotMode::Snapshot);
         let tab = tabs.default_tab();
         tabs.get_mut(tab).unwrap().load_html_str(
             "<button>first</button>",
@@ -707,7 +948,7 @@ mod tests {
         // A new branch after Back clears the forward *history*, but must still
         // allocate beyond the retained document it just displaced; an old
         // client-side NodeId cannot be redirected to this replacement page.
-        assert!(tabs.go_back(tab));
+        assert!(tabs.restore_history_snapshot(tab, HistoryDirection::Back));
         assert!(tabs.navigate_to_built_in(tab, "about:credits?lang=zh-TW"));
         let branch_ids: std::collections::HashSet<u64> = tabs
             .get(tab)
@@ -722,14 +963,15 @@ mod tests {
     }
 
     #[test]
-    fn retained_history_entries_reflow_with_the_shared_window() {
-        let mut tabs = TabManager::new(300.0, 200.0);
+    fn retained_snapshot_entries_reflow_with_the_shared_window() {
+        let mut tabs =
+            TabManager::new_with_history_snapshot_mode(300.0, 200.0, HistorySnapshotMode::Snapshot);
         let tab = tabs.default_tab();
         assert!(tabs.navigate_to_built_in(tab, "about:credits"));
         tabs.resize_all(640.0, 480.0);
-        assert!(tabs.go_back(tab));
+        assert!(tabs.restore_history_snapshot(tab, HistoryDirection::Back));
         assert_eq!(tabs.get(tab).unwrap().viewport_size(), (640.0, 480.0));
-        assert!(tabs.go_forward(tab));
+        assert!(tabs.restore_history_snapshot(tab, HistoryDirection::Forward));
         assert_eq!(tabs.get(tab).unwrap().viewport_size(), (640.0, 480.0));
     }
 

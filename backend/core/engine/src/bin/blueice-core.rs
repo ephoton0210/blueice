@@ -19,7 +19,7 @@
 
 use blueice_engine::downloads_page::DownloadsSource;
 use blueice_engine::script::ScriptSession;
-use blueice_engine::{TabManager, session};
+use blueice_engine::{session, HistorySnapshotMode, TabManager};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -49,6 +49,10 @@ struct Args {
     /// `core` waits for the script process handshake before accepting its
     /// frontend client, so a page's first render can never race parser script.
     script_socket: Option<PathBuf>,
+    /// Keep displayable page snapshots in history instead of the default
+    /// URL-only entries. This is opt-in because normal Back/Forward behavior
+    /// re-fetches the URL and should therefore observe updated web content.
+    history_snapshots: bool,
 }
 
 /// Takes an injectable argument iterator (rather than reading
@@ -66,6 +70,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut gatekeeper_socket = None;
     let mut downloads_socket = None;
     let mut script_socket = None;
+    let mut history_snapshots = false;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -86,6 +91,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--downloads-socket" => downloads_socket = Some(PathBuf::from(value()?)),
             "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
+            "--history-snapshots" => history_snapshots = true,
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
@@ -99,6 +105,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         gatekeeper_socket,
         downloads_socket,
         script_socket,
+        history_snapshots,
     })
 }
 
@@ -172,7 +179,13 @@ fn main() -> ExitCode {
             None => None,
         };
         let (mut stream, _) = listener.accept()?;
-        let mut tabs = TabManager::new(args.width, args.height);
+        let history_mode = if args.history_snapshots {
+            HistorySnapshotMode::Snapshot
+        } else {
+            HistorySnapshotMode::Reload
+        };
+        let mut tabs =
+            TabManager::new_with_history_snapshot_mode(args.width, args.height, history_mode);
         tabs.set_downloads_source(Arc::new(match downloads_socket {
             Some(socket) => DownloadsSource::at(socket),
             None => DownloadsSource::new(),
@@ -238,6 +251,7 @@ mod tests {
         assert_eq!(parsed.frame_dir, None);
         assert_eq!(parsed.gatekeeper_socket, None);
         assert_eq!(parsed.script_socket, None);
+        assert!(!parsed.history_snapshots);
     }
 
     #[test]
@@ -257,6 +271,7 @@ mod tests {
             "/tmp/dl.sock",
             "--script-socket",
             "/tmp/js.sock",
+            "--history-snapshots",
         ])
         .unwrap();
         assert_eq!(
@@ -269,6 +284,7 @@ mod tests {
                 gatekeeper_socket: Some(PathBuf::from("/tmp/gk.sock")),
                 downloads_socket: Some(PathBuf::from("/tmp/dl.sock")),
                 script_socket: Some(PathBuf::from("/tmp/js.sock")),
+                history_snapshots: true,
             }
         );
     }

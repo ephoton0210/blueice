@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: Done — `core` owns independently addressed tabs, full per-tab back/forward history, and shared tab groups; the reference frontend renders a tab strip with frontend-local selection, and MCP exposes both group and history operations.
+**Status**: Done — `core` owns independently addressed tabs, per-tab URL-reloading back/forward history with optional displayable snapshots, and shared tab groups; the reference frontend renders a tab strip with frontend-local selection, and MCP exposes both group and history operations.
 
 ## Objective
 
@@ -22,7 +22,7 @@ Let `core` manage more than one navigable context ("tab") at once, addressed ind
 
 New lifecycle messages: `ClientMessage::{OpenTab { url: Option<String> }, CloseTab, ListTabs}` / `ServerMessage::{TabOpened { tab_id, url }, TabClosed { tab_id }, Tabs(Vec<TabSummary>)}`. `CloseTab` deliberately carries no inline `tab_id` field -- it's addressed via the envelope's `tab_id`, the same as every other per-tab message, rather than a redundant second addressing mechanism. A `tab_id` that doesn't resolve on any per-tab message replies `ServerMessage::Error` — a protocol-addressing error, not the harmless no-op a stale `NodeId` already gets in `Page::act`.
 
-**Per-tab history**: `ClientMessage::{GoBack, GoForward, GetHistoryState}` are addressed by the same envelope. `TabManager` retains each tab's prior and next entries as complete `Page` objects, rather than only URLs: restoring history does not refetch and therefore preserves the page state that was left (DOM mutations, form values, and scroll position). A fresh successful navigation moves the old current page onto that tab's back stack and clears only that tab's forward stack. `ServerMessage::HistoryState` lets a frontend query button availability without adding a core-global selected-tab concept. A history restoration supersedes any older in-flight network navigation for that same tab, so a delayed fetch cannot overwrite the restored page.
+**Per-tab history**: `ClientMessage::{GoBack, GoForward, GetHistoryState}` are addressed by the same envelope. `TabManager` records prior and next entries as URLs by default: a Back/Forward traversal validates, reviews, and fetches the target again, so a changed page is current and a failed/blocked fetch leaves both the visible page and history cursor unchanged. `HistorySnapshotMode::Snapshot` is an explicit opt-in (`blueice-core --history-snapshots`): only then does a history entry retain a complete displayable `Page`, restoring DOM mutations, form values, and scroll position without network access when its old URL is unavailable. A fresh successful navigation clears only that tab's forward stack. `ServerMessage::HistoryState` lets a frontend query button availability without adding a core-global selected-tab concept. Every history traversal supersedes an older in-flight network navigation for that same tab, so a delayed fetch cannot overwrite its result.
 
 **Every reply echoes the *resolved* tab, never the raw (possibly absent) request field.** `ServerEnvelope.tab_id` on a reply is always `Some(target.as_u64())` -- the tab `run_session` actually resolved the request to (`tab_id.unwrap_or(tabs.default_tab())`) -- never the original envelope value verbatim. This matters specifically for a request that left `tab_id` implicit: echoing `None` back would defeat the whole point of adding this field, since a second client sharing the connection via `blueice-launcher`'s broker would have no way to tell which concrete tab an untagged client's broadcasted reply was actually about. Proven by `session::tests::a_reply_to_an_untagged_request_still_echoes_the_resolved_default_tab_id`.
 
@@ -55,7 +55,7 @@ Groups are core-owned `TabGroup { id, name, color, collapsed }` records with mon
 
 `Resize` now eagerly reflows every live `Page` to the one physical window's content viewport and publishes a per-tab frame. This is the chosen background-tab policy: selecting a previously background tab never reveals its old layout. The requested tab remains only the request-correlated frame; there is still no core-selected tab.
 
-The reference frontend queries history availability for every listed/opened/navigated tab, renders enabled Back (`B`) and Forward (`F`) controls for its locally selected tab, and also accepts `back`/`forward` through its stdin control seam. `blueice-mcp-server` exposes matching `go_back`/`go_forward` tools; both use the existing navigation completion barrier before returning a restored snapshot.
+The reference frontend queries history availability for every listed/opened/navigated tab, renders enabled Back (`B`) and Forward (`F`) controls for its locally selected tab, and also accepts `back`/`forward` through its stdin control seam. `blueice-mcp-server` exposes matching `go_back`/`go_forward` tools; both use the existing navigation completion barrier before returning the fetched or snapshot-restored representation.
 
 ## Checklist
 
@@ -83,4 +83,4 @@ The reference frontend queries history availability for every listed/opened/navi
 - [x] `frontend-reference` tab-strip UI: per-tab frame cache, frontend-local selection, graphical strip, page-coordinate offset, and stdin controls
 - [x] Tab groups: core-owned `TabGroup`/`GroupId`, `TabSummary.group_id`, lifecycle IPC, frontend rendering, and MCP tools
 - [x] Background-tab relayout policy: eagerly reflow and frame every live tab for the shared physical viewport
-- [x] Per-tab back/forward history: complete retained `Page` entries, `GoBack`/`GoForward`/`GetHistoryState` IPC, frontend controls, MCP tools, and core/session tests proving tab isolation and state restoration
+- [x] Per-tab back/forward history: default URL reloads through gatekeeper/fetch, explicit `HistorySnapshotMode::Snapshot` (`blueice-core --history-snapshots`) for retained displayable `Page`s, `GoBack`/`GoForward`/`GetHistoryState` IPC, frontend controls, MCP tools, and core/session tests proving isolation, fresh reloads, and unavailable-URL snapshot restoration

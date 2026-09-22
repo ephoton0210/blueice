@@ -66,12 +66,12 @@ impl Page {
     }
 
     /// Creates a page whose first DOM node starts at `next_node_id`. This is
-    /// crate-visible because [`crate::TabManager`] retains complete pages for
-    /// session history: a replacement page in one tab must continue after the
-    /// highest ID in every retained entry, just as [`Self::load_html`] already
-    /// continues after the page it replaces. Otherwise a stale node ID from a
-    /// page in that tab's Back/Forward cache could be misdirected at an
-    /// unrelated document.
+    /// crate-visible because [`crate::TabManager`] can retain complete pages
+    /// when its optional history-snapshot policy is enabled: a replacement
+    /// page in one tab must continue after the highest ID in every retained
+    /// snapshot, just as [`Self::load_html`] already continues after the page
+    /// it replaces. Otherwise a stale node ID from a snapshot in that tab's
+    /// Back/Forward cache could be misdirected at an unrelated document.
     pub(crate) fn new_continuing_from(
         viewport_width: f64,
         viewport_height: f64,

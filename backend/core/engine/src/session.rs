@@ -53,6 +53,7 @@
 use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsView};
 use crate::gatekeeper_client::{self, NavOutcome};
 use crate::script::ScriptScheduler;
+use crate::tabs::{HistoryDestination, HistoryDirection};
 use crate::{GroupId, Page, TabGroup, TabId, TabManager};
 use blueice_dom::NodeId;
 use blueice_ipc::downloads::TransferInfo;
@@ -238,42 +239,24 @@ pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
                             write_unknown_tab_error(stream, request_id, target)?;
                             continue;
                         }
-                        let going_back = matches!(history_message, ClientMessage::GoBack);
-                        let moved = if going_back {
-                            tabs.go_back(target)
+                        let direction = if matches!(history_message, ClientMessage::GoBack) {
+                            HistoryDirection::Back
                         } else {
-                            tabs.go_forward(target)
+                            HistoryDirection::Forward
                         };
-                        if !moved {
-                            let direction = if going_back { "back" } else { "forward" };
-                            write_error(
-                                stream,
-                                reply_tab,
-                                request_id,
-                                format!("cannot go {direction}: no {direction} history entry"),
-                            )?;
-                            continue;
-                        }
-                        // A restoration is itself a newer navigation for this
-                        // tab. A delayed network fetch that was started before
-                        // it must never overwrite the restored history entry.
-                        supersede_pending_navigation(&mut pending_nav_seq, target);
-                        if tabs
-                            .get(target)
-                            .and_then(Page::url)
-                            .is_some_and(is_downloads_url)
-                        {
-                            downloads_refresher.begin_visit(target);
-                        }
-                        reply_success(
+                        begin_history_navigation(
                             tabs,
                             stream,
                             frame_dir,
                             generation,
                             reply_tab,
                             request_id,
-                            &PendingKind::Navigate,
                             target,
+                            direction,
+                            &mut pending_nav_seq,
+                            &mut downloads_refresher,
+                            &completion_tx,
+                            gatekeeper_socket,
                         )?;
                     }
                     ClientMessage::GetHistoryState => {
@@ -946,6 +929,9 @@ impl DownloadsRefresher {
 enum PendingKind {
     Navigate,
     OpenTab,
+    /// A URL-only Back/Forward traversal. The cursor advances only after its
+    /// gated fetch succeeds, unlike a new navigation which creates a branch.
+    History(HistoryDirection),
 }
 
 /// One background gated-navigation's eventual result, delivered over
@@ -969,6 +955,99 @@ fn supersede_pending_navigation(pending_nav_seq: &mut HashMap<TabId, u64>, tab_i
     let seq = pending_nav_seq.entry(tab_id).or_insert(0);
     *seq += 1;
     *seq
+}
+
+/// Starts one Back/Forward traversal. URL-only entries deliberately take the
+/// same validation, gatekeeper, and asynchronous fetch path as a normal
+/// navigation; a retained snapshot is the explicit exception and can be
+/// restored immediately. Crucially, a URL entry's cursor is not moved until
+/// its fetch has cleared, so a failed/blocked history reload leaves both the
+/// visible page and the history position untouched.
+#[allow(clippy::too_many_arguments)]
+fn begin_history_navigation<S: Write>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    reply_tab: Option<u64>,
+    request_id: Option<u64>,
+    tab_id: TabId,
+    direction: HistoryDirection,
+    pending_nav_seq: &mut HashMap<TabId, u64>,
+    downloads_refresher: &mut DownloadsRefresher,
+    completion_tx: &mpsc::Sender<Completion>,
+    gatekeeper_socket: &Path,
+) -> io::Result<()> {
+    let direction_name = match direction {
+        HistoryDirection::Back => "back",
+        HistoryDirection::Forward => "forward",
+    };
+    let Some(destination) = tabs.history_destination(tab_id, direction) else {
+        return write_error(
+            stream,
+            reply_tab,
+            request_id,
+            format!("cannot go {direction_name}: no {direction_name} history entry"),
+        );
+    };
+    let kind = PendingKind::History(direction);
+    match destination {
+        HistoryDestination::Snapshot => {
+            // A snapshot restoration is a newer navigation for this tab. A
+            // delayed fetch that predates it must never overwrite the restored
+            // historical document.
+            assert!(tabs.restore_history_snapshot(tab_id, direction));
+            supersede_pending_navigation(pending_nav_seq, tab_id);
+            if tabs
+                .get(tab_id)
+                .and_then(Page::url)
+                .is_some_and(is_downloads_url)
+            {
+                downloads_refresher.begin_visit(tab_id);
+            }
+            reply_success(
+                tabs, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id,
+            )
+        }
+        HistoryDestination::Reload(None) => {
+            // The initial blank document has no URL to fetch, but it still
+            // moves exactly one history position and never creates a branch.
+            assert!(tabs.navigate_history_to_blank(tab_id, direction));
+            supersede_pending_navigation(pending_nav_seq, tab_id);
+            reply_success(
+                tabs, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id,
+            )
+        }
+        HistoryDestination::Reload(Some(url)) => {
+            if tabs.navigate_history_to_built_in(tab_id, direction, &url) {
+                supersede_pending_navigation(pending_nav_seq, tab_id);
+                if is_downloads_url(&url) {
+                    downloads_refresher.begin_visit(tab_id);
+                }
+                return reply_success(
+                    tabs, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id,
+                );
+            }
+            if let Err(e) = blueice_net::validate_url_scheme(&url) {
+                return write_error(stream, reply_tab, request_id, e.to_string());
+            }
+
+            let seq = supersede_pending_navigation(pending_nav_seq, tab_id);
+            let tx = completion_tx.clone();
+            let socket = gatekeeper_socket.to_path_buf();
+            thread::spawn(move || {
+                let outcome = gatekeeper_client::check_and_fetch(tab_id, url, &socket);
+                let _ = tx.send(Completion {
+                    tab_id,
+                    seq,
+                    request_id,
+                    kind,
+                    outcome,
+                });
+            });
+            Ok(())
+        }
+    }
 }
 
 /// Starts a gated navigation to `url` for `tab_id`. Built-in `about:`
@@ -1060,7 +1139,9 @@ fn reply_success<S: Write>(
         .get_mut(tab_id)
         .expect("a navigation reply requires a live tab");
     match kind {
-        PendingKind::Navigate => reply_navigated(page, stream, reply_tab, request_id)?,
+        PendingKind::Navigate | PendingKind::History(_) => {
+            reply_navigated(page, stream, reply_tab, request_id)?
+        }
         PendingKind::OpenTab => blueice_ipc::write_server_message_with_ids(
             stream,
             reply_tab,
@@ -1115,7 +1196,22 @@ fn apply_completion<S: Write>(
             final_url,
             html,
         } => {
-            tabs.apply_fetched_navigation(tab_id, clearance, &final_url, &html);
+            let committed = match &kind {
+                PendingKind::History(direction) => tabs.apply_fetched_history_navigation(
+                    tab_id, *direction, clearance, &final_url, &html,
+                ),
+                PendingKind::Navigate | PendingKind::OpenTab => {
+                    tabs.apply_fetched_navigation(tab_id, clearance, &final_url, &html);
+                    true
+                }
+            };
+            if !committed {
+                // The history entry disappeared before completion. This should
+                // only be reachable if an internal caller changes the cursor
+                // without advancing `pending_nav_seq`; fail safely rather than
+                // applying the response to an unrelated document.
+                return Ok(());
+            }
             if is_downloads_url(&final_url) {
                 downloads_refresher.begin_visit(tab_id);
             }
@@ -2589,6 +2685,208 @@ mod tests {
             blueice_ipc::read_server_message(&mut client).unwrap(),
             ServerMessage::FrameReady { .. }
         ));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn default_history_reload_fetches_the_url_again_and_uses_fresh_content() {
+        let dir = temp_frame_dir("history-reload");
+        let gatekeeper = clearing_gatekeeper("history-reload");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let http = thread::spawn(move || {
+            for body in ["first version", "updated version"] {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0u8; 1024];
+                let _ = std::io::Read::read(&mut stream, &mut request);
+                let body = format!("<button>{body}</button>");
+                std::io::Write::write_all(
+                    &mut stream,
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+            }
+        });
+
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        let url = format!("http://{addr}");
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate { url: url.clone() },
+        )
+        .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated { url: url.clone() }
+        );
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "about:credits".to_string(),
+            },
+        )
+        .unwrap();
+        let _ = blueice_ipc::read_server_message(&mut client).unwrap();
+        let _ = blueice_ipc::read_server_message(&mut client).unwrap();
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GoBack).unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated { url: url.clone() }
+        );
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+        let ServerMessage::Representation(snapshot) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected a representation after history reload")
+        };
+        assert!(
+            snapshot
+                .nodes
+                .iter()
+                .any(|node| node.name.as_deref() == Some("updated version")),
+            "Back must fetch the URL again instead of displaying the first visit's in-memory page"
+        );
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        http.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn opted_in_history_snapshot_restores_when_the_original_url_is_unavailable() {
+        let dir = temp_frame_dir("history-snapshot");
+        let gatekeeper = clearing_gatekeeper("history-snapshot");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new_with_history_snapshot_mode(
+                320.0,
+                200.0,
+                crate::HistorySnapshotMode::Snapshot,
+            );
+            let tab = tabs.default_tab();
+            tabs.get_mut(tab).unwrap().load_html_str(
+                "<button>saved historical version</button>",
+                Some("https://unavailable.example.test/archive-me".to_string()),
+            );
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "about:credits".to_string(),
+            },
+        )
+        .unwrap();
+        let _ = blueice_ipc::read_server_message(&mut client).unwrap();
+        let _ = blueice_ipc::read_server_message(&mut client).unwrap();
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GoBack).unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated {
+                url: "https://unavailable.example.test/archive-me".to_string()
+            }
+        );
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+        let ServerMessage::Representation(snapshot) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected a representation after snapshot restoration")
+        };
+        assert!(snapshot
+            .nodes
+            .iter()
+            .any(|node| node.name.as_deref() == Some("saved historical version")));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn failed_default_history_reload_keeps_the_current_page_and_cursor() {
+        let dir = temp_frame_dir("history-reload-failure");
+        let gatekeeper = clearing_gatekeeper("history-reload-failure");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let tab = tabs.default_tab();
+            tabs.get_mut(tab).unwrap().load_html_str(
+                "<button>unavailable historical page</button>",
+                Some("http://127.0.0.1:1/history-unavailable".to_string()),
+            );
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "about:credits".to_string(),
+            },
+        )
+        .unwrap();
+        let _ = blueice_ipc::read_server_message(&mut client).unwrap();
+        let _ = blueice_ipc::read_server_message(&mut client).unwrap();
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GoBack).unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Error { .. }
+        ));
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+        let ServerMessage::Representation(snapshot) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected the still-current page representation")
+        };
+        assert_eq!(snapshot.url.as_deref(), Some("about:credits"));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetHistoryState).unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::HistoryState {
+                can_go_back: true,
+                can_go_forward: false,
+            },
+            "a failed reload must not advance the history cursor"
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
