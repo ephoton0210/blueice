@@ -31,7 +31,7 @@ use blueice_engine::{
 #[cfg(unix)]
 use std::io;
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 #[cfg(unix)]
@@ -168,8 +168,11 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
-    if compiler_project_profile.is_some() && compiler_socket.is_none() {
-        return Err("--compiler-project-profile requires --compiler-socket".to_string());
+    if compiler_socket.is_some() != compiler_project_profile.is_some() {
+        return Err(
+            "--compiler-socket and --compiler-project-profile must be provided together"
+                .to_string(),
+        );
     }
     Ok(Args {
         socket,
@@ -386,9 +389,53 @@ fn serve_compiler_listener(listener: UnixListener, sender: CompilerServiceIpcReq
 /// permissive ambient umask to keep arbitrary local users off the listener.
 #[cfg(unix)]
 fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_socket() => match UnixStream::connect(path) {
+            // Never unlink a working peer merely because a second core was
+            // pointed at its endpoint.  The launcher preflights this too, but
+            // direct core invocation must preserve the same boundary.
+            Ok(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::AddrInUse,
+                    format!("compiler socket is already active: {}", path.display()),
+                ));
+            }
+            // This is the one recoverable startup residue: a dead core can
+            // leave its socket inode behind after a forceful stop.
+            Err(error) if error.kind() == io::ErrorKind::ConnectionRefused => {
+                remove_compiler_socket_if_owned(path);
+            }
+            Err(error) => return Err(error),
+        },
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!(
+                    "compiler socket is occupied by a non-socket path: {}",
+                    path.display()
+                ),
+            ));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
     let listener = UnixListener::bind(path)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     Ok(listener)
+}
+
+/// Removes a compiler listener endpoint only if it is still a Unix socket.
+/// The core may be force-killed by its supervisor, but lifecycle cleanup must
+/// never unlink a regular file, directory, or symlink that has appeared at a
+/// caller-selected path since the listener was created.
+#[cfg(unix)]
+fn remove_compiler_socket_if_owned(path: &std::path::Path) {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return;
+    };
+    if metadata.file_type().is_socket() {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 #[cfg(unix)]
@@ -468,25 +515,22 @@ fn main() -> ExitCode {
         None => None,
     };
     let compiler_listener = match compiler_socket.as_ref() {
-        Some(path) => {
-            let _ = std::fs::remove_file(path);
-            match bind_compiler_listener(path) {
-                Ok(listener) => Some(listener),
-                Err(error) => {
-                    if let Some(path) = &script_socket {
-                        let _ = std::fs::remove_file(path);
-                    }
-                    if let Some(path) = &debugger_socket {
-                        let _ = std::fs::remove_file(path);
-                    }
-                    eprintln!(
-                        "blueice-core: failed to bind compiler socket {}: {error}",
-                        path.display()
-                    );
-                    return ExitCode::FAILURE;
+        Some(path) => match bind_compiler_listener(path) {
+            Ok(listener) => Some(listener),
+            Err(error) => {
+                if let Some(path) = &script_socket {
+                    let _ = std::fs::remove_file(path);
                 }
+                if let Some(path) = &debugger_socket {
+                    let _ = std::fs::remove_file(path);
+                }
+                eprintln!(
+                    "blueice-core: failed to bind compiler socket {}: {error}",
+                    path.display()
+                );
+                return ExitCode::FAILURE;
             }
-        }
+        },
         None => None,
     };
 
@@ -505,7 +549,7 @@ fn main() -> ExitCode {
                 let _ = std::fs::remove_file(path);
             }
             if let Some(path) = &compiler_socket {
-                let _ = std::fs::remove_file(path);
+                remove_compiler_socket_if_owned(path);
             }
             eprintln!(
                 "blueice-core: failed to bind {}: {e}",
@@ -657,7 +701,7 @@ fn main() -> ExitCode {
         let _ = std::fs::remove_file(path);
     }
     if let Some(path) = compiler_socket {
-        let _ = std::fs::remove_file(path);
+        remove_compiler_socket_if_owned(&path);
     }
     let _ = std::fs::remove_dir_all(&frame_dir);
 
@@ -836,7 +880,7 @@ mod tests {
     }
 
     #[test]
-    fn compiler_profile_is_startup_only_and_requires_its_query_listener() {
+    fn compiler_profile_and_query_listener_are_an_indivisible_startup_pair() {
         assert_eq!(
             args(&[
                 "--socket",
@@ -844,7 +888,22 @@ mod tests {
                 "--compiler-project-profile",
                 "core-closed-fixture-v1",
             ]),
-            Err("--compiler-project-profile requires --compiler-socket".to_string())
+            Err(
+                "--compiler-socket and --compiler-project-profile must be provided together"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--compiler-socket",
+                "/tmp/compiler.sock",
+            ]),
+            Err(
+                "--compiler-socket and --compiler-project-profile must be provided together"
+                    .to_string()
+            )
         );
         let parsed = args(&[
             "--socket",
@@ -872,6 +931,26 @@ mod tests {
         assert_eq!(catalog.registered_project_count(), 0);
         register_compiler_startup_profile(&mut catalog, "core-closed-fixture-v1").unwrap();
         assert_eq!(catalog.registered_project_count(), 1);
+    }
+
+    #[test]
+    fn compiler_listener_does_not_unlink_an_active_owner_selected_endpoint() {
+        let path = PathBuf::from("/tmp").join(format!(
+            "blueice-core-active-compiler-{}-{}.sock",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let listener = UnixListener::bind(&path).unwrap();
+
+        let error = bind_compiler_listener(&path).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AddrInUse);
+        assert!(path.exists(), "the active endpoint must remain reachable");
+
+        drop(listener);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

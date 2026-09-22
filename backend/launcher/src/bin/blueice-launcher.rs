@@ -54,6 +54,11 @@ struct Args {
     /// BlueJS page-host child for each core generation. The endpoint/token
     /// are generated internally and are never CLI values.
     out_of_process_bluejs: bool,
+    /// Explicit opt-in compiler MCP attachment endpoint.  The caller chooses
+    /// only this Unix socket path; the launcher passes its one fixed,
+    /// core-owned closed project profile and never accepts a profile, source,
+    /// resolver, compiler option, or write/build input from the CLI.
+    compiler_mcp_socket: Option<PathBuf>,
     /// Test/debug-only: use a [`memory_pressure::FixedMemorySource`]
     /// reporting zero availability instead of real host memory, so the
     /// memory-pressure-response path can be exercised deterministically
@@ -79,6 +84,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut frame_dir = None;
     let mut gatekeeper_socket = None;
     let mut out_of_process_bluejs = false;
+    let mut compiler_mcp_socket = None;
     let mut simulate_low_memory = false;
     let mut memory_poll_interval = memory_pressure::DEFAULT_POLL_INTERVAL;
 
@@ -101,6 +107,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--out-of-process-bluejs" => out_of_process_bluejs = true,
+            "--compiler-mcp-socket" => compiler_mcp_socket = Some(PathBuf::from(value()?)),
             "--simulate-low-memory" => simulate_low_memory = true,
             "--memory-poll-interval-ms" => {
                 let ms: u64 = value()?
@@ -122,6 +129,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         frame_dir,
         gatekeeper_socket,
         out_of_process_bluejs,
+        compiler_mcp_socket,
         simulate_low_memory,
         memory_poll_interval,
     })
@@ -147,6 +155,9 @@ fn main() -> ExitCode {
     }
     if args.out_of_process_bluejs {
         core_options = core_options.supervise_out_of_process_bluejs();
+    }
+    if let Some(compiler_mcp_socket) = args.compiler_mcp_socket.clone() {
+        core_options = core_options.with_core_closed_compiler_mcp_endpoint(compiler_mcp_socket);
     }
     let core =
         match SpawnedCore::spawn_with_options(args.width, args.height, &frame_dir, core_options) {
@@ -271,6 +282,7 @@ mod tests {
         assert_eq!(parsed.frame_dir, None);
         assert_eq!(parsed.gatekeeper_socket, None);
         assert!(!parsed.out_of_process_bluejs);
+        assert_eq!(parsed.compiler_mcp_socket, None);
         assert!(!parsed.simulate_low_memory);
         assert_eq!(
             parsed.memory_poll_interval,
@@ -294,6 +306,8 @@ mod tests {
             "--gatekeeper-socket",
             "/tmp/gatekeeper.sock",
             "--out-of-process-bluejs",
+            "--compiler-mcp-socket",
+            "/tmp/compiler-mcp.sock",
             "--simulate-low-memory",
             "--memory-poll-interval-ms",
             "50",
@@ -309,6 +323,7 @@ mod tests {
                 frame_dir: Some(PathBuf::from("/tmp/frames")),
                 gatekeeper_socket: Some(PathBuf::from("/tmp/gatekeeper.sock")),
                 out_of_process_bluejs: true,
+                compiler_mcp_socket: Some(PathBuf::from("/tmp/compiler-mcp.sock")),
                 simulate_low_memory: true,
                 memory_poll_interval: Duration::from_millis(50),
             }

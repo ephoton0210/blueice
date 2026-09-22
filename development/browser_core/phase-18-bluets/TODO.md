@@ -743,9 +743,10 @@ or second module resolver to bypass them.
   decoded requests over the bounded channel; the adapter owner alone mutates
   the incremental compiler cache. There is no IPC registration/update request,
   filesystem loader, resolver/plugin/options extension or output write. At
-  this adapter layer there is not yet a launcher-owned project
-  catalog/distribution mechanism or project update. Explicit artifact-write
-  elevation remains a separate required capability.
+  this adapter layer the launcher can distribute only its one compiled-in
+  closed fixture profile through an explicitly selected local endpoint; it
+  does not provide general project catalog/distribution or project update.
+  Explicit artifact-write elevation remains a separate required capability.
 
   Core lifecycle foundation delivered: a trusted core startup owner now builds
   `CoreCompilerProjectCatalog`, registers complete closed projects through its
@@ -762,8 +763,15 @@ or second module resolver to bypass them.
   handshaken opaque `DescribeProject`/`Check` receives source-free,
   generation-bound metadata from the core-registered closed fixture. Its v2
   process regression also proves v1 rejection plus exact source-hash
-  provenance/contract lookup and redacted invalid-data validation. Launcher
-  catalog distribution/authorization and all update/write capabilities remain
+  provenance/contract lookup and redacted invalid-data validation. The
+  launcher now has one explicit `--compiler-mcp-socket <absolute-path>` seam:
+  it validates the endpoint before spawning a child, passes only the fixed
+  `core-closed-fixture-v1` profile, enforces the core listener's `0600` mode,
+  and reaps socket-only state on shutdown. A live/non-socket endpoint fails
+  closed, and a cutover rejects before touching v1 rather than trying to
+  rebind the fixed endpoint. Real launcher/core/MCP coverage verifies that
+  paired browser/compiler adapters attach to that same core. General catalog
+  distribution/authorization and all update/write capabilities remain
   deliberately open.
 
   MCP read foundation delivered: `blueice-mcp-server` now has a distinct
@@ -790,11 +798,12 @@ or second module resolver to bypass them.
   exact query, and rejects cross-kind, replayed, and stale cursors without
   source text. It cannot use the connection to re-open startup registration.
   There is still
-  no launcher-owned catalog distribution or authorization, no remote
-  registration/update/source/filesystem/resolver/plugin/options authority, no
-  `bluetsc_build`, no artifact/declaration/source-map/source response, and no
-  output write or elevation. Lowering/bytecode provenance, broader capability
-  negotiation, session lifecycle, and the full MCP tool set remain open.
+  no general launcher-owned catalog distribution or authorization beyond the
+  one fixed closed profile, no remote registration/update/source/filesystem/
+  resolver/plugin/options authority, no `bluetsc_build`, no artifact/
+  declaration/source-map/source response, and no output write or elevation.
+  Lowering/bytecode provenance, broader capability negotiation, session
+  lifecycle, and the full MCP tool set remain open.
 
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
   no-emit-on-error guarantee; responses are generation/fingerprint bound,

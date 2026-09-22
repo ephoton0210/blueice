@@ -14,11 +14,14 @@
 //! `frontend-reference`'s own GUI integration -- there is no reason
 //! this can't run in CI.
 
+use blueice_launcher::{run_broker, CoreLaunchOptions, SpawnedCore};
 use blueice_mcp_server::{BlueIceMcpServer, CoreProcess, OpenTabOutcome};
 use rmcp::model::{CallToolRequestParams, ClientInfo};
 use rmcp::{ClientHandler, ServiceExt};
+use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Default)]
@@ -81,7 +84,7 @@ fn unique_socket_path(label: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system time must be after Unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!(
+    PathBuf::from("/tmp").join(format!(
         "blueice-mcp-{label}-{}-{nonce}.sock",
         std::process::id()
     ))
@@ -96,6 +99,89 @@ fn wait_for_socket(path: &std::path::Path) -> bool {
         std::thread::sleep(Duration::from_millis(20));
     }
     false
+}
+
+/// A real `blueice-core` child under the launcher broker, with the one fixed
+/// compiler MCP endpoint selected through the launcher's public options.  The
+/// browser and compiler endpoints are intentionally separate, but both are
+/// owned by this one broker-managed core generation.
+struct LauncherManagedCore {
+    rendezvous_socket: PathBuf,
+    control_socket: PathBuf,
+    compiler_socket: PathBuf,
+    frame_dir: PathBuf,
+    broker: Option<thread::JoinHandle<std::io::Result<()>>>,
+}
+
+impl LauncherManagedCore {
+    fn spawn() -> Self {
+        let rendezvous_socket = unique_socket_path("launcher-rendezvous");
+        let control_socket = unique_socket_path("launcher-control");
+        let compiler_socket = unique_socket_path("launcher-compiler");
+        let frame_dir = std::env::temp_dir().join(format!(
+            "blueice-mcp-launcher-frames-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&rendezvous_socket);
+        let _ = std::fs::remove_file(&control_socket);
+        let _ = std::fs::remove_file(&compiler_socket);
+        let _ = std::fs::remove_dir_all(&frame_dir);
+
+        let core = SpawnedCore::spawn_with_options(
+            320.0,
+            200.0,
+            &frame_dir,
+            CoreLaunchOptions::default()
+                .with_core_closed_compiler_mcp_endpoint(compiler_socket.clone()),
+        )
+        .expect("launcher must start a core with its fixed compiler profile");
+        assert!(
+            wait_for_socket(&compiler_socket),
+            "launcher-selected core compiler endpoint must be live"
+        );
+        let listener = UnixListener::bind(&rendezvous_socket)
+            .expect("launcher broker must bind its frontend rendezvous socket");
+        let control_listener = UnixListener::bind(&control_socket)
+            .expect("launcher broker must bind its control socket");
+        let broker =
+            thread::spawn(move || run_broker(listener, control_listener, core, 320.0, 200.0));
+
+        Self {
+            rendezvous_socket,
+            control_socket,
+            compiler_socket,
+            frame_dir,
+            broker: Some(broker),
+        }
+    }
+
+    fn shutdown(&mut self) {
+        let Some(broker) = self.broker.take() else {
+            return;
+        };
+        if let Ok(mut browser) = std::os::unix::net::UnixStream::connect(&self.rendezvous_socket) {
+            if blueice_ipc::client_handshake(&mut browser).is_ok() {
+                let _ = blueice_ipc::write_client_message(
+                    &mut browser,
+                    &blueice_ipc::ClientMessage::Shutdown,
+                );
+            }
+        }
+        broker
+            .join()
+            .expect("launcher broker thread must not panic")
+            .expect("launcher broker must end normally after core shutdown");
+    }
+}
+
+impl Drop for LauncherManagedCore {
+    fn drop(&mut self) {
+        self.shutdown();
+        let _ = std::fs::remove_file(&self.rendezvous_socket);
+        let _ = std::fs::remove_file(&self.control_socket);
+        let _ = std::fs::remove_file(&self.compiler_socket);
+        let _ = std::fs::remove_dir_all(&self.frame_dir);
+    }
 }
 
 #[test]
@@ -562,4 +648,72 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
     assert!(core.wait().unwrap().success());
     assert!(!compiler_socket_path.exists());
     assert!(!frame_dir.exists());
+}
+
+#[tokio::test]
+async fn launcher_managed_core_keeps_mcp_browser_and_fixed_compiler_adapters_paired() {
+    // The direct-core test above proves the query protocol.  This regression
+    // proves the deployment shape: the launcher selects exactly its compiled
+    // in profile and MCP attaches its browser plus compiler adapters to the
+    // one same launcher-managed core, without a fallback process or project
+    // registration route.
+    let mut launcher = LauncherManagedCore::spawn();
+    let server = BlueIceMcpServer::connect_with_core_and_compiler_sockets(
+        &launcher.rendezvous_socket,
+        &launcher.compiler_socket,
+    )
+    .expect("MCP must pair both endpoints owned by the launcher core");
+    let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+    let server_task = tokio::spawn(async move {
+        server
+            .serve(server_transport)
+            .await
+            .expect("MCP server must bind its in-memory transport")
+            .waiting()
+            .await
+            .expect("MCP service must finish cleanly after client cancellation");
+    });
+    let client = CompilerMcpClient
+        .serve(client_transport)
+        .await
+        .expect("MCP client must negotiate the in-memory transport");
+
+    let navigate = client
+        .call_tool(
+            CallToolRequestParams::new("navigate").with_arguments(
+                serde_json::json!({ "url": "about:blank" })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("browser adapter must reach the launcher-managed core");
+    assert_eq!(navigate.is_error, Some(false));
+
+    let check = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_check").with_arguments(
+                serde_json::json!({ "project_id": 1 })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("compiler adapter must reach the paired core-owned profile");
+    assert_eq!(check.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&check);
+    assert!(matches!(
+        compiler_tool_reply(&check),
+        blueice_ipc::compiler::CompilerReply::Check(_)
+    ));
+
+    client.cancel().await.unwrap();
+    server_task.await.unwrap();
+    launcher.shutdown();
+    assert!(
+        !launcher.compiler_socket.exists(),
+        "launcher shutdown must clean the compiler endpoint after paired MCP disconnects"
+    );
 }

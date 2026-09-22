@@ -59,6 +59,7 @@ mod unix {
     };
     use std::io;
     use std::net::Shutdown;
+    use std::os::unix::fs::FileTypeExt;
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Path, PathBuf};
     use std::process::{Child, Command};
@@ -79,6 +80,11 @@ mod unix {
     pub struct CoreLaunchOptions {
         gatekeeper_socket: Option<PathBuf>,
         supervise_out_of_process_bluejs: bool,
+        /// A caller-selected Unix endpoint for the one fixed, core-owned
+        /// compiler project profile.  The profile is deliberately not an API
+        /// field: neither a launcher caller nor its CLI can choose a source,
+        /// resolver, compiler option, or alternate profile.
+        compiler_mcp_socket: Option<PathBuf>,
     }
 
     impl CoreLaunchOptions {
@@ -97,6 +103,31 @@ mod unix {
         pub fn supervise_out_of_process_bluejs(mut self) -> Self {
             self.supervise_out_of_process_bluejs = true;
             self
+        }
+
+        /// Opts this core generation into the fixed, closed compiler project
+        /// profile and selects the Unix endpoint that its query-only compiler
+        /// listener will own.
+        ///
+        /// The endpoint is the only caller-provided compiler value.  The
+        /// launcher always passes the compiled-in
+        /// `core-closed-fixture-v1` profile to `blueice-core`; this method
+        /// cannot carry project paths, sources, resolver/compiler options,
+        /// update/build/write authority, or a caller-selected profile.  The
+        /// endpoint is validated before the launcher creates any child.
+        ///
+        /// A caller-selected compiler endpoint intentionally makes atomic
+        /// core cutover unavailable in this slice: a replacement core cannot
+        /// bind the same Unix path while v1 is serving MCP.  A cutover is
+        /// rejected before touching v1 rather than unlinking or repointing
+        /// the endpoint.  Start a new launcher generation to change it.
+        pub fn with_core_closed_compiler_mcp_endpoint(mut self, path: PathBuf) -> Self {
+            self.compiler_mcp_socket = Some(path);
+            self
+        }
+
+        fn has_core_closed_compiler_mcp_endpoint(&self) -> bool {
+            self.compiler_mcp_socket.is_some()
         }
     }
 
@@ -688,6 +719,17 @@ mod unix {
             .cutover_lock
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // A caller-selected compiler socket is a stable, externally visible
+        // attachment point.  v2 cannot bind it until v1 has stopped, while
+        // this broker's atomic cutover promise requires v1 to remain alive
+        // through v2 startup and health checking.  Refuse before reading or
+        // changing v1 rather than unlinking the live endpoint, briefly
+        // directing MCP to an unverified v2, or leaving a stale socket.
+        if broker.core_options.has_core_closed_compiler_mcp_endpoint() {
+            return control::ControlReply::CutoverFailed {
+                reason: "cutover is unavailable while the launcher owns a caller-selected compiler MCP endpoint; v1 remains active".to_string(),
+            };
+        }
         let captured_tabs =
             match capture_v1_tabs(&broker.core_writer, &broker.clients, TAB_CAPTURE_TIMEOUT) {
                 Ok(tabs) => tabs,
@@ -882,6 +924,108 @@ mod unix {
         false
     }
 
+    /// The sole compiler profile the launcher may ask its child to register.
+    /// This label is an implementation detail of the trusted startup edge;
+    /// it is not a caller-selectable profile or a compiler IPC field.
+    const CORE_CLOSED_COMPILER_PROJECT_PROFILE: &str = "core-closed-fixture-v1";
+
+    /// Keep selected filesystem endpoints comfortably below the smallest
+    /// common `sockaddr_un.sun_path` capacity.  The actual platform capacity
+    /// varies, so a conservative launcher-side limit rejects a bad setup
+    /// before a core (or an optional BlueJS host) is spawned.
+    const MAX_COMPILER_MCP_SOCKET_PATH_BYTES: usize = 100;
+
+    /// Removes only a Unix-domain socket.  A caller-selected endpoint must
+    /// never let cleanup unlink an ordinary file, directory, or symlink that
+    /// happens to occupy the same path after a child exits.
+    fn remove_compiler_mcp_socket_if_owned(path: &Path) {
+        let Ok(metadata) = std::fs::symlink_metadata(path) else {
+            return;
+        };
+        if metadata.file_type().is_socket() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    /// Validates the only public compiler configuration before any child is
+    /// created.  A stale socket may be reclaimed; a live listener, a symlink,
+    /// or any non-socket file is an explicit configuration error.  In
+    /// particular, never blindly unlink a caller's arbitrary path merely
+    /// because it was supplied as a compiler endpoint.
+    fn prepare_compiler_mcp_endpoint(path: &Path) -> io::Result<()> {
+        use std::os::unix::ffi::OsStrExt;
+
+        if !path.is_absolute() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "compiler MCP socket path must be absolute",
+            ));
+        }
+        if path.as_os_str().as_bytes().len() > MAX_COMPILER_MCP_SOCKET_PATH_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "compiler MCP socket path exceeds {MAX_COMPILER_MCP_SOCKET_PATH_BYTES} bytes"
+                ),
+            ));
+        }
+        let parent = path.parent().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "compiler MCP socket path must have a parent directory",
+            )
+        })?;
+        if !parent.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "compiler MCP socket parent does not exist or is not a directory: {}",
+                    parent.display()
+                ),
+            ));
+        }
+
+        let metadata = match std::fs::symlink_metadata(path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        if metadata.file_type().is_symlink() || !metadata.file_type().is_socket() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!(
+                    "compiler MCP endpoint is occupied by a non-socket path: {}",
+                    path.display()
+                ),
+            ));
+        }
+
+        match UnixStream::connect(path) {
+            // It is a live owner.  Do not touch it: this also makes an
+            // accidental second launcher and a cutover attempt fail closed.
+            Ok(_) => Err(io::Error::new(
+                io::ErrorKind::AddrInUse,
+                format!(
+                    "compiler MCP endpoint is already active: {}",
+                    path.display()
+                ),
+            )),
+            // A socket inode without a listener is recoverable state from a
+            // previous crashed child.  It is safe to reclaim only after its
+            // type was checked above.
+            Err(error) if error.kind() == io::ErrorKind::ConnectionRefused => {
+                std::fs::remove_file(path)
+            }
+            Err(error) => Err(io::Error::new(
+                error.kind(),
+                format!(
+                    "could not determine whether compiler MCP endpoint is live at {}: {error}",
+                    path.display()
+                ),
+            )),
+        }
+    }
+
     /// A `core` process this launcher spawned and owns privately: killed
     /// and cleaned up (process, internal socket, and frame directory) on
     /// [`Drop`], the same lifetime discipline `mcp-server`'s `CoreProcess`
@@ -923,6 +1067,12 @@ mod unix {
             frame_dir: &Path,
             options: CoreLaunchOptions,
         ) -> io::Result<Self> {
+            // Do this before creating either child.  A malformed, partial, or
+            // occupied caller-selected compiler endpoint cannot briefly spawn
+            // a core or page host that would then need cleanup.
+            if let Some(compiler_socket) = options.compiler_mcp_socket.as_deref() {
+                prepare_compiler_mcp_endpoint(compiler_socket)?;
+            }
             let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
                 let (host, config) = SpawnedBlueJsHost::spawn_for_core()?;
                 (Some(host), Some(config))
@@ -972,12 +1122,22 @@ mod unix {
                     .arg("--out-of-process-bluejs-token")
                     .arg(config.session_token());
             }
+            if let Some(compiler_socket) = &options.compiler_mcp_socket {
+                command
+                    .arg("--compiler-socket")
+                    .arg(compiler_socket)
+                    .arg("--compiler-project-profile")
+                    .arg(CORE_CLOSED_COMPILER_PROJECT_PROFILE);
+            }
             let mut child = command.spawn()?;
 
             if !wait_for_socket(&internal_socket_path, Duration::from_secs(5)) {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
+                if let Some(compiler_socket) = &options.compiler_mcp_socket {
+                    remove_compiler_mcp_socket_if_owned(compiler_socket);
+                }
                 return Err(io::Error::other(format!(
                     "blueice-core never created its socket at {}",
                     internal_socket_path.display()
@@ -989,6 +1149,9 @@ mod unix {
                     let _ = child.kill();
                     let _ = child.wait();
                     let _ = std::fs::remove_file(&internal_socket_path);
+                    if let Some(compiler_socket) = &options.compiler_mcp_socket {
+                        remove_compiler_mcp_socket_if_owned(compiler_socket);
+                    }
                     return Err(error);
                 }
             };
@@ -1005,6 +1168,9 @@ mod unix {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
+                if let Some(compiler_socket) = &options.compiler_mcp_socket {
+                    remove_compiler_mcp_socket_if_owned(compiler_socket);
+                }
                 return Err(error);
             }
             Ok(SpawnedCore {
@@ -1028,6 +1194,9 @@ mod unix {
             // intended core generation.
             drop(self.bluejs_host.take());
             let _ = std::fs::remove_file(&self.internal_socket_path);
+            if let Some(compiler_socket) = &self.options.compiler_mcp_socket {
+                remove_compiler_mcp_socket_if_owned(compiler_socket);
+            }
             // `child.kill()` sends SIGKILL, which never lets `blueice-core`
             // run its own graceful-exit cleanup (which would otherwise
             // remove this itself) -- matters specifically for a cutover's
@@ -1377,6 +1546,82 @@ mod unix {
             // same launcher process (v1 at startup, v2 during cutover) --
             // PID alone would collide, so this must also vary per call.
             assert_ne!(unique_internal_socket_path(), unique_internal_socket_path());
+        }
+
+        fn unique_compiler_mcp_test_path(label: &str) -> PathBuf {
+            PathBuf::from("/tmp").join(format!(
+                "blueice-launcher-compiler-mcp-{label}-{}-{}.sock",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ))
+        }
+
+        #[test]
+        fn compiler_mcp_endpoint_validation_rejects_non_socket_paths_without_unlinking_them() {
+            let path = unique_compiler_mcp_test_path("regular-file");
+            std::fs::write(&path, b"do not remove").unwrap();
+
+            let error = prepare_compiler_mcp_endpoint(&path).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+            assert_eq!(std::fs::read(&path).unwrap(), b"do not remove");
+
+            let _ = std::fs::remove_file(path);
+        }
+
+        #[test]
+        fn compiler_mcp_endpoint_validation_reclaims_only_a_stale_socket_and_rejects_a_live_one() {
+            let stale = unique_compiler_mcp_test_path("stale");
+            let stale_listener = UnixListener::bind(&stale).unwrap();
+            drop(stale_listener);
+            // macOS can retain a just-closed local listener briefly while it
+            // drains the final descriptor state.  The production path only
+            // runs at startup, but give this deterministic stale-fixture a
+            // moment to become observably refused.
+            thread::sleep(Duration::from_millis(20));
+            prepare_compiler_mcp_endpoint(&stale).unwrap();
+            assert!(
+                !stale.exists(),
+                "a stale socket may be reclaimed before any child is spawned"
+            );
+
+            let live = unique_compiler_mcp_test_path("live");
+            let _live_listener = UnixListener::bind(&live).unwrap();
+            let error = prepare_compiler_mcp_endpoint(&live).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::AddrInUse);
+            assert!(live.exists(), "a live endpoint must remain intact");
+
+            let _ = std::fs::remove_file(live);
+        }
+
+        #[test]
+        fn compiler_mcp_endpoint_validation_happens_before_core_child_spawn() {
+            let path = unique_compiler_mcp_test_path("preflight");
+            std::fs::write(&path, b"must survive preflight").unwrap();
+            let frame_dir = std::env::temp_dir().join(format!(
+                "blueice-launcher-compiler-mcp-preflight-{}",
+                std::process::id()
+            ));
+            let result = SpawnedCore::spawn_with_options(
+                1.0,
+                1.0,
+                &frame_dir,
+                CoreLaunchOptions::default().with_core_closed_compiler_mcp_endpoint(path.clone()),
+            );
+            let error = match result {
+                Ok(_) => panic!("a non-socket compiler endpoint must reject before spawning core"),
+                Err(error) => error,
+            };
+            assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+            assert_eq!(std::fs::read(&path).unwrap(), b"must survive preflight");
+            assert!(
+                !frame_dir.exists(),
+                "a rejected compiler endpoint must not start a core that creates a frame directory"
+            );
+
+            let _ = std::fs::remove_file(path);
         }
 
         #[test]
