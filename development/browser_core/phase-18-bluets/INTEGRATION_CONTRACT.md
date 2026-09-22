@@ -413,10 +413,10 @@ not provide page-lifetime automation, diagnostics/contracts retention, source
 authorization, stack locations, scopes, runtime type inspection, pause
 mechanics, or debugger IPC.
 
-`blueice_ipc::debugger` now defines the separately framed v3 native debugger
+`blueice_ipc::debugger` now defines the separately framed v4 native debugger
 boundary. Its realm, program, and safe-point tuples include exact generations,
 and its capability response distinguishes `available`, `planned`, and
-`unsupported`. The v3 handshake rejects v1 and v2 peers before they receive
+`unsupported`. The v4 handshake rejects v1 through v3 peers before they receive
 the expanded capability/reply shapes. A core session that explicitly owns a
 live `--inline-bluejs` executor now serves source-free `ListPrograms`, bounded
 `ListSafePoints`, and `ValidateSafePoint` operations by resolving core-minted
@@ -428,14 +428,21 @@ idempotent `SetBreakpoint`, `ListBreakpoints`, and `ClearBreakpoint`
 configuration operations. A configuration record contains only the exact
 opaque safe-point tuple, is revalidated before insertion/removal, and is
 dropped before its tab realm is navigated, replaced, or closed. The available
-`BreakpointConfiguration` capability means only this lifecycle-bound table;
-the broad `Breakpoints`, pause/resume, stepping, stack, scope, and value
-capabilities remain planned. In particular, the eager synchronous page
-executor has no remote learn/install window before a newly admitted script's
-only normal execution, and BlueJS does not retain a VM continuation, so a
-stored record MUST NOT be presented as a breakpoint hit or paused state. A
-host MUST NOT advertise those later capabilities until the corresponding
-native path exists.
+`BreakpointConfiguration` capability means only this lifecycle-bound table.
+When the core has both `--inline-bluejs` and a private debugger socket, it
+additionally defers a newly admitted declaration by one session turn. v4's
+`ArmEntryBreakpoint` accepts only that declaration's exact compiler-verified
+root-code-unit instruction-zero boundary; the session owner reports a
+source-free `Paused` state before the ordinary BlueJS VM entry point runs.
+`GetExecutionState` and `ResumeExecution` expose only pending/paused/resuming/
+completed state and cannot inject a value or exception. This is a real but
+zero-execution continuation: it does not preserve a live interpreter frame,
+operand stack, handler state, GC roots, or nested calls. Therefore only the
+limited root-entry `Breakpoints` and `PauseResume` capabilities are available;
+arbitrary safe-point interruption, stepping, stack, scope, and value
+capabilities remain planned. A stored non-entry configuration record MUST NOT
+be presented as a breakpoint hit or paused state. A host MUST NOT advertise
+those later capabilities until the corresponding native path exists.
 
 Adding a host API is additive only when it preserves existing binding IDs and declaration meanings. Removing or changing a public declaration requires a new host API major version and a new compatible feature profile. A compiler may target a declared older profile only when the host explicitly supplies its matching generated manifest; it may never infer API availability from the installed BlueJS version.
 
@@ -443,7 +450,7 @@ Adding a host API is additive only when it preserves existing binding IDs and de
 
 The first structured classic-script and resolver-preserving module-graph bridge has landed. Direct-page activation remains gated on its owner providing:
 
-1. Extend the shipped source-free program-location and lifecycle-bound breakpoint-configuration wire path into production page-host ownership and pause-capable debugger execution. The current opt-in core seam validates exact live JavaScript locations and retains exact breakpoint records, but has no source-level page map, breakpoint hook, pause control, or out-of-process ownership.
+1. Extend the shipped source-free program-location, lifecycle-bound breakpoint-configuration, and root-entry pause wire path into production page-host ownership and general pause-capable debugger execution. The current opt-in core seam pauses only before any JavaScript bytecode begins; it has no source-level page map, arbitrary breakpoint hook, VM continuation, or out-of-process ownership.
 2. Bridge conformance fixtures extending the shipped no-emitted-JavaScript-reparse proof to exact origin/module preservation and deterministic bytecode-map ordering.
 3. Preserve the host-schema invariant for every future binding: its generated `lib.blueice.d.ts` declaration, exact profile inventory, BlueJS installation, and static/runtime absence behavior must be covered together. The shipped `core-script-document-text-v1` and `core-script-document-context-v1` profiles meet this rule: the direct-page compiler rejects their globals under the empty profile before VM admission, and an unconfigured BlueJS realm rejects them at runtime.
 4. Debugger tests for breakpoint binding, step/exception locations, stale-map rejection and the distinction between a static TypeScript type and a runtime BlueJS value.

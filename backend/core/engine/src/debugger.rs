@@ -11,13 +11,15 @@
 //! a breakpoint, paused frame, runtime value, source disclosure, or VM handle.
 
 use crate::{
-    script::javascript::{JavaScriptPageDebuggerError, JavaScriptPageExecutor},
+    script::javascript::{
+        JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState, JavaScriptPageExecutor,
+    },
     TabId, TabManager,
 };
 use blueice_ipc::debugger::{
     DebuggerCapabilities, DebuggerCapability, DebuggerCapabilityReport, DebuggerCapabilityState,
-    DebuggerErrorCode, DebuggerPageRealm, DebuggerProgram, DebuggerReply, DebuggerRequest,
-    DebuggerSafePoint, DEBUGGER_PROTOCOL_VERSION,
+    DebuggerErrorCode, DebuggerExecutionState, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
+    DebuggerRequest, DebuggerSafePoint, DEBUGGER_PROTOCOL_VERSION,
 };
 use std::io;
 use std::sync::mpsc;
@@ -152,11 +154,20 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::SetBreakpoint { safe_point } => {
             set_breakpoint(tabs, javascript_executor, safe_point)
         }
+        DebuggerRequest::ArmEntryBreakpoint { safe_point } => {
+            arm_entry_breakpoint(tabs, javascript_executor, safe_point)
+        }
         DebuggerRequest::ListBreakpoints { realm } => {
             list_breakpoints(tabs, javascript_executor.as_deref(), realm)
         }
         DebuggerRequest::ClearBreakpoint { safe_point } => {
             clear_breakpoint(tabs, javascript_executor, safe_point)
+        }
+        DebuggerRequest::GetExecutionState { program } => {
+            execution_state(tabs, javascript_executor.as_deref(), program)
+        }
+        DebuggerRequest::ResumeExecution { program } => {
+            resume_execution(tabs, javascript_executor, program)
         }
         DebuggerRequest::Hello { .. } => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
@@ -204,6 +215,11 @@ fn describe_capabilities(
     let program_locations_available = javascript_executor.is_some_and(|executor| {
         executor.debugger_has_live_realm(TabId::from_u64(realm.tab_id), realm.realm_generation)
     });
+    let entry_execution_control_available = javascript_executor.is_some_and(|executor| {
+        executor.debugger_execution_control_available()
+            && executor
+                .debugger_has_live_realm(TabId::from_u64(realm.tab_id), realm.realm_generation)
+    });
     let max_safe_points_per_program = javascript_executor
         .map(JavaScriptPageExecutor::max_debugger_safe_points_per_program)
         .unwrap_or(DEFAULT_MAX_SAFE_POINTS_PER_PROGRAM);
@@ -214,7 +230,10 @@ fn describe_capabilities(
     DebuggerReply::Capabilities(DebuggerCapabilities {
         protocol_version: DEBUGGER_PROTOCOL_VERSION,
         realm,
-        reports: capability_reports(program_locations_available),
+        reports: capability_reports(
+            program_locations_available,
+            entry_execution_control_available,
+        ),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
         max_value_preview_bytes: MAX_VALUE_PREVIEW_BYTES,
@@ -384,6 +403,37 @@ fn set_breakpoint(
     }
 }
 
+fn arm_entry_breakpoint(
+    tabs: &TabManager,
+    javascript_executor: Option<&mut JavaScriptPageExecutor>,
+    safe_point: DebuggerSafePoint,
+) -> DebuggerReply {
+    if !safe_point.is_well_formed() {
+        return invalid_safe_point_target();
+    }
+    let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    let Some(executor) = javascript_executor else {
+        return unavailable_execution_control();
+    };
+    if !executor.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation) {
+        return unavailable_execution_control();
+    }
+    match executor.arm_debugger_entry_breakpoint(
+        tab_id,
+        safe_point.program.realm.realm_generation,
+        safe_point.program.program_handle,
+        safe_point.program.program_generation,
+        safe_point.code_unit_ordinal,
+        safe_point.bytecode_offset,
+    ) {
+        Ok(()) => DebuggerReply::BreakpointArmed { safe_point },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
 fn list_breakpoints(
     tabs: &TabManager,
     javascript_executor: Option<&JavaScriptPageExecutor>,
@@ -452,6 +502,73 @@ fn clear_breakpoint(
     }
 }
 
+fn execution_state(
+    tabs: &TabManager,
+    javascript_executor: Option<&JavaScriptPageExecutor>,
+    program: DebuggerProgram,
+) -> DebuggerReply {
+    if !program.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger program target".to_string(),
+        };
+    }
+    let tab_id = match resolve_live_realm(tabs, program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    let Some(executor) = javascript_executor else {
+        return unavailable_execution_control();
+    };
+    if !executor.debugger_has_live_realm(tab_id, program.realm.realm_generation) {
+        return unavailable_execution_control();
+    }
+    match executor.debugger_execution_state(
+        tab_id,
+        program.realm.realm_generation,
+        program.program_handle,
+        program.program_generation,
+    ) {
+        Ok(state) => DebuggerReply::ExecutionState {
+            program,
+            state: debugger_execution_state(state, program),
+        },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn resume_execution(
+    tabs: &TabManager,
+    javascript_executor: Option<&mut JavaScriptPageExecutor>,
+    program: DebuggerProgram,
+) -> DebuggerReply {
+    if !program.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger program target".to_string(),
+        };
+    }
+    let tab_id = match resolve_live_realm(tabs, program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    let Some(executor) = javascript_executor else {
+        return unavailable_execution_control();
+    };
+    if !executor.debugger_has_live_realm(tab_id, program.realm.realm_generation) {
+        return unavailable_execution_control();
+    }
+    match executor.resume_debugger_execution(
+        tab_id,
+        program.realm.realm_generation,
+        program.program_handle,
+        program.program_generation,
+    ) {
+        Ok(()) => DebuggerReply::ExecutionResumed { program },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
 fn invalid_safe_point_target() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::InvalidTarget,
@@ -471,6 +588,14 @@ fn unavailable_breakpoint_configuration() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
         message: "native breakpoint configuration requires an enabled live JavaScript page realm"
+            .to_string(),
+    }
+}
+
+fn unavailable_execution_control() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "native debugger entry pause/resume requires an explicitly enabled JavaScript page realm"
             .to_string(),
     }
 }
@@ -500,6 +625,18 @@ fn debugger_program_error(error: JavaScriptPageDebuggerError) -> DebuggerReply {
             DebuggerErrorCode::ResourceLimit,
             "too many native breakpoint records for one page realm",
         ),
+        JavaScriptPageDebuggerError::ExecutionControlUnavailable => (
+            DebuggerErrorCode::CapabilityUnavailable,
+            "native debugger entry pause/resume is not enabled for this page realm",
+        ),
+        JavaScriptPageDebuggerError::NotExecutableEntry => (
+            DebuggerErrorCode::InvalidSafePoint,
+            "debugger entry pause accepts only a pending root instruction boundary",
+        ),
+        JavaScriptPageDebuggerError::InvalidExecutionState => (
+            DebuggerErrorCode::InvalidExecutionState,
+            "debugger operation is not valid for the program execution state",
+        ),
     };
     DebuggerReply::Error {
         code,
@@ -507,7 +644,31 @@ fn debugger_program_error(error: JavaScriptPageDebuggerError) -> DebuggerReply {
     }
 }
 
-fn capability_reports(program_locations_available: bool) -> Vec<DebuggerCapabilityReport> {
+fn debugger_execution_state(
+    state: JavaScriptPageDebuggerExecutionState,
+    program: DebuggerProgram,
+) -> DebuggerExecutionState {
+    match state {
+        JavaScriptPageDebuggerExecutionState::Pending => DebuggerExecutionState::Pending,
+        JavaScriptPageDebuggerExecutionState::Paused {
+            code_unit_ordinal,
+            bytecode_offset,
+        } => DebuggerExecutionState::Paused {
+            safe_point: DebuggerSafePoint {
+                program,
+                code_unit_ordinal,
+                bytecode_offset,
+            },
+        },
+        JavaScriptPageDebuggerExecutionState::Resuming => DebuggerExecutionState::Resuming,
+        JavaScriptPageDebuggerExecutionState::Completed => DebuggerExecutionState::Completed,
+    }
+}
+
+fn capability_reports(
+    program_locations_available: bool,
+    entry_execution_control_available: bool,
+) -> Vec<DebuggerCapabilityReport> {
     [
         (
             DebuggerCapability::ProgramLocations,
@@ -537,13 +698,29 @@ fn capability_reports(program_locations_available: bool) -> Vec<DebuggerCapabili
         ),
         (
             DebuggerCapability::Breakpoints,
-            DebuggerCapabilityState::Planned,
-            "native breakpoint interruption is not installed",
+            if entry_execution_control_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if entry_execution_control_available {
+                "compiler-verified root-entry breakpoints pause unstarted page declarations"
+            } else {
+                "native breakpoint interruption is not installed"
+            },
         ),
         (
             DebuggerCapability::PauseResume,
-            DebuggerCapabilityState::Planned,
-            "native pause and resume are not installed",
+            if entry_execution_control_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if entry_execution_control_available {
+                "resume is available only from a root-entry pause before bytecode execution"
+            } else {
+                "native pause and resume are not installed"
+            },
         ),
         (
             DebuggerCapability::Stepping,
@@ -894,6 +1071,127 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn native_debugger_arms_observes_and_resumes_a_root_entry_pause() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script>throw 1;</script>",
+            Some("https://example.test/native-entry-pause.html".to_string()),
+        );
+        let realm = DebuggerPageRealm {
+            browser_context_id: DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: tab_id.as_u64(),
+            realm_generation: 1,
+        };
+        let mut executor = JavaScriptPageExecutor::with_config(
+            crate::script::javascript::JavaScriptPageExecutorConfig {
+                native_debugger_execution_control: true,
+                ..crate::script::javascript::JavaScriptPageExecutorConfig::default()
+            },
+        )
+        .unwrap();
+
+        // First lifecycle turn admits but does not execute the declaration.
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let DebuggerReply::Capabilities(capabilities) =
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::DescribeCapabilities { realm },
+            )
+        else {
+            panic!("the controlled live realm must describe native execution control")
+        };
+        for capability in [
+            DebuggerCapability::Breakpoints,
+            DebuggerCapability::PauseResume,
+        ] {
+            assert!(capabilities.reports.iter().any(|report| {
+                report.capability == capability
+                    && report.state == DebuggerCapabilityState::Available
+            }));
+        }
+        let DebuggerReply::Programs(programs) = handle_debugger_request_with_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::ListPrograms { realm },
+        ) else {
+            panic!("admission must expose an opaque program before execution")
+        };
+        let program = programs[0];
+        let DebuggerReply::SafePoints(safe_points) =
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ListSafePoints { program },
+            )
+        else {
+            panic!("the opaque program must retain compiler-verified boundaries")
+        };
+        let entry = *safe_points
+            .iter()
+            .find(|safe_point| safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset == 0)
+            .expect("BlueJS root bytecode has a verified entry boundary");
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ArmEntryBreakpoint { safe_point: entry },
+            ),
+            DebuggerReply::BreakpointArmed { safe_point: entry }
+        );
+
+        // The owner-controlled scheduler now stops before `throw 1` reaches
+        // the VM. A state query returns only the opaque exact boundary.
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program },
+            ),
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::Paused { safe_point: entry },
+            }
+        );
+        assert!(executor.drain_reports_for_tab(tab_id).is_empty());
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ResumeExecution { program },
+            ),
+            DebuggerReply::ExecutionResumed { program }
+        );
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program },
+            ),
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::Completed,
+            }
+        );
+        assert_eq!(
+            executor.drain_reports_for_tab(tab_id),
+            vec![
+                crate::script::javascript::JavaScriptPageExecutionReport::Rejected {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 0,
+                    kind: crate::script::BlueJsPageScriptKind::Classic,
+                    category: "BlueJS page execution failed",
+                }
+            ]
+        );
     }
 
     #[test]

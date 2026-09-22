@@ -20,7 +20,9 @@ page host with two read-only document-oriented profiles. `blueice-core` can
 now opt into one such profile for inline declarations, and expose only
 source-free per-tab outcomes through its control plane. The opt-in JavaScript
 host now also supports a bounded private debugger program-location inventory,
-exact live safe-point validation, and lifecycle-bound breakpoint configuration.
+exact live safe-point validation, lifecycle-bound breakpoint configuration, and
+an opt-in root-entry pause/resume seam that stops a declaration before any VM
+bytecode executes. It is not arbitrary interpreter suspension or stepping.
 A launcher-supervised, capability-authenticated out-of-process BlueJS child
 can execute a bounded, caller-authorized document graph; an explicitly paired
 core endpoint/token route forwards HTTP(S) inline declarations and closes child
@@ -28,8 +30,8 @@ realms on navigation/tab removal. `blueice-launcher --out-of-process-bluejs`
 now creates that child/capability pair itself for each core generation and
 reaps it on ordinary shutdown or cutover; the default launcher leaves the mode
 disabled. The remaining boundary has no general DOM or event surface, live
-page-data contract boundary, debugger interruption or pause/runtime control,
-or MCP project-registration path.
+page-data contract boundary, arbitrary debugger interruption/pause/runtime
+control, or MCP project-registration path.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
 syntax matrix while an earlier item prevents an already-supported program from
@@ -277,7 +279,8 @@ or second module resolver to bypass them.
   page realm and remain separate from script/DOM and network IPC.
 
   Foundation delivered: `blueice_ipc::debugger` now owns an independently
-  framed v2 handshake, capability, and bounded program-location vocabulary.
+  framed v4 handshake, capability, bounded program-location vocabulary, and
+  source-free root-entry execution-control vocabulary.
   Its page-realm, program, and safe-point identities include
   browser-context/tab/realm and program generations, reject zero placeholder
   handles, and require a host to validate an exact BlueJS instruction boundary
@@ -286,7 +289,7 @@ or second module resolver to bypass them.
   return only core-minted opaque program IDs and bounded `(code-unit, offset)`
   tuples, never canonical source IDs, source text, bytecode bytes, VM objects,
   or completion values. These additive request/reply and capability shapes
-  advance the independent debugger protocol to v2, so a v1 peer fails its
+  advance the independent debugger protocol to v4, so a v1/v2/v3 peer fails its
   `Hello` negotiation rather than attempting to deserialize an incompatible
   capability report. `blueice_engine::debugger` routes post-handshake
   requests from a socket worker to the one session thread that owns live tabs;
@@ -303,17 +306,24 @@ or second module resolver to bypass them.
   targets return `InvalidTarget`; an obsolete program generation returns
   `StaleProgram`; and a non-boundary tuple returns `InvalidSafePoint`.
   `ProgramLocations` is `available` only for an enabled, live JavaScript page
-  realm; it remains `planned` otherwise. Breakpoints, pause/resume, stepping,
-  stack, scopes, exception policy, and bounded values remain `planned` with
-  fixed source-free details. Unit coverage proves exact successful validation,
-  malformed-boundary rejection, same-document cross-tab rejection, and old
-  realm rejection after navigation; the established core subprocess regression
-  continues to prove the separate socket handshake and session-owned lifecycle
-  route.
-  There is still no breakpoint table or hook, pause state, stepping,
-  stack/scope/value implementation, source-to-safe-point page map, or debugger
-  consumer. In particular, location validation must not be represented as a
-  breakpoint installation or a paused execution state.
+  realm; it remains `planned` otherwise. v4 additionally exposes
+  `ArmEntryBreakpoint`, `GetExecutionState`, and `ResumeExecution` only when
+  `--inline-bluejs` is paired with the private debugger socket. Admission is
+  deferred by one session turn; a peer can arm only the exact root code-unit
+  instruction-zero boundary of a still-pending declaration. The session owner
+  then reports `Paused` before calling the ordinary BlueJS VM entry point and
+  accepts resume only from that state. The reply contains no source, bytecode,
+  stack, scope, object, or completion value. The root-entry continuation is
+  deliberately zero-execution: it does not serialize interpreter frames,
+  operand stack, handlers, GC roots, or nested calls. `Breakpoints` and
+  `PauseResume` are available only for this narrow seam; stepping, arbitrary
+  safe-point interruption, stack, scopes, exception policy, and bounded values
+  remain planned. Unit coverage proves exact successful validation, malformed-
+  boundary rejection, same-document cross-tab rejection, old realm rejection
+  after navigation, and real BlueJS execution only after root-entry resume.
+  A general VM continuation, source-to-safe-point page map, and debugger
+  consumer remain open. In particular, a configured non-entry breakpoint MUST
+  NOT be represented as a breakpoint hit or paused execution state.
 
   Acceptance: a JS page fixture pauses at a verified safe point, supports the
   declared stepping subset, rejects stale frame/value handles after

@@ -8,8 +8,8 @@
 //! public automation protocol. It gives `core` and an out-of-process BlueJS
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
-//! bounded opaque program-location operations, and exact breakpoint
-//! configuration. A host must report every operation as
+//! bounded opaque program-location operations, exact breakpoint configuration,
+//! and an opt-in root-entry pause/resume seam. A host must report every operation as
 //! [`DebuggerCapabilityState::Available`] only after it implements the native
 //! behavior; a configured breakpoint is not evidence that pause, stack,
 //! scope, or value inspection already exists.
@@ -20,7 +20,7 @@ use std::io::{self, Read, Write};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 3;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 4;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -133,13 +133,26 @@ pub struct DebuggerCapabilities {
     pub max_breakpoints_per_realm: u32,
 }
 
+/// Source-free state of one native-debugger controlled declaration. A paused
+/// state identifies only an already-validated opaque instruction boundary;
+/// it never carries source text, bytecode, a stack, a scope, or a value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DebuggerExecutionState {
+    Pending,
+    Paused { safe_point: DebuggerSafePoint },
+    Resuming,
+    Completed,
+}
+
 /// Core's requests to the out-of-process BlueJS debugger host.
 ///
 /// Command families are deliberately added only with real native behavior.
 /// The first non-discovery family resolves opaque programs and exact
 /// compiler-verified instruction boundaries. The second is exact, bounded
-/// breakpoint configuration; it remains distinct from a later
-/// breakpoint-interrupt/pause operation.
+/// breakpoint configuration. The root-entry arm/resume operations are
+/// separately named because normal configuration must not be mistaken for a
+/// VM interruption hook.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DebuggerRequest {
     Hello {
@@ -174,6 +187,12 @@ pub enum DebuggerRequest {
     SetBreakpoint {
         safe_point: DebuggerSafePoint,
     },
+    /// Arms one compiler-verified root-code-unit entry boundary for a program
+    /// that has been admitted but has not entered BlueJS execution. The host
+    /// rejects any non-entry safe point or program that is no longer pending.
+    ArmEntryBreakpoint {
+        safe_point: DebuggerSafePoint,
+    },
     /// Lists only exact breakpoint records currently retained by one live
     /// realm. The records carry no source, bytecode, VM object, or value.
     ListBreakpoints {
@@ -183,6 +202,16 @@ pub enum DebuggerRequest {
     /// but its target must still name a live compiler-verified boundary.
     ClearBreakpoint {
         safe_point: DebuggerSafePoint,
+    },
+    /// Reads source-free pending/paused/resuming/completed state for one
+    /// exact program generation in the opt-in entry-pause scheduler.
+    GetExecutionState {
+        program: DebuggerProgram,
+    },
+    /// Allows a currently entry-paused program to enter the ordinary BlueJS
+    /// VM. It cannot resume a non-paused program or inject a value/exception.
+    ResumeExecution {
+        program: DebuggerProgram,
     },
     /// Catch-all for a newer request variant. Like the frontend protocol, a
     /// receiver preserves connection framing and replies with `Unsupported`
@@ -208,10 +237,20 @@ pub enum DebuggerReply {
     BreakpointSet {
         safe_point: DebuggerSafePoint,
     },
+    BreakpointArmed {
+        safe_point: DebuggerSafePoint,
+    },
     Breakpoints(Vec<DebuggerSafePoint>),
     BreakpointCleared {
         safe_point: DebuggerSafePoint,
         was_present: bool,
+    },
+    ExecutionState {
+        program: DebuggerProgram,
+        state: DebuggerExecutionState,
+    },
+    ExecutionResumed {
+        program: DebuggerProgram,
     },
     Unsupported {
         operation: String,
@@ -234,6 +273,7 @@ pub enum DebuggerErrorCode {
     StaleProgram,
     InvalidSafePoint,
     CapabilityUnavailable,
+    InvalidExecutionState,
     ResourceLimit,
 }
 
@@ -259,8 +299,11 @@ pub fn negotiate(request: &DebuggerRequest) -> DebuggerReply {
         | DebuggerRequest::ListSafePoints { .. }
         | DebuggerRequest::ValidateSafePoint { .. }
         | DebuggerRequest::SetBreakpoint { .. }
+        | DebuggerRequest::ArmEntryBreakpoint { .. }
         | DebuggerRequest::ListBreakpoints { .. }
         | DebuggerRequest::ClearBreakpoint { .. }
+        | DebuggerRequest::GetExecutionState { .. }
+        | DebuggerRequest::ResumeExecution { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
             message: "debugger protocol requires Hello as its first request".to_string(),
@@ -340,6 +383,17 @@ mod tests {
                     bytecode_offset: 0,
                 },
             },
+            DebuggerRequest::ArmEntryBreakpoint {
+                safe_point: DebuggerSafePoint {
+                    program: DebuggerProgram {
+                        realm: realm(),
+                        program_handle: 12,
+                        program_generation: 5,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 0,
+                },
+            },
             DebuggerRequest::ListBreakpoints { realm: realm() },
             DebuggerRequest::ClearBreakpoint {
                 safe_point: DebuggerSafePoint {
@@ -350,6 +404,20 @@ mod tests {
                     },
                     code_unit_ordinal: 0,
                     bytecode_offset: 0,
+                },
+            },
+            DebuggerRequest::GetExecutionState {
+                program: DebuggerProgram {
+                    realm: realm(),
+                    program_handle: 12,
+                    program_generation: 5,
+                },
+            },
+            DebuggerRequest::ResumeExecution {
+                program: DebuggerProgram {
+                    realm: realm(),
+                    program_handle: 12,
+                    program_generation: 5,
                 },
             },
             DebuggerRequest::Unknown,
@@ -397,11 +465,17 @@ mod tests {
             DebuggerReply::SafePoints(vec![safe_point]),
             DebuggerReply::SafePointValidated { safe_point },
             DebuggerReply::BreakpointSet { safe_point },
+            DebuggerReply::BreakpointArmed { safe_point },
             DebuggerReply::Breakpoints(vec![safe_point]),
             DebuggerReply::BreakpointCleared {
                 safe_point,
                 was_present: true,
             },
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::Paused { safe_point },
+            },
+            DebuggerReply::ExecutionResumed { program },
         ] {
             let (mut sender, mut receiver) = UnixStream::pair().unwrap();
             write_debugger_reply(&mut sender, &reply).unwrap();

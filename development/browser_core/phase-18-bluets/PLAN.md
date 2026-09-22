@@ -24,10 +24,14 @@ The opt-in debugger socket now additionally supports source-free opaque
 program-location enumeration and exact compiler-verified BlueJS safe-point
 validation for a live JavaScript realm. Every request remains tab, document,
 and program-generation bound. It also owns a bounded, idempotent exact
-breakpoint-configuration table that is cleaned up on realm replacement; this
-configuration is not an interruption hook. It does not pause or step
-execution, expose source or bytecode, or expose a stack, scope, or runtime
-value.
+breakpoint-configuration table that is cleaned up on realm replacement. When
+the same core process selects `--inline-bluejs` and a debugger socket, the
+first scheduler turn admits a declaration and the next permits an exact
+root-code-unit instruction-zero breakpoint to stop it before BlueJS begins.
+The owner can then observe source-free state and resume it once. This is not
+arbitrary interpreter suspension: there is no saved VM frame, operand stack,
+handler, GC-root, source/bytecode, stack, scope, or runtime-value exposure;
+step and non-entry breakpoint interruption remain absent.
 
 ## Objective
 
@@ -133,7 +137,7 @@ The initial implementation completes the work that has no BlueJS dependency befo
   returns at most 128 loaded tab/document-generation identities, with no URL,
   source, program, bytecode, or runtime value; an over-cap list fails closed.
   With a selected live `--inline-bluejs` executor, the session additionally
-  serves `ListPrograms`, bounded `ListSafePoints`, `ValidateSafePoint`, and v3
+  serves `ListPrograms`, bounded `ListSafePoints`, `ValidateSafePoint`, and v4
   `SetBreakpoint`/`ListBreakpoints`/`ClearBreakpoint` from the exact tab-owned
   BlueJS registry. These return or retain opaque core-minted program IDs and
   instruction-boundary tuples only; they reject wrong tab, realm, program
@@ -141,11 +145,14 @@ The initial implementation completes the work that has no BlueJS dependency befo
   `ProgramLocations` and the deliberately narrower
   `BreakpointConfiguration` capability are available only at that live seam;
   the latter is an idempotent bounded table cleared at realm replacement, not
-  a VM interruption mechanism. Breakpoint interruption, pause, step, stack,
-  scope, exception, and runtime-value features remain planned. The boundary
-  has no source disclosure, bytecode extraction, paused-state control, or
-  debugger evaluation. The real-process regression verifies the transport,
-  lifecycle, and stale-target routes.
+  a general VM interruption mechanism. With both `--inline-bluejs` and the
+  debugger socket, v4 also offers `ArmEntryBreakpoint`, `GetExecutionState`,
+  and `ResumeExecution` for a pending declaration's exact root instruction-
+  zero boundary. It pauses before VM bytecode begins and resumes through the
+  same owner-session scheduler, exposing no source, bytecode, stack, scope,
+  object, or completion value. Step, arbitrary safe-point interruption,
+  exception, and runtime-value features remain planned. The real-process
+  regression verifies the transport, lifecycle, and stale-target routes.
 - A parsed `Page` now discovers the explicit non-portable `application/x-blueice-typescript` and `application/x-blueice-typescript-module` declarations in document order, retaining inline source or an external `src` as data. It never grants loading authority or evaluates them: a future page loader must apply origin, feature-profile, integrity, resolver, and resource policy before assembling the `AuthorizedModuleLoader` for direct admission.
 - As a deliberately bounded normal-page fixture seam, `DirectPageScriptHost::execute_inline` may admit one inline declaration only. It derives a canonical module ID from core tab/document-generation/declaration identities and creates a one-module closed loader, so it neither embeds caller text in an identity nor reads an external source. `DirectPageInlineExecutor` can invoke that seam automatically only when a core owner explicitly selects it. By default it rejects and reports external `src` without reflecting the page-controlled URL; `PageScriptSourceAuthorizer` is the sole optional core-owned authority that can turn that declaration into a supplied closed graph plus resolver fingerprint. The executor never fetches, resolves, or falls back itself. A real fetch/cache/integrity implementation and remaining host bindings remain open.
 - The out-of-process portion of that remaining work now has a deliberately

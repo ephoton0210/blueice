@@ -531,13 +531,21 @@ fn main() -> ExitCode {
         let mut tabs = TabManager::new(args.width, args.height);
         let mut generation = 0u64;
         if inline_bluejs {
-            let mut javascript_executor = script::javascript::JavaScriptPageExecutor::new()
-                .map_err(|error| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!("invalid inline JavaScript host configuration: {error}"),
-                    )
-                })?;
+            let mut javascript_executor = script::javascript::JavaScriptPageExecutor::with_config(
+                script::javascript::JavaScriptPageExecutorConfig {
+                    // Deferral changes scheduling, so activate it only when
+                    // this process also owns the private debugger transport.
+                    // The ordinary `--inline-bluejs` route remains immediate.
+                    native_debugger_execution_control: debugger_socket.is_some(),
+                    ..script::javascript::JavaScriptPageExecutorConfig::default()
+                },
+            )
+            .map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("invalid inline JavaScript host configuration: {error}"),
+                )
+            })?;
             session::run_session_with_script_and_debugger_requests_and_inline_javascript_executor(
                 &mut tabs,
                 &mut stream,
