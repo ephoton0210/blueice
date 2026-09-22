@@ -111,7 +111,7 @@ impl DebuggerRequestReceiver {
             let Ok(envelope) = self.0.try_recv() else {
                 break;
             };
-            let executes_or_releases_entry = matches!(
+            let requests_execution_transition = matches!(
                 &envelope.request,
                 DebuggerRequest::ArmEntryBreakpoint { .. }
                     | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
@@ -122,6 +122,17 @@ impl DebuggerRequestReceiver {
                 javascript_executor.as_deref_mut(),
                 envelope.request,
             );
+            // A rejected arm/resume request must not consume the pending
+            // declaration's only discovery turn. Otherwise an invalid child
+            // or module target could race the valid root target by causing
+            // ordinary execution before the caller receives its error.
+            let executes_or_releases_entry = requests_execution_transition
+                && matches!(
+                    &reply,
+                    DebuggerReply::BreakpointArmed { .. }
+                        | DebuggerReply::RootSafePointBreakpointArmed { .. }
+                        | DebuggerReply::ExecutionResumed { .. }
+                );
             let _ = envelope.reply.send(reply);
             if executes_or_releases_entry {
                 advance_pending_entry = true;

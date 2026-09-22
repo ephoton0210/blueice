@@ -234,6 +234,7 @@ dependencies = [
  "blueice-paint",
  "blueice-raster",
  "blueice-testing",
+ "serde_json",
 ]
 
 [[package]]

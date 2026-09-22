@@ -114,6 +114,39 @@ fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
     false
 }
 
+/// Sends one complete native-debugger request/response pair over the real
+/// socket and asserts that the raw public reply has not reflected this
+/// fixture's page-controlled secret, a VM value representation, or a known
+/// BlueJS opcode before decoding it. The protocol intentionally permits an
+/// opaque instruction *offset*; that is not bytecode disclosure.
+fn debugger_request(
+    stream: &mut UnixStream,
+    request: &blueice_ipc::debugger::DebuggerRequest,
+    page_secret: &str,
+) -> blueice_ipc::debugger::DebuggerReply {
+    blueice_ipc::debugger::write_debugger_request(stream, request)
+        .expect("must write debugger request to real core socket");
+    let mut length = [0u8; 4];
+    stream
+        .read_exact(&mut length)
+        .expect("real core must write a debugger reply length");
+    let mut payload = vec![0u8; u32::from_le_bytes(length) as usize];
+    stream
+        .read_exact(&mut payload)
+        .expect("real core must write a complete debugger reply payload");
+    let rendered =
+        std::str::from_utf8(&payload).expect("debugger reply framing must contain UTF-8 JSON");
+    assert!(
+        !rendered.contains(page_secret),
+        "debugger reply must not disclose page source or its completion value: {rendered}"
+    );
+    assert!(
+        !rendered.contains("Value(") && !rendered.contains("StoreBinding"),
+        "debugger reply must not disclose a VM value or bytecode instruction: {rendered}"
+    );
+    serde_json::from_slice(&payload).expect("real core must return a debugger reply JSON shape")
+}
+
 #[test]
 fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
     let output = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
@@ -857,6 +890,312 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
         blueice_ipc::debugger::DebuggerReply::Error {
             code: blueice_ipc::debugger::DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(!socket_path.exists());
+    assert!(!debugger_socket_path.exists());
+    assert!(!frame_dir.exists());
+}
+
+#[test]
+fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugger_leaks() {
+    // This deliberately uses the public binary, its Unix debugger socket, and
+    // the real core session scheduler. It is not an in-process approximation
+    // of the v5 continuation seam. The secret is both source text and a
+    // potential thrown completion value, so every debugger reply below proves
+    // it cannot cross the debugger transport.
+    const PAGE_SECRET: &str = "BLUEICE_DEBUGGER_SECRET_DO_NOT_DISCLOSE";
+    let socket_path = unique_socket_path("debugger-v5-core");
+    let debugger_socket_path = unique_socket_path("debugger-v5-host");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-debugger-v5-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debugger_socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("dbg-v5-gk");
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let classic_body = format!(
+        concat!(
+            "<main>v5 classic debugger fixture</main>",
+            "<script>function debuggerChildCodeUnit() {{ return \"{PAGE_SECRET}\"; }} ",
+            "globalThis.debuggerSecretBefore = \"{PAGE_SECRET}\"; ",
+            "throw \"{PAGE_SECRET}\";</script>"
+        ),
+        PAGE_SECRET = PAGE_SECRET
+    );
+    let module_body = format!(
+        concat!(
+            "<main>v5 module debugger fixture</main>",
+            "<script type=\"module\">export const debuggerModuleSecret = ",
+            "\"{PAGE_SECRET}\";</script>"
+        ),
+        PAGE_SECRET = PAGE_SECRET
+    );
+    thread::spawn(move || {
+        for body in [classic_body, module_body] {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--debugger-socket",
+            debugger_socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+            "--inline-bluejs",
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn blueice-core with debugger v5 enabled");
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    assert!(wait_for(&debugger_socket_path, Duration::from_secs(5)));
+
+    let mut frontend = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{address}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
+    ));
+
+    let mut debugger = UnixStream::connect(&debugger_socket_path).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::Hello {
+                protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+            },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::HelloAck {
+            protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+        }
+    );
+    let realm = match debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListPageRealms,
+        PAGE_SECRET,
+    ) {
+        blueice_ipc::debugger::DebuggerReply::PageRealms(realms) => {
+            assert_eq!(realms.len(), 1);
+            realms[0]
+        }
+        other => panic!("expected one v5 debugger realm, got {other:?}"),
+    };
+    let program = match debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListPrograms { realm },
+        PAGE_SECRET,
+    ) {
+        blueice_ipc::debugger::DebuggerReply::Programs(programs) => {
+            assert_eq!(programs.len(), 1);
+            programs[0]
+        }
+        other => panic!("expected one opaque classic debugger program, got {other:?}"),
+    };
+    let safe_points = match debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListSafePoints { program },
+        PAGE_SECRET,
+    ) {
+        blueice_ipc::debugger::DebuggerReply::SafePoints(safe_points) => safe_points,
+        other => panic!("expected compiler-verified debugger safe points, got {other:?}"),
+    };
+    let root_safe_point = *safe_points
+        .iter()
+        .find(|safe_point| safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset != 0)
+        .expect("classic fixture must expose a non-entry root boundary");
+    let child_safe_point = *safe_points
+        .iter()
+        .find(|safe_point| safe_point.code_unit_ordinal != 0)
+        .expect("fixture function must expose a child code-unit boundary");
+
+    // The target is verified before execution, but v5 intentionally does not
+    // claim continuation support for child code units.
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ArmRootSafePointBreakpoint {
+                safe_point: child_safe_point,
+            },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::InvalidSafePoint,
+            ..
+        }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ArmRootSafePointBreakpoint {
+                safe_point: root_safe_point,
+            },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::RootSafePointBreakpointArmed {
+            safe_point: root_safe_point,
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Paused {
+                safe_point: root_safe_point,
+            },
+        }
+    );
+    // Once BlueJS has paused, a second arm cannot change the target or create
+    // loop-hit/re-arm behavior. It fails before another bytecode run.
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ArmRootSafePointBreakpoint {
+                safe_point: root_safe_point,
+            },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ResumeExecution { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionResumed { program }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
+        }
+    );
+
+    // A replacement realm must make every old target stale before it can
+    // affect the pending module declaration in the successor document.
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{address}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 2, .. }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    let module_realm = match debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListPageRealms,
+        PAGE_SECRET,
+    ) {
+        blueice_ipc::debugger::DebuggerReply::PageRealms(realms) => {
+            assert_eq!(realms.len(), 1);
+            assert_ne!(realms[0], realm);
+            realms[0]
+        }
+        other => panic!("expected replacement debugger realm, got {other:?}"),
+    };
+    let module_program = match debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListPrograms {
+            realm: module_realm,
+        },
+        PAGE_SECRET,
+    ) {
+        blueice_ipc::debugger::DebuggerReply::Programs(programs) => {
+            assert_eq!(programs.len(), 1);
+            programs[0]
+        }
+        other => panic!("expected one opaque module debugger program, got {other:?}"),
+    };
+    let module_safe_point = match debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListSafePoints {
+            program: module_program,
+        },
+        PAGE_SECRET,
+    ) {
+        blueice_ipc::debugger::DebuggerReply::SafePoints(safe_points) => *safe_points
+            .iter()
+            .find(|safe_point| safe_point.code_unit_ordinal == 0)
+            .expect("module fixture must expose a root safe-point inventory"),
+        other => panic!("expected module debugger safe points, got {other:?}"),
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ArmRootSafePointBreakpoint {
+                safe_point: module_safe_point,
+            },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::InvalidSafePoint,
             ..
         }
     ));

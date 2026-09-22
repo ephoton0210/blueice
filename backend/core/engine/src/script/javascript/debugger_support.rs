@@ -124,6 +124,12 @@ pub(super) struct PendingDebuggerExecution {
     /// is replaced only by the explicit root-safe-point arm operation while
     /// this declaration is still pending.
     entry_breakpoint: DebuggerBreakpointRecord,
+    /// A root-safe-point continuation is deliberately one-shot. Keeping this
+    /// state with the pending declaration prevents a second debugger peer (or
+    /// a pipelined request) from moving the execution target before the
+    /// scheduler gets its next turn. Ordinary breakpoint configuration and
+    /// the v4 root-entry compatibility arm do not set this flag.
+    root_safe_point_armed: bool,
     document_generation: u64,
     ordinal: u32,
     kind: BlueJsPageScriptKind,
@@ -407,6 +413,9 @@ impl JavaScriptPageExecutor {
             .flatten()
             .find(|pending| pending.program == key)
             .ok_or(JavaScriptPageDebuggerError::NotResumableRootSafePoint)?;
+        if pending.root_safe_point_armed {
+            return Err(JavaScriptPageDebuggerError::InvalidExecutionState);
+        }
         if !matches!(
             pending.execution,
             DeferredJavaScriptExecution::Classic { .. }
@@ -414,13 +423,15 @@ impl JavaScriptPageExecutor {
             return Err(JavaScriptPageDebuggerError::NotResumableRootSafePoint);
         }
         self.insert_debugger_breakpoint(tab_id, target)?;
-        self.pending_debugger_executions
+        let pending = self
+            .pending_debugger_executions
             .get_mut(&tab_id)
             .expect("the inspected pending debugger queue remains live")
             .iter_mut()
             .find(|pending| pending.program == key)
-            .expect("the inspected pending debugger declaration remains queued")
-            .entry_breakpoint = target;
+            .expect("the inspected pending debugger declaration remains queued");
+        pending.entry_breakpoint = target;
+        pending.root_safe_point_armed = true;
         Ok(())
     }
 
@@ -592,6 +603,7 @@ impl JavaScriptPageExecutor {
             .push_back(PendingDebuggerExecution {
                 program,
                 entry_breakpoint,
+                root_safe_point_armed: false,
                 document_generation,
                 ordinal,
                 kind,
@@ -1159,6 +1171,18 @@ mod tests {
                 entry.bytecode_offset,
             )
             .unwrap();
+        // v4 root-entry arming retains its idempotent configuration behavior;
+        // only the v5 non-entry continuation arm is one-shot.
+        executor
+            .arm_debugger_entry_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                entry.code_unit_ordinal,
+                entry.bytecode_offset,
+            )
+            .unwrap();
 
         // The second lifecycle turn observes the armed exact boundary before
         // passing anything to `Vm::execute_script`; the throwing bytecode has
@@ -1275,6 +1299,20 @@ mod tests {
                 safe_point.bytecode_offset,
             )
             .unwrap();
+        // The continuation target is committed while the declaration is
+        // still pending. A second request cannot retarget it before the
+        // scheduler reaches the first boundary.
+        assert_eq!(
+            executor.arm_debugger_root_safe_point_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                safe_point.code_unit_ordinal,
+                safe_point.bytecode_offset,
+            ),
+            Err(JavaScriptPageDebuggerError::InvalidExecutionState)
+        );
 
         executor.synchronize_and_execute(&tabs).unwrap();
         assert_eq!(

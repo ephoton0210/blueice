@@ -164,8 +164,12 @@ The initial implementation completes the work that has no BlueJS dependency befo
   source, bytecode, stack, scope, object, or completion value. Modules,
   top-level await, child function code units, re-arming/loop hits, stepping,
   arbitrary nested-frame interruption, exception, and runtime-value features
-  remain planned. The real-process regression verifies transport, lifecycle,
-  stale-target, and same-frame pause/resume routes.
+  remain planned. The real-process regressions verify the v4 `ArmEntry`
+  compatibility route and the v5 `Hello`/discovery/non-entry-root-arm/
+  `Paused`/same-frame-resume route. The latter rejects child-code-unit,
+  module, repeat-arm, and stale-realm targets without consuming the pending
+  arm opportunity, and checks that its debugger replies never reflect
+  fixture source/completion data, VM values, or BlueJS opcode data.
 - A parsed `Page` now discovers the explicit non-portable `application/x-blueice-typescript` and `application/x-blueice-typescript-module` declarations in document order, retaining inline source or an external `src` as data. It never grants loading authority or evaluates them: a future page loader must apply origin, feature-profile, integrity, resolver, and resource policy before assembling the `AuthorizedModuleLoader` for direct admission.
 - As a deliberately bounded normal-page fixture seam, `DirectPageScriptHost::execute_inline` may admit one inline declaration only. It derives a canonical module ID from core tab/document-generation/declaration identities and creates a one-module closed loader, so it neither embeds caller text in an identity nor reads an external source. `DirectPageInlineExecutor` can invoke that seam automatically only when a core owner explicitly selects it. By default it rejects and reports external `src` without reflecting the page-controlled URL; `PageScriptSourceAuthorizer` is the sole optional core-owned authority that can turn that declaration into a supplied closed graph plus resolver fingerprint. The executor never fetches, resolves, or falls back itself. A real fetch/cache/integrity implementation and remaining host bindings remain open.
 - The out-of-process portion now has a deliberately narrow shared-realm

@@ -331,7 +331,14 @@ or second module resolver to bypass them.
   values remain planned. Unit coverage proves malformed-boundary rejection,
   same-document cross-tab rejection, realm replacement discarding a paused
   continuation, GC rooting of paused iterator records, and real BlueJS
-  execution only after same-frame resume.
+  execution only after same-frame resume. A separate real `blueice-core`
+  subprocess regression drives `Hello` through opaque discovery, a non-entry
+  classic root arm, `Paused`, and same-frame `ResumeExecution`/`Completed` on
+  the debugger socket. It proves child code units, modules, repeated root
+  arms, and stale-realm targets fail closed, while every raw framed debugger
+  reply is checked not to reflect fixture source/completion data, a VM value,
+  or a BlueJS opcode. The pre-existing `ArmEntryBreakpoint` subprocess route
+  remains the v4 compatibility acceptance.
 
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm
