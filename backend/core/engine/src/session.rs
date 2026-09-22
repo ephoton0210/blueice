@@ -50,6 +50,7 @@
 //! around the loop again," never as a disconnect (every *other* read
 //! error still means disconnect, exactly as before gating existed).
 
+use crate::automation_service::AutomationRequests;
 use crate::gatekeeper_client::{self, NavOutcome};
 use crate::{script::ScriptRequestReceiver, Page, TabId, TabManager};
 use blueice_dom::NodeId;
@@ -155,6 +156,37 @@ pub fn run_session_with_script_requests<S: Read + Write + ReadTimeout>(
     generation: &mut u64,
     gatekeeper_socket: &Path,
     script_requests: Option<&ScriptRequestReceiver>,
+) -> io::Result<()> {
+    run_session_with_script_and_automation_requests(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        script_requests,
+        None,
+    )
+}
+
+/// Like [`run_session_with_script_requests`], while also dispatching
+/// each pending [`blueice_ipc::automation`] request on this same core
+/// session thread between frontend reads -- `phase-17-automation-
+/// devtools-and-ajax/PLAN.md`'s Slice 1 item 3. `automation`'s receiver
+/// is the one shared queue every accepted automation connection's
+/// [`crate::automation_service::AutomationRequestSender`] feeds (see
+/// that module's docs for why one receiver, many senders, is safe and
+/// sufficient here); its `state` persists across ticks so a connection's
+/// granted capabilities and any controller lease it holds outlive any
+/// single poll.
+#[allow(clippy::too_many_arguments)]
+pub fn run_session_with_script_and_automation_requests<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    script_requests: Option<&ScriptRequestReceiver>,
+    mut automation: Option<AutomationRequests<'_>>,
 ) -> io::Result<()> {
     // Best-effort: on at least one real platform, setting a read
     // timeout on a Unix domain socket whose peer has *already*
@@ -385,6 +417,10 @@ pub fn run_session_with_script_requests<S: Read + Write + ReadTimeout>(
         }
         if let Some(script_requests) = script_requests {
             script_requests.dispatch_pending(tabs);
+        }
+        if let Some(automation) = automation.as_mut() {
+            automation.state.observe_generation(*generation);
+            automation.receiver.dispatch_pending(tabs, automation.state);
         }
     }
 }

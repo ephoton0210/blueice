@@ -254,6 +254,17 @@ impl Page {
         blueice_dom::dump(&self.doc)
     }
 
+    /// Read-only access to this page's DOM tree -- for a caller (e.g.
+    /// `crate::automation_service`'s locator resolution) that needs to
+    /// walk/match against real document structure rather than the
+    /// already-serialized [`Page::dom_dump`] text or the semantic-role
+    /// AI snapshot. Never `&mut`: mutating a page's DOM must go through
+    /// one of `Page`'s own narrow, invariant-preserving methods, not an
+    /// arbitrary external borrow.
+    pub fn document(&self) -> &Document {
+        &self.doc
+    }
+
     /// Resolves the first element whose literal `id` attribute matches the
     /// page-script request. This is crate-visible only: script authority must
     /// enter through the core-owned IPC dispatcher rather than letting an

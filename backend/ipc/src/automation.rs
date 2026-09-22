@@ -103,12 +103,36 @@ pub enum AutomationRequest {
     CreateContext,
     /// **Lifecycle.** Closes a context and every page/tab under it.
     CloseContext { context_id: BrowserContextId },
+    /// **Lifecycle.** Opens a new, blank tab/page under `context_id`,
+    /// returning its `tab_id` -- the automation-protocol counterpart to
+    /// [`crate::ClientMessage::OpenTab`], scoped to a specific context
+    /// rather than always landing in the one default context. This
+    /// minimal slice opens a blank page only; requesting an initial URL
+    /// (like `ClientMessage::OpenTab`'s own `url` field) needs the same
+    /// gated-navigation completion path a later slice wires into this
+    /// protocol, not this synchronous request/reply shape.
+    OpenTab { context_id: BrowserContextId },
     /// **Inspection.** The full DOM tree dump
     /// ([`blueice_dom::dump`]'s canonical text format) for one tab --
     /// the same data [`crate::ClientMessage::GetDom`] already exposes
     /// to an external client, reachable here too since DevTools/
     /// automation clients are a distinct audience from `frontend`/MCP.
     GetDom { tab_id: u64 },
+    /// **Inspection.** The same accessibility-tree-shaped schema
+    /// [`crate::ClientMessage::GetRepresentation`] already exposes to
+    /// an external client ([`crate::AiSnapshot`]) -- role, state,
+    /// provenance-tagged name, bounds -- for one tab. Distinct from
+    /// [`AutomationRequest::GetDom`]'s raw markup dump: this is the
+    /// "what does an assistive technology / AI see" surface Slice 1
+    /// item 4's "DOM/AX ... inspection" calls for.
+    GetAccessibilityTree { tab_id: u64 },
+    /// **Inspection.** A PNG screenshot of the tab's most recently
+    /// rendered frame, base64-encoded on the wire (this protocol is
+    /// JSON; raw bytes would need escaping anyway) -- the automation
+    /// counterpart to `blueice-mcp-server`'s own `screenshot` tool,
+    /// reachable here since DevTools/automation clients are a distinct
+    /// audience from an MCP-driving LLM.
+    Screenshot { tab_id: u64 },
     /// **Locators and waiting.** Resolves a CSS selector to the
     /// matching elements' stable [`crate::AiNode`] IDs, scoped to the
     /// document generation current when this request is served -- per
@@ -186,8 +210,17 @@ pub enum AutomationReply {
     ContextClosed {
         context_id: BrowserContextId,
     },
+    TabOpened {
+        tab_id: u64,
+    },
     Dom {
         dump: String,
+    },
+    AccessibilityTree {
+        snapshot: crate::AiSnapshot,
+    },
+    Screenshot {
+        png_base64: String,
     },
     LocatorResolved {
         node_ids: Vec<u64>,
@@ -230,6 +263,12 @@ pub enum AutomationError {
     /// A mutating command arrived without a currently-held controller
     /// lease (or with one that's since been released/superseded).
     NoControllerLease,
+    /// [`AutomationRequest::AcquireControllerLease`] arrived while a
+    /// *different* connection already holds the lease -- distinct from
+    /// [`AutomationError::NoControllerLease`] (this caller holds none)
+    /// so a client can tell "acquire failed because someone else has
+    /// it, retry later" from "you forgot to acquire one at all."
+    ControllerLeaseHeldByAnotherClient,
     /// A `context_id`/`tab_id`/node ID doesn't resolve to anything --
     /// distinct from `StaleHandle` (it *used to* resolve).
     NoSuchTarget,
@@ -368,7 +407,12 @@ mod tests {
             AutomationRequest::CloseContext {
                 context_id: BrowserContextId(1),
             },
+            AutomationRequest::OpenTab {
+                context_id: BrowserContextId(1),
+            },
             AutomationRequest::GetDom { tab_id: 1 },
+            AutomationRequest::GetAccessibilityTree { tab_id: 1 },
+            AutomationRequest::Screenshot { tab_id: 1 },
             AutomationRequest::ResolveLocator {
                 tab_id: 1,
                 css_selector: "#save".to_string(),
@@ -413,8 +457,21 @@ mod tests {
             AutomationReply::ContextClosed {
                 context_id: BrowserContextId(1),
             },
+            AutomationReply::TabOpened { tab_id: 1 },
             AutomationReply::Dom {
                 dump: "| <html>\n".to_string(),
+            },
+            AutomationReply::AccessibilityTree {
+                snapshot: crate::AiSnapshot {
+                    generation: 1,
+                    tab_id: 1,
+                    url: Some("https://example.test/".to_string()),
+                    scroll_y: 0.0,
+                    nodes: vec![],
+                },
+            },
+            AutomationReply::Screenshot {
+                png_base64: "iVBORw0KGgo=".to_string(),
             },
             AutomationReply::LocatorResolved {
                 node_ids: vec![1, 2, 3],
@@ -438,6 +495,7 @@ mod tests {
                 capability: Capability::Input,
             }),
             AutomationReply::Error(AutomationError::NoControllerLease),
+            AutomationReply::Error(AutomationError::ControllerLeaseHeldByAnotherClient),
             AutomationReply::Error(AutomationError::NoSuchTarget),
             AutomationReply::Error(AutomationError::StaleHandle),
             AutomationReply::Error(AutomationError::Unsupported {

@@ -9,6 +9,7 @@
 //! binary (`src/bin/blueice-core.rs`) drives from IPC messages.
 
 mod ai_snapshot;
+pub mod automation_service;
 pub mod credits;
 mod gatekeeper_client;
 mod page;
@@ -21,7 +22,7 @@ use blueice_css::{cascade, ua_stylesheet, Origin};
 use blueice_paint::Frame;
 
 pub use page::Page;
-pub use tabs::{TabId, TabManager};
+pub use tabs::{BrowserContextId, TabId, TabManager};
 
 /// One-shot render: parse `html`, cascade with `css` (an explicit
 /// stylesheet, e.g. from a test fixture) plus any `<style>` tags found

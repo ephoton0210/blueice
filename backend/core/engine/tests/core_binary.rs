@@ -494,6 +494,158 @@ fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contami
 }
 
 #[test]
+fn real_subprocess_lets_two_automation_connections_observe_shared_tab_manager_state() {
+    // `phase-17-automation-devtools-and-ajax/PLAN.md`'s Slice 1 item 3
+    // proof, one layer up from `automation_service.rs`'s own in-process
+    // tests: two entirely independent automation connections to the
+    // real compiled `blueice-core` binary must see one shared
+    // `TabManager` -- a tab connection A opens is visible to connection
+    // B purely through core-owned state, never anything passed directly
+    // between the two test connections -- while each connection's own
+    // granted capabilities stay genuinely per-connection.
+    use blueice_ipc::automation::{
+        AutomationError, AutomationReply, AutomationRequest, Capability,
+    };
+
+    let socket_path = unique_socket_path("automation-core");
+    let automation_socket_path = unique_socket_path("automation");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-automation-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&automation_socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--automation-socket",
+            automation_socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn blueice-core");
+
+    assert!(
+        wait_for(&socket_path, Duration::from_secs(5)),
+        "blueice-core never created its frontend socket"
+    );
+    assert!(
+        wait_for(&automation_socket_path, Duration::from_secs(5)),
+        "blueice-core never created its automation socket"
+    );
+
+    // The session's main dispatch loop -- the one that drains pending
+    // automation requests each tick -- doesn't start until the
+    // frontend's own `Hello` handshake completes (`main` blocks in
+    // `listener.accept()` until then), so a real frontend client must
+    // connect and handshake *before* any automation request can ever
+    // receive a reply, exactly like the pre-existing script-socket
+    // subprocess test above.
+    let mut frontend =
+        connect(&socket_path).expect("failed to connect to the real core frontend socket");
+    blueice_ipc::client_handshake(&mut frontend)
+        .expect("the real subprocess must complete the frontend handshake");
+
+    // Connection A: acquires Lifecycle, opens a new tab under a fresh context.
+    let mut conn_a =
+        connect(&automation_socket_path).expect("failed to connect the first automation client");
+    blueice_ipc::automation::write_automation_request(
+        &mut conn_a,
+        &AutomationRequest::Hello {
+            client_name: "test-observer-a".to_string(),
+            requested_capabilities: vec![Capability::Lifecycle],
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::automation::read_automation_reply(&mut conn_a).unwrap(),
+        AutomationReply::HelloAck { .. }
+    ));
+    blueice_ipc::automation::write_automation_request(
+        &mut conn_a,
+        &AutomationRequest::CreateContext,
+    )
+    .unwrap();
+    let context_id = match blueice_ipc::automation::read_automation_reply(&mut conn_a).unwrap() {
+        AutomationReply::ContextCreated { context_id } => context_id,
+        other => panic!("expected ContextCreated, got {other:?}"),
+    };
+    blueice_ipc::automation::write_automation_request(
+        &mut conn_a,
+        &AutomationRequest::OpenTab { context_id },
+    )
+    .unwrap();
+    let tab_id = match blueice_ipc::automation::read_automation_reply(&mut conn_a).unwrap() {
+        AutomationReply::TabOpened { tab_id } => tab_id,
+        other => panic!("expected TabOpened, got {other:?}"),
+    };
+
+    // Connection B: a second, entirely independent connection -- never
+    // told `tab_id`/`context_id` by anything other than the shared core
+    // process itself.
+    let mut conn_b =
+        connect(&automation_socket_path).expect("failed to connect the second automation client");
+    blueice_ipc::automation::write_automation_request(
+        &mut conn_b,
+        &AutomationRequest::Hello {
+            client_name: "test-observer-b".to_string(),
+            requested_capabilities: vec![Capability::Inspection],
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::automation::read_automation_reply(&mut conn_b).unwrap(),
+        AutomationReply::HelloAck { .. }
+    ));
+    blueice_ipc::automation::write_automation_request(
+        &mut conn_b,
+        &AutomationRequest::GetDom { tab_id },
+    )
+    .unwrap();
+    assert!(
+        matches!(
+            blueice_ipc::automation::read_automation_reply(&mut conn_b).unwrap(),
+            AutomationReply::Dom { .. }
+        ),
+        "connection B must be able to see the tab connection A opened"
+    );
+
+    // Connection B never acquired Lifecycle -- proving TabManager state
+    // is shared must not also mean capability grants leak across
+    // connections.
+    blueice_ipc::automation::write_automation_request(
+        &mut conn_b,
+        &AutomationRequest::OpenTab { context_id },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::automation::read_automation_reply(&mut conn_b).unwrap(),
+        AutomationReply::Error(AutomationError::CapabilityNotGranted {
+            capability: Capability::Lifecycle
+        })
+    ));
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    let status = child
+        .wait()
+        .expect("failed to wait for blueice-core to exit");
+    assert!(
+        status.success(),
+        "blueice-core must exit cleanly after Shutdown"
+    );
+    assert!(
+        !automation_socket_path.exists(),
+        "blueice-core must remove its automation socket on exit"
+    );
+}
+
+#[test]
 fn a_client_disconnecting_without_shutdown_still_lets_the_subprocess_exit_cleanly() {
     let socket_path = unique_socket_path("disconnect");
     let frame_dir = std::env::temp_dir().join(format!(
