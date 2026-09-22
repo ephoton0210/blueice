@@ -116,9 +116,9 @@ fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
 
 /// Sends one complete native-debugger request/response pair over the real
 /// socket and asserts that the raw public reply has not reflected this
-/// fixture's page-controlled secret, a VM value representation, or a known
-/// BlueJS opcode before decoding it. The protocol intentionally permits an
-/// opaque instruction *offset*; that is not bytecode disclosure.
+/// fixture's page-controlled secret, a VM/completion representation, or a
+/// known BlueJS opcode before decoding it. The protocol intentionally permits
+/// an opaque instruction *offset*; that is not bytecode disclosure.
 fn debugger_request(
     stream: &mut UnixStream,
     request: &blueice_ipc::debugger::DebuggerRequest,
@@ -141,8 +141,12 @@ fn debugger_request(
         "debugger reply must not disclose page source or its completion value: {rendered}"
     );
     assert!(
-        !rendered.contains("Value(") && !rendered.contains("StoreBinding"),
-        "debugger reply must not disclose a VM value or bytecode instruction: {rendered}"
+        !rendered.contains("Value(")
+            && !rendered.contains("StoreBinding")
+            && !rendered.contains("\"value\"")
+            && !rendered.contains("\"completion\"")
+            && !rendered.contains("\"opcode\""),
+        "debugger reply must not disclose a VM value, completion payload, or bytecode opcode: {rendered}"
     );
     serde_json::from_slice(&payload).expect("real core must return a debugger reply JSON shape")
 }
@@ -792,6 +796,23 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
         blueice_ipc::debugger::DebuggerReply::ExecutionState {
             program: first_program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Resuming,
+        }
+    );
+    // Every successful v5 resume has one observable source-free transition
+    // turn. The following idle scheduler turn runs the retained entry frame.
+    thread::sleep(Duration::from_millis(100));
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::GetExecutionState {
+            program: first_program,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program: first_program,
             state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
         }
     );
@@ -1072,6 +1093,81 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
         .find(|safe_point| safe_point.code_unit_ordinal != 0)
         .expect("fixture function must expose a child code-unit boundary");
 
+    // Discovery is source-free but the program remains genuinely pending.
+    // This begins the public v5 transition acceptance: no request below may
+    // make the script run unless it successfully changes that exact state.
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+        }
+    );
+
+    // A resume for a different opaque program cannot consume this pending
+    // declaration's scheduling turn. It is a real socket-level cross-program
+    // failure rather than an in-process approximation.
+    let cross_program = blueice_ipc::debugger::DebuggerProgram {
+        program_handle: program
+            .program_handle
+            .checked_add(1)
+            .expect("fixture program handle leaves a distinct invalid handle"),
+        ..program
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ResumeExecution {
+                program: cross_program,
+            },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::InvalidTarget,
+            ..
+        }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+        }
+    );
+
+    // A resume for the exact but not-yet-paused program also fails closed and
+    // cannot begin ordinary script execution.
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ResumeExecution { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::InvalidExecutionState,
+            ..
+        }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+        }
+    );
+
     // The target is verified before execution, but v5 intentionally does not
     // claim continuation support for child code units.
     assert!(matches!(
@@ -1087,6 +1183,17 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
             ..
         }
     ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+        }
+    );
     assert_eq!(
         debugger_request(
             &mut debugger,
@@ -1130,11 +1237,38 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
     assert_eq!(
         debugger_request(
             &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Paused {
+                safe_point: root_safe_point,
+            },
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
             &blueice_ipc::debugger::DebuggerRequest::ResumeExecution { program },
             PAGE_SECRET,
         ),
         blueice_ipc::debugger::DebuggerReply::ExecutionResumed { program }
     );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::GetExecutionState { program },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Resuming,
+        }
+    );
+    // `GetExecutionState` holds a transition for its reply, then an idle
+    // session tick resumes the retained BlueJS frame without a debugger lease.
+    thread::sleep(Duration::from_millis(100));
     assert_eq!(
         debugger_request(
             &mut debugger,

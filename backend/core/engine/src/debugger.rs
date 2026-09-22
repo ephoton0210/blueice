@@ -107,6 +107,7 @@ impl DebuggerRequestReceiver {
         let mut dispatched = 0;
         let mut preserve_pending_entry = false;
         let mut advance_pending_entry = false;
+        let mut preserve_resuming_state = false;
         while dispatched < MAX_DEBUGGER_REQUESTS_PER_SESSION_TICK {
             let Ok(envelope) = self.0.try_recv() else {
                 break;
@@ -133,6 +134,13 @@ impl DebuggerRequestReceiver {
                         | DebuggerReply::RootSafePointBreakpointArmed { .. }
                         | DebuggerReply::ExecutionResumed { .. }
                 );
+            // `Resuming` is a public, source-free state rather than a reply
+            // synonym. Preserve it for one owner-session turn after the
+            // successful response so a socket peer can observe the exact
+            // transition before the scheduler resumes the retained frame.
+            // An idle turn still completes it normally, so this never turns
+            // the debugger connection into an execution lease.
+            preserve_resuming_state |= matches!(&reply, DebuggerReply::ExecutionResumed { .. });
             let _ = envelope.reply.send(reply);
             if executes_or_releases_entry {
                 advance_pending_entry = true;
@@ -144,9 +152,11 @@ impl DebuggerRequestReceiver {
         // A page declaration is admitted before a remote peer can learn its
         // opaque program identity. Give each discovery/configuration reply one
         // more session boundary to send the next bounded request; otherwise a
-        // normal idle synchronization begins it. Arm and resume deliberately
-        // consume that boundary so their requested state transition happens.
-        if preserve_pending_entry && !advance_pending_entry {
+        // normal idle synchronization begins it. Successful arms consume that
+        // boundary so their requested state transition happens. A successful
+        // resume instead preserves its public `Resuming` state for one turn;
+        // a following idle turn resumes the same private VM frame.
+        if (preserve_pending_entry && !advance_pending_entry) || preserve_resuming_state {
             if let Some(executor) = javascript_executor {
                 executor.hold_pending_debugger_execution_once();
             }

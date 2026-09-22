@@ -339,7 +339,10 @@ or second module resolver to bypass them.
   admission turn never immediately executes the new declaration; each
   handshaken bounded discovery/configuration request keeps it pending through
   one further session turn, so a peer can learn and arm an exact root-code-unit
-  boundary. `ArmRootSafePointBreakpoint` starts a pending classic script and
+  boundary. A successful `ResumeExecution` similarly exposes the source-free
+  `Resuming` state for one bounded session turn before an idle scheduler turn
+  resumes the retained frame; this is observability, not an execution lease.
+  `ArmRootSafePointBreakpoint` starts a pending classic script and
   returns `Paused` only when BlueJS has reached that exact verified root
   instruction. Its continuation retains the root operand stack,
   bindings/cells, scopes, handler records, iterator records, completion state,
@@ -352,13 +355,15 @@ or second module resolver to bypass them.
   same-document cross-tab rejection, realm replacement discarding a paused
   continuation, GC rooting of paused iterator records, and real BlueJS
   execution only after same-frame resume. A separate real `blueice-core`
-  subprocess regression drives `Hello` through opaque discovery, a non-entry
-  classic root arm, `Paused`, and same-frame `ResumeExecution`/`Completed` on
-  the debugger socket. It proves child code units, modules, repeated root
-  arms, and stale-realm targets fail closed, while every raw framed debugger
-  reply is checked not to reflect fixture source/completion data, a VM value,
-  or a BlueJS opcode. The pre-existing `ArmEntryBreakpoint` subprocess route
-  remains the v4 compatibility acceptance.
+  subprocess regression drives `Hello` through opaque discovery and the exact
+  `Pending` → non-entry classic-root `Paused` → `Resuming` → `Completed`
+  transition on the debugger socket. It proves cross-program and invalid-state
+  resume failures leave a pending declaration pending; child code units,
+  modules, repeated root arms, and stale-realm targets fail closed; and every
+  raw framed debugger reply is checked not to reflect fixture
+  source/completion data, a VM value, or a BlueJS opcode. The pre-existing
+  `ArmEntryBreakpoint` subprocess route remains the v4 compatibility
+  acceptance.
 
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm
