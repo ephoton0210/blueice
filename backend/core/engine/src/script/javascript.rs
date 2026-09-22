@@ -39,6 +39,48 @@ pub use debugger_support::{
     JavaScriptPageDebuggerSafePoint,
 };
 
+/// Source-free debugger location operations owned by an explicitly selected
+/// page executor. The in-process runtime implements its richer debugger path
+/// directly; the launcher-supervised child implements only this narrow
+/// discovery/validation surface through its authenticated private transport.
+///
+/// This trait deliberately excludes breakpoint configuration, pause/resume,
+/// stepping, stacks, scopes, source, bytecode, and runtime values.
+pub trait PageJavaScriptDebuggerLocations {
+    /// Whether this owner currently has the exact live tab/document realm.
+    fn debugger_has_live_realm(&mut self, tab_id: TabId, document_generation: u64) -> bool;
+
+    /// Immutable upper bound for one source-free safe-point inventory reply.
+    fn max_debugger_safe_points_per_program(&self) -> usize;
+
+    /// Lists only opaque public-facing program IDs for one live realm.
+    fn debugger_programs(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerProgram>, JavaScriptPageDebuggerError>;
+
+    /// Lists exact compiler-recorded instruction boundaries for one program.
+    fn debugger_safe_points(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError>;
+
+    /// Revalidates one exact caller-supplied instruction boundary.
+    fn validate_debugger_safe_point(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError>;
+}
+
 /// The maximum number of source-free results retained for core observation.
 const MAX_EXECUTION_REPORTS: usize = 128;
 
@@ -162,6 +204,19 @@ pub trait PageJavaScriptExecutor {
     fn debugger_executor(&mut self) -> Option<&mut JavaScriptPageExecutor> {
         None
     }
+
+    /// Returns the limited location-only debugger adapter for an isolated
+    /// child. It is intentionally separate from [`Self::debugger_executor`],
+    /// which grants the in-process implementation its existing breakpoint and
+    /// continuation controls.
+    fn debugger_locations(&mut self) -> Option<&mut (dyn PageJavaScriptDebuggerLocations + '_)> {
+        None
+    }
+
+    /// Lets the in-process native debugger preserve one pending declaration
+    /// across a discovery turn. Isolated-child location discovery has no
+    /// deferred execution seam, so its default is deliberately a no-op.
+    fn hold_pending_debugger_execution_once(&mut self) {}
 }
 
 /// The core-only context supplied when authorizing an external JavaScript
@@ -744,6 +799,10 @@ impl PageJavaScriptExecutor for JavaScriptPageExecutor {
 
     fn debugger_executor(&mut self) -> Option<&mut JavaScriptPageExecutor> {
         Some(self)
+    }
+
+    fn hold_pending_debugger_execution_once(&mut self) {
+        Self::hold_pending_debugger_execution_once(self);
     }
 }
 

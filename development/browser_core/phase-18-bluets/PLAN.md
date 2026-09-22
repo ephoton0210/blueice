@@ -188,7 +188,7 @@ The initial implementation completes the work that has no BlueJS dependency befo
   receives both a trusted child endpoint and its per-spawn capability token,
   inventories supported JavaScript and explicit BlueTS declarations under one
   DOM-order ordinal sequence, and turns each inline record into a core-minted
-  closed one-module graph. The private v3 child protocol carries a trusted
+  closed one-module graph. The private v4 child protocol carries a trusted
   language tag; JavaScript follows the normal BlueJS parser while BlueTS uses
   only an `AuthorizedModuleLoader` derived from that graph and child-fixed
   checked options before `blueice-bluets-bluejs` directly attaches it to the
@@ -213,6 +213,14 @@ The initial implementation completes the work that has no BlueJS dependency befo
   renamed, or page-selected binding fails closed before compiler admission;
   `document`, `fetch`, URL, resolver, and object APIs remain untyped and
   unavailable. This still is not a general DOM surface.
+  The v4 channel additionally carries only source-free debugger-location
+  operations: list retained programs, list a fixed bounded set of
+  compiler-recorded safe points, and validate one exact tuple. The child mints
+  private IDs only; core verifies an exact live child realm, remints every
+  public program handle/generation in a disjoint core namespace, and rejects
+  mismatched tab/document/program/safe-point replies. The route deliberately
+  does not proxy breakpoints, pause/resume, stepping, VM frames, stacks,
+  scopes, values, bytecode, or source.
   DOM/event callbacks, URL or import-map resolution, external graph authority,
   and page-selected compiler profiles remain open.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.

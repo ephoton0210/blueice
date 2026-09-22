@@ -13,6 +13,7 @@
 use crate::{
     script::javascript::{
         JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState, JavaScriptPageExecutor,
+        PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
     },
     TabId, TabManager,
 };
@@ -102,7 +103,7 @@ impl DebuggerRequestReceiver {
     pub fn dispatch_pending(
         &self,
         tabs: &TabManager,
-        mut javascript_executor: Option<&mut JavaScriptPageExecutor>,
+        mut javascript_executor: Option<&mut (dyn PageJavaScriptExecutor + '_)>,
     ) -> usize {
         let mut dispatched = 0;
         let mut preserve_pending_entry = false;
@@ -118,7 +119,7 @@ impl DebuggerRequestReceiver {
                     | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
                     | DebuggerRequest::ResumeExecution { .. }
             );
-            let reply = handle_debugger_request_with_javascript_executor(
+            let reply = handle_debugger_request_with_page_javascript_executor(
                 tabs,
                 javascript_executor.as_deref_mut(),
                 envelope.request,
@@ -228,6 +229,54 @@ pub fn handle_debugger_request_with_javascript_executor(
     }
 }
 
+/// Resolves debugger requests through the selected session page executor.
+///
+/// The existing in-process executor continues to own its complete debugger
+/// control path unchanged. A launcher-supervised child can opt into only the
+/// small source-free program-location adapter; every other operation remains
+/// unavailable on that route rather than gaining an accidental proxy to child
+/// VM state or execution control.
+pub fn handle_debugger_request_with_page_javascript_executor(
+    tabs: &TabManager,
+    javascript_executor: Option<&mut (dyn PageJavaScriptExecutor + '_)>,
+    request: DebuggerRequest,
+) -> DebuggerReply {
+    let Some(executor) = javascript_executor else {
+        return handle_debugger_request_with_javascript_executor(tabs, None, request);
+    };
+    if let Some(in_process) = executor.debugger_executor() {
+        return handle_debugger_request_with_javascript_executor(tabs, Some(in_process), request);
+    }
+    let Some(locations) = executor.debugger_locations() else {
+        return handle_debugger_request_with_javascript_executor(tabs, None, request);
+    };
+    handle_debugger_request_with_child_locations(tabs, locations, request)
+}
+
+fn handle_debugger_request_with_child_locations(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    request: DebuggerRequest,
+) -> DebuggerReply {
+    match request {
+        DebuggerRequest::ListPageRealms => list_page_realms(tabs),
+        DebuggerRequest::DescribeCapabilities { realm } => {
+            describe_child_location_capabilities(tabs, locations, realm)
+        }
+        DebuggerRequest::ListPrograms { realm } => list_child_programs(tabs, locations, realm),
+        DebuggerRequest::ListSafePoints { program } => {
+            list_child_safe_points(tabs, locations, program)
+        }
+        DebuggerRequest::ValidateSafePoint { safe_point } => {
+            validate_child_safe_point(tabs, locations, safe_point)
+        }
+        // Do not reuse the in-process configuration/pause routing merely
+        // because a child supports location discovery. The child route is
+        // intentionally validation-only in this milestone.
+        other => handle_debugger_request_with_javascript_executor(tabs, None, other),
+    }
+}
+
 fn list_page_realms(tabs: &TabManager) -> DebuggerReply {
     let realms: Vec<DebuggerPageRealm> = tabs
         .ids()
@@ -249,6 +298,133 @@ fn list_page_realms(tabs: &TabManager) -> DebuggerReply {
         };
     }
     DebuggerReply::PageRealms(realms)
+}
+
+fn describe_child_location_capabilities(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    realm: DebuggerPageRealm,
+) -> DebuggerReply {
+    if let Err(reply) = resolve_live_realm(tabs, realm) {
+        return reply;
+    }
+    // `Available` is stronger than "core has a similarly numbered page":
+    // the authenticated child must acknowledge this exact live realm on its
+    // own private socket at this session boundary.
+    let locations_available =
+        locations.debugger_has_live_realm(TabId::from_u64(realm.tab_id), realm.realm_generation);
+    let max_safe_points_per_program = if locations_available {
+        locations.max_debugger_safe_points_per_program()
+    } else {
+        DEFAULT_MAX_SAFE_POINTS_PER_PROGRAM
+    };
+    DebuggerReply::Capabilities(DebuggerCapabilities {
+        protocol_version: DEBUGGER_PROTOCOL_VERSION,
+        realm,
+        reports: capability_reports(locations_available, false, false),
+        max_stack_frames: MAX_STACK_FRAMES,
+        max_scope_bindings: MAX_SCOPE_BINDINGS,
+        max_value_preview_bytes: MAX_VALUE_PREVIEW_BYTES,
+        max_safe_points_per_program: u32::try_from(max_safe_points_per_program)
+            .expect("native debugger safe-point reply cap fits the wire type"),
+        max_breakpoints_per_realm: DEFAULT_MAX_BREAKPOINTS_PER_REALM as u32,
+    })
+}
+
+fn list_child_programs(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    realm: DebuggerPageRealm,
+) -> DebuggerReply {
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, realm.realm_generation) {
+        return unavailable_program_locations();
+    }
+    match locations.debugger_programs(tab_id, realm.realm_generation) {
+        Ok(programs) => DebuggerReply::Programs(
+            programs
+                .into_iter()
+                .map(|program| DebuggerProgram {
+                    realm,
+                    program_handle: program.program_handle,
+                    program_generation: program.program_generation,
+                })
+                .collect(),
+        ),
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn list_child_safe_points(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    program: DebuggerProgram,
+) -> DebuggerReply {
+    if !program.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger program target".to_string(),
+        };
+    }
+    let tab_id = match resolve_live_realm(tabs, program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, program.realm.realm_generation) {
+        return unavailable_program_locations();
+    }
+    match locations.debugger_safe_points(
+        tab_id,
+        program.realm.realm_generation,
+        program.program_handle,
+        program.program_generation,
+    ) {
+        Ok(safe_points) => DebuggerReply::SafePoints(
+            safe_points
+                .into_iter()
+                .map(|safe_point| DebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: safe_point.code_unit_ordinal,
+                    bytecode_offset: safe_point.bytecode_offset,
+                })
+                .collect(),
+        ),
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn validate_child_safe_point(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    safe_point: DebuggerSafePoint,
+) -> DebuggerReply {
+    if !safe_point.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger safe-point target".to_string(),
+        };
+    }
+    let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation) {
+        return unavailable_program_locations();
+    }
+    match locations.validate_debugger_safe_point(
+        tab_id,
+        safe_point.program.realm.realm_generation,
+        safe_point.program.program_handle,
+        safe_point.program.program_generation,
+        safe_point.code_unit_ordinal,
+        safe_point.bytecode_offset,
+    ) {
+        Ok(()) => DebuggerReply::SafePointValidated { safe_point },
+        Err(error) => debugger_program_error(error),
+    }
 }
 
 fn describe_capabilities(
@@ -278,6 +454,7 @@ fn describe_capabilities(
         protocol_version: DEBUGGER_PROTOCOL_VERSION,
         realm,
         reports: capability_reports(
+            program_locations_available,
             program_locations_available,
             entry_execution_control_available,
         ),
@@ -752,6 +929,7 @@ fn debugger_execution_state(
 
 fn capability_reports(
     program_locations_available: bool,
+    breakpoint_configuration_available: bool,
     entry_execution_control_available: bool,
 ) -> Vec<DebuggerCapabilityReport> {
     [
@@ -770,15 +948,15 @@ fn capability_reports(
         ),
         (
             DebuggerCapability::BreakpointConfiguration,
-            if program_locations_available {
+            if breakpoint_configuration_available {
                 DebuggerCapabilityState::Available
             } else {
                 DebuggerCapabilityState::Planned
             },
-            if program_locations_available {
+            if breakpoint_configuration_available {
                 "bounded exact breakpoint configuration is installed; it does not interrupt execution"
             } else {
-                "exact breakpoint configuration requires an enabled JavaScript page realm"
+                "native breakpoint configuration is not installed for this page-host route"
             },
         ),
         (

@@ -22,16 +22,19 @@ use super::{
     BlueJsPageScriptKind, CombinedPageScriptDeclaration, CombinedPageScriptLanguage,
 };
 use crate::script::javascript::{
-    BlueTsPageExecutionReport, JavaScriptPageExecutionReport, PageJavaScriptExecutor,
+    BlueTsPageExecutionReport, JavaScriptPageDebuggerError, JavaScriptPageDebuggerProgram,
+    JavaScriptPageDebuggerSafePoint, JavaScriptPageExecutionReport,
+    PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };
 use crate::{Page, TabId, TabManager};
 use blueice_ipc::page_host::{
-    self, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
-    PageHostScriptOutcome, PageHostSource,
+    self, PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDocument,
+    PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostReply,
+    PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
+    PageHostScriptOutcome, PageHostSource, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
 };
 use blueice_net::canonical_http_origin;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -43,6 +46,11 @@ const MAX_EXECUTION_REPORTS: usize = 128;
 /// The fixed core-owned resolver identity for a one-source inline document
 /// graph. It is not a URL resolver and cannot be selected by page content.
 const INLINE_CHILD_RESOLVER_FINGERPRINT: &str = "core-inline-page-host-v1";
+
+/// Core-owned namespace for public debugger program IDs that proxy the child.
+/// Keeping it disjoint from the child counter makes it mechanically apparent
+/// that a private child identifier cannot become a public protocol identity.
+const CORE_CHILD_DEBUGGER_ID_NAMESPACE_START: u64 = 1 << 63;
 
 /// One connected, authenticated private page-host transport. It intentionally
 /// owns no child process: `blueice-launcher` remains the supervisor and must
@@ -88,6 +96,59 @@ impl PageHostConnection {
 pub trait PageHostClient {
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply>;
     fn close_realm(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply>;
+
+    /// Returns a source-free child realm acknowledgement for the exact core
+    /// tab/document tuple. A transport double must opt in explicitly; the
+    /// default keeps debugger locations unavailable rather than fabricating a
+    /// remote realm.
+    fn debugger_realm_stats(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger locations",
+        ))
+    }
+
+    /// Lists private child program IDs for one exact realm.
+    fn debugger_programs(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger locations",
+        ))
+    }
+
+    /// Lists private child safe points for one exact private program ID.
+    fn debugger_safe_points(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger locations",
+        ))
+    }
+
+    /// Revalidates one exact private child safe point.
+    fn validate_debugger_safe_point(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger locations",
+        ))
+    }
 }
 
 impl PageHostClient for PageHostConnection {
@@ -99,6 +160,54 @@ impl PageHostClient for PageHostConnection {
         self.request(PageHostRequest::CloseRealm {
             tab_id,
             document_generation,
+        })
+    }
+
+    fn debugger_realm_stats(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetRealmStats {
+            tab_id,
+            document_generation,
+        })
+    }
+
+    fn debugger_programs(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ListDebuggerPrograms {
+            tab_id,
+            document_generation,
+        })
+    }
+
+    fn debugger_safe_points(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id,
+            document_generation,
+            program,
+        })
+    }
+
+    fn validate_debugger_safe_point(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ValidateDebuggerSafePoint {
+            tab_id,
+            document_generation,
+            safe_point,
         })
     }
 }
@@ -119,8 +228,20 @@ struct LiveDocument {
 pub struct OutOfProcessJavaScriptPageExecutor<C> {
     child: C,
     live_documents: BTreeMap<TabId, LiveDocument>,
+    /// Core-minted public debugger identities keyed by the child-private
+    /// program IDs they represent. Child IDs are transport keys only and can
+    /// never accidentally become public protocol IDs.
+    debugger_programs: BTreeMap<TabId, BTreeMap<PageHostDebuggerProgram, CoreDebuggerProgram>>,
+    next_debugger_program_handle: u64,
+    next_debugger_program_generation: u64,
     reports: VecDeque<JavaScriptPageExecutionReport>,
     blue_ts_reports: VecDeque<BlueTsPageExecutionReport>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CoreDebuggerProgram {
+    program_handle: u64,
+    program_generation: u64,
 }
 
 impl OutOfProcessJavaScriptPageExecutor<PageHostConnection> {
@@ -143,6 +264,9 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
         Self {
             child,
             live_documents: BTreeMap::new(),
+            debugger_programs: BTreeMap::new(),
+            next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
+            next_debugger_program_generation: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
             reports: VecDeque::new(),
             blue_ts_reports: VecDeque::new(),
         }
@@ -233,6 +357,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 .child
                 .close_realm(tab_id.as_u64(), document.document_generation);
         }
+        self.debugger_programs.remove(&tab_id);
     }
 
     fn synchronize_document(&mut self, tab_id: TabId, page: &Page, identity: LiveDocument) {
@@ -253,6 +378,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 for report in blue_ts_reports {
                     self.push_blue_ts_report(report);
                 }
+                self.debugger_programs.remove(&tab_id);
                 self.live_documents.insert(tab_id, identity);
                 return;
             }
@@ -316,6 +442,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         for report in local_blue_ts_reports {
             self.push_blue_ts_report(report);
         }
+        self.debugger_programs.remove(&tab_id);
         self.live_documents.insert(tab_id, identity);
     }
 
@@ -349,6 +476,228 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
 
     fn drain_blue_ts_reports_for_tab(&mut self, tab_id: TabId) -> Vec<BlueTsPageExecutionReport> {
         Self::drain_blue_ts_reports_for_tab(self, tab_id)
+    }
+
+    fn debugger_locations(&mut self) -> Option<&mut (dyn PageJavaScriptDebuggerLocations + '_)> {
+        Some(self)
+    }
+}
+
+impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScriptPageExecutor<C> {
+    fn debugger_has_live_realm(&mut self, tab_id: TabId, document_generation: u64) -> bool {
+        if !self.has_core_live_document(tab_id, document_generation) {
+            return false;
+        }
+        matches!(
+            self.child
+                .debugger_realm_stats(tab_id.as_u64(), document_generation),
+            Ok(PageHostReply::RealmStats(stats))
+                if stats.tab_id == tab_id.as_u64()
+                    && stats.document_generation == document_generation
+        )
+    }
+
+    fn max_debugger_safe_points_per_program(&self) -> usize {
+        usize::try_from(PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM)
+            .expect("page-host debugger safe-point cap fits usize")
+    }
+
+    fn debugger_programs(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerProgram>, JavaScriptPageDebuggerError> {
+        if !self.has_core_live_document(tab_id, document_generation) {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let reply = self
+            .child
+            .debugger_programs(tab_id.as_u64(), document_generation)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerPrograms {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            programs,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || programs.iter().any(|program| !program.is_well_formed())
+            || has_duplicate_child_programs(&programs)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+
+        let previous = self.debugger_programs.remove(&tab_id).unwrap_or_default();
+        let mut current = BTreeMap::new();
+        for child_program in programs {
+            let public = match previous.get(&child_program).copied() {
+                Some(public) => public,
+                None => self.mint_core_debugger_program()?,
+            };
+            current.insert(child_program, public);
+        }
+        let programs: Vec<_> = current
+            .values()
+            .map(|public| JavaScriptPageDebuggerProgram {
+                program_handle: public.program_handle,
+                program_generation: public.program_generation,
+            })
+            .collect();
+        self.debugger_programs.insert(tab_id, current);
+        Ok(programs)
+    }
+
+    fn debugger_safe_points(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_safe_points(tab_id.as_u64(), document_generation, child_program)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerSafePoints {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            safe_points,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || safe_points.len() > self.max_debugger_safe_points_per_program()
+            || safe_points.iter().any(|safe_point| {
+                !safe_point.is_well_formed() || safe_point.program != child_program
+            })
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(safe_points
+            .into_iter()
+            .map(|safe_point| JavaScriptPageDebuggerSafePoint {
+                code_unit_ordinal: safe_point.code_unit_ordinal,
+                bytecode_offset: safe_point.bytecode_offset,
+            })
+            .collect())
+    }
+
+    fn validate_debugger_safe_point(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        let program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let safe_point = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal,
+            bytecode_offset,
+        };
+        let reply = self
+            .child
+            .validate_debugger_safe_point(tab_id.as_u64(), document_generation, safe_point)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerSafePointValidated {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                safe_point: reply_safe_point,
+            } if reply_tab_id == tab_id.as_u64()
+                && reply_generation == document_generation
+                && reply_safe_point == safe_point =>
+            {
+                Ok(())
+            }
+            PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        }
+    }
+}
+
+impl<C> OutOfProcessJavaScriptPageExecutor<C> {
+    fn has_core_live_document(&self, tab_id: TabId, document_generation: u64) -> bool {
+        self.live_documents
+            .get(&tab_id)
+            .is_some_and(|document| document.document_generation == document_generation)
+    }
+
+    fn mint_core_debugger_program(
+        &mut self,
+    ) -> Result<CoreDebuggerProgram, JavaScriptPageDebuggerError> {
+        let program_handle = self.next_debugger_program_handle;
+        let program_generation = self.next_debugger_program_generation;
+        self.next_debugger_program_handle = program_handle
+            .checked_add(1)
+            .ok_or(JavaScriptPageDebuggerError::ResourceLimit)?;
+        self.next_debugger_program_generation = program_generation
+            .checked_add(1)
+            .ok_or(JavaScriptPageDebuggerError::ResourceLimit)?;
+        Ok(CoreDebuggerProgram {
+            program_handle,
+            program_generation,
+        })
+    }
+
+    fn child_program_for_core(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<PageHostDebuggerProgram, JavaScriptPageDebuggerError> {
+        if !self.has_core_live_document(tab_id, document_generation) {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        self.debugger_programs
+            .get(&tab_id)
+            .and_then(|programs| {
+                programs.iter().find_map(|(child, public)| {
+                    (public.program_handle == program_handle
+                        && public.program_generation == program_generation)
+                        .then_some(*child)
+                })
+            })
+            .ok_or(JavaScriptPageDebuggerError::UnknownProgram)
+    }
+}
+
+fn has_duplicate_child_programs(programs: &[PageHostDebuggerProgram]) -> bool {
+    let mut seen = BTreeSet::new();
+    programs.iter().any(|program| !seen.insert(*program))
+}
+
+fn child_debugger_reply_error(reply: &PageHostReply) -> JavaScriptPageDebuggerError {
+    match reply {
+        PageHostReply::Error {
+            code: PageHostErrorCode::ResourceLimit,
+            ..
+        } => JavaScriptPageDebuggerError::ResourceLimit,
+        // Treat every other unexpected/private-child response as a lost live
+        // realm. The public debugger must not infer a child registry state,
+        // source identity, VM result, or a usable fallback target from it.
+        _ => JavaScriptPageDebuggerError::NoLiveRealm,
     }
 }
 
@@ -893,6 +1242,214 @@ mod tests {
         shutdown_child(&path, &token);
         child.join().unwrap();
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn core_proxies_real_child_debugger_locations_with_core_ids_and_rejects_stale_cross_tab_targets(
+    ) {
+        use crate::debugger::handle_debugger_request_with_page_javascript_executor;
+        use blueice_ipc::debugger::{
+            DebuggerCapability, DebuggerCapabilityState, DebuggerErrorCode, DebuggerPageRealm,
+            DebuggerReply, DebuggerRequest,
+        };
+
+        let (path, token, child) = spawn_child();
+        let (mut tabs, first_tab) = loaded_tabs(
+            "<script>let first = 1; first += 1;</script>",
+            "https://example.test/first.html",
+        );
+        let second_tab = tabs.open_tab();
+        tabs.get_mut(second_tab).unwrap().load_html_str(
+            "<script>let second = 2;</script>",
+            Some("https://example.test/second.html".to_string()),
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::connect(&path, &token).unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        let first_realm = DebuggerPageRealm {
+            browser_context_id: crate::debugger::DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: first_tab.as_u64(),
+            realm_generation: 1,
+        };
+        let second_realm = DebuggerPageRealm {
+            browser_context_id: crate::debugger::DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: second_tab.as_u64(),
+            realm_generation: 1,
+        };
+        let capabilities = handle_debugger_request_with_page_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::DescribeCapabilities { realm: first_realm },
+        );
+        let DebuggerReply::Capabilities(capabilities) = capabilities else {
+            panic!("expected child debugger capabilities");
+        };
+        assert_eq!(
+            capabilities
+                .reports
+                .iter()
+                .find(|report| report.capability == DebuggerCapability::ProgramLocations)
+                .map(|report| report.state),
+            Some(DebuggerCapabilityState::Available)
+        );
+        assert_eq!(
+            capabilities
+                .reports
+                .iter()
+                .find(|report| report.capability == DebuggerCapability::BreakpointConfiguration)
+                .map(|report| report.state),
+            Some(DebuggerCapabilityState::Planned)
+        );
+        assert!(
+            capabilities
+                .reports
+                .iter()
+                .all(|report| !report.detail.contains("first")
+                    && !report.detail.contains("bytecode")),
+            "capability replies must remain source/bytecode-free"
+        );
+
+        let programs = match handle_debugger_request_with_page_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::ListPrograms { realm: first_realm },
+        ) {
+            DebuggerReply::Programs(programs) => programs,
+            reply => panic!("expected public program inventory, got {reply:?}"),
+        };
+        let program = *programs.first().expect("first child page has one program");
+        assert!(
+            program.program_handle >= CORE_CHILD_DEBUGGER_ID_NAMESPACE_START
+                && program.program_generation >= CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
+            "core must mint a public namespace instead of forwarding child IDs"
+        );
+        let safe_points = match handle_debugger_request_with_page_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::ListSafePoints { program },
+        ) {
+            DebuggerReply::SafePoints(safe_points) => safe_points,
+            reply => panic!("expected source-free public safe points, got {reply:?}"),
+        };
+        let safe_point = *safe_points.first().expect("program exposes one safe point");
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ValidateSafePoint { safe_point },
+            ),
+            DebuggerReply::SafePointValidated { safe_point }
+        );
+
+        let cross_tab = blueice_ipc::debugger::DebuggerProgram {
+            realm: second_realm,
+            ..program
+        };
+        assert!(matches!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ListSafePoints { program: cross_tab },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+
+        tabs.get_mut(first_tab).unwrap().load_html_str(
+            "<script>let successor = 3;</script>",
+            Some("https://example.test/successor.html".to_string()),
+        );
+        assert!(matches!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ListSafePoints { program },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::StaleRealm,
+                ..
+            }
+        ));
+
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    struct MismatchedDebuggerChild;
+
+    impl PageHostClient for MismatchedDebuggerChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::Synchronized {
+                tab_id: document.tab_id,
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            })
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmClosed {
+                tab_id,
+                document_generation,
+            })
+        }
+
+        fn debugger_realm_stats(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmStats(page_host::PageHostRealmStats {
+                tab_id,
+                document_generation,
+                program_count: 1,
+                bytecode_bytes: 0,
+                heap_bytes: 0,
+            }))
+        }
+
+        fn debugger_programs(
+            &mut self,
+            _tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::DebuggerPrograms {
+                // A peer must never be able to retarget core's tab merely by
+                // returning a plausible private record under another tuple.
+                tab_id: 99,
+                document_generation,
+                programs: vec![PageHostDebuggerProgram {
+                    program_handle: 1,
+                    program_generation: 1,
+                }],
+            })
+        }
+    }
+
+    #[test]
+    fn core_rejects_a_child_debugger_reply_with_a_mismatched_realm_tuple() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>let noChildSourceLeak = true;</script>",
+            "https://example.test/app.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(MismatchedDebuggerChild);
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert!(executor.debugger_has_live_realm(tab_id, 1));
+        assert_eq!(
+            executor.debugger_programs(tab_id, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
     }
 
     #[test]

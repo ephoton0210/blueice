@@ -13,21 +13,23 @@
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
 //!
-//! Version 3 additionally carries the two fixed, core-derived document
-//! snapshots consumed by the child-owned JavaScript bindings. The transport
-//! has no profile or capability selector: every accepted document contains
-//! exactly the immutable text and canonical-origin copies selected by core.
+//! Version 4 retains the two fixed, core-derived document snapshots consumed
+//! by the child-owned JavaScript bindings and adds the location-only debugger
+//! inventory described below. The transport has no profile or capability
+//! selector: every accepted document contains exactly the immutable text and
+//! canonical-origin copies selected by core.
 //! BlueTS stays a child-fixed, direct-lowering profile with no ambient host
 //! typings, compiler option, resolver, or emitted JavaScript crossing this
 //! channel. Apart from the two fixed JavaScript primitive snapshot callbacks,
-//! it exposes no debugger, DOM operation/object, runtime value transport,
-//! general host callback, fetch/cache, or client-facing API.
+//! version 4 exposes only a core-proxied, source-free debugger location
+//! inventory. It has no pause/resume, stack, scope, bytecode, source, runtime
+//! value transport, general host callback, fetch/cache, or client-facing API.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 3;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 4;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -41,6 +43,45 @@ pub const PAGE_HOST_MAX_FRAME_BYTES: usize = 12 * 1024 * 1024;
 /// binding-value transport with caller-controlled limits.
 pub const PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES: usize = 1_048_576;
 pub const PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES: usize = 4 * 1_024;
+
+/// Maximum exact instruction boundaries returned for one child-owned program
+/// by the private debugger-location inventory. It is an immutable child
+/// policy, not a client-provided request limit.
+pub const PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM: u32 = 4_096;
+
+/// An opaque debugger program identity minted by the isolated child. It is
+/// valid only with the exact tab/document generation supplied by the request;
+/// it deliberately contains no source identity, BlueJS registry handle, or
+/// bytecode data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerProgram {
+    pub program_handle: u64,
+    pub program_generation: u64,
+}
+
+impl PageHostDebuggerProgram {
+    /// Private debugger identities never use zero placeholders.
+    pub fn is_well_formed(self) -> bool {
+        self.program_handle != 0 && self.program_generation != 0
+    }
+}
+
+/// One exact compiler-verified instruction boundary returned without source
+/// text or bytecode. The child validates this complete tuple; it never maps a
+/// caller-supplied nearest offset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerSafePoint {
+    pub program: PageHostDebuggerProgram,
+    pub code_unit_ordinal: u32,
+    pub bytecode_offset: u32,
+}
+
+impl PageHostDebuggerSafePoint {
+    /// The nested opaque program identity is required for every location.
+    pub fn is_well_formed(self) -> bool {
+        self.program.is_well_formed()
+    }
+}
 
 /// A complete source record selected and fingerprinted by the caller-owned
 /// page loader. `source_hash` is verified by the child against `source`; it
@@ -201,6 +242,27 @@ pub enum PageHostRequest {
         tab_id: u64,
         document_generation: u64,
     },
+    /// Lists only opaque program identities retained by one exact live child
+    /// realm. This discovery operation cannot pause, resume, inspect, or
+    /// mutate that realm.
+    ListDebuggerPrograms {
+        tab_id: u64,
+        document_generation: u64,
+    },
+    /// Lists the child's bounded compiler-verified safe points for one exact
+    /// opaque program. No source, bytecode, VM, or value crosses this channel.
+    ListDebuggerSafePoints {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    },
+    /// Revalidates one exact source-free child safe-point tuple. It does not
+    /// execute, pause, or otherwise alter the child VM.
+    ValidateDebuggerSafePoint {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     /// Ends the child process after its acknowledgement.
     Shutdown,
     /// A newer request must not be interpreted as an existing operation.
@@ -227,6 +289,22 @@ pub enum PageHostReply {
         document_generation: u64,
     },
     RealmStats(PageHostRealmStats),
+    DebuggerPrograms {
+        tab_id: u64,
+        document_generation: u64,
+        programs: Vec<PageHostDebuggerProgram>,
+    },
+    DebuggerSafePoints {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        safe_points: Vec<PageHostDebuggerSafePoint>,
+    },
+    DebuggerSafePointValidated {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     ShutdownAck,
     Error {
         code: PageHostErrorCode,
@@ -362,6 +440,30 @@ mod tests {
                 tab_id: 7,
                 document_generation: 3,
             },
+            PageHostRequest::ListDebuggerPrograms {
+                tab_id: 7,
+                document_generation: 3,
+            },
+            PageHostRequest::ListDebuggerSafePoints {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+            },
+            PageHostRequest::ValidateDebuggerSafePoint {
+                tab_id: 7,
+                document_generation: 3,
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: 11,
+                        program_generation: 13,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                },
+            },
             PageHostRequest::Shutdown,
             PageHostRequest::Unknown,
         ];
@@ -387,6 +489,22 @@ mod tests {
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &reply).unwrap();
         assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+
+        let debugger_reply = PageHostReply::DebuggerSafePointValidated {
+            tab_id: 7,
+            document_generation: 3,
+            safe_point: PageHostDebuggerSafePoint {
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
     }
 
     #[test]
@@ -408,6 +526,19 @@ mod tests {
             negotiate(
                 &PageHostRequest::Hello {
                     protocol_version: PAGE_HOST_PROTOCOL_VERSION - 1,
+                    session_token: token.to_string(),
+                },
+                token,
+            ),
+            PageHostReply::Error {
+                code: PageHostErrorCode::ProtocolVersion,
+                ..
+            }
+        ));
+        assert!(matches!(
+            negotiate(
+                &PageHostRequest::Hello {
+                    protocol_version: PAGE_HOST_PROTOCOL_VERSION + 1,
                     session_token: token.to_string(),
                 },
                 token,
@@ -459,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn version_three_document_requires_the_fixed_core_snapshot() {
+    fn version_four_document_requires_the_fixed_core_snapshot() {
         let mut value = serde_json::to_value(PageHostRequest::SynchronizeDocument {
             document: document(),
         })

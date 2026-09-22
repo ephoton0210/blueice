@@ -40,10 +40,17 @@ outcomes in the existing separate source-free JavaScript and BlueTS report
 lanes, and closes child realms on navigation/tab removal. `blueice-launcher
 --out-of-process-bluejs` creates that child/capability pair itself for each
 core generation and reaps it on ordinary shutdown or cutover; the default
-launcher leaves the mode disabled. The remaining boundary has no general DOM
-or event surface beyond those two copied strings, production external source
-authority, arbitrary debugger interruption/pause/runtime control, or MCP
-project-registration path.
+launcher leaves the mode disabled. Its private page-host v4 transport now also
+permits only source-free debugger location discovery: after core verifies the
+authenticated child owns the exact live tab/document realm, it lists bounded
+child-private program/safe-point IDs and revalidates one exact tuple. Core
+remints every public debugger program handle/generation in a disjoint namespace
+and rejects any child reply whose tab, document generation, private program, or
+safe point does not exactly match that mapping. The child has no breakpoint
+configuration, pause/resume, stepping, stack/scope/value/source/bytecode
+operation. The remaining boundary has no general DOM or event surface beyond
+those two copied strings, production external source authority, arbitrary
+debugger interruption/pause/runtime control, or MCP project-registration path.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
 syntax matrix while an earlier item prevents an already-supported program from
@@ -151,7 +158,7 @@ or second module resolver to bypass them.
   in-process,
   no-general-DOM-object-or-event-binding
   foundation. A separate launcher-owned process foundation now also exists:
-  `blueice_ipc::page_host` defines a private v3 capability-authenticated
+  `blueice_ipc::page_host` defines a private v4 capability-authenticated
   launcher-to-child transport, and the `blueice-bluejs-host` child owns its
   own `BlueJsPageRuntime`, tab/document-generation table, program registry,
   and fixed realm/program/bytecode limits. A private frame is capped at
@@ -167,7 +174,8 @@ or second module resolver to bypass them.
   only private socket plus per-spawn `/dev/urandom` capability token,
   authenticates before dispatch, supervises/reaps the child, and removes its
   socket on clean or forced teardown. The child returns bounded source-free
-  reports and aggregate realm accounting only; same-generation sync is
+  reports, aggregate realm accounting, and the core-proxied location-only
+  debugger inventory; same-generation sync is
   idempotent, a stale generation cannot close or inspect a successor, and a
   missing module edge is rejected before any graph program is retained. Unit
   tests cover those rules, and a real launcher-spawned child regression proves
@@ -368,6 +376,20 @@ or second module resolver to bypass them.
   `ArmEntryBreakpoint` subprocess route remains the v4 compatibility
   acceptance.
 
+  The launcher-supervised child has a distinct, narrower v4 private page-host
+  proxy for the same public `ProgramLocations` discovery family. Core first
+  resolves the public browser-context/tab/document generation, then requires
+  its authenticated child to acknowledge that exact realm before advertising
+  the capability. The child returns only its own bounded opaque program IDs
+  and compiler-recorded `(code-unit, offset)` tuples; core remints disjoint
+  public IDs and retains the exact private mapping. Any reply with another
+  tab, document generation, program, or safe point is rejected. The child
+  route intentionally reports `BreakpointConfiguration`, `Breakpoints`,
+  `PauseResume`, stepping, stacks, scopes, exception policy, and values as
+  planned, and it accepts none of their requests. Real Unix-socket child/core
+  tests cover location discovery, exact validation, cross-tab rejection, and
+  navigation-stale rejection without source, bytecode, or runtime-value leaks.
+
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm
   replacement discards that continuation, and it cannot pause another tab or
@@ -509,8 +531,9 @@ or second module resolver to bypass them.
   regression covers that opt-in mode across real HTTP navigation, a classic
   declaration, a module declaration, and a static rejection. The separate
   launcher-managed host now shares one BlueTS/JavaScript realm only for its
-  fixed snapshot profile; it still has no debugger attachment, general DOM
-  surface, or external-source authority. No concrete fetch/cache/integrity implementation
+  fixed snapshot profile; it now has only the core-proxied source-free
+  debugger location attachment described above, no debugger control/general
+  DOM surface, and no external-source authority. No concrete fetch/cache/integrity implementation
   or general external graph policy exists. The closed-graph direct bridge
   integration is complete; those broader page-host responsibilities remain
   separate open prerequisites.

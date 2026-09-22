@@ -767,10 +767,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
             script_requests.dispatch_pending(tabs);
         }
         if let Some(debugger_requests) = requests.debugger {
-            let debugger_executor = page_script_runtime
-                .javascript_executor
-                .as_deref_mut()
-                .and_then(|executor| executor.debugger_executor());
+            let debugger_executor = page_script_runtime.javascript_executor.as_deref_mut();
             debugger_requests.dispatch_pending(tabs, debugger_executor);
         }
         if let Some(compiler_requests) = requests.compiler.as_mut() {

@@ -30,10 +30,11 @@ use blueice_bluets_bluejs::{
     DirectScript,
 };
 use blueice_ipc::page_host::{
-    self, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
-    PageHostStaticResolution, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
+    self, PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDocument,
+    PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats,
+    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
+    PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
+    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
 use blueice_net::canonical_http_origin;
@@ -59,6 +60,16 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LiveDocument {
     generation: u64,
+    debugger_programs: BTreeMap<u64, ChildDebuggerProgram>,
+}
+
+/// Private child-only association between a child-minted opaque debugger
+/// identity and its BlueJS registry handle. The registry handle never leaves
+/// this process; the core separately mints its public debugger identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ChildDebuggerProgram {
+    program_generation: u64,
+    runtime_handle: BlueJsProgramHandle,
 }
 
 /// The actual state machine running in the child process.
@@ -71,6 +82,8 @@ struct LiveDocument {
 pub struct BlueJsChildHost {
     runtime: BlueJsPageRuntime,
     documents: BTreeMap<u64, LiveDocument>,
+    next_debugger_program_handle: u64,
+    next_debugger_program_generation: u64,
 }
 
 impl BlueJsChildHost {
@@ -89,6 +102,8 @@ impl BlueJsChildHost {
         Ok(Self {
             runtime: BlueJsPageRuntime::new(config)?,
             documents: BTreeMap::new(),
+            next_debugger_program_handle: 1,
+            next_debugger_program_generation: 1,
         })
     }
 
@@ -106,6 +121,20 @@ impl BlueJsChildHost {
                 tab_id,
                 document_generation,
             } => self.realm_stats(tab_id, document_generation),
+            PageHostRequest::ListDebuggerPrograms {
+                tab_id,
+                document_generation,
+            } => self.debugger_programs(tab_id, document_generation),
+            PageHostRequest::ListDebuggerSafePoints {
+                tab_id,
+                document_generation,
+                program,
+            } => self.debugger_safe_points(tab_id, document_generation, program),
+            PageHostRequest::ValidateDebuggerSafePoint {
+                tab_id,
+                document_generation,
+                safe_point,
+            } => self.validate_debugger_safe_point(tab_id, document_generation, safe_point),
             PageHostRequest::Shutdown => PageHostReply::ShutdownAck,
             PageHostRequest::Hello { .. } | PageHostRequest::Unknown => invalid_request(),
         }
@@ -188,6 +217,7 @@ impl BlueJsChildHost {
             document.tab_id,
             LiveDocument {
                 generation: document.document_generation,
+                debugger_programs: BTreeMap::new(),
             },
         );
 
@@ -283,6 +313,14 @@ impl BlueJsChildHost {
                 outcome,
             });
         }
+        if self.refresh_debugger_programs(document.tab_id).is_err() {
+            // A debugger-location record is part of the live-realm contract.
+            // Do not report a runnable successor if the child could not mint
+            // a bounded opaque inventory for every retained program.
+            self.runtime.close_realm(document.tab_id);
+            self.documents.remove(&document.tab_id);
+            return host_failure();
+        }
         PageHostReply::Synchronized {
             tab_id: document.tab_id,
             document_generation: document.document_generation,
@@ -323,6 +361,158 @@ impl BlueJsChildHost {
             }),
             Err(_) => host_failure(),
         }
+    }
+
+    /// Lists only the child-minted private IDs for one exact realm. The core
+    /// intentionally remaps these again before public debugger IPC sees them.
+    fn debugger_programs(&self, tab_id: u64, document_generation: u64) -> PageHostReply {
+        let document = match self.exact_document(tab_id, document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        PageHostReply::DebuggerPrograms {
+            tab_id,
+            document_generation,
+            programs: document
+                .debugger_programs
+                .iter()
+                .map(|(&program_handle, record)| PageHostDebuggerProgram {
+                    program_handle,
+                    program_generation: record.program_generation,
+                })
+                .collect(),
+        }
+    }
+
+    fn debugger_safe_points(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> PageHostReply {
+        if !program.is_well_formed() {
+            return invalid_request();
+        }
+        let document = match self.exact_document(tab_id, document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+            return invalid_request();
+        };
+        if record.program_generation != program.program_generation {
+            return invalid_request();
+        }
+        let safe_points = match self.runtime.safe_points(
+            tab_id,
+            record.runtime_handle,
+            usize::try_from(PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM)
+                .expect("page-host debugger safe-point cap fits usize"),
+        ) {
+            Ok(safe_points) => safe_points,
+            Err(BlueJsPageRuntimeError::SafePointLimit { .. }) => return resource_limit(),
+            Err(_) => return invalid_request(),
+        };
+        PageHostReply::DebuggerSafePoints {
+            tab_id,
+            document_generation,
+            program,
+            safe_points: safe_points
+                .into_iter()
+                .map(|safe_point| PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: safe_point.code_unit.ordinal(),
+                    bytecode_offset: safe_point.bytecode_offset,
+                })
+                .collect(),
+        }
+    }
+
+    fn validate_debugger_safe_point(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> PageHostReply {
+        if !safe_point.is_well_formed() {
+            return invalid_request();
+        }
+        let document = match self.exact_document(tab_id, document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        let Some(record) = document
+            .debugger_programs
+            .get(&safe_point.program.program_handle)
+        else {
+            return invalid_request();
+        };
+        if record.program_generation != safe_point.program.program_generation {
+            return invalid_request();
+        }
+        // Constructing a BlueJS safe point is intentionally not exposed by
+        // its public runtime API. Find the exact compiler-recorded boundary
+        // first, then ask the runtime to revalidate that authentic tuple.
+        let found = match self.runtime.safe_points(
+            tab_id,
+            record.runtime_handle,
+            usize::try_from(PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM)
+                .expect("page-host debugger safe-point cap fits usize"),
+        ) {
+            Ok(safe_points) => safe_points.into_iter().find(|candidate| {
+                candidate.code_unit.ordinal() == safe_point.code_unit_ordinal
+                    && candidate.bytecode_offset == safe_point.bytecode_offset
+            }),
+            Err(BlueJsPageRuntimeError::SafePointLimit { .. }) => return resource_limit(),
+            Err(_) => return invalid_request(),
+        };
+        let Some(found) = found else {
+            return invalid_request();
+        };
+        if self
+            .runtime
+            .validate_safe_point(tab_id, record.runtime_handle, found)
+            .is_err()
+        {
+            return invalid_request();
+        }
+        PageHostReply::DebuggerSafePointValidated {
+            tab_id,
+            document_generation,
+            safe_point,
+        }
+    }
+
+    fn exact_document(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> Result<&LiveDocument, PageHostReply> {
+        match self.documents.get(&tab_id) {
+            None => Err(unknown_realm()),
+            Some(document) if document.generation != document_generation => Err(stale_document()),
+            Some(document) => Ok(document),
+        }
+    }
+
+    fn refresh_debugger_programs(&mut self, tab_id: u64) -> Result<(), ()> {
+        let runtime_handles = self.runtime.program_handles(tab_id).map_err(|_| ())?;
+        let mut programs = BTreeMap::new();
+        for runtime_handle in runtime_handles {
+            let program_handle = self.next_debugger_program_handle;
+            let program_generation = self.next_debugger_program_generation;
+            self.next_debugger_program_handle = program_handle.checked_add(1).ok_or(())?;
+            self.next_debugger_program_generation = program_generation.checked_add(1).ok_or(())?;
+            programs.insert(
+                program_handle,
+                ChildDebuggerProgram {
+                    program_generation,
+                    runtime_handle,
+                },
+            );
+        }
+        self.documents.get_mut(&tab_id).ok_or(())?.debugger_programs = programs;
+        Ok(())
     }
 }
 
@@ -1291,6 +1481,95 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn private_debugger_locations_are_generation_and_tab_bound_without_runtime_leaks() {
+        let mut host = BlueJsChildHost::default();
+        let first = document(1, vec![classic(0, "let answer = 42;")]);
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument { document: first }),
+            PageHostReply::Synchronized { .. }
+        ));
+        let programs = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs,
+            reply => panic!("expected source-free child debugger programs, got {reply:?}"),
+        };
+        assert_eq!(programs.len(), 1);
+        let program = programs[0];
+        let safe_points = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points,
+            reply => panic!("expected source-free child debugger safe points, got {reply:?}"),
+        };
+        let safe_point = *safe_points
+            .first()
+            .expect("a retained classic program has a root safe point");
+        assert_eq!(
+            host.handle_request(PageHostRequest::ValidateDebuggerSafePoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+            }),
+            PageHostReply::DebuggerSafePointValidated {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+            }
+        );
+
+        let mut other = document(1, vec![classic(0, "let other = 7;")]);
+        other.tab_id = 9;
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument { document: other }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+                tab_id: 9,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
+
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(2, vec![classic(0, "let successor = 1;")]),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ListDebuggerPrograms {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+        let reply = format!(
+            "{:?}",
+            host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+                tab_id: 7,
+                document_generation: 2,
+                program,
+            })
+        );
+        assert!(
+            !reply.contains("answer") && !reply.contains("bytecode") && !reply.contains("Value"),
+            "private debugger errors must remain source/value-free"
+        );
     }
 
     #[test]
