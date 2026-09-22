@@ -333,6 +333,28 @@ fn basic_time_zone_name_score(requested: &str, available: &str) -> i32 {
     }
 }
 
+/// The month/day widths DateTimeFormat's *default* numeric date (no
+/// date/time component requested at all) should render with, read from the
+/// locale's own `yMd` `availableFormats` pattern text rather than assumed
+/// unpadded.
+///
+/// Falls back to `Numeric` (unpadded) -- ICU4X's own default and the
+/// common case -- for the handful of locales this pinned Gregorian table
+/// has no `yMd` entry for.
+fn default_numeric_date_widths(locale: &str) -> (DateTimeWidth, DateTimeWidth) {
+    let widths = locale_data_provider().numeric_date_pattern_widths(locale);
+    (
+        widths
+            .as_ref()
+            .and_then(|record| record.month)
+            .unwrap_or(DateTimeWidth::Numeric),
+        widths
+            .as_ref()
+            .and_then(|record| record.day)
+            .unwrap_or(DateTimeWidth::Numeric),
+    )
+}
+
 fn resolve_basic_semantic_format(
     locale: &str,
     options: &mut DateTimeFormatOptions,
@@ -1684,14 +1706,26 @@ impl DateTimeFormat {
     /// month/day must not gain a leading localized zero merely because the
     /// caller requested `minute: "2-digit"`. Remove only that provider-added
     /// zero from explicitly numeric date fields.
+    ///
+    /// The *default* numeric date (no date/time component requested at all)
+    /// has no explicit `options.month`/`options.day` width to consult, yet
+    /// is just as much a numeric skeleton as an explicit
+    /// `{year, month, day: "numeric"}` request -- and ICU4X's own
+    /// length-styled default pattern for it does not reliably agree with
+    /// CLDR's `yMd` `availableFormats` pattern (see
+    /// `default_numeric_date_widths`). Trim the same provider-added zero
+    /// there whenever that locale's real `yMd` pattern is unpadded.
     fn trim_numeric_date_part_padding(&self, parts: &mut [DateTimePart]) {
         let zero = locale_data_provider()
             .decimal_digits(&self.numbering_system)
             .map_or('0', |digits| digits[0]);
+        let default_widths = self
+            .uses_default_date_pattern()
+            .then(|| default_numeric_date_widths(self.locale.as_str()));
         for part in parts {
             let numeric_width = match part.kind.as_str() {
-                "month" => self.options.month,
-                "day" => self.options.day,
+                "month" => self.options.month.or(default_widths.map(|widths| widths.0)),
+                "day" => self.options.day.or(default_widths.map(|widths| widths.1)),
                 _ => continue,
             };
             if numeric_width != Some(DateTimeWidth::Numeric) {

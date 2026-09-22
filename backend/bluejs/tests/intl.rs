@@ -1208,6 +1208,55 @@ fn basic_format_matcher_formats_the_defaulted_numeric_date() {
     }
 }
 
+/// Test262's `staging/sm/String/internalUsage.js` shape: `new
+/// Intl.DateTimeFormat("de", {}).format(t)` (`t` one day past the epoch)
+/// must be one of the unpadded `"1.1.1970"`/`"2.1.1970"`/`"3.1.1970"`
+/// (the exact day is local-time-zone-dependent), never zero-padded like
+/// `"02.01.1970"`. CLDR's `de` `yMd` `availableFormats` pattern is `"d.M.y"`
+/// (unpadded); ICU4X's own length-styled default numeric-date pattern is
+/// `"dd.MM.y"` and must not be used for the default (no options) render.
+/// Also covers the legacy `Date` methods, which resolve through the same
+/// default-date path, and non-regression for locales (`fr`, `ru`) whose
+/// real `yMd` pattern is genuinely zero-padded.
+#[test]
+fn default_date_time_format_matches_the_locale_availableformats_ymd_pattern() {
+    let possible_answer = "['1.1.1970','2.1.1970','3.1.1970']";
+    for source in [
+        // The internalUsage.js shape itself: a poisoned
+        // `String.prototype[Symbol.split]` must not change the result (each
+        // `evaluate` call gets its own fresh realm, so these run
+        // independently rather than compounding on each other).
+        &format!(
+            "String.prototype[Symbol.split]=function(s,limit){{return ['']}};\
+             {possible_answer}.includes(new Intl.DateTimeFormat('de',{{}}).format(86400000))"
+        ),
+        &format!(
+            "String.prototype[Symbol.split]=function(s,limit){{return ['x-foo']}};\
+             {possible_answer}.includes(new Intl.DateTimeFormat('de',{{}}).format(86400000))"
+        ),
+        &format!(
+            "String.prototype[Symbol.split]=function(s,limit){{return ['de-u-co']}};\
+             {possible_answer}.includes(new Intl.DateTimeFormat('de',{{}}).format(86400000))"
+        ),
+        &format!(
+            "String.prototype[Symbol.split]=function(s,limit){{return ['en-US']}};\
+             {possible_answer}.includes(new Intl.DateTimeFormat('de',{{}}).format(86400000))"
+        ),
+        // The legacy `Date` methods share `Intl.DateTimeFormat`'s
+        // default-date resolution rather than a separate rendering path.
+        &format!("{possible_answer}.includes(new Date(86400000).toLocaleDateString('de'))"),
+        &format!(
+            "{possible_answer}.some(d => new Date(86400000).toLocaleString('de').includes(d))"
+        ),
+        // `fr`/`ru`'s real `yMd` pattern is genuinely zero-padded
+        // (`"dd/MM/y"`/`"dd.MM.y"`); the fix must not touch them.
+        "new Intl.DateTimeFormat('fr',{timeZone:'UTC'}).format(86400000)==='02/01/1970'",
+        "new Intl.DateTimeFormat('ru',{timeZone:'UTC'}).format(86400000)==='02.01.1970'",
+    ] {
+        assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
+    }
+}
+
 #[test]
 fn date_time_format_emits_complete_chinese_year_parts() {
     let source = "let f=new Intl.DateTimeFormat('zh-u-ca-chinese',{year:'numeric',timeZone:'UTC'});let p=f.formatToParts(new Date(2019,5,1));f.format(new Date(2019,5,1))==='2019己亥年'&&p.map(function(part){return part.type+':'+part.value}).join('|')==='relatedYear:2019|yearName:己亥|literal:年'";

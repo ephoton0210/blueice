@@ -312,6 +312,49 @@ pub(crate) fn basic_format_records(locale: &str) -> Vec<crate::DateTimeFormatRec
     Vec::new()
 }
 
+/// Returns the field widths the locale's own `yMd` `availableFormats` entry
+/// actually renders with, read from that entry's literal CLDR pattern text
+/// rather than its (locale-invariant) skeleton id.
+///
+/// `basic_format_records` deliberately derives ECMA-402's *requested*
+/// component widths from each row's skeleton id (`"yMd"`, `"yMMMd"`, ...),
+/// which is the right source for BasicFormatMatcher's own scoring: two
+/// locales sharing the `"yMd"` id are both offering a "numeric year, month,
+/// day" format, by definition. But a locale is free to typeset that same
+/// numeric skeleton with a customarily zero-padded field regardless of the
+/// id's own letter count -- CLDR's `yMd` pattern is literally `"d.M.y"` for
+/// `de` (unpadded) but `"dd/MM/y"` for `fr` (day and month zero-padded).
+/// ICU4X's own semantic `Length`-based numeric date field set draws from
+/// CLDR's differently-authored length-styled `dateFormats` table instead,
+/// which does not reliably agree with `yMd` either way. Reading the pattern
+/// text itself, with the same letter-repetition-counts-as-width rule
+/// `record_from_skeleton` already applies to skeleton ids, is what actually
+/// answers "does this locale zero-pad its default numeric date" -- with no
+/// per-locale special-casing needed.
+pub(crate) fn numeric_date_pattern_widths(locale: &str) -> Option<crate::DateTimeFormatRecord> {
+    let data = pinned_date_time_formats();
+    for candidate in locale_candidates(locale) {
+        let Some((start, end)) = data.locale_ranges.get(&candidate.to_ascii_lowercase()) else {
+            continue;
+        };
+        return data.rows[*start..*end].lines().find_map(|line| {
+            let mut fields = line.splitn(3, '\t');
+            let _locale = fields.next()?;
+            let skeleton = fields.next()?;
+            let encoded_pattern = fields.next()?.trim_end();
+            if skeleton != "yMd" {
+                return None;
+            }
+            let pattern = STANDARD
+                .decode(encoded_pattern)
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes).ok())?;
+            record_from_skeleton(&pattern)
+        });
+    }
+    None
+}
+
 /// One decoded pinned CLDR append-item record.
 ///
 /// The `{2}` placeholder used by CLDR's append patterns is the localized

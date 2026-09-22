@@ -1030,3 +1030,56 @@ fn basic_matcher_matches_the_defaulted_numeric_date() {
         None
     );
 }
+
+/// Test262's `staging/sm/String/internalUsage.js`:
+/// `Intl.DateTimeFormat("de", {}).format(t)` (`t` one day past the epoch)
+/// must be one of the unpadded `"1.1.1970"`/`"2.1.1970"`/`"3.1.1970"`
+/// (the exact day depends on the host's local time zone), never a
+/// zero-padded `"02.01.1970"`. CLDR's `de` `yMd` `availableFormats` pattern
+/// is `"d.M.y"` (unpadded); ICU4X's own length-styled default numeric-date
+/// pattern is `"dd.MM.y"` (day and month zero-padded) and must not be used
+/// for the default (no component options) render.
+#[test]
+fn default_numeric_date_matches_the_locale_availableformats_ymd_pattern() {
+    let format = |locale: &str| {
+        DateTimeFormat::try_new(
+            &[canonicalize(locale).unwrap()],
+            DateTimeFormatOptions {
+                time_zone: Some("UTC".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+
+    // `de`'s `yMd` pattern ("d.M.y") is unpadded: no default-rendered
+    // day/month may carry a leading zero.
+    assert_eq!(format("de").format(86_400_000.0).unwrap(), "2.1.1970");
+    // `ja`'s `yMd` pattern ("y/M/d") is unpadded too, in the other field
+    // order -- this is not a `de`-only special case.
+    assert_eq!(format("ja").format(86_400_000.0).unwrap(), "1970/1/2");
+
+    // `fr`, `ru`, and `en-GB`'s `yMd` pattern really is zero-padded
+    // (`"dd/MM/y"` / `"dd.MM.y"`); the fix above must not touch them.
+    assert_eq!(format("fr").format(86_400_000.0).unwrap(), "02/01/1970");
+    assert_eq!(format("ru").format(86_400_000.0).unwrap(), "02.01.1970");
+    assert_eq!(format("en-GB").format(86_400_000.0).unwrap(), "02/01/1970");
+
+    // A single explicit numeric component alongside the others must not
+    // suppress the fix: the whole triple is still the "default date".
+    assert_eq!(
+        DateTimeFormat::try_new(
+            &[canonicalize("de").unwrap()],
+            DateTimeFormatOptions {
+                time_zone: Some("UTC".into()),
+                format_matcher: DateTimeFormatMatcher::Basic,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .format(86_400_000.0)
+        .unwrap(),
+        "2.1.1970",
+        "the Basic matcher's own default-date render must match too"
+    );
+}
