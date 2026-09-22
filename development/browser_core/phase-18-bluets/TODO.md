@@ -24,14 +24,18 @@ exact live safe-point validation, lifecycle-bound breakpoint configuration, and
 an opt-in root-entry pause/resume seam that stops a declaration before any VM
 bytecode executes. It is not arbitrary interpreter suspension or stepping.
 A launcher-supervised, capability-authenticated out-of-process BlueJS child
-can execute a bounded, caller-authorized document graph; an explicitly paired
-core endpoint/token route forwards HTTP(S) inline declarations and closes child
-realms on navigation/tab removal. `blueice-launcher --out-of-process-bluejs`
-now creates that child/capability pair itself for each core generation and
-reaps it on ordinary shutdown or cutover; the default launcher leaves the mode
-disabled. The remaining boundary has no general DOM or event surface, live
-page-data contract boundary, arbitrary debugger interruption/pause/runtime
-control, or MCP project-registration path.
+can execute caller-authorized inline JavaScript and explicit BlueTS declarations
+in one bounded realm and DOM order. BlueTS receives only the closed supplied
+graph and a child-fixed checked compiler policy, then lowers directly into that
+realm without emitted-JavaScript reparse. The core route keeps its outcomes in
+the existing separate source-free JavaScript and BlueTS report lanes, and
+closes child realms on navigation/tab removal. `blueice-launcher
+--out-of-process-bluejs` creates that child/capability pair itself for each
+core generation and reaps it on ordinary shutdown or cutover; the default
+launcher leaves the mode disabled. The remaining boundary has no general DOM
+or event surface, live page-data contract boundary, production external source
+authority, arbitrary debugger interruption/pause/runtime control, or MCP
+project-registration path.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
 syntax matrix while an earlier item prevents an already-supported program from
@@ -139,7 +143,7 @@ or second module resolver to bypass them.
   in-process,
   no-general-DOM-object-or-event-binding
   foundation. A separate launcher-owned process foundation now also exists:
-  `blueice_ipc::page_host` defines a private v1 capability-authenticated
+  `blueice_ipc::page_host` defines a private v2 capability-authenticated
   launcher-to-child transport, and the `blueice-bluejs-host` child owns its
   own `BlueJsPageRuntime`, tab/document-generation table, program registry,
   and fixed realm/program/bytecode limits. A private frame is capped at
@@ -148,7 +152,7 @@ or second module resolver to bypass them.
   caller-authorized document record containing canonical source IDs, exact
   source bytes and hashes, a non-empty resolver-policy fingerprint, and all
   static `(from, specifier) -> canonical-target` records. It recomputes each
-  v1 source hash, rejects duplicate/dangling/missing resolution records, and
+  source hash, rejects duplicate/dangling/missing resolution records, and
   rewrites static ESM requests only to the supplied canonical targets; it
   never fetches, opens a URL/file, performs relative/import-map/package
   resolution, or receives DOM/IPC callbacks. The launcher creates an owner-
@@ -165,12 +169,13 @@ or second module resolver to bypass them.
   core's startup boundary, forwards loaded HTTP(S) inline declarations through
   the core adapter, and reaps the child/socket on shutdown or cutover. The
   launcher-to-core-to-child regression proves inline classic and module
-  execution, source-free external-`src` rejection, no injected DOM/fetch
+  execution, explicit BlueTS direct lowering in the same realm and DOM order,
+  source-free external-`src` rejection, no injected DOM/fetch
   binding, no endpoint reflection through the frontend broker, and both
   generations' cleanup. This does not copy a document binding across the
   process boundary or grant child fetch, URL/import-map resolution, or external
-  graph authority. Production fetch/cache/integrity authority, a shared
-  JavaScript/BlueTS realm, host-wide memory accounting, native debugger
+  graph authority. Production fetch/cache/integrity authority, host-wide
+  memory accounting, native debugger
   attachment, and general JavaScript DOM-object/event binding remain open, so
   the prerequisite remains open.
 

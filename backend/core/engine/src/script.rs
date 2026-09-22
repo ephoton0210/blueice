@@ -34,8 +34,9 @@ pub mod javascript;
 pub mod javascript_child;
 pub mod page_source_authorizer;
 pub use declarations::{
-    discover_blue_js_page_scripts, discover_blue_ts_page_scripts, BlueJsPageScriptDeclaration,
-    BlueJsPageScriptKind, BlueTsPageScriptDeclaration, BLUE_TS_CLASSIC_SCRIPT_TYPE,
+    discover_blue_js_page_scripts, discover_blue_ts_page_scripts, discover_combined_page_scripts,
+    BlueJsPageScriptDeclaration, BlueJsPageScriptKind, BlueTsPageScriptDeclaration,
+    CombinedPageScriptDeclaration, CombinedPageScriptLanguage, BLUE_TS_CLASSIC_SCRIPT_TYPE,
     BLUE_TS_MODULE_SCRIPT_TYPE,
 };
 

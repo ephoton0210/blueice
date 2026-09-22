@@ -67,6 +67,31 @@ pub enum BlueJsPageScriptDeclaration {
     },
 }
 
+/// One supported page-script declaration in document order across the two
+/// explicitly separate language lanes. This is used only by a host that owns
+/// one realm for both lanes: it does not make JavaScript a BlueTS input or
+/// grant source-loading authority to either declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CombinedPageScriptDeclaration {
+    Inline {
+        ordinal: u32,
+        language: CombinedPageScriptLanguage,
+        source: String,
+    },
+    External {
+        ordinal: u32,
+        language: CombinedPageScriptLanguage,
+        src: String,
+    },
+}
+
+/// The parser-selected language and grammar of a combined page declaration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CombinedPageScriptLanguage {
+    JavaScript(BlueJsPageScriptKind),
+    BlueTs(DirectPageScriptKind),
+}
+
 /// Returns every explicit BlueTS script declaration in document order.
 ///
 /// Ordinary JavaScript, `text/typescript`, and unknown `type` values are not
@@ -89,6 +114,18 @@ pub fn discover_blue_ts_page_scripts(doc: &Document) -> Vec<BlueTsPageScriptDecl
 pub fn discover_blue_js_page_scripts(doc: &Document) -> Vec<BlueJsPageScriptDeclaration> {
     let mut declarations = Vec::new();
     collect_blue_js(doc, doc.root(), &mut declarations);
+    declarations
+}
+
+/// Returns the supported standard-JavaScript and explicit-BlueTS declarations
+/// under one ordinal sequence that preserves their original DOM order.
+///
+/// This is intentionally a declaration inventory, not a loader. In
+/// particular, an `External` item still carries no fetched source, origin,
+/// resolver, capability, or execution permission.
+pub fn discover_combined_page_scripts(doc: &Document) -> Vec<CombinedPageScriptDeclaration> {
+    let mut declarations = Vec::new();
+    collect_combined(doc, doc.root(), &mut declarations);
     declarations
 }
 
@@ -155,6 +192,46 @@ fn collect_blue_js(
     }
     for child in doc.children(node) {
         collect_blue_js(doc, child, declarations);
+    }
+}
+
+fn collect_combined(
+    doc: &Document,
+    node: NodeId,
+    declarations: &mut Vec<CombinedPageScriptDeclaration>,
+) {
+    if let NodeData::Element {
+        tag_name,
+        attributes,
+    } = doc.data(node)
+    {
+        if tag_name == "script" {
+            let language = script_kind(attributes)
+                .map(CombinedPageScriptLanguage::BlueTs)
+                .or_else(|| {
+                    blue_js_script_kind(attributes).map(CombinedPageScriptLanguage::JavaScript)
+                });
+            if let Some(language) = language {
+                let ordinal = u32::try_from(declarations.len())
+                    .expect("a document cannot contain more than u32::MAX supported scripts");
+                if let Some(src) = attribute(attributes, "src") {
+                    declarations.push(CombinedPageScriptDeclaration::External {
+                        ordinal,
+                        language,
+                        src: src.to_string(),
+                    });
+                } else {
+                    declarations.push(CombinedPageScriptDeclaration::Inline {
+                        ordinal,
+                        language,
+                        source: text_content(doc, node),
+                    });
+                }
+            }
+        }
+    }
+    for child in doc.children(node) {
+        collect_combined(doc, child, declarations);
     }
 }
 
@@ -290,6 +367,44 @@ mod tests {
                     ordinal: 2,
                     kind: BlueJsPageScriptKind::Module,
                     source: "export const second = 2;".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn combined_inventory_preserves_document_order_across_language_lanes() {
+        let doc = blueice_html::parse(
+            r#"
+                <script>const first = 1;</script>
+                <script type="application/x-blueice-typescript">const second: number = first + 1;</script>
+                <script type="module">export const third = 3;</script>
+                <script type="application/x-blueice-typescript-module" src="/fourth.ts"></script>
+            "#,
+        );
+
+        assert_eq!(
+            discover_combined_page_scripts(&doc),
+            vec![
+                CombinedPageScriptDeclaration::Inline {
+                    ordinal: 0,
+                    language: CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Classic,),
+                    source: "const first = 1;".to_string(),
+                },
+                CombinedPageScriptDeclaration::Inline {
+                    ordinal: 1,
+                    language: CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Classic,),
+                    source: "const second: number = first + 1;".to_string(),
+                },
+                CombinedPageScriptDeclaration::Inline {
+                    ordinal: 2,
+                    language: CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Module,),
+                    source: "export const third = 3;".to_string(),
+                },
+                CombinedPageScriptDeclaration::External {
+                    ordinal: 3,
+                    language: CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Module,),
+                    src: "/fourth.ts".to_string(),
                 },
             ]
         );

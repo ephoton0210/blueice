@@ -59,7 +59,9 @@ use crate::{
     script::{
         direct_page::{DirectPageScriptHost, DirectPageScriptKind},
         inline_runner::{DirectPageInlineExecutor, DirectPageScriptExecutionReport},
-        javascript::{JavaScriptPageExecutionReport, PageJavaScriptExecutor},
+        javascript::{
+            BlueTsPageExecutionReport, JavaScriptPageExecutionReport, PageJavaScriptExecutor,
+        },
         ScriptRequestReceiver,
     },
     Page, TabId, TabManager,
@@ -593,22 +595,49 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
                     ClientMessage::GetBlueTsScriptReports => match tabs.get(target) {
-                        Some(_) => match page_script_runtime.inline_page_executor.as_deref_mut() {
-                            Some(executor) => blueice_ipc::write_server_message_with_ids(
-                                stream,
-                                reply_tab,
-                                request_id,
-                                &ServerMessage::BlueTsScriptReports(inline_execution_reports(
-                                    executor.drain_reports_for_tab(target),
-                                )),
-                            )?,
-                            None => write_error(
-                                stream,
-                                reply_tab,
-                                request_id,
-                                "inline BlueTS execution is not enabled".to_string(),
-                            )?,
-                        },
+                        Some(_) => {
+                            if let Some(executor) =
+                                page_script_runtime.inline_page_executor.as_deref_mut()
+                            {
+                                blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    &ServerMessage::BlueTsScriptReports(inline_execution_reports(
+                                        executor.drain_reports_for_tab(target),
+                                    )),
+                                )?;
+                            } else if let Some(executor) =
+                                page_script_runtime.javascript_executor.as_deref_mut()
+                            {
+                                if executor.supports_blue_ts_page_execution() {
+                                    blueice_ipc::write_server_message_with_ids(
+                                        stream,
+                                        reply_tab,
+                                        request_id,
+                                        &ServerMessage::BlueTsScriptReports(
+                                            child_blue_ts_execution_reports(
+                                                executor.drain_blue_ts_reports_for_tab(target),
+                                            ),
+                                        ),
+                                    )?;
+                                } else {
+                                    write_error(
+                                        stream,
+                                        reply_tab,
+                                        request_id,
+                                        "inline BlueTS execution is not enabled".to_string(),
+                                    )?;
+                                }
+                            } else {
+                                write_error(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    "inline BlueTS execution is not enabled".to_string(),
+                                )?;
+                            }
+                        }
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
                     ClientMessage::GetBlueJsScriptReports => match tabs.get(target) {
@@ -850,6 +879,53 @@ fn inline_javascript_kind(kind: crate::script::BlueJsPageScriptKind) -> BlueJsSc
     match kind {
         crate::script::BlueJsPageScriptKind::Classic => BlueJsScriptKind::Classic,
         crate::script::BlueJsPageScriptKind::Module => BlueJsScriptKind::Module,
+    }
+}
+
+/// Converts the private child-host BlueTS outcomes into the existing
+/// language-specific, source-free control-plane report shape. The direct
+/// child remains the owner of compiler artifacts and runtime state.
+fn child_blue_ts_execution_reports(
+    reports: Vec<BlueTsPageExecutionReport>,
+) -> Vec<BlueTsScriptExecutionReport> {
+    reports
+        .into_iter()
+        .map(|report| match report {
+            BlueTsPageExecutionReport::Executed {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+            } => BlueTsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: child_blue_ts_kind(kind),
+                outcome: BlueTsScriptExecutionOutcome::Executed,
+            },
+            BlueTsPageExecutionReport::Rejected {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+                category,
+            } => BlueTsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: child_blue_ts_kind(kind),
+                outcome: BlueTsScriptExecutionOutcome::Rejected {
+                    category: category.to_string(),
+                },
+            },
+        })
+        .collect()
+}
+
+fn child_blue_ts_kind(kind: crate::script::direct_page::DirectPageScriptKind) -> BlueTsScriptKind {
+    match kind {
+        crate::script::direct_page::DirectPageScriptKind::Classic => BlueTsScriptKind::Classic,
+        crate::script::direct_page::DirectPageScriptKind::Module => BlueTsScriptKind::Module,
     }
 }
 

@@ -14,6 +14,7 @@
 
 use super::{
     contracts::{core_script_binding_contract, CoreScriptBindingContractLimits},
+    direct_page::DirectPageScriptKind,
     BlueJsPageScriptDeclaration, BlueJsPageScriptKind,
 };
 use crate::{Page, TabId, TabManager};
@@ -101,6 +102,26 @@ pub enum JavaScriptPageExecutionReport {
     },
 }
 
+/// Source-free outcome from the out-of-process child host's explicit BlueTS
+/// lane. It is separate from standard JavaScript reporting so frontend IPC
+/// cannot misclassify a checked direct-lowering result as JavaScript.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlueTsPageExecutionReport {
+    Executed {
+        tab_id: u64,
+        document_generation: u64,
+        ordinal: u32,
+        kind: DirectPageScriptKind,
+    },
+    Rejected {
+        tab_id: u64,
+        document_generation: u64,
+        ordinal: u32,
+        kind: DirectPageScriptKind,
+        category: &'static str,
+    },
+}
+
 /// The session-facing lifecycle surface shared by explicitly selected
 /// JavaScript page hosts.
 ///
@@ -116,6 +137,21 @@ pub trait PageJavaScriptExecutor {
     /// Drains one tab's reports without exposing or consuming another tab's
     /// records.
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport>;
+
+    /// Whether this selected page host owns the explicit BlueTS language lane
+    /// in the same realm as standard JavaScript. The in-process JavaScript
+    /// executor intentionally returns false; its API has no BlueTS compiler
+    /// profile. The launcher-owned child fixes that profile privately.
+    fn supports_blue_ts_page_execution(&self) -> bool {
+        false
+    }
+
+    /// Drains explicit BlueTS reports when [`Self::supports_blue_ts_page_execution`]
+    /// is true. A default empty implementation keeps a standard-JavaScript
+    /// executor from accidentally claiming a second language/runtime owner.
+    fn drain_blue_ts_reports_for_tab(&mut self, _tab_id: TabId) -> Vec<BlueTsPageExecutionReport> {
+        Vec::new()
+    }
 
     /// Returns the in-process program registry when this executor owns one.
     ///

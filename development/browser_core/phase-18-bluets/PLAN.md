@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress. `backend/bluets` provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix; `backend/bluets-bluejs` proves direct classic-script and resolver-preserving ESM graph lowering to public BlueJS AST/bytecode without reparsing emitted JavaScript. A core startup owner can register closed projects in `CoreCompilerProjectCatalog`, seal it before the core session begins, and optionally expose only opaque `describe`/`check`/static-type/symbol queries through a separately handshaken `blueice-core --compiler-socket`; the reference binary has only a compiled-in closed integration profile, and MCP must be explicitly connected to that bounded service. `blueice-launcher --out-of-process-bluejs` now creates and supervises a separate, capability-authenticated BlueJS child for each core generation, routes loaded HTTP(S) inline classic and module declarations to its closed one-module graphs, and reaps it on shutdown or cutover. No page/frontend/log can configure or reflect the child capability; the default launcher does not enable it. The child has no DOM/event binding, fetch/cache, URL/import-map resolution, external graph authority, or shared BlueTS realm. The opt-in debugger socket provides generation-checked source-free program/safe-point discovery and lifecycle-bound breakpoint configuration, but not pause/resume, stepping, stack, scope, or value inspection. Remaining prerequisites include production source/cache/integrity policy, shared JavaScript/BlueTS realm, bytecode source-map aggregation, launcher compiler-catalog distribution/authorization and update/output elevation, fuller negotiated MCP surface, and native debugger execution.
+**Status**: In progress. `backend/bluets` provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix; `backend/bluets-bluejs` proves direct classic-script and resolver-preserving ESM graph lowering to public BlueJS AST/bytecode without reparsing emitted JavaScript. A core startup owner can register closed projects in `CoreCompilerProjectCatalog`, seal it before the core session begins, and optionally expose only opaque `describe`/`check`/static-type/symbol queries through a separately handshaken `blueice-core --compiler-socket`; the reference binary has only a compiled-in closed integration profile, and MCP must be explicitly connected to that bounded service. `blueice-launcher --out-of-process-bluejs` now creates and supervises a separate, capability-authenticated BlueJS child for each core generation, routes loaded HTTP(S) inline JavaScript and explicit BlueTS declarations in DOM order into one bounded realm, and reaps it on shutdown or cutover. BlueTS gets only a caller-authorized closed graph and a child-fixed checked policy, then directly lowers into that realm without emitted-JavaScript reparse. No page/frontend/log can configure or reflect the child capability; the default launcher does not enable it. The child has no DOM/event binding, fetch/cache, URL/import-map resolution, or external graph authority. The opt-in debugger socket provides generation-checked source-free program/safe-point discovery and lifecycle-bound breakpoint configuration, but not pause/resume, stepping, stack, scope, or value inspection. Remaining prerequisites include production source/cache/integrity policy, bytecode source-map aggregation, launcher compiler-catalog distribution/authorization and update/output elevation, fuller negotiated MCP surface, and native debugger execution.
 
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
@@ -11,8 +11,11 @@ a private versioned, per-spawn-capability-authenticated IPC protocol. The child
 owns bounded BlueJS tab realms and accepts only complete caller-authorized
 source/resolver graphs, returning source-free outcomes and aggregate accounting.
 An explicitly configured core route now forwards one loaded HTTP(S) document's
-inline JavaScript declarations as core-minted closed one-module graphs and
-closes their child realms on navigation or tab removal. The explicit
+inline JavaScript and explicit BlueTS declarations as core-minted closed
+one-module graphs in original DOM order, and closes their child realms on
+navigation or tab removal. The BlueTS child profile is fixed to checked direct
+lowering with no ambient declarations or page-selected resolver/compiler
+options. The explicit
 `blueice-launcher --out-of-process-bluejs` mode creates that endpoint and token
 per core generation, passes them only to its core child, and retains the
 `SpawnedBlueJsHost` supervisor through normal shutdown or a cutover. Neither
@@ -157,20 +160,25 @@ The initial implementation completes the work that has no BlueJS dependency befo
   regression verifies the transport, lifecycle, and stale-target routes.
 - A parsed `Page` now discovers the explicit non-portable `application/x-blueice-typescript` and `application/x-blueice-typescript-module` declarations in document order, retaining inline source or an external `src` as data. It never grants loading authority or evaluates them: a future page loader must apply origin, feature-profile, integrity, resolver, and resource policy before assembling the `AuthorizedModuleLoader` for direct admission.
 - As a deliberately bounded normal-page fixture seam, `DirectPageScriptHost::execute_inline` may admit one inline declaration only. It derives a canonical module ID from core tab/document-generation/declaration identities and creates a one-module closed loader, so it neither embeds caller text in an identity nor reads an external source. `DirectPageInlineExecutor` can invoke that seam automatically only when a core owner explicitly selects it. By default it rejects and reports external `src` without reflecting the page-controlled URL; `PageScriptSourceAuthorizer` is the sole optional core-owned authority that can turn that declaration into a supplied closed graph plus resolver fingerprint. The executor never fetches, resolves, or falls back itself. A real fetch/cache/integrity implementation and remaining host bindings remain open.
-- The out-of-process portion of that remaining work now has a deliberately
-  narrow bridge: `OutOfProcessJavaScriptPageExecutor`, selected only when core
+- The out-of-process portion now has a deliberately narrow shared-realm
+  bridge: `OutOfProcessJavaScriptPageExecutor`, selected only when core
   receives both a trusted child endpoint and its per-spawn capability token,
-  turns each loaded HTTP(S) tab/document generation's inline JavaScript into a
-  core-minted one-module graph. It redacts child outcomes to existing reports,
-  rejects external `src` without reflecting it, and sends exact realm closes on
-  navigation or tab removal. `SpawnedBlueJsHost::spawn_for_core` preserves
-  launcher supervision while handing that configuration to one trusted core.
-  `blueice-launcher --out-of-process-bluejs` now creates the child itself and
-  retains it as part of the core generation lifecycle; cutover creates a fresh
-  child/capability pair for the replacement core. There is no document
-  binding, DOM/event callback, fetch/cache, URL or import-map resolution,
-  external graph authority, or shared BlueTS realm; those broader host
-  requirements remain open.
+  inventories supported JavaScript and explicit BlueTS declarations under one
+  DOM-order ordinal sequence, and turns each inline record into a core-minted
+  closed one-module graph. The private v2 child protocol carries a trusted
+  language tag; JavaScript follows the normal BlueJS parser while BlueTS uses
+  only an `AuthorizedModuleLoader` derived from that graph and child-fixed
+  checked options before `blueice-bluets-bluejs` directly attaches it to the
+  same `BlueJsPageRuntime`. It redacts child outcomes into separate existing
+  JavaScript/BlueTS report lanes, rejects external `src` without reflecting it,
+  and sends exact realm closes on navigation or tab removal.
+  `SpawnedBlueJsHost::spawn_for_core` preserves launcher supervision while
+  handing that configuration to one trusted core. `blueice-launcher
+  --out-of-process-bluejs` creates the child itself and retains it as part of
+  the core generation lifecycle; cutover creates a fresh child/capability pair
+  for the replacement core. There is no document binding, DOM/event callback,
+  fetch/cache, URL or import-map resolution, external graph authority, or
+  page-selected compiler profile; those broader host requirements remain open.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.
 - The [BlueTS test report](TEST_REPORT.md) records the complete per-platform test-suite results, the TypeScript 5.9.3 oracle matrix and per-file line coverage for `blueice-bluets` and `blueice-bluets-bluejs` (2026-09-21).
 

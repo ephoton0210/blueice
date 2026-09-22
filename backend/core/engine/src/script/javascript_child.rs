@@ -14,12 +14,18 @@
 //! expands the child's authority. It installs no document, DOM, event, IPC,
 //! storage, network, or URL binding in the child realm.
 
-use super::{BlueJsPageScriptDeclaration, BlueJsPageScriptKind};
-use crate::script::javascript::{JavaScriptPageExecutionReport, PageJavaScriptExecutor};
+use super::{
+    direct_page::DirectPageScriptKind, BlueJsPageScriptKind, CombinedPageScriptDeclaration,
+    CombinedPageScriptLanguage,
+};
+use crate::script::javascript::{
+    BlueTsPageExecutionReport, JavaScriptPageExecutionReport, PageJavaScriptExecutor,
+};
 use crate::{Page, TabId, TabManager};
 use blueice_ipc::page_host::{
     self, PageHostDocument, PageHostErrorCode, PageHostModuleGraph, PageHostReply, PageHostRequest,
-    PageHostScript, PageHostScriptKind, PageHostScriptOutcome, PageHostSource,
+    PageHostScript, PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome,
+    PageHostSource,
 };
 use blueice_net::canonical_http_origin;
 use std::collections::{BTreeMap, VecDeque};
@@ -111,6 +117,7 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     child: C,
     live_documents: BTreeMap<TabId, LiveDocument>,
     reports: VecDeque<JavaScriptPageExecutionReport>,
+    blue_ts_reports: VecDeque<BlueTsPageExecutionReport>,
 }
 
 impl OutOfProcessJavaScriptPageExecutor<PageHostConnection> {
@@ -134,6 +141,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             child,
             live_documents: BTreeMap::new(),
             reports: VecDeque::new(),
+            blue_ts_reports: VecDeque::new(),
         }
     }
 
@@ -150,6 +158,26 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             }
         }
         self.reports = remaining;
+        reports
+    }
+
+    /// Drains only this tab's explicit BlueTS outcomes. The private host
+    /// executes them in the same BlueJS realm as JavaScript, but the public
+    /// report lane remains language-specific and source-free.
+    pub fn drain_blue_ts_reports_for_tab(
+        &mut self,
+        tab_id: TabId,
+    ) -> Vec<BlueTsPageExecutionReport> {
+        let mut reports = Vec::new();
+        let mut remaining = VecDeque::with_capacity(self.blue_ts_reports.len());
+        while let Some(report) = self.blue_ts_reports.pop_front() {
+            if blue_ts_report_tab_id(&report) == tab_id.as_u64() {
+                reports.push(report);
+            } else {
+                remaining.push_back(report);
+            }
+        }
+        self.blue_ts_reports = remaining;
         reports
     }
 
@@ -205,18 +233,23 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
     }
 
     fn synchronize_document(&mut self, tab_id: TabId, page: &Page, identity: LiveDocument) {
-        let declarations = page.blue_js_script_declarations();
-        let (document, mut local_reports) =
+        let declarations = page.combined_page_script_declarations();
+        let (document, mut local_reports, mut local_blue_ts_reports) =
             inline_authorized_document(tab_id, &identity, declarations);
         let inline_scripts: Vec<_> = document
             .scripts
             .iter()
-            .map(|script| (script.ordinal, core_kind(script.kind)))
+            .map(|script| (script.ordinal, script.language, script.kind))
             .collect();
         let result = self.child.synchronize_document(document);
         match result {
             Ok(PageHostReply::Synchronized { reports, .. }) => {
-                local_reports.extend(reports.into_iter().map(child_report));
+                for report in reports {
+                    match child_report(report) {
+                        ChildExecutionReport::JavaScript(report) => local_reports.push(report),
+                        ChildExecutionReport::BlueTs(report) => local_blue_ts_reports.push(report),
+                    }
+                }
             }
             Ok(PageHostReply::Error { code, .. }) => {
                 // A child-side request rejection must not leave an old realm
@@ -225,32 +258,40 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 // successor did in fact activate.
                 self.close_page(tab_id);
                 let category = child_error_category(code);
-                local_reports.extend(inline_scripts.into_iter().map(|(ordinal, kind)| {
-                    rejected_report(
+                for (ordinal, language, kind) in inline_scripts {
+                    push_child_failure_report(
+                        (&mut local_reports, &mut local_blue_ts_reports),
                         tab_id,
                         identity.document_generation,
                         ordinal,
+                        language,
                         kind,
                         category,
-                    )
-                }));
+                    );
+                }
             }
             Ok(_) | Err(_) => {
                 self.close_page(tab_id);
-                local_reports.extend(inline_scripts.into_iter().map(|(ordinal, kind)| {
-                    rejected_report(
+                for (ordinal, language, kind) in inline_scripts {
+                    push_child_failure_report(
+                        (&mut local_reports, &mut local_blue_ts_reports),
                         tab_id,
                         identity.document_generation,
                         ordinal,
+                        language,
                         kind,
                         "out-of-process JavaScript host is unavailable",
-                    )
-                }));
+                    );
+                }
             }
         }
         local_reports.sort_by_key(report_ordinal);
+        local_blue_ts_reports.sort_by_key(blue_ts_report_ordinal);
         for report in local_reports {
             self.push_report(report);
+        }
+        for report in local_blue_ts_reports {
+            self.push_blue_ts_report(report);
         }
         self.live_documents.insert(tab_id, identity);
     }
@@ -260,6 +301,13 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             self.reports.pop_front();
         }
         self.reports.push_back(report);
+    }
+
+    fn push_blue_ts_report(&mut self, report: BlueTsPageExecutionReport) {
+        if self.blue_ts_reports.len() == MAX_EXECUTION_REPORTS {
+            self.blue_ts_reports.pop_front();
+        }
+        self.blue_ts_reports.push_back(report);
     }
 }
 
@@ -271,26 +319,41 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
     fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport> {
         Self::drain_reports_for_tab(self, tab_id)
     }
+
+    fn supports_blue_ts_page_execution(&self) -> bool {
+        true
+    }
+
+    fn drain_blue_ts_reports_for_tab(&mut self, tab_id: TabId) -> Vec<BlueTsPageExecutionReport> {
+        Self::drain_blue_ts_reports_for_tab(self, tab_id)
+    }
 }
 
 fn inline_authorized_document(
     tab_id: TabId,
     identity: &LiveDocument,
-    declarations: Vec<BlueJsPageScriptDeclaration>,
-) -> (PageHostDocument, Vec<JavaScriptPageExecutionReport>) {
+    declarations: Vec<CombinedPageScriptDeclaration>,
+) -> (
+    PageHostDocument,
+    Vec<JavaScriptPageExecutionReport>,
+    Vec<BlueTsPageExecutionReport>,
+) {
     let mut scripts = Vec::new();
     let mut reports = Vec::new();
+    let mut blue_ts_reports = Vec::new();
     for declaration in declarations {
         match declaration {
-            BlueJsPageScriptDeclaration::Inline {
+            CombinedPageScriptDeclaration::Inline {
                 ordinal,
-                kind,
+                language,
                 source,
             } => {
-                let module_id = inline_module_id(tab_id, identity.document_generation, ordinal);
+                let module_id =
+                    inline_module_id(tab_id, identity.document_generation, ordinal, language);
                 scripts.push(PageHostScript {
                     ordinal,
-                    kind: child_kind(kind),
+                    language: child_language(language),
+                    kind: child_kind(language),
                     graph: PageHostModuleGraph {
                         entry: module_id.clone(),
                         modules: vec![PageHostSource::new(module_id, source)],
@@ -299,15 +362,26 @@ fn inline_authorized_document(
                     },
                 });
             }
-            BlueJsPageScriptDeclaration::External { ordinal, kind, .. } => {
-                reports.push(rejected_report(
+            CombinedPageScriptDeclaration::External {
+                ordinal, language, ..
+            } => match language {
+                CombinedPageScriptLanguage::JavaScript(kind) => reports.push(rejected_report(
                     tab_id,
                     identity.document_generation,
                     ordinal,
                     kind,
                     "external JavaScript declarations require an authorized loader",
-                ))
-            }
+                )),
+                CombinedPageScriptLanguage::BlueTs(kind) => {
+                    blue_ts_reports.push(rejected_blue_ts_report(
+                        tab_id,
+                        identity.document_generation,
+                        ordinal,
+                        kind,
+                        "external BlueTS declarations require an authorized loader",
+                    ))
+                }
+            },
         }
     }
     (
@@ -318,6 +392,7 @@ fn inline_authorized_document(
             scripts,
         },
         reports,
+        blue_ts_reports,
     )
 }
 
@@ -329,27 +404,66 @@ fn live_page_identity(page: &Page) -> Option<LiveDocument> {
     })
 }
 
-fn inline_module_id(tab_id: TabId, document_generation: u64, ordinal: u32) -> String {
+fn inline_module_id(
+    tab_id: TabId,
+    document_generation: u64,
+    ordinal: u32,
+    language: CombinedPageScriptLanguage,
+) -> String {
+    let extension = match language {
+        CombinedPageScriptLanguage::JavaScript(_) => "js",
+        CombinedPageScriptLanguage::BlueTs(_) => "ts",
+    };
     format!(
-        "blueice://page/tab-{}/document-{document_generation}/inline-{ordinal}.js",
+        "blueice://page/tab-{}/document-{document_generation}/inline-{ordinal}.{extension}",
         tab_id.as_u64()
     )
 }
 
-fn child_report(report: page_host::PageHostScriptReport) -> JavaScriptPageExecutionReport {
-    match report.outcome {
-        PageHostScriptOutcome::Executed => JavaScriptPageExecutionReport::Executed {
-            tab_id: report.tab_id,
-            document_generation: report.document_generation,
-            ordinal: report.ordinal,
-            kind: core_kind(report.kind),
+enum ChildExecutionReport {
+    JavaScript(JavaScriptPageExecutionReport),
+    BlueTs(BlueTsPageExecutionReport),
+}
+
+fn child_report(report: page_host::PageHostScriptReport) -> ChildExecutionReport {
+    match report.language {
+        PageHostScriptLanguage::JavaScript => match report.outcome {
+            PageHostScriptOutcome::Executed => {
+                ChildExecutionReport::JavaScript(JavaScriptPageExecutionReport::Executed {
+                    tab_id: report.tab_id,
+                    document_generation: report.document_generation,
+                    ordinal: report.ordinal,
+                    kind: core_js_kind(report.kind),
+                })
+            }
+            PageHostScriptOutcome::Rejected { category } => {
+                ChildExecutionReport::JavaScript(JavaScriptPageExecutionReport::Rejected {
+                    tab_id: report.tab_id,
+                    document_generation: report.document_generation,
+                    ordinal: report.ordinal,
+                    kind: core_js_kind(report.kind),
+                    category: leak_category(category),
+                })
+            }
         },
-        PageHostScriptOutcome::Rejected { category } => JavaScriptPageExecutionReport::Rejected {
-            tab_id: report.tab_id,
-            document_generation: report.document_generation,
-            ordinal: report.ordinal,
-            kind: core_kind(report.kind),
-            category: leak_category(category),
+        PageHostScriptLanguage::BlueTs => match report.outcome {
+            PageHostScriptOutcome::Executed => {
+                ChildExecutionReport::BlueTs(BlueTsPageExecutionReport::Executed {
+                    tab_id: report.tab_id,
+                    document_generation: report.document_generation,
+                    ordinal: report.ordinal,
+                    kind: core_blue_ts_kind(report.kind),
+                })
+            }
+            PageHostScriptOutcome::Rejected { category } => {
+                ChildExecutionReport::BlueTs(BlueTsPageExecutionReport::Rejected {
+                    tab_id: report.tab_id,
+                    document_generation: report.document_generation,
+                    ordinal: report.ordinal,
+                    kind: core_blue_ts_kind(report.kind),
+                    category: leak_blue_ts_category(category),
+                })
+            }
         },
     }
 }
@@ -381,6 +495,30 @@ fn leak_category(category: String) -> &'static str {
             "authorized JavaScript graph is missing a static resolution"
         }
         _ => "out-of-process JavaScript host rejected the page script",
+    }
+}
+
+fn leak_blue_ts_category(category: String) -> &'static str {
+    match category.as_str() {
+        "BlueTS compilation rejected the page script" => {
+            "BlueTS compilation rejected the page script"
+        }
+        "BlueTS direct lowering rejected the page script" => {
+            "BlueTS direct lowering rejected the page script"
+        }
+        "BlueJS compilation rejected the direct BlueTS page script" => {
+            "BlueJS compilation rejected the direct BlueTS page script"
+        }
+        "JavaScript page resource policy rejected the page script" => {
+            "JavaScript page resource policy rejected the page script"
+        }
+        "authorized JavaScript graph rejected the page script" => {
+            "authorized JavaScript graph rejected the page script"
+        }
+        "BlueJS page execution failed" => "BlueJS page execution failed",
+        "BlueJS page host rejected the page script" => "BlueJS page host rejected the page script",
+        "authorized BlueTS graph is invalid" => "authorized BlueTS graph is invalid",
+        _ => "out-of-process BlueTS host rejected the page script",
     }
 }
 
@@ -416,17 +554,83 @@ fn rejected_report(
     }
 }
 
-fn child_kind(kind: BlueJsPageScriptKind) -> PageHostScriptKind {
-    match kind {
-        BlueJsPageScriptKind::Classic => PageHostScriptKind::Classic,
-        BlueJsPageScriptKind::Module => PageHostScriptKind::Module,
+fn rejected_blue_ts_report(
+    tab_id: TabId,
+    document_generation: u64,
+    ordinal: u32,
+    kind: DirectPageScriptKind,
+    category: &'static str,
+) -> BlueTsPageExecutionReport {
+    BlueTsPageExecutionReport::Rejected {
+        tab_id: tab_id.as_u64(),
+        document_generation,
+        ordinal,
+        kind,
+        category,
     }
 }
 
-fn core_kind(kind: PageHostScriptKind) -> BlueJsPageScriptKind {
+fn push_child_failure_report(
+    (java_script_reports, blue_ts_reports): (
+        &mut Vec<JavaScriptPageExecutionReport>,
+        &mut Vec<BlueTsPageExecutionReport>,
+    ),
+    tab_id: TabId,
+    document_generation: u64,
+    ordinal: u32,
+    language: PageHostScriptLanguage,
+    kind: PageHostScriptKind,
+    category: &'static str,
+) {
+    match language {
+        PageHostScriptLanguage::JavaScript => java_script_reports.push(rejected_report(
+            tab_id,
+            document_generation,
+            ordinal,
+            core_js_kind(kind),
+            category,
+        )),
+        PageHostScriptLanguage::BlueTs => blue_ts_reports.push(rejected_blue_ts_report(
+            tab_id,
+            document_generation,
+            ordinal,
+            core_blue_ts_kind(kind),
+            category,
+        )),
+    }
+}
+
+fn child_language(language: CombinedPageScriptLanguage) -> PageHostScriptLanguage {
+    match language {
+        CombinedPageScriptLanguage::JavaScript(_) => PageHostScriptLanguage::JavaScript,
+        CombinedPageScriptLanguage::BlueTs(_) => PageHostScriptLanguage::BlueTs,
+    }
+}
+
+fn child_kind(language: CombinedPageScriptLanguage) -> PageHostScriptKind {
+    match language {
+        CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Classic)
+        | CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Classic) => {
+            PageHostScriptKind::Classic
+        }
+        CombinedPageScriptLanguage::JavaScript(BlueJsPageScriptKind::Module)
+        | CombinedPageScriptLanguage::BlueTs(DirectPageScriptKind::Module) => {
+            PageHostScriptKind::Module
+        }
+    }
+}
+
+fn core_js_kind(kind: PageHostScriptKind) -> BlueJsPageScriptKind {
     match kind {
         PageHostScriptKind::Classic => BlueJsPageScriptKind::Classic,
         PageHostScriptKind::Module => BlueJsPageScriptKind::Module,
+    }
+}
+
+fn core_blue_ts_kind(kind: PageHostScriptKind) -> DirectPageScriptKind {
+    match kind {
+        PageHostScriptKind::Classic => DirectPageScriptKind::Classic,
+        PageHostScriptKind::Module => DirectPageScriptKind::Module,
     }
 }
 
@@ -441,6 +645,20 @@ fn report_ordinal(report: &JavaScriptPageExecutionReport) -> u32 {
     match report {
         JavaScriptPageExecutionReport::Executed { ordinal, .. }
         | JavaScriptPageExecutionReport::Rejected { ordinal, .. } => *ordinal,
+    }
+}
+
+fn blue_ts_report_tab_id(report: &BlueTsPageExecutionReport) -> u64 {
+    match report {
+        BlueTsPageExecutionReport::Executed { tab_id, .. }
+        | BlueTsPageExecutionReport::Rejected { tab_id, .. } => *tab_id,
+    }
+}
+
+fn blue_ts_report_ordinal(report: &BlueTsPageExecutionReport) -> u32 {
+    match report {
+        BlueTsPageExecutionReport::Executed { ordinal, .. }
+        | BlueTsPageExecutionReport::Rejected { ordinal, .. } => *ordinal,
     }
 }
 
@@ -539,6 +757,61 @@ mod tests {
                     ordinal: 2,
                     kind: BlueJsPageScriptKind::Classic,
                     category: "external JavaScript declarations require an authorized loader",
+                },
+            ]
+        );
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn core_routes_interleaved_bluets_and_javascript_to_one_child_realm() {
+        let (path, token, child) = spawn_child();
+        let (tabs, tab_id) = loaded_tabs(
+            concat!(
+                "<script>globalThis.beforeBlueTs = true;</script>",
+                "<script type=\"application/x-blueice-typescript\">const sharedAnswer: number = 42;</script>",
+                "<script>if (!globalThis.beforeBlueTs || sharedAnswer !== 42) throw 'shared realm failed';</script>",
+                "<script type=\"application/x-blueice-typescript\" src=\"untrusted.ts\"></script>"
+            ),
+            "https://example.test/app/index.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::connect(&path, &token).unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.drain_reports_for_tab(tab_id),
+            vec![
+                JavaScriptPageExecutionReport::Executed {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 0,
+                    kind: BlueJsPageScriptKind::Classic,
+                },
+                JavaScriptPageExecutionReport::Executed {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 2,
+                    kind: BlueJsPageScriptKind::Classic,
+                },
+            ]
+        );
+        assert_eq!(
+            executor.drain_blue_ts_reports_for_tab(tab_id),
+            vec![
+                BlueTsPageExecutionReport::Executed {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 1,
+                    kind: DirectPageScriptKind::Classic,
+                },
+                BlueTsPageExecutionReport::Rejected {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 3,
+                    kind: DirectPageScriptKind::Classic,
+                    category: "external BlueTS declarations require an authorized loader",
                 },
             ]
         );

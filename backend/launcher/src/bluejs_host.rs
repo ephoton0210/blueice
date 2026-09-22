@@ -18,10 +18,18 @@ use blueice_bluejs::{
     BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1, BlueJsSourceIdentity,
     CompileError, Module, ParseError, RuntimeError, Value,
 };
+use blueice_bluets::{
+    AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
+    RuntimePolicy,
+};
+use blueice_bluets_bluejs::{
+    compile_direct_module_graph, compile_direct_script, BridgeError, DirectModuleGraph,
+    DirectScript,
+};
 use blueice_ipc::page_host::{
     self, PageHostDocument, PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats,
-    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptOutcome,
-    PageHostScriptReport, PageHostSource, PageHostStaticResolution,
+    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
+    PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -162,19 +170,21 @@ impl BlueJsChildHost {
 
         let mut reports = Vec::with_capacity(prepared.len());
         for prepared in prepared {
-            let (ordinal, kind, outcome) = match prepared {
+            let (ordinal, language, kind, outcome) = match prepared {
                 PreparedScript::Rejected {
                     ordinal,
+                    language,
                     kind,
                     category,
                 } => (
                     ordinal,
+                    language,
                     kind,
                     PageHostScriptOutcome::Rejected {
                         category: category.to_string(),
                     },
                 ),
-                PreparedScript::Classic {
+                PreparedScript::JavaScriptClassic {
                     ordinal,
                     source,
                     program,
@@ -186,9 +196,14 @@ impl BlueJsChildHost {
                         source,
                         program,
                     );
-                    (ordinal, PageHostScriptKind::Classic, outcome)
+                    (
+                        ordinal,
+                        PageHostScriptLanguage::JavaScript,
+                        PageHostScriptKind::Classic,
+                        outcome,
+                    )
                 }
-                PreparedScript::Module {
+                PreparedScript::JavaScriptModule {
                     ordinal,
                     graph,
                     programs,
@@ -200,13 +215,47 @@ impl BlueJsChildHost {
                         graph,
                         programs,
                     );
-                    (ordinal, PageHostScriptKind::Module, outcome)
+                    (
+                        ordinal,
+                        PageHostScriptLanguage::JavaScript,
+                        PageHostScriptKind::Module,
+                        outcome,
+                    )
+                }
+                PreparedScript::BlueTsClassic { ordinal, script } => {
+                    let outcome = execute_bluets_classic(
+                        &mut self.runtime,
+                        document.tab_id,
+                        &origin,
+                        &script,
+                    );
+                    (
+                        ordinal,
+                        PageHostScriptLanguage::BlueTs,
+                        PageHostScriptKind::Classic,
+                        outcome,
+                    )
+                }
+                PreparedScript::BlueTsModule { ordinal, graph } => {
+                    let outcome = execute_bluets_module_graph(
+                        &mut self.runtime,
+                        document.tab_id,
+                        &origin,
+                        &graph,
+                    );
+                    (
+                        ordinal,
+                        PageHostScriptLanguage::BlueTs,
+                        PageHostScriptKind::Module,
+                        outcome,
+                    )
                 }
             };
             reports.push(PageHostScriptReport {
                 tab_id: document.tab_id,
                 document_generation: document.document_generation,
                 ordinal,
+                language,
                 kind,
                 outcome,
             });
@@ -263,42 +312,69 @@ impl Default for BlueJsChildHost {
 enum PreparedScript {
     Rejected {
         ordinal: u32,
+        language: PageHostScriptLanguage,
         kind: PageHostScriptKind,
         category: &'static str,
     },
-    Classic {
+    JavaScriptClassic {
         ordinal: u32,
         source: PageHostSource,
         program: BlueJsProgramV1,
     },
-    Module {
+    JavaScriptModule {
         ordinal: u32,
         graph: PageHostModuleGraph,
         programs: BTreeMap<String, BlueJsProgramV1>,
+    },
+    BlueTsClassic {
+        ordinal: u32,
+        script: Box<DirectScript>,
+    },
+    BlueTsModule {
+        ordinal: u32,
+        graph: Box<DirectModuleGraph>,
     },
 }
 
 fn prepare_script(script: PageHostScript) -> PreparedScript {
     let ordinal = script.ordinal;
+    let language = script.language;
     let kind = script.kind;
-    let prepared = match kind {
-        PageHostScriptKind::Classic => {
-            prepare_classic(script.graph).map(|(source, program)| PreparedScript::Classic {
-                ordinal,
-                source,
-                program,
+    let prepared = match (language, kind) {
+        (PageHostScriptLanguage::JavaScript, PageHostScriptKind::Classic) => {
+            prepare_classic(script.graph).map(|(source, program)| {
+                PreparedScript::JavaScriptClassic {
+                    ordinal,
+                    source,
+                    program,
+                }
             })
         }
-        PageHostScriptKind::Module => {
-            prepare_module_graph(script.graph).map(|(graph, programs)| PreparedScript::Module {
+        (PageHostScriptLanguage::JavaScript, PageHostScriptKind::Module) => {
+            prepare_module_graph(script.graph).map(|(graph, programs)| {
+                PreparedScript::JavaScriptModule {
+                    ordinal,
+                    graph,
+                    programs,
+                }
+            })
+        }
+        (PageHostScriptLanguage::BlueTs, PageHostScriptKind::Classic) => {
+            prepare_bluets_classic(script.graph).map(|script| PreparedScript::BlueTsClassic {
                 ordinal,
-                graph,
-                programs,
+                script: Box::new(script),
+            })
+        }
+        (PageHostScriptLanguage::BlueTs, PageHostScriptKind::Module) => {
+            prepare_bluets_module_graph(script.graph).map(|graph| PreparedScript::BlueTsModule {
+                ordinal,
+                graph: Box::new(graph),
             })
         }
     };
     prepared.unwrap_or_else(|category| PreparedScript::Rejected {
         ordinal,
+        language,
         kind,
         category,
     })
@@ -335,6 +411,106 @@ fn prepare_module_graph(
         programs.insert(module_id.clone(), program);
     }
     Ok((graph, programs))
+}
+
+/// Prepares an explicit BlueTS classic declaration through the same closed
+/// caller-authorized graph validation used for JavaScript. The compiler sees
+/// no filesystem, URL, import-map, profile, ambient declaration, or callback
+/// authority: it receives only this in-memory loader and child-fixed options.
+fn prepare_bluets_classic(graph: PageHostModuleGraph) -> Result<DirectScript, &'static str> {
+    let modules = validate_graph(&graph)?;
+    if modules.len() != 1 || !graph.resolutions.is_empty() {
+        return Err("classic BlueTS source graph is not closed");
+    }
+    let loader = bluets_loader(&graph, modules)?;
+    compile_direct_script(&graph.entry, &loader, bluets_compiler_options(&graph))
+        .map_err(bluets_bridge_category)
+}
+
+/// Prepares a complete explicit BlueTS module graph without giving BlueTS a
+/// resolver beyond the exact static edges serialized by its caller.
+fn prepare_bluets_module_graph(
+    graph: PageHostModuleGraph,
+) -> Result<DirectModuleGraph, &'static str> {
+    let modules = validate_graph(&graph)?;
+    validate_resolutions(&graph, &modules)?;
+    let loader = bluets_loader(&graph, modules)?;
+    compile_direct_module_graph(&graph.entry, &loader, bluets_compiler_options(&graph))
+        .map_err(bluets_bridge_category)
+}
+
+fn bluets_loader(
+    graph: &PageHostModuleGraph,
+    modules: BTreeMap<String, PageHostSource>,
+) -> Result<AuthorizedModuleLoader, &'static str> {
+    let resolutions = graph.resolutions.iter().map(|resolution| {
+        AuthorizedModuleResolution::new(
+            resolution.from_module.clone(),
+            resolution.specifier.clone(),
+            resolution.canonical_target.clone(),
+        )
+    });
+    AuthorizedModuleLoader::new(
+        modules
+            .into_values()
+            .map(|source| AuthorizedModule::new(source.canonical_module_id, source.source)),
+        resolutions,
+    )
+    .map_err(|_| "authorized BlueTS graph is invalid")
+}
+
+fn bluets_compiler_options(graph: &PageHostModuleGraph) -> CompilerOptions {
+    let mut options = CompilerOptions {
+        runtime_policy: RuntimePolicy::Checked,
+        resolver_fingerprint: graph.resolver_fingerprint.clone(),
+        require_declared_global_calls: true,
+        ..CompilerOptions::default()
+    };
+    // The transport and BlueJS child already use the smaller page-host source
+    // limits. Carry them into BlueTS too so a direct compilation cannot do
+    // substantially more work than the closed graph the child admitted.
+    options.limits.max_modules = MAX_MODULES_PER_GRAPH;
+    options.limits.max_total_source_bytes = MAX_SOURCE_BYTES_PER_DOCUMENT;
+    options
+}
+
+fn execute_bluets_classic(
+    runtime: &mut BlueJsPageRuntime,
+    tab_id: u64,
+    origin: &BlueJsPageOrigin,
+    script: &DirectScript,
+) -> PageHostScriptOutcome {
+    let attachment = match script.attach_in_page_realm(runtime, tab_id, origin) {
+        Ok(attachment) => attachment,
+        Err(error) => return rejected(bluets_bridge_category(error)),
+    };
+    match runtime
+        .execute_program(tab_id, attachment.handle)
+        .map(|_: Value| ())
+    {
+        Ok(()) => PageHostScriptOutcome::Executed,
+        Err(error) => rejected(page_runtime_category(error)),
+    }
+}
+
+fn execute_bluets_module_graph(
+    runtime: &mut BlueJsPageRuntime,
+    tab_id: u64,
+    origin: &BlueJsPageOrigin,
+    graph: &DirectModuleGraph,
+) -> PageHostScriptOutcome {
+    let attachment = match graph.attach_in_page_realm(runtime, tab_id, origin) {
+        Ok(attachment) => attachment,
+        Err(error) => return rejected(bluets_bridge_category(error)),
+    };
+    match runtime.execute_module_graph(
+        tab_id,
+        attachment.entry.handle,
+        attachment.modules.values().map(|module| module.handle),
+    ) {
+        Ok(_) => PageHostScriptOutcome::Executed,
+        Err(error) => rejected(page_runtime_category(error)),
+    }
 }
 
 fn validate_graph(
@@ -517,6 +693,20 @@ fn parse_category(_: ParseError) -> &'static str {
 
 fn compile_category(_: CompileError) -> &'static str {
     "BlueJS compilation rejected the page script"
+}
+
+fn bluets_bridge_category(error: BridgeError) -> &'static str {
+    match error {
+        BridgeError::BlueTs(_) => "BlueTS compilation rejected the page script",
+        BridgeError::PageRuntime(error) => page_runtime_category(error),
+        BridgeError::BlueJs(_) | BridgeError::BlueJsDebug(_) => {
+            "BlueJS compilation rejected the direct BlueTS page script"
+        }
+        BridgeError::UnsupportedRuntimeTarget { .. }
+        | BridgeError::InvalidSourceIdentity(_)
+        | BridgeError::ProvenanceAttachment(_)
+        | BridgeError::DebugAttachment(_) => "BlueTS direct lowering rejected the page script",
+    }
 }
 
 fn page_runtime_category(error: BlueJsPageRuntimeError) -> &'static str {
@@ -918,6 +1108,17 @@ mod tests {
         let id = format!("blueice://page/inline-{ordinal}.js");
         PageHostScript {
             ordinal,
+            language: PageHostScriptLanguage::JavaScript,
+            kind: PageHostScriptKind::Classic,
+            graph: graph(&id, vec![PageHostSource::new(id.clone(), source)]),
+        }
+    }
+
+    fn blue_ts_classic(ordinal: u32, source: &str) -> PageHostScript {
+        let id = format!("blueice://page/inline-{ordinal}.ts");
+        PageHostScript {
+            ordinal,
+            language: PageHostScriptLanguage::BlueTs,
             kind: PageHostScriptKind::Classic,
             graph: graph(&id, vec![PageHostSource::new(id.clone(), source)]),
         }
@@ -957,11 +1158,69 @@ mod tests {
     }
 
     #[test]
+    fn direct_bluets_and_javascript_execute_in_document_order_in_one_realm() {
+        let mut host = BlueJsChildHost::default();
+        let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(
+                1,
+                vec![
+                    classic(0, "globalThis.beforeBlueTs = true;"),
+                    // The TypeScript annotation makes this invalid JavaScript
+                    // source. Success therefore proves the child used direct
+                    // BlueTS lowering rather than emitted-JavaScript reparse.
+                    blue_ts_classic(1, "const sharedAnswer: number = 42;"),
+                    classic(
+                        2,
+                        "if (!globalThis.beforeBlueTs || sharedAnswer !== 42) throw 'realm/order failed';",
+                    ),
+                ],
+            ),
+        });
+        let PageHostReply::Synchronized { reports, .. } = reply else {
+            panic!("expected synchronized reply");
+        };
+        assert_eq!(
+            reports
+                .iter()
+                .map(|report| (report.ordinal, report.language, &report.outcome))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    0,
+                    PageHostScriptLanguage::JavaScript,
+                    &PageHostScriptOutcome::Executed
+                ),
+                (
+                    1,
+                    PageHostScriptLanguage::BlueTs,
+                    &PageHostScriptOutcome::Executed
+                ),
+                (
+                    2,
+                    PageHostScriptLanguage::JavaScript,
+                    &PageHostScriptOutcome::Executed
+                ),
+            ]
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetRealmStats {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::RealmStats(PageHostRealmStats {
+                program_count: 3,
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn module_graph_uses_only_the_explicit_static_resolution_records() {
         let entry = "blueice://page/entry.js";
         let dependency = "blueice://page/dependency.js";
         let mut module = PageHostScript {
             ordinal: 0,
+            language: PageHostScriptLanguage::JavaScript,
             kind: PageHostScriptKind::Module,
             graph: graph(
                 entry,
@@ -993,11 +1252,57 @@ mod tests {
     }
 
     #[test]
+    fn direct_bluets_module_graph_uses_only_the_explicit_static_resolution_records() {
+        let entry = "blueice://page/entry.ts";
+        let dependency = "blueice://page/dependency.ts";
+        let mut module = PageHostScript {
+            ordinal: 0,
+            language: PageHostScriptLanguage::BlueTs,
+            kind: PageHostScriptKind::Module,
+            graph: graph(
+                entry,
+                vec![
+                    PageHostSource::new(
+                        entry,
+                        "import { answer } from './dependency.ts'; export const result: number = answer;",
+                    ),
+                    PageHostSource::new(dependency, "export const answer: number = 42;"),
+                ],
+            ),
+        };
+        module.graph.resolutions.push(PageHostStaticResolution {
+            from_module: entry.to_string(),
+            specifier: "./dependency.ts".to_string(),
+            canonical_target: dependency.to_string(),
+        });
+        let mut host = BlueJsChildHost::default();
+        let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(1, vec![module]),
+        });
+        assert!(matches!(
+            reply,
+            PageHostReply::Synchronized {
+                reports,
+                ..
+            } if matches!(
+                reports.as_slice(),
+                [PageHostScriptReport {
+                    language: PageHostScriptLanguage::BlueTs,
+                    kind: PageHostScriptKind::Module,
+                    outcome: PageHostScriptOutcome::Executed,
+                    ..
+                }]
+            )
+        ));
+    }
+
+    #[test]
     fn a_missing_module_resolution_admits_no_partial_graph_programs() {
         let entry = "blueice://page/entry.js";
         let dependency = "blueice://page/dependency.js";
         let script = PageHostScript {
             ordinal: 0,
+            language: PageHostScriptLanguage::JavaScript,
             kind: PageHostScriptKind::Module,
             graph: graph(
                 entry,
@@ -1090,6 +1395,7 @@ mod tests {
         source.source_hash = "fnv1a64:0000000000000000".to_string();
         let script = PageHostScript {
             ordinal: 0,
+            language: PageHostScriptLanguage::JavaScript,
             kind: PageHostScriptKind::Classic,
             graph: graph("blueice://page/main.js", vec![source]),
         };
@@ -1124,6 +1430,7 @@ mod tests {
         );
         let script = PageHostScript {
             ordinal: 0,
+            language: PageHostScriptLanguage::JavaScript,
             kind: PageHostScriptKind::Classic,
             graph: graph("blueice://page/too-large.js", vec![source]),
         };

@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 blueice-bluejs = { path = "../bluejs" }
+blueice-bluets = { path = "../bluets" }
+blueice-bluets-bluejs = { path = "../bluets-bluejs" }
 blueice-ipc = { path = "../ipc" }
 sysinfo = "0.39.6"
 serde = { version = "1", features = ["derive"] }

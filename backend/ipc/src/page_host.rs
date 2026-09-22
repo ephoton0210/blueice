@@ -13,15 +13,18 @@
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
 //!
-//! Version 1 deliberately covers document lifecycle plus classic and static
-//! ESM graph execution. It does not expose a debugger, DOM operation, runtime
-//! value, host callback, fetch/cache, or general client-facing API.
+//! Version 2 deliberately covers document lifecycle plus classic and static
+//! ESM graph execution for caller-classified standard JavaScript and explicit
+//! BlueTS declarations. BlueTS stays a child-fixed, direct-lowering profile:
+//! no compiler option, typing profile, resolver, or emitted JavaScript crosses
+//! this channel. It does not expose a debugger, DOM operation, runtime value,
+//! host callback, fetch/cache, or general client-facing API.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 1;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 2;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -85,11 +88,22 @@ pub enum PageHostScriptKind {
     Module,
 }
 
+/// The source language selected by the trusted page pipeline. An ordinary
+/// JavaScript declaration never becomes BlueTS merely because its source is
+/// syntactically accepted by the compiler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PageHostScriptLanguage {
+    JavaScript,
+    BlueTs,
+}
+
 /// One declaration in document order. Its graph is fully supplied before the
 /// child parses or executes anything.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PageHostScript {
     pub ordinal: u32,
+    pub language: PageHostScriptLanguage,
     pub kind: PageHostScriptKind,
     pub graph: PageHostModuleGraph,
 }
@@ -112,6 +126,7 @@ pub struct PageHostScriptReport {
     pub tab_id: u64,
     pub document_generation: u64,
     pub ordinal: u32,
+    pub language: PageHostScriptLanguage,
     pub kind: PageHostScriptKind,
     pub outcome: PageHostScriptOutcome,
 }
@@ -288,6 +303,7 @@ mod tests {
             origin: "https://example.test".to_string(),
             scripts: vec![PageHostScript {
                 ordinal: 0,
+                language: PageHostScriptLanguage::JavaScript,
                 kind: PageHostScriptKind::Classic,
                 graph: PageHostModuleGraph {
                     entry: "blueice://page/main.js".to_string(),
@@ -334,6 +350,7 @@ mod tests {
                 tab_id: 7,
                 document_generation: 3,
                 ordinal: 0,
+                language: PageHostScriptLanguage::JavaScript,
                 kind: PageHostScriptKind::Classic,
                 outcome: PageHostScriptOutcome::Executed,
             }],
@@ -358,6 +375,19 @@ mod tests {
                 protocol_version: PAGE_HOST_PROTOCOL_VERSION,
             }
         );
+        assert!(matches!(
+            negotiate(
+                &PageHostRequest::Hello {
+                    protocol_version: 1,
+                    session_token: token.to_string(),
+                },
+                token,
+            ),
+            PageHostReply::Error {
+                code: PageHostErrorCode::ProtocolVersion,
+                ..
+            }
+        ));
         assert!(matches!(
             negotiate(
                 &PageHostRequest::Hello {

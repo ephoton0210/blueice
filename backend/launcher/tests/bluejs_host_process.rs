@@ -11,7 +11,7 @@
 
 use blueice_ipc::page_host::{
     PageHostDocument, PageHostModuleGraph, PageHostReply, PageHostScript, PageHostScriptKind,
-    PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
 };
 use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
 use std::os::unix::net::UnixStream;
@@ -53,6 +53,7 @@ fn launcher_spawns_an_isolated_host_that_executes_closed_graphs_and_reaps_cleanl
     let dependency = "blueice://page/dependency.js";
     let mut module = PageHostScript {
         ordinal: 1,
+        language: PageHostScriptLanguage::JavaScript,
         kind: PageHostScriptKind::Module,
         graph: graph(
             entry,
@@ -73,6 +74,7 @@ fn launcher_spawns_an_isolated_host_that_executes_closed_graphs_and_reaps_cleanl
     let classic_id = "blueice://page/classic.js";
     let classic = PageHostScript {
         ordinal: 0,
+        language: PageHostScriptLanguage::JavaScript,
         kind: PageHostScriptKind::Classic,
         graph: graph(
             classic_id,
@@ -154,6 +156,7 @@ fn launcher_can_delegate_the_single_authenticated_connection_to_a_trusted_core()
                 1,
                 vec![PageHostScript {
                     ordinal: 0,
+                    language: PageHostScriptLanguage::JavaScript,
                     kind: PageHostScriptKind::Classic,
                     graph: graph(
                         source_id,

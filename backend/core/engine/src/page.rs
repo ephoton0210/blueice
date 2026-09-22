@@ -391,6 +391,16 @@ impl Page {
         crate::script::discover_blue_js_page_scripts(&self.doc)
     }
 
+    /// Returns every supported page-script declaration under one document-order
+    /// sequence. Only the launcher-supervised shared BlueTS/JavaScript host
+    /// consumes this inventory; it remains an observation API with no source
+    /// loader, compiler-profile, DOM, or execution authority.
+    pub fn combined_page_script_declarations(
+        &self,
+    ) -> Vec<crate::script::CombinedPageScriptDeclaration> {
+        crate::script::discover_combined_page_scripts(&self.doc)
+    }
+
     /// The identity of the currently loaded document within this page.
     ///
     /// This is intentionally crate-visible: it is a core lifecycle token, not
