@@ -302,9 +302,13 @@ impl Vm {
                 )
             })?
         };
+        let stack_base = self.stack.len();
         self.stack.push(Value::Object(iterator));
         let result = (|| {
             let next = self.get_property(&Value::Object(iterator), &"next".into())?;
+            // A getter or Proxy `get` trap may have produced `next` just now;
+            // the prototype walk below runs user code and allocates.
+            self.stack.push(next.clone());
             let base = self.base_iterator_prototype()?;
             let mut prototype = Some(iterator);
             while let Some(current) = prototype {
@@ -318,7 +322,7 @@ impl Vm {
                 heap.alloc_iterator_wrapper(iterator, next, prototype)
             })?))
         })();
-        self.stack.pop();
+        self.stack.truncate(stack_base);
         result
     }
 

@@ -340,6 +340,12 @@ impl Vm {
             resolve,
             reject,
         } = self.new_promise_capability(&promise_constructor)?;
+        // The capability's functions are referenced only from these locals
+        // while the child realm runs and the caller heap allocates wrappers
+        // and an error value before they are finally called.
+        let base = self.stack.len();
+        self.stack
+            .extend([promise.clone(), resolve.clone(), reject.clone()]);
         let record = self
             .shadow_realms
             .get(&this_id)
@@ -414,15 +420,14 @@ impl Vm {
                 "this ShadowRealm is already mid-call".into(),
             )),
         };
-        match outcome {
-            Ok(value) => {
-                self.call_native(resolve, Value::Undefined, vec![value], false)?;
-            }
-            Err(_) => {
-                let error = self.error_value(RuntimeError::TypeError(String::new()))?;
-                self.call_native(reject, Value::Undefined, vec![error], false)?;
-            }
-        }
+        let settled = match outcome {
+            Ok(value) => self.call_native(resolve, Value::Undefined, vec![value], false),
+            Err(_) => self
+                .error_value(RuntimeError::TypeError(String::new()))
+                .and_then(|error| self.call_native(reject, Value::Undefined, vec![error], false)),
+        };
+        self.stack.truncate(base);
+        settled?;
         Ok(promise)
     }
 
