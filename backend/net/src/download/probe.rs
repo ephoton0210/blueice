@@ -6,34 +6,35 @@
 //! is learned from (`phase-10-download-manager/PLAN.md`'s "Probe: a
 //! ranged `GET`, not `HEAD`").
 
-use crate::download::clearance::UrlCleared;
 use crate::download::backend;
-use crate::download::{http, DownloadError, DownloadOptions};
-use ureq::Agent;
+use crate::download::clearance::UrlCleared;
+use crate::download::{DownloadError, DownloadOptions, ensure_transfer_text_limit, http};
 use blueice_ipc::downloads::SingleStreamReason;
+use std::time::Duration;
+use ureq::Agent;
 use ureq::ResponseExt;
 
 /// The result of probing a URL with a one-byte ranged request: what the
 /// server actually does, not merely what it advertises.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Probe {
     /// The URL as requested.
-    pub url: String,
+    pub(crate) url: String,
     /// After redirects; segment requests go here directly.
-    pub final_url: String,
+    pub(crate) final_url: String,
     /// `None` when the server doesn't say.
-    pub total: Option<u64>,
+    pub(crate) total: Option<u64>,
     /// Whether the server answered the ranged probe with `206`.
-    pub accepts_ranges: bool,
-    pub etag: Option<String>,
-    pub last_modified: Option<String>,
-    pub content_type: Option<String>,
+    pub(crate) accepts_ranges: bool,
+    pub(crate) etag: Option<String>,
+    pub(crate) last_modified: Option<String>,
+    pub(crate) content_type: Option<String>,
     /// The raw `Content-Disposition` header, for [`crate::download::file_name`].
-    pub content_disposition: Option<String>,
+    pub(crate) content_disposition: Option<String>,
     /// Whether this backend's revision marker is strong enough to retain a
     /// partial file across a process restart. HTTP validators are; SFTP's
     /// coarse mtime is only a same-run change detector, not a resume proof.
-    pub restart_resume_safe: bool,
+    pub(crate) restart_resume_safe: bool,
 }
 
 /// What lets a later request confirm it is looking at the same bytes.
@@ -58,10 +59,65 @@ pub fn is_weak_etag(etag: &str) -> bool {
     etag.trim_start().starts_with("W/")
 }
 
+/// RFC 9110 permits a client to treat a `Last-Modified` value as strong only
+/// when the response's `Date` proves it is at least sixty seconds old. The
+/// margin accounts for servers that record modification times only to whole
+/// seconds, so two representations changed within one second cannot be
+/// silently spliced by a resumed range download.
+pub fn is_strong_last_modified(last_modified: &str, date: Option<&str>) -> bool {
+    let Ok(last_modified) = httpdate::parse_http_date(last_modified) else {
+        return false;
+    };
+    let Some(date) = date.and_then(|value| httpdate::parse_http_date(value).ok()) else {
+        return false;
+    };
+    matches!(date.duration_since(last_modified), Ok(age) if age >= Duration::from_secs(60))
+}
+
 impl Probe {
+    /// The URL the caller asked to probe.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    /// The final URL after redirects during the probe.
+    pub fn final_url(&self) -> &str {
+        &self.final_url
+    }
+
+    /// The resource size, if the server supplied one.
+    pub fn total_bytes(&self) -> Option<u64> {
+        self.total
+    }
+
+    /// Whether the probe proved that the server honors byte ranges.
+    pub fn accepts_ranges(&self) -> bool {
+        self.accepts_ranges
+    }
+
+    /// The server's ETag, if supplied.
+    pub fn etag(&self) -> Option<&str> {
+        self.etag.as_deref()
+    }
+
+    /// A `Last-Modified` value that was strong enough for `If-Range`.
+    pub fn last_modified(&self) -> Option<&str> {
+        self.last_modified.as_deref()
+    }
+
+    /// The response content type, if supplied.
+    pub fn content_type(&self) -> Option<&str> {
+        self.content_type.as_deref()
+    }
+
+    /// The response `Content-Disposition` header, if supplied.
+    pub fn content_disposition(&self) -> Option<&str> {
+        self.content_disposition.as_deref()
+    }
+
     /// The strongest validator available: a strong ETag, else
-    /// `Last-Modified`, else none (a weak ETag alone doesn't count --
-    /// RFC 9110 requires strong comparison for `If-Range`).
+    /// a sufficiently old `Last-Modified`, else none (a weak ETag alone
+    /// doesn't count -- RFC 9110 requires strong comparison for `If-Range`).
     pub fn validator(&self) -> Option<Validator> {
         match &self.etag {
             Some(etag) if !is_weak_etag(etag) => Some(Validator::StrongEtag(etag.clone())),
@@ -102,7 +158,11 @@ impl Probe {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContentRange {
     /// `bytes start-end/total` (`total` is `None` for `*`); `end` is inclusive.
-    Range { start: u64, end: u64, total: Option<u64> },
+    Range {
+        start: u64,
+        end: u64,
+        total: Option<u64>,
+    },
     /// `bytes */total`: what a `416` reports about the whole resource.
     Unsatisfied { total: Option<u64> },
 }
@@ -123,7 +183,10 @@ pub fn parse_content_range(value: &str) -> Option<ContentRange> {
         return Some(ContentRange::Unsatisfied { total });
     }
     let (start, end) = range.split_once('-')?;
-    let (start, end) = (start.trim().parse::<u64>().ok()?, end.trim().parse::<u64>().ok()?);
+    let (start, end) = (
+        start.trim().parse::<u64>().ok()?,
+        end.trim().parse::<u64>().ok()?,
+    );
     if end < start || total.is_some_and(|t| end >= t) {
         return None;
     }
@@ -155,29 +218,61 @@ pub(crate) fn probe_http(url: &str, agent: &Agent) -> Result<Probe, DownloadErro
 
     let (total, accepts_ranges) = match status {
         206 => {
-            let value = header("content-range").ok_or_else(|| DownloadError::Protocol("a 206 response with no Content-Range".to_string()))?;
+            let value = header("content-range").ok_or_else(|| {
+                DownloadError::Protocol("a 206 response with no Content-Range".to_string())
+            })?;
             match parse_content_range(&value) {
-                Some(ContentRange::Range { start: 0, total, .. }) => (total, true),
-                _ => return Err(DownloadError::Protocol(format!("unusable Content-Range {value:?} in answer to bytes=0-0"))),
+                Some(ContentRange::Range {
+                    start: 0, total, ..
+                }) => (total, true),
+                _ => {
+                    return Err(DownloadError::Protocol(format!(
+                        "unusable Content-Range {value:?} in answer to bytes=0-0"
+                    )));
+                }
             }
         }
-        200 => (header("content-length").and_then(|v| v.trim().parse().ok()), false),
-        416 => match header("content-range").as_deref().and_then(parse_content_range) {
+        200 => (
+            header("content-length").and_then(|v| v.trim().parse().ok()),
+            false,
+        ),
+        416 => match header("content-range")
+            .as_deref()
+            .and_then(parse_content_range)
+        {
             Some(ContentRange::Unsatisfied { total: Some(0) }) => (Some(0), false),
             _ => return Err(DownloadError::Status(416)),
         },
         other => return Err(DownloadError::Status(other)),
     };
 
+    let final_url = response.get_uri().to_string();
+    ensure_transfer_text_limit("final redirect URL", &final_url)?;
+    let etag = header("etag");
+    let last_modified = header("last-modified");
+    let content_type = header("content-type");
+    let content_disposition = header("content-disposition");
+    for (field, value) in [
+        ("ETag header", etag.as_deref()),
+        ("Last-Modified header", last_modified.as_deref()),
+        ("Content-Type header", content_type.as_deref()),
+        ("Content-Disposition header", content_disposition.as_deref()),
+    ] {
+        if let Some(value) = value {
+            ensure_transfer_text_limit(field, value)?;
+        }
+    }
+
     Ok(Probe {
         url: url.to_string(),
-        final_url: response.get_uri().to_string(),
+        final_url,
         total,
         accepts_ranges,
-        etag: header("etag"),
-        last_modified: header("last-modified"),
-        content_type: header("content-type"),
-        content_disposition: header("content-disposition"),
+        etag,
+        last_modified: last_modified
+            .filter(|value| is_strong_last_modified(value, header("date").as_deref())),
+        content_type,
+        content_disposition,
         restart_resume_safe: true,
     })
 }
@@ -202,93 +297,262 @@ mod tests {
 
     #[test]
     fn a_strong_etag_is_the_preferred_validator() {
-        assert_eq!(probe().validator(), Some(Validator::StrongEtag("\"abc\"".to_string())));
+        assert_eq!(
+            probe().validator(),
+            Some(Validator::StrongEtag("\"abc\"".to_string()))
+        );
     }
 
     #[test]
     fn a_weak_etag_is_not_a_validator_so_last_modified_is_used_instead() {
         // RFC 9110 requires strong comparison for `If-Range`, and a weak
         // ETag only promises semantic equivalence, not identical bytes.
-        let p = Probe { etag: Some("W/\"abc\"".to_string()), ..probe() };
-        assert_eq!(p.validator(), Some(Validator::LastModified("Wed, 21 Oct 2015 07:28:00 GMT".to_string())));
+        let p = Probe {
+            etag: Some("W/\"abc\"".to_string()),
+            ..probe()
+        };
+        assert_eq!(
+            p.validator(),
+            Some(Validator::LastModified(
+                "Wed, 21 Oct 2015 07:28:00 GMT".to_string()
+            ))
+        );
     }
 
     #[test]
     fn a_weak_etag_alone_is_no_validator_at_all() {
-        let p = Probe { etag: Some("W/\"abc\"".to_string()), last_modified: None, ..probe() };
+        let p = Probe {
+            etag: Some("W/\"abc\"".to_string()),
+            last_modified: None,
+            ..probe()
+        };
         assert_eq!(p.validator(), None);
         assert!(!p.resume_safe());
     }
 
     #[test]
+    fn a_last_modified_validator_needs_a_date_at_least_sixty_seconds_later() {
+        let last_modified = "Wed, 21 Oct 2015 07:28:00 GMT";
+        assert!(is_strong_last_modified(
+            last_modified,
+            Some("Wed, 21 Oct 2015 07:29:00 GMT")
+        ));
+        assert!(!is_strong_last_modified(
+            last_modified,
+            Some("Wed, 21 Oct 2015 07:28:59 GMT")
+        ));
+        assert!(!is_strong_last_modified(last_modified, None));
+        assert!(!is_strong_last_modified(
+            "not an HTTP date",
+            Some("Wed, 21 Oct 2015 07:29:00 GMT")
+        ));
+    }
+
+    #[test]
     fn last_modified_alone_is_a_validator_and_nothing_at_all_is_not() {
-        let p = Probe { etag: None, ..probe() };
-        assert_eq!(p.validator(), Some(Validator::LastModified("Wed, 21 Oct 2015 07:28:00 GMT".to_string())));
-        let p = Probe { etag: None, last_modified: None, ..probe() };
+        let p = Probe {
+            etag: None,
+            ..probe()
+        };
+        assert_eq!(
+            p.validator(),
+            Some(Validator::LastModified(
+                "Wed, 21 Oct 2015 07:28:00 GMT".to_string()
+            ))
+        );
+        let p = Probe {
+            etag: None,
+            last_modified: None,
+            ..probe()
+        };
         assert_eq!(p.validator(), None);
         assert!(!p.resume_safe());
     }
 
     #[test]
     fn the_validator_exposes_the_header_value_to_send_in_if_range() {
-        assert_eq!(Validator::StrongEtag("\"abc\"".to_string()).if_range_value(), "\"abc\"");
-        assert_eq!(Validator::LastModified("Wed".to_string()).if_range_value(), "Wed");
+        assert_eq!(
+            Validator::StrongEtag("\"abc\"".to_string()).if_range_value(),
+            "\"abc\""
+        );
+        assert_eq!(
+            Validator::LastModified("Wed".to_string()).if_range_value(),
+            "Wed"
+        );
     }
 
     #[test]
     fn segmenting_needs_working_ranges_and_a_known_non_zero_length() {
         assert!(probe().can_segment());
-        assert!(!Probe { accepts_ranges: false, ..probe() }.can_segment());
-        assert!(!Probe { total: None, ..probe() }.can_segment());
-        assert!(!Probe { total: Some(0), ..probe() }.can_segment());
+        assert!(
+            !Probe {
+                accepts_ranges: false,
+                ..probe()
+            }
+            .can_segment()
+        );
+        assert!(
+            !Probe {
+                total: None,
+                ..probe()
+            }
+            .can_segment()
+        );
+        assert!(
+            !Probe {
+                total: Some(0),
+                ..probe()
+            }
+            .can_segment()
+        );
     }
 
     #[test]
     fn the_single_stream_reason_says_why_segmenting_is_off() {
         assert_eq!(probe().single_stream_reason(), None);
-        assert_eq!(Probe { accepts_ranges: false, ..probe() }.single_stream_reason(), Some(SingleStreamReason::ServerIgnoresRange));
-        assert_eq!(Probe { accepts_ranges: false, total: None, ..probe() }.single_stream_reason(), Some(SingleStreamReason::ServerIgnoresRange));
-        assert_eq!(Probe { total: None, ..probe() }.single_stream_reason(), Some(SingleStreamReason::UnknownLength));
-        assert_eq!(Probe { total: Some(0), ..probe() }.single_stream_reason(), None, "an empty file needs no stream at all");
+        assert_eq!(
+            Probe {
+                accepts_ranges: false,
+                ..probe()
+            }
+            .single_stream_reason(),
+            Some(SingleStreamReason::ServerIgnoresRange)
+        );
+        assert_eq!(
+            Probe {
+                accepts_ranges: false,
+                total: None,
+                ..probe()
+            }
+            .single_stream_reason(),
+            Some(SingleStreamReason::ServerIgnoresRange)
+        );
+        assert_eq!(
+            Probe {
+                total: None,
+                ..probe()
+            }
+            .single_stream_reason(),
+            Some(SingleStreamReason::UnknownLength)
+        );
+        assert_eq!(
+            Probe {
+                total: Some(0),
+                ..probe()
+            }
+            .single_stream_reason(),
+            None,
+            "an empty file needs no stream at all"
+        );
     }
 
     #[test]
     fn an_empty_resource_is_recognized() {
-        assert!(Probe { total: Some(0), ..probe() }.is_empty());
+        assert!(
+            Probe {
+                total: Some(0),
+                ..probe()
+            }
+            .is_empty()
+        );
         assert!(!probe().is_empty());
-        assert!(!Probe { total: None, ..probe() }.is_empty());
+        assert!(
+            !Probe {
+                total: None,
+                ..probe()
+            }
+            .is_empty()
+        );
     }
 
     #[test]
     fn resume_is_safe_only_when_segmentable_and_validatable() {
         assert!(probe().resume_safe());
-        assert!(!Probe { accepts_ranges: false, ..probe() }.resume_safe());
-        assert!(!Probe { etag: None, last_modified: None, ..probe() }.resume_safe());
+        assert!(
+            !Probe {
+                accepts_ranges: false,
+                ..probe()
+            }
+            .resume_safe()
+        );
+        assert!(
+            !Probe {
+                etag: None,
+                last_modified: None,
+                ..probe()
+            }
+            .resume_safe()
+        );
     }
 
     #[test]
     fn a_backend_can_use_a_revision_for_live_checks_without_claiming_restart_safe_resume() {
-        let sftp_like = Probe { etag: None, last_modified: Some("sftp-mtime:123".to_string()), restart_resume_safe: false, ..probe() };
+        let sftp_like = Probe {
+            etag: None,
+            last_modified: Some("sftp-mtime:123".to_string()),
+            restart_resume_safe: false,
+            ..probe()
+        };
         assert!(!sftp_like.resume_safe());
     }
 
     #[test]
     fn content_range_parses_a_served_range() {
-        assert_eq!(parse_content_range("bytes 0-0/1000"), Some(ContentRange::Range { start: 0, end: 0, total: Some(1000) }));
-        assert_eq!(parse_content_range("bytes 500-999/1000"), Some(ContentRange::Range { start: 500, end: 999, total: Some(1000) }));
-        assert_eq!(parse_content_range("  Bytes 5-9/*  "), Some(ContentRange::Range { start: 5, end: 9, total: None }));
+        assert_eq!(
+            parse_content_range("bytes 0-0/1000"),
+            Some(ContentRange::Range {
+                start: 0,
+                end: 0,
+                total: Some(1000)
+            })
+        );
+        assert_eq!(
+            parse_content_range("bytes 500-999/1000"),
+            Some(ContentRange::Range {
+                start: 500,
+                end: 999,
+                total: Some(1000)
+            })
+        );
+        assert_eq!(
+            parse_content_range("  Bytes 5-9/*  "),
+            Some(ContentRange::Range {
+                start: 5,
+                end: 9,
+                total: None
+            })
+        );
     }
 
     #[test]
     fn content_range_parses_an_unsatisfied_range_report() {
-        assert_eq!(parse_content_range("bytes */1000"), Some(ContentRange::Unsatisfied { total: Some(1000) }));
-        assert_eq!(parse_content_range("bytes */0"), Some(ContentRange::Unsatisfied { total: Some(0) }));
-        assert_eq!(parse_content_range("bytes */*"), Some(ContentRange::Unsatisfied { total: None }));
+        assert_eq!(
+            parse_content_range("bytes */1000"),
+            Some(ContentRange::Unsatisfied { total: Some(1000) })
+        );
+        assert_eq!(
+            parse_content_range("bytes */0"),
+            Some(ContentRange::Unsatisfied { total: Some(0) })
+        );
+        assert_eq!(
+            parse_content_range("bytes */*"),
+            Some(ContentRange::Unsatisfied { total: None })
+        );
     }
 
     #[test]
     fn content_range_rejects_anything_malformed() {
-        for bad in ["", "bytes", "bytes abc", "items 0-1/2", "bytes 5-2/10", "bytes 0-1", "bytes 0-x/10", "bytes -1-5/10", "bytes 0-1/x"] {
+        for bad in [
+            "",
+            "bytes",
+            "bytes abc",
+            "items 0-1/2",
+            "bytes 5-2/10",
+            "bytes 0-1",
+            "bytes 0-x/10",
+            "bytes -1-5/10",
+            "bytes 0-1/x",
+        ] {
             assert_eq!(parse_content_range(bad), None, "{bad:?}");
         }
     }

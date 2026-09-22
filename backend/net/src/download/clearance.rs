@@ -26,13 +26,29 @@
 //! needs_clone::<blueice_net::download::clearance::DownloadClearance>();
 //! ```
 //!
+//! ```compile_fail
+//! use blueice_net::download::clearance::UrlCleared;
+//! let _ = UrlCleared { url: "https://example.test/".to_string() };
+//! ```
+//!
+//! [`Probe`](crate::download::probe::Probe) follows the same rule: callers
+//! can inspect it through accessors, but cannot construct or clone one to
+//! alter what the download-stage review examined.
+//!
+//! ```compile_fail
+//! fn needs_clone<T: Clone>() {}
+//! needs_clone::<blueice_net::download::probe::Probe>();
+//! ```
+//!
 //! **Fail-closed**: a gatekeeper that is unreachable, doesn't answer in
 //! time, hangs up, or replies with garbage yields [`Blocked`], never a
 //! token -- both reference engines treat a slow or missing check as
 //! "safe," and this design deliberately does not.
 
 use crate::download::probe::Probe;
-use blueice_ipc::gatekeeper::{read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply, GatekeeperRequest};
+use blueice_ipc::gatekeeper::{
+    GatekeeperReply, GatekeeperRequest, read_gatekeeper_reply, write_gatekeeper_request,
+};
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -51,7 +67,10 @@ pub struct Blocked {
 
 impl Blocked {
     fn unavailable(reason: &str) -> Self {
-        Blocked { reason: reason.to_string(), category: "gatekeeper-unavailable".to_string() }
+        Blocked {
+            reason: reason.to_string(),
+            category: "gatekeeper-unavailable".to_string(),
+        }
     }
 }
 
@@ -67,7 +86,8 @@ impl UrlCleared {
     }
 }
 
-/// Proof that both stages cleared a download of this URL, with this file
+/// Proof that both stages cleared a download's requested and final fetched
+/// URLs, with this file
 /// name, content type, and size. [`Transfer::begin`] checks all four
 /// against what it is actually asked to download, so a token for one
 /// file can't be spent on another.
@@ -75,15 +95,20 @@ impl UrlCleared {
 /// [`Transfer::begin`]: crate::download::transfer::Transfer::begin
 #[derive(Debug)]
 pub struct DownloadClearance {
-    url: String,
+    requested_url: String,
+    final_url: String,
     file_name: String,
     content_type: Option<String>,
     total_bytes: Option<u64>,
 }
 
 impl DownloadClearance {
-    pub(crate) fn url(&self) -> &str {
-        &self.url
+    pub(crate) fn requested_url(&self) -> &str {
+        &self.requested_url
+    }
+
+    pub(crate) fn final_url(&self) -> &str {
+        &self.final_url
     }
 
     pub(crate) fn file_name(&self) -> &str {
@@ -109,7 +134,10 @@ pub struct Reviewer {
 
 impl Reviewer {
     pub fn new(socket: impl AsRef<Path>) -> Self {
-        Reviewer { socket: socket.as_ref().to_path_buf(), timeout: Duration::from_secs(10) }
+        Reviewer {
+            socket: socket.as_ref().to_path_buf(),
+            timeout: Duration::from_secs(10),
+        }
     }
 
     /// How long a check may take before it counts as a rejection.
@@ -120,8 +148,12 @@ impl Reviewer {
 
     /// The URL stage: `CheckUrl`, before any network I/O.
     pub fn review_url(&self, url: &str) -> Result<UrlCleared, Blocked> {
-        self.ask(&GatekeeperRequest::CheckUrl { url: url.to_string() })?;
-        Ok(UrlCleared { url: url.to_string() })
+        self.ask(&GatekeeperRequest::CheckUrl {
+            url: url.to_string(),
+        })?;
+        Ok(UrlCleared {
+            url: url.to_string(),
+        })
     }
 
     /// The download stage: `CheckDownload`, once the probe has made the
@@ -129,9 +161,17 @@ impl Reviewer {
     /// URL -- where a redirect actually led -- since that is what the
     /// bytes come from. `cleared` must be for the same URL the probe was
     /// of; anything else is refused without asking.
-    pub fn review_download(&self, cleared: UrlCleared, probe: &Probe, file_name: &str) -> Result<DownloadClearance, Blocked> {
+    pub fn review_download(
+        &self,
+        cleared: UrlCleared,
+        probe: &Probe,
+        file_name: &str,
+    ) -> Result<DownloadClearance, Blocked> {
         if cleared.url != probe.url {
-            return Err(Blocked { reason: "the probe is of a different URL than the one that was cleared".to_string(), category: "clearance-mismatch".to_string() });
+            return Err(Blocked {
+                reason: "the probe is of a different URL than the one that was cleared".to_string(),
+                category: "clearance-mismatch".to_string(),
+            });
         }
         self.ask(&GatekeeperRequest::CheckDownload {
             url: probe.final_url.clone(),
@@ -139,7 +179,13 @@ impl Reviewer {
             content_type: probe.content_type.clone(),
             total_bytes: probe.total,
         })?;
-        Ok(DownloadClearance { url: probe.url.clone(), file_name: file_name.to_string(), content_type: probe.content_type.clone(), total_bytes: probe.total })
+        Ok(DownloadClearance {
+            requested_url: probe.url.clone(),
+            final_url: probe.final_url.clone(),
+            file_name: file_name.to_string(),
+            content_type: probe.content_type.clone(),
+            total_bytes: probe.total,
+        })
     }
 
     /// One round trip. Runs on a helper thread so the deadline holds even
@@ -154,15 +200,32 @@ impl Reviewer {
         });
         match rx.recv_timeout(timeout) {
             Ok(Ok(GatekeeperReply::Cleared)) => Ok(()),
-            Ok(Ok(GatekeeperReply::Rejected { reason, category })) => Err(Blocked { reason, category }),
-            Ok(Err(e)) if matches!(e.kind(), io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock) => Err(Blocked::unavailable("the gatekeeper did not answer in time")),
+            Ok(Ok(GatekeeperReply::Rejected { reason, category })) => {
+                Err(Blocked { reason, category })
+            }
+            Ok(Err(e))
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                ) =>
+            {
+                Err(Blocked::unavailable(
+                    "the gatekeeper did not answer in time",
+                ))
+            }
             Ok(Err(_)) => Err(Blocked::unavailable("the gatekeeper is unreachable")),
-            Err(_) => Err(Blocked::unavailable("the gatekeeper did not answer in time")),
+            Err(_) => Err(Blocked::unavailable(
+                "the gatekeeper did not answer in time",
+            )),
         }
     }
 }
 
-fn exchange(socket: &Path, request: &GatekeeperRequest, timeout: Duration) -> io::Result<GatekeeperReply> {
+fn exchange(
+    socket: &Path,
+    request: &GatekeeperRequest,
+    timeout: Duration,
+) -> io::Result<GatekeeperReply> {
     let mut stream = UnixStream::connect(socket)?;
     stream.set_read_timeout(Some(timeout))?;
     stream.set_write_timeout(Some(timeout))?;

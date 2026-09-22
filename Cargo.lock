@@ -173,6 +173,7 @@ version = "0.1.0"
 dependencies = [
  "blueice-ipc",
  "blueice-net",
+ "libc",
  "serde",
  "serde_json",
 ]
@@ -239,6 +240,7 @@ dependencies = [
 name = "blueice-ipc"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "memmap2",
  "serde",
  "serde_json",
@@ -284,7 +286,10 @@ name = "blueice-net"
 version = "0.1.0"
 dependencies = [
  "blueice-ipc",
+ "httpdate",
  "keyring",
+ "libc",
+ "openssl",
  "percent-encoding",
  "serde",
  "serde_json",
@@ -1008,6 +1013,12 @@ name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
+
+[[package]]
+name = "httpdate"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "iana-time-zone"
@@ -2931,7 +2942,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af5546be8f5378d5414f83733f5c9a2526f4645829edbc1c41790aeef1b38e8b"
 dependencies = [
  "base64",
- "flate2",
  "log",
  "percent-encoding",
  "rustls",

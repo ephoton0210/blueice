@@ -29,10 +29,16 @@
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
+/// Largest accepted length-prefixed JSON control-plane message. Pixel data is
+/// deliberately on the shared-memory frame plane, so an IPC peer never needs
+/// to make us allocate an unbounded buffer for it.
+pub const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
+
 pub mod ai;
 pub mod downloads;
 pub mod extension;
 pub mod gatekeeper;
+pub mod local_socket;
 pub mod script;
 pub mod shm;
 
@@ -210,6 +216,9 @@ pub struct TabSummary {
 
 fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
     let bytes = serde_json::to_vec(msg).map_err(io::Error::other)?;
+    if bytes.len() > MAX_FRAME_BYTES {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, format!("IPC frame is {} bytes; the maximum is {MAX_FRAME_BYTES}", bytes.len())));
+    }
     let len = u32::try_from(bytes.len()).map_err(io::Error::other)?;
     w.write_all(&len.to_le_bytes())?;
     w.write_all(&bytes)?;
@@ -220,6 +229,9 @@ fn read_frame_bytes<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
     let mut len_bytes = [0u8; 4];
     read_exact_no_progress_loss(r, &mut len_bytes)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
+    if len > MAX_FRAME_BYTES {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, format!("IPC peer advertised a {len}-byte frame; the maximum is {MAX_FRAME_BYTES}")));
+    }
     let mut buf = vec![0u8; len];
     read_exact_no_progress_loss(r, &mut buf)?;
     Ok(buf)
@@ -534,6 +546,14 @@ mod tests {
         let mut cursor = Cursor::new(buf);
         let result: io::Result<ClientMessage> = read_client_message(&mut cursor);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn an_oversized_length_prefix_is_refused_without_allocating_it() {
+        let mut cursor = Cursor::new((MAX_FRAME_BYTES as u32 + 1).to_le_bytes().to_vec());
+        let error = read_client_message::<_>(&mut cursor).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("maximum"));
     }
 
     #[test]

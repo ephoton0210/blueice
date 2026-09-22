@@ -14,15 +14,54 @@ use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub mod clearance;
+/// Largest UTF-8 string that may be retained in transfer state or shown to a
+/// client.  Remote peers control several of those values (response headers,
+/// redirect targets and diagnostic text), so retaining them unbounded would
+/// make one transfer inflate every snapshot, IPC update and sidecar write.
+pub const MAX_TRANSFER_TEXT_BYTES: usize = 4 * 1024;
+
+/// The coordinator and sidecar retain at most this many segment records.
+/// This is deliberately independent of `max_connections`: an administrator
+/// may increase parallelism, but it must not turn one enormous resource into
+/// unbounded persistent state.
+pub const MAX_TRANSFER_SEGMENTS: usize = 1_024;
+
+/// Produces a UTF-8-safe, bounded representation of text that may be copied
+/// into transfer state.  The marker makes truncation visible rather than
+/// silently presenting a partial server message as complete.
+pub fn bounded_transfer_text(value: impl AsRef<str>) -> String {
+    const SUFFIX: &str = "… [truncated]";
+    let value = value.as_ref();
+    if value.len() <= MAX_TRANSFER_TEXT_BYTES {
+        return value.to_owned();
+    }
+    let mut end = MAX_TRANSFER_TEXT_BYTES - SUFFIX.len();
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{}", &value[..end], SUFFIX)
+}
+
+pub(crate) fn ensure_transfer_text_limit(field: &str, value: &str) -> Result<(), DownloadError> {
+    if value.len() > MAX_TRANSFER_TEXT_BYTES {
+        return Err(DownloadError::Protocol(format!(
+            "the {field} exceeds the {}-byte transfer metadata limit",
+            MAX_TRANSFER_TEXT_BYTES
+        )));
+    }
+    Ok(())
+}
+
 pub mod backend;
+pub mod clearance;
 pub mod credentials;
 pub mod file_name;
-mod http;
 mod ftp;
+mod http;
 pub mod plan;
 pub mod probe;
 pub mod progress;
+pub(crate) mod secure_fs;
 mod sftp;
 pub mod sidecar;
 pub mod transfer;
@@ -47,6 +86,12 @@ pub struct DownloadOptions {
     /// How long a segment may go without a byte before it is revoked and
     /// retried (`ureq` has no idle-read timeout of its own).
     pub stall_timeout: Duration,
+    /// Physical workers that may remain blocked in an uninterruptible body
+    /// read after their logical segment owner was revoked. Once this limit is
+    /// reached the transfer fails rather than creating another thread and
+    /// socket. It bounds a peer that repeatedly makes a little progress and
+    /// then stalls, which would otherwise reset the ordinary retry counter.
+    pub max_abandoned_workers: usize,
     /// How long connecting may take.
     pub connect_timeout: Duration,
     /// How long the server may take to start answering a request.
@@ -60,6 +105,14 @@ pub struct DownloadOptions {
     pub tick: Duration,
     /// Whether an existing destination may be replaced.
     pub overwrite: bool,
+    /// Largest resource this engine will accept. `None` is an explicit
+    /// administrator opt-out; the default prevents a hostile size header
+    /// from reserving arbitrarily large sparse files.
+    pub max_total_bytes: Option<u64>,
+    /// Bytes that must remain free after reserving a known-length download.
+    /// Unknown-length streams must have at least this much free space before
+    /// they start and remain subject to `max_total_bytes` while streaming.
+    pub min_free_space_bytes: u64,
     /// An OpenSSH `known_hosts` file used to verify SFTP server identity.
     /// `None` means the current user's `~/.ssh/known_hosts`; a missing file
     /// is an error, never a trust-on-first-use prompt.
@@ -78,12 +131,15 @@ impl Default for DownloadOptions {
             retry_backoff_base: Duration::from_millis(500),
             retry_backoff_max: Duration::from_secs(8),
             stall_timeout: Duration::from_secs(30),
+            max_abandoned_workers: 32,
             connect_timeout: Duration::from_secs(10),
             response_timeout: Duration::from_secs(30),
             buffer_bytes: 64 * 1024,
             checkpoint_interval: Duration::from_secs(1),
             tick: Duration::from_millis(100),
             overwrite: false,
+            max_total_bytes: Some(100 * 1024 * 1024 * 1024),
+            min_free_space_bytes: 1024 * 1024 * 1024,
             sftp_known_hosts: None,
             sftp_private_key: None,
         }
@@ -95,7 +151,9 @@ impl DownloadOptions {
     /// doubling each time, capped at `retry_backoff_max`.
     pub fn retry_delay(&self, attempt: u32) -> Duration {
         let exponent = attempt.saturating_sub(1).min(20);
-        self.retry_backoff_base.saturating_mul(1u32 << exponent).min(self.retry_backoff_max)
+        self.retry_backoff_base
+            .saturating_mul(1u32 << exponent)
+            .min(self.retry_backoff_max)
     }
 }
 
@@ -110,9 +168,22 @@ pub enum DownloadError {
     /// mismatched `Content-Range`, ...).
     Protocol(String),
     /// The body ended early.
-    Truncated { got: u64, expected: u64 },
+    Truncated {
+        got: u64,
+        expected: u64,
+    },
     /// The remote file is no longer the one this transfer started on.
     ResourceChanged(String),
+    /// A remote resource exceeds the configured per-download limit.
+    SizeLimit {
+        requested: u64,
+        limit: u64,
+    },
+    /// Reserving the download would violate the configured free-space floor.
+    InsufficientSpace {
+        required: u64,
+        available: u64,
+    },
     Io(String),
     DestinationExists(PathBuf),
     /// A clearance token was presented for a different URL or file name
@@ -149,12 +220,34 @@ impl fmt::Display for DownloadError {
             DownloadError::Network(what) => write!(f, "network error: {what}"),
             DownloadError::Status(code) => write!(f, "the server answered with HTTP status {code}"),
             DownloadError::Protocol(what) => write!(f, "unusable server response: {what}"),
-            DownloadError::Truncated { got, expected } => write!(f, "the connection ended after {got} of {expected} bytes"),
-            DownloadError::ResourceChanged(what) => write!(f, "the remote file changed during the download: {what}"),
+            DownloadError::Truncated { got, expected } => {
+                write!(f, "the connection ended after {got} of {expected} bytes")
+            }
+            DownloadError::ResourceChanged(what) => {
+                write!(f, "the remote file changed during the download: {what}")
+            }
+            DownloadError::SizeLimit { requested, limit } => write!(
+                f,
+                "the remote resource is {requested} bytes, above the configured {limit}-byte download limit"
+            ),
+            DownloadError::InsufficientSpace {
+                required,
+                available,
+            } => write!(
+                f,
+                "the download needs {required} bytes free but only {available} are available"
+            ),
             DownloadError::Io(what) => write!(f, "file error: {what}"),
-            DownloadError::DestinationExists(path) => write!(f, "the destination {} already exists", path.display()),
-            DownloadError::ClearanceMismatch(what) => write!(f, "gatekeeper clearance does not match this transfer: {what}"),
-            DownloadError::HostVerification(what) => write!(f, "SSH host verification failed: {what}"),
+            DownloadError::DestinationExists(path) => {
+                write!(f, "the destination {} already exists", path.display())
+            }
+            DownloadError::ClearanceMismatch(what) => write!(
+                f,
+                "gatekeeper clearance does not match this transfer: {what}"
+            ),
+            DownloadError::HostVerification(what) => {
+                write!(f, "SSH host verification failed: {what}")
+            }
             DownloadError::Authentication(what) => write!(f, "authentication failed: {what}"),
             DownloadError::Credentials(what) => write!(f, "credential error: {what}"),
         }
@@ -184,12 +277,15 @@ mod tests {
         assert_eq!(o.retry_backoff_base, Duration::from_millis(500));
         assert_eq!(o.retry_backoff_max, Duration::from_secs(8));
         assert_eq!(o.stall_timeout, Duration::from_secs(30));
+        assert_eq!(o.max_abandoned_workers, 32);
         assert_eq!(o.connect_timeout, Duration::from_secs(10));
         assert_eq!(o.response_timeout, Duration::from_secs(30));
         assert_eq!(o.buffer_bytes, 64 * 1024);
         assert_eq!(o.checkpoint_interval, Duration::from_secs(1));
         assert_eq!(o.tick, Duration::from_millis(100));
         assert!(!o.overwrite);
+        assert_eq!(o.max_total_bytes, Some(100 * 1024 * 1024 * 1024));
+        assert_eq!(o.min_free_space_bytes, 1024 * 1024 * 1024);
         assert_eq!(o.sftp_known_hosts, None);
         assert_eq!(o.sftp_private_key, None);
     }
@@ -197,7 +293,9 @@ mod tests {
     #[test]
     fn retry_delay_doubles_from_the_base_up_to_the_cap() {
         let o = DownloadOptions::default();
-        let delays: Vec<u64> = (1..=7).map(|attempt| o.retry_delay(attempt).as_millis() as u64).collect();
+        let delays: Vec<u64> = (1..=7)
+            .map(|attempt| o.retry_delay(attempt).as_millis() as u64)
+            .collect();
         assert_eq!(delays, vec![500, 1_000, 2_000, 4_000, 8_000, 8_000, 8_000]);
     }
 
@@ -209,10 +307,21 @@ mod tests {
     }
 
     #[test]
+    fn retained_transfer_text_is_utf8_safe_and_bounded() {
+        let input = format!("prefix{}", "界".repeat(MAX_TRANSFER_TEXT_BYTES));
+        let bounded = bounded_transfer_text(input);
+        assert!(bounded.len() <= MAX_TRANSFER_TEXT_BYTES);
+        assert!(bounded.ends_with("… [truncated]"));
+    }
+
+    #[test]
     fn only_transient_failures_are_retryable() {
         let retryable = [
             DownloadError::Network("connection reset".to_string()),
-            DownloadError::Truncated { got: 5, expected: 10 },
+            DownloadError::Truncated {
+                got: 5,
+                expected: 10,
+            },
             DownloadError::Status(408),
             DownloadError::Status(429),
             DownloadError::Status(500),
@@ -231,6 +340,14 @@ mod tests {
             DownloadError::Status(416),
             DownloadError::Protocol("bad Content-Range".to_string()),
             DownloadError::ResourceChanged("etag".to_string()),
+            DownloadError::SizeLimit {
+                requested: 101,
+                limit: 100,
+            },
+            DownloadError::InsufficientSpace {
+                required: 125,
+                available: 124,
+            },
             DownloadError::Io("disk full".to_string()),
             DownloadError::DestinationExists(PathBuf::from("/d/f")),
             DownloadError::ClearanceMismatch("url".to_string()),
@@ -245,17 +362,74 @@ mod tests {
 
     #[test]
     fn errors_read_as_plain_sentences() {
-        assert_eq!(DownloadError::Status(404).to_string(), "the server answered with HTTP status 404");
-        assert_eq!(DownloadError::Truncated { got: 5, expected: 10 }.to_string(), "the connection ended after 5 of 10 bytes");
-        assert_eq!(DownloadError::DestinationExists(PathBuf::from("/d/f")).to_string(), "the destination /d/f already exists");
-        assert!(DownloadError::ResourceChanged("ETag changed".to_string()).to_string().contains("ETag changed"));
-        assert!(DownloadError::Io("disk full".to_string()).to_string().contains("disk full"));
-        assert!(DownloadError::Network("refused".to_string()).to_string().contains("refused"));
-        assert!(DownloadError::Protocol("bad".to_string()).to_string().contains("bad"));
-        assert!(DownloadError::InvalidUrl("x".to_string()).to_string().contains("x"));
-        assert!(DownloadError::ClearanceMismatch("wrong url".to_string()).to_string().contains("wrong url"));
-        assert!(DownloadError::HostVerification("unknown server".to_string()).to_string().contains("unknown server"));
-        assert!(DownloadError::Authentication("no SSH agent identity".to_string()).to_string().contains("no SSH agent identity"));
-        assert!(DownloadError::Credentials("keychain is locked".to_string()).to_string().contains("keychain is locked"));
+        assert_eq!(
+            DownloadError::Status(404).to_string(),
+            "the server answered with HTTP status 404"
+        );
+        assert_eq!(
+            DownloadError::Truncated {
+                got: 5,
+                expected: 10
+            }
+            .to_string(),
+            "the connection ended after 5 of 10 bytes"
+        );
+        assert_eq!(
+            DownloadError::DestinationExists(PathBuf::from("/d/f")).to_string(),
+            "the destination /d/f already exists"
+        );
+        assert!(
+            DownloadError::ResourceChanged("ETag changed".to_string())
+                .to_string()
+                .contains("ETag changed")
+        );
+        assert!(
+            DownloadError::Io("disk full".to_string())
+                .to_string()
+                .contains("disk full")
+        );
+        assert!(
+            DownloadError::Network("refused".to_string())
+                .to_string()
+                .contains("refused")
+        );
+        assert!(
+            DownloadError::Protocol("bad".to_string())
+                .to_string()
+                .contains("bad")
+        );
+        assert!(
+            DownloadError::InvalidUrl("x".to_string())
+                .to_string()
+                .contains("x")
+        );
+        assert!(
+            DownloadError::ClearanceMismatch("wrong url".to_string())
+                .to_string()
+                .contains("wrong url")
+        );
+        assert!(
+            DownloadError::HostVerification("unknown server".to_string())
+                .to_string()
+                .contains("unknown server")
+        );
+        assert!(
+            DownloadError::Authentication("no SSH agent identity".to_string())
+                .to_string()
+                .contains("no SSH agent identity")
+        );
+        assert!(
+            DownloadError::Credentials("keychain is locked".to_string())
+                .to_string()
+                .contains("keychain is locked")
+        );
+        assert!(
+            DownloadError::SizeLimit {
+                requested: 101,
+                limit: 100
+            }
+            .to_string()
+            .contains("100-byte")
+        );
     }
 }

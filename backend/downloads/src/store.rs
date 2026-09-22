@@ -9,8 +9,11 @@
 //! the downloads list.
 
 use blueice_ipc::downloads::TransferInfo;
+use blueice_ipc::local_socket::ensure_private_dir;
 use serde::{Deserialize, Serialize};
+use std::fs::OpenOptions;
 use std::io::{self, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 const STORE_VERSION: u32 = 1;
@@ -51,6 +54,18 @@ impl Store {
         self.dir.join(FILE_NAME)
     }
 
+    fn corrupt_path(&self) -> PathBuf {
+        let path = self.path();
+        let first = path.with_file_name(format!("{FILE_NAME}.corrupt"));
+        if std::fs::symlink_metadata(&first).is_err() {
+            return first;
+        }
+        (1u64..)
+            .map(|n| path.with_file_name(format!("{FILE_NAME}.corrupt.{n}")))
+            .find(|candidate| std::fs::symlink_metadata(candidate).is_err())
+            .expect("an unbounded counter yields an unused corrupt-store name")
+    }
+
     /// The stored transfers, or an empty store if there is none. A file that
     /// can't be read as this version's format is moved aside to
     /// `transfers.json.corrupt` -- the user's history is never thrown away
@@ -62,13 +77,13 @@ impl Store {
         let Ok(bytes) = std::fs::read(&path) else { return empty };
         match serde_json::from_slice::<StoreFile>(&bytes) {
             Ok(file) if file.version == STORE_VERSION => {
-                let floor = file.transfers.iter().map(|t| t.info.id + 1).max().unwrap_or(1);
+                // A hand-edited store containing u64::MAX cannot wrap the
+                // next id around to zero and silently reuse an old record.
+                let floor = file.transfers.iter().map(|t| t.info.id.saturating_add(1)).max().unwrap_or(1);
                 Loaded { next_id: file.next_id.max(floor), transfers: file.transfers }
             }
             _ => {
-                let mut aside = path.clone().into_os_string();
-                aside.push(".corrupt");
-                let _ = std::fs::rename(&path, aside);
+                let _ = std::fs::rename(&path, self.corrupt_path());
                 empty
             }
         }
@@ -77,12 +92,15 @@ impl Store {
     /// Writes atomically (a temporary file, `fsync`, rename), creating the
     /// directory if needed.
     pub fn save(&self, next_id: u64, transfers: &[StoredTransfer]) -> io::Result<()> {
-        std::fs::create_dir_all(&self.dir)?;
+        ensure_private_dir(&self.dir)?;
         let bytes = serde_json::to_vec(&StoreFile { version: STORE_VERSION, next_id, transfers: transfers.to_vec() }).map_err(io::Error::other)?;
         let path = self.path();
         let tmp = self.dir.join(format!("{FILE_NAME}.tmp"));
         let result = (|| {
-            let mut file = std::fs::File::create(&tmp)?;
+            // The temporary file contains the same token-bearing transfer
+            // history as the final file, so it must be private from creation,
+            // not merely chmodded after it has been written.
+            let mut file = OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp)?;
             file.write_all(&bytes)?;
             file.sync_all()?;
             std::fs::rename(&tmp, &path)
@@ -145,6 +163,9 @@ mod tests {
         Store::new(&nested).save(1, &[]).unwrap();
         let names: Vec<String> = std::fs::read_dir(&nested).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
         assert_eq!(names, vec!["transfers.json".to_string()]);
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(&nested).unwrap().permissions().mode() & 0o777, 0o700, "transfer history's directory can contain tokenized URLs");
+        assert_eq!(std::fs::metadata(nested.join(FILE_NAME)).unwrap().permissions().mode() & 0o777, 0o600, "transfer history itself is private");
     }
 
     #[test]
@@ -178,6 +199,18 @@ mod tests {
     }
 
     #[test]
+    fn each_bad_store_is_kept_aside_without_replacing_an_earlier_one() {
+        let dir = Scratch::new("multiple-corrupt");
+        let path = dir.0.join(FILE_NAME);
+        std::fs::write(&path, b"first").unwrap();
+        Store::new(&dir.0).load();
+        std::fs::write(&path, b"second").unwrap();
+        Store::new(&dir.0).load();
+        assert_eq!(std::fs::read(dir.0.join("transfers.json.corrupt")).unwrap(), b"first");
+        assert_eq!(std::fs::read(dir.0.join("transfers.json.corrupt.1")).unwrap(), b"second");
+    }
+
+    #[test]
     fn a_stored_record_missing_newer_fields_still_loads() {
         // TransferInfo fields are all `#[serde(default)]`; a record written
         // before a field existed must keep loading.
@@ -194,5 +227,16 @@ mod tests {
         let dir = Scratch::new("nextid");
         std::fs::write(dir.0.join("transfers.json"), br#"{"version":1,"next_id":1,"transfers":[{"info":{"id":9,"url":"u"},"overwrite":false}]}"#).unwrap();
         assert_eq!(Store::new(&dir.0).load().next_id, 10);
+    }
+
+    #[test]
+    fn a_maximum_stored_id_exhausts_ids_instead_of_wrapping() {
+        let dir = Scratch::new("max-id");
+        std::fs::write(
+            dir.0.join(FILE_NAME),
+            format!(r#"{{"version":1,"next_id":1,"transfers":[{{"info":{{"id":{},"url":"u"}},"overwrite":false}}]}}"#, u64::MAX),
+        )
+        .unwrap();
+        assert_eq!(Store::new(&dir.0).load().next_id, u64::MAX);
     }
 }

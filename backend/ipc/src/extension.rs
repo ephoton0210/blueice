@@ -116,23 +116,7 @@ pub fn read_extension_reply<R: Read>(r: &mut R) -> io::Result<ExtensionReply> {
 /// explicit socket path through instead, for the same reason
 /// `default_gatekeeper_socket_path`'s docs give.
 pub fn default_extension_socket_path() -> PathBuf {
-    let dir = match std::env::var_os("XDG_RUNTIME_DIR") {
-        Some(dir) => PathBuf::from(dir).join("blueice"),
-        None => std::env::temp_dir().join(format!("blueice-{}", unsafe { libc_getuid() })),
-    };
-    dir.join("extension-host.sock")
-}
-
-// Duplicated from `blueice-launcher`'s (and `crate::gatekeeper`'s)
-// identical helper rather than shared via a common dependency -- see
-// those crates' own docs for why (~10 lines, and each socket-path
-// helper is otherwise independent enough that sharing would be more
-// indirection than the duplication costs).
-unsafe fn libc_getuid() -> u32 {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|status| status.lines().find_map(|line| line.strip_prefix("Uid:")).and_then(|rest| rest.split_whitespace().next()).and_then(|s| s.parse().ok()))
-        .unwrap_or_else(std::process::id)
+    crate::local_socket::default_socket_dir().join("extension-host.sock")
 }
 
 #[cfg(test)]

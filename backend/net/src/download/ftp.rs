@@ -16,18 +16,21 @@
 //! across a restart.
 
 use crate::download::backend::{ByteRange, ByteStream, FinishableRead, TransferBackend};
-use crate::download::credentials::{load_ftps_password, FtpsCredentialRef};
+use crate::download::credentials::{FtpsCredentialRef, load_ftps_password};
 use crate::download::probe::Probe;
 use crate::download::{DownloadError, DownloadOptions};
 use percent_encoding::percent_decode_str;
 use std::collections::HashMap;
 use std::io::{self, Read};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::Mutex;
 use std::time::Duration;
 use suppaftp::native_tls::TlsConnector;
 use suppaftp::types::FileType;
-use suppaftp::{FtpError, FtpStream, ImplFtpStream, NativeTlsConnector, NativeTlsFtpStream, TlsStream, TransferStream};
+use suppaftp::{
+    FtpError, FtpStream, ImplFtpStream, NativeTlsConnector, NativeTlsFtpStream, TlsStream,
+    TransferStream,
+};
 use url::Url;
 use zeroize::Zeroizing;
 
@@ -66,7 +69,10 @@ impl FtpBackend {
     fn password(&self, endpoint: &Endpoint) -> Result<Zeroizing<String>, DownloadError> {
         let reference = FtpsCredentialRef::new(&endpoint.host, endpoint.port, &endpoint.username)
             .map_err(|error| DownloadError::Credentials(error.to_string()))?;
-        let mut passwords = self.passwords.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut passwords = self
+            .passwords
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(password) = passwords.get(&reference) {
             return password.clone().ok_or_else(|| {
                 DownloadError::Authentication(format!(
@@ -75,7 +81,8 @@ impl FtpBackend {
                 ))
             });
         }
-        let password = load_ftps_password(&reference).map_err(|error| DownloadError::Credentials(error.to_string()))?;
+        let password = load_ftps_password(&reference)
+            .map_err(|error| DownloadError::Credentials(error.to_string()))?;
         passwords.insert(reference, password.clone());
         password.ok_or_else(|| {
             DownloadError::Authentication(format!(
@@ -91,11 +98,13 @@ impl FtpBackend {
             .map_err(|_| DownloadError::Network(format!("could not resolve {}", endpoint.host)))?;
         let mut last_error = None;
         let tcp = addresses
-            .filter_map(|address| match TcpStream::connect_timeout(&address, self.connect_timeout) {
-                Ok(stream) => Some(stream),
-                Err(error) => {
-                    last_error = Some(error);
-                    None
+            .filter_map(|address| {
+                match TcpStream::connect_timeout(&address, self.connect_timeout) {
+                    Ok(stream) => Some(stream),
+                    Err(error) => {
+                        last_error = Some(error);
+                        None
+                    }
                 }
             })
             .next()
@@ -109,32 +118,63 @@ impl FtpBackend {
                         .unwrap_or_else(|| "no address resolved".to_string())
                 ))
             })?;
-        tcp.set_read_timeout(Some(self.response_timeout)).map_err(DownloadError::from)?;
-        tcp.set_write_timeout(Some(self.response_timeout)).map_err(DownloadError::from)?;
+        tcp.set_read_timeout(Some(self.response_timeout))
+            .map_err(DownloadError::from)?;
+        tcp.set_write_timeout(Some(self.response_timeout))
+            .map_err(DownloadError::from)?;
         Ok(tcp)
     }
 
-    fn configure<T: TlsStream>(&self, stream: ImplFtpStream<T>) -> Result<ImplFtpStream<T>, DownloadError> {
+    fn configure<T: TlsStream>(
+        &self,
+        stream: ImplFtpStream<T>,
+    ) -> Result<ImplFtpStream<T>, DownloadError> {
         let connect_timeout = self.connect_timeout;
         let response_timeout = self.response_timeout;
+        // A PASV response names an address controlled by the FTP server.
+        // Connecting to that address would let a server turn a download into
+        // an arbitrary TCP connection (and is also a common NAT foot-gun).
+        // Keep the authenticated control peer's address and accept only the
+        // port from the passive response. This applies before the FTPS
+        // upgrade too, while `get_ref` still exposes the same TCP socket.
+        let control_peer = stream.get_ref().peer_addr().map_err(DownloadError::from)?;
         let stream = stream.passive_stream_builder(move |address| {
-            let socket = TcpStream::connect_timeout(&address, connect_timeout).map_err(FtpError::ConnectionError)?;
-            socket.set_read_timeout(Some(response_timeout)).map_err(FtpError::ConnectionError)?;
-            socket.set_write_timeout(Some(response_timeout)).map_err(FtpError::ConnectionError)?;
+            let address = passive_data_address(control_peer, address);
+            let socket = TcpStream::connect_timeout(&address, connect_timeout)
+                .map_err(FtpError::ConnectionError)?;
+            socket
+                .set_read_timeout(Some(response_timeout))
+                .map_err(FtpError::ConnectionError)?;
+            socket
+                .set_write_timeout(Some(response_timeout))
+                .map_err(FtpError::ConnectionError)?;
             Ok(socket)
         });
-        stream.get_ref().set_read_timeout(Some(self.response_timeout)).map_err(DownloadError::from)?;
-        stream.get_ref().set_write_timeout(Some(self.response_timeout)).map_err(DownloadError::from)?;
+        stream
+            .get_ref()
+            .set_read_timeout(Some(self.response_timeout))
+            .map_err(DownloadError::from)?;
+        stream
+            .get_ref()
+            .set_write_timeout(Some(self.response_timeout))
+            .map_err(DownloadError::from)?;
         Ok(stream)
     }
 
     fn plain_client(&self, endpoint: &Endpoint) -> Result<FtpStream, DownloadError> {
-        let stream = FtpStream::connect_with_stream(self.tcp(endpoint)?).map_err(|error| ftp_error("opening the FTP control connection", error))?;
+        let stream = FtpStream::connect_with_stream(self.tcp(endpoint)?)
+            .map_err(|error| ftp_error("opening the FTP control connection", error))?;
         let mut stream = self.configure(stream)?;
         stream
             .login("anonymous", "anonymous@blueice.local")
-            .map_err(|_| DownloadError::Authentication("the FTP server rejected anonymous access".to_string()))?;
-        stream.transfer_type(FileType::Binary).map_err(|error| ftp_error("selecting binary FTP transfer mode", error))?;
+            .map_err(|_| {
+                DownloadError::Authentication(
+                    "the FTP server rejected anonymous access".to_string(),
+                )
+            })?;
+        stream
+            .transfer_type(FileType::Binary)
+            .map_err(|error| ftp_error("selecting binary FTP transfer mode", error))?;
         Ok(stream)
     }
 
@@ -142,25 +182,40 @@ impl FtpBackend {
         let stream = NativeTlsFtpStream::connect_with_stream(self.tcp(endpoint)?)
             .map_err(|error| ftp_error("opening the FTPS control connection", error))?;
         let stream = self.configure(stream)?;
-        let connector = TlsConnector::new().map_err(|_| DownloadError::Network("could not create the FTPS TLS verifier".to_string()))?;
+        let connector = TlsConnector::new().map_err(|_| {
+            DownloadError::Network("could not create the FTPS TLS verifier".to_string())
+        })?;
         let mut stream = stream
             .into_secure(NativeTlsConnector::from(connector), &endpoint.host)
             .map_err(|error| ftp_error("verifying the FTPS server certificate", error))?;
         let password = self.password(endpoint)?;
         stream
             .login(endpoint.username.as_str(), password.as_str())
-            .map_err(|_| DownloadError::Authentication("the saved FTPS password was rejected".to_string()))?;
-        stream.transfer_type(FileType::Binary).map_err(|error| ftp_error("selecting binary FTPS transfer mode", error))?;
+            .map_err(|_| {
+                DownloadError::Authentication("the saved FTPS password was rejected".to_string())
+            })?;
+        stream
+            .transfer_type(FileType::Binary)
+            .map_err(|error| ftp_error("selecting binary FTPS transfer mode", error))?;
         Ok(stream)
     }
 
-    fn probe_file<T: TlsStream>(&self, client: &mut ImplFtpStream<T>, endpoint: &Endpoint) -> Result<Probe, DownloadError> {
+    fn probe_file<T: TlsStream>(
+        &self,
+        client: &mut ImplFtpStream<T>,
+        endpoint: &Endpoint,
+    ) -> Result<Probe, DownloadError> {
         let total = client
             .size(&endpoint.path)
             .map_err(|error| ftp_error("reading the FTP file size", error))?
             .try_into()
-            .map_err(|_| DownloadError::Protocol("the FTP file size does not fit in u64".to_string()))?;
-        let last_modified = client.mdtm(&endpoint.path).ok().map(|time| format!("ftp-mdtm:{time}"));
+            .map_err(|_| {
+                DownloadError::Protocol("the FTP file size does not fit in u64".to_string())
+            })?;
+        let last_modified = client
+            .mdtm(&endpoint.path)
+            .ok()
+            .map(|time| format!("ftp-mdtm:{time}"));
         Ok(Probe {
             url: endpoint.url.clone(),
             final_url: endpoint.url.clone(),
@@ -174,12 +229,19 @@ impl FtpBackend {
         })
     }
 
-    fn check_unchanged<T: TlsStream>(&self, client: &mut ImplFtpStream<T>, endpoint: &Endpoint, probe: &Probe) -> Result<(), DownloadError> {
+    fn check_unchanged<T: TlsStream>(
+        &self,
+        client: &mut ImplFtpStream<T>,
+        endpoint: &Endpoint,
+        probe: &Probe,
+    ) -> Result<(), DownloadError> {
         let current_size: u64 = client
             .size(&endpoint.path)
             .map_err(|error| ftp_error("rechecking the FTP file size", error))?
             .try_into()
-            .map_err(|_| DownloadError::Protocol("the FTP file size does not fit in u64".to_string()))?;
+            .map_err(|_| {
+                DownloadError::Protocol("the FTP file size does not fit in u64".to_string())
+            })?;
         if Some(current_size) != probe.total {
             return Err(DownloadError::ResourceChanged(format!(
                 "the FTP file's size changed from {:?} to {current_size} bytes",
@@ -190,9 +252,15 @@ impl FtpBackend {
             let current = client
                 .mdtm(&endpoint.path)
                 .map(|time| format!("ftp-mdtm:{time}"))
-                .map_err(|_| DownloadError::ResourceChanged("the FTP server stopped reporting the file modification time".to_string()))?;
+                .map_err(|_| {
+                    DownloadError::ResourceChanged(
+                        "the FTP server stopped reporting the file modification time".to_string(),
+                    )
+                })?;
             if current != *expected {
-                return Err(DownloadError::ResourceChanged("the FTP file modification time changed during the download".to_string()));
+                return Err(DownloadError::ResourceChanged(
+                    "the FTP file modification time changed during the download".to_string(),
+                ));
             }
         }
         Ok(())
@@ -206,12 +274,25 @@ impl FtpBackend {
         range: Option<ByteRange>,
     ) -> Result<ByteStream, DownloadError> {
         if range.is_some() {
-            return Err(DownloadError::Protocol("FTP REST cannot prove an exact end offset, so FTP downloads are single-stream".to_string()));
+            return Err(DownloadError::Protocol(
+                "FTP REST cannot prove an exact end offset, so FTP downloads are single-stream"
+                    .to_string(),
+            ));
         }
         self.check_unchanged(&mut client, endpoint, probe)?;
-        let stream = client.retr_as_stream(&endpoint.path).map_err(|error| ftp_error("opening the FTP data connection", error))?;
-        Ok(Box::new(FtpBody { stream: Some(stream) }))
+        let stream = client
+            .retr_as_stream(&endpoint.path)
+            .map_err(|error| ftp_error("opening the FTP data connection", error))?;
+        Ok(Box::new(FtpBody {
+            stream: Some(stream),
+        }))
     }
+}
+
+/// The FTP control peer is the only host authorized to select a passive data
+/// endpoint. PASV/EPSV contributes its port, never a second destination IP.
+fn passive_data_address(control_peer: SocketAddr, advertised: SocketAddr) -> SocketAddr {
+    SocketAddr::new(control_peer.ip(), advertised.port())
 }
 
 impl TransferBackend for FtpBackend {
@@ -233,7 +314,9 @@ impl TransferBackend for FtpBackend {
         let endpoint = parse_endpoint(&probe.url)?;
         match endpoint.protocol {
             Protocol::Ftp => self.get_file(self.plain_client(&endpoint)?, &endpoint, probe, range),
-            Protocol::Ftps => self.get_file(self.secure_client(&endpoint)?, &endpoint, probe, range),
+            Protocol::Ftps => {
+                self.get_file(self.secure_client(&endpoint)?, &endpoint, probe, range)
+            }
         }
     }
 }
@@ -257,7 +340,9 @@ impl<T: TlsStream + Send> Read for FtpBody<T> {
 impl<T: TlsStream + Send> FinishableRead for FtpBody<T> {
     fn finish(&mut self) -> io::Result<()> {
         match self.stream.take() {
-            Some(stream) => stream.finish().map_err(|_| io::Error::other("the FTP server did not confirm the completed transfer")),
+            Some(stream) => stream.finish().map_err(|_| {
+                io::Error::other("the FTP server did not confirm the completed transfer")
+            }),
             None => Ok(()),
         }
     }
@@ -271,7 +356,9 @@ impl<T: TlsStream + Send> Drop for FtpBody<T> {
 
 fn ftp_error(action: &str, error: FtpError) -> DownloadError {
     match error {
-        FtpError::ConnectionError(_) | FtpError::SecureError(_) => DownloadError::Network(format!("{action} failed")),
+        FtpError::ConnectionError(_) | FtpError::SecureError(_) => {
+            DownloadError::Network(format!("{action} failed"))
+        }
         _ => DownloadError::Protocol(format!("the FTP server rejected {action}")),
     }
 }
@@ -280,46 +367,70 @@ fn decode(value: &str, part: &str) -> Result<String, DownloadError> {
     let value = percent_decode_str(value)
         .decode_utf8()
         .map(|value| value.into_owned())
-        .map_err(|_| DownloadError::InvalidUrl(format!("the FTP URL has invalid UTF-8 in its {part}")))?;
+        .map_err(|_| {
+            DownloadError::InvalidUrl(format!("the FTP URL has invalid UTF-8 in its {part}"))
+        })?;
     if value.chars().any(char::is_control) {
-        return Err(DownloadError::InvalidUrl(format!("the FTP URL's {part} must not contain control characters")));
+        return Err(DownloadError::InvalidUrl(format!(
+            "the FTP URL's {part} must not contain control characters"
+        )));
     }
     Ok(value)
 }
 
 fn parse_endpoint(input: &str) -> Result<Endpoint, DownloadError> {
-    let url = Url::parse(input).map_err(|error| DownloadError::InvalidUrl(format!("invalid FTP URL {input:?}: {error}")))?;
+    let url = Url::parse(input).map_err(|error| {
+        DownloadError::InvalidUrl(format!("invalid FTP URL {input:?}: {error}"))
+    })?;
     let protocol = match url.scheme() {
         "ftp" => Protocol::Ftp,
         "ftps" => Protocol::Ftps,
-        _ => return Err(DownloadError::InvalidUrl(format!("unsupported scheme in {input:?} (expected ftp or ftps)"))),
+        _ => {
+            return Err(DownloadError::InvalidUrl(format!(
+                "unsupported scheme in {input:?} (expected ftp or ftps)"
+            )));
+        }
     };
     if url.password().is_some() {
         return Err(DownloadError::InvalidUrl("an FTP URL must not contain a password; configure an FTPS keychain credential separately".to_string()));
     }
     if url.query().is_some() || url.fragment().is_some() {
-        return Err(DownloadError::InvalidUrl("an FTP URL cannot contain a query or fragment".to_string()));
+        return Err(DownloadError::InvalidUrl(
+            "an FTP URL cannot contain a query or fragment".to_string(),
+        ));
     }
-    let host = url.host_str().ok_or_else(|| DownloadError::InvalidUrl("an FTP URL needs a host".to_string()))?.to_string();
+    let host = url
+        .host_str()
+        .ok_or_else(|| DownloadError::InvalidUrl("an FTP URL needs a host".to_string()))?
+        .to_string();
     if host.chars().any(char::is_control) {
-        return Err(DownloadError::InvalidUrl("an FTP URL host must not contain control characters".to_string()));
+        return Err(DownloadError::InvalidUrl(
+            "an FTP URL host must not contain control characters".to_string(),
+        ));
     }
     let supplied_username = decode(url.username(), "username")?;
     let username = match protocol {
-        Protocol::Ftp if supplied_username.is_empty() || supplied_username == "anonymous" => "anonymous".to_string(),
+        Protocol::Ftp if supplied_username.is_empty() || supplied_username == "anonymous" => {
+            "anonymous".to_string()
+        }
         Protocol::Ftp => {
             return Err(DownloadError::InvalidUrl(
                 "plain FTP only permits anonymous access; use ftps://user@host/path for password authentication".to_string(),
             ));
         }
         Protocol::Ftps if supplied_username.is_empty() => {
-            return Err(DownloadError::InvalidUrl("an FTPS URL needs a username (for example ftps://alice@example.test/file)".to_string()));
+            return Err(DownloadError::InvalidUrl(
+                "an FTPS URL needs a username (for example ftps://alice@example.test/file)"
+                    .to_string(),
+            ));
         }
         Protocol::Ftps => supplied_username,
     };
     let path = decode(url.path(), "path")?;
     if path == "/" || path.is_empty() {
-        return Err(DownloadError::InvalidUrl("an FTP URL must name a file, not the server root".to_string()));
+        return Err(DownloadError::InvalidUrl(
+            "an FTP URL must name a file, not the server root".to_string(),
+        ));
     }
     Ok(Endpoint {
         protocol,
@@ -338,9 +449,17 @@ pub(crate) fn validate_url(input: &str) -> Result<(), DownloadError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use openssl::asn1::Asn1Time;
+    use openssl::bn::{BigNum, MsbOption};
+    use openssl::hash::MessageDigest;
+    use openssl::pkcs12::Pkcs12;
+    use openssl::pkey::PKey;
+    use openssl::rsa::Rsa;
+    use openssl::x509::{X509, X509NameBuilder};
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
     use std::thread;
+    use suppaftp::native_tls::{Identity, TlsAcceptor};
 
     #[test]
     fn ftp_is_anonymous_and_ftps_names_a_user_host_port_and_file() {
@@ -366,8 +485,21 @@ mod tests {
             "ftps://alice@example.test/file?version=1",
             "ftps://alice@example.test/file%0d%0aDELE%20everything",
         ] {
-            assert!(matches!(parse_endpoint(url), Err(DownloadError::InvalidUrl(_))), "{url}");
+            assert!(
+                matches!(parse_endpoint(url), Err(DownloadError::InvalidUrl(_))),
+                "{url}"
+            );
         }
+    }
+
+    #[test]
+    fn passive_mode_uses_the_control_peers_ip_not_the_servers_advertised_ip() {
+        let control = "127.0.0.1:21".parse().unwrap();
+        let advertised = "203.0.113.99:4567".parse().unwrap();
+        assert_eq!(
+            passive_data_address(control, advertised),
+            "127.0.0.1:4567".parse().unwrap()
+        );
     }
 
     fn command(reader: &mut BufReader<TcpStream>, expected: &str) {
@@ -389,6 +521,35 @@ mod tests {
         reply(reader, "230 logged in\r\n");
         command(reader, "TYPE I");
         reply(reader, "200 binary mode\r\n");
+    }
+
+    fn untrusted_tls_identity() -> Identity {
+        let key = PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap();
+        let mut serial = BigNum::new().unwrap();
+        serial.rand(159, MsbOption::MAYBE_ZERO, false).unwrap();
+        let mut subject = X509NameBuilder::new().unwrap();
+        subject.append_entry_by_text("CN", "localhost").unwrap();
+        let subject = subject.build();
+        let mut certificate = X509::builder().unwrap();
+        certificate.set_version(2).unwrap();
+        certificate
+            .set_serial_number(&serial.to_asn1_integer().unwrap())
+            .unwrap();
+        certificate.set_subject_name(&subject).unwrap();
+        certificate.set_issuer_name(&subject).unwrap();
+        certificate.set_pubkey(&key).unwrap();
+        certificate
+            .set_not_before(Asn1Time::days_from_now(0).unwrap().as_ref())
+            .unwrap();
+        certificate
+            .set_not_after(Asn1Time::days_from_now(1).unwrap().as_ref())
+            .unwrap();
+        certificate.sign(&key, MessageDigest::sha256()).unwrap();
+        let certificate = certificate.build();
+        let mut pkcs12 = Pkcs12::builder();
+        pkcs12.name("test-only").pkey(&key).cert(&certificate);
+        let pkcs12 = pkcs12.build2("test-only").unwrap();
+        Identity::from_pkcs12(&pkcs12.to_der().unwrap(), "test-only").unwrap()
     }
 
     /// This is deliberately a wire-level test rather than a mock of
@@ -419,7 +580,11 @@ mod tests {
             let port = data_listener.local_addr().unwrap().port();
             reply(
                 &mut second,
-                &format!("227 entering passive mode (127,0,0,1,{},{})\r\n", port / 256, port % 256),
+                &format!(
+                    "227 entering passive mode (127,0,0,1,{},{})\r\n",
+                    port / 256,
+                    port % 256
+                ),
             );
             command(&mut second, "RETR /releases/file.bin");
             reply(&mut second, "150 opening data connection\r\n");
@@ -440,6 +605,84 @@ mod tests {
         body.read_to_end(&mut bytes).unwrap();
         body.finish().unwrap();
         assert_eq!(bytes, b"abc123");
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn a_failed_final_ftp_reply_fails_the_completed_body() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (first, _) = listener.accept().unwrap();
+            let mut first = BufReader::new(first);
+            authenticate_anonymous(&mut first);
+            command(&mut first, "SIZE /releases/file.bin");
+            reply(&mut first, "213 3\r\n");
+            command(&mut first, "MDTM /releases/file.bin");
+            reply(&mut first, "213 20260102030405\r\n");
+
+            let (second, _) = listener.accept().unwrap();
+            let mut second = BufReader::new(second);
+            authenticate_anonymous(&mut second);
+            command(&mut second, "SIZE /releases/file.bin");
+            reply(&mut second, "213 3\r\n");
+            command(&mut second, "MDTM /releases/file.bin");
+            reply(&mut second, "213 20260102030405\r\n");
+            command(&mut second, "PASV");
+            let data_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = data_listener.local_addr().unwrap().port();
+            reply(
+                &mut second,
+                &format!(
+                    "227 entering passive mode (203,0,113,99,{},{})\r\n",
+                    port / 256,
+                    port % 256
+                ),
+            );
+            command(&mut second, "RETR /releases/file.bin");
+            reply(&mut second, "150 opening data connection\r\n");
+            let (mut data, _) = data_listener.accept().unwrap();
+            data.write_all(b"bad").unwrap();
+            drop(data);
+            reply(&mut second, "550 transfer failed after data\r\n");
+        });
+
+        let backend = FtpBackend::new(&DownloadOptions::default());
+        let url = format!("ftp://{address}/releases/file.bin");
+        let probe = backend.probe(&url).unwrap();
+        let mut body = backend.get(&probe, None).unwrap();
+        let mut bytes = Vec::new();
+        body.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"bad");
+        assert!(
+            body.finish().is_err(),
+            "the final FTP reply must be observed"
+        );
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn ftps_refuses_a_self_signed_control_certificate_before_authentication() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let acceptor = TlsAcceptor::new(untrusted_tls_identity()).unwrap();
+        let server = thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(socket.try_clone().unwrap());
+            reply(&mut reader, "220 mock FTPS ready\r\n");
+            command(&mut reader, "AUTH TLS");
+            reply(&mut reader, "234 begin TLS negotiation\r\n");
+            assert!(
+                acceptor.accept(socket).is_err(),
+                "the client must reject an untrusted certificate"
+            );
+        });
+
+        let backend = FtpBackend::new(&DownloadOptions::default());
+        let error = backend
+            .probe(&format!("ftps://alice@{address}/releases/file.bin"))
+            .unwrap_err();
+        assert!(matches!(error, DownloadError::Network(_)), "{error}");
         server.join().unwrap();
     }
 }

@@ -12,19 +12,55 @@
 //! that crate's `src/bin/blueice-core.rs` docs).
 //!
 //! `core` opens a short-lived, per-check connection per review (connect
-//! -> request -> reply -> disconnect), so handling connections
-//! sequentially here is a deliberate match to that shape, not a
-//! scalability shortcut -- see `blueice_ai_gatekeeper`'s own module
-//! docs.
+//! -> request -> reply -> disconnect). Each accepted connection runs in its
+//! own bounded-time worker, so an idle local peer cannot block other reviews.
 
 use blueice_ai_gatekeeper::handle_one_check;
 use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
-use std::os::unix::net::UnixListener;
+use blueice_ipc::local_socket::{bind_private_listener, ensure_private_socket_dir};
+use std::io::{self, Read, Write};
+use std::os::unix::net::UnixStream;
+use std::thread;
+use std::time::{Duration, Instant};
+
+const CHECK_TIMEOUT: Duration = Duration::from_secs(10);
+
+struct DeadlineStream {
+    stream: UnixStream,
+    deadline: Instant,
+}
+
+impl DeadlineStream {
+    fn new(stream: UnixStream) -> Self {
+        DeadlineStream { stream, deadline: Instant::now() + CHECK_TIMEOUT }
+    }
+}
+
+impl Read for DeadlineStream {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let remaining = self.deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "the gatekeeper request exceeded its deadline"));
+        }
+        self.stream.set_read_timeout(Some(remaining))?;
+        self.stream.read(buffer)
+    }
+}
+
+impl Write for DeadlineStream {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.stream.write(buffer)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.stream.flush()
+    }
+}
 
 fn main() -> std::io::Result<()> {
     let path = default_gatekeeper_socket_path();
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        ensure_private_socket_dir(parent)?;
     }
     // A stale socket file from a previous run (e.g. one that crashed
     // instead of exiting cleanly) makes bind() fail with AddrInUse even
@@ -32,9 +68,13 @@ fn main() -> std::io::Result<()> {
     // `blueice-core`'s own binary does for its own socket.
     let _ = std::fs::remove_file(&path);
 
-    let listener = UnixListener::bind(&path)?;
-    for mut stream in listener.incoming().flatten() {
-        let _ = handle_one_check(&mut stream);
+    let listener = bind_private_listener(&path)?;
+    for stream in listener.incoming().flatten() {
+        thread::spawn(move || {
+            let _ = stream.set_write_timeout(Some(CHECK_TIMEOUT));
+            let mut stream = DeadlineStream::new(stream);
+            let _ = handle_one_check(&mut stream);
+        });
     }
     Ok(())
 }

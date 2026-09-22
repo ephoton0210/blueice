@@ -36,14 +36,14 @@
 //! way a real platform-native frontend (not necessarily even Rust)
 //! would.
 
-use blueice_ipc::downloads::{default_downloads_socket_path, DownloadsClient, TransferInfo};
-use blueice_ipc::{shm, ClientMessage, ServerMessage};
+use blueice_ipc::downloads::{DownloadsClient, TransferInfo, default_downloads_socket_path};
+use blueice_ipc::{ClientMessage, ServerMessage, shm};
 use softbuffer::{Context, Surface};
 use std::io::BufRead;
 use std::num::NonZeroU32;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
@@ -57,7 +57,10 @@ use winit::window::{Window, WindowId};
 /// `BACKGROUND` constant), so alpha is never consulted here -- there's
 /// nothing underneath a BlueIce frame to blend against.
 fn rgba_to_xrgb(pixels: &[u8]) -> Vec<u32> {
-    pixels.chunks_exact(4).map(|p| (u32::from(p[0]) << 16) | (u32::from(p[1]) << 8) | u32::from(p[2])).collect()
+    pixels
+        .chunks_exact(4)
+        .map(|p| (u32::from(p[0]) << 16) | (u32::from(p[1]) << 8) | u32::from(p[2]))
+        .collect()
 }
 
 /// `core` is expected to sit next to this binary in the same build
@@ -66,8 +69,15 @@ fn rgba_to_xrgb(pixels: &[u8]) -> Vec<u32> {
 /// for the common case while still being explicit about the
 /// assumption, rather than silently searching `$PATH`.
 fn sibling_core_binary(this_exe: &Path) -> PathBuf {
-    let name = if cfg!(windows) { "blueice-core.exe" } else { "blueice-core" };
-    this_exe.parent().map(|dir| dir.join(name)).unwrap_or_else(|| PathBuf::from(name))
+    let name = if cfg!(windows) {
+        "blueice-core.exe"
+    } else {
+        "blueice-core"
+    };
+    this_exe
+        .parent()
+        .map(|dir| dir.join(name))
+        .unwrap_or_else(|| PathBuf::from(name))
 }
 
 /// Picks a supported locale from a `LANG`-shaped environment value
@@ -81,9 +91,19 @@ fn sibling_core_binary(this_exe: &Path) -> PathBuf {
 /// same relationship stdin's `show`/`hide`/`credits` commands have to
 /// a real AI-facing control channel.
 fn detect_locale(lang_env: Option<&str>) -> &'static str {
-    let Some(lang_env) = lang_env else { return blueice_i18n::DEFAULT_LOCALE };
-    let tag = lang_env.split('.').next().unwrap_or(lang_env).replace('_', "-");
-    blueice_i18n::SUPPORTED_LOCALES.iter().find(|candidate| candidate.eq_ignore_ascii_case(&tag)).copied().unwrap_or(blueice_i18n::DEFAULT_LOCALE)
+    let Some(lang_env) = lang_env else {
+        return blueice_i18n::DEFAULT_LOCALE;
+    };
+    let tag = lang_env
+        .split('.')
+        .next()
+        .unwrap_or(lang_env)
+        .replace('_', "-");
+    blueice_i18n::SUPPORTED_LOCALES
+        .iter()
+        .find(|candidate| candidate.eq_ignore_ascii_case(&tag))
+        .copied()
+        .unwrap_or(blueice_i18n::DEFAULT_LOCALE)
 }
 
 fn unique_socket_path() -> PathBuf {
@@ -102,6 +122,21 @@ fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
         std::thread::sleep(Duration::from_millis(20));
     }
     false
+}
+
+/// Waits for a downloads socket that is actually accepting connections,
+/// rather than merely for a pathname left behind by a crashed process.
+fn wait_for_downloads_connection(path: &Path, timeout: Duration) -> Option<UnixStream> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Ok(stream) = UnixStream::connect(path) {
+            return Some(stream);
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 /// The well-known URL `core`'s built-in credits page lives at
@@ -156,7 +191,12 @@ impl App {
         }
         match shm::map_frame(Path::new(shm_path)) {
             Ok(mapped) => {
-                self.frame = Some(CurrentFrame { width, height, generation, pixels_xrgb: rgba_to_xrgb(&mapped) });
+                self.frame = Some(CurrentFrame {
+                    width,
+                    height,
+                    generation,
+                    pixels_xrgb: rgba_to_xrgb(&mapped),
+                });
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
@@ -166,10 +206,13 @@ impl App {
     }
 
     fn redraw(&mut self) {
-        let (Some(window), Some(surface), Some(frame)) = (&self.window, &mut self.surface, &self.frame) else {
+        let (Some(window), Some(surface), Some(frame)) =
+            (&self.window, &mut self.surface, &self.frame)
+        else {
             return;
         };
-        let (Some(w), Some(h)) = (NonZeroU32::new(frame.width), NonZeroU32::new(frame.height)) else {
+        let (Some(w), Some(h)) = (NonZeroU32::new(frame.width), NonZeroU32::new(frame.height))
+        else {
             return;
         };
         if surface.resize(w, h).is_err() {
@@ -190,22 +233,35 @@ impl ApplicationHandler<UserEvent> for App {
         }
         let title = blueice_i18n::translate(self.locale, "frontend", "window-title-default", &[]);
         let attrs = Window::default_attributes().with_title(&title);
-        let window = Rc::new(event_loop.create_window(attrs).expect("failed to create window"));
+        let window = Rc::new(
+            event_loop
+                .create_window(attrs)
+                .expect("failed to create window"),
+        );
         let context = Context::new(window.clone()).expect("failed to create softbuffer context");
-        let surface = Surface::new(&context, window.clone()).expect("failed to create softbuffer surface");
+        let surface =
+            Surface::new(&context, window.clone()).expect("failed to create softbuffer surface");
         self.window = Some(window);
         self.surface = Some(surface);
         self.redraw();
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::CloseRequested => {
                 self.send(&ClientMessage::Shutdown);
                 event_loop.exit();
             }
             WindowEvent::Resized(size) if size.width > 0 && size.height > 0 => {
-                self.send(&ClientMessage::Resize { width: size.width, height: size.height });
+                self.send(&ClientMessage::Resize {
+                    width: size.width,
+                    height: size.height,
+                });
             }
             WindowEvent::RedrawRequested => self.redraw(),
             WindowEvent::CursorMoved { position, .. } => {
@@ -214,9 +270,16 @@ impl ApplicationHandler<UserEvent> for App {
                 // truth for "what's hovered" -- see
                 // `phase-1-ai-representation-layer/PLAN.md` §4 and
                 // `blueice_ipc::ClientMessage::Hover`'s own docs.
-                self.send(&ClientMessage::Hover { x: position.x, y: position.y });
+                self.send(&ClientMessage::Hover {
+                    x: position.x,
+                    y: position.y,
+                });
             }
-            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => {
                 let (x, y) = self.cursor;
                 self.send(&ClientMessage::Click { x, y });
             }
@@ -233,12 +296,22 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
-            UserEvent::Server(ServerMessage::FrameReady { shm_path, width, height, generation }) => {
+            UserEvent::Server(ServerMessage::FrameReady {
+                shm_path,
+                width,
+                height,
+                generation,
+            }) => {
                 self.apply_frame(&shm_path, width, height, generation);
             }
             UserEvent::Server(ServerMessage::Navigated { url }) => {
                 if let Some(window) = &self.window {
-                    window.set_title(&blueice_i18n::translate(self.locale, "frontend", "window-title-navigated", &[("url", &url)]));
+                    window.set_title(&blueice_i18n::translate(
+                        self.locale,
+                        "frontend",
+                        "window-title-navigated",
+                        &[("url", &url)],
+                    ));
                 }
             }
             UserEvent::Server(ServerMessage::Error { message }) => {
@@ -249,8 +322,14 @@ impl ApplicationHandler<UserEvent> for App {
             // UI for the "detailed risk explanation" the plan calls
             // for yet -- surfaced the same minimal way `Error` is,
             // pending that real UI work.
-            UserEvent::Server(ServerMessage::GatekeeperBlocked { reason, category, url }) => {
-                eprintln!("blueice-frontend: core's gatekeeper blocked {url} ({category}): {reason}");
+            UserEvent::Server(ServerMessage::GatekeeperBlocked {
+                reason,
+                category,
+                url,
+            }) => {
+                eprintln!(
+                    "blueice-frontend: core's gatekeeper blocked {url} ({category}): {reason}"
+                );
             }
             // This reference frontend has no AI-facing consumer of its
             // own -- a Representation/Dom only arrives if something
@@ -286,14 +365,23 @@ impl ApplicationHandler<UserEvent> for App {
                 if let Some(window) = &self.window {
                     window.set_visible(visible);
                 }
-                self.send(&ClientMessage::Chrome(blueice_ipc::ChromeCommand::SetVisible(visible)));
+                self.send(&ClientMessage::Chrome(
+                    blueice_ipc::ChromeCommand::SetVisible(visible),
+                ));
             }
-            UserEvent::Navigate(url) => self.send(&ClientMessage::Navigate { url: navigation_url(&url, self.locale) }),
+            UserEvent::Navigate(url) => self.send(&ClientMessage::Navigate {
+                url: navigation_url(&url, self.locale),
+            }),
             UserEvent::StartDownload(url) => {
                 // Blocking I/O (and possibly starting a process): off the UI thread.
                 std::thread::spawn(move || match start_download(&url) {
-                    Ok(transfer) => eprintln!("blueice-frontend: download {} queued for {} (type `downloads` to watch it)", transfer.id, transfer.url),
-                    Err(message) => eprintln!("blueice-frontend: could not start the download: {message}"),
+                    Ok(transfer) => eprintln!(
+                        "blueice-frontend: download {} queued for {} (type `downloads` to watch it)",
+                        transfer.id, transfer.url
+                    ),
+                    Err(message) => {
+                        eprintln!("blueice-frontend: could not start the download: {message}")
+                    }
                 });
             }
             UserEvent::Quit => {
@@ -322,8 +410,15 @@ fn navigation_url(url: &str, locale: &str) -> String {
 /// `blueice-downloads` is expected to sit next to this binary in the same
 /// build output directory, like `core`.
 fn sibling_downloads_binary(this_exe: &Path) -> PathBuf {
-    let name = if cfg!(windows) { "blueice-downloads.exe" } else { "blueice-downloads" };
-    this_exe.parent().map(|dir| dir.join(name)).unwrap_or_else(|| PathBuf::from(name))
+    let name = if cfg!(windows) {
+        "blueice-downloads.exe"
+    } else {
+        "blueice-downloads"
+    };
+    this_exe
+        .parent()
+        .map(|dir| dir.join(name))
+        .unwrap_or_else(|| PathBuf::from(name))
 }
 
 /// Asks the downloads process at `socket` to fetch `url`, starting it first
@@ -331,15 +426,20 @@ fn sibling_downloads_binary(this_exe: &Path) -> PathBuf {
 /// downloads process directly rather than through `core`
 /// (`phase-10-download-manager/PLAN.md`): `core` has no downloads command in
 /// its protocol, and a starting download needs no page.
-fn start_download_at(socket: &Path, spawn: &dyn Fn() -> std::io::Result<()>, url: &str) -> Result<TransferInfo, String> {
+fn start_download_at(
+    socket: &Path,
+    spawn: &dyn Fn() -> std::io::Result<()>,
+    url: &str,
+) -> Result<TransferInfo, String> {
     let stream = match UnixStream::connect(socket) {
         Ok(stream) => stream,
         Err(_) => {
-            spawn().map_err(|e| format!("the downloads service is not running and could not be started: {e}"))?;
-            if !wait_for_socket(socket, Duration::from_secs(5)) {
-                return Err("the downloads service was started but did not start listening in time".to_string());
-            }
-            UnixStream::connect(socket).map_err(|e| format!("could not connect to the downloads service: {e}"))?
+            spawn().map_err(|e| {
+                format!("the downloads service is not running and could not be started: {e}")
+            })?;
+            wait_for_downloads_connection(socket, Duration::from_secs(5)).ok_or_else(|| {
+                "the downloads service was started but did not start listening in time".to_string()
+            })?
         }
     };
     let mut client = DownloadsClient::connect(stream).map_err(|e| e.to_string())?;
@@ -351,7 +451,13 @@ fn start_download_at(socket: &Path, spawn: &dyn Fn() -> std::io::Result<()>, url
 fn start_download(url: &str) -> Result<TransferInfo, String> {
     let socket = default_downloads_socket_path();
     let spawn = || -> std::io::Result<()> {
-        let mut child = Command::new(sibling_downloads_binary(&std::env::current_exe()?)).arg("--socket").arg(&socket).spawn()?;
+        let mut child = Command::new(sibling_downloads_binary(&std::env::current_exe()?))
+            .arg("--socket")
+            .arg(&socket)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
         std::thread::spawn(move || {
             let _ = child.wait();
         });
@@ -371,7 +477,11 @@ fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
         "credits" => Some(UserEvent::Navigate(CREDITS_URL.to_string())),
         "downloads" => Some(UserEvent::Navigate(DOWNLOADS_URL.to_string())),
         "quit" => Some(UserEvent::Quit),
-        other if other.strip_prefix("download").is_some_and(|rest| rest.starts_with(char::is_whitespace)) => {
+        other
+            if other
+                .strip_prefix("download")
+                .is_some_and(|rest| rest.starts_with(char::is_whitespace)) =>
+        {
             let url = other["download".len()..].trim();
             if url.is_empty() {
                 None
@@ -384,7 +494,9 @@ fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
             None
         }
         other if !other.is_empty() => {
-            eprintln!("blueice-frontend: unrecognized command {other:?} (try show/hide/credits/downloads/download <url>/quit)");
+            eprintln!(
+                "blueice-frontend: unrecognized command {other:?} (try show/hide/credits/downloads/download <url>/quit)"
+            );
             None
         }
         _ => None,
@@ -409,23 +521,27 @@ fn spawn_stdin_commands(proxy: EventLoopProxy<UserEvent>) {
 }
 
 fn spawn_server_reader(mut reader: UnixStream, proxy: EventLoopProxy<UserEvent>) {
-    std::thread::spawn(move || loop {
-        match blueice_ipc::read_server_message(&mut reader) {
-            Ok(msg) => {
-                if proxy.send_event(UserEvent::Server(msg)).is_err() {
+    std::thread::spawn(move || {
+        loop {
+            match blueice_ipc::read_server_message(&mut reader) {
+                Ok(msg) => {
+                    if proxy.send_event(UserEvent::Server(msg)).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    let _ = proxy.send_event(UserEvent::Disconnected);
                     break;
                 }
-            }
-            Err(_) => {
-                let _ = proxy.send_event(UserEvent::Disconnected);
-                break;
             }
         }
     });
 }
 
 fn main() {
-    let url = std::env::args().nth(1).unwrap_or_else(|| "https://example.com".to_string());
+    let url = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "https://example.com".to_string());
 
     let this_exe = std::env::current_exe().expect("failed to resolve own executable path");
     let core_bin = sibling_core_binary(&this_exe);
@@ -440,30 +556,54 @@ fn main() {
         .arg("--height")
         .arg("600")
         .spawn()
-        .unwrap_or_else(|e| panic!("failed to spawn {} ({e}) -- expected it next to {}", core_bin.display(), this_exe.display()));
+        .unwrap_or_else(|e| {
+            panic!(
+                "failed to spawn {} ({e}) -- expected it next to {}",
+                core_bin.display(),
+                this_exe.display()
+            )
+        });
 
     if !wait_for_socket(&socket_path, Duration::from_secs(5)) {
-        panic!("blueice-core never created its socket at {}", socket_path.display());
+        panic!(
+            "blueice-core never created its socket at {}",
+            socket_path.display()
+        );
     }
     let mut writer = UnixStream::connect(&socket_path).expect("failed to connect to blueice-core");
     // `core` requires the very first message on a fresh connection to
     // be `Hello` (`phase-1-ai-representation-layer/PLAN.md` §3) -- done
     // here, before `spawn_server_reader` starts, so nothing else races
     // to read the handshake reply meant for this call.
-    blueice_ipc::client_handshake(&mut writer).expect("blueice-core rejected the protocol_version handshake");
-    let reader = writer.try_clone().expect("failed to clone the core connection for the reader thread");
+    blueice_ipc::client_handshake(&mut writer)
+        .expect("blueice-core rejected the protocol_version handshake");
+    let reader = writer
+        .try_clone()
+        .expect("failed to clone the core connection for the reader thread");
 
-    let event_loop = EventLoop::<UserEvent>::with_user_event().build().expect("failed to create the event loop");
+    let event_loop = EventLoop::<UserEvent>::with_user_event()
+        .build()
+        .expect("failed to create the event loop");
     let proxy = event_loop.create_proxy();
 
     spawn_server_reader(reader, proxy.clone());
     spawn_stdin_commands(proxy);
 
     let locale = detect_locale(std::env::var("LANG").ok().as_deref());
-    let mut app = App { core, writer, window: None, surface: None, frame: None, cursor: (0.0, 0.0), locale };
+    let mut app = App {
+        core,
+        writer,
+        window: None,
+        surface: None,
+        frame: None,
+        cursor: (0.0, 0.0),
+        locale,
+    };
     app.send(&ClientMessage::Navigate { url });
 
-    event_loop.run_app(&mut app).expect("event loop exited with an error");
+    event_loop
+        .run_app(&mut app)
+        .expect("event loop exited with an error");
 
     let _ = std::fs::remove_file(&socket_path);
 }
@@ -496,7 +636,10 @@ mod tests {
     #[test]
     fn unique_socket_path_stays_short_enough_for_af_unix() {
         let path = unique_socket_path();
-        assert!(path.to_string_lossy().len() < 100, "AF_UNIX paths are capped around 108 bytes");
+        assert!(
+            path.to_string_lossy().len() < 100,
+            "AF_UNIX paths are capped around 108 bytes"
+        );
     }
 
     #[test]
@@ -517,13 +660,21 @@ mod tests {
 
     #[test]
     fn stdin_show_and_hide_map_to_set_visible_events() {
-        assert!(matches!(stdin_line_to_event("show"), Some(UserEvent::SetVisible(true))));
-        assert!(matches!(stdin_line_to_event("hide"), Some(UserEvent::SetVisible(false))));
+        assert!(matches!(
+            stdin_line_to_event("show"),
+            Some(UserEvent::SetVisible(true))
+        ));
+        assert!(matches!(
+            stdin_line_to_event("hide"),
+            Some(UserEvent::SetVisible(false))
+        ));
     }
 
     #[test]
     fn stdin_credits_command_navigates_to_the_built_in_credits_page() {
-        assert!(matches!(stdin_line_to_event("credits"), Some(UserEvent::Navigate(url)) if url == CREDITS_URL));
+        assert!(
+            matches!(stdin_line_to_event("credits"), Some(UserEvent::Navigate(url)) if url == CREDITS_URL)
+        );
     }
 
     #[test]
@@ -533,7 +684,10 @@ mod tests {
 
     #[test]
     fn stdin_commands_are_trimmed_of_surrounding_whitespace() {
-        assert!(matches!(stdin_line_to_event("  credits  "), Some(UserEvent::Navigate(_))));
+        assert!(matches!(
+            stdin_line_to_event("  credits  "),
+            Some(UserEvent::Navigate(_))
+        ));
     }
 
     #[test]
@@ -559,7 +713,10 @@ mod tests {
 
     #[test]
     fn detect_locale_falls_back_to_default_for_an_unsupported_lang() {
-        assert_eq!(detect_locale(Some("fr_FR.UTF-8")), blueice_i18n::DEFAULT_LOCALE);
+        assert_eq!(
+            detect_locale(Some("fr_FR.UTF-8")),
+            blueice_i18n::DEFAULT_LOCALE
+        );
     }
 
     #[test]
@@ -571,14 +728,23 @@ mod tests {
 
     #[test]
     fn stdin_downloads_command_navigates_to_the_built_in_downloads_page() {
-        assert!(matches!(stdin_line_to_event("downloads"), Some(UserEvent::Navigate(url)) if url == DOWNLOADS_URL));
-        assert!(matches!(stdin_line_to_event("  downloads "), Some(UserEvent::Navigate(_))));
+        assert!(
+            matches!(stdin_line_to_event("downloads"), Some(UserEvent::Navigate(url)) if url == DOWNLOADS_URL)
+        );
+        assert!(matches!(
+            stdin_line_to_event("  downloads "),
+            Some(UserEvent::Navigate(_))
+        ));
     }
 
     #[test]
     fn stdin_download_command_carries_the_url_to_fetch() {
-        assert!(matches!(stdin_line_to_event("download https://example.com/a.iso"), Some(UserEvent::StartDownload(url)) if url == "https://example.com/a.iso"));
-        assert!(matches!(stdin_line_to_event("  download   https://example.com/b.iso  "), Some(UserEvent::StartDownload(url)) if url == "https://example.com/b.iso"));
+        assert!(
+            matches!(stdin_line_to_event("download https://example.com/a.iso"), Some(UserEvent::StartDownload(url)) if url == "https://example.com/a.iso")
+        );
+        assert!(
+            matches!(stdin_line_to_event("  download   https://example.com/b.iso  "), Some(UserEvent::StartDownload(url)) if url == "https://example.com/b.iso")
+        );
     }
 
     #[test]
@@ -589,21 +755,42 @@ mod tests {
 
     #[test]
     fn the_downloads_page_is_opened_in_the_windows_own_language() {
-        assert_eq!(navigation_url("about:downloads", "zh-TW"), "about:downloads?lang=zh-TW");
-        assert_eq!(navigation_url("about:downloads", "en"), "about:downloads?lang=en");
-        for other in ["about:credits", "https://example.com/", "about:downloads?lang=en", "about:blank"] {
-            assert_eq!(navigation_url(other, "zh-TW"), other, "only the bare downloads URL is localized here");
+        assert_eq!(
+            navigation_url("about:downloads", "zh-TW"),
+            "about:downloads?lang=zh-TW"
+        );
+        assert_eq!(
+            navigation_url("about:downloads", "en"),
+            "about:downloads?lang=en"
+        );
+        for other in [
+            "about:credits",
+            "https://example.com/",
+            "about:downloads?lang=en",
+            "about:blank",
+        ] {
+            assert_eq!(
+                navigation_url(other, "zh-TW"),
+                other,
+                "only the bare downloads URL is localized here"
+            );
         }
     }
 
     #[test]
     fn sibling_downloads_binary_sits_next_to_the_frontend_binary() {
         let exe = PathBuf::from("/opt/blueice/bin/blueice-frontend");
-        assert_eq!(sibling_downloads_binary(&exe), PathBuf::from("/opt/blueice/bin/blueice-downloads"));
+        assert_eq!(
+            sibling_downloads_binary(&exe),
+            PathBuf::from("/opt/blueice/bin/blueice-downloads")
+        );
     }
 
     fn fake_downloads_process(socket: &Path) -> std::thread::JoinHandle<()> {
-        use blueice_ipc::downloads::{read_downloads_request, write_downloads_reply, DownloadsReply, DownloadsRequest, DOWNLOADS_PROTOCOL_VERSION};
+        use blueice_ipc::downloads::{
+            DOWNLOADS_PROTOCOL_VERSION, DownloadsReply, DownloadsRequest, read_downloads_request,
+            write_downloads_reply,
+        };
         let listener = std::os::unix::net::UnixListener::bind(socket).unwrap();
         std::thread::spawn(move || {
             for stream in listener.incoming() {
@@ -611,8 +798,16 @@ mod tests {
                 std::thread::spawn(move || {
                     while let Ok((id, request)) = read_downloads_request(&mut stream) {
                         let reply = match request {
-                            DownloadsRequest::Hello { .. } => DownloadsReply::Hello { protocol_version: DOWNLOADS_PROTOCOL_VERSION },
-                            DownloadsRequest::Start { url, .. } => DownloadsReply::Started(TransferInfo { id: 5, url, ..TransferInfo::default() }),
+                            DownloadsRequest::Hello { .. } => DownloadsReply::Hello {
+                                protocol_version: DOWNLOADS_PROTOCOL_VERSION,
+                            },
+                            DownloadsRequest::Start { url, .. } => {
+                                DownloadsReply::Started(TransferInfo {
+                                    id: 5,
+                                    url,
+                                    ..TransferInfo::default()
+                                })
+                            }
                             _ => DownloadsReply::Ok,
                         };
                         if write_downloads_reply(&mut stream, id, &reply).is_err() {
@@ -634,8 +829,16 @@ mod tests {
     fn a_download_is_started_on_a_running_downloads_process_without_spawning_anything() {
         let socket = scratch_socket("running");
         let _server = fake_downloads_process(&socket);
-        let started = start_download_at(&socket, &|| panic!("nothing should be spawned"), "https://example.com/a.iso").unwrap();
-        assert_eq!((started.id, started.url.as_str()), (5, "https://example.com/a.iso"));
+        let started = start_download_at(
+            &socket,
+            &|| panic!("nothing should be spawned"),
+            "https://example.com/a.iso",
+        )
+        .unwrap();
+        assert_eq!(
+            (started.id, started.url.as_str()),
+            (5, "https://example.com/a.iso")
+        );
     }
 
     #[test]
@@ -655,10 +858,34 @@ mod tests {
     }
 
     #[test]
-    fn a_download_that_cannot_reach_or_start_the_service_says_so() {
-        let socket = scratch_socket("fail");
-        let error = start_download_at(&socket, &|| Err(std::io::Error::other("no such binary")), "https://example.com/c.iso").unwrap_err();
-        assert!(error.contains("no such binary"), "{error}");
+    fn a_stale_downloads_socket_path_is_not_mistaken_for_a_live_service() {
+        let socket = scratch_socket("stale");
+        std::fs::write(&socket, b"stale socket entry").unwrap();
+        let spawn_socket = socket.clone();
+        let spawner = move || -> std::io::Result<()> {
+            let socket = spawn_socket.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(100));
+                let _ = std::fs::remove_file(&socket);
+                let _ = fake_downloads_process(&socket);
+            });
+            Ok(())
+        };
+
+        let started =
+            start_download_at(&socket, &spawner, "https://example.com/stale.iso").unwrap();
+        assert_eq!(started.id, 5);
     }
 
+    #[test]
+    fn a_download_that_cannot_reach_or_start_the_service_says_so() {
+        let socket = scratch_socket("fail");
+        let error = start_download_at(
+            &socket,
+            &|| Err(std::io::Error::other("no such binary")),
+            "https://example.com/c.iso",
+        )
+        .unwrap_err();
+        assert!(error.contains("no such binary"), "{error}");
+    }
 }

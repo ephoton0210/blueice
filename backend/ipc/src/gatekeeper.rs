@@ -97,23 +97,7 @@ pub fn read_gatekeeper_reply<R: Read>(r: &mut R) -> io::Result<GatekeeperReply> 
 /// independent fake listener running concurrently in the same test
 /// binary process.
 pub fn default_gatekeeper_socket_path() -> PathBuf {
-    let dir = match std::env::var_os("XDG_RUNTIME_DIR") {
-        Some(dir) => PathBuf::from(dir).join("blueice"),
-        None => std::env::temp_dir().join(format!("blueice-{}", unsafe { libc_getuid() })),
-    };
-    dir.join("ai-gatekeeper.sock")
-}
-
-// Duplicated from `blueice-launcher`'s identical helper rather than
-// shared via a common dependency -- see that crate's own docs for why
-// (~10 lines, and the two crates' socket-path helpers are otherwise
-// independent enough that sharing them would be more indirection than
-// the duplication costs).
-unsafe fn libc_getuid() -> u32 {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|status| status.lines().find_map(|line| line.strip_prefix("Uid:")).and_then(|rest| rest.split_whitespace().next()).and_then(|s| s.parse().ok()))
-        .unwrap_or_else(std::process::id)
+    crate::local_socket::default_socket_dir().join("ai-gatekeeper.sock")
 }
 
 #[cfg(test)]

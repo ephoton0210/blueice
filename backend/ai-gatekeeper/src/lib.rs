@@ -15,11 +15,9 @@
 //!
 //! `core` opens a short-lived, per-check connection (connect -> request
 //! -> reply -> disconnect) rather than multiplexing many checks over
-//! one shared connection, so [`handle_one_check`] handling connections
-//! sequentially (see `src/bin/blueice-ai-gatekeeper.rs`) is deliberate,
-//! not a scalability shortcut: concurrent checks from different tabs
-//! are already independent OS-level connections/threads on `core`'s
-//! side, each served by its own accepted connection here.
+//! one shared connection. The binary serves each accepted connection on a
+//! separate bounded-time worker, so concurrent checks from different tabs
+//! remain independent all the way through the gatekeeper.
 
 use blueice_ipc::gatekeeper::{read_gatekeeper_request, write_gatekeeper_reply, GatekeeperReply};
 use std::io::{self, Read, Write};

@@ -17,7 +17,9 @@
 
 #![allow(dead_code)]
 
-use blueice_ipc::gatekeeper::{read_gatekeeper_request, write_gatekeeper_reply, GatekeeperReply, GatekeeperRequest};
+use blueice_ipc::gatekeeper::{
+    GatekeeperReply, GatekeeperRequest, read_gatekeeper_request, write_gatekeeper_reply,
+};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
@@ -36,7 +38,11 @@ pub struct TempDir(PathBuf);
 impl TempDir {
     pub fn new() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!("bn-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+        let path = std::env::temp_dir().join(format!(
+            "bn-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         std::fs::create_dir_all(&path).unwrap();
         TempDir(path)
     }
@@ -66,7 +72,9 @@ impl Drop for TempDir {
 /// neighbours' pattern, so a misplaced or duplicated range shows up as a
 /// content mismatch instead of passing by luck.
 pub fn body(len: usize) -> Vec<u8> {
-    (0..len).map(|i| ((i * 31) ^ (i >> 8) ^ (i >> 16)) as u8).collect()
+    (0..len)
+        .map(|i| ((i * 31) ^ (i >> 8) ^ (i >> 16)) as u8)
+        .collect()
 }
 
 /// How the server answers one path. Counters (`fail_statuses`,
@@ -76,8 +84,13 @@ pub struct Resource {
     pub body: Arc<Vec<u8>>,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
+    /// Response `Date`; HTTP `Last-Modified` is strong for resume only when
+    /// this is at least 60 seconds later.
+    pub date: Option<String>,
     pub content_type: Option<String>,
     pub content_disposition: Option<String>,
+    /// Sent verbatim to test a server that ignores `Accept-Encoding`.
+    pub content_encoding: Option<String>,
     /// Advertise `Accept-Ranges` and answer `Range` with `206`.
     pub honor_ranges: bool,
     /// `false` sends no `Content-Length` (the body ends when the
@@ -118,8 +131,10 @@ impl Resource {
             body: Arc::new(body),
             etag: Some("\"v1\"".to_string()),
             last_modified: Some("Wed, 21 Oct 2015 07:28:00 GMT".to_string()),
+            date: Some("Wed, 21 Oct 2015 07:29:00 GMT".to_string()),
             content_type: Some("application/octet-stream".to_string()),
             content_disposition: None,
+            content_encoding: None,
             honor_ranges: true,
             send_content_length: true,
             redirect_to: None,
@@ -180,16 +195,31 @@ impl TestServer {
                 thread::spawn(move || handle(stream, &for_handler, addr));
             }
         });
-        TestServer { addr, shared, accept: Some(accept) }
+        TestServer {
+            addr,
+            shared,
+            accept: Some(accept),
+        }
     }
 
     pub fn serve(&self, path: &str, resource: Resource) {
-        self.shared.resources.lock().unwrap().insert(path.to_string(), resource);
+        self.shared
+            .resources
+            .lock()
+            .unwrap()
+            .insert(path.to_string(), resource);
     }
 
     /// Changes a served resource while transfers are running against it.
     pub fn update(&self, path: &str, change: impl FnOnce(&mut Resource)) {
-        change(self.shared.resources.lock().unwrap().get_mut(path).expect("no such resource"));
+        change(
+            self.shared
+                .resources
+                .lock()
+                .unwrap()
+                .get_mut(path)
+                .expect("no such resource"),
+        );
     }
 
     pub fn url(&self, path: &str) -> String {
@@ -268,7 +298,11 @@ fn status_text(code: u16) -> &'static str {
     }
 }
 
-fn write_head(stream: &mut TcpStream, status: u16, headers: &[(&str, String)]) -> std::io::Result<()> {
+fn write_head(
+    stream: &mut TcpStream,
+    status: u16,
+    headers: &[(&str, String)],
+) -> std::io::Result<()> {
     let mut head = format!("HTTP/1.1 {status} {}\r\n", status_text(status));
     for (name, value) in headers {
         head.push_str(&format!("{name}: {value}\r\n"));
@@ -286,10 +320,23 @@ enum RangeRequest {
 /// `bytes=a-b` and `bytes=a-` only; suffix ranges are ignored (treated
 /// as no range), which no engine request uses.
 fn parse_range(value: &str, len: u64) -> RangeRequest {
-    let Some(spec) = value.trim().strip_prefix("bytes=") else { return RangeRequest::None };
-    let Some((start, end)) = spec.split_once('-') else { return RangeRequest::None };
-    let Ok(start) = start.trim().parse::<u64>() else { return RangeRequest::None };
-    let end = if end.trim().is_empty() { len.saturating_sub(1) } else { end.trim().parse::<u64>().unwrap_or(u64::MAX).min(len.saturating_sub(1)) };
+    let Some(spec) = value.trim().strip_prefix("bytes=") else {
+        return RangeRequest::None;
+    };
+    let Some((start, end)) = spec.split_once('-') else {
+        return RangeRequest::None;
+    };
+    let Ok(start) = start.trim().parse::<u64>() else {
+        return RangeRequest::None;
+    };
+    let end = if end.trim().is_empty() {
+        len.saturating_sub(1)
+    } else {
+        end.trim()
+            .parse::<u64>()
+            .unwrap_or(u64::MAX)
+            .min(len.saturating_sub(1))
+    };
     if start >= len {
         RangeRequest::Unsatisfiable
     } else {
@@ -298,13 +345,23 @@ fn parse_range(value: &str, len: u64) -> RangeRequest {
 }
 
 fn handle(mut stream: TcpStream, shared: &Shared, addr: SocketAddr) {
-    let Some(head) = read_head(&mut stream) else { return };
+    let Some(head) = read_head(&mut stream) else {
+        return;
+    };
     let mut lines = head.lines();
     let mut request_line = lines.next().unwrap_or("").split_whitespace();
     let _method = request_line.next();
-    let path = request_line.next().unwrap_or("/").split('?').next().unwrap_or("/").to_string();
-    let headers: HashMap<String, String> =
-        lines.filter_map(|line| line.split_once(':')).map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string())).collect();
+    let path = request_line
+        .next()
+        .unwrap_or("/")
+        .split('?')
+        .next()
+        .unwrap_or("/")
+        .to_string();
+    let headers: HashMap<String, String> = lines
+        .filter_map(|line| line.split_once(':'))
+        .map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string()))
+        .collect();
     let range_header = headers.get("range").cloned();
     let if_range = headers.get("if-range").cloned();
     let log = |status: u16| {
@@ -336,7 +393,14 @@ fn handle(mut stream: TcpStream, shared: &Shared, addr: SocketAddr) {
         if let Some(target) = resource.redirect_to.clone() {
             drop(resources);
             log(302);
-            let _ = write_head(&mut stream, 302, &[("Location", format!("http://{addr}{target}")), ("Content-Length", "0".to_string())]);
+            let _ = write_head(
+                &mut stream,
+                302,
+                &[
+                    ("Location", format!("http://{addr}{target}")),
+                    ("Content-Length", "0".to_string()),
+                ],
+            );
             return;
         }
         resource.clone()
@@ -345,7 +409,10 @@ fn handle(mut stream: TcpStream, shared: &Shared, addr: SocketAddr) {
     let total = resource.body.len() as u64;
     let if_range_matches = match &if_range {
         None => true,
-        Some(v) => resource.etag.as_deref() == Some(v.as_str()) || resource.last_modified.as_deref() == Some(v.as_str()),
+        Some(v) => {
+            resource.etag.as_deref() == Some(v.as_str())
+                || resource.last_modified.as_deref() == Some(v.as_str())
+        }
     };
     let range = match (&range_header, resource.honor_ranges && if_range_matches) {
         (Some(value), true) => parse_range(value, total),
@@ -362,11 +429,17 @@ fn handle(mut stream: TcpStream, shared: &Shared, addr: SocketAddr) {
     if let Some(lm) = &resource.last_modified {
         response_headers.push(("Last-Modified", lm.clone()));
     }
+    if let Some(date) = &resource.date {
+        response_headers.push(("Date", date.clone()));
+    }
     if let Some(ct) = &resource.content_type {
         response_headers.push(("Content-Type", ct.clone()));
     }
     if let Some(cd) = &resource.content_disposition {
         response_headers.push(("Content-Disposition", cd.clone()));
+    }
+    if let Some(encoding) = &resource.content_encoding {
+        response_headers.push(("Content-Encoding", encoding.clone()));
     }
 
     let (status, slice_start, slice_end) = match range {
@@ -378,11 +451,18 @@ fn handle(mut stream: TcpStream, shared: &Shared, addr: SocketAddr) {
             return;
         }
         RangeRequest::Satisfiable(a, b) => {
-            let shown = resource.content_range_override.clone().unwrap_or(format!("bytes {a}-{b}/{total}"));
+            let shown = resource
+                .content_range_override
+                .clone()
+                .unwrap_or(format!("bytes {a}-{b}/{total}"));
             response_headers.push(("Content-Range", shown));
             response_headers.push(("Content-Length", (b - a + 1).to_string()));
             for header in response_headers.iter_mut() {
-                match (header.0, &resource.range_etag_override, &resource.range_last_modified_override) {
+                match (
+                    header.0,
+                    &resource.range_etag_override,
+                    &resource.range_last_modified_override,
+                ) {
                     ("ETag", Some(etag), _) => header.1 = etag.clone(),
                     ("Last-Modified", _, Some(lm)) => header.1 = lm.clone(),
                     _ => {}
@@ -398,7 +478,11 @@ fn handle(mut stream: TcpStream, shared: &Shared, addr: SocketAddr) {
         }
     };
     let slice = &resource.body[slice_start..slice_end];
-    let range_start = if status == 206 { Some(slice_start as u64) } else { None };
+    let range_start = if status == 206 {
+        Some(slice_start as u64)
+    } else {
+        None
+    };
 
     // Consume a cut/stall only when it actually applies to this body.
     let (cut, stall) = {
@@ -406,10 +490,16 @@ fn handle(mut stream: TcpStream, shared: &Shared, addr: SocketAddr) {
         let live = resources.get_mut(&path).expect("resource vanished");
         let mut cut = None;
         let mut stall = None;
-        if let Some(n) = live.cut_body_after.filter(|&n| slice.len() > n && live.cut_times > 0) {
+        if let Some(n) = live
+            .cut_body_after
+            .filter(|&n| slice.len() > n && live.cut_times > 0)
+        {
             live.cut_times -= 1;
             cut = Some(n);
-        } else if let Some(n) = live.stall_after.filter(|&n| slice.len() > n && live.stall_times > 0) {
+        } else if let Some(n) = live
+            .stall_after
+            .filter(|&n| slice.len() > n && live.stall_times > 0)
+        {
             live.stall_times -= 1;
             stall = Some(n);
         }
@@ -441,7 +531,11 @@ fn handle(mut stream: TcpStream, shared: &Shared, addr: SocketAddr) {
             return;
         }
         sent = end;
-        let extra = resource.slow.as_ref().map(|f| f(range_start)).unwrap_or(Duration::ZERO);
+        let extra = resource
+            .slow
+            .as_ref()
+            .map(|f| f(range_start))
+            .unwrap_or(Duration::ZERO);
         let pause = resource.delay_per_chunk + extra;
         if !pause.is_zero() {
             thread::sleep(pause);
@@ -453,7 +547,10 @@ fn handle(mut stream: TcpStream, shared: &Shared, addr: SocketAddr) {
 /// How a fake gatekeeper answers one request.
 pub enum GateReply {
     Clear,
-    Reject { reason: String, category: String },
+    Reject {
+        reason: String,
+        category: String,
+    },
     /// Accept the connection and never answer (for this long).
     Hang(Duration),
     /// Take this long to answer, then clear -- a slow but working gatekeeper.
@@ -482,18 +579,26 @@ impl FakeGatekeeper {
 
     /// Like [`Self::start`], but listening at `socket` -- for a process that
     /// looks for its gatekeeper at a well-known path rather than being told.
-    pub fn start_at(socket: PathBuf, policy: impl Fn(&GatekeeperRequest) -> GateReply + Send + Sync + 'static) -> Self {
+    pub fn start_at(
+        socket: PathBuf,
+        policy: impl Fn(&GatekeeperRequest) -> GateReply + Send + Sync + 'static,
+    ) -> Self {
         let _ = std::fs::remove_file(&socket);
         FakeGatekeeper::start_owning(socket, None, policy)
     }
 
-    fn start_owning(socket: PathBuf, dir: Option<TempDir>, policy: impl Fn(&GatekeeperRequest) -> GateReply + Send + Sync + 'static) -> Self {
+    fn start_owning(
+        socket: PathBuf,
+        dir: Option<TempDir>,
+        policy: impl Fn(&GatekeeperRequest) -> GateReply + Send + Sync + 'static,
+    ) -> Self {
         let listener = UnixListener::bind(&socket).unwrap();
         listener.set_nonblocking(true).unwrap();
         let requests = Arc::new(Mutex::new(Vec::new()));
         let stop = Arc::new(AtomicBool::new(false));
         let policy = Arc::new(policy);
-        let (for_accept, requests_for_accept, stop_for_accept) = (policy, requests.clone(), stop.clone());
+        let (for_accept, requests_for_accept, stop_for_accept) =
+            (policy, requests.clone(), stop.clone());
         let accept = thread::spawn(move || {
             while !stop_for_accept.load(Ordering::SeqCst) {
                 match listener.accept() {
@@ -501,20 +606,31 @@ impl FakeGatekeeper {
                         let (policy, requests) = (for_accept.clone(), requests_for_accept.clone());
                         thread::spawn(move || {
                             let _ = stream.set_nonblocking(false);
-                            let Ok(request) = read_gatekeeper_request(&mut stream) else { return };
+                            let Ok(request) = read_gatekeeper_request(&mut stream) else {
+                                return;
+                            };
                             let reply = policy(&request);
                             requests.lock().unwrap().push(request);
                             match reply {
                                 GateReply::Clear => {
-                                    let _ = write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared);
+                                    let _ = write_gatekeeper_reply(
+                                        &mut stream,
+                                        &GatekeeperReply::Cleared,
+                                    );
                                 }
                                 GateReply::Reject { reason, category } => {
-                                    let _ = write_gatekeeper_reply(&mut stream, &GatekeeperReply::Rejected { reason, category });
+                                    let _ = write_gatekeeper_reply(
+                                        &mut stream,
+                                        &GatekeeperReply::Rejected { reason, category },
+                                    );
                                 }
                                 GateReply::Hang(how_long) => thread::sleep(how_long),
                                 GateReply::SlowClear(how_long) => {
                                     thread::sleep(how_long);
-                                    let _ = write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared);
+                                    let _ = write_gatekeeper_reply(
+                                        &mut stream,
+                                        &GatekeeperReply::Cleared,
+                                    );
                                 }
                                 GateReply::Close => {}
                                 GateReply::Garbage => {
@@ -529,7 +645,13 @@ impl FakeGatekeeper {
                 }
             }
         });
-        FakeGatekeeper { socket, requests, stop, accept: Some(accept), _dir: dir }
+        FakeGatekeeper {
+            socket,
+            requests,
+            stop,
+            accept: Some(accept),
+            _dir: dir,
+        }
     }
 
     pub fn clear_all() -> Self {

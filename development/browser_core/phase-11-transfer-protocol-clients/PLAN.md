@@ -52,25 +52,36 @@ HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; S
   FTP/FTPS therefore deliberately run as one checked stream, with `SIZE` and
   optional `MDTM` same-run mutation checks; they discard partial files across
   pauses/restarts rather than splice unproved bytes. The body is not counted
-  complete until its final FTP control response succeeds.
+  complete until its final FTP control response succeeds. Passive mode keeps
+  the control connection's peer IP and accepts only the port from a PASV/EPSV
+  response, so an FTP server cannot redirect the client to an unrelated TCP
+  destination.
+- **SFTP transfer shape**: each requested range owns a separately verified
+  SSH/SFTP connection. SFTP can therefore use the common scheduler's
+  independent segments, but its seconds-resolution `mtime` is insufficient
+  for restart-safe partial-file retention; a paused SFTP transfer starts from
+  the beginning on a later process run.
 - **Credential boundary**: URLs may select an endpoint and optional username,
   but never carry a password or private-key material. A normalized
   `(scheme, host, port, username)` reference is derived at authentication
   time; the secret itself lives only in the OS credential store. The IPC uses
   that opaque reference after a local credential has been saved, so transfer
-  records, logs, sidecars, and MCP output never contain a secret. SSH host
+  records, logs, sidecars, and MCP output never contain a secret. MCP never
+  accepts a secret-bearing tool argument: save a credential locally through
+  `blueice-downloads credential set <sftp-password|sftp-key-passphrase|ftps-password> --host HOST --username USER --secret-stdin`, which reads the
+  secret only from stdin and forwards it over the private Unix socket. SSH host
   keys must be checked against a known-hosts store before SFTP authentication.
   `keyring` provides the platform store (macOS Keychain, Windows Credential
   Manager, and Secret Service where available). The local Unix socket is
-  explicitly mode `0600`; `SetSftpPassword` is the one request that carries a
-  secret and replies only `Ok`, after which workers derive the reference from
-  the URL. The SFTP backend tries SSH agent authentication first and opens the
+  explicitly mode `0600`; only the local stdin command creates the IPC request
+  that carries a secret, and it receives only `Ok`, after which workers derive
+  the reference from the URL. The SFTP backend tries SSH agent authentication first and opens the
   credential store only after host-key verification has succeeded. The
   explicit-FTPS backend similarly opens its credential only after the TLS
   handshake has verified the certificate and hostname. An SFTP private key is
   selected only with `blueice-downloads --sftp-private-key PATH`; its
-  passphrase is a distinct keychain entry set through
-  `SetSftpPrivateKeyPassphrase`. Authentication tries SSH agent, then that
+  passphrase is a distinct keychain entry set through the local stdin command.
+  Authentication tries SSH agent, then that
   configured key, then a saved password, all after host-key verification.
 
 ## Checklist
@@ -81,6 +92,6 @@ HTTP (Phase 10) implements this via `ureq`; FTP via `suppaftp` or `async-ftp`; S
 - [x] Define the common transfer-backend interface these protocols implement, shared with Phase 10's HTTP backend (see the `TransferBackend` sketch above)
 - [x] Design the credential storage mechanism for FTP/SFTP auth
 - [x] Implement the SFTP backend, known-host verification, and SSH-agent authentication (no password is accepted in a URL or recorded in transfer state)
-- [x] Add OS-keychain credential references for SFTP passwords, with a local MCP/IPC set/remove path that does not echo secrets
-- [x] Add OS-keychain references for encrypted private-key passphrases, with `--sftp-private-key`, IPC, MCP, and post-host-verification authentication wiring
+- [x] Add OS-keychain credential references for SFTP passwords, with a local stdin/IPC set path and MCP removal path that does not echo secrets
+- [x] Add OS-keychain references for encrypted private-key passphrases, with `--sftp-private-key`, a local stdin/IPC set path, MCP removal, and post-host-verification authentication wiring
 - [x] Add an explicit-FTPS backend using `suppaftp` 12.0.1; plain FTP is anonymous-only and both are safe single-stream transfers

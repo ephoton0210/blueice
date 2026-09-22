@@ -42,6 +42,37 @@ pub fn default_data_dir() -> PathBuf {
     data_dir_from(std::env::var_os("XDG_DATA_HOME"), std::env::var_os("HOME"))
 }
 
+/// File-name endings reserved for the download engine's transactional files.
+/// A finished destination with one of these names can alias another
+/// transfer's `.blueice-part`, sidecar, or atomic-write temporary file.
+/// Keep the comparison case-insensitive because the download directory may
+/// live on a case-insensitive volume (the normal macOS configuration).
+pub fn is_reserved_download_name(name: &str) -> bool {
+    let name = name.to_lowercase();
+    [".blueice-part", ".blueice-part.json", ".tmp"].iter().any(|suffix| name.ends_with(suffix))
+}
+
+/// `Path::exists` intentionally reports false for a dangling symlink, which
+/// is exactly the case a download writer must still treat as occupied.
+fn exists_or_is_symlink(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
+fn require_existing_ancestor_inside(root: &Path, candidate: &Path) -> Result<(), String> {
+    // Resolve through whatever part of the path already exists, and require
+    // the result to stay inside the root. `symlink_metadata` (not `exists`)
+    // so a dangling symlink counts as existing -- and then fails to resolve.
+    let mut existing = candidate;
+    while std::fs::symlink_metadata(existing).is_err() {
+        existing = existing.parent().ok_or_else(|| "the destination has no existing parent".to_string())?;
+    }
+    let resolved = std::fs::canonicalize(existing).map_err(|e| format!("cannot resolve {}: {e}", existing.display()))?;
+    if !resolved.starts_with(root) {
+        return Err("the destination resolves to a location outside the downloads directory".to_string());
+    }
+    Ok(())
+}
+
 /// Resolves a caller-requested destination to an absolute path inside
 /// `root`, or says why it can't be. Refuses (rather than silently
 /// rewriting) an absolute path, any `..`, and any component that
@@ -62,6 +93,9 @@ pub fn resolve_requested(root: &Path, requested: &str) -> Result<PathBuf, String
                 if sanitize(part) != part {
                     return Err(format!("{part:?} is not a safe file name"));
                 }
+                if is_reserved_download_name(part) {
+                    return Err(format!("{part:?} uses a file-name suffix reserved by the download manager"));
+                }
                 parts.push(part);
             }
             Component::CurDir => {}
@@ -77,25 +111,34 @@ pub fn resolve_requested(root: &Path, requested: &str) -> Result<PathBuf, String
     let mut joined = canonical_root.clone();
     joined.extend(&parts);
 
-    // Resolve through whatever part of the path already exists, and require
-    // the result to stay inside the root. `symlink_metadata` (not `exists`)
-    // so a dangling symlink counts as existing -- and then fails to resolve.
-    let mut existing = joined.as_path();
-    while std::fs::symlink_metadata(existing).is_err() {
-        existing = existing.parent().ok_or_else(|| "the destination has no existing parent".to_string())?;
-    }
-    let resolved = std::fs::canonicalize(existing).map_err(|e| format!("cannot resolve {}: {e}", existing.display()))?;
-    if !resolved.starts_with(&canonical_root) {
-        return Err("the destination resolves to a location outside the downloads directory".to_string());
+    // Transaction files are written beside `dest`, so every path that could
+    // be opened must pass the same symlink confinement check, not only the
+    // final name the caller supplied.
+    let part = part_path(&joined);
+    let sidecar = sidecar_path(&joined);
+    for candidate in [&joined, &part, &sidecar] {
+        require_existing_ancestor_inside(&canonical_root, candidate)?;
     }
     Ok(joined)
+}
+
+/// Re-check a persisted absolute destination before a restarted manager
+/// trusts it. Older stores are input too: a manually edited or pre-policy
+/// `transfers.json` must not give `resume` a path outside the current root.
+pub fn reconfine_stored(root: &Path, stored: &str) -> Result<PathBuf, String> {
+    let canonical_root = std::fs::canonicalize(root).map_err(|e| format!("the downloads directory is unavailable: {e}"))?;
+    let relative = Path::new(stored)
+        .strip_prefix(&canonical_root)
+        .map_err(|_| "the stored destination is outside the downloads directory".to_string())?;
+    let relative = relative.to_str().ok_or_else(|| "the stored destination is not valid UTF-8".to_string())?;
+    resolve_requested(&canonical_root, relative)
 }
 
 /// `root/file_name`, or -- if that name is taken (a finished file, an
 /// in-progress download's part or sidecar file, or a name another transfer
 /// has claimed, per `taken`) -- `root/stem (n).ext` for the first free `n`.
 pub fn unique_path(root: &Path, file_name: &str, taken: &dyn Fn(&Path) -> bool) -> PathBuf {
-    let is_taken = |path: &Path| path.exists() || part_path(path).exists() || sidecar_path(path).exists() || taken(path);
+    let is_taken = |path: &Path| exists_or_is_symlink(path) || exists_or_is_symlink(&part_path(path)) || exists_or_is_symlink(&sidecar_path(path)) || taken(path);
     let first = root.join(file_name);
     if !is_taken(&first) {
         return first;
@@ -185,6 +228,15 @@ mod tests {
     }
 
     #[test]
+    fn internal_download_file_names_are_reserved() {
+        let root = Scratch::new("reserved");
+        for reserved in ["f.blueice-part", "f.blueice-part.json", "f.tmp", "F.BLUEICE-PART"] {
+            let err = resolve_requested(&root.0, reserved).unwrap_err();
+            assert!(err.contains("reserved"), "{reserved:?}: {err}");
+        }
+    }
+
+    #[test]
     fn a_symlink_that_leads_out_of_the_root_is_refused() {
         let root = Scratch::new("symlink-root");
         let outside = Scratch::new("symlink-outside");
@@ -195,6 +247,14 @@ mod tests {
         std::fs::write(outside.0.join("target.bin"), b"x").unwrap();
         std::os::unix::fs::symlink(outside.0.join("target.bin"), root.0.join("file-link.bin")).unwrap();
         assert!(resolve_requested(&root.0, "file-link.bin").is_err());
+        // A dangling link is just as dangerous: creating its name would
+        // write to its target. Transaction files have the same property.
+        std::os::unix::fs::symlink(outside.0.join("not-created.bin"), root.0.join("dangling.bin")).unwrap();
+        std::os::unix::fs::symlink(outside.0.join("part.bin"), root.0.join("partial.bin.blueice-part")).unwrap();
+        std::os::unix::fs::symlink(outside.0.join("sidecar.json"), root.0.join("sidecar.bin.blueice-part.json")).unwrap();
+        for requested in ["dangling.bin", "partial.bin", "sidecar.bin"] {
+            assert!(resolve_requested(&root.0, requested).is_err(), "{requested}");
+        }
     }
 
     #[test]
@@ -208,6 +268,14 @@ mod tests {
     #[test]
     fn a_missing_root_is_an_error_not_a_panic() {
         assert!(resolve_requested(Path::new("/definitely/not/here/blueice"), "file.bin").is_err());
+    }
+
+    #[test]
+    fn a_persisted_destination_is_reconfined_before_resume() {
+        let root = Scratch::new("stored-root");
+        let inside = std::fs::canonicalize(&root.0).unwrap().join("saved.bin");
+        assert_eq!(reconfine_stored(&root.0, inside.to_str().unwrap()).unwrap(), inside);
+        assert!(reconfine_stored(&root.0, "/definitely/outside/saved.bin").is_err());
     }
 
     #[test]
@@ -236,5 +304,11 @@ mod tests {
         assert_eq!(unique_path(&root.0, "a.bin", &|_| false), root.0.join("a (1).bin"), "an in-progress download owns its name");
         let claimed = root.0.join("b.bin");
         assert_eq!(unique_path(&root.0, "b.bin", &|p| p == claimed), root.0.join("b (1).bin"), "so does a name another transfer has claimed");
+
+        // `exists()` is false for a dangling link, but a derived filename
+        // must still not claim a transaction path another local writer made.
+        let dangling = root.0.join("c.bin.blueice-part");
+        std::os::unix::fs::symlink(root.0.join("outside.bin"), &dangling).unwrap();
+        assert_eq!(unique_path(&root.0, "c.bin", &|_| false), root.0.join("c (1).bin"));
     }
 }

@@ -9,7 +9,7 @@
 //! Phase 11") means replacing this file's callers' one call, not
 //! threading a new abstraction through the engine.
 
-use crate::download::{DownloadError, DownloadOptions};
+use crate::download::{DownloadError, DownloadOptions, bounded_transfer_text};
 use ureq::http::Response;
 use ureq::{Agent, Body};
 
@@ -19,7 +19,12 @@ use ureq::{Agent, Body};
 /// `ureq`'s is a total budget, not an idle timeout, so stall detection
 /// is the coordinator's watchdog instead.
 pub(crate) fn agent(options: &DownloadOptions) -> Agent {
-    Agent::config_builder().http_status_as_error(false).timeout_connect(Some(options.connect_timeout)).timeout_recv_response(Some(options.response_timeout)).build().into()
+    Agent::config_builder()
+        .http_status_as_error(false)
+        .timeout_connect(Some(options.connect_timeout))
+        .timeout_recv_response(Some(options.response_timeout))
+        .build()
+        .into()
 }
 
 fn map_error(error: ureq::Error) -> DownloadError {
@@ -37,7 +42,12 @@ fn map_error(error: ureq::Error) -> DownloadError {
 /// `If-Range` when a validator is given. Content encoding
 /// is refused (`Accept-Encoding: identity`): with a compressed body, byte
 /// offsets would refer to the encoded stream, not the file.
-pub(crate) fn get(agent: &Agent, url: &str, range: Option<(u64, u64)>, if_range: Option<&str>) -> Result<Response<Body>, DownloadError> {
+pub(crate) fn get(
+    agent: &Agent,
+    url: &str,
+    range: Option<(u64, u64)>,
+    if_range: Option<&str>,
+) -> Result<Response<Body>, DownloadError> {
     let mut request = agent.get(url).header("Accept-Encoding", "identity");
     if let Some((start, end)) = range {
         request = request.header("Range", format!("bytes={start}-{end}"));
@@ -45,10 +55,65 @@ pub(crate) fn get(agent: &Agent, url: &str, range: Option<(u64, u64)>, if_range:
             request = request.header("If-Range", validator);
         }
     }
-    request.call().map_err(map_error)
+    let response = request.call().map_err(map_error)?;
+    require_identity_content_encoding(&response)?;
+    Ok(response)
+}
+
+/// A range is expressed over the representation bytes on the wire.  Do not
+/// let a server substitute a content-coded representation even when it
+/// ignores our `Accept-Encoding: identity` request.  `ureq` is built without
+/// its transparent gzip feature as a second line of defence: that feature
+/// would otherwise decode the body and remove this header before we could
+/// validate it.
+fn require_identity_content_encoding(response: &Response<Body>) -> Result<(), DownloadError> {
+    let Some(value) = response.headers().get("content-encoding") else {
+        return Ok(());
+    };
+    let value = value.to_str().map_err(|_| {
+        DownloadError::Protocol("HTTP Content-Encoding is not valid text".to_string())
+    })?;
+    if !value.is_empty()
+        && value
+            .split(',')
+            .all(|coding| coding.trim().eq_ignore_ascii_case("identity"))
+    {
+        return Ok(());
+    }
+    let value = bounded_transfer_text(value);
+    Err(DownloadError::Protocol(format!(
+        "HTTP response uses unsupported Content-Encoding {value:?}; downloads require identity encoding"
+    )))
 }
 
 /// A response header as text, if present and valid UTF-8.
 pub(crate) fn header(response: &Response<Body>, name: &str) -> Option<String> {
-    response.headers().get(name).and_then(|value| value.to_str().ok()).map(str::to_string)
+    response
+        .headers()
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_identity_content_encoding_is_accepted() {
+        let identity = Response::builder()
+            .header("Content-Encoding", " identity ")
+            .body(Body::builder().data(Vec::new()))
+            .unwrap();
+        assert!(require_identity_content_encoding(&identity).is_ok());
+
+        let gzip = Response::builder()
+            .header("Content-Encoding", "gzip")
+            .body(Body::builder().data(Vec::new()))
+            .unwrap();
+        assert!(matches!(
+            require_identity_content_encoding(&gzip),
+            Err(DownloadError::Protocol(message)) if message.contains("gzip")
+        ));
+    }
 }

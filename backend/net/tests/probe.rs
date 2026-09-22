@@ -27,13 +27,13 @@ fn a_range_capable_server_is_probed_as_segmentable() {
     let url = server.url("/f");
 
     let p = probe_url(&url).unwrap();
-    assert_eq!(p.url, url);
-    assert_eq!(p.final_url, url);
-    assert_eq!(p.total, Some(1_000));
-    assert!(p.accepts_ranges);
-    assert_eq!(p.etag.as_deref(), Some("\"v1\""));
-    assert_eq!(p.last_modified.as_deref(), Some("Wed, 21 Oct 2015 07:28:00 GMT"));
-    assert_eq!(p.content_type.as_deref(), Some("application/octet-stream"));
+    assert_eq!(p.url(), url);
+    assert_eq!(p.final_url(), url);
+    assert_eq!(p.total_bytes(), Some(1_000));
+    assert!(p.accepts_ranges());
+    assert_eq!(p.etag(), Some("\"v1\""));
+    assert_eq!(p.last_modified(), Some("Wed, 21 Oct 2015 07:28:00 GMT"));
+    assert_eq!(p.content_type(), Some("application/octet-stream"));
     assert!(p.can_segment() && p.resume_safe());
     assert_eq!(p.validator(), Some(Validator::StrongEtag("\"v1\"".to_string())));
 }
@@ -52,12 +52,31 @@ fn the_probe_is_one_ranged_request_that_refuses_content_encoding() {
 }
 
 #[test]
+fn a_server_that_ignores_identity_encoding_is_rejected_before_probe_metadata_is_used() {
+    let server = TestServer::start();
+    server.serve(
+        "/f",
+        Resource {
+            // The body does not need to be compressed: the protocol error is
+            // the mismatched representation itself, before any body is read.
+            content_encoding: Some("gzip".to_string()),
+            ..Resource::new(body(1_000))
+        },
+    );
+
+    assert!(matches!(
+        probe_url(&server.url("/f")),
+        Err(DownloadError::Protocol(message)) if message.contains("Content-Encoding") && message.contains("gzip")
+    ));
+}
+
+#[test]
 fn a_server_that_ignores_ranges_is_single_stream_with_its_content_length() {
     let server = TestServer::start();
     server.serve("/f", Resource { honor_ranges: false, ..Resource::new(body(1_000)) });
     let p = probe_url(&server.url("/f")).unwrap();
-    assert!(!p.accepts_ranges);
-    assert_eq!(p.total, Some(1_000));
+    assert!(!p.accepts_ranges());
+    assert_eq!(p.total_bytes(), Some(1_000));
     assert_eq!(p.single_stream_reason(), Some(SingleStreamReason::ServerIgnoresRange));
     assert!(!p.can_segment() && !p.resume_safe());
 }
@@ -67,7 +86,7 @@ fn a_response_with_no_content_length_has_an_unknown_total() {
     let server = TestServer::start();
     server.serve("/f", Resource { honor_ranges: false, send_content_length: false, ..Resource::new(body(1_000)) });
     let p = probe_url(&server.url("/f")).unwrap();
-    assert_eq!(p.total, None);
+    assert_eq!(p.total_bytes(), None);
     assert!(!p.can_segment());
 }
 
@@ -77,10 +96,10 @@ fn a_redirect_is_followed_and_the_final_url_recorded_next_to_the_requested_one()
     server.serve("/old", Resource { redirect_to: Some("/new".to_string()), ..Resource::new(body(10)) });
     server.serve("/new", Resource::new(body(500)));
     let p = probe_url(&server.url("/old")).unwrap();
-    assert_eq!(p.url, server.url("/old"));
-    assert_eq!(p.final_url, server.url("/new"));
-    assert_eq!(p.total, Some(500), "the size is the redirect target's, not the redirect response's");
-    assert!(p.accepts_ranges, "the Range header must survive the redirect, or ranges look unsupported when they aren't");
+    assert_eq!(p.url(), server.url("/old"));
+    assert_eq!(p.final_url(), server.url("/new"));
+    assert_eq!(p.total_bytes(), Some(500), "the size is the redirect target's, not the redirect response's");
+    assert!(p.accepts_ranges(), "the Range header must survive the redirect, or ranges look unsupported when they aren't");
 }
 
 #[test]
@@ -91,9 +110,27 @@ fn content_disposition_and_a_weak_etag_are_kept_verbatim() {
         Resource { content_disposition: Some("attachment; filename=\"real name.bin\"".to_string()), etag: Some("W/\"weak\"".to_string()), ..Resource::new(body(100)) },
     );
     let p = probe_url(&server.url("/f")).unwrap();
-    assert_eq!(p.content_disposition.as_deref(), Some("attachment; filename=\"real name.bin\""));
-    assert_eq!(p.etag.as_deref(), Some("W/\"weak\""));
+    assert_eq!(p.content_disposition(), Some("attachment; filename=\"real name.bin\""));
+    assert_eq!(p.etag(), Some("W/\"weak\""));
     assert_eq!(p.validator(), Some(Validator::LastModified("Wed, 21 Oct 2015 07:28:00 GMT".to_string())), "a weak ETag is not a validator");
+}
+
+#[test]
+fn a_recent_last_modified_without_a_strong_etag_cannot_authorize_resume() {
+    let server = TestServer::start();
+    server.serve(
+        "/f",
+        Resource {
+            etag: None,
+            last_modified: Some("Wed, 21 Oct 2015 07:28:00 GMT".to_string()),
+            date: Some("Wed, 21 Oct 2015 07:28:59 GMT".to_string()),
+            ..Resource::new(body(1_000))
+        },
+    );
+    let p = probe_url(&server.url("/f")).unwrap();
+    assert_eq!(p.last_modified(), None);
+    assert_eq!(p.validator(), None);
+    assert!(!p.resume_safe());
 }
 
 #[test]

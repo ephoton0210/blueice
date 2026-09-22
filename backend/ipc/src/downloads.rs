@@ -20,7 +20,8 @@
 //! handshake (unlike [`crate::gatekeeper`]'s one-shot checks), and an
 //! envelope carrying an optional `request_id` -- like the client-facing
 //! protocol -- because a subscribed connection receives *pushed*
-//! [`DownloadsReply::Updated`] messages interleaved with replies, and a
+//! [`DownloadsReply::Updated`] or [`DownloadsReply::Removed`] message
+//! interleaved with replies, and a
 //! caller has to tell the two apart. Pushes carry no `request_id`.
 //!
 //! Forward compatibility follows [`crate::ClientMessage`]'s rules: an
@@ -47,7 +48,7 @@ use std::path::PathBuf;
 /// reply variant, or a `#[serde(default)]` field, does not bump it.
 pub const DOWNLOADS_PROTOCOL_VERSION: u32 = 1;
 
-/// How many pushed [`DownloadsReply::Updated`] messages a
+/// How many pushed transfer changes a
 /// [`DownloadsClient`] keeps while it isn't being asked for them. A
 /// client that subscribes but rarely drains must not grow without
 /// bound; the oldest are dropped, since the newest state of a transfer
@@ -83,7 +84,13 @@ impl TransferState {
     /// Whether the transfer has stopped for good (no further progress
     /// without a new request). `Paused` is not terminal -- it resumes.
     pub fn is_terminal(self) -> bool {
-        matches!(self, TransferState::Completed | TransferState::Failed | TransferState::Cancelled | TransferState::Blocked)
+        matches!(
+            self,
+            TransferState::Completed
+                | TransferState::Failed
+                | TransferState::Cancelled
+                | TransferState::Blocked
+        )
     }
 
     pub fn as_str(self) -> &'static str {
@@ -229,7 +236,9 @@ impl TransferInfo {
     /// total to divide by.
     pub fn fraction_complete(&self) -> Option<f64> {
         match self.total_bytes {
-            Some(total) if total > 0 => Some((self.completed_bytes as f64 / total as f64).clamp(0.0, 1.0)),
+            Some(total) if total > 0 => {
+                Some((self.completed_bytes as f64 / total as f64).clamp(0.0, 1.0))
+            }
             _ => None,
         }
     }
@@ -264,7 +273,13 @@ pub fn format_speed(bytes_per_second: u64) -> String {
 /// `80` -> `1 min 20 s`; a unit that no longer matters at that scale is dropped.
 pub fn format_duration(seconds: u64) -> String {
     let part = |n: u64, unit: &str| format!("{n} {unit}");
-    let join = |major: String, minor: u64, unit: &str| if minor == 0 { major } else { format!("{major} {}", part(minor, unit)) };
+    let join = |major: String, minor: u64, unit: &str| {
+        if minor == 0 {
+            major
+        } else {
+            format!("{major} {}", part(minor, unit))
+        }
+    };
     match seconds {
         0..=59 => part(seconds, "s"),
         60..=3599 => join(part(seconds / 60, "min"), seconds % 60, "s"),
@@ -310,10 +325,12 @@ impl fmt::Display for ErrorCode {
 }
 
 /// What a client asks the downloads process to do.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum DownloadsRequest {
     /// Sent once, first, on a fresh connection.
-    Hello { protocol_version: u32 },
+    Hello {
+        protocol_version: u32,
+    },
     /// Queue a download. `dest` is a path *relative to the downloads
     /// directory* (absolute paths and `..` are refused); `None` derives a
     /// name from the response or the URL. Replied to with
@@ -331,14 +348,24 @@ pub enum DownloadsRequest {
         #[serde(default)]
         state: Option<TransferState>,
     },
-    Get { id: u64 },
-    Pause { id: u64 },
+    Get {
+        id: u64,
+    },
+    Pause {
+        id: u64,
+    },
     /// Re-enters review: a verdict can change between a pause and a resume.
-    Resume { id: u64 },
+    Resume {
+        id: u64,
+    },
     /// Stops the transfer and discards its partial files.
-    Cancel { id: u64 },
+    Cancel {
+        id: u64,
+    },
     /// Drops a finished transfer from history (never a running one).
-    Remove { id: u64 },
+    Remove {
+        id: u64,
+    },
     /// Store an SFTP password in the platform credential store. The password
     /// is sent only over this user-owned Unix socket, is never persisted in
     /// the downloads database, and is never included in a reply.
@@ -398,6 +425,120 @@ pub enum DownloadsRequest {
     Unknown,
 }
 
+impl fmt::Debug for DownloadsRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DownloadsRequest::SetSftpPassword {
+                host,
+                port,
+                username,
+                ..
+            } => f
+                .debug_struct("SetSftpPassword")
+                .field("host", host)
+                .field("port", port)
+                .field("username", username)
+                .field("password", &"<redacted>")
+                .finish(),
+            DownloadsRequest::SetSftpPrivateKeyPassphrase {
+                host,
+                port,
+                username,
+                ..
+            } => f
+                .debug_struct("SetSftpPrivateKeyPassphrase")
+                .field("host", host)
+                .field("port", port)
+                .field("username", username)
+                .field("passphrase", &"<redacted>")
+                .finish(),
+            DownloadsRequest::SetFtpsPassword {
+                host,
+                port,
+                username,
+                ..
+            } => f
+                .debug_struct("SetFtpsPassword")
+                .field("host", host)
+                .field("port", port)
+                .field("username", username)
+                .field("password", &"<redacted>")
+                .finish(),
+            other => {
+                // All remaining variants consist only of public metadata.
+                match other {
+                    DownloadsRequest::Hello { protocol_version } => f
+                        .debug_struct("Hello")
+                        .field("protocol_version", protocol_version)
+                        .finish(),
+                    DownloadsRequest::Start {
+                        url,
+                        dest,
+                        overwrite,
+                    } => f
+                        .debug_struct("Start")
+                        .field("url", url)
+                        .field("dest", dest)
+                        .field("overwrite", overwrite)
+                        .finish(),
+                    DownloadsRequest::List { state } => {
+                        f.debug_struct("List").field("state", state).finish()
+                    }
+                    DownloadsRequest::Get { id } => f.debug_struct("Get").field("id", id).finish(),
+                    DownloadsRequest::Pause { id } => {
+                        f.debug_struct("Pause").field("id", id).finish()
+                    }
+                    DownloadsRequest::Resume { id } => {
+                        f.debug_struct("Resume").field("id", id).finish()
+                    }
+                    DownloadsRequest::Cancel { id } => {
+                        f.debug_struct("Cancel").field("id", id).finish()
+                    }
+                    DownloadsRequest::Remove { id } => {
+                        f.debug_struct("Remove").field("id", id).finish()
+                    }
+                    DownloadsRequest::RemoveSftpPassword {
+                        host,
+                        port,
+                        username,
+                    } => f
+                        .debug_struct("RemoveSftpPassword")
+                        .field("host", host)
+                        .field("port", port)
+                        .field("username", username)
+                        .finish(),
+                    DownloadsRequest::RemoveSftpPrivateKeyPassphrase {
+                        host,
+                        port,
+                        username,
+                    } => f
+                        .debug_struct("RemoveSftpPrivateKeyPassphrase")
+                        .field("host", host)
+                        .field("port", port)
+                        .field("username", username)
+                        .finish(),
+                    DownloadsRequest::RemoveFtpsPassword {
+                        host,
+                        port,
+                        username,
+                    } => f
+                        .debug_struct("RemoveFtpsPassword")
+                        .field("host", host)
+                        .field("port", port)
+                        .field("username", username)
+                        .finish(),
+                    DownloadsRequest::Subscribe => f.write_str("Subscribe"),
+                    DownloadsRequest::Shutdown => f.write_str("Shutdown"),
+                    DownloadsRequest::Unknown => f.write_str("Unknown"),
+                    DownloadsRequest::SetSftpPassword { .. }
+                    | DownloadsRequest::SetSftpPrivateKeyPassphrase { .. }
+                    | DownloadsRequest::SetFtpsPassword { .. } => unreachable!(),
+                }
+            }
+        }
+    }
+}
+
 fn default_sftp_port() -> u16 {
     22
 }
@@ -409,7 +550,9 @@ fn default_ftps_port() -> u16 {
 /// The downloads process's message to a client.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DownloadsReply {
-    Hello { protocol_version: u32 },
+    Hello {
+        protocol_version: u32,
+    },
     /// Reply to [`DownloadsRequest::Start`]: the newly queued transfer.
     Started(TransferInfo),
     Transfers(Vec<TransferInfo>),
@@ -418,9 +561,16 @@ pub enum DownloadsReply {
     Transfer(TransferInfo),
     /// Reply to `Remove`, `Subscribe`, and `Shutdown`.
     Ok,
-    Error { code: ErrorCode, message: String },
+    Error {
+        code: ErrorCode,
+        message: String,
+    },
     /// Pushed to a subscriber (no `request_id`) when a transfer changes.
     Updated(TransferInfo),
+    /// Pushed to a subscriber (no `request_id`) after a transfer is removed.
+    Removed {
+        id: u64,
+    },
     #[serde(other)]
     Unknown,
 }
@@ -432,8 +582,18 @@ struct Envelope<T> {
     message: T,
 }
 
-fn write_enveloped<W: Write, T: Serialize>(w: &mut W, request_id: Option<u64>, message: &T) -> io::Result<()> {
-    crate::write_framed(w, &Envelope { request_id, message })
+fn write_enveloped<W: Write, T: Serialize>(
+    w: &mut W,
+    request_id: Option<u64>,
+    message: &T,
+) -> io::Result<()> {
+    crate::write_framed(
+        w,
+        &Envelope {
+            request_id,
+            message,
+        },
+    )
 }
 
 /// Reads one frame as an [`Envelope`], falling back to `unknown` --
@@ -441,7 +601,10 @@ fn write_enveloped<W: Write, T: Serialize>(w: &mut W, request_id: Option<u64>, m
 /// -- when the JSON is well-formed but isn't a message this build knows
 /// (see [`crate::ClientMessage::Unknown`] for why `#[serde(other)]`
 /// alone can't cover a data-carrying unrecognized variant).
-fn read_enveloped<R: Read, T: DeserializeOwned>(r: &mut R, unknown: T) -> io::Result<(Option<u64>, T)> {
+fn read_enveloped<R: Read, T: DeserializeOwned>(
+    r: &mut R,
+    unknown: T,
+) -> io::Result<(Option<u64>, T)> {
     let buf = crate::read_frame_bytes(r)?;
     let value: serde_json::Value = serde_json::from_slice(&buf).map_err(io::Error::other)?;
     let request_id = value.get("request_id").and_then(serde_json::Value::as_u64);
@@ -451,7 +614,11 @@ fn read_enveloped<R: Read, T: DeserializeOwned>(r: &mut R, unknown: T) -> io::Re
     }
 }
 
-pub fn write_downloads_request<W: Write>(w: &mut W, request_id: Option<u64>, msg: &DownloadsRequest) -> io::Result<()> {
+pub fn write_downloads_request<W: Write>(
+    w: &mut W,
+    request_id: Option<u64>,
+    msg: &DownloadsRequest,
+) -> io::Result<()> {
     write_enveloped(w, request_id, msg)
 }
 
@@ -459,7 +626,11 @@ pub fn read_downloads_request<R: Read>(r: &mut R) -> io::Result<(Option<u64>, Do
     read_enveloped(r, DownloadsRequest::Unknown)
 }
 
-pub fn write_downloads_reply<W: Write>(w: &mut W, request_id: Option<u64>, msg: &DownloadsReply) -> io::Result<()> {
+pub fn write_downloads_reply<W: Write>(
+    w: &mut W,
+    request_id: Option<u64>,
+    msg: &DownloadsReply,
+) -> io::Result<()> {
     write_enveloped(w, request_id, msg)
 }
 
@@ -473,27 +644,19 @@ pub fn read_downloads_reply<R: Read>(r: &mut R) -> io::Result<(Option<u64>, Down
 /// two independent BlueIce sessions, never collide), a distinct filename.
 /// Tests thread an explicit path through instead.
 pub fn default_downloads_socket_path() -> PathBuf {
-    let dir = match std::env::var_os("XDG_RUNTIME_DIR") {
-        Some(dir) => PathBuf::from(dir).join("blueice"),
-        None => std::env::temp_dir().join(format!("blueice-{}", unsafe { libc_getuid() })),
-    };
-    dir.join("downloads.sock")
-}
-
-// Duplicated from the sibling protocol modules' identical helper rather
-// than shared -- see `gatekeeper.rs` for why.
-unsafe fn libc_getuid() -> u32 {
-    std::fs::read_to_string("/proc/self/status")
-        .ok()
-        .and_then(|status| status.lines().find_map(|line| line.strip_prefix("Uid:")).and_then(|rest| rest.split_whitespace().next()).and_then(|s| s.parse().ok()))
-        .unwrap_or_else(std::process::id)
+    crate::local_socket::default_socket_dir().join("downloads.sock")
 }
 
 /// Why a [`DownloadsClient`] call failed.
 #[derive(Debug)]
 pub enum ClientError {
-    /// The connection failed, or the peer hung up.
-    Io(io::Error),
+    /// Writing the request failed. The peer may have gone away before it
+    /// received anything, but a partial write is not safe to retry for a
+    /// non-idempotent request.
+    Write(io::Error),
+    /// Reading the reply failed after the request was written (or while a
+    /// peer was replying), so a non-idempotent request may already exist.
+    Read(io::Error),
     /// The downloads process understood the request and refused it.
     Remote { code: ErrorCode, message: String },
     /// A reply of a shape this call can't make sense of.
@@ -503,9 +666,15 @@ pub enum ClientError {
 impl fmt::Display for ClientError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ClientError::Io(e) => write!(f, "talking to the downloads process failed: {e}"),
-            ClientError::Remote { code, message } => write!(f, "downloads process refused the request ({code}): {message}"),
-            ClientError::Unexpected(what) => write!(f, "unexpected reply from the downloads process: {what}"),
+            ClientError::Write(e) => write!(f, "writing to the downloads process failed: {e}"),
+            ClientError::Read(e) => write!(f, "reading from the downloads process failed: {e}"),
+            ClientError::Remote { code, message } => write!(
+                f,
+                "downloads process refused the request ({code}): {message}"
+            ),
+            ClientError::Unexpected(what) => {
+                write!(f, "unexpected reply from the downloads process: {what}")
+            }
         }
     }
 }
@@ -514,7 +683,7 @@ impl std::error::Error for ClientError {}
 
 impl From<io::Error> for ClientError {
     fn from(e: io::Error) -> Self {
-        ClientError::Io(e)
+        ClientError::Read(e)
     }
 }
 
@@ -524,8 +693,8 @@ impl From<io::Error> for ClientError {
 /// each re-deriving request-id matching and push handling.
 ///
 /// Every call is tagged with a fresh `request_id` and waits for the reply
-/// carrying it. Anything else that arrives meanwhile -- pushed
-/// [`DownloadsReply::Updated`] messages, or a reply meant for another
+/// carrying it. Anything else that arrives meanwhile -- pushed transfer
+/// changes, or a reply meant for another
 /// client sharing the connection -- is set aside, never mistaken for the
 /// answer; pushes are kept (bounded, see [`MAX_BUFFERED_UPDATES`]) for
 /// [`Self::take_buffered_updates`]/[`Self::next_update`].
@@ -533,68 +702,110 @@ impl From<io::Error> for ClientError {
 pub struct DownloadsClient<S> {
     stream: S,
     next_request_id: u64,
-    updates: VecDeque<TransferInfo>,
+    updates: VecDeque<DownloadsUpdate>,
+}
+
+/// A transfer change pushed on a subscribed [`DownloadsClient`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum DownloadsUpdate {
+    Updated(Box<TransferInfo>),
+    Removed { id: u64 },
 }
 
 impl<S: Read + Write> DownloadsClient<S> {
     /// Performs the `Hello` handshake on a fresh connection.
     pub fn connect(stream: S) -> Result<Self, ClientError> {
-        let mut client = DownloadsClient { stream, next_request_id: 1, updates: VecDeque::new() };
-        match client.call(DownloadsRequest::Hello { protocol_version: DOWNLOADS_PROTOCOL_VERSION })? {
-            DownloadsReply::Hello { protocol_version } if protocol_version == DOWNLOADS_PROTOCOL_VERSION => Ok(client),
-            other => Err(ClientError::Unexpected(format!("expected a Hello for protocol version {DOWNLOADS_PROTOCOL_VERSION}, got {other:?}"))),
+        let mut client = DownloadsClient {
+            stream,
+            next_request_id: 1,
+            updates: VecDeque::new(),
+        };
+        match client.call(DownloadsRequest::Hello {
+            protocol_version: DOWNLOADS_PROTOCOL_VERSION,
+        })? {
+            DownloadsReply::Hello { protocol_version }
+                if protocol_version == DOWNLOADS_PROTOCOL_VERSION =>
+            {
+                Ok(client)
+            }
+            other => Err(ClientError::Unexpected(format!(
+                "expected a Hello for protocol version {DOWNLOADS_PROTOCOL_VERSION}, got {other:?}"
+            ))),
         }
     }
 
     fn call(&mut self, request: DownloadsRequest) -> Result<DownloadsReply, ClientError> {
         let id = self.next_request_id;
         self.next_request_id += 1;
-        write_downloads_request(&mut self.stream, Some(id), &request)?;
+        write_downloads_request(&mut self.stream, Some(id), &request)
+            .map_err(ClientError::Write)?;
         loop {
-            match read_downloads_reply(&mut self.stream)? {
+            match read_downloads_reply(&mut self.stream).map_err(ClientError::Read)? {
                 (Some(reply_id), reply) if reply_id == id => {
                     return match reply {
-                        DownloadsReply::Error { code, message } => Err(ClientError::Remote { code, message }),
+                        DownloadsReply::Error { code, message } => {
+                            Err(ClientError::Remote { code, message })
+                        }
                         other => Ok(other),
                     };
                 }
-                (None, DownloadsReply::Updated(info)) => self.buffer_update(info),
+                (None, DownloadsReply::Updated(info)) => {
+                    self.buffer_update(DownloadsUpdate::Updated(Box::new(info)))
+                }
+                (None, DownloadsReply::Removed { id }) => {
+                    self.buffer_update(DownloadsUpdate::Removed { id })
+                }
                 // Another client's reply, or something this build can't read.
                 _ => {}
             }
         }
     }
 
-    fn buffer_update(&mut self, info: TransferInfo) {
+    fn buffer_update(&mut self, update: DownloadsUpdate) {
         if self.updates.len() >= MAX_BUFFERED_UPDATES {
             self.updates.pop_front();
         }
-        self.updates.push_back(info);
+        self.updates.push_back(update);
     }
 
     fn transfer_reply(reply: DownloadsReply) -> Result<TransferInfo, ClientError> {
         match reply {
             DownloadsReply::Transfer(info) | DownloadsReply::Started(info) => Ok(info),
-            other => Err(ClientError::Unexpected(format!("expected a transfer, got {other:?}"))),
+            other => Err(ClientError::Unexpected(format!(
+                "expected a transfer, got {other:?}"
+            ))),
         }
     }
 
     fn ok_reply(reply: DownloadsReply) -> Result<(), ClientError> {
         match reply {
             DownloadsReply::Ok => Ok(()),
-            other => Err(ClientError::Unexpected(format!("expected Ok, got {other:?}"))),
+            other => Err(ClientError::Unexpected(format!(
+                "expected Ok, got {other:?}"
+            ))),
         }
     }
 
-    pub fn start(&mut self, url: &str, dest: Option<&str>, overwrite: bool) -> Result<TransferInfo, ClientError> {
-        let reply = self.call(DownloadsRequest::Start { url: url.to_string(), dest: dest.map(str::to_string), overwrite })?;
+    pub fn start(
+        &mut self,
+        url: &str,
+        dest: Option<&str>,
+        overwrite: bool,
+    ) -> Result<TransferInfo, ClientError> {
+        let reply = self.call(DownloadsRequest::Start {
+            url: url.to_string(),
+            dest: dest.map(str::to_string),
+            overwrite,
+        })?;
         Self::transfer_reply(reply)
     }
 
     pub fn list(&mut self, state: Option<TransferState>) -> Result<Vec<TransferInfo>, ClientError> {
         match self.call(DownloadsRequest::List { state })? {
             DownloadsReply::Transfers(transfers) => Ok(transfers),
-            other => Err(ClientError::Unexpected(format!("expected a transfer list, got {other:?}"))),
+            other => Err(ClientError::Unexpected(format!(
+                "expected a transfer list, got {other:?}"
+            ))),
         }
     }
 
@@ -622,32 +833,92 @@ impl<S: Read + Write> DownloadsClient<S> {
     /// is deliberately a non-idempotent call: if its reply is lost, a caller
     /// must decide whether to retry rather than silently repeating a secret
     /// write.
-    pub fn set_sftp_password(&mut self, host: &str, port: u16, username: &str, password: &str) -> Result<(), ClientError> {
-        Self::ok_reply(self.call(DownloadsRequest::SetSftpPassword { host: host.to_string(), port, username: username.to_string(), password: password.to_string() })?)
+    pub fn set_sftp_password(
+        &mut self,
+        host: &str,
+        port: u16,
+        username: &str,
+        password: &str,
+    ) -> Result<(), ClientError> {
+        Self::ok_reply(self.call(DownloadsRequest::SetSftpPassword {
+            host: host.to_string(),
+            port,
+            username: username.to_string(),
+            password: password.to_string(),
+        })?)
     }
 
-    pub fn remove_sftp_password(&mut self, host: &str, port: u16, username: &str) -> Result<(), ClientError> {
-        Self::ok_reply(self.call(DownloadsRequest::RemoveSftpPassword { host: host.to_string(), port, username: username.to_string() })?)
+    pub fn remove_sftp_password(
+        &mut self,
+        host: &str,
+        port: u16,
+        username: &str,
+    ) -> Result<(), ClientError> {
+        Self::ok_reply(self.call(DownloadsRequest::RemoveSftpPassword {
+            host: host.to_string(),
+            port,
+            username: username.to_string(),
+        })?)
     }
 
     /// Stores the passphrase for the private key configured with the local
     /// downloads process. The passphrase is never returned.
-    pub fn set_sftp_private_key_passphrase(&mut self, host: &str, port: u16, username: &str, passphrase: &str) -> Result<(), ClientError> {
-        Self::ok_reply(self.call(DownloadsRequest::SetSftpPrivateKeyPassphrase { host: host.to_string(), port, username: username.to_string(), passphrase: passphrase.to_string() })?)
+    pub fn set_sftp_private_key_passphrase(
+        &mut self,
+        host: &str,
+        port: u16,
+        username: &str,
+        passphrase: &str,
+    ) -> Result<(), ClientError> {
+        Self::ok_reply(self.call(DownloadsRequest::SetSftpPrivateKeyPassphrase {
+            host: host.to_string(),
+            port,
+            username: username.to_string(),
+            passphrase: passphrase.to_string(),
+        })?)
     }
 
-    pub fn remove_sftp_private_key_passphrase(&mut self, host: &str, port: u16, username: &str) -> Result<(), ClientError> {
-        Self::ok_reply(self.call(DownloadsRequest::RemoveSftpPrivateKeyPassphrase { host: host.to_string(), port, username: username.to_string() })?)
+    pub fn remove_sftp_private_key_passphrase(
+        &mut self,
+        host: &str,
+        port: u16,
+        username: &str,
+    ) -> Result<(), ClientError> {
+        Self::ok_reply(self.call(DownloadsRequest::RemoveSftpPrivateKeyPassphrase {
+            host: host.to_string(),
+            port,
+            username: username.to_string(),
+        })?)
     }
 
     /// Stores an explicit-FTPS password in the local operating system
     /// credential store. As with SFTP, the password is never returned.
-    pub fn set_ftps_password(&mut self, host: &str, port: u16, username: &str, password: &str) -> Result<(), ClientError> {
-        Self::ok_reply(self.call(DownloadsRequest::SetFtpsPassword { host: host.to_string(), port, username: username.to_string(), password: password.to_string() })?)
+    pub fn set_ftps_password(
+        &mut self,
+        host: &str,
+        port: u16,
+        username: &str,
+        password: &str,
+    ) -> Result<(), ClientError> {
+        Self::ok_reply(self.call(DownloadsRequest::SetFtpsPassword {
+            host: host.to_string(),
+            port,
+            username: username.to_string(),
+            password: password.to_string(),
+        })?)
     }
 
-    pub fn remove_ftps_password(&mut self, host: &str, port: u16, username: &str) -> Result<(), ClientError> {
-        Self::ok_reply(self.call(DownloadsRequest::RemoveFtpsPassword { host: host.to_string(), port, username: username.to_string() })?)
+    pub fn remove_ftps_password(
+        &mut self,
+        host: &str,
+        port: u16,
+        username: &str,
+    ) -> Result<(), ClientError> {
+        Self::ok_reply(self.call(DownloadsRequest::RemoveFtpsPassword {
+            host: host.to_string(),
+            port,
+            username: username.to_string(),
+        })?)
     }
 
     pub fn subscribe(&mut self) -> Result<(), ClientError> {
@@ -655,19 +926,23 @@ impl<S: Read + Write> DownloadsClient<S> {
     }
 
     /// Drains the pushes set aside during earlier calls, oldest first.
-    pub fn take_buffered_updates(&mut self) -> Vec<TransferInfo> {
+    pub fn take_buffered_updates(&mut self) -> Vec<DownloadsUpdate> {
         self.updates.drain(..).collect()
     }
 
     /// The next pushed update -- a buffered one first, otherwise blocking
     /// on the stream until one arrives. Meant for a subscribed connection.
-    pub fn next_update(&mut self) -> Result<TransferInfo, ClientError> {
-        if let Some(info) = self.updates.pop_front() {
-            return Ok(info);
+    pub fn next_update(&mut self) -> Result<DownloadsUpdate, ClientError> {
+        if let Some(update) = self.updates.pop_front() {
+            return Ok(update);
         }
         loop {
-            if let (_, DownloadsReply::Updated(info)) = read_downloads_reply(&mut self.stream)? {
-                return Ok(info);
+            match read_downloads_reply(&mut self.stream).map_err(ClientError::Read)? {
+                (_, DownloadsReply::Updated(info)) => {
+                    return Ok(DownloadsUpdate::Updated(Box::new(info)));
+                }
+                (_, DownloadsReply::Removed { id }) => return Ok(DownloadsUpdate::Removed { id }),
+                _ => {}
             }
         }
     }
@@ -694,8 +969,18 @@ mod tests {
             mode: TransferMode::Segmented,
             resume_safe: true,
             segments: vec![
-                SegmentInfo { start: 0, end: 500, completed: 400, state: SegmentState::Active },
-                SegmentInfo { start: 500, end: 1_000, completed: 0, state: SegmentState::Retrying },
+                SegmentInfo {
+                    start: 0,
+                    end: 500,
+                    completed: 400,
+                    state: SegmentState::Active,
+                },
+                SegmentInfo {
+                    start: 500,
+                    end: 1_000,
+                    completed: 0,
+                    state: SegmentState::Retrying,
+                },
             ],
             retries: 1,
             last_error: Some("connection reset".to_string()),
@@ -704,46 +989,134 @@ mod tests {
             created_at_ms: 1_700_000_000_000,
             finished_at_ms: None,
             generation: 9,
-            events: vec![TransferEvent { at_ms: 1_700_000_000_500, message: "probe: server supports ranges".to_string() }],
+            events: vec![TransferEvent {
+                at_ms: 1_700_000_000_500,
+                message: "probe: server supports ranges".to_string(),
+            }],
         }
     }
 
     fn every_request() -> Vec<DownloadsRequest> {
         vec![
-            DownloadsRequest::Hello { protocol_version: DOWNLOADS_PROTOCOL_VERSION },
-            DownloadsRequest::Start { url: "https://example.com/a.bin".to_string(), dest: Some("sub/a.bin".to_string()), overwrite: true },
-            DownloadsRequest::Start { url: "https://example.com/a.bin".to_string(), dest: None, overwrite: false },
+            DownloadsRequest::Hello {
+                protocol_version: DOWNLOADS_PROTOCOL_VERSION,
+            },
+            DownloadsRequest::Start {
+                url: "https://example.com/a.bin".to_string(),
+                dest: Some("sub/a.bin".to_string()),
+                overwrite: true,
+            },
+            DownloadsRequest::Start {
+                url: "https://example.com/a.bin".to_string(),
+                dest: None,
+                overwrite: false,
+            },
             DownloadsRequest::List { state: None },
-            DownloadsRequest::List { state: Some(TransferState::Paused) },
+            DownloadsRequest::List {
+                state: Some(TransferState::Paused),
+            },
             DownloadsRequest::Get { id: 3 },
             DownloadsRequest::Pause { id: 3 },
             DownloadsRequest::Resume { id: 3 },
             DownloadsRequest::Cancel { id: 3 },
             DownloadsRequest::Remove { id: 3 },
-            DownloadsRequest::SetSftpPassword { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string(), password: "not-a-real-secret".to_string() },
-            DownloadsRequest::RemoveSftpPassword { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string() },
-            DownloadsRequest::SetSftpPrivateKeyPassphrase { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string(), passphrase: "not-a-real-secret".to_string() },
-            DownloadsRequest::RemoveSftpPrivateKeyPassphrase { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string() },
-            DownloadsRequest::SetFtpsPassword { host: "files.example.test".to_string(), port: 2121, username: "alice".to_string(), password: "not-a-real-secret".to_string() },
-            DownloadsRequest::RemoveFtpsPassword { host: "files.example.test".to_string(), port: 2121, username: "alice".to_string() },
+            DownloadsRequest::SetSftpPassword {
+                host: "files.example.test".to_string(),
+                port: 2222,
+                username: "alice".to_string(),
+                password: "not-a-real-secret".to_string(),
+            },
+            DownloadsRequest::RemoveSftpPassword {
+                host: "files.example.test".to_string(),
+                port: 2222,
+                username: "alice".to_string(),
+            },
+            DownloadsRequest::SetSftpPrivateKeyPassphrase {
+                host: "files.example.test".to_string(),
+                port: 2222,
+                username: "alice".to_string(),
+                passphrase: "not-a-real-secret".to_string(),
+            },
+            DownloadsRequest::RemoveSftpPrivateKeyPassphrase {
+                host: "files.example.test".to_string(),
+                port: 2222,
+                username: "alice".to_string(),
+            },
+            DownloadsRequest::SetFtpsPassword {
+                host: "files.example.test".to_string(),
+                port: 2121,
+                username: "alice".to_string(),
+                password: "not-a-real-secret".to_string(),
+            },
+            DownloadsRequest::RemoveFtpsPassword {
+                host: "files.example.test".to_string(),
+                port: 2121,
+                username: "alice".to_string(),
+            },
             DownloadsRequest::Subscribe,
             DownloadsRequest::Shutdown,
         ]
     }
 
+    #[test]
+    fn request_debug_redacts_every_credential_secret() {
+        for (request, secret) in [
+            (
+                DownloadsRequest::SetSftpPassword {
+                    host: "files.example.test".to_string(),
+                    port: 22,
+                    username: "alice".to_string(),
+                    password: "sftp-password".to_string(),
+                },
+                "sftp-password",
+            ),
+            (
+                DownloadsRequest::SetSftpPrivateKeyPassphrase {
+                    host: "files.example.test".to_string(),
+                    port: 22,
+                    username: "alice".to_string(),
+                    passphrase: "private-key-passphrase".to_string(),
+                },
+                "private-key-passphrase",
+            ),
+            (
+                DownloadsRequest::SetFtpsPassword {
+                    host: "files.example.test".to_string(),
+                    port: 21,
+                    username: "alice".to_string(),
+                    password: "ftps-password".to_string(),
+                },
+                "ftps-password",
+            ),
+        ] {
+            let debug = format!("{request:?}");
+            assert!(debug.contains("<redacted>"), "{debug}");
+            assert!(!debug.contains(secret), "{debug}");
+        }
+    }
+
     fn every_reply() -> Vec<DownloadsReply> {
         let mut blocked = sample_info(2);
         blocked.state = TransferState::Blocked;
-        blocked.blocked = Some(BlockedInfo { reason: "executable from an untrusted origin".to_string(), category: "dangerous-file-type".to_string() });
+        blocked.blocked = Some(BlockedInfo {
+            reason: "executable from an untrusted origin".to_string(),
+            category: "dangerous-file-type".to_string(),
+        });
         vec![
-            DownloadsReply::Hello { protocol_version: DOWNLOADS_PROTOCOL_VERSION },
+            DownloadsReply::Hello {
+                protocol_version: DOWNLOADS_PROTOCOL_VERSION,
+            },
             DownloadsReply::Started(sample_info(1)),
             DownloadsReply::Transfers(vec![sample_info(1), blocked]),
             DownloadsReply::Transfers(Vec::new()),
             DownloadsReply::Transfer(sample_info(1)),
             DownloadsReply::Ok,
-            DownloadsReply::Error { code: ErrorCode::NotFound, message: "no transfer 9".to_string() },
+            DownloadsReply::Error {
+                code: ErrorCode::NotFound,
+                message: "no transfer 9".to_string(),
+            },
             DownloadsReply::Updated(sample_info(1)),
+            DownloadsReply::Removed { id: 1 },
         ]
     }
 
@@ -753,7 +1126,10 @@ mod tests {
             for request_id in [None, Some(i as u64 + 1)] {
                 let (mut a, mut b) = UnixStream::pair().unwrap();
                 write_downloads_request(&mut a, request_id, &req).unwrap();
-                assert_eq!(read_downloads_request(&mut b).unwrap(), (request_id, req.clone()));
+                assert_eq!(
+                    read_downloads_request(&mut b).unwrap(),
+                    (request_id, req.clone())
+                );
             }
         }
     }
@@ -763,15 +1139,30 @@ mod tests {
         for (message, expected) in [
             (
                 serde_json::json!({"SetSftpPassword": {"host": "files.example.test", "username": "alice", "password": "not-a-real-secret"}}),
-                DownloadsRequest::SetSftpPassword { host: "files.example.test".to_string(), port: 22, username: "alice".to_string(), password: "not-a-real-secret".to_string() },
+                DownloadsRequest::SetSftpPassword {
+                    host: "files.example.test".to_string(),
+                    port: 22,
+                    username: "alice".to_string(),
+                    password: "not-a-real-secret".to_string(),
+                },
             ),
             (
                 serde_json::json!({"SetSftpPrivateKeyPassphrase": {"host": "files.example.test", "username": "alice", "passphrase": "not-a-real-secret"}}),
-                DownloadsRequest::SetSftpPrivateKeyPassphrase { host: "files.example.test".to_string(), port: 22, username: "alice".to_string(), passphrase: "not-a-real-secret".to_string() },
+                DownloadsRequest::SetSftpPrivateKeyPassphrase {
+                    host: "files.example.test".to_string(),
+                    port: 22,
+                    username: "alice".to_string(),
+                    passphrase: "not-a-real-secret".to_string(),
+                },
             ),
             (
                 serde_json::json!({"SetFtpsPassword": {"host": "files.example.test", "username": "alice", "password": "not-a-real-secret"}}),
-                DownloadsRequest::SetFtpsPassword { host: "files.example.test".to_string(), port: 21, username: "alice".to_string(), password: "not-a-real-secret".to_string() },
+                DownloadsRequest::SetFtpsPassword {
+                    host: "files.example.test".to_string(),
+                    port: 21,
+                    username: "alice".to_string(),
+                    password: "not-a-real-secret".to_string(),
+                },
             ),
         ] {
             let raw = serde_json::json!({"request_id": 1, "message": message});
@@ -788,7 +1179,10 @@ mod tests {
             for request_id in [None, Some(i as u64 + 1)] {
                 let (mut a, mut b) = UnixStream::pair().unwrap();
                 write_downloads_reply(&mut a, request_id, &reply).unwrap();
-                assert_eq!(read_downloads_reply(&mut b).unwrap(), (request_id, reply.clone()));
+                assert_eq!(
+                    read_downloads_reply(&mut b).unwrap(),
+                    (request_id, reply.clone())
+                );
             }
         }
     }
@@ -811,15 +1205,25 @@ mod tests {
 
     #[test]
     fn transfer_info_ignores_fields_it_does_not_know_about() {
-        let info: TransferInfo = serde_json::from_str(r#"{"id":7,"url":"http://x/y","added_in_a_newer_version":[1,2,3]}"#).unwrap();
+        let info: TransferInfo = serde_json::from_str(
+            r#"{"id":7,"url":"http://x/y","added_in_a_newer_version":[1,2,3]}"#,
+        )
+        .unwrap();
         assert_eq!(info.id, 7);
     }
 
     #[test]
     fn an_unrecognized_request_variant_fails_soft_and_keeps_the_request_id() {
-        for payload in [r#"{"request_id":5,"message":"Frobnicate"}"#, r#"{"request_id":5,"message":{"Frobnicate":{"x":1}}}"#] {
+        for payload in [
+            r#"{"request_id":5,"message":"Frobnicate"}"#,
+            r#"{"request_id":5,"message":{"Frobnicate":{"x":1}}}"#,
+        ] {
             let mut buf = Vec::new();
-            crate::write_framed(&mut buf, &serde_json::from_str::<serde_json::Value>(payload).unwrap()).unwrap();
+            crate::write_framed(
+                &mut buf,
+                &serde_json::from_str::<serde_json::Value>(payload).unwrap(),
+            )
+            .unwrap();
             let (request_id, req) = read_downloads_request(&mut std::io::Cursor::new(buf)).unwrap();
             assert_eq!(request_id, Some(5));
             assert_eq!(req, DownloadsRequest::Unknown);
@@ -828,9 +1232,16 @@ mod tests {
 
     #[test]
     fn an_unrecognized_reply_variant_fails_soft_and_keeps_the_request_id() {
-        for payload in [r#"{"request_id":6,"message":"Frobnicate"}"#, r#"{"request_id":6,"message":{"Frobnicate":[1]}}"#] {
+        for payload in [
+            r#"{"request_id":6,"message":"Frobnicate"}"#,
+            r#"{"request_id":6,"message":{"Frobnicate":[1]}}"#,
+        ] {
             let mut buf = Vec::new();
-            crate::write_framed(&mut buf, &serde_json::from_str::<serde_json::Value>(payload).unwrap()).unwrap();
+            crate::write_framed(
+                &mut buf,
+                &serde_json::from_str::<serde_json::Value>(payload).unwrap(),
+            )
+            .unwrap();
             let (request_id, reply) = read_downloads_reply(&mut std::io::Cursor::new(buf)).unwrap();
             assert_eq!(request_id, Some(6));
             assert_eq!(reply, DownloadsReply::Unknown);
@@ -887,12 +1298,21 @@ mod tests {
             (TransferState::Cancelled, "cancelled"),
             (TransferState::Blocked, "blocked"),
         ] {
-            assert_eq!(serde_json::to_string(&state).unwrap(), format!("\"{name}\""));
+            assert_eq!(
+                serde_json::to_string(&state).unwrap(),
+                format!("\"{name}\"")
+            );
             assert_eq!(state.to_string(), name);
         }
-        assert_eq!(serde_json::to_value(TransferMode::Segmented).unwrap(), serde_json::json!({"kind": "segmented"}));
         assert_eq!(
-            serde_json::to_value(TransferMode::SingleStream { reason: SingleStreamReason::ServerIgnoresRange }).unwrap(),
+            serde_json::to_value(TransferMode::Segmented).unwrap(),
+            serde_json::json!({"kind": "segmented"})
+        );
+        assert_eq!(
+            serde_json::to_value(TransferMode::SingleStream {
+                reason: SingleStreamReason::ServerIgnoresRange
+            })
+            .unwrap(),
             serde_json::json!({"kind": "single_stream", "reason": "server_ignores_range"})
         );
     }
@@ -916,7 +1336,11 @@ mod tests {
 
     #[test]
     fn fraction_complete_is_none_without_a_usable_total_and_clamped_otherwise() {
-        let mut info = TransferInfo { total_bytes: Some(1_000), completed_bytes: 400, ..TransferInfo::default() };
+        let mut info = TransferInfo {
+            total_bytes: Some(1_000),
+            completed_bytes: 400,
+            ..TransferInfo::default()
+        };
         assert_eq!(info.fraction_complete(), Some(0.4));
         info.completed_bytes = 1_500;
         assert_eq!(info.fraction_complete(), Some(1.0));
@@ -938,10 +1362,24 @@ mod tests {
     #[test]
     fn byte_counts_use_binary_units_with_one_decimal() {
         const MIB: u64 = 1024 * 1024;
-        for (bytes, text) in [(0, "0 B"), (1, "1 B"), (1023, "1023 B"), (1024, "1.0 KiB"), (1536, "1.5 KiB"), (MIB, "1.0 MiB"), (12 * MIB + MIB / 4, "12.3 MiB"), (5 * 1024 * MIB, "5.0 GiB"), (3 * 1024 * 1024 * MIB, "3.0 TiB")] {
+        for (bytes, text) in [
+            (0, "0 B"),
+            (1, "1 B"),
+            (1023, "1023 B"),
+            (1024, "1.0 KiB"),
+            (1536, "1.5 KiB"),
+            (MIB, "1.0 MiB"),
+            (12 * MIB + MIB / 4, "12.3 MiB"),
+            (5 * 1024 * MIB, "5.0 GiB"),
+            (3 * 1024 * 1024 * MIB, "3.0 TiB"),
+        ] {
             assert_eq!(format_bytes(bytes), text, "{bytes}");
         }
-        assert_eq!(format_bytes(1024 * 1024 - 1), "1.0 MiB", "just under a unit rounds up into it rather than printing 1024.0 KiB");
+        assert_eq!(
+            format_bytes(1024 * 1024 - 1),
+            "1.0 MiB",
+            "just under a unit rounds up into it rather than printing 1024.0 KiB"
+        );
     }
 
     #[test]
@@ -952,7 +1390,17 @@ mod tests {
 
     #[test]
     fn durations_read_naturally_and_drop_the_finest_unit_once_it_stops_mattering() {
-        for (secs, text) in [(0, "0 s"), (59, "59 s"), (60, "1 min"), (80, "1 min 20 s"), (3599, "59 min 59 s"), (3600, "1 h"), (3725, "1 h 2 min"), (86_400, "1 d"), (90_000, "1 d 1 h")] {
+        for (secs, text) in [
+            (0, "0 s"),
+            (59, "59 s"),
+            (60, "1 min"),
+            (80, "1 min 20 s"),
+            (3599, "59 min 59 s"),
+            (3600, "1 h"),
+            (3725, "1 h 2 min"),
+            (86_400, "1 d"),
+            (90_000, "1 d 1 h"),
+        ] {
             assert_eq!(format_duration(secs), text, "{secs}");
         }
     }
@@ -966,8 +1414,20 @@ mod tests {
 
     fn answer_hello(server: &mut UnixStream) {
         let (id, req) = read_downloads_request(server).unwrap();
-        assert_eq!(req, DownloadsRequest::Hello { protocol_version: DOWNLOADS_PROTOCOL_VERSION });
-        write_downloads_reply(server, id, &DownloadsReply::Hello { protocol_version: DOWNLOADS_PROTOCOL_VERSION }).unwrap();
+        assert_eq!(
+            req,
+            DownloadsRequest::Hello {
+                protocol_version: DOWNLOADS_PROTOCOL_VERSION
+            }
+        );
+        write_downloads_reply(
+            server,
+            id,
+            &DownloadsReply::Hello {
+                protocol_version: DOWNLOADS_PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
     }
 
     #[test]
@@ -981,10 +1441,21 @@ mod tests {
     fn connect_surfaces_a_rejected_handshake_as_a_remote_error() {
         let (stream, server) = serve(|mut s| {
             let (id, _) = read_downloads_request(&mut s).unwrap();
-            write_downloads_reply(&mut s, id, &DownloadsReply::Error { code: ErrorCode::UnsupportedVersion, message: "speak v1".to_string() }).unwrap();
+            write_downloads_reply(
+                &mut s,
+                id,
+                &DownloadsReply::Error {
+                    code: ErrorCode::UnsupportedVersion,
+                    message: "speak v1".to_string(),
+                },
+            )
+            .unwrap();
         });
         match DownloadsClient::connect(stream) {
-            Err(ClientError::Remote { code: ErrorCode::UnsupportedVersion, message }) => assert_eq!(message, "speak v1"),
+            Err(ClientError::Remote {
+                code: ErrorCode::UnsupportedVersion,
+                message,
+            }) => assert_eq!(message, "speak v1"),
             other => panic!("{other:?}"),
         }
         server.join().unwrap();
@@ -994,9 +1465,19 @@ mod tests {
     fn connect_rejects_a_peer_speaking_a_different_protocol_version() {
         let (stream, server) = serve(|mut s| {
             let (id, _) = read_downloads_request(&mut s).unwrap();
-            write_downloads_reply(&mut s, id, &DownloadsReply::Hello { protocol_version: DOWNLOADS_PROTOCOL_VERSION + 1 }).unwrap();
+            write_downloads_reply(
+                &mut s,
+                id,
+                &DownloadsReply::Hello {
+                    protocol_version: DOWNLOADS_PROTOCOL_VERSION + 1,
+                },
+            )
+            .unwrap();
         });
-        assert!(matches!(DownloadsClient::connect(stream), Err(ClientError::Unexpected(_))));
+        assert!(matches!(
+            DownloadsClient::connect(stream),
+            Err(ClientError::Unexpected(_))
+        ));
         server.join().unwrap();
     }
 
@@ -1005,20 +1486,42 @@ mod tests {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
             let (id, req) = read_downloads_request(&mut s).unwrap();
-            assert_eq!(req, DownloadsRequest::Start { url: "https://example.com/a.bin".to_string(), dest: Some("a.bin".to_string()), overwrite: true });
-            assert!(id.is_some(), "a client must tag requests so replies can be matched");
+            assert_eq!(
+                req,
+                DownloadsRequest::Start {
+                    url: "https://example.com/a.bin".to_string(),
+                    dest: Some("a.bin".to_string()),
+                    overwrite: true
+                }
+            );
+            assert!(
+                id.is_some(),
+                "a client must tag requests so replies can be matched"
+            );
             write_downloads_reply(&mut s, id, &DownloadsReply::Started(sample_info(4))).unwrap();
 
             let (id, req) = read_downloads_request(&mut s).unwrap();
-            assert_eq!(req, DownloadsRequest::List { state: Some(TransferState::Active) });
-            write_downloads_reply(&mut s, id, &DownloadsReply::Transfers(vec![sample_info(4)])).unwrap();
+            assert_eq!(
+                req,
+                DownloadsRequest::List {
+                    state: Some(TransferState::Active)
+                }
+            );
+            write_downloads_reply(&mut s, id, &DownloadsReply::Transfers(vec![sample_info(4)]))
+                .unwrap();
 
             let (id, req) = read_downloads_request(&mut s).unwrap();
             assert_eq!(req, DownloadsRequest::Get { id: 4 });
             write_downloads_reply(&mut s, id, &DownloadsReply::Transfer(sample_info(4))).unwrap();
         });
         let mut client = DownloadsClient::connect(stream).unwrap();
-        assert_eq!(client.start("https://example.com/a.bin", Some("a.bin"), true).unwrap().id, 4);
+        assert_eq!(
+            client
+                .start("https://example.com/a.bin", Some("a.bin"), true)
+                .unwrap()
+                .id,
+            4
+        );
         assert_eq!(client.list(Some(TransferState::Active)).unwrap().len(), 1);
         assert_eq!(client.get(4).unwrap(), sample_info(4));
         server.join().unwrap();
@@ -1029,31 +1532,93 @@ mod tests {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
             let (id, request) = read_downloads_request(&mut s).unwrap();
-            assert_eq!(request, DownloadsRequest::SetSftpPassword { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string(), password: "not-a-real-secret".to_string() });
+            assert_eq!(
+                request,
+                DownloadsRequest::SetSftpPassword {
+                    host: "files.example.test".to_string(),
+                    port: 2222,
+                    username: "alice".to_string(),
+                    password: "not-a-real-secret".to_string()
+                }
+            );
             write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
             let (id, request) = read_downloads_request(&mut s).unwrap();
-            assert_eq!(request, DownloadsRequest::RemoveSftpPassword { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string() });
+            assert_eq!(
+                request,
+                DownloadsRequest::RemoveSftpPassword {
+                    host: "files.example.test".to_string(),
+                    port: 2222,
+                    username: "alice".to_string()
+                }
+            );
             write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
             let (id, request) = read_downloads_request(&mut s).unwrap();
-            assert_eq!(request, DownloadsRequest::SetSftpPrivateKeyPassphrase { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string(), passphrase: "not-a-real-secret".to_string() });
+            assert_eq!(
+                request,
+                DownloadsRequest::SetSftpPrivateKeyPassphrase {
+                    host: "files.example.test".to_string(),
+                    port: 2222,
+                    username: "alice".to_string(),
+                    passphrase: "not-a-real-secret".to_string()
+                }
+            );
             write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
             let (id, request) = read_downloads_request(&mut s).unwrap();
-            assert_eq!(request, DownloadsRequest::RemoveSftpPrivateKeyPassphrase { host: "files.example.test".to_string(), port: 2222, username: "alice".to_string() });
+            assert_eq!(
+                request,
+                DownloadsRequest::RemoveSftpPrivateKeyPassphrase {
+                    host: "files.example.test".to_string(),
+                    port: 2222,
+                    username: "alice".to_string()
+                }
+            );
             write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
             let (id, request) = read_downloads_request(&mut s).unwrap();
-            assert_eq!(request, DownloadsRequest::SetFtpsPassword { host: "files.example.test".to_string(), port: 2121, username: "alice".to_string(), password: "not-a-real-secret".to_string() });
+            assert_eq!(
+                request,
+                DownloadsRequest::SetFtpsPassword {
+                    host: "files.example.test".to_string(),
+                    port: 2121,
+                    username: "alice".to_string(),
+                    password: "not-a-real-secret".to_string()
+                }
+            );
             write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
             let (id, request) = read_downloads_request(&mut s).unwrap();
-            assert_eq!(request, DownloadsRequest::RemoveFtpsPassword { host: "files.example.test".to_string(), port: 2121, username: "alice".to_string() });
+            assert_eq!(
+                request,
+                DownloadsRequest::RemoveFtpsPassword {
+                    host: "files.example.test".to_string(),
+                    port: 2121,
+                    username: "alice".to_string()
+                }
+            );
             write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
         });
         let mut client = DownloadsClient::connect(stream).unwrap();
-        client.set_sftp_password("files.example.test", 2222, "alice", "not-a-real-secret").unwrap();
-        client.remove_sftp_password("files.example.test", 2222, "alice").unwrap();
-        client.set_sftp_private_key_passphrase("files.example.test", 2222, "alice", "not-a-real-secret").unwrap();
-        client.remove_sftp_private_key_passphrase("files.example.test", 2222, "alice").unwrap();
-        client.set_ftps_password("files.example.test", 2121, "alice", "not-a-real-secret").unwrap();
-        client.remove_ftps_password("files.example.test", 2121, "alice").unwrap();
+        client
+            .set_sftp_password("files.example.test", 2222, "alice", "not-a-real-secret")
+            .unwrap();
+        client
+            .remove_sftp_password("files.example.test", 2222, "alice")
+            .unwrap();
+        client
+            .set_sftp_private_key_passphrase(
+                "files.example.test",
+                2222,
+                "alice",
+                "not-a-real-secret",
+            )
+            .unwrap();
+        client
+            .remove_sftp_private_key_passphrase("files.example.test", 2222, "alice")
+            .unwrap();
+        client
+            .set_ftps_password("files.example.test", 2121, "alice", "not-a-real-secret")
+            .unwrap();
+        client
+            .remove_ftps_password("files.example.test", 2121, "alice")
+            .unwrap();
         server.join().unwrap();
     }
 
@@ -1063,7 +1628,10 @@ mod tests {
             answer_hello(&mut s);
             for (expected, state) in [
                 (DownloadsRequest::Pause { id: 2 }, TransferState::Paused),
-                (DownloadsRequest::Resume { id: 2 }, TransferState::AwaitingClearance),
+                (
+                    DownloadsRequest::Resume { id: 2 },
+                    TransferState::AwaitingClearance,
+                ),
                 (DownloadsRequest::Cancel { id: 2 }, TransferState::Cancelled),
             ] {
                 let (id, req) = read_downloads_request(&mut s).unwrap();
@@ -1078,7 +1646,10 @@ mod tests {
         });
         let mut client = DownloadsClient::connect(stream).unwrap();
         assert_eq!(client.pause(2).unwrap().state, TransferState::Paused);
-        assert_eq!(client.resume(2).unwrap().state, TransferState::AwaitingClearance);
+        assert_eq!(
+            client.resume(2).unwrap().state,
+            TransferState::AwaitingClearance
+        );
         assert_eq!(client.cancel(2).unwrap().state, TransferState::Cancelled);
         client.remove(2).unwrap();
         server.join().unwrap();
@@ -1089,11 +1660,22 @@ mod tests {
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
             let (id, _) = read_downloads_request(&mut s).unwrap();
-            write_downloads_reply(&mut s, id, &DownloadsReply::Error { code: ErrorCode::NotFound, message: "no transfer 9".to_string() }).unwrap();
+            write_downloads_reply(
+                &mut s,
+                id,
+                &DownloadsReply::Error {
+                    code: ErrorCode::NotFound,
+                    message: "no transfer 9".to_string(),
+                },
+            )
+            .unwrap();
         });
         let mut client = DownloadsClient::connect(stream).unwrap();
         match client.get(9) {
-            Err(ClientError::Remote { code: ErrorCode::NotFound, message }) => assert_eq!(message, "no transfer 9"),
+            Err(ClientError::Remote {
+                code: ErrorCode::NotFound,
+                message,
+            }) => assert_eq!(message, "no transfer 9"),
             other => panic!("{other:?}"),
         }
         server.join().unwrap();
@@ -1126,9 +1708,19 @@ mod tests {
         });
         let mut client = DownloadsClient::connect(stream).unwrap();
         assert_eq!(client.get(3).unwrap().id, 3);
-        let pushed: Vec<u64> = client.take_buffered_updates().iter().map(|t| t.id).collect();
+        let pushed: Vec<u64> = client
+            .take_buffered_updates()
+            .iter()
+            .map(|update| match update {
+                DownloadsUpdate::Updated(info) => info.id,
+                DownloadsUpdate::Removed { id } => *id,
+            })
+            .collect();
         assert_eq!(pushed, vec![1, 2]);
-        assert!(client.take_buffered_updates().is_empty(), "taking the buffer must drain it");
+        assert!(
+            client.take_buffered_updates().is_empty(),
+            "taking the buffer must drain it"
+        );
         server.join().unwrap();
     }
 
@@ -1147,7 +1739,12 @@ mod tests {
         });
         let mut client = DownloadsClient::connect(stream).unwrap();
         client.subscribe().unwrap();
-        let seen: Vec<u64> = (0..3).map(|_| client.next_update().unwrap().completed_bytes).collect();
+        let seen: Vec<u64> = (0..3)
+            .map(|_| match client.next_update().unwrap() {
+                DownloadsUpdate::Updated(info) => info.completed_bytes,
+                DownloadsUpdate::Removed { id } => panic!("unexpected removal of {id}"),
+            })
+            .collect();
         assert_eq!(seen, vec![100, 200, 300]);
         server.join().unwrap();
     }
@@ -1158,7 +1755,8 @@ mod tests {
             answer_hello(&mut s);
             let (id, _) = read_downloads_request(&mut s).unwrap();
             for n in 0..(MAX_BUFFERED_UPDATES as u64 + 10) {
-                write_downloads_reply(&mut s, None, &DownloadsReply::Updated(sample_info(n))).unwrap();
+                write_downloads_reply(&mut s, None, &DownloadsReply::Updated(sample_info(n)))
+                    .unwrap();
             }
             write_downloads_reply(&mut s, id, &DownloadsReply::Ok).unwrap();
         });
@@ -1167,8 +1765,10 @@ mod tests {
         let buffered = client.take_buffered_updates();
         assert_eq!(buffered.len(), MAX_BUFFERED_UPDATES);
         // The oldest are dropped: the newest state of each transfer is the one worth keeping.
-        assert_eq!(buffered.last().unwrap().id, MAX_BUFFERED_UPDATES as u64 + 9);
-        assert_eq!(buffered.first().unwrap().id, 10);
+        assert!(
+            matches!(buffered.last(), Some(DownloadsUpdate::Updated(info)) if info.id == MAX_BUFFERED_UPDATES as u64 + 9)
+        );
+        assert!(matches!(buffered.first(), Some(DownloadsUpdate::Updated(info)) if info.id == 10));
         server.join().unwrap();
     }
 
@@ -1184,8 +1784,13 @@ mod tests {
         let mut client = DownloadsClient::connect(stream).unwrap();
         client.remove(5).unwrap();
         server.join().unwrap();
-        assert_eq!(client.next_update().unwrap().id, 1);
-        assert!(client.next_update().is_err(), "with the buffer empty and the peer gone, next_update must read the stream and fail");
+        assert!(
+            matches!(client.next_update().unwrap(), DownloadsUpdate::Updated(info) if info.id == 1)
+        );
+        assert!(
+            client.next_update().is_err(),
+            "with the buffer empty and the peer gone, next_update must read the stream and fail"
+        );
     }
 
     #[test]
@@ -1197,7 +1802,9 @@ mod tests {
             write_downloads_reply(&mut s, None, &DownloadsReply::Updated(sample_info(8))).unwrap();
         });
         let mut client = DownloadsClient::connect(stream).unwrap();
-        assert_eq!(client.next_update().unwrap().id, 8);
+        assert!(
+            matches!(client.next_update().unwrap(), DownloadsUpdate::Updated(info) if info.id == 8)
+        );
         server.join().unwrap();
     }
 
@@ -1209,7 +1816,14 @@ mod tests {
         let raw = serde_json::json!({"request_id": 1, "message": {"Start": {"url": "https://example.com/a"}}});
         crate::write_framed(&mut buf, &raw).unwrap();
         let (_, req) = read_downloads_request(&mut std::io::Cursor::new(buf)).unwrap();
-        assert_eq!(req, DownloadsRequest::Start { url: "https://example.com/a".to_string(), dest: None, overwrite: false });
+        assert_eq!(
+            req,
+            DownloadsRequest::Start {
+                url: "https://example.com/a".to_string(),
+                dest: None,
+                overwrite: false
+            }
+        );
 
         let mut buf = Vec::new();
         crate::write_framed(&mut buf, &serde_json::json!({"message": {"List": {}}})).unwrap();
@@ -1225,7 +1839,7 @@ mod tests {
             // drop the connection without replying
         });
         let mut client = DownloadsClient::connect(stream).unwrap();
-        assert!(matches!(client.get(1), Err(ClientError::Io(_))));
+        assert!(matches!(client.get(1), Err(ClientError::Read(_))));
         server.join().unwrap();
     }
 
@@ -1251,7 +1865,11 @@ mod tests {
         // `Subscribe`, is not something to guess a meaning for.
         let (stream, server) = serve(|mut s| {
             answer_hello(&mut s);
-            for wrong in [DownloadsReply::Ok, DownloadsReply::Transfers(Vec::new()), DownloadsReply::Transfers(Vec::new())] {
+            for wrong in [
+                DownloadsReply::Ok,
+                DownloadsReply::Transfers(Vec::new()),
+                DownloadsReply::Transfers(Vec::new()),
+            ] {
                 let (id, _) = read_downloads_request(&mut s).unwrap();
                 write_downloads_reply(&mut s, id, &wrong).unwrap();
             }
@@ -1259,14 +1877,31 @@ mod tests {
         let mut client = DownloadsClient::connect(stream).unwrap();
         assert!(matches!(client.list(None), Err(ClientError::Unexpected(_))));
         assert!(matches!(client.remove(1), Err(ClientError::Unexpected(_))));
-        assert!(matches!(client.subscribe(), Err(ClientError::Unexpected(_))));
+        assert!(matches!(
+            client.subscribe(),
+            Err(ClientError::Unexpected(_))
+        ));
         server.join().unwrap();
     }
 
     #[test]
     fn client_error_messages_are_human_readable() {
-        assert_eq!(ClientError::Remote { code: ErrorCode::NotFound, message: "no transfer 9".to_string() }.to_string(), "downloads process refused the request (not_found): no transfer 9");
-        assert_eq!(ClientError::Unexpected("x".to_string()).to_string(), "unexpected reply from the downloads process: x");
-        assert!(ClientError::Io(std::io::Error::other("boom")).to_string().contains("boom"));
+        assert_eq!(
+            ClientError::Remote {
+                code: ErrorCode::NotFound,
+                message: "no transfer 9".to_string()
+            }
+            .to_string(),
+            "downloads process refused the request (not_found): no transfer 9"
+        );
+        assert_eq!(
+            ClientError::Unexpected("x".to_string()).to_string(),
+            "unexpected reply from the downloads process: x"
+        );
+        assert!(
+            ClientError::Read(std::io::Error::other("boom"))
+                .to_string()
+                .contains("boom")
+        );
     }
 }

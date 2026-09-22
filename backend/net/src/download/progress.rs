@@ -69,7 +69,15 @@ mod tests {
     use std::time::{Duration, Instant};
 
     /// Feeds `rate` bytes/second, sampled every `step`, for `duration`.
-    fn feed(progress: &mut Progress, start: Instant, from: Duration, duration: Duration, step: Duration, rate: u64, base: u64) -> u64 {
+    fn feed(
+        progress: &mut Progress,
+        start: Instant,
+        from: Duration,
+        duration: Duration,
+        step: Duration,
+        rate: u64,
+        base: u64,
+    ) -> u64 {
         let mut completed = base;
         let mut t = Duration::ZERO;
         while t < duration {
@@ -92,7 +100,11 @@ mod tests {
         let start = Instant::now();
         let mut progress = Progress::new();
         progress.record(start, 5_000);
-        assert_eq!(progress.speed_bps(), 0, "one sample can't say how fast anything is moving");
+        assert_eq!(
+            progress.speed_bps(),
+            0,
+            "one sample can't say how fast anything is moving"
+        );
     }
 
     #[test]
@@ -100,7 +112,15 @@ mod tests {
         let start = Instant::now();
         let mut progress = Progress::new();
         progress.record(start, 0);
-        feed(&mut progress, start, Duration::ZERO, Duration::from_secs(10), Duration::from_millis(100), 1_000, 0);
+        feed(
+            &mut progress,
+            start,
+            Duration::ZERO,
+            Duration::from_secs(10),
+            Duration::from_millis(100),
+            1_000,
+            0,
+        );
         let speed = progress.speed_bps();
         assert!((980..=1_020).contains(&speed), "speed was {speed}");
     }
@@ -110,9 +130,20 @@ mod tests {
         let start = Instant::now();
         let mut progress = Progress::new();
         progress.record(start, 0);
-        feed(&mut progress, start, Duration::ZERO, Duration::from_secs(10), Duration::from_millis(100), 1_000, 0);
+        feed(
+            &mut progress,
+            start,
+            Duration::ZERO,
+            Duration::from_secs(10),
+            Duration::from_millis(100),
+            1_000,
+            0,
+        );
         let eta = progress.eta(5_000).unwrap();
-        assert!(eta > Duration::from_millis(4_800) && eta < Duration::from_millis(5_200), "eta was {eta:?}");
+        assert!(
+            eta > Duration::from_millis(4_800) && eta < Duration::from_millis(5_200),
+            "eta was {eta:?}"
+        );
         assert_eq!(progress.eta(0), Some(Duration::ZERO));
     }
 
@@ -121,12 +152,44 @@ mod tests {
         let start = Instant::now();
         let mut progress = Progress::new();
         progress.record(start, 0);
-        let completed = feed(&mut progress, start, Duration::ZERO, Duration::from_secs(10), Duration::from_millis(100), 1_000, 0);
-        feed(&mut progress, start, Duration::from_secs(10), Duration::from_secs(3), Duration::from_millis(100), 0, completed);
-        assert!(progress.speed_bps() < 100, "speed was {}", progress.speed_bps());
-        feed(&mut progress, start, Duration::from_secs(13), Duration::from_secs(60), Duration::from_millis(100), 0, completed);
+        let completed = feed(
+            &mut progress,
+            start,
+            Duration::ZERO,
+            Duration::from_secs(10),
+            Duration::from_millis(100),
+            1_000,
+            0,
+        );
+        feed(
+            &mut progress,
+            start,
+            Duration::from_secs(10),
+            Duration::from_secs(3),
+            Duration::from_millis(100),
+            0,
+            completed,
+        );
+        assert!(
+            progress.speed_bps() < 100,
+            "speed was {}",
+            progress.speed_bps()
+        );
+        feed(
+            &mut progress,
+            start,
+            Duration::from_secs(13),
+            Duration::from_secs(60),
+            Duration::from_millis(100),
+            0,
+            completed,
+        );
         assert_eq!(progress.speed_bps(), 0);
-        assert_eq!(progress.eta(1_000), None, "no ETA is honest when nothing is moving");
+        assert_eq!(
+            progress.eta(1_000),
+            None,
+            "no ETA is honest when nothing is moving"
+        );
     }
 
     #[test]
@@ -141,7 +204,10 @@ mod tests {
         let after_restart = progress.speed_bps();
         assert!(after_restart < 1_000);
         progress.record(start + Duration::from_secs(3), 500);
-        assert!(progress.speed_bps() > 0, "measuring resumes from the new, lower baseline");
+        assert!(
+            progress.speed_bps() > 0,
+            "measuring resumes from the new, lower baseline"
+        );
     }
 
     #[test]
@@ -152,6 +218,9 @@ mod tests {
         progress.record(start, 10_000);
         assert_eq!(progress.speed_bps(), 0);
         progress.record(start + Duration::from_secs(1), 10_000);
-        assert!(progress.speed_bps() > 0, "the ignored sample must not have advanced the baseline's clock incorrectly");
+        assert!(
+            progress.speed_bps() > 0,
+            "the ignored sample must not have advanced the baseline's clock incorrectly"
+        );
     }
 }

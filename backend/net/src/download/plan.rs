@@ -85,7 +85,10 @@ mod tests {
 
     #[test]
     fn a_resource_smaller_than_the_minimum_split_is_one_span() {
-        assert_eq!(initial_split(300, 8, MIB), vec![Span { start: 0, end: 300 }]);
+        assert_eq!(
+            initial_split(300, 8, MIB),
+            vec![Span { start: 0, end: 300 }]
+        );
     }
 
     #[test]
@@ -117,18 +120,35 @@ mod tests {
 
     #[test]
     fn degenerate_parameters_are_clamped_not_a_division_by_zero() {
-        assert_eq!(initial_split(10, 0, 5).len(), 1, "zero connections behaves like one");
+        assert_eq!(
+            initial_split(10, 0, 5).len(),
+            1,
+            "zero connections behaves like one"
+        );
         assert_contiguous_cover(&initial_split(10, 4, 0), 10);
     }
 
     #[test]
     fn every_grid_point_yields_a_contiguous_cover_within_the_connection_limit() {
-        for total in [1, 2, 7, 1023, MIB - 1, MIB, MIB + 1, 3 * MIB + 17, 64 * MIB + 3] {
+        for total in [
+            1,
+            2,
+            7,
+            1023,
+            MIB - 1,
+            MIB,
+            MIB + 1,
+            3 * MIB + 17,
+            64 * MIB + 3,
+        ] {
             for connections in [1, 2, 3, 8, 16] {
                 for min_split in [1, 100, MIB] {
                     let spans = initial_split(total, connections, min_split);
                     assert_contiguous_cover(&spans, total);
-                    assert!(spans.len() <= connections, "{total} {connections} {min_split}: {spans:?}");
+                    assert!(
+                        spans.len() <= connections,
+                        "{total} {connections} {min_split}: {spans:?}"
+                    );
                 }
             }
         }
@@ -146,14 +166,26 @@ mod tests {
     fn a_segment_splits_at_the_midpoint_of_what_remains() {
         assert_eq!(split_point(0, 10 * MIB, MIB), Some(5 * MIB));
         assert_eq!(split_point(4 * MIB, 10 * MIB, MIB), Some(7 * MIB));
-        assert_eq!(split_point(0, 2 * MIB, MIB), Some(MIB), "exactly twice the minimum splits into two minimums");
+        assert_eq!(
+            split_point(0, 2 * MIB, MIB),
+            Some(MIB),
+            "exactly twice the minimum splits into two minimums"
+        );
     }
 
     #[test]
     fn the_split_point_leaves_at_least_the_minimum_on_both_sides() {
-        for (pos, end) in [(0, 2 * MIB), (0, 2 * MIB + 1), (3, 3 + 2 * MIB + 1), (10, 10 + 7 * MIB + 13)] {
+        for (pos, end) in [
+            (0, 2 * MIB),
+            (0, 2 * MIB + 1),
+            (3, 3 + 2 * MIB + 1),
+            (10, 10 + 7 * MIB + 13),
+        ] {
             let mid = split_point(pos, end, MIB).unwrap();
-            assert!(mid - pos >= MIB, "front half of {pos}..{end} split at {mid}");
+            assert!(
+                mid - pos >= MIB,
+                "front half of {pos}..{end} split at {mid}"
+            );
             assert!(end - mid >= MIB, "back half of {pos}..{end} split at {mid}");
         }
     }
