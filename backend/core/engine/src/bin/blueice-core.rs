@@ -217,7 +217,9 @@ fn register_compiler_startup_profile(
                         loader: AuthorizedModuleLoader::new(
                             [AuthorizedModule::new(
                                 entry_module,
-                                "export const coreRegisteredAnswer: number = 42;",
+                                "interface CoreFixtureSettings { enabled: boolean; } \
+                                 export const coreFixtureSettings: CoreFixtureSettings = { enabled: true }; \
+                                 export const coreRegisteredAnswer: number = 42;",
                             )],
                             [],
                         )

@@ -664,6 +664,10 @@ fn debug_info_for_module(debug_info: &BlueTsDebugInfo, module_id: &str) -> BlueT
         .iter()
         .filter_map(|symbol| symbol.static_type)
         .collect::<BTreeSet<_>>();
+    let contract_ids = symbols
+        .iter()
+        .filter_map(|symbol| symbol.contract)
+        .collect::<BTreeSet<_>>();
     BlueTsDebugInfo {
         language_version: debug_info.language_version.clone(),
         compiler_options_hash: debug_info.compiler_options_hash.clone(),
@@ -680,6 +684,12 @@ fn debug_info_for_module(debug_info: &BlueTsDebugInfo, module_id: &str) -> BlueT
             .cloned()
             .collect(),
         symbols,
+        contracts: debug_info
+            .contracts
+            .iter()
+            .filter(|contract| contract_ids.contains(&contract.id))
+            .cloned()
+            .collect(),
     }
 }
 

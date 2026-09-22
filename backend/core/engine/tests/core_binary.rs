@@ -296,6 +296,25 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
     ));
     drop(invalid);
 
+    // Compiler IPC v1 cannot silently negotiate with the contract/provenance
+    // vocabulary added by v2.
+    let mut v1 = UnixStream::connect(&compiler_socket_path).unwrap();
+    blueice_ipc::compiler::write_compiler_request(
+        &mut v1,
+        &blueice_ipc::compiler::CompilerRequest::Hello {
+            protocol_version: 1,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::compiler::read_compiler_reply(&mut v1).unwrap(),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::ProtocolVersion,
+            ..
+        }
+    ));
+    drop(v1);
+
     let mut compiler = UnixStream::connect(&compiler_socket_path).unwrap();
     blueice_ipc::compiler::write_compiler_request(
         &mut compiler,
@@ -340,8 +359,74 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
     };
     assert!(!check.has_errors, "{check:#?}");
     assert_eq!(check.generation.project.id, 1);
-    assert!(check.static_metadata.is_some());
+    assert_eq!(check.static_metadata.as_ref().unwrap().contract_count, 1);
     assert!(check.artifact_fingerprint.is_some());
+
+    blueice_ipc::compiler::write_compiler_request(
+        &mut compiler,
+        &blueice_ipc::compiler::CompilerRequest::GetStaticSymbol {
+            generation: check.generation,
+            symbol_id: 0,
+        },
+    )
+    .unwrap();
+    let blueice_ipc::compiler::CompilerReply::StaticSymbol(symbol) =
+        blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap()
+    else {
+        panic!("compiled-in interface must expose exact static metadata")
+    };
+    let contract_id = symbol
+        .contract_id
+        .expect("local interface must have retained plan");
+    blueice_ipc::compiler::write_compiler_request(
+        &mut compiler,
+        &blueice_ipc::compiler::CompilerRequest::GetStaticProvenance {
+            generation: check.generation,
+            source_id: symbol.source_id,
+        },
+    )
+    .unwrap();
+    let blueice_ipc::compiler::CompilerReply::StaticProvenance(provenance) =
+        blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap()
+    else {
+        panic!("real core must return only source-free provenance")
+    };
+    assert_ne!(provenance.content_hash, "CoreFixtureSettings");
+    blueice_ipc::compiler::write_compiler_request(
+        &mut compiler,
+        &blueice_ipc::compiler::CompilerRequest::GetStaticContract {
+            generation: check.generation,
+            contract_id,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap(),
+        blueice_ipc::compiler::CompilerReply::StaticContract(_)
+    ));
+    let secret = "caller-secret-must-not-be-echoed";
+    blueice_ipc::compiler::write_compiler_request(
+        &mut compiler,
+        &blueice_ipc::compiler::CompilerRequest::ValidateStaticContract {
+            generation: check.generation,
+            contract_id,
+            value: blueice_ipc::compiler::CompilerContractValue::Object(
+                std::collections::BTreeMap::from([(
+                    "enabled".to_string(),
+                    blueice_ipc::compiler::CompilerContractValue::String(secret.to_string()),
+                )]),
+            ),
+        },
+    )
+    .unwrap();
+    let validation = blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap();
+    assert!(matches!(
+        validation,
+        blueice_ipc::compiler::CompilerReply::ContractValidation(
+            blueice_ipc::compiler::CompilerContractValidation { valid: false, .. }
+        )
+    ));
+    assert!(!format!("{validation:?}").contains(secret));
     drop(compiler);
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)

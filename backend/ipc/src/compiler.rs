@@ -10,18 +10,21 @@
 //! path, or write capability. Callers can therefore only act on opaque
 //! project and generation handles minted by that owner.
 //!
-//! The first version exposes source-text-free identity, check, and individual
-//! static type/symbol queries. Build artifacts, project registration/update,
-//! contract/provenance records, source reads, and output transactions remain
-//! separate capability-bearing operations. In particular, this module is not
-//! an MCP protocol and does not grant an MCP client any authority by itself.
+//! Version two exposes source-text-free identity, check, individual static
+//! type/symbol queries, compiler-minted provenance hashes, and a deliberately
+//! bounded subset of reifiable static-contract inspection/validation. Build
+//! artifacts, project registration/update, source reads, and output
+//! transactions remain separate capability-bearing operations. In particular,
+//! this module is not an MCP protocol and does not grant an MCP client any
+//! authority by itself.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::io::{self, Read, Write};
 
 /// Independent protocol version for registered-project compiler IPC. It does
 /// not share the browser frontend protocol's lifecycle.
-pub const COMPILER_PROTOCOL_VERSION: u32 = 1;
+pub const COMPILER_PROTOCOL_VERSION: u32 = 2;
 
 /// The maximum encoded request or reply accepted by this protocol. The engine
 /// adapter applies a smaller response budget before a reply reaches this
@@ -105,6 +108,7 @@ pub struct CompilerStaticMetadataSummary {
     pub source_count: u32,
     pub type_count: u32,
     pub symbol_count: u32,
+    pub contract_count: u32,
 }
 
 /// A registered project's non-sensitive, source-text-free description.
@@ -166,6 +170,74 @@ pub struct CompilerStaticSymbol {
     pub start: u64,
     pub end: u64,
     pub static_type_id: Option<u32>,
+    /// Compiler-minted source provenance handle. It can be used only with the
+    /// exact generation in a `GetStaticProvenance` request.
+    pub source_id: u32,
+    /// Compiler-minted contract handle for a reifiable local declaration.
+    /// `None` deliberately means no exact static plan was retained.
+    pub contract_id: Option<u32>,
+}
+
+/// One source-text-free provenance record from an exact compilation. The
+/// module identity and hash are static metadata, not a source-read endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerStaticProvenance {
+    pub generation: CompilerGeneration,
+    pub source_id: u32,
+    pub module: String,
+    pub content_hash: String,
+}
+
+/// A bounded, source-text-free summary of one pure static contract plan. The
+/// `root` and `definitions` are deterministic debug shapes of the retained
+/// pure plan; `fingerprint` binds both for the exact generation. These strings
+/// are compiler metadata, not source text, and the core response budget caps
+/// each independently.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerStaticContract {
+    pub generation: CompilerGeneration,
+    pub contract_id: u32,
+    pub source_id: u32,
+    pub name: String,
+    pub fingerprint: String,
+    pub root: String,
+    pub definitions: String,
+    pub definition_count: u32,
+}
+
+/// The only data shapes accepted for static contract validation. It cannot
+/// encode a JavaScript object, function, getter, proxy, host handle, source
+/// graph, or compiler configuration. Numbers use canonical finite decimal
+/// text so the JSON transport preserves a fully comparable `Eq` wire value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "kebab-case")]
+pub enum CompilerContractValue {
+    Null,
+    Undefined,
+    Boolean(bool),
+    Number(String),
+    String(String),
+    Array(Vec<CompilerContractValue>),
+    Object(BTreeMap<String, CompilerContractValue>),
+}
+
+/// A rejected static contract snapshot is a normal validation result, rather
+/// than a transport failure. No request input is echoed in this result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerContractValidationFailure {
+    pub path: String,
+    pub expected: String,
+    pub observed: String,
+}
+
+/// Exact-generation outcome of validation against one compiler-retained
+/// static plan. It never describes a live BlueJS runtime value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerContractValidation {
+    pub generation: CompilerGeneration,
+    pub contract_id: u32,
+    pub valid: bool,
+    pub failure: Option<CompilerContractValidationFailure>,
 }
 
 /// Requests sent after a successful [`CompilerRequest::Hello`] handshake.
@@ -189,6 +261,24 @@ pub enum CompilerRequest {
         generation: CompilerGeneration,
         symbol_id: u32,
     },
+    /// Gets a compiler-minted source hash and static module identity from one
+    /// exact successful generation. No source text crosses this request.
+    GetStaticProvenance {
+        generation: CompilerGeneration,
+        source_id: u32,
+    },
+    /// Gets the bounded static summary for one retained reifiable contract.
+    GetStaticContract {
+        generation: CompilerGeneration,
+        contract_id: u32,
+    },
+    /// Validates a caller-provided data-only snapshot against one exact static
+    /// contract. Core-selected limits apply and the snapshot is never echoed.
+    ValidateStaticContract {
+        generation: CompilerGeneration,
+        contract_id: u32,
+        value: CompilerContractValue,
+    },
     /// A forward-compatible unknown request fails as unsupported without
     /// changing connection framing or falling back to another operation.
     #[serde(other)]
@@ -206,6 +296,9 @@ pub enum CompilerErrorCode {
     NoStaticMetadata,
     UnknownType,
     UnknownSymbol,
+    UnknownSource,
+    UnknownContract,
+    InvalidContractValue,
     ResourceLimit,
     Unavailable,
 }
@@ -220,6 +313,9 @@ pub enum CompilerReply {
     Check(CompilerCheck),
     StaticType(CompilerStaticType),
     StaticSymbol(CompilerStaticSymbol),
+    StaticProvenance(CompilerStaticProvenance),
+    StaticContract(CompilerStaticContract),
+    ContractValidation(CompilerContractValidation),
     Unsupported {
         operation: String,
         reason: String,
@@ -249,6 +345,9 @@ pub fn negotiate(request: &CompilerRequest) -> CompilerReply {
         | CompilerRequest::Check { .. }
         | CompilerRequest::GetStaticType { .. }
         | CompilerRequest::GetStaticSymbol { .. }
+        | CompilerRequest::GetStaticProvenance { .. }
+        | CompilerRequest::GetStaticContract { .. }
+        | CompilerRequest::ValidateStaticContract { .. }
         | CompilerRequest::Unknown => CompilerReply::Error {
             code: CompilerErrorCode::ProtocolVersion,
             message: "compiler protocol requires Hello as its first request".to_string(),
@@ -323,6 +422,22 @@ mod tests {
                 generation: generation(),
                 symbol_id: 5,
             },
+            CompilerRequest::GetStaticProvenance {
+                generation: generation(),
+                source_id: 7,
+            },
+            CompilerRequest::GetStaticContract {
+                generation: generation(),
+                contract_id: 8,
+            },
+            CompilerRequest::ValidateStaticContract {
+                generation: generation(),
+                contract_id: 8,
+                value: CompilerContractValue::Object(BTreeMap::from([(
+                    "enabled".to_string(),
+                    CompilerContractValue::Boolean(true),
+                )])),
+            },
             CompilerRequest::Unknown,
         ] {
             let (mut sender, mut receiver) = UnixStream::pair().unwrap();
@@ -361,6 +476,7 @@ mod tests {
                 source_count: 1,
                 type_count: 1,
                 symbol_count: 1,
+                contract_count: 1,
             }),
         });
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
@@ -381,6 +497,15 @@ mod tests {
         assert!(matches!(
             negotiate(&CompilerRequest::Hello {
                 protocol_version: COMPILER_PROTOCOL_VERSION + 1,
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::ProtocolVersion,
+                ..
+            }
+        ));
+        assert!(matches!(
+            negotiate(&CompilerRequest::Hello {
+                protocol_version: 1,
             }),
             CompilerReply::Error {
                 code: CompilerErrorCode::ProtocolVersion,

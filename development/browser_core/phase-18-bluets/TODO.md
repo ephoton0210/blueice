@@ -634,6 +634,10 @@ or second module resolver to bypass them.
   extend. `check` returns capped diagnostics, observable incremental-cache
   sets, a successful artifact fingerprint, and source-text-free static debug
   metadata; static type/symbol lookup requires the exact latest generation.
+  Successful static metadata also retains core-minted source-hash provenance
+  identities and only those local, non-generic declarations whose existing
+  `ContractPlan` lowering is exact; imported, generic, erased, or otherwise
+  unreifiable types deliberately have no contract ID.
   `build` returns only bounded in-memory `BuildOutput` and preserves no output
   on compiler errors, so this layer performs no filesystem writes. Registration,
   static metadata, and build-response limits fail closed.
@@ -642,19 +646,23 @@ or second module resolver to bypass them.
   versioned, one-mebibyte-framed native compiler query protocol, and
   `blueice_engine::compiler_ipc::CompilerServiceIpcAdapter` owns the mapping
   to the registered service. Its `DescribeProject`, `Check`,
-  `GetStaticType`, and `GetStaticSymbol` requests carry only opaque
-  core-minted project/generation handles. `Check` returns capped work sets,
-  diagnostics, fingerprints, and metadata counts; type/symbol lookup remains
-  exact-generation-bound. Canonical project/config/output roots are never
+  `GetStaticType`, `GetStaticSymbol`, `GetStaticProvenance`,
+  `GetStaticContract`, and `ValidateStaticContract` requests carry only opaque
+  core-minted project/generation/metadata handles. `Check` returns capped work
+  sets, diagnostics, fingerprints, and metadata counts; every static query is
+  exact-generation-bound. Provenance returns only a static module identity and
+  content hash, never text. Contract reads expose a bounded static summary;
+  validation accepts a bounded data-only tree under immutable core-selected
+  limits and never echoes it. Canonical project/config/output roots are never
   returned, no source or emitted artifact crosses this protocol, and malformed
-  handles, stale generations, oversized frames, and over-budget fields fail
-  closed. A worker may only forward decoded requests over the bounded channel;
-  the adapter owner alone mutates the incremental compiler cache. There is no
-  IPC registration/update request, filesystem loader, resolver/plugin/options
-  extension or output write. At this adapter layer there is not yet a
-  launcher-owned project catalog/distribution mechanism or project update.
-  Contract/provenance queries and explicit artifact-write elevation remain
-  separate required capabilities.
+  handles, stale generations, v1 negotiation, oversized frames, over-budget
+  fields, and invalid contract values fail closed. A worker may only forward
+  decoded requests over the bounded channel; the adapter owner alone mutates
+  the incremental compiler cache. There is no IPC registration/update request,
+  filesystem loader, resolver/plugin/options extension or output write. At
+  this adapter layer there is not yet a launcher-owned project
+  catalog/distribution mechanism or project update. Explicit artifact-write
+  elevation remains a separate required capability.
 
   Core lifecycle foundation delivered: a trusted core startup owner now builds
   `CoreCompilerProjectCatalog`, registers complete closed projects through its
@@ -669,7 +677,9 @@ or second module resolver to bypass them.
   output root, or write flag from its command line or socket. Real-process
   coverage proves rejected pre-`Hello` traffic cannot reach the catalog and a
   handshaken opaque `DescribeProject`/`Check` receives source-free,
-  generation-bound metadata from the core-registered closed fixture. Launcher
+  generation-bound metadata from the core-registered closed fixture. Its v2
+  process regression also proves v1 rejection plus exact source-hash
+  provenance/contract lookup and redacted invalid-data validation. Launcher
   catalog distribution/authorization and all update/write capabilities remain
   deliberately open.
 
@@ -677,32 +687,37 @@ or second module resolver to bypass them.
   `CompilerConnection` client and an explicit
   `BlueIceMcpServer::connect_with_compiler_socket` construction path. After
   the separate compiler `Hello` negotiation, `bluetsc_check`, `debug_get_type`,
-  and `debug_get_symbol` forward only opaque project/generation/type/symbol
-  handles to the core service. Their JSON output is source-text-free and wraps
-  project-controlled diagnostic prose, identifiers, and type displays as
-  untrusted data. The ordinary browser-only `BlueIceMcpServer::spawn` path has
-  no compiler connection: these tools report a fixed unavailable result and
-  cannot manufacture a local registration or invoke BlueTSC. An end-to-end
-  fixture now proves that this `CompilerConnection` reaches a sealed
-  core-owned catalog only through its worker-to-session hand-off after a
-  separate compiler `Hello`; it cannot use the connection to re-open startup
-  registration. There is still no launcher-owned catalog distribution or
-  authorization, no remote registration/update/source/filesystem/resolver/
-  plugin/options authority, no `bluetsc_build`, no artifact/declaration/
-  source-map/source response, and no output write or elevation. The remaining
-  contract, provenance, pagination, capability negotiation, session lifecycle,
-  and full MCP tool set remain open.
+  `debug_get_symbol`, `debug_get_provenance`, `debug_get_contract`, and
+  `debug_validate_contract` forward only opaque project/generation/metadata
+  handles to the core service. Contract validation accepts only bounded JSON
+  data (not JavaScript values or JSON-inexpressible `undefined`) and never
+  echoes it. Their JSON output is source-text-free and wraps project-controlled
+  diagnostic prose, identifiers, and static displays as untrusted data. The
+  ordinary browser-only `BlueIceMcpServer::spawn` path has no compiler
+  connection: these tools report a fixed unavailable result and cannot
+  manufacture a local registration or invoke BlueTSC. An end-to-end fixture
+  now proves that this `CompilerConnection` reaches a sealed core-owned catalog
+  only through its worker-to-session hand-off after a separate compiler `Hello`;
+  it cannot use the connection to re-open startup registration. There is still
+  no launcher-owned catalog distribution or authorization, no remote
+  registration/update/source/filesystem/resolver/plugin/options authority, no
+  `bluetsc_build`, no artifact/declaration/source-map/source response, and no
+  output write or elevation. Lowering/bytecode provenance, pagination,
+  capability negotiation, session lifecycle, and the full MCP tool set remain
+  open.
 
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
   no-emit-on-error guarantee; responses are generation/fingerprint bound,
   capped, redacted where needed, and reject stale project state.
 
-- [ ] **Implement the negotiated MCP BlueTS/BlueTSC adapter (Phase 12).** Add
-  `debug_get_type`, `debug_get_symbol`, `debug_get_contract`,
-  `debug_validate_contract`, `bluetsc_check`, and `bluetsc_build` as adapters
-  over the native service—not shell endpoints or a second compiler. Follow the
-  documented capability negotiation, session generations, authorization,
-  pagination, untrusted-content handling, and explicit build-write elevation.
+- [ ] **Complete the negotiated MCP BlueTS/BlueTSC adapter (Phase 12).**
+  `bluetsc_check`, `debug_get_type`, `debug_get_symbol`,
+  `debug_get_provenance`, `debug_get_contract`, and
+  `debug_validate_contract` now adapt the native query service, not shell
+  endpoints or a second compiler. Still add `bluetsc_build` only alongside an
+  explicit output-write capability, then complete documented capability
+  negotiation, session generations, authorization, pagination, untrusted-
+  content handling, and build-write elevation.
 
   Acceptance: a real MCP client can inspect a page TS diagnostic/static type/
   contract failure and run check/build for an authorized registered project;

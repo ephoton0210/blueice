@@ -13,8 +13,10 @@
 //! layers above this service.
 
 use blueice_bluets::{
-    AuthorizedModuleLoader, BlueTsDebugInfo, BuildOutput, CompilerOptions, DebugSymbol, DebugType,
-    Diagnostic, IncrementalCompiler, ModuleLoader, SymbolId, TypeId,
+    AuthorizedModuleLoader, BlueTsDebugInfo, BuildOutput, CompilerOptions, ContractId,
+    ContractValue, DebugContract, DebugSource, DebugSymbol, DebugType, Diagnostic,
+    IncrementalCompiler, ModuleLoader, SourceId, SymbolId, TypeId, ValidationError,
+    ValidationLimits,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -31,6 +33,10 @@ pub struct CompilerServiceLimits {
     pub max_static_sources: usize,
     pub max_static_types: usize,
     pub max_static_symbols: usize,
+    pub max_static_contracts: usize,
+    /// Fixed core-selected limits for validation requests. Query callers never
+    /// provide or relax these bounds.
+    pub contract_validation: ValidationLimits,
     pub max_build_artifacts: usize,
     pub max_build_artifact_bytes: usize,
 }
@@ -43,6 +49,13 @@ impl Default for CompilerServiceLimits {
             max_static_sources: 4_096,
             max_static_types: 16_384,
             max_static_symbols: 65_536,
+            max_static_contracts: 16_384,
+            contract_validation: ValidationLimits {
+                max_depth: 64,
+                max_collection_entries: 4_096,
+                max_nodes: 32_768,
+                max_string_bytes: 256 * 1_024,
+            },
             max_build_artifacts: 4_096,
             max_build_artifact_bytes: 16 * 1_024 * 1_024,
         }
@@ -191,6 +204,14 @@ pub enum CompilerServiceError {
         generation: RegisteredProjectGeneration,
         symbol_id: SymbolId,
     },
+    UnknownSource {
+        generation: RegisteredProjectGeneration,
+        source_id: SourceId,
+    },
+    UnknownContract {
+        generation: RegisteredProjectGeneration,
+        contract_id: ContractId,
+    },
     StaticMetadataLimit {
         resource: &'static str,
         limit: usize,
@@ -268,6 +289,26 @@ impl fmt::Display for CompilerServiceError {
                 generation.sequence(),
                 generation.project_id().as_u64()
             ),
+            Self::UnknownSource {
+                generation,
+                source_id,
+            } => write!(
+                formatter,
+                "unknown static source {} in generation {} for project {}",
+                source_id.0,
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
+            Self::UnknownContract {
+                generation,
+                contract_id,
+            } => write!(
+                formatter,
+                "unknown static contract {} in generation {} for project {}",
+                contract_id.0,
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
             Self::StaticMetadataLimit { resource, limit } => {
                 write!(
                     formatter,
@@ -315,6 +356,13 @@ impl RegisteredProjectCompilerService {
             next_project_id: 0,
             projects: BTreeMap::new(),
         }
+    }
+
+    /// Returns the immutable validation budget selected by the core owner.
+    /// IPC adapters use it only to reject an over-budget data shape before
+    /// allocating a second internal representation; clients cannot mutate it.
+    pub fn contract_validation_limits(&self) -> ValidationLimits {
+        self.limits.contract_validation
     }
 
     /// Registers a complete project exactly once. No subsequent operation can
@@ -443,6 +491,60 @@ impl RegisteredProjectCompilerService {
                 generation,
                 symbol_id,
             })
+    }
+
+    /// Returns one compiler-minted source identity and content hash. This is
+    /// provenance metadata only: no method on this service reads the source
+    /// represented by the returned handle.
+    pub fn static_provenance(
+        &self,
+        generation: RegisteredProjectGeneration,
+        source_id: SourceId,
+    ) -> Result<DebugSource, CompilerServiceError> {
+        self.static_info(generation)?
+            .sources
+            .iter()
+            .find(|source| source.id == source_id)
+            .cloned()
+            .ok_or(CompilerServiceError::UnknownSource {
+                generation,
+                source_id,
+            })
+    }
+
+    /// Returns an exact-generation pure contract plan retained by BlueTS.
+    /// The plan remains static data; it has no relationship to a live BlueJS
+    /// value or page realm.
+    pub fn static_contract(
+        &self,
+        generation: RegisteredProjectGeneration,
+        contract_id: ContractId,
+    ) -> Result<DebugContract, CompilerServiceError> {
+        self.static_info(generation)?
+            .contracts
+            .iter()
+            .find(|contract| contract.id == contract_id)
+            .cloned()
+            .ok_or(CompilerServiceError::UnknownContract {
+                generation,
+                contract_id,
+            })
+    }
+
+    /// Validates one caller-provided, data-only snapshot against an exact
+    /// retained static plan. The core's immutable service limits apply; the
+    /// input cannot inspect JavaScript objects, run callbacks, or select a
+    /// different compiler generation.
+    pub fn validate_static_contract(
+        &self,
+        generation: RegisteredProjectGeneration,
+        contract_id: ContractId,
+        value: &ContractValue,
+    ) -> Result<Result<(), ValidationError>, CompilerServiceError> {
+        let contract = self.static_contract(generation, contract_id)?;
+        Ok(contract
+            .plan
+            .validate_with_limits(value, self.limits.contract_validation))
     }
 
     fn compile(
@@ -586,6 +688,11 @@ fn validate_static_debug_info(
         ("sources", info.sources.len(), limits.max_static_sources),
         ("types", info.types.len(), limits.max_static_types),
         ("symbols", info.symbols.len(), limits.max_static_symbols),
+        (
+            "contracts",
+            info.contracts.len(),
+            limits.max_static_contracts,
+        ),
     ] {
         if actual > limit {
             return Err(CompilerServiceError::StaticMetadataLimit { resource, limit });
@@ -727,6 +834,59 @@ mod tests {
         assert!(second.cache_hit);
         assert!(matches!(
             service.static_debug_info(first.generation),
+            Err(CompilerServiceError::StaleGeneration { .. })
+        ));
+    }
+
+    #[test]
+    fn retained_contracts_and_provenance_are_exact_generation_bound() {
+        let mut service = RegisteredProjectCompilerService::default();
+        let id = service
+            .register(registration(
+                "interface Settings { enabled: boolean; } \
+                 export const settings: Settings = { enabled: true };",
+            ))
+            .unwrap();
+        let check = service.check(id).unwrap();
+        let info = check.static_debug_info.as_ref().unwrap();
+        let contract = info
+            .contracts
+            .iter()
+            .find(|contract| contract.name == "Settings")
+            .expect("a non-generic local interface must be reifiable");
+        let provenance = service
+            .static_provenance(check.generation, contract.source)
+            .unwrap();
+        assert_eq!(provenance.id, contract.source);
+        assert_ne!(provenance.content_hash, "Settings");
+        assert!(service
+            .validate_static_contract(
+                check.generation,
+                contract.id,
+                &ContractValue::Object(BTreeMap::from([(
+                    "enabled".to_string(),
+                    ContractValue::Boolean(true),
+                )])),
+            )
+            .unwrap()
+            .is_ok());
+        let invalid = service
+            .validate_static_contract(
+                check.generation,
+                contract.id,
+                &ContractValue::Object(BTreeMap::from([(
+                    "enabled".to_string(),
+                    ContractValue::String("not-a-boolean".to_string()),
+                )])),
+            )
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(invalid.path, "$.enabled");
+
+        let later = service.check(id).unwrap();
+        assert_ne!(check.generation, later.generation);
+        assert!(matches!(
+            service.static_contract(check.generation, contract.id),
             Err(CompilerServiceError::StaleGeneration { .. })
         ));
     }

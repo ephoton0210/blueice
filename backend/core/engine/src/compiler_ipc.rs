@@ -22,12 +22,16 @@ use crate::compiler_service::{
     RegisteredProjectCompilerService, RegisteredProjectGeneration, RegisteredProjectId,
     RegisteredProjectRegistration,
 };
-use blueice_bluets::{Diagnostic, Severity, SymbolKind};
+use blueice_bluets::{
+    ContractId, ContractValue, Diagnostic, Severity, SourceId, SymbolKind, ValidationError,
+};
 use blueice_ipc::compiler::{
-    CompilerCheck, CompilerDiagnostic, CompilerDiagnosticSeverity, CompilerDiagnostics,
+    CompilerCheck, CompilerContractValidation, CompilerContractValidationFailure,
+    CompilerContractValue, CompilerDiagnostic, CompilerDiagnosticSeverity, CompilerDiagnostics,
     CompilerErrorCode, CompilerGeneration, CompilerModuleList, CompilerProject,
-    CompilerProjectIdentity, CompilerReply, CompilerRequest, CompilerStaticMetadataSummary,
-    CompilerStaticSymbol, CompilerStaticType, CompilerSymbolKind,
+    CompilerProjectIdentity, CompilerReply, CompilerRequest, CompilerStaticContract,
+    CompilerStaticMetadataSummary, CompilerStaticProvenance, CompilerStaticSymbol,
+    CompilerStaticType, CompilerSymbolKind,
 };
 use std::collections::BTreeSet;
 use std::fmt;
@@ -159,6 +163,19 @@ impl CompilerServiceIpcAdapter {
                 generation,
                 symbol_id,
             } => self.static_symbol(generation, symbol_id),
+            CompilerRequest::GetStaticProvenance {
+                generation,
+                source_id,
+            } => self.static_provenance(generation, source_id),
+            CompilerRequest::GetStaticContract {
+                generation,
+                contract_id,
+            } => self.static_contract(generation, contract_id),
+            CompilerRequest::ValidateStaticContract {
+                generation,
+                contract_id,
+                value,
+            } => self.validate_static_contract(generation, contract_id, value),
             CompilerRequest::Hello { .. } => CompilerReply::Error {
                 code: CompilerErrorCode::ProtocolVersion,
                 message: "compiler Hello is valid only as the first request".to_string(),
@@ -267,6 +284,124 @@ impl CompilerServiceIpcAdapter {
             start,
             end,
             static_type_id: symbol.static_type.map(|id| id.0),
+            source_id: symbol.source.0,
+            contract_id: symbol.contract.map(|id| id.0),
+        })
+    }
+
+    fn static_provenance(&self, generation: CompilerGeneration, source_id: u32) -> CompilerReply {
+        let generation = match generation_from_wire(generation) {
+            Ok(generation) => generation,
+            Err(error) => return handle_error_reply(error),
+        };
+        let provenance = match self
+            .service
+            .static_provenance(generation, SourceId(source_id))
+        {
+            Ok(provenance) => provenance,
+            Err(error) => return service_error_reply(&error),
+        };
+        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
+        if !budget.reserve_fixed(384)
+            || !budget.reserve_required_string(&provenance.module, self.limits.max_field_bytes)
+            || !budget
+                .reserve_required_string(&provenance.content_hash, self.limits.max_field_bytes)
+        {
+            return response_limit_reply();
+        }
+        CompilerReply::StaticProvenance(CompilerStaticProvenance {
+            generation: generation_to_wire(generation),
+            source_id: provenance.id.0,
+            module: provenance.module,
+            content_hash: provenance.content_hash,
+        })
+    }
+
+    fn static_contract(&self, generation: CompilerGeneration, contract_id: u32) -> CompilerReply {
+        let generation = match generation_from_wire(generation) {
+            Ok(generation) => generation,
+            Err(error) => return handle_error_reply(error),
+        };
+        let contract = match self
+            .service
+            .static_contract(generation, ContractId(contract_id))
+        {
+            Ok(contract) => contract,
+            Err(error) => return service_error_reply(&error),
+        };
+        let root = format!("{:?}", contract.plan.root);
+        let definitions = format!("{:?}", contract.plan.definitions);
+        let definition_count = match u32::try_from(contract.plan.definitions.len()) {
+            Ok(count) => count,
+            Err(_) => return response_limit_reply(),
+        };
+        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
+        if !budget.reserve_fixed(512)
+            || !budget.reserve_required_string(&contract.name, self.limits.max_field_bytes)
+            || !budget
+                .reserve_required_string(&contract.plan.fingerprint, self.limits.max_field_bytes)
+            || !budget.reserve_required_string(&root, self.limits.max_field_bytes)
+            || !budget.reserve_required_string(&definitions, self.limits.max_field_bytes)
+        {
+            return response_limit_reply();
+        }
+        CompilerReply::StaticContract(CompilerStaticContract {
+            generation: generation_to_wire(generation),
+            contract_id: contract.id.0,
+            source_id: contract.source.0,
+            name: contract.name,
+            fingerprint: contract.plan.fingerprint,
+            root,
+            definitions,
+            definition_count,
+        })
+    }
+
+    fn validate_static_contract(
+        &self,
+        generation: CompilerGeneration,
+        contract_id: u32,
+        value: CompilerContractValue,
+    ) -> CompilerReply {
+        let generation = match generation_from_wire(generation) {
+            Ok(generation) => generation,
+            Err(error) => return handle_error_reply(error),
+        };
+        let value = match wire_contract_value(value, self.service.contract_validation_limits()) {
+            Ok(value) => value,
+            Err(()) => {
+                return CompilerReply::Error {
+                    code: CompilerErrorCode::InvalidContractValue,
+                    message: "invalid or over-budget data-only contract value".to_string(),
+                };
+            }
+        };
+        let outcome =
+            match self
+                .service
+                .validate_static_contract(generation, ContractId(contract_id), &value)
+            {
+                Ok(outcome) => outcome,
+                Err(error) => return service_error_reply(&error),
+            };
+        let failure = outcome.err().map(validation_failure_to_wire);
+        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
+        if !budget.reserve_fixed(512)
+            || failure.as_ref().is_some_and(|failure| {
+                !budget.reserve_required_string(&failure.path, self.limits.max_field_bytes)
+                    || !budget
+                        .reserve_required_string(&failure.expected, self.limits.max_field_bytes)
+                    || !budget
+                        .reserve_required_string(&failure.observed, self.limits.max_field_bytes)
+            })
+        {
+            return response_limit_reply();
+        }
+        CompilerReply::ContractValidation(CompilerContractValidation {
+            generation: generation_to_wire(generation),
+            contract_id,
+            valid: failure.is_none(),
+            failure,
         })
     }
 
@@ -316,6 +451,7 @@ impl CompilerServiceIpcAdapter {
                     source_count: u32::try_from(info.sources.len()).map_err(|_| ())?,
                     type_count: u32::try_from(info.types.len()).map_err(|_| ())?,
                     symbol_count: u32::try_from(info.symbols.len()).map_err(|_| ())?,
+                    contract_count: u32::try_from(info.contracts.len()).map_err(|_| ())?,
                 })
             }
             None => None,
@@ -512,6 +648,14 @@ fn service_error_reply(error: &CompilerServiceError) -> CompilerReply {
             CompilerErrorCode::UnknownSymbol,
             "unknown static compiler symbol",
         ),
+        CompilerServiceError::UnknownSource { .. } => (
+            CompilerErrorCode::UnknownSource,
+            "unknown static compiler provenance source",
+        ),
+        CompilerServiceError::UnknownContract { .. } => (
+            CompilerErrorCode::UnknownContract,
+            "unknown static compiler contract",
+        ),
         CompilerServiceError::ProjectLimit { .. }
         | CompilerServiceError::GenerationExhausted { .. }
         | CompilerServiceError::StaticMetadataLimit { .. }
@@ -537,6 +681,76 @@ fn response_limit_reply() -> CompilerReply {
     CompilerReply::Error {
         code: CompilerErrorCode::ResourceLimit,
         message: "compiler IPC response exceeds the configured core budget".to_string(),
+    }
+}
+
+/// Converts the wire's data-only tree into BlueTS's pure contract value while
+/// applying the core-selected bounds before a second recursive structure is
+/// retained. It deliberately rejects non-finite numbers and oversized object
+/// keys as malformed input rather than treating them as static type data.
+fn wire_contract_value(
+    value: CompilerContractValue,
+    limits: blueice_bluets::ValidationLimits,
+) -> Result<ContractValue, ()> {
+    fn convert(
+        value: CompilerContractValue,
+        limits: blueice_bluets::ValidationLimits,
+        depth: usize,
+        nodes: &mut usize,
+    ) -> Result<ContractValue, ()> {
+        if depth > limits.max_depth || *nodes >= limits.max_nodes {
+            return Err(());
+        }
+        *nodes += 1;
+        match value {
+            CompilerContractValue::Null => Ok(ContractValue::Null),
+            CompilerContractValue::Undefined => Ok(ContractValue::Undefined),
+            CompilerContractValue::Boolean(value) => Ok(ContractValue::Boolean(value)),
+            CompilerContractValue::Number(value) => value
+                .parse::<f64>()
+                .ok()
+                .filter(|value| value.is_finite())
+                .map(ContractValue::Number)
+                .ok_or(()),
+            CompilerContractValue::String(value) => (value.len() <= limits.max_string_bytes)
+                .then_some(ContractValue::String(value))
+                .ok_or(()),
+            CompilerContractValue::Array(values) => {
+                if values.len() > limits.max_collection_entries {
+                    return Err(());
+                }
+                values
+                    .into_iter()
+                    .map(|value| convert(value, limits, depth + 1, nodes))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(ContractValue::Array)
+            }
+            CompilerContractValue::Object(values) => {
+                if values.len() > limits.max_collection_entries
+                    || values.keys().any(|key| key.len() > limits.max_string_bytes)
+                {
+                    return Err(());
+                }
+                values
+                    .into_iter()
+                    .map(|(key, value)| {
+                        convert(value, limits, depth + 1, nodes).map(|value| (key, value))
+                    })
+                    .collect::<Result<std::collections::BTreeMap<_, _>, _>>()
+                    .map(ContractValue::Object)
+            }
+        }
+    }
+
+    let mut nodes = 0;
+    convert(value, limits, 0, &mut nodes)
+}
+
+fn validation_failure_to_wire(error: ValidationError) -> CompilerContractValidationFailure {
+    CompilerContractValidationFailure {
+        path: error.path,
+        expected: error.expected,
+        observed: error.observed,
     }
 }
 
@@ -851,6 +1065,153 @@ mod tests {
             }),
             CompilerReply::Error {
                 code: CompilerErrorCode::StaleGeneration,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn adapter_exposes_only_exact_generation_contracts_and_source_hashes() {
+        let mut adapter = CompilerServiceIpcAdapter::default();
+        let project = adapter
+            .register_core_project(registration(
+                "interface Settings { enabled: boolean; } \
+                 export const settings: Settings = { enabled: true };",
+            ))
+            .unwrap();
+        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
+            panic!("registered project must check through adapter")
+        };
+        assert_eq!(check.static_metadata.as_ref().unwrap().contract_count, 1);
+
+        let CompilerReply::StaticSymbol(symbol) =
+            adapter.handle(CompilerRequest::GetStaticSymbol {
+                generation: check.generation,
+                symbol_id: 1,
+            })
+        else {
+            panic!("the interface declaration must be addressable as a static symbol")
+        };
+        let contract_id = symbol
+            .contract_id
+            .expect("local interface must carry contract id");
+        assert_ne!(symbol.source_id, u32::MAX);
+
+        let CompilerReply::StaticProvenance(provenance) =
+            adapter.handle(CompilerRequest::GetStaticProvenance {
+                generation: check.generation,
+                source_id: symbol.source_id,
+            })
+        else {
+            panic!("symbol source ID must resolve to source-free provenance")
+        };
+        assert_eq!(provenance.source_id, symbol.source_id);
+        assert_ne!(provenance.content_hash, "Settings");
+
+        let CompilerReply::StaticContract(contract) =
+            adapter.handle(CompilerRequest::GetStaticContract {
+                generation: check.generation,
+                contract_id,
+            })
+        else {
+            panic!("symbol contract ID must resolve exactly")
+        };
+        assert_eq!(contract.contract_id, contract_id);
+        assert!(contract.root.contains("Reference"));
+
+        let secret = "caller-supplied-secret-never-echoed";
+        let CompilerReply::ContractValidation(validation) =
+            adapter.handle(CompilerRequest::ValidateStaticContract {
+                generation: check.generation,
+                contract_id,
+                value: CompilerContractValue::Object(std::collections::BTreeMap::from([(
+                    "enabled".to_string(),
+                    CompilerContractValue::String(secret.to_string()),
+                )])),
+            })
+        else {
+            panic!("invalid data-only snapshot is a validation result")
+        };
+        assert!(!validation.valid);
+        let reply_text = format!("{validation:?}");
+        assert!(!reply_text.contains(secret));
+        assert!(validation.failure.is_some());
+
+        let CompilerReply::Check(next) = adapter.handle(CompilerRequest::Check { project }) else {
+            panic!("later check must succeed")
+        };
+        assert!(matches!(
+            adapter.handle(CompilerRequest::GetStaticContract {
+                generation: check.generation,
+                contract_id,
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::StaleGeneration,
+                ..
+            }
+        ));
+        assert!(matches!(
+            adapter.handle(CompilerRequest::GetStaticProvenance {
+                generation: next.generation,
+                source_id: u32::MAX,
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::UnknownSource,
+                ..
+            }
+        ));
+        assert!(matches!(
+            adapter.handle(CompilerRequest::GetStaticContract {
+                generation: next.generation,
+                contract_id: u32::MAX,
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::UnknownContract,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn adapter_rejects_over_budget_or_non_finite_contract_snapshots() {
+        let mut adapter = CompilerServiceIpcAdapter::default();
+        let project = adapter
+            .register_core_project(registration(
+                "type Name = string; export const name: Name = 'blueice';",
+            ))
+            .unwrap();
+        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
+            panic!("registered project must check")
+        };
+        let CompilerReply::StaticSymbol(symbol) =
+            adapter.handle(CompilerRequest::GetStaticSymbol {
+                generation: check.generation,
+                symbol_id: 1,
+            })
+        else {
+            panic!("type alias symbol must be retained")
+        };
+        let contract_id = symbol.contract_id.unwrap();
+        let oversized = CompilerContractValue::String("x".repeat(256 * 1_024 + 1));
+        assert!(matches!(
+            adapter.handle(CompilerRequest::ValidateStaticContract {
+                generation: check.generation,
+                contract_id,
+                value: oversized,
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidContractValue,
+                ..
+            }
+        ));
+        assert!(matches!(
+            adapter.handle(CompilerRequest::ValidateStaticContract {
+                generation: check.generation,
+                contract_id,
+                value: CompilerContractValue::Number("NaN".to_string()),
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidContractValue,
                 ..
             }
         ));
