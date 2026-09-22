@@ -14,6 +14,9 @@
 //! `frontend-reference`'s own GUI integration -- there is no reason
 //! this can't run in CI.
 
+use blueice_launcher::control::{
+    read_control_reply, write_control_request, ControlReply, ControlRequest,
+};
 use blueice_launcher::{run_broker, CoreLaunchOptions, SpawnedCore};
 use blueice_mcp_server::{BlueIceMcpServer, CoreProcess, OpenTabOutcome};
 use rmcp::model::{CallToolRequestParams, ClientInfo};
@@ -21,6 +24,7 @@ use rmcp::{ClientHandler, ServiceExt};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -80,13 +84,15 @@ fn sibling_core_binary() -> PathBuf {
 }
 
 fn unique_socket_path(label: &str) -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time must be after Unix epoch")
         .as_nanos();
     PathBuf::from("/tmp").join(format!(
-        "blueice-mcp-{label}-{}-{nonce}.sock",
-        std::process::id()
+        "blueice-mcp-{label}-{}-{nonce}-{}.sock",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
     ))
 }
 
@@ -118,10 +124,7 @@ impl LauncherManagedCore {
         let rendezvous_socket = unique_socket_path("launcher-rendezvous");
         let control_socket = unique_socket_path("launcher-control");
         let compiler_socket = unique_socket_path("launcher-compiler");
-        let frame_dir = std::env::temp_dir().join(format!(
-            "blueice-mcp-launcher-frames-{}",
-            std::process::id()
-        ));
+        let frame_dir = unique_socket_path("launcher-frames").with_extension("frames");
         let _ = std::fs::remove_file(&rendezvous_socket);
         let _ = std::fs::remove_file(&control_socket);
         let _ = std::fs::remove_file(&compiler_socket);
@@ -171,6 +174,17 @@ impl LauncherManagedCore {
             .join()
             .expect("launcher broker thread must not panic")
             .expect("launcher broker must end normally after core shutdown");
+    }
+
+    fn cutover(&self) {
+        let mut control = std::os::unix::net::UnixStream::connect(&self.control_socket)
+            .expect("launcher control endpoint must accept a cutover request");
+        write_control_request(&mut control, &ControlRequest::Cutover)
+            .expect("cutover request must serialize");
+        assert!(matches!(
+            read_control_reply(&mut control).expect("launcher must reply to a cutover request"),
+            ControlReply::CutoverDone { .. }
+        ));
     }
 }
 
@@ -715,5 +729,175 @@ async fn launcher_managed_core_keeps_mcp_browser_and_fixed_compiler_adapters_pai
     assert!(
         !launcher.compiler_socket.exists(),
         "launcher shutdown must clean the compiler endpoint after paired MCP disconnects"
+    );
+}
+
+#[tokio::test]
+async fn launcher_cutover_keeps_mcp_compiler_connections_generation_pinned() {
+    // This is deliberately a real paired adapter path rather than a raw
+    // compiler client: browser MCP remains attached to the broker through a
+    // cutover, while its separately accepted compiler stream is pinned to
+    // v1.  It must fail closed after v1 ends, never acquire v2's catalog.
+    let mut launcher = LauncherManagedCore::spawn();
+    let server = BlueIceMcpServer::connect_with_core_and_compiler_sockets(
+        &launcher.rendezvous_socket,
+        &launcher.compiler_socket,
+    )
+    .expect("MCP must pair both v1 endpoints before cutover");
+    let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+    let server_task = tokio::spawn(async move {
+        server
+            .serve(server_transport)
+            .await
+            .expect("v1 MCP server must bind its in-memory transport")
+            .waiting()
+            .await
+            .expect("v1 MCP service must finish after client cancellation");
+    });
+    let client = CompilerMcpClient
+        .serve(client_transport)
+        .await
+        .expect("v1 MCP client must negotiate the in-memory transport");
+
+    let v1_check_result = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_check").with_arguments(
+                serde_json::json!({ "project_id": 1 })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("v1 compiler check must round-trip before cutover");
+    let blueice_ipc::compiler::CompilerReply::Check(v1_check) =
+        compiler_tool_reply(&v1_check_result)
+    else {
+        panic!("v1 must expose its sealed check generation")
+    };
+    let first_symbols = client
+        .call_tool(
+            CallToolRequestParams::new("debug_list_static_metadata").with_arguments(
+                serde_json::json!({
+                    "project_id": 1,
+                    "generation": v1_check.generation.sequence,
+                    "kind": "symbols",
+                    "limit": 1,
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .expect("v1 metadata page must round-trip before cutover");
+    let blueice_ipc::compiler::CompilerReply::StaticMetadataPage(v1_symbols) =
+        compiler_tool_reply(&first_symbols)
+    else {
+        panic!("v1 must mint a bounded symbols continuation")
+    };
+    let v1_cursor = v1_symbols
+        .next_cursor
+        .expect("fixed profile must have enough symbols for a cursor");
+
+    launcher.cutover();
+
+    let old_cursor = client
+        .call_tool(
+            CallToolRequestParams::new("debug_list_static_metadata").with_arguments(
+                serde_json::json!({
+                    "project_id": 1,
+                    "generation": v1_check.generation.sequence,
+                    "kind": "symbols",
+                    "cursor": { "id": v1_cursor.id },
+                    "limit": 1,
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await;
+    if let Ok(result) = old_cursor {
+        assert_eq!(
+            result.is_error,
+            Some(true),
+            "a compiler request on the pre-cutover MCP connection must fail closed"
+        );
+    }
+    client.cancel().await.unwrap();
+    server_task.await.unwrap();
+
+    // A new paired adapter sees the freshly committed v2.  Replaying the
+    // cursor through this *new* connection still fails: cursor state belongs
+    // to v1 and is neither copied nor reinterpreted by the public relay.
+    let server = BlueIceMcpServer::connect_with_core_and_compiler_sockets(
+        &launcher.rendezvous_socket,
+        &launcher.compiler_socket,
+    )
+    .expect("a newly accepted paired MCP adapter must reach v2");
+    let (server_transport, client_transport) = tokio::io::duplex(64 * 1024);
+    let server_task = tokio::spawn(async move {
+        server
+            .serve(server_transport)
+            .await
+            .expect("v2 MCP server must bind its in-memory transport")
+            .waiting()
+            .await
+            .expect("v2 MCP service must finish after client cancellation");
+    });
+    let client = CompilerMcpClient
+        .serve(client_transport)
+        .await
+        .expect("v2 MCP client must negotiate the in-memory transport");
+    let v2_check_result = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_check").with_arguments(
+                serde_json::json!({ "project_id": 1 })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("new paired compiler adapter must reach v2");
+    let blueice_ipc::compiler::CompilerReply::Check(v2_check) =
+        compiler_tool_reply(&v2_check_result)
+    else {
+        panic!("v2 must expose its sealed check generation")
+    };
+    let replayed_cursor = client
+        .call_tool(
+            CallToolRequestParams::new("debug_list_static_metadata").with_arguments(
+                serde_json::json!({
+                    "project_id": 1,
+                    "generation": v2_check.generation.sequence,
+                    "kind": "symbols",
+                    "cursor": { "id": v1_cursor.id },
+                    "limit": 1,
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .expect("v2 must reject an old opaque cursor as a structured reply");
+    assert_eq!(replayed_cursor.is_error, Some(true));
+    assert_source_free_compiler_tool_result(&replayed_cursor);
+    assert!(matches!(
+        compiler_tool_reply(&replayed_cursor),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::InvalidMetadataCursor,
+            ..
+        }
+    ));
+
+    client.cancel().await.unwrap();
+    server_task.await.unwrap();
+    launcher.shutdown();
+    assert!(
+        !launcher.compiler_socket.exists(),
+        "stable public compiler socket must be removed on final launcher shutdown"
     );
 }

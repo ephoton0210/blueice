@@ -60,13 +60,14 @@ mod unix {
     use std::io;
     use std::net::Shutdown;
     use std::os::unix::fs::FileTypeExt;
+    use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Path, PathBuf};
     use std::process::{Child, Command};
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::mpsc::{self, Sender};
     use std::sync::{Arc, Mutex};
-    use std::thread;
+    use std::thread::{self, JoinHandle};
     use std::time::{Duration, Instant};
 
     /// Launcher-owned configuration for one `blueice-core` child.
@@ -116,18 +117,14 @@ mod unix {
         /// update/build/write authority, or a caller-selected profile.  The
         /// endpoint is validated before the launcher creates any child.
         ///
-        /// A caller-selected compiler endpoint intentionally makes atomic
-        /// core cutover unavailable in this slice: a replacement core cannot
-        /// bind the same Unix path while v1 is serving MCP.  A cutover is
-        /// rejected before touching v1 rather than unlinking or repointing
-        /// the endpoint.  Start a new launcher generation to change it.
+        /// The public endpoint is owned by the launcher, rather than a core
+        /// generation.  It relays each accepted connection to exactly one
+        /// generation-private compiler socket.  That lets a cutover stage a
+        /// verified v2 listener before it changes the public route, without
+        /// ever retargeting an existing compiler/MCP connection.
         pub fn with_core_closed_compiler_mcp_endpoint(mut self, path: PathBuf) -> Self {
             self.compiler_mcp_socket = Some(path);
             self
-        }
-
-        fn has_core_closed_compiler_mcp_endpoint(&self) -> bool {
-            self.compiler_mcp_socket.is_some()
         }
     }
 
@@ -401,6 +398,11 @@ mod unix {
         /// per core generation, so no private child capability crosses a
         /// cutover boundary.
         core_options: CoreLaunchOptions,
+        /// The one public, launcher-owned compiler endpoint.  Its target is
+        /// switched only after a staged replacement core has its own sealed
+        /// private listener; per-connection relay streams remain pinned to
+        /// the target that was current when they were accepted.
+        compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
         /// Signaled exactly once, by whichever generation-tagged broadcast
         /// thread's own death is NOT a deliberate cutover supersession --
         /// what [`run_broker`] blocks on to know when the whole launcher
@@ -669,6 +671,17 @@ mod unix {
     /// and drop v1 itself (killing its process, cleaning up its socket and
     /// frame directory).
     fn perform_swap(broker: &Arc<Broker>, v2: SpawnedCore, target_generation: u64) {
+        // A compiler relay accept snapshots its target while holding this
+        // same short gate.  Hold it across the browser-writer swap and relay
+        // activation so a newly constructed paired MCP adapter cannot land
+        // on a v1 browser stream but a v2 compiler stream (or vice versa).
+        let route_gate = broker
+            .compiler_mcp_relay
+            .as_ref()
+            .map(|relay| relay.route_gate());
+        let _route_handoff = route_gate
+            .as_ref()
+            .map(|gate| gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner()));
         broker.generation.store(target_generation, Ordering::SeqCst);
 
         let v2_broadcast_stream = v2
@@ -691,6 +704,12 @@ mod unix {
             .core_writer
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = v2_writer_stream;
+
+        // The replacement listener was created and catalog-sealed before
+        // replay/health checking.  Under the shared handoff gate, make it
+        // the target for only future compiler accepts after browser traffic
+        // has moved to the same core generation.
+        v2.activate_compiler_mcp_relay_after_handoff();
 
         let mut active = broker
             .active_core
@@ -719,17 +738,6 @@ mod unix {
             .cutover_lock
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        // A caller-selected compiler socket is a stable, externally visible
-        // attachment point.  v2 cannot bind it until v1 has stopped, while
-        // this broker's atomic cutover promise requires v1 to remain alive
-        // through v2 startup and health checking.  Refuse before reading or
-        // changing v1 rather than unlinking the live endpoint, briefly
-        // directing MCP to an unverified v2, or leaving a stale socket.
-        if broker.core_options.has_core_closed_compiler_mcp_endpoint() {
-            return control::ControlReply::CutoverFailed {
-                reason: "cutover is unavailable while the launcher owns a caller-selected compiler MCP endpoint; v1 remains active".to_string(),
-            };
-        }
         let captured_tabs =
             match capture_v1_tabs(&broker.core_writer, &broker.clients, TAB_CAPTURE_TIMEOUT) {
                 Ok(tabs) => tabs,
@@ -738,11 +746,12 @@ mod unix {
 
         let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
         let frame_dir = v2_frame_dir(&broker.frame_dir, target_generation);
-        let mut v2 = match SpawnedCore::spawn_with_options(
+        let mut v2 = match SpawnedCore::spawn_with_options_and_compiler_mcp_relay(
             broker.width,
             broker.height,
             &frame_dir,
             broker.core_options.clone(),
+            broker.compiler_mcp_relay.clone(),
         ) {
             Ok(v2) => v2,
             Err(e) => {
@@ -811,6 +820,7 @@ mod unix {
     ) -> io::Result<()> {
         let frame_dir = core.frame_dir.clone();
         let core_options = core.options.clone();
+        let compiler_mcp_relay = core.compiler_mcp_relay.clone();
         let core_writer = Arc::new(Mutex::new(core.stream.try_clone()?));
         let broadcast_stream = core.stream.try_clone()?;
         let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
@@ -828,6 +838,7 @@ mod unix {
             height,
             frame_dir,
             core_options,
+            compiler_mcp_relay,
             done: done_tx.clone(),
         });
 
@@ -867,6 +878,9 @@ mod unix {
 
         if let Ok(mut active) = broker.active_core.lock() {
             active.take();
+        }
+        if let Some(relay) = &broker.compiler_mcp_relay {
+            relay.close();
         }
 
         Ok(())
@@ -909,6 +923,19 @@ mod unix {
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!(
             "blueice-launcher-core-{}-{n}.sock",
+            std::process::id()
+        ))
+    }
+
+    /// A generation-private compiler socket.  Unlike the public endpoint
+    /// selected by the caller, this name is launcher-generated and never
+    /// exposed as a CLI/MCP input.  v1 and a staged v2 therefore can each
+    /// bind their own listener while the public relay remains stable.
+    fn unique_internal_compiler_socket_path() -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "blueice-launcher-compiler-{}-{n}.sock",
             std::process::id()
         ))
     }
@@ -1026,6 +1053,185 @@ mod unix {
         }
     }
 
+    /// A launcher-owned stable compiler endpoint.  The listener is public
+    /// only to the launching Unix user (`0600`); each connection is bound
+    /// once, at accept time, to one generation-private core listener.
+    ///
+    /// The relay deliberately has no compiler protocol awareness.  It never
+    /// accepts a project, source, resolver, option, or update/build/write
+    /// input, and it cannot manufacture a compiler catalog.  It only copies
+    /// bytes between a caller-selected owner-only socket and a private socket
+    /// selected by the launcher after that core has sealed its fixed profile.
+    struct CompilerMcpRelay {
+        public_socket_path: PathBuf,
+        /// Serializes one relay accept's target snapshot with the broker's
+        /// small browser/compiler-generation handoff.
+        route_gate: Arc<Mutex<()>>,
+        target: Arc<Mutex<Option<PathBuf>>>,
+        accepting: Arc<AtomicBool>,
+        accept_thread: Mutex<Option<JoinHandle<()>>>,
+    }
+
+    impl CompilerMcpRelay {
+        fn bind(path: &Path) -> io::Result<Self> {
+            prepare_compiler_mcp_endpoint(path)?;
+            let listener = UnixListener::bind(path)?;
+            // Do not depend on the process umask for a public capability
+            // boundary.  This also keeps the public stable endpoint at the
+            // same owner-only mode as the former core-owned listener.
+            if let Err(error) =
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+            {
+                remove_compiler_mcp_socket_if_owned(path);
+                return Err(error);
+            }
+            if let Err(error) = listener.set_nonblocking(true) {
+                remove_compiler_mcp_socket_if_owned(path);
+                return Err(error);
+            }
+
+            let target = Arc::new(Mutex::new(None));
+            let route_gate = Arc::new(Mutex::new(()));
+            let accepting = Arc::new(AtomicBool::new(true));
+            let thread_target = Arc::clone(&target);
+            let thread_route_gate = Arc::clone(&route_gate);
+            let thread_accepting = Arc::clone(&accepting);
+            let accept_thread = thread::spawn(move || {
+                while thread_accepting.load(Ordering::Acquire) {
+                    match listener.accept() {
+                        Ok((client, _)) => {
+                            // Accepted descriptors inherit the listener's
+                            // nonblocking flag on some Unix platforms.  The
+                            // forwarding pair intentionally does blocking
+                            // byte copies, so restore the per-connection
+                            // default before it can mistake EAGAIN for EOF.
+                            if client.set_nonblocking(false).is_err() {
+                                let _ = client.shutdown(Shutdown::Both);
+                                continue;
+                            }
+                            // Snapshot the route while accepting.  This
+                            // gate is shared with the browser-writer handoff,
+                            // so a newly paired MCP adapter cannot observe
+                            // different browser/compiler generations.  The
+                            // forwarding pair below owns that concrete
+                            // private stream and never consults `target`
+                            // again, so an old cursor/request stream cannot
+                            // cross a catalog-generation cutover.
+                            let _route_handoff = thread_route_gate
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                            let target = thread_target
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                .clone();
+                            if let Some(target) = target {
+                                thread::spawn(move || relay_compiler_connection(client, target));
+                            } else {
+                                // A core is staged but not committed, or the
+                                // launcher is stopping.  There is no safe
+                                // fallback generation, so fail closed.
+                                let _ = client.shutdown(Shutdown::Both);
+                            }
+                        }
+                        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                            thread::sleep(Duration::from_millis(10));
+                        }
+                        Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                        Err(_) => break,
+                    }
+                }
+            });
+
+            Ok(Self {
+                public_socket_path: path.to_path_buf(),
+                route_gate,
+                target,
+                accepting,
+                accept_thread: Mutex::new(Some(accept_thread)),
+            })
+        }
+
+        fn route_gate(&self) -> Arc<Mutex<()>> {
+            Arc::clone(&self.route_gate)
+        }
+
+        /// Makes subsequently accepted public connections target `socket`.
+        /// Existing connections keep their already-open private stream.  The
+        /// ordinary initial activation has no concurrent browser handoff.
+        fn activate_generation(&self, socket: &Path) {
+            let _route_handoff = self
+                .route_gate
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            self.activate_generation_after_handoff(socket);
+        }
+
+        /// The caller holds [`Self::route_gate`] alongside the browser
+        /// writer swap.  Kept separate so cutover never recursively locks
+        /// the handoff mutex.
+        fn activate_generation_after_handoff(&self, socket: &Path) {
+            *self
+                .target
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(socket.to_path_buf());
+        }
+
+        fn close(&self) {
+            if !self.accepting.swap(false, Ordering::AcqRel) {
+                return;
+            }
+            *self
+                .target
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+            if let Some(thread) = self
+                .accept_thread
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .take()
+            {
+                let _ = thread.join();
+            }
+            remove_compiler_mcp_socket_if_owned(&self.public_socket_path);
+        }
+    }
+
+    impl Drop for CompilerMcpRelay {
+        fn drop(&mut self) {
+            self.close();
+        }
+    }
+
+    /// Copies a single public compiler connection to its one private core
+    /// peer.  If the staged/old core no longer owns that private endpoint,
+    /// the accepted public connection is closed; it is never retried against
+    /// a newer core generation.
+    fn relay_compiler_connection(mut client: UnixStream, target: PathBuf) {
+        let mut core = match UnixStream::connect(target) {
+            Ok(core) => core,
+            Err(_) => {
+                let _ = client.shutdown(Shutdown::Both);
+                return;
+            }
+        };
+        let Ok(mut client_to_core) = client.try_clone() else {
+            let _ = client.shutdown(Shutdown::Both);
+            return;
+        };
+        let Ok(mut core_to_client) = core.try_clone() else {
+            let _ = client.shutdown(Shutdown::Both);
+            return;
+        };
+
+        let client_to_core_thread = thread::spawn(move || {
+            let _ = io::copy(&mut client_to_core, &mut core);
+            let _ = core.shutdown(Shutdown::Write);
+        });
+        let _ = io::copy(&mut core_to_client, &mut client);
+        let _ = client.shutdown(Shutdown::Write);
+        let _ = client_to_core_thread.join();
+    }
+
     /// A `core` process this launcher spawned and owns privately: killed
     /// and cleaned up (process, internal socket, and frame directory) on
     /// [`Drop`], the same lifetime discipline `mcp-server`'s `CoreProcess`
@@ -1033,6 +1239,10 @@ mod unix {
     pub struct SpawnedCore {
         child: Child,
         internal_socket_path: PathBuf,
+        /// A launcher-generated core-private listener.  The public compiler
+        /// endpoint is owned by [`CompilerMcpRelay`] instead, so this path
+        /// can be unique for every live/staged generation.
+        compiler_private_socket_path: Option<PathBuf>,
         frame_dir: PathBuf,
         /// Retained so a cutover can reproduce the selected launcher policy
         /// without preserving a generation-specific page-host capability.
@@ -1041,6 +1251,9 @@ mod unix {
         /// `Drop` implementation kills/reaps the isolated child after this
         /// core has been terminated, and removes the child-only socket.
         bluejs_host: Option<SpawnedBlueJsHost>,
+        /// Shared with the broker during a cutover so v1's Drop cannot close
+        /// the stable public endpoint while v2 is being staged.
+        compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
         pub stream: UnixStream,
     }
 
@@ -1067,12 +1280,45 @@ mod unix {
             frame_dir: &Path,
             options: CoreLaunchOptions,
         ) -> io::Result<Self> {
-            // Do this before creating either child.  A malformed, partial, or
-            // occupied caller-selected compiler endpoint cannot briefly spawn
-            // a core or page host that would then need cleanup.
-            if let Some(compiler_socket) = options.compiler_mcp_socket.as_deref() {
-                prepare_compiler_mcp_endpoint(compiler_socket)?;
-            }
+            // Do this before creating either child.  A malformed, partial,
+            // or occupied caller-selected compiler endpoint cannot briefly
+            // spawn a core or page host that would then need cleanup.
+            let compiler_mcp_relay = options
+                .compiler_mcp_socket
+                .as_deref()
+                .map(CompilerMcpRelay::bind)
+                .transpose()?
+                .map(Arc::new);
+            let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
+                let (host, config) = SpawnedBlueJsHost::spawn_for_core()?;
+                (Some(host), Some(config))
+            } else {
+                (None, None)
+            };
+            let core = Self::spawn_with_private_host(
+                width,
+                height,
+                frame_dir,
+                options,
+                bluejs_host,
+                page_host_config,
+                compiler_mcp_relay,
+            )?;
+            core.activate_compiler_mcp_relay();
+            Ok(core)
+        }
+
+        /// Stages a core during a broker cutover.  `compiler_mcp_relay` is
+        /// the existing public listener, not a new caller-selected endpoint;
+        /// its target is intentionally left on v1 until replay and health
+        /// checking complete in [`cutover`].
+        fn spawn_with_options_and_compiler_mcp_relay(
+            width: f64,
+            height: f64,
+            frame_dir: &Path,
+            options: CoreLaunchOptions,
+            compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
+        ) -> io::Result<Self> {
             let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
                 let (host, config) = SpawnedBlueJsHost::spawn_for_core()?;
                 (Some(host), Some(config))
@@ -1086,6 +1332,7 @@ mod unix {
                 options,
                 bluejs_host,
                 page_host_config,
+                compiler_mcp_relay,
             )
         }
 
@@ -1096,11 +1343,18 @@ mod unix {
             options: CoreLaunchOptions,
             bluejs_host: Option<SpawnedBlueJsHost>,
             page_host_config: Option<BlueJsHostCoreConfig>,
+            compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
         ) -> io::Result<Self> {
             let this_exe = std::env::current_exe()?;
             let core_bin = sibling_core_binary(&this_exe);
             let internal_socket_path = unique_internal_socket_path();
             let _ = std::fs::remove_file(&internal_socket_path);
+            let compiler_private_socket_path = compiler_mcp_relay
+                .as_ref()
+                .map(|_| unique_internal_compiler_socket_path());
+            if let Some(path) = &compiler_private_socket_path {
+                let _ = std::fs::remove_file(path);
+            }
 
             let mut command = Command::new(&core_bin);
             command
@@ -1122,7 +1376,7 @@ mod unix {
                     .arg("--out-of-process-bluejs-token")
                     .arg(config.session_token());
             }
-            if let Some(compiler_socket) = &options.compiler_mcp_socket {
+            if let Some(compiler_socket) = &compiler_private_socket_path {
                 command
                     .arg("--compiler-socket")
                     .arg(compiler_socket)
@@ -1135,7 +1389,7 @@ mod unix {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
-                if let Some(compiler_socket) = &options.compiler_mcp_socket {
+                if let Some(compiler_socket) = &compiler_private_socket_path {
                     remove_compiler_mcp_socket_if_owned(compiler_socket);
                 }
                 return Err(io::Error::other(format!(
@@ -1149,7 +1403,7 @@ mod unix {
                     let _ = child.kill();
                     let _ = child.wait();
                     let _ = std::fs::remove_file(&internal_socket_path);
-                    if let Some(compiler_socket) = &options.compiler_mcp_socket {
+                    if let Some(compiler_socket) = &compiler_private_socket_path {
                         remove_compiler_mcp_socket_if_owned(compiler_socket);
                     }
                     return Err(error);
@@ -1168,7 +1422,7 @@ mod unix {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
-                if let Some(compiler_socket) = &options.compiler_mcp_socket {
+                if let Some(compiler_socket) = &compiler_private_socket_path {
                     remove_compiler_mcp_socket_if_owned(compiler_socket);
                 }
                 return Err(error);
@@ -1176,11 +1430,33 @@ mod unix {
             Ok(SpawnedCore {
                 child,
                 internal_socket_path,
+                compiler_private_socket_path,
                 frame_dir: frame_dir.to_path_buf(),
                 options,
                 bluejs_host,
+                compiler_mcp_relay,
                 stream,
             })
+        }
+
+        fn activate_compiler_mcp_relay(&self) {
+            if let (Some(relay), Some(socket)) = (
+                self.compiler_mcp_relay.as_ref(),
+                self.compiler_private_socket_path.as_ref(),
+            ) {
+                relay.activate_generation(socket);
+            }
+        }
+
+        /// Activates this staged core while [`CompilerMcpRelay::route_gate`]
+        /// is held by [`perform_swap`].
+        fn activate_compiler_mcp_relay_after_handoff(&self) {
+            if let (Some(relay), Some(socket)) = (
+                self.compiler_mcp_relay.as_ref(),
+                self.compiler_private_socket_path.as_ref(),
+            ) {
+                relay.activate_generation_after_handoff(socket);
+            }
         }
     }
 
@@ -1194,7 +1470,7 @@ mod unix {
             // intended core generation.
             drop(self.bluejs_host.take());
             let _ = std::fs::remove_file(&self.internal_socket_path);
-            if let Some(compiler_socket) = &self.options.compiler_mcp_socket {
+            if let Some(compiler_socket) = &self.compiler_private_socket_path {
                 remove_compiler_mcp_socket_if_owned(compiler_socket);
             }
             // `child.kill()` sends SIGKILL, which never lets `blueice-core`

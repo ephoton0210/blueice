@@ -12,8 +12,8 @@
 //! caller-selected endpoint through shutdown and cutover refusal.
 
 use blueice_ipc::compiler::{
-    read_compiler_reply, write_compiler_request, CompilerReply, CompilerRequest,
-    COMPILER_PROTOCOL_VERSION,
+    read_compiler_reply, write_compiler_request, CompilerErrorCode, CompilerProject, CompilerReply,
+    CompilerRequest, CompilerStaticMetadataKind, COMPILER_PROTOCOL_VERSION,
 };
 use blueice_launcher::control::{
     read_control_reply, write_control_request, ControlReply, ControlRequest,
@@ -151,7 +151,9 @@ impl Drop for LauncherProcess {
     }
 }
 
-fn check_fixed_core_profile(path: &std::path::Path) {
+fn open_fixed_core_profile(
+    path: &std::path::Path,
+) -> (UnixStream, blueice_ipc::compiler::CompilerCheck) {
     let mut stream = UnixStream::connect(path).expect("compiler endpoint must accept a peer");
     write_compiler_request(
         &mut stream,
@@ -169,7 +171,7 @@ fn check_fixed_core_profile(path: &std::path::Path) {
     write_compiler_request(
         &mut stream,
         &CompilerRequest::Check {
-            project: blueice_ipc::compiler::CompilerProject { id: 1 },
+            project: CompilerProject { id: 1 },
         },
     )
     .unwrap();
@@ -181,10 +183,11 @@ fn check_fixed_core_profile(path: &std::path::Path) {
         "fixed core profile must check successfully"
     );
     assert!(check.static_metadata.is_some());
+    (stream, check)
 }
 
 #[test]
-fn launcher_owns_the_fixed_compiler_mcp_endpoint_and_refuses_unsafe_cutover() {
+fn launcher_owns_a_stable_fixed_compiler_endpoint_across_cutover_without_retargeting_clients() {
     let mut launcher = LauncherProcess::spawn();
     let mode = std::fs::metadata(&launcher.compiler_socket)
         .expect("core must own compiler endpoint")
@@ -192,19 +195,83 @@ fn launcher_owns_the_fixed_compiler_mcp_endpoint_and_refuses_unsafe_cutover() {
         .mode()
         & 0o777;
     assert_eq!(mode, 0o600, "compiler endpoint must be owner-only");
-    check_fixed_core_profile(&launcher.compiler_socket);
+    let (mut v1, v1_check) = open_fixed_core_profile(&launcher.compiler_socket);
+    write_compiler_request(
+        &mut v1,
+        &CompilerRequest::ListStaticMetadata {
+            generation: v1_check.generation,
+            kind: CompilerStaticMetadataKind::Symbols,
+            cursor: None,
+            limit: Some(1),
+        },
+    )
+    .unwrap();
+    let CompilerReply::StaticMetadataPage(v1_symbols) = read_compiler_reply(&mut v1).unwrap()
+    else {
+        panic!("v1 fixed profile must expose bounded symbol inventory")
+    };
+    let v1_cursor = v1_symbols
+        .next_cursor
+        .expect("fixture must require a continuation cursor");
 
-    // A caller-selected fixed endpoint cannot be atomically rebound by v2
-    // while v1 is live.  The launcher must fail before disturbing the paired
-    // browser/compiler core, leaving v1 and its endpoint usable.
+    // v2 gets its own private listener while v1's public connection remains
+    // pinned to v1.  The public endpoint itself stays owner-only and live.
     let mut control = UnixStream::connect(&launcher.control_socket).unwrap();
     write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
-    let ControlReply::CutoverFailed { reason } = read_control_reply(&mut control).unwrap() else {
-        panic!("compiler endpoint mode must not attempt an unsafe cutover")
+    let ControlReply::CutoverDone { .. } = read_control_reply(&mut control).unwrap() else {
+        panic!("launcher-owned compiler relay must allow a prepared cutover")
     };
-    assert!(reason.contains("compiler MCP endpoint"));
     assert!(launcher.compiler_socket.exists());
-    check_fixed_core_profile(&launcher.compiler_socket);
+    assert_eq!(
+        std::fs::metadata(&launcher.compiler_socket)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600,
+        "cutover must preserve the stable owner-only public endpoint"
+    );
+
+    // A stream accepted before cutover must not silently become a v2 stream.
+    // It either reaches its dying v1 long enough to fail normally, or the
+    // relay/core close it.  A successful v2 metadata page would prove an
+    // unsafe cross-generation retarget.
+    let old_result = write_compiler_request(
+        &mut v1,
+        &CompilerRequest::ListStaticMetadata {
+            generation: v1_check.generation,
+            kind: CompilerStaticMetadataKind::Symbols,
+            cursor: Some(v1_cursor),
+            limit: Some(1),
+        },
+    )
+    .and_then(|_| read_compiler_reply(&mut v1));
+    assert!(
+        !matches!(old_result, Ok(CompilerReply::StaticMetadataPage(_))),
+        "a pre-cutover compiler connection must never be retargeted to v2"
+    );
+
+    let (mut v2, v2_check) = open_fixed_core_profile(&launcher.compiler_socket);
+    // A new connection after cutover is routed to the newly sealed catalog.
+    // Even if its opaque number collides with v1's first cursor, v1's cursor
+    // state is neither copied nor usable in v2.
+    write_compiler_request(
+        &mut v2,
+        &CompilerRequest::ListStaticMetadata {
+            generation: v2_check.generation,
+            kind: CompilerStaticMetadataKind::Symbols,
+            cursor: Some(v1_cursor),
+            limit: Some(1),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_compiler_reply(&mut v2).unwrap(),
+        CompilerReply::Error {
+            code: CompilerErrorCode::InvalidMetadataCursor,
+            ..
+        }
+    ));
 
     launcher.shutdown();
     assert!(

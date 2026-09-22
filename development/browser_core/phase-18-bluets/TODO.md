@@ -790,14 +790,18 @@ or second module resolver to bypass them.
   process regression also proves v1 rejection plus exact source-hash
   provenance/contract lookup and redacted invalid-data validation. The
   launcher now has one explicit `--compiler-mcp-socket <absolute-path>` seam:
-  it validates the endpoint before spawning a child, passes only the fixed
-  `core-closed-fixture-v1` profile, enforces the core listener's `0600` mode,
-  and reaps socket-only state on shutdown. A live/non-socket endpoint fails
-  closed, and a cutover rejects before touching v1 rather than trying to
-  rebind the fixed endpoint. Real launcher/core/MCP coverage verifies that
-  paired browser/compiler adapters attach to that same core. General catalog
-  distribution/authorization and all update/write capabilities remain
-  deliberately open.
+  it validates and owns that stable public `0600` endpoint before spawning a
+  child, passes only the fixed `core-closed-fixture-v1` profile and a fresh
+  launcher-generated private compiler socket to each core, and reaps
+  socket-only state on final shutdown. A live/non-socket public endpoint fails
+  closed. During cutover it starts and health-checks v2's private sealed
+  listener before changing the public relay for future accepts. Each accepted
+  compiler connection remains pinned to the one private core peer selected at
+  accept time; after v1 ends it fails closed rather than being retargeted to
+  v2, so opaque cursors cannot cross catalog generations. Real launcher/core
+  and paired MCP `tools/call` coverage verifies those lifetime rules as well
+  as the fixed profile. General catalog distribution/authorization and all
+  update/write capabilities remain deliberately open.
 
   MCP read foundation delivered: `blueice-mcp-server` now has a distinct
   `CompilerConnection` client and explicit
