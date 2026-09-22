@@ -24,9 +24,9 @@ use super::{
     BlueJsPageScriptKind, CombinedPageScriptDeclaration, CombinedPageScriptLanguage,
 };
 use crate::script::javascript::{
-    AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerError,
-    JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint, JavaScriptPageExecutionReport,
-    PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
+    AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerBreakpoint,
+    JavaScriptPageDebuggerError, JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
+    JavaScriptPageExecutionReport, PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };
 use crate::script::page_source_authorizer::AuthorizedPageScriptGraph;
 pub use crate::script::page_source_authorizer::{
@@ -39,7 +39,7 @@ use blueice_ipc::page_host::{
     PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostReply,
     PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
     PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
-    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+    PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
 };
 use blueice_net::canonical_http_origin;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -105,6 +105,13 @@ pub trait PageHostClient {
     fn synchronize_document(&mut self, document: PageHostDocument) -> io::Result<PageHostReply>;
     fn close_realm(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply>;
 
+    /// Whether this transport peer implements the v5 exact breakpoint
+    /// configuration operations. Test doubles must opt in; location discovery
+    /// alone must not make the public capability report promise configuration.
+    fn debugger_breakpoint_configuration_available(&self) -> bool {
+        false
+    }
+
     /// Returns a source-free child realm acknowledgement for the exact core
     /// tab/document tuple. A transport double must opt in explicitly; the
     /// default keeps debugger locations unavailable rather than fabricating a
@@ -157,6 +164,45 @@ pub trait PageHostClient {
             "page-host child does not implement debugger locations",
         ))
     }
+
+    /// Stores an exact child-private breakpoint configuration record. This is
+    /// deliberately separate from any child VM interruption capability.
+    fn set_debugger_breakpoint(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger breakpoint configuration",
+        ))
+    }
+
+    /// Lists exact child-private breakpoint records for one realm.
+    fn debugger_breakpoints(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger breakpoint configuration",
+        ))
+    }
+
+    /// Clears one exact child-private breakpoint record.
+    fn clear_debugger_breakpoint(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger breakpoint configuration",
+        ))
+    }
 }
 
 impl PageHostClient for PageHostConnection {
@@ -169,6 +215,10 @@ impl PageHostClient for PageHostConnection {
             tab_id,
             document_generation,
         })
+    }
+
+    fn debugger_breakpoint_configuration_available(&self) -> bool {
+        true
     }
 
     fn debugger_realm_stats(
@@ -213,6 +263,43 @@ impl PageHostClient for PageHostConnection {
         safe_point: PageHostDebuggerSafePoint,
     ) -> io::Result<PageHostReply> {
         self.request(PageHostRequest::ValidateDebuggerSafePoint {
+            tab_id,
+            document_generation,
+            safe_point,
+        })
+    }
+
+    fn set_debugger_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::SetDebuggerBreakpoint {
+            tab_id,
+            document_generation,
+            safe_point,
+        })
+    }
+
+    fn debugger_breakpoints(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ListDebuggerBreakpoints {
+            tab_id,
+            document_generation,
+        })
+    }
+
+    fn clear_debugger_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ClearDebuggerBreakpoint {
             tab_id,
             document_generation,
             safe_point,
@@ -556,6 +643,15 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             .expect("page-host debugger safe-point cap fits usize")
     }
 
+    fn debugger_breakpoint_configuration_available(&self) -> bool {
+        self.child.debugger_breakpoint_configuration_available()
+    }
+
+    fn max_debugger_breakpoints_per_realm(&self) -> usize {
+        usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
+            .expect("page-host debugger breakpoint cap fits usize")
+    }
+
     fn debugger_programs(
         &mut self,
         tab_id: TabId,
@@ -688,6 +784,140 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
         }
     }
+
+    fn set_debugger_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        let safe_point = PageHostDebuggerSafePoint {
+            program: self.child_program_for_core(
+                tab_id,
+                document_generation,
+                program_handle,
+                program_generation,
+            )?,
+            code_unit_ordinal,
+            bytecode_offset,
+        };
+        // The public target was mapped to a child-private program identity,
+        // but a program match alone is insufficient: make the child prove the
+        // exact instruction boundary before it can mutate its bounded table.
+        validate_child_safe_point_reply(self, tab_id, document_generation, safe_point)?;
+        let reply = self
+            .child
+            .set_debugger_breakpoint(tab_id.as_u64(), document_generation, safe_point)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerBreakpointSet {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                safe_point: reply_safe_point,
+            } if reply_tab_id == tab_id.as_u64()
+                && reply_generation == document_generation
+                && reply_safe_point == safe_point =>
+            {
+                Ok(())
+            }
+            PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        }
+    }
+
+    fn debugger_breakpoints(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerBreakpoint>, JavaScriptPageDebuggerError> {
+        if !self.has_core_live_document(tab_id, document_generation) {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let reply = self
+            .child
+            .debugger_breakpoints(tab_id.as_u64(), document_generation)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBreakpoints {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            safe_points,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || safe_points.len() > self.max_debugger_breakpoints_per_realm()
+            || has_duplicate_child_safe_points(&safe_points)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+
+        let mut breakpoints = Vec::with_capacity(safe_points.len());
+        for safe_point in safe_points {
+            let public =
+                self.core_program_for_child(tab_id, document_generation, safe_point.program)?;
+            // The stored private table must not become a way for a compromised
+            // child to fabricate arbitrary offsets under an otherwise known
+            // private program ID. Require a fresh exact validation echo for
+            // every listed tuple before re-minting the public response.
+            validate_child_safe_point_reply(self, tab_id, document_generation, safe_point)?;
+            breakpoints.push(JavaScriptPageDebuggerBreakpoint {
+                program_handle: public.program_handle,
+                program_generation: public.program_generation,
+                code_unit_ordinal: safe_point.code_unit_ordinal,
+                bytecode_offset: safe_point.bytecode_offset,
+            });
+        }
+        Ok(breakpoints)
+    }
+
+    fn clear_debugger_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<bool, JavaScriptPageDebuggerError> {
+        let safe_point = PageHostDebuggerSafePoint {
+            program: self.child_program_for_core(
+                tab_id,
+                document_generation,
+                program_handle,
+                program_generation,
+            )?,
+            code_unit_ordinal,
+            bytecode_offset,
+        };
+        // Clearing an absent valid record is idempotent, but clearing a
+        // malformed/stale location is never a no-op that can target a
+        // successor. Revalidate first just as the in-process route does.
+        validate_child_safe_point_reply(self, tab_id, document_generation, safe_point)?;
+        let reply = self
+            .child
+            .clear_debugger_breakpoint(tab_id.as_u64(), document_generation, safe_point)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerBreakpointCleared {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                safe_point: reply_safe_point,
+                was_present,
+            } if reply_tab_id == tab_id.as_u64()
+                && reply_generation == document_generation
+                && reply_safe_point == safe_point =>
+            {
+                Ok(was_present)
+            }
+            PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        }
+    }
 }
 
 impl<C> OutOfProcessJavaScriptPageExecutor<C> {
@@ -735,11 +965,62 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             })
             .ok_or(JavaScriptPageDebuggerError::UnknownProgram)
     }
+
+    fn core_program_for_child(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+        child_program: PageHostDebuggerProgram,
+    ) -> Result<CoreDebuggerProgram, JavaScriptPageDebuggerError> {
+        if !child_program.is_well_formed()
+            || !self.has_core_live_document(tab_id, document_generation)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        self.debugger_programs
+            .get(&tab_id)
+            .and_then(|programs| programs.get(&child_program))
+            .copied()
+            .ok_or(JavaScriptPageDebuggerError::UnknownProgram)
+    }
 }
 
 fn has_duplicate_child_programs(programs: &[PageHostDebuggerProgram]) -> bool {
     let mut seen = BTreeSet::new();
     programs.iter().any(|program| !seen.insert(*program))
+}
+
+fn has_duplicate_child_safe_points(safe_points: &[PageHostDebuggerSafePoint]) -> bool {
+    let mut seen = BTreeSet::new();
+    safe_points
+        .iter()
+        .any(|safe_point| !safe_point.is_well_formed() || !seen.insert(*safe_point))
+}
+
+fn validate_child_safe_point_reply<C: PageHostClient>(
+    executor: &mut OutOfProcessJavaScriptPageExecutor<C>,
+    tab_id: TabId,
+    document_generation: u64,
+    safe_point: PageHostDebuggerSafePoint,
+) -> Result<(), JavaScriptPageDebuggerError> {
+    let reply = executor
+        .child
+        .validate_debugger_safe_point(tab_id.as_u64(), document_generation, safe_point)
+        .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+    match reply {
+        PageHostReply::DebuggerSafePointValidated {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            safe_point: reply_safe_point,
+        } if reply_tab_id == tab_id.as_u64()
+            && reply_generation == document_generation
+            && reply_safe_point == safe_point =>
+        {
+            Ok(())
+        }
+        PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+        _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+    }
 }
 
 fn child_debugger_reply_error(reply: &PageHostReply) -> JavaScriptPageDebuggerError {
@@ -2273,7 +2554,7 @@ mod tests {
                 .iter()
                 .find(|report| report.capability == DebuggerCapability::BreakpointConfiguration)
                 .map(|report| report.state),
-            Some(DebuggerCapabilityState::Planned)
+            Some(DebuggerCapabilityState::Available)
         );
         assert!(
             capabilities
@@ -2315,6 +2596,62 @@ mod tests {
             ),
             DebuggerReply::SafePointValidated { safe_point }
         );
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::SetBreakpoint { safe_point },
+            ),
+            DebuggerReply::BreakpointSet { safe_point }
+        );
+        // Configuration is idempotent and does not create another public or
+        // child-private record on a debugger socket retry.
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::SetBreakpoint { safe_point },
+            ),
+            DebuggerReply::BreakpointSet { safe_point }
+        );
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ListBreakpoints { realm: first_realm },
+            ),
+            DebuggerReply::Breakpoints(vec![safe_point])
+        );
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ClearBreakpoint { safe_point },
+            ),
+            DebuggerReply::BreakpointCleared {
+                safe_point,
+                was_present: true,
+            }
+        );
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ClearBreakpoint { safe_point },
+            ),
+            DebuggerReply::BreakpointCleared {
+                safe_point,
+                was_present: false,
+            }
+        );
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::SetBreakpoint { safe_point },
+            ),
+            DebuggerReply::BreakpointSet { safe_point }
+        );
 
         let cross_tab = blueice_ipc::debugger::DebuggerProgram {
             realm: second_realm,
@@ -2331,6 +2668,45 @@ mod tests {
                 ..
             }
         ));
+        let cross_tab_safe_point = blueice_ipc::debugger::DebuggerSafePoint {
+            program: cross_tab,
+            ..safe_point
+        };
+        assert!(matches!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::SetBreakpoint {
+                    safe_point: cross_tab_safe_point,
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+
+        // Reconfiguration before navigation proves that the successor's
+        // empty child table cannot retain prior private IDs or public tuples.
+        tabs.get_mut(first_tab).unwrap().load_html_str(
+            "<script>let successor = 4;</script>",
+            Some("https://example.test/successor-again.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let successor_realm = DebuggerPageRealm {
+            realm_generation: 2,
+            ..first_realm
+        };
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ListBreakpoints {
+                    realm: successor_realm,
+                },
+            ),
+            DebuggerReply::Breakpoints(Vec::new())
+        );
 
         tabs.get_mut(first_tab).unwrap().load_html_str(
             "<script>let successor = 3;</script>",
@@ -2421,8 +2797,183 @@ mod tests {
         let mut executor = OutOfProcessJavaScriptPageExecutor::new(MismatchedDebuggerChild);
         executor.synchronize_and_execute(&tabs).unwrap();
         assert!(executor.debugger_has_live_realm(tab_id, 1));
+        let realm = blueice_ipc::debugger::DebuggerPageRealm {
+            browser_context_id: crate::debugger::DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: tab_id.as_u64(),
+            realm_generation: 1,
+        };
+        let capabilities = crate::debugger::handle_debugger_request_with_page_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            blueice_ipc::debugger::DebuggerRequest::DescribeCapabilities { realm },
+        );
+        let blueice_ipc::debugger::DebuggerReply::Capabilities(capabilities) = capabilities else {
+            panic!("expected child debugger capability report");
+        };
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == blueice_ipc::debugger::DebuggerCapability::ProgramLocations
+                && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+        }));
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == blueice_ipc::debugger::DebuggerCapability::BreakpointConfiguration
+                && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Planned
+        }));
         assert_eq!(
             executor.debugger_programs(tab_id, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+    }
+
+    /// A hostile private peer can know its own protocol shape, so core must
+    /// reject malformed breakpoint acknowledgements rather than treating an
+    /// authenticated socket as a source of public debugger identities.
+    struct MalformedBreakpointChild;
+
+    impl PageHostClient for MalformedBreakpointChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::Synchronized {
+                tab_id: document.tab_id,
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            })
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmClosed {
+                tab_id,
+                document_generation,
+            })
+        }
+
+        fn debugger_realm_stats(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmStats(page_host::PageHostRealmStats {
+                tab_id,
+                document_generation,
+                program_count: 1,
+                bytecode_bytes: 0,
+                heap_bytes: 0,
+            }))
+        }
+
+        fn debugger_programs(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::DebuggerPrograms {
+                tab_id,
+                document_generation,
+                programs: vec![PageHostDebuggerProgram {
+                    program_handle: 1,
+                    program_generation: 1,
+                }],
+            })
+        }
+
+        fn validate_debugger_safe_point(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+            safe_point: PageHostDebuggerSafePoint,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::DebuggerSafePointValidated {
+                tab_id,
+                document_generation,
+                safe_point,
+            })
+        }
+
+        fn set_debugger_breakpoint(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+            safe_point: PageHostDebuggerSafePoint,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::DebuggerBreakpointSet {
+                // The reply is otherwise plausible, but a core must bind it
+                // to the original tab and never silently retarget a request.
+                tab_id: tab_id + 1,
+                document_generation,
+                safe_point,
+            })
+        }
+
+        fn debugger_breakpoints(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::DebuggerBreakpoints {
+                tab_id,
+                // A generation mismatch must not reveal or remint a record.
+                document_generation: document_generation + 1,
+                safe_points: Vec::new(),
+            })
+        }
+
+        fn clear_debugger_breakpoint(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+            safe_point: PageHostDebuggerSafePoint,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::DebuggerBreakpointCleared {
+                tab_id,
+                document_generation,
+                // A response must echo the exact child-private safe point,
+                // not merely one with a valid private program ID.
+                safe_point: PageHostDebuggerSafePoint {
+                    bytecode_offset: safe_point.bytecode_offset.saturating_add(1),
+                    ..safe_point
+                },
+                was_present: true,
+            })
+        }
+    }
+
+    #[test]
+    fn core_fails_closed_on_malformed_child_breakpoint_replies() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>let childBreakpointSecret = 1;</script>",
+            "https://example.test/app.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(MalformedBreakpointChild);
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let program = executor.debugger_programs(tab_id, 1).unwrap()[0];
+        let result = executor.set_debugger_breakpoint(
+            tab_id,
+            1,
+            program.program_handle,
+            program.program_generation,
+            0,
+            0,
+        );
+        assert_eq!(result, Err(JavaScriptPageDebuggerError::NoLiveRealm));
+        assert_eq!(
+            executor.debugger_breakpoints(tab_id, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            executor.clear_debugger_breakpoint(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                0,
+                0,
+            ),
             Err(JavaScriptPageDebuggerError::NoLiveRealm)
         );
     }

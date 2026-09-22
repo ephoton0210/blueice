@@ -205,7 +205,7 @@ The initial implementation completes the work that has no BlueJS dependency befo
   receives both a trusted child endpoint and its per-spawn capability token,
   inventories supported JavaScript and explicit BlueTS declarations under one
   DOM-order ordinal sequence, and turns each inline record into a core-minted
-  closed one-module graph. The private v4 child protocol carries a trusted
+  closed one-module graph. The private v5 child protocol carries a trusted
   language tag; JavaScript follows the normal BlueJS parser while BlueTS uses
   only an `AuthorizedModuleLoader` derived from that graph and child-fixed
   checked options before `blueice-bluets-bluejs` directly attaches it to the
@@ -251,16 +251,21 @@ The initial implementation completes the work that has no BlueJS dependency befo
   bytes under deterministic URL/integrity/language keys, and derives a
   policy-complete resolver fingerprint. Core copies only the finished graph
   into the child protocol, while the child still has no fetch, URL-resolution,
-  import-map, filesystem, cache, manifest, or fallback authority. The v4 channel additionally
-  carries only source-free debugger-location operations: list retained
-  programs, list a fixed bounded set of compiler-recorded safe points, and
-  validate one exact tuple. The child mints private IDs only; core verifies an
+  import-map, filesystem, cache, manifest, or fallback authority. The v5
+  channel additionally carries source-free debugger-location operations (list
+  retained programs, list a fixed bounded set of compiler-recorded safe
+  points, and validate one exact tuple) and a 256-record exact-breakpoint
+  configuration table. The child mints private IDs only; core verifies an
   exact live child realm, remints every public program handle/generation in a
   disjoint core namespace, and rejects mismatched tab/document/program/safe-
-  point replies. The route deliberately does not proxy breakpoints,
-  pause/resume, stepping, VM frames, stacks, scopes, values, bytecode, or
-  source. DOM/event callbacks, URL or import-map resolution, an in-process
-  equivalent or broader deployment HTTP policy, and page-selected compiler
+  point replies. Set/clear must echo the complete child-private safe-point
+  tuple; core rejects duplicate or unmapped list records and revalidates each
+  one before reminting a public record. Replacement and close discard both
+  private and core mappings. The route deliberately does not proxy
+  interruption, pause/resume, stepping, VM frames, stacks, scopes, values,
+  bytecode, or source. DOM/event callbacks, URL or import-map resolution, an
+  in-process equivalent or broader deployment HTTP policy, and page-selected
+  compiler
   profiles remain open.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.
 - The [BlueTS test report](TEST_REPORT.md) records the complete per-platform test-suite results, the TypeScript 5.9.3 oracle matrix and per-file line coverage for `blueice-bluets` and `blueice-bluets-bluejs` (2026-09-21).

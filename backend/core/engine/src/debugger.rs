@@ -270,9 +270,19 @@ fn handle_debugger_request_with_child_locations(
         DebuggerRequest::ValidateSafePoint { safe_point } => {
             validate_child_safe_point(tabs, locations, safe_point)
         }
-        // Do not reuse the in-process configuration/pause routing merely
-        // because a child supports location discovery. The child route is
-        // intentionally validation-only in this milestone.
+        DebuggerRequest::SetBreakpoint { safe_point } => {
+            set_child_breakpoint(tabs, locations, safe_point)
+        }
+        DebuggerRequest::ListBreakpoints { realm } => {
+            list_child_breakpoints(tabs, locations, realm)
+        }
+        DebuggerRequest::ClearBreakpoint { safe_point } => {
+            clear_child_breakpoint(tabs, locations, safe_point)
+        }
+        // Do not reuse in-process pause/resume routing merely because the
+        // child supports exact breakpoint configuration. The child route has
+        // no interruption, execution-control, stepping, stack, scope, or
+        // value proxy in this milestone.
         other => handle_debugger_request_with_javascript_executor(tabs, None, other),
     }
 }
@@ -318,16 +328,28 @@ fn describe_child_location_capabilities(
     } else {
         DEFAULT_MAX_SAFE_POINTS_PER_PROGRAM
     };
+    let breakpoint_configuration_available =
+        locations_available && locations.debugger_breakpoint_configuration_available();
+    let max_breakpoints_per_realm = if breakpoint_configuration_available {
+        locations.max_debugger_breakpoints_per_realm()
+    } else {
+        DEFAULT_MAX_BREAKPOINTS_PER_REALM
+    };
     DebuggerReply::Capabilities(DebuggerCapabilities {
         protocol_version: DEBUGGER_PROTOCOL_VERSION,
         realm,
-        reports: capability_reports(locations_available, false, false),
+        reports: capability_reports(
+            locations_available,
+            breakpoint_configuration_available,
+            false,
+        ),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
         max_value_preview_bytes: MAX_VALUE_PREVIEW_BYTES,
         max_safe_points_per_program: u32::try_from(max_safe_points_per_program)
             .expect("native debugger safe-point reply cap fits the wire type"),
-        max_breakpoints_per_realm: DEFAULT_MAX_BREAKPOINTS_PER_REALM as u32,
+        max_breakpoints_per_realm: u32::try_from(max_breakpoints_per_realm)
+            .expect("child debugger breakpoint reply cap fits the wire type"),
     })
 }
 
@@ -423,6 +445,110 @@ fn validate_child_safe_point(
         safe_point.bytecode_offset,
     ) {
         Ok(()) => DebuggerReply::SafePointValidated { safe_point },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn set_child_breakpoint(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    safe_point: DebuggerSafePoint,
+) -> DebuggerReply {
+    if !safe_point.is_well_formed() {
+        return invalid_safe_point_target();
+    }
+    let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation)
+        || !locations.debugger_breakpoint_configuration_available()
+    {
+        return unavailable_breakpoint_configuration();
+    }
+    match locations.set_debugger_breakpoint(
+        tab_id,
+        safe_point.program.realm.realm_generation,
+        safe_point.program.program_handle,
+        safe_point.program.program_generation,
+        safe_point.code_unit_ordinal,
+        safe_point.bytecode_offset,
+    ) {
+        Ok(()) => DebuggerReply::BreakpointSet { safe_point },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn list_child_breakpoints(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    realm: DebuggerPageRealm,
+) -> DebuggerReply {
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, realm.realm_generation)
+        || !locations.debugger_breakpoint_configuration_available()
+    {
+        return unavailable_breakpoint_configuration();
+    }
+    match locations.debugger_breakpoints(tab_id, realm.realm_generation) {
+        Ok(breakpoints) => {
+            if breakpoints.len() > locations.max_debugger_breakpoints_per_realm() {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::ResourceLimit,
+                    message: "too many native breakpoint records for one page realm".to_string(),
+                };
+            }
+            DebuggerReply::Breakpoints(
+                breakpoints
+                    .into_iter()
+                    .map(|breakpoint| DebuggerSafePoint {
+                        program: DebuggerProgram {
+                            realm,
+                            program_handle: breakpoint.program_handle,
+                            program_generation: breakpoint.program_generation,
+                        },
+                        code_unit_ordinal: breakpoint.code_unit_ordinal,
+                        bytecode_offset: breakpoint.bytecode_offset,
+                    })
+                    .collect(),
+            )
+        }
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn clear_child_breakpoint(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    safe_point: DebuggerSafePoint,
+) -> DebuggerReply {
+    if !safe_point.is_well_formed() {
+        return invalid_safe_point_target();
+    }
+    let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation)
+        || !locations.debugger_breakpoint_configuration_available()
+    {
+        return unavailable_breakpoint_configuration();
+    }
+    match locations.clear_debugger_breakpoint(
+        tab_id,
+        safe_point.program.realm.realm_generation,
+        safe_point.program.program_handle,
+        safe_point.program.program_generation,
+        safe_point.code_unit_ordinal,
+        safe_point.bytecode_offset,
+    ) {
+        Ok(was_present) => DebuggerReply::BreakpointCleared {
+            safe_point,
+            was_present,
+        },
         Err(error) => debugger_program_error(error),
     }
 }

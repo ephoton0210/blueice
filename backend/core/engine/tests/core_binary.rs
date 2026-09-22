@@ -1867,6 +1867,223 @@ fn real_subprocess_routes_an_explicit_page_lifecycle_to_the_private_bluejs_host(
 }
 
 #[test]
+fn real_subprocess_proxies_only_exact_oop_breakpoint_configuration() {
+    // This crosses both real sockets: the public debugger reaches the core
+    // session, which in turn reaches the separately owned BlueJS child over
+    // its private capability-authenticated page-host transport. In
+    // particular, `SetBreakpoint` must not accidentally grow into a pause or
+    // VM-inspection proxy merely because the child owns the program.
+    const PAGE_SECRET: &str = "OOP_DEBUGGER_BREAKPOINT_SECRET_DO_NOT_DISCLOSE";
+    let socket_path = unique_socket_path("oop-debugger-core");
+    let debugger_socket_path = unique_socket_path("oop-debugger-host");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-oop-debugger-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debugger_socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("oop-debugger-gk");
+    let (host_socket, host_token, host) = spawn_private_bluejs_host("oop-debugger-host");
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = format!(
+            "<main>private page host debugger</main><script>const secret = '{PAGE_SECRET}';</script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--debugger-socket",
+            debugger_socket_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+            "--out-of-process-bluejs-socket",
+            host_socket.to_str().unwrap(),
+            "--out-of-process-bluejs-token",
+            &host_token,
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("must spawn core with child page host and debugger socket");
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    assert!(wait_for(&debugger_socket_path, Duration::from_secs(5)));
+
+    let mut frontend = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{addr}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
+    ));
+
+    let mut debugger = UnixStream::connect(&debugger_socket_path).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::Hello {
+                protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+            },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::HelloAck {
+            protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+        }
+    );
+    let realm = match debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListPageRealms,
+        PAGE_SECRET,
+    ) {
+        blueice_ipc::debugger::DebuggerReply::PageRealms(realms) => {
+            assert_eq!(realms.len(), 1);
+            realms[0]
+        }
+        reply => panic!("expected OOP page realm, got {reply:?}"),
+    };
+    let capabilities = match debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::DescribeCapabilities { realm },
+        PAGE_SECRET,
+    ) {
+        blueice_ipc::debugger::DebuggerReply::Capabilities(capabilities) => capabilities,
+        reply => panic!("expected OOP debugger capabilities, got {reply:?}"),
+    };
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::ProgramLocations
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::BreakpointConfiguration
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+            && report.detail.contains("does not interrupt execution")
+    }));
+    for capability in [
+        blueice_ipc::debugger::DebuggerCapability::Breakpoints,
+        blueice_ipc::debugger::DebuggerCapability::PauseResume,
+        blueice_ipc::debugger::DebuggerCapability::Stepping,
+        blueice_ipc::debugger::DebuggerCapability::Stack,
+        blueice_ipc::debugger::DebuggerCapability::Scopes,
+        blueice_ipc::debugger::DebuggerCapability::BoundedValues,
+    ] {
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == capability
+                && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Planned
+        }));
+    }
+
+    let program = match debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListPrograms { realm },
+        PAGE_SECRET,
+    ) {
+        blueice_ipc::debugger::DebuggerReply::Programs(programs) => {
+            assert_eq!(programs.len(), 1);
+            programs[0]
+        }
+        reply => panic!("expected opaque OOP program, got {reply:?}"),
+    };
+    let safe_point = match debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListSafePoints { program },
+        PAGE_SECRET,
+    ) {
+        blueice_ipc::debugger::DebuggerReply::SafePoints(safe_points) => safe_points
+            .into_iter()
+            .find(|safe_point| safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset == 0)
+            .expect("OOP program must expose its exact root safe point"),
+        reply => panic!("expected OOP safe points, got {reply:?}"),
+    };
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::SetBreakpoint { safe_point },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::BreakpointSet { safe_point }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ListBreakpoints { realm },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::Breakpoints(vec![safe_point])
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ClearBreakpoint { safe_point },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::BreakpointCleared {
+            safe_point,
+            was_present: true,
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ClearBreakpoint { safe_point },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::BreakpointCleared {
+            safe_point,
+            was_present: false,
+        }
+    );
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            &blueice_ipc::debugger::DebuggerRequest::ArmEntryBreakpoint { safe_point },
+            PAGE_SECRET,
+        ),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::CapabilityUnavailable,
+            ..
+        }
+    ));
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(core.wait().unwrap().success());
+    shutdown_private_bluejs_host(&host_socket, &host_token);
+    host.join().unwrap();
+    let _ = std::fs::remove_file(&host_socket);
+    assert!(!socket_path.exists());
+    assert!(!debugger_socket_path.exists());
+    assert!(!frame_dir.exists());
+}
+
+#[test]
 fn real_subprocess_rebinds_inline_javascript_document_context_after_replacement() {
     // The current document origin is a copied, realm-local value. Exercise two
     // real navigations so a stale first-document callback would turn the second

@@ -49,26 +49,30 @@ core generation and reaps it on ordinary shutdown or cutover; the default
 launcher leaves the mode disabled. An immutable core-owned startup authorizer
 may additionally supply one exact closed external JavaScript or BlueTS graph;
 the child still does not fetch, resolve, or fall back itself. Its private
-page-host v4 transport also permits only source-free debugger location
-discovery: after core verifies the authenticated child owns the exact live
+page-host v5 transport permits source-free debugger location discovery plus
+an exact bounded breakpoint-configuration table: after core verifies the
+authenticated child owns the exact live
 tab/document realm, it lists bounded child-private program/safe-point IDs and
 revalidates one exact tuple. Core remints every public debugger program
 handle/generation in a disjoint namespace and rejects any child reply whose
 tab, document generation, private program, or safe point does not exactly
-match that mapping. The child has no breakpoint configuration, pause/resume,
-stepping, stack/scope/value/source/bytecode operation. The remaining boundary
-has no general DOM or event surface beyond the copied strings, arbitrary
-debugger interruption/pause/runtime control, or MCP project-registration path.
-The child route now also has a concrete but deliberately narrow startup-only
-`HttpOutOfProcessPageScriptSourceAuthorizer`: core fixes a same-document-origin
-or one canonical exact-origin rule, owner URL-to-SHA-256 manifest, and
-module/depth/per-module/graph byte limits before an executor exists. It admits
-only direct `200`, identity-encoded UTF-8 JavaScript/BlueTS MIME responses with
-matching bounded `Content-Length` and integrity, disallows redirects, and
-parses only manifest-covered static edges. Its verified private cache uses
-deterministic URL/integrity/language keys and the finished graph fingerprint
-covers the whole policy. The page, child, frontend, and MCP receive neither
-that authority nor its cache/manifest—only a completed graph.
+match that mapping; it checks exact child echoes for set/clear and revalidates
+every listed private record before re-minting it. The child table is capped at
+256 idempotent records and is discarded on realm replacement or close. The
+child has no pause/resume, stepping, stack/scope/value/source/bytecode
+operation. The child route also has a concrete but deliberately narrow
+startup-only `HttpOutOfProcessPageScriptSourceAuthorizer`: core fixes a
+same-document-origin or one canonical exact-origin rule, owner
+URL-to-SHA-256 manifest, and module/depth/per-module/graph byte limits before
+an executor exists. It admits only direct `200`, identity-encoded UTF-8
+JavaScript/BlueTS MIME responses with matching bounded `Content-Length` and
+integrity, disallows redirects, and parses only manifest-covered static edges.
+Its verified private cache uses deterministic URL/integrity/language keys and
+the finished graph fingerprint covers the whole policy. The page, child,
+frontend, and MCP receive neither that authority nor its cache/manifest—only
+a completed graph. The remaining boundary has no general DOM or event surface
+beyond the copied strings, arbitrary debugger interruption/pause/runtime
+control, or MCP project-registration path.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
 syntax matrix while an earlier item prevents an already-supported program from
@@ -176,7 +180,7 @@ or second module resolver to bypass them.
   in-process,
   no-general-DOM-object-or-event-binding
   foundation. A separate launcher-owned process foundation now also exists:
-  `blueice_ipc::page_host` defines a private v4 capability-authenticated
+  `blueice_ipc::page_host` defines a private v5 capability-authenticated
   launcher-to-child transport, and the `blueice-bluejs-host` child owns its
   own `BlueJsPageRuntime`, tab/document-generation table, program registry,
   and fixed realm/program/bytecode limits. A private frame is capped at
@@ -193,7 +197,8 @@ or second module resolver to bypass them.
   authenticates before dispatch, supervises/reaps the child, and removes its
   socket on clean or forced teardown. The child returns bounded source-free
   reports, aggregate realm accounting, and the core-proxied location-only
-  debugger inventory; same-generation sync is
+  debugger inventory plus a 256-record exact breakpoint-configuration table;
+  same-generation sync is
   idempotent, a stale generation cannot close or inspect a successor, and a
   missing module edge is rejected before any graph program is retained. Unit
   tests cover those rules, and a real launcher-spawned child regression proves
@@ -401,18 +406,23 @@ or second module resolver to bypass them.
   `ArmEntryBreakpoint` subprocess route remains the v4 compatibility
   acceptance.
 
-  The launcher-supervised child has a distinct, narrower v4 private page-host
-  proxy for the same public `ProgramLocations` discovery family. Core first
+  The launcher-supervised child has a distinct, narrower v5 private page-host
+  proxy for the public `ProgramLocations` and `BreakpointConfiguration`
+  families. Core first
   resolves the public browser-context/tab/document generation, then requires
   its authenticated child to acknowledge that exact realm before advertising
   the capability. The child returns only its own bounded opaque program IDs
   and compiler-recorded `(code-unit, offset)` tuples; core remints disjoint
-  public IDs and retains the exact private mapping. Any reply with another
-  tab, document generation, program, or safe point is rejected. The child
-  route intentionally reports `BreakpointConfiguration`, `Breakpoints`,
-  `PauseResume`, stepping, stacks, scopes, exception policy, and values as
-  planned, and it accepts none of their requests. Real Unix-socket child/core
-  tests cover location discovery, exact validation, cross-tab rejection, and
+  public IDs and retains the exact private mapping. For `SetBreakpoint` and
+  `ClearBreakpoint`, the child must echo the complete private tab/document/
+  program/safe-point tuple; `ListBreakpoints` is capped and core independently
+  revalidates every returned tuple before it re-mints the public reply. Any
+  reply with another tab, document generation, program, or safe point is
+  rejected. The child route reports only `BreakpointConfiguration` available;
+  `Breakpoints`, `PauseResume`, stepping, stacks, scopes, exception policy,
+  and values remain planned, and it accepts none of their requests. Real Unix-
+  socket child/core tests cover location discovery, exact validation, cross-tab
+  rejection, malformed response rejection, configuration lifecycle, and
   navigation-stale rejection without source, bytecode, or runtime-value leaks.
 
   Acceptance for the delivered seam: a classic JS page fixture pauses at a

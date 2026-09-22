@@ -34,8 +34,8 @@ use blueice_ipc::page_host::{
     PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats,
     PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
     PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
-    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
-    PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
+    PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+    PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES, PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
 use blueice_net::canonical_http_origin;
 use std::collections::{BTreeMap, BTreeSet};
@@ -61,6 +61,9 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 struct LiveDocument {
     generation: u64,
     debugger_programs: BTreeMap<u64, ChildDebuggerProgram>,
+    /// Exact child-private breakpoint configuration records. These are not a
+    /// VM interruption hook; replacing or closing the realm drops them.
+    debugger_breakpoints: BTreeSet<PageHostDebuggerSafePoint>,
 }
 
 /// Private child-only association between a child-minted opaque debugger
@@ -135,6 +138,20 @@ impl BlueJsChildHost {
                 document_generation,
                 safe_point,
             } => self.validate_debugger_safe_point(tab_id, document_generation, safe_point),
+            PageHostRequest::SetDebuggerBreakpoint {
+                tab_id,
+                document_generation,
+                safe_point,
+            } => self.set_debugger_breakpoint(tab_id, document_generation, safe_point),
+            PageHostRequest::ListDebuggerBreakpoints {
+                tab_id,
+                document_generation,
+            } => self.debugger_breakpoints(tab_id, document_generation),
+            PageHostRequest::ClearDebuggerBreakpoint {
+                tab_id,
+                document_generation,
+                safe_point,
+            } => self.clear_debugger_breakpoint(tab_id, document_generation, safe_point),
             PageHostRequest::Shutdown => PageHostReply::ShutdownAck,
             PageHostRequest::Hello { .. } | PageHostRequest::Unknown => invalid_request(),
         }
@@ -218,6 +235,7 @@ impl BlueJsChildHost {
             LiveDocument {
                 generation: document.document_generation,
                 debugger_programs: BTreeMap::new(),
+                debugger_breakpoints: BTreeSet::new(),
             },
         );
 
@@ -434,21 +452,36 @@ impl BlueJsChildHost {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     ) -> PageHostReply {
-        if !safe_point.is_well_formed() {
-            return invalid_request();
+        match self.exact_debugger_safe_point(tab_id, document_generation, safe_point) {
+            Ok(()) => PageHostReply::DebuggerSafePointValidated {
+                tab_id,
+                document_generation,
+                safe_point,
+            },
+            Err(reply) => reply,
         }
-        let document = match self.exact_document(tab_id, document_generation) {
-            Ok(document) => document,
-            Err(reply) => return reply,
-        };
+    }
+
+    /// Revalidates an exact child-private safe-point tuple without returning
+    /// a runtime handle, source, bytecode, or VM object to the caller.
+    fn exact_debugger_safe_point(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> Result<(), PageHostReply> {
+        if !safe_point.is_well_formed() {
+            return Err(invalid_request());
+        }
+        let document = self.exact_document(tab_id, document_generation)?;
         let Some(record) = document
             .debugger_programs
             .get(&safe_point.program.program_handle)
         else {
-            return invalid_request();
+            return Err(invalid_request());
         };
         if record.program_generation != safe_point.program.program_generation {
-            return invalid_request();
+            return Err(invalid_request());
         }
         // Constructing a BlueJS safe point is intentionally not exposed by
         // its public runtime API. Find the exact compiler-recorded boundary
@@ -463,23 +496,89 @@ impl BlueJsChildHost {
                 candidate.code_unit.ordinal() == safe_point.code_unit_ordinal
                     && candidate.bytecode_offset == safe_point.bytecode_offset
             }),
-            Err(BlueJsPageRuntimeError::SafePointLimit { .. }) => return resource_limit(),
-            Err(_) => return invalid_request(),
+            Err(BlueJsPageRuntimeError::SafePointLimit { .. }) => return Err(resource_limit()),
+            Err(_) => return Err(invalid_request()),
         };
         let Some(found) = found else {
-            return invalid_request();
+            return Err(invalid_request());
         };
         if self
             .runtime
             .validate_safe_point(tab_id, record.runtime_handle, found)
             .is_err()
         {
-            return invalid_request();
+            return Err(invalid_request());
         }
-        PageHostReply::DebuggerSafePointValidated {
+        Ok(())
+    }
+
+    fn set_debugger_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> PageHostReply {
+        if let Err(reply) = self.exact_debugger_safe_point(tab_id, document_generation, safe_point)
+        {
+            return reply;
+        }
+        let document = self
+            .documents
+            .get_mut(&tab_id)
+            .expect("the exact child document remains live after validation");
+        let max_breakpoints = usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
+            .expect("page-host debugger breakpoint cap fits usize");
+        if !document.debugger_breakpoints.contains(&safe_point)
+            && document.debugger_breakpoints.len() == max_breakpoints
+        {
+            return resource_limit();
+        }
+        document.debugger_breakpoints.insert(safe_point);
+        PageHostReply::DebuggerBreakpointSet {
             tab_id,
             document_generation,
             safe_point,
+        }
+    }
+
+    fn debugger_breakpoints(&self, tab_id: u64, document_generation: u64) -> PageHostReply {
+        let document = match self.exact_document(tab_id, document_generation) {
+            Ok(document) => document,
+            Err(reply) => return reply,
+        };
+        let max_breakpoints = usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
+            .expect("page-host debugger breakpoint cap fits usize");
+        if document.debugger_breakpoints.len() > max_breakpoints {
+            return resource_limit();
+        }
+        PageHostReply::DebuggerBreakpoints {
+            tab_id,
+            document_generation,
+            safe_points: document.debugger_breakpoints.iter().copied().collect(),
+        }
+    }
+
+    fn clear_debugger_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> PageHostReply {
+        if let Err(reply) = self.exact_debugger_safe_point(tab_id, document_generation, safe_point)
+        {
+            return reply;
+        }
+        let was_present = self
+            .documents
+            .get_mut(&tab_id)
+            .expect("the exact child document remains live after validation")
+            .debugger_breakpoints
+            .remove(&safe_point);
+        PageHostReply::DebuggerBreakpointCleared {
+            tab_id,
+            document_generation,
+            safe_point,
+            was_present,
         }
     }
 
@@ -1523,6 +1622,68 @@ mod tests {
                 safe_point,
             }
         );
+        assert_eq!(
+            host.handle_request(PageHostRequest::SetDebuggerBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+            }),
+            PageHostReply::DebuggerBreakpointSet {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+            }
+        );
+        // Retries are idempotent and cannot consume a second bounded record.
+        assert_eq!(
+            host.handle_request(PageHostRequest::SetDebuggerBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+            }),
+            PageHostReply::DebuggerBreakpointSet {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+            }
+        );
+        assert_eq!(
+            host.handle_request(PageHostRequest::ListDebuggerBreakpoints {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerBreakpoints {
+                tab_id: 7,
+                document_generation: 1,
+                safe_points: vec![safe_point],
+            }
+        );
+        assert_eq!(
+            host.handle_request(PageHostRequest::ClearDebuggerBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+            }),
+            PageHostReply::DebuggerBreakpointCleared {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+                was_present: true,
+            }
+        );
+        assert_eq!(
+            host.handle_request(PageHostRequest::ClearDebuggerBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+            }),
+            PageHostReply::DebuggerBreakpointCleared {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point,
+                was_present: false,
+            }
+        );
 
         let mut other = document(1, vec![classic(0, "let other = 7;")]);
         other.tab_id = 9;
@@ -1548,6 +1709,17 @@ mod tests {
             }),
             PageHostReply::Synchronized { .. }
         ));
+        assert_eq!(
+            host.handle_request(PageHostRequest::ListDebuggerBreakpoints {
+                tab_id: 7,
+                document_generation: 2,
+            }),
+            PageHostReply::DebuggerBreakpoints {
+                tab_id: 7,
+                document_generation: 2,
+                safe_points: Vec::new(),
+            }
+        );
         assert!(matches!(
             host.handle_request(PageHostRequest::ListDebuggerPrograms {
                 tab_id: 7,
@@ -1570,6 +1742,70 @@ mod tests {
             !reply.contains("answer") && !reply.contains("bytecode") && !reply.contains("Value"),
             "private debugger errors must remain source/value-free"
         );
+    }
+
+    #[test]
+    fn private_debugger_breakpoint_configuration_is_idempotent_and_bounded() {
+        let mut host = BlueJsChildHost::default();
+        let source = (0..=PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
+            .map(|index| format!("let breakpoint_{index} = {index};"))
+            .collect::<String>();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(1, vec![classic(0, &source)]),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+            reply => panic!("expected child debugger program, got {reply:?}"),
+        };
+        let safe_points = match host.handle_request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points,
+            reply => panic!("expected child debugger safe points, got {reply:?}"),
+        };
+        let max = usize::try_from(PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM)
+            .expect("page-host breakpoint cap fits usize");
+        assert!(
+            safe_points.len() > max,
+            "fixture needs one point over the cap"
+        );
+        for safe_point in safe_points.iter().copied().take(max) {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::SetDebuggerBreakpoint {
+                    tab_id: 7,
+                    document_generation: 1,
+                    safe_point,
+                }),
+                PageHostReply::DebuggerBreakpointSet { .. }
+            ));
+        }
+        let overflow = safe_points[max];
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SetDebuggerBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: overflow,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::ResourceLimit,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ListDebuggerBreakpoints {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerBreakpoints { safe_points, .. } if safe_points.len() == max
+        ));
     }
 
     #[test]

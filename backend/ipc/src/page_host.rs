@@ -13,23 +13,26 @@
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
 //!
-//! Version 4 retains the two fixed, core-derived document snapshots consumed
-//! by the child-owned JavaScript bindings and adds the location-only debugger
-//! inventory described below. The transport has no profile or capability
+//! Version 5 retains the two fixed, core-derived document snapshots consumed
+//! by the child-owned JavaScript bindings, the location-only debugger
+//! inventory, and a bounded exact-breakpoint configuration table. The
+//! transport has no profile or capability
 //! selector: every accepted document contains exactly the immutable text and
 //! canonical-origin copies selected by core.
 //! BlueTS stays a child-fixed, direct-lowering profile with no ambient host
 //! typings, compiler option, resolver, or emitted JavaScript crossing this
 //! channel. Apart from the two fixed JavaScript primitive snapshot callbacks,
-//! version 4 exposes only a core-proxied, source-free debugger location
-//! inventory. It has no pause/resume, stack, scope, bytecode, source, runtime
-//! value transport, general host callback, fetch/cache, or client-facing API.
+//! version 5 exposes only a core-proxied, source-free debugger location
+//! inventory and configuration records. Configuration neither pauses nor
+//! executes a child realm. It has no pause/resume, stack, scope, bytecode,
+//! source, runtime value transport, general host callback, fetch/cache, or
+//! client-facing API.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 4;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 5;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -48,6 +51,11 @@ pub const PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES: usize = 4 * 1_024;
 /// by the private debugger-location inventory. It is an immutable child
 /// policy, not a client-provided request limit.
 pub const PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM: u32 = 4_096;
+
+/// Maximum exact breakpoint configuration records retained for one child
+/// realm. The cap is fixed by this private protocol; neither the public
+/// debugger nor page code can grow the child table without bound.
+pub const PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM: u32 = 256;
 
 /// An opaque debugger program identity minted by the isolated child. It is
 /// valid only with the exact tab/document generation supplied by the request;
@@ -69,7 +77,7 @@ impl PageHostDebuggerProgram {
 /// One exact compiler-verified instruction boundary returned without source
 /// text or bytecode. The child validates this complete tuple; it never maps a
 /// caller-supplied nearest offset.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PageHostDebuggerSafePoint {
     pub program: PageHostDebuggerProgram,
     pub code_unit_ordinal: u32,
@@ -263,6 +271,27 @@ pub enum PageHostRequest {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     },
+    /// Stores one exact compiler-verified safe point in the child-owned
+    /// configuration table. It neither executes nor interrupts a realm.
+    SetDebuggerBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    /// Lists the exact child-private breakpoint records for one live realm.
+    /// The core re-mints every program identity before returning it publicly.
+    ListDebuggerBreakpoints {
+        tab_id: u64,
+        document_generation: u64,
+    },
+    /// Removes one exact compiler-verified child-private breakpoint record.
+    /// Removal is idempotent, but the tuple must remain valid for the current
+    /// realm rather than naming a successor or nearest instruction boundary.
+    ClearDebuggerBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     /// Ends the child process after its acknowledgement.
     Shutdown,
     /// A newer request must not be interpreted as an existing operation.
@@ -304,6 +333,22 @@ pub enum PageHostReply {
         tab_id: u64,
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
+    },
+    DebuggerBreakpointSet {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    DebuggerBreakpoints {
+        tab_id: u64,
+        document_generation: u64,
+        safe_points: Vec<PageHostDebuggerSafePoint>,
+    },
+    DebuggerBreakpointCleared {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+        was_present: bool,
     },
     ShutdownAck,
     Error {
@@ -464,6 +509,34 @@ mod tests {
                     bytecode_offset: 4,
                 },
             },
+            PageHostRequest::SetDebuggerBreakpoint {
+                tab_id: 7,
+                document_generation: 3,
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: 11,
+                        program_generation: 13,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                },
+            },
+            PageHostRequest::ListDebuggerBreakpoints {
+                tab_id: 7,
+                document_generation: 3,
+            },
+            PageHostRequest::ClearDebuggerBreakpoint {
+                tab_id: 7,
+                document_generation: 3,
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: 11,
+                        program_generation: 13,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                },
+            },
             PageHostRequest::Shutdown,
             PageHostRequest::Unknown,
         ];
@@ -490,7 +563,7 @@ mod tests {
         write_page_host_reply(&mut writer, &reply).unwrap();
         assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
 
-        let debugger_reply = PageHostReply::DebuggerSafePointValidated {
+        let debugger_reply = PageHostReply::DebuggerBreakpointCleared {
             tab_id: 7,
             document_generation: 3,
             safe_point: PageHostDebuggerSafePoint {
@@ -501,6 +574,7 @@ mod tests {
                 code_unit_ordinal: 0,
                 bytecode_offset: 4,
             },
+            was_present: true,
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();
@@ -590,7 +664,7 @@ mod tests {
     }
 
     #[test]
-    fn version_four_document_requires_the_fixed_core_snapshot() {
+    fn version_five_document_requires_the_fixed_core_snapshot() {
         let mut value = serde_json::to_value(PageHostRequest::SynchronizeDocument {
             document: document(),
         })

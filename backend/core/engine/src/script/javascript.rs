@@ -44,14 +44,30 @@ pub use debugger_support::{
 /// directly; the launcher-supervised child implements only this narrow
 /// discovery/validation surface through its authenticated private transport.
 ///
-/// This trait deliberately excludes breakpoint configuration, pause/resume,
-/// stepping, stacks, scopes, source, bytecode, and runtime values.
+/// The launcher-supervised child supports a bounded, exact breakpoint
+/// configuration table in addition to location discovery. The table neither
+/// pauses nor executes its VM. Pause/resume, stepping, stacks, scopes,
+/// source, bytecode, and runtime values remain excluded.
 pub trait PageJavaScriptDebuggerLocations {
     /// Whether this owner currently has the exact live tab/document realm.
     fn debugger_has_live_realm(&mut self, tab_id: TabId, document_generation: u64) -> bool;
 
     /// Immutable upper bound for one source-free safe-point inventory reply.
     fn max_debugger_safe_points_per_program(&self) -> usize;
+
+    /// Whether this route implements the narrow exact-breakpoint
+    /// configuration table. This is separate from location discovery so a
+    /// transport double cannot cause the public capability report to promise
+    /// an operation it does not implement.
+    fn debugger_breakpoint_configuration_available(&self) -> bool {
+        false
+    }
+
+    /// Immutable upper bound for one source-free breakpoint configuration
+    /// list reply.
+    fn max_debugger_breakpoints_per_realm(&self) -> usize {
+        0
+    }
 
     /// Lists only opaque public-facing program IDs for one live realm.
     fn debugger_programs(
@@ -79,6 +95,44 @@ pub trait PageJavaScriptDebuggerLocations {
         code_unit_ordinal: u32,
         bytecode_offset: u32,
     ) -> Result<(), JavaScriptPageDebuggerError>;
+
+    /// Stores one exact previously-discovered safe point. The operation is
+    /// idempotent and does not imply an interruption or execution transition.
+    fn set_debugger_breakpoint(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _code_unit_ordinal: u32,
+        _bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Lists exact current breakpoint records without source, bytecode, VM,
+    /// or runtime-value data.
+    fn debugger_breakpoints(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerBreakpoint>, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Removes one exact current breakpoint record after revalidating the
+    /// full program-generation and safe-point tuple.
+    fn clear_debugger_breakpoint(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _code_unit_ordinal: u32,
+        _bytecode_offset: u32,
+    ) -> Result<bool, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
 }
 
 /// The maximum number of source-free results retained for core observation.
