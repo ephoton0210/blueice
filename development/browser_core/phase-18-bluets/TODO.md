@@ -564,10 +564,24 @@ or second module resolver to bypass them.
   metadata; static type/symbol lookup requires the exact latest generation.
   `build` returns only bounded in-memory `BuildOutput` and preserves no output
   on compiler errors, so this layer performs no filesystem writes. Registration,
-  static metadata, and build-response limits fail closed. It does not yet
-  register projects through IPC, accept controlled project updates, retain
-  contract/provenance query records, write an authorized output transaction, or
-  expose the service through the debugger/MCP capability layer.
+  static metadata, and build-response limits fail closed.
+
+  IPC foundation delivered: `blueice_ipc::compiler` defines a separately
+  versioned, one-mebibyte-framed native compiler query protocol, and
+  `blueice_engine::compiler_ipc::CompilerServiceIpcAdapter` owns the mapping
+  to the registered service. Its `DescribeProject`, `Check`,
+  `GetStaticType`, and `GetStaticSymbol` requests carry only opaque
+  core-minted project/generation handles. `Check` returns capped work sets,
+  diagnostics, fingerprints, and metadata counts; type/symbol lookup remains
+  exact-generation-bound. Canonical project/config/output roots are never
+  returned, no source or emitted artifact crosses this protocol, and malformed
+  handles, stale generations, oversized frames, and over-budget fields fail
+  closed. A worker may only forward decoded requests over the bounded channel;
+  the adapter owner alone mutates the incremental compiler cache. There is no
+  IPC registration/update request, filesystem loader, resolver/plugin/options
+  extension, output write, core-binary listener, launcher project catalog, or
+  MCP tool yet. Contract/provenance queries and explicit artifact-write
+  elevation remain separate required capabilities.
 
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
   no-emit-on-error guarantee; responses are generation/fingerprint bound,

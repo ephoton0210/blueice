@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 pub mod ai;
+pub mod compiler;
 pub mod debugger;
 pub mod extension;
 pub mod gatekeeper;
@@ -336,9 +337,22 @@ fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
 }
 
 fn read_frame_bytes<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
+    read_frame_bytes_bounded(r, u32::MAX as usize)
+}
+
+/// Reads one framed payload while rejecting an advertised size before it can
+/// allocate. Protocols with independently documented response limits use this
+/// instead of trusting their peer's four-byte length prefix.
+fn read_frame_bytes_bounded<R: Read>(r: &mut R, maximum_bytes: usize) -> io::Result<Vec<u8>> {
     let mut len_bytes = [0u8; 4];
     read_exact_no_progress_loss(r, &mut len_bytes)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
+    if len > maximum_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "framed message exceeds protocol byte limit",
+        ));
+    }
     let mut buf = vec![0u8; len];
     read_exact_no_progress_loss(r, &mut buf)?;
     Ok(buf)

@@ -57,6 +57,14 @@ impl RegisteredProjectId {
     pub fn as_u64(self) -> u64 {
         self.0
     }
+
+    /// Reconstitutes an opaque, core-minted identifier inside this crate for
+    /// an IPC adapter. This is deliberately crate-private: external callers
+    /// receive the ID only as an untrusted wire value and cannot use it to
+    /// register or alter a project.
+    pub(crate) fn from_wire(value: u64) -> Option<Self> {
+        (value != 0).then_some(Self(value))
+    }
 }
 
 /// A core-minted generation for one check or build result.
@@ -76,6 +84,15 @@ impl RegisteredProjectGeneration {
 
     pub fn sequence(self) -> u64 {
         self.sequence
+    }
+
+    /// Reconstitutes a generation only for an engine-internal adapter after
+    /// both opaque wire components have passed their well-formedness checks.
+    pub(crate) fn from_wire(project_id: RegisteredProjectId, sequence: u64) -> Option<Self> {
+        (sequence != 0).then_some(Self {
+            project_id,
+            sequence,
+        })
     }
 }
 
