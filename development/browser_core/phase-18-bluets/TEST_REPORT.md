@@ -18,8 +18,9 @@ The BlueTS language matrix is bounded and versioned (`blue-ts-0.1`); a passing r
 | --- | --- | --- | --- | --- | --- |
 | macOS | 180 pass / 0 fail / 1 ignored | 75 pass / 0 fail / 0 ignored | pass (68 cases) | 93.17% (7,636 / 8,196) | 81.85% (1,804 / 2,204) |
 | Ubuntu | 180 pass / 0 fail / 1 ignored | 75 pass / 0 fail / 0 ignored | pass (68 cases) | 93.17% (7,636 / 8,196) | 81.85% (1,804 / 2,204) |
+| Windows | 178 pass / 0 fail / 1 ignored | 75 pass / 0 fail / 0 ignored | pass (68 cases, `tsc.cmd`) | 93.17% (7,636 / 8,196) | 81.85% (1,804 / 2,204) |
 
-The one ignored `blueice-bluets` test is the TypeScript oracle, which is opt-in and is run explicitly (third column). The suites pass on every platform measured; the crates' line counts and coverage are identical on macOS and Ubuntu.
+The one ignored `blueice-bluets` test is the TypeScript oracle, which is opt-in and is run explicitly (third column). The suites pass on every platform measured; the crates' line counts and coverage are identical on all three platforms. Windows records 2 fewer `blueice-bluets` passes than macOS/Ubuntu (178 vs 180): one test each in `tests/cli.rs` and `tests/coverage_bluets_cli.rs` is `#[cfg(unix)]`-gated (a Unix file-permission case), a pre-existing platform difference unrelated to this measurement round. The Windows TypeScript oracle needs `BLUEICE_BLUETSC_ORACLE` set to `tsc.cmd` rather than the bare `tsc` shim `npm exec` installs elsewhere.
 
 ## Test targets (macOS)
 
@@ -37,11 +38,11 @@ The one ignored `blueice-bluets` test is the TypeScript oracle, which is opt-in 
 | `blueice-bluets` | `tests/typescript_oracle.rs` | 0 | 0 | 1 |
 | `blueice-bluets-bluejs` | `unittests src/lib.rs` | 75 | 0 | 0 |
 
-The target list and counts are the same on the other platforms measured. The `coverage_bluets_*` files are table-driven suites that exercise the crate through its public boundary (the `compile` entry point, the CLI and the test-interface protocol); `cli.rs` and `test_interface.rs` drive the real `bluetsc` and `bluets-test-interface` binaries as subprocesses.
+The target list and counts are the same on Ubuntu; on Windows, `tests/cli.rs` passes 5 (not 6) and `tests/coverage_bluets_cli.rs` passes 17 (not 18) — each is missing one `#[cfg(unix)]`-gated file-permission case, a pre-existing platform difference, not a regression. The `coverage_bluets_*` files are table-driven suites that exercise the crate through its public boundary (the `compile` entry point, the CLI and the test-interface protocol); `cli.rs` and `test_interface.rs` drive the real `bluetsc` and `bluets-test-interface` binaries as subprocesses.
 
 ## TypeScript 5.9.3 compatibility oracle
 
-The oracle (`backend/bluets/tests/typescript_oracle.rs`, ignored by default, enabled with `BLUEICE_BLUETSC_ORACLE=tsc`) runs **68 cases** built from **71 module sources**: **48 compile-and-run cases**, whose BlueTSC-emitted JavaScript is executed and whose stdout must equal the output of the JavaScript TypeScript 5.9.3 emits, and **20 diagnostic-parity cases**, whose expected BlueTS diagnostic code and line must match the code and line TypeScript reports. It runs against Node 24.21.0 and `typescript@5.9.3` installed through `npm exec`, and is also CI's `BlueTSC TypeScript compatibility oracle` job.
+The oracle (`backend/bluets/tests/typescript_oracle.rs`, ignored by default, enabled with `BLUEICE_BLUETSC_ORACLE=tsc`, or `tsc.cmd` on Windows since `npm exec` installs a `.cmd` shim there rather than the bare `tsc` name) runs **68 cases** built from **71 module sources**: **48 compile-and-run cases**, whose BlueTSC-emitted JavaScript is executed and whose stdout must equal the output of the JavaScript TypeScript 5.9.3 emits, and **20 diagnostic-parity cases**, whose expected BlueTS diagnostic code and line must match the code and line TypeScript reports. It runs against Node 24.21.0 and `typescript@5.9.3` installed through `npm exec`, and is also CI's `BlueTSC TypeScript compatibility oracle` job.
 
 Compile-and-run cases: `generic-property`, `optional-default`, `optional-parameter-expression`, `default-parameter-expression`, `optional-record`, `generic-declaration-module`, `generic-constraint-default-declaration-module`, `explicit-generic-call`, `generic-interface-heritage`, `generic-interface-heritage-declaration-module`, `function-overload`, `generic-function-overload`, `default-function-export`, `default-value-export`, `named-value-export`, `boolean-conditional-expression`, `typeof-void-expression`, `nullish-coalescing-expression`, `bitwise-shift-expression`, `exponentiation-expression`, `compound-assignment-expression`, `update-expression`, `comma-sequence-expression`, `array-literal-expression`, `array-spread-expression`, `object-literal-property-expression`, `object-spread-expression`, `template-literal-expression`, `template-substitution-expression`, `property-assignment-expression`, `function-expression-statement`, `function-throw-statement`, `function-braced-if-statement`, `function-braced-else-if-statement`, `object-shorthand-expression`, `string-escape-expression`, `template-escape-expression`, `template-identifier-expression`, `object-literal-key-expression`, `computed-object-property-expression`, `member-call-expression`, `constructor-expression`, `spread-argument-expression`, `rest-parameter-expression`, `property-delete-expression`, `property-update-expression`, `relational-membership-expression`, `generic-arithmetic-expression`.
 
@@ -49,7 +50,7 @@ Diagnostic-parity cases: `arithmetic-operand-error`, `bitwise-operand-error`, `e
 
 ## Line coverage by file
 
-From the workspace `cargo llvm-cov` run on macOS (the per-file lines are identical on Ubuntu).
+From the workspace `cargo llvm-cov` run on macOS (the per-file lines are identical on Ubuntu and Windows).
 
 ### `blueice-bluets`: 93.17% (7,636 / 8,196 lines)
 
@@ -87,7 +88,7 @@ From the workspace `cargo llvm-cov` run on macOS (the per-file lines are identic
 
 ## Windows-specific finding
 
-The Windows CI legs of the merge commit `eaeb5c1` failed in `blueice-engine`: `script::host_typings::tests::current_empty_profile_matches_the_checked_in_artifacts` compared the freshly generated `lib.blueice.d.ts` (LF) with the checked-in artifact, which a Windows checkout with `core.autocrlf=true` had converted to CRLF. Those generated host-typing artifacts are hash-verified and must be byte-identical everywhere, so a root `.gitattributes` now pins `lib.blueice.d.ts`, `lib.blueice.manifest.json` and `backend/core/engine/tests/fixtures/host_typings/**` to `eol=lf`. Because `cargo test` stops at the first failing crate, any later Windows-only failure would have been hidden behind it; the Windows run recorded here uses `--no-fail-fast` on a tree converted to CRLF to reproduce CI's checkout.
+The Windows CI legs of the merge commit `eaeb5c1` failed in `blueice-engine`: `script::host_typings::tests::current_empty_profile_matches_the_checked_in_artifacts` compared the freshly generated `lib.blueice.d.ts` (LF) with the checked-in artifact, which a Windows checkout with `core.autocrlf=true` had converted to CRLF. Those generated host-typing artifacts are hash-verified and must be byte-identical everywhere, so a root `.gitattributes` now pins `lib.blueice.d.ts`, `lib.blueice.manifest.json` and `backend/core/engine/tests/fixtures/host_typings/**` to `eol=lf`. Because `cargo test` stops at the first failing crate, any later Windows-only failure would have been hidden behind it; the Windows run recorded here uses `--no-fail-fast` on a tree converted to CRLF to reproduce CI's checkout. This session's own full Windows run (2026-09-21, `cargo test --workspace --no-fail-fast` on the fixed `.gitattributes`) confirms the fix: both BlueTS crates and the TypeScript oracle pass, with the same line coverage as macOS/Ubuntu (see the summary table above).
 
 ## Reproduce
 
@@ -99,4 +100,4 @@ npm exec --yes --package typescript@5.9.3 -- env BLUEICE_BLUETSC_ORACLE=tsc \
 cargo llvm-cov --workspace --summary-only   # per-file rows for the two crates
 ```
 
-The oracle needs Node 24 and network access to install `typescript@5.9.3`; on Windows set `BLUEICE_BLUETSC_ORACLE=tsc` in the environment instead of using `env`.
+The oracle needs Node 24 and network access to install `typescript@5.9.3`; on Windows set `BLUEICE_BLUETSC_ORACLE=tsc.cmd` in the environment instead of using `env` (`npm exec` installs a `.cmd` shim there, not a bare `tsc`).

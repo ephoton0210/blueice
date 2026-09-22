@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress — `blueice-ecma402` is an independent workspace crate with BlueJS adapters. The complete unfiltered Test262 inventory of 2026-09-21 passes 6,714 / 6,714 (100.000%) `intl402/` modes, including every `intl402/Temporal/` mode (owned by Phase 26), on macOS and Ubuntu (Windows in progress). Phase completion remains gated on the current-public service ledger and no-exclusion 100% host coverage (currently 94.36%); see `CONFORMANCE.md` and `TODO.md`.
+**Status**: In progress — `blueice-ecma402` is an independent workspace crate with BlueJS adapters. The complete unfiltered Test262 inventory of 2026-09-21 passes 6,714 / 6,714 (100.000%) `intl402/` modes, including every `intl402/Temporal/` mode (owned by Phase 26), on macOS, Ubuntu and Windows. Phase completion remains gated on the current-public service ledger and no-exclusion 100% host coverage (currently 93.55%); see `CONFORMANCE.md` and `TODO.md`.
 
 ## Objective
 

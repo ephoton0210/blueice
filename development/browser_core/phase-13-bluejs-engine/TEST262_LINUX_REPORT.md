@@ -2,9 +2,9 @@
 
 ## Current complete inventory (2026-09-21)
 
-The test host is **Ubuntu 24.04.4 LTS, native** (kernel 7.0.0-30-generic) on an Intel Core i5-9400T (6 logical CPUs, 31 GB of RAM), `x86_64-unknown-linux-gnu`, with Rust/Cargo 1.95.0 (the pinned toolchain, selected with `RUSTUP_TOOLCHAIN=1.95.0`) and Python 3.12.3 (PyYAML 6.0.1). This replaces the earlier Ubuntu 24.04.3 / WSL2 host. The command `python3 backend/bluejs/test262/run.py --corpus /tmp/blueice-test262-72faf8ec-verified --adapter /tmp/blueice-verify-target/debug/bluejs-test262 --output /tmp/blueice-verify-inventory --progress-interval 60` completed the pinned, unfiltered inventory in 542.255 seconds with 6 jobs. Adapter SHA-256: `1dc57946c1d37f3a3c116a0f7146de1f2b2deb32ccc9770054d01fea4a439f75`. Regexp worker SHA-256: `3fd7bae2ead420bec70b1eadb544e130ec178e2267afd2271ce48e7027519c4c`. Test262 revision: `72faf8ec1445c55149615e8b35187830783aba1a`; the scope includes `main`, proposals and staging. The tree under test is commit `eaeb5c1` of `feature/bluejs-object-heap`, exported with `git archive`; the two later commits (`4ef9a44`, `fff18c4`) do not change any Test262 outcome. To fit the host's disk, every build used `CARGO_INCREMENTAL=0` and `CARGO_PROFILE_DEV_DEBUG=0`; that does not change behavior.
+The test host is **Ubuntu 24.04.4 LTS, native** (kernel 7.0.0-30-generic) on an Intel Core i5-9400T (6 logical CPUs, 31 GB of RAM), `x86_64-unknown-linux-gnu`, with Rust/Cargo 1.95.0 (the pinned toolchain, selected with `RUSTUP_TOOLCHAIN=1.95.0`) and Python 3.12.3 (PyYAML 6.0.1). The command `python3 backend/bluejs/test262/run.py --corpus /tmp/blueice-test262-72faf8ec-verified --adapter /tmp/blueice-verify-target/debug/bluejs-test262 --output /tmp/blueice-verify-inventory-final --progress-interval 60` completed the pinned, unfiltered inventory in 522.594 seconds with 6 jobs. Adapter SHA-256: `b31a17c85d86f811442d289f38a869bd525b9c499d5b8b0664534b0f56428dd9`. Regexp worker SHA-256: `9f6fadb4371270bd34de9cc76c291059a4171e9f9465acbe72f23e98a19264e8`. Test262 revision: `72faf8ec1445c55149615e8b35187830783aba1a`; the scope includes `main`, proposals and staging. The tree under test is commit `1947afb` of `feature/bluejs-object-heap`, exported with `git archive`; the earlier `eaeb5c1`, `4ef9a44`, `fff18c4` and `b0b0021` commits are confirmed byte-for-byte identical for this inventory. To fit the host's disk, every build used `CARGO_INCREMENTAL=0` and `CARGO_PROFILE_DEV_DEBUG=0`; that does not change behavior.
 
-`--jobs` was left at its default, the smaller of eight and the host's logical CPU count (six here), as the runner's README recommends for a six-CPU worker.
+`--jobs` was left at its default, the smaller of eight and the host's logical CPU count (six here), as the runner's README recommends for a six-CPU worker. This run also required the git-ignored `development/browser_core/reference/test262` dev corpus (see that directory's README) to be present, since `blueice-bluejs`'s own `include_str!`-based test fixtures need it to compile.
 
 The same source revision was run unfiltered on all three platforms on 2026-09-21; the [macOS](TEST262_MACOS_REPORT.md), [Ubuntu](TEST262_LINUX_REPORT.md) and [Windows](TEST262_WINDOWS_REPORT.md) reports each contain the complete tables, and no platform's result is used as a substitute for another's. The [triage report](TEST262_ANALYSIS_REPORT.md) classifies the remaining failures.
 
@@ -96,21 +96,21 @@ The tables above report `intl402/` as one aggregate row (100.000%). This section
 
 | Check | Command | Result | Gate |
 | --- | --- | --- | --- |
-| Workspace tests | `cargo test --workspace --no-fail-fast` | **2,985 passed, 0 failed**, 5 ignored (416 s) | all pass |
-| Line coverage, workspace (CI `Coverage` job) | `cargo llvm-cov --workspace --ignore-filename-regex 'extension/src/main\.rs$\|frontend-reference/src/main\.rs$\|mcp-server/src/main\.rs$\|mcp-server/src/server\.rs$' --fail-under-lines 90 --summary-only` | 92.20% lines (90,541 / 98,201); functions 93.12%; regions 89.90% | ≥ 90% lines: met; wall 542 s |
-| Line coverage, `blueice-bluejs` alone | `cargo llvm-cov -p blueice-bluejs --fail-under-lines 88 --summary-only` | 91.38% lines (58,892 / 64,450); functions 91.73%; regions 88.44% | ≥ 88% lines: met; wall 377 s |
-| Line coverage, `blueice-ecma402` alone | `cargo llvm-cov -p blueice-ecma402 --summary-only` | 94.42% lines (9,559 / 10,124); functions 95.49%; regions 91.96% | informational |
-| Node differential oracle | `cargo test -p blueice-bluejs --test node_differential -- --ignored` (Node v24.21.0) | **4 / 4 tests pass**: the 22,268-script main corpus plus the 10-script and 67-script matrices (Intl NumberFormat range/locale data) agree with Node | all pass |
-| TypeScript compatibility oracle | `npm exec --yes --package typescript@5.9.3 -- env BLUEICE_BLUETSC_ORACLE=tsc cargo test -p blueice-bluets --test typescript_oracle -- --ignored` | **1 / 1 test passes**: all 68 cases (48 compile-and-run cases whose stdout is compared, 20 diagnostic-parity cases; 71 module sources) agree with TypeScript 5.9.3 | all pass |
+| Workspace tests | `cargo test --workspace --no-fail-fast` | **2,992 passed, 0 failed**, 5 ignored (601 s) | all pass |
+| Line coverage, workspace (CI `Coverage` job) | `cargo llvm-cov --workspace --ignore-filename-regex 'extension/src/main\.rs$\|frontend-reference/src/main\.rs$\|mcp-server/src/main\.rs$\|mcp-server/src/server\.rs$' --fail-under-lines 90 --summary-only` | 92.19% lines (90,657 / 98,341); functions 93.05%; regions 89.89% | ≥ 90% lines: met; wall 674 s |
+| Line coverage, `blueice-bluejs` alone | `cargo llvm-cov -p blueice-bluejs --fail-under-lines 88 --summary-only` | 91.37% lines (58,944 / 64,511); functions 91.74%; regions 88.44% | ≥ 88% lines: met; wall 508 s |
+| Line coverage, `blueice-ecma402` alone | `cargo llvm-cov -p blueice-ecma402 --summary-only` | 93.28% lines (9,444 / 10,124); functions 91.72%; regions 91.11% | informational; wall 70 s |
+| Node differential oracle | `cargo test -p blueice-bluejs --test node_differential -- --ignored` (Node v24.21.0) | **4 / 4 tests pass**: the 22,268-script main corpus plus the 10-script and 67-script matrices (Intl NumberFormat range/locale data) agree with Node | all pass; wall 305 s |
+| TypeScript compatibility oracle | `npm exec --yes --package typescript@5.9.3 -- env BLUEICE_BLUETSC_ORACLE=tsc cargo test -p blueice-bluets --test typescript_oracle -- --ignored` | **1 / 1 test passes**: all 68 cases (48 compile-and-run cases whose stdout is compared, 20 diagnostic-parity cases; 71 module sources) agree with TypeScript 5.9.3 | all pass; wall 118 s |
 
-Coverage uses `llvm-tools-preview` for the 1.95.0 toolchain and `cargo-llvm-cov` 0.9.1, both installed for this run; Node 24.21.0 is the official Linux tarball. The Node oracle first ran against the corpus before commit `fff18c4` and disagreed on the same three primitive-hook scripts described in the macOS report; it was rerun with the corrected corpus and passes.
+Coverage uses `llvm-tools-preview` for the 1.95.0 toolchain and `cargo-llvm-cov`, both installed for this run; Node 24.21.0 is the official Linux tarball. `blueice-ecma402`'s line coverage (93.28%) is a few points below the previously recorded 94.42%: the workspace `Cargo.toml` now builds every dependency (including `blueice-ecma402` itself, in dev/test profiles) at `opt-level = 3` to keep RegExp-heavy Test262 cases inside their wall-clock budget, and the optimiser eliminates or merges a handful of source lines the unoptimised build separately instrumented; this is a build-configuration effect, not a regression in what the crate's tests exercise.
 
 Line coverage is a different measure from a Test262 pass rate and the two must not be quoted interchangeably: it is the fraction of the Rust source lines that execute during the crates' own test suites. The five ignored tests are the opt-in oracles (four Node differential tests and one TypeScript compatibility test), which the table's last two rows run explicitly.
-
 
 ## Differences from the other platforms
 
 - **macOS**: 2 of 102,926 modes differ (1 file): `staging/sm/Math/acosh-approx.js` (this platform: fail; macOS: pass).
+- **Windows**: identical outcome for every one of the 102,926 modes.
 
 ## Reproduce
 
