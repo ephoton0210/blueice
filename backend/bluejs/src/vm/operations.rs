@@ -710,19 +710,16 @@ impl Vm {
                     && slot.fract() == 0.0
                     && (slot as usize) < code.bindings.len() =>
             {
-                let slot = slot as usize;
-                let name = &code.bindings[slot].name;
-                if !self.store_dynamic_eval_shadowing_binding(slot, name, value.clone())? {
-                    if self.binding_value(slot)?.is_none() {
-                        return Err(RuntimeError::ReferenceError(name.clone()));
-                    }
-                    if binding_allows_assignment(&code.bindings[slot], code.strict)? {
-                        self.store_binding(slot, value.clone())?;
-                    }
-                }
+                self.assign_binding_slot(code, slot as usize, value.clone(), false)?;
             }
             (Value::Undefined, Value::String(name)) => {
                 let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                // PutValue on an unresolvable Reference: a ReferenceError in
+                // strict code (strict eval inside a function that has a
+                // variable environment object, or inside `with`).
+                if code.strict {
+                    return Err(RuntimeError::ReferenceError(name));
+                }
                 if !self.set_dynamic_eval_binding(&name, value.clone())?
                     && !self.set_global_binding(&name, value.clone())?
                 {

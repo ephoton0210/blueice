@@ -10,7 +10,14 @@ impl Vm {
         slot: usize,
     ) -> Result<Option<Value>, RuntimeError> {
         if let Some(cell) = self.cells.get(&slot) {
-            Ok(self.heap.get_own(*cell, "value")?)
+            let value = self.heap.get_own(*cell, "value")?;
+            if value.is_none() && self.binding_metadata[slot].eval_var {
+                // The eval-created binding was deleted: the name resolves
+                // outward again, as a fresh reference would.
+                let name = self.binding_metadata[slot].name.clone();
+                return self.lookup_global_name(&name);
+            }
+            Ok(value)
         } else {
             Ok(self.bindings[slot].clone())
         }

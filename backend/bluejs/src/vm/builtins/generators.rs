@@ -386,11 +386,13 @@ impl Vm {
         self.stack.push(self.this.clone());
         self.stack.extend(self.arguments.iter().cloned());
         // The resumer's `with` objects stay rooted while the generator's own
-        // are in scope; the frame's stack roots the ones it is resuming with.
+        // are in scope. Both sets sit below the frame's base: everything above
+        // it is the generator's operand stack, which is saved again at the
+        // next yield and must hold only the frame's own operands.
         self.stack.extend(self.with_objects.iter().cloned());
+        self.stack.extend(frame_with_objects.iter().cloned());
         let frame_base = self.stack.len();
         self.stack.extend(frame_stack.iter().cloned());
-        self.stack.extend(frame_with_objects.iter().cloned());
 
         let with_objects = std::mem::replace(&mut self.with_objects, frame_with_objects);
         // The objects the function itself closed over (and its parameter
