@@ -311,7 +311,9 @@ name = "blueice-mcp-server"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "blueice-bluets",
  "blueice-ecma402",
+ "blueice-engine",
  "blueice-ipc",
  "blueice-launcher",
  "blueice-raster",

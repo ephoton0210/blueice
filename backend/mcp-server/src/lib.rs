@@ -3,7 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #[cfg(unix)]
+pub mod compiler;
+
+#[cfg(unix)]
 pub mod server;
+
+#[cfg(unix)]
+pub use compiler::CompilerConnection;
 
 #[cfg(unix)]
 mod unix {

@@ -623,8 +623,25 @@ or second module resolver to bypass them.
   the adapter owner alone mutates the incremental compiler cache. There is no
   IPC registration/update request, filesystem loader, resolver/plugin/options
   extension, output write, core-binary listener, launcher project catalog, or
-  MCP tool yet. Contract/provenance queries and explicit artifact-write
+  project update yet. Contract/provenance queries and explicit artifact-write
   elevation remain separate required capabilities.
+
+  MCP read foundation delivered: `blueice-mcp-server` now has a distinct
+  `CompilerConnection` client and an explicit
+  `BlueIceMcpServer::connect_with_compiler_socket` construction path. After
+  the separate compiler `Hello` negotiation, `bluetsc_check`, `debug_get_type`,
+  and `debug_get_symbol` forward only opaque project/generation/type/symbol
+  handles to the core service. Their JSON output is source-text-free and wraps
+  project-controlled diagnostic prose, identifiers, and type displays as
+  untrusted data. The ordinary browser-only `BlueIceMcpServer::spawn` path has
+  no compiler connection: these tools report a fixed unavailable result and
+  cannot manufacture a local registration or invoke BlueTSC. There is still
+  no `blueice-core` compiler listener or launcher-owned project catalog, no
+  remote registration/update/source/filesystem/resolver/plugin/options
+  authority, no `bluetsc_build`, no artifact/declaration/source-map/source
+  response, and no output write or elevation. The remaining contract,
+  provenance, pagination, capability negotiation, session lifecycle, and
+  full MCP tool set remain open.
 
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
   no-emit-on-error guarantee; responses are generation/fingerprint bound,
