@@ -41,8 +41,9 @@ impl RegExp {
             .iter()
             .map(|&c| char::from_u32(c as u32).unwrap())
             .collect();
-        match crate::regex_worker::compile(source.as_code_units().to_vec(), flags.clone(), timeout)?
-        {
+        let wire_source =
+            crate::regex_escapes::strip_braced_leading_zeros(source.as_code_units(), &flags);
+        match crate::regex_worker::compile(wire_source.to_vec(), flags.clone(), timeout)? {
             crate::regex_worker::Reply::Compiled => {}
             crate::regex_worker::Reply::SyntaxError(message) => {
                 return Err(RuntimeError::SyntaxError(message))
@@ -67,8 +68,12 @@ impl RegExp {
         if let Some(found) = class_escape_find(&self.source, &self.flags, string, start) {
             return Ok(found);
         }
+        let wire_source = crate::regex_escapes::strip_braced_leading_zeros(
+            self.source.as_code_units(),
+            &self.flags,
+        );
         crate::regex_worker::find(
-            self.source.as_code_units().to_vec(),
+            wire_source.into_owned(),
             self.flags.clone(),
             string.as_code_units().to_vec(),
             start,

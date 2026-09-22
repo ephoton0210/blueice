@@ -117,6 +117,28 @@ in fifteen calendars (about 240,000 dispatches at minimum). The list is exact
 and pinned by `test_runner.py`; a neighbouring fixture keeps the default, and an
 unbounded loop still exhausts the allowance.
 
+Four finite `staging/sm` fixtures need more than the default per-string
+(1 MiB), managed-heap (16 MiB, which also caps an ArrayBuffer), dispatch or
+wall-clock ceiling and have exact-path allowances in `LARGE_FIXTURE_RESOURCES`
+("Large finite fixtures" below): every value is 3-4x the measured minimum on the
+optimised adapter and never unlimited, `test_runner.py` pins the table and
+that a neighbouring or same-named path keeps every default, and a larger
+caller-supplied default is never reduced.
+
+| Fixture | Real size (measured minimum) | Allowance |
+| --- | --- | --- |
+| `extensions/dataview.js` | `new ArrayBuffer(20 * 1024 * 1024)`; heap 21 MiB | heap 64 MiB |
+| `RegExp/unicode-braced.js`, `RegExp/unicode-class-braced.js` | a 2**24-zero braced escape in a regular expression built by eval and by `RegExp`; 32 MiB strings, heap 36 MiB, about 2.2 s idle (3-4 s under the runner) | string 128 MiB, heap 128 MiB, 20 s |
+| `regress/regress-610026.js` | eval of 2**21, about 2**22 and about 2**22 empty blocks; 16 MiB strings, heap 36 MiB, 20-30 million dispatches, about 25 s per mode | string 64 MiB, heap 128 MiB, 100,000,000 dispatches, 90 s |
+
+The regular-expression pair also depends on the matcher request being small:
+`strip_braced_leading_zeros` removes runs of leading zeros of a braced escape
+(with the `u` or `v` flag) before a pattern goes to the matcher process, whose
+requests are capped at 16 MiB. `staging/sm/JSON/parse-mega-huge-array.js` is
+not on this list on purpose: a 2**21-element array costs more than 128 MiB of
+managed heap (index properties are individually accounted), so it needs an
+array-storage change, not a limit.
+
 Each supervising worker owns a process group. A whole-case timeout or adapter crash kills and reaps that group, including a regex child, before the next case creates a replacement. Regex operations additionally have their own engine-level deadline. Transport uses nonblocking bounded IO, so a blocked pipe does not disable the case deadline.
 
 The checked-in [summary](../../../development/browser_core/phase-13-bluejs-engine/test262-summary.json) records the current complete inventory. Full passing conformance, complete host hooks, the remaining ECMA-402 constructors, and unsupported language/API subsystems remain open work.

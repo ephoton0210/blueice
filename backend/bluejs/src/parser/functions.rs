@@ -94,6 +94,8 @@ impl Parser {
         is_async: bool,
         is_declaration: bool,
     ) -> Result<Function, ParseError> {
+        // The caller has consumed `function`, and before it `async`.
+        let start = self.previous_token_start(1 + usize::from(is_async));
         let generator = self.eat_punct(Punct::Star);
         if matches!(self.peek(), Token::Invalid(message) if message.contains("unexpected character '#'"))
         {
@@ -141,7 +143,7 @@ impl Parser {
         if !self.check_punct(Punct::LParen) {
             return Err(self.syntax_error("a function parameter list must begin with '('"));
         }
-        let function = self.parse_method_function(name, generator, is_async)?;
+        let mut function = self.parse_method_function(name, generator, is_async)?;
         // The BindingIdentifier belongs to the function code, so a Use Strict
         // Directive in the body makes the name strict retroactively.
         if !self.strict
@@ -158,6 +160,7 @@ impl Parser {
         {
             return Err(self.syntax_error("a normal function cannot contain super"));
         }
+        function.source_text = self.source_text_from(start);
         Ok(function)
     }
 
@@ -201,13 +204,19 @@ impl Parser {
     /// A MethodDefinition's function (object literal or class, including
     /// generator, async and accessor forms). Its parameters are
     /// UniqueFormalParameters: no name repeats, even in sloppy code.
+    ///
+    /// `start` is the character offset of the MethodDefinition's first token
+    /// (`get`, `set`, `async`, `*` or the property name, the `static` of a
+    /// class element excluded): the method's source text runs from there.
     pub(super) fn parse_method_definition(
         &mut self,
         name: Option<String>,
         generator: bool,
         is_async: bool,
+        start: usize,
     ) -> Result<Function, ParseError> {
-        let function = self.parse_method_function(name, generator, is_async)?;
+        let mut function = self.parse_method_function(name, generator, is_async)?;
+        function.source_text = self.source_text_from(start);
         let mut names = std::collections::HashSet::new();
         for param in &function.params {
             for name in super::module::pattern_bound_names(&param.pattern) {
@@ -260,6 +269,7 @@ impl Parser {
             body: body?,
             generator,
             is_async,
+            source_text: SourceText::default(),
         })
     }
 
@@ -279,21 +289,23 @@ impl Parser {
         body
     }
 
+    /// A class whose `class` keyword the caller has just consumed.
     pub(super) fn parse_class(&mut self) -> Result<Class, ParseError> {
-        self.with_in_allowed(Self::parse_class_strict)
+        let start = self.previous_token_start(1);
+        self.with_in_allowed(|parser| parser.parse_class_strict(start))
     }
 
-    fn parse_class_strict(&mut self) -> Result<Class, ParseError> {
+    fn parse_class_strict(&mut self, start: usize) -> Result<Class, ParseError> {
         // Every part of a ClassDefinition, including the heritage expression,
         // is parsed in strict mode. Preserve the caller's grammar context so
         // a nested class does not leak strictness into its surrounding script.
         let outer_strict = std::mem::replace(&mut self.strict, true);
-        let class = self.parse_class_definition();
+        let class = self.parse_class_definition(start);
         self.strict = outer_strict;
         class
     }
 
-    fn parse_class_definition(&mut self) -> Result<Class, ParseError> {
+    fn parse_class_definition(&mut self, start: usize) -> Result<Class, ParseError> {
         let name = match self.peek() {
             Token::Identifier(name) if name != "extends" => {
                 let name = self.expect_identifier_name()?;
@@ -355,6 +367,8 @@ impl Parser {
             if is_static {
                 self.advance();
             }
+            // A method's source text starts here: `static` is not part of it.
+            let element_start = self.token_start();
             if is_static && self.check_punct(Punct::LBrace) {
                 if !decorators.is_empty() {
                     return Err(self.syntax_error("a class static block cannot be decorated"));
@@ -482,7 +496,12 @@ impl Parser {
                 });
                 continue;
             }
-            let function = self.parse_method_definition(Some(method_name), generator, is_async)?;
+            let function = self.parse_method_definition(
+                Some(method_name),
+                generator,
+                is_async,
+                element_start,
+            )?;
             let constructor = accessor.is_none()
                 && !is_static
                 && !matches!(&key, PropertyKey::Computed(_))
@@ -549,6 +568,7 @@ impl Parser {
             extends,
             elements,
             decorators: Vec::new(),
+            source_text: self.source_text_from(start),
         })
     }
 
@@ -603,10 +623,13 @@ impl Parser {
     }
 
     /// A class that follows already-parsed decorators: `class` itself, then
-    /// the rest of the definition. The decorators are stored on the class.
+    /// the rest of the definition. The decorators are stored on the class, and
+    /// its source text starts at the first of them (`start`, the character
+    /// offset where the decorator list began).
     pub(super) fn parse_decorated_class(
         &mut self,
         decorators: Vec<Expr>,
+        start: usize,
     ) -> Result<Class, ParseError> {
         if !matches!(self.peek(), Token::Identifier(name) if name == "class")
             || self.current_identifier_escaped()
@@ -618,6 +641,7 @@ impl Parser {
         self.advance();
         let mut class = self.parse_class()?;
         class.decorators = decorators;
+        class.source_text = self.source_text_from(start);
         Ok(class)
     }
 
@@ -668,7 +692,8 @@ impl Parser {
             | Token::PrivateIdentifier(_)
             | Token::Keyword(_)
             | Token::String(_)
-            | Token::Number(_) => {
+            | Token::Number(_)
+            | Token::BigInt(_) => {
                 matches!(self.peek_at(2), Token::Punct(Punct::LParen))
             }
             _ => false,
@@ -806,17 +831,21 @@ impl Parser {
     /// exists for, since the token stream is fully materialized up
     /// front rather than a lazy/streaming lexer.
     pub(super) fn try_parse_arrow_function(&mut self) -> Result<Option<Expr>, ParseError> {
+        let start = self.token_start();
         if self.async_arrow_follows() {
             self.require_unescaped_async()?;
             self.advance();
-            return self.try_parse_arrow_function_with_async(true);
+            return self.try_parse_arrow_function_with_async(true, start);
         }
-        self.try_parse_arrow_function_with_async(false)
+        self.try_parse_arrow_function_with_async(false, start)
     }
 
+    /// `start` is where the arrow function's own text begins: its first
+    /// parameter token or the `async` in front of it.
     pub(super) fn try_parse_arrow_function_with_async(
         &mut self,
         is_async: bool,
+        start: usize,
     ) -> Result<Option<Expr>, ParseError> {
         if let Token::Identifier(name) = self.peek().clone() {
             if matches!(self.peek_at(1), Token::Punct(Punct::Arrow)) {
@@ -844,6 +873,7 @@ impl Parser {
                     params,
                     body,
                     is_async,
+                    source_text: self.source_text_from(start),
                 }));
             }
         }
@@ -872,6 +902,7 @@ impl Parser {
                         params,
                         body,
                         is_async,
+                        source_text: self.source_text_from(start),
                     }));
                 }
             }

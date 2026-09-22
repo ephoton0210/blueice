@@ -139,6 +139,7 @@ fn compiler_reports_public_ast_boundaries_without_panicking() {
         body: Vec::new(),
         generator: true,
         is_async: false,
+        source_text: Default::default(),
     });
     assert!(matches!(
         compile(&expression_program(generator)),
@@ -199,6 +200,7 @@ fn compiler_reports_public_ast_boundaries_without_panicking() {
             extends: None,
             elements: Vec::new(),
             decorators: Vec::new(),
+            source_text: Default::default(),
         }))]
     })
     .is_ok());
@@ -314,6 +316,7 @@ fn arrow_body_ast_remains_a_function_boundary() {
             arg: Box::new(Expr::Number(0.0)),
         })),
         is_async: false,
+        source_text: Default::default(),
     };
     assert!(compile(&expression_program(arrow)).is_ok());
 }

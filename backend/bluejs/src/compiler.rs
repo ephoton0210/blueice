@@ -1290,8 +1290,7 @@ fn auto_accessor_functions(index: usize, name: Option<&str>) -> (Function, Funct
         name: name.map(|name| format!("get {name}")),
         params: Vec::new(),
         body: vec![Stmt::Return(Some(storage.clone()))],
-        generator: false,
-        is_async: false,
+        ..Function::default()
     };
     let setter = Function {
         name: name.map(|name| format!("set {name}")),
@@ -1305,8 +1304,7 @@ fn auto_accessor_functions(index: usize, name: Option<&str>) -> (Function, Funct
             target: Box::new(storage),
             value: Box::new(Expr::Identifier("value".into())),
         })],
-        generator: false,
-        is_async: false,
+        ..Function::default()
     };
     (getter, setter)
 }

@@ -839,6 +839,14 @@ impl Compiler {
                 } else {
                     self.constant(Value::Undefined)?;
                 }
+                if self.bytecode.async_function {
+                    // Yield(value) in an async generator is
+                    // AsyncGeneratorYield(? Await(value)): the operand is
+                    // awaited here, in the body, so a rejection is thrown at
+                    // the `yield` and the yielded result is delivered without
+                    // a further await.
+                    self.emit(Opcode::Await, 0)?;
+                }
                 self.emit(Opcode::Yield, 0)?;
             }
             Expr::Await(expression) => {
@@ -870,6 +878,7 @@ impl Compiler {
                 params,
                 body,
                 is_async,
+                source_text,
             } => {
                 let body = match body {
                     ArrowBody::Expr(expr) => vec![Stmt::Return(Some(*expr.clone()))],
@@ -882,6 +891,7 @@ impl Compiler {
                         body,
                         generator: false,
                         is_async: *is_async,
+                        source_text: source_text.clone(),
                     },
                     true,
                 )?;

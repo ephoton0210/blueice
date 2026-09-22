@@ -394,12 +394,28 @@ pub(crate) enum AsyncGeneratorCompletion {
     Next(Value),
     Return(Value),
     Throw(Value),
+    /// A `return(value)` request whose operand has been awaited, as
+    /// AsyncGeneratorUnwrapYieldResumption does for a generator suspended at a
+    /// `yield`. It is forwarded to an active `yield*` delegate, if any.
+    ReturnAwaited(Value),
+    /// A return completion that is injected into the generator as is: the
+    /// `yield*` delegate had no `return` method and the operand was awaited
+    /// a second time.
+    ResumeReturn(Value),
+    /// The throw that a rejected second await of a `yield*` return raises at
+    /// the `yield*` itself (it is not forwarded to the delegate).
+    ResumeThrow(Value),
 }
 
 impl AsyncGeneratorCompletion {
     fn references(&self) -> impl Iterator<Item = ObjectId> + '_ {
         match self {
-            Self::Next(value) | Self::Return(value) | Self::Throw(value) => value.object_id(),
+            Self::Next(value)
+            | Self::Return(value)
+            | Self::Throw(value)
+            | Self::ReturnAwaited(value)
+            | Self::ResumeReturn(value)
+            | Self::ResumeThrow(value) => value.object_id(),
         }
         .into_iter()
     }
@@ -454,7 +470,10 @@ impl AsyncGeneratorControl {
                 .map(|request| match &request.completion {
                     AsyncGeneratorCompletion::Next(value)
                     | AsyncGeneratorCompletion::Return(value)
-                    | AsyncGeneratorCompletion::Throw(value) => value.payload_bytes(),
+                    | AsyncGeneratorCompletion::Throw(value)
+                    | AsyncGeneratorCompletion::ReturnAwaited(value)
+                    | AsyncGeneratorCompletion::ResumeReturn(value)
+                    | AsyncGeneratorCompletion::ResumeThrow(value) => value.payload_bytes(),
                 })
                 .sum::<usize>()
     }

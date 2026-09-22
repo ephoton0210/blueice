@@ -146,6 +146,7 @@ fn tokenize_all(tokenizer: &mut Tokenizer) -> (Vec<SpannedToken>, Vec<usize>) {
             Err(error) => {
                 tokens.push(SpannedToken {
                     token: Token::Invalid(error.message),
+                    start: tokenizer.position(),
                     newline_before: false,
                     identifier_escaped: false,
                     legacy_octal_escape: false,
@@ -154,6 +155,7 @@ fn tokenize_all(tokenizer: &mut Tokenizer) -> (Vec<SpannedToken>, Vec<usize>) {
                 positions.push(tokenizer.position());
                 tokens.push(SpannedToken {
                     token: Token::Eof,
+                    start: tokenizer.position(),
                     newline_before: false,
                     identifier_escaped: false,
                     legacy_octal_escape: false,
@@ -361,11 +363,18 @@ struct Parser {
     strict: bool,
     function_depth: u32,
     static_block_function_depths: Vec<u32>,
+    /// The whole text being parsed. Every function and class parsed from it
+    /// records its own range of this text (see [`SourceText`]).
+    source: std::sync::Arc<str>,
+    /// The byte offset of each character of `source` (and of its end), for
+    /// mapping the tokenizer's character offsets to `source` byte ranges.
+    /// `None` for ASCII text, where the two are the same.
+    char_to_byte: Option<Vec<u32>>,
 }
 
 impl Parser {
     fn new(source: &str) -> Parser {
-        Self::from_tokenizer(Tokenizer::new(source))
+        Self::from_tokenizer(Tokenizer::new(source), source)
     }
 
     /// A parser over complete Script source text, the only place a Hashbang
@@ -374,17 +383,26 @@ impl Parser {
     fn new_script(source: &str) -> Parser {
         let mut tokenizer = Tokenizer::new(source);
         tokenizer.skip_hashbang();
-        Self::from_tokenizer(tokenizer)
+        Self::from_tokenizer(tokenizer, source)
     }
 
     fn new_module(source: &str) -> Parser {
         let mut tokenizer = Tokenizer::new_module(source);
         tokenizer.skip_hashbang();
-        Self::from_tokenizer(tokenizer)
+        Self::from_tokenizer(tokenizer, source)
     }
 
-    fn from_tokenizer(mut tokenizer: Tokenizer) -> Parser {
+    fn from_tokenizer(mut tokenizer: Tokenizer, source: &str) -> Parser {
         let (tokens, positions) = tokenize_all(&mut tokenizer);
+        // The tokenizer counts characters; a source range counts bytes.
+        let char_to_byte = (!source.is_ascii()).then(|| {
+            source
+                .char_indices()
+                .map(|(offset, _)| offset)
+                .chain([source.len()])
+                .map(|offset| u32::try_from(offset).unwrap_or(u32::MAX))
+                .collect()
+        });
         Parser {
             tokens,
             positions,
@@ -398,7 +416,40 @@ impl Parser {
             strict: false,
             function_depth: 0,
             static_block_function_depths: Vec::new(),
+            source: source.into(),
+            char_to_byte,
         }
+    }
+
+    /// Where the current token starts, as a character offset into the source.
+    fn token_start(&self) -> usize {
+        self.tokens[self.pos].start
+    }
+
+    /// Where the token before the current one starts. Only meaningful for a
+    /// token that was really consumed: a RegExp or tagged template literal
+    /// leaves no token of its own behind.
+    fn previous_token_start(&self, back: usize) -> usize {
+        self.tokens[self.pos - back].start
+    }
+
+    /// The source text from the character offset `start` up to the end of the
+    /// last token consumed: the text of the function or class just parsed.
+    ///
+    /// The end is the tokenizer position before the current token's leading
+    /// whitespace and comments (`positions[pos]`), which unlike the previous
+    /// token's end is right even when the last thing consumed was a RegExp or
+    /// tagged template, which the parser scans outside the token stream.
+    fn source_text_from(&self, start: usize) -> SourceText {
+        if self.source.len() > u32::MAX as usize {
+            return SourceText::default();
+        }
+        let end = self.positions[self.pos];
+        let to_byte = |offset: usize| match &self.char_to_byte {
+            Some(offsets) => offsets[offset] as usize,
+            None => offset,
+        };
+        SourceText::range(&self.source, to_byte(start), to_byte(end))
     }
 
     fn rescan_suffix(&mut self) {
