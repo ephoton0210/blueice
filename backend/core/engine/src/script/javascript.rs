@@ -90,6 +90,32 @@ pub enum JavaScriptPageExecutionReport {
     },
 }
 
+/// The session-facing lifecycle surface shared by explicitly selected
+/// JavaScript page hosts.
+///
+/// It deliberately exposes only document synchronization and source-free
+/// report draining. The in-process executor and the launcher-supervised child
+/// executor may both implement it, but a session selects at most one owner for
+/// a page at a time.
+pub trait PageJavaScriptExecutor {
+    /// Synchronizes current tab/document state and records bounded source-free
+    /// execution results.
+    fn synchronize_and_execute(&mut self, tabs: &TabManager) -> io::Result<()>;
+
+    /// Drains one tab's reports without exposing or consuming another tab's
+    /// records.
+    fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport>;
+
+    /// Returns the in-process program registry when this executor owns one.
+    ///
+    /// A remote child host intentionally has no core-visible BlueJS registry,
+    /// so debugger requests remain unavailable on that route rather than
+    /// crossing the process boundary through an unreviewed introspection API.
+    fn debugger_executor(&mut self) -> Option<&mut JavaScriptPageExecutor> {
+        None
+    }
+}
+
 /// The core-only context supplied when authorizing an external JavaScript
 /// declaration. Both URLs are untrusted page input until the authorizer has
 /// enforced its own origin, CSP, integrity, fetch/cache, and resource policy.
@@ -824,6 +850,22 @@ impl JavaScriptPageExecutor {
 impl Default for JavaScriptPageExecutor {
     fn default() -> Self {
         Self::new().expect("default JavaScript page executor configuration is valid")
+    }
+}
+
+impl PageJavaScriptExecutor for JavaScriptPageExecutor {
+    fn synchronize_and_execute(&mut self, tabs: &TabManager) -> io::Result<()> {
+        Self::synchronize_and_execute(self, tabs).map_err(|error| {
+            io::Error::other(format!("inline JavaScript execution failed: {error}"))
+        })
+    }
+
+    fn drain_reports_for_tab(&mut self, tab_id: TabId) -> Vec<JavaScriptPageExecutionReport> {
+        Self::drain_reports_for_tab(self, tab_id)
+    }
+
+    fn debugger_executor(&mut self) -> Option<&mut JavaScriptPageExecutor> {
+        Some(self)
     }
 }
 
