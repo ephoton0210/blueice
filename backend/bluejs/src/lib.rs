@@ -78,8 +78,9 @@ pub use compiler::{
 };
 pub use heap::{Heap, HeapConfig, HeapError, HeapStats, RootId};
 pub use page_runtime::{
-    BlueJsHostBindingRegistrar, BlueJsPageOrigin, BlueJsPageRealmStats, BlueJsPageRuntime,
-    BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BLUEJS_PAGE_RUNTIME_ABI_V1,
+    BlueJsHostBindingRegistrar, BlueJsPageDebuggerExecutionState, BlueJsPageOrigin,
+    BlueJsPageRealmStats, BlueJsPageRuntime, BlueJsPageRuntimeConfig, BlueJsPageRuntimeError,
+    BLUEJS_PAGE_RUNTIME_ABI_V1,
 };
 pub(crate) use parser::parse_eval;
 pub use parser::{parse, parse_module, ParseError};
@@ -92,4 +93,7 @@ pub use program_debug::{
 pub use property::{JsSymbol, PropertyDescriptor, PropertyName};
 pub use string::JsString;
 pub use value::{ObjectId, Value};
-pub use vm::{HostFunction, HostFunctionError, HostObject, HostValue, RuntimeError, Vm, VmConfig};
+pub use vm::{
+    HostFunction, HostFunctionError, HostObject, HostValue, RuntimeError, Vm, VmConfig,
+    VmDebuggerExecutionState,
+};

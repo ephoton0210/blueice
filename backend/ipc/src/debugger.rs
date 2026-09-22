@@ -9,7 +9,7 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-entry pause/resume seam. A host must report every operation as
+//! and an opt-in root-code-unit pause/resume seam. A host must report every operation as
 //! [`DebuggerCapabilityState::Available`] only after it implements the native
 //! behavior; a configured breakpoint is not evidence that pause, stack,
 //! scope, or value inspection already exists.
@@ -20,7 +20,7 @@ use std::io::{self, Read, Write};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 4;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 5;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -193,6 +193,14 @@ pub enum DebuggerRequest {
     ArmEntryBreakpoint {
         safe_point: DebuggerSafePoint,
     },
+    /// Arms one exact root-code-unit safe point for a pending classic script.
+    /// Unlike `SetBreakpoint`, this starts the script and retains a real
+    /// BlueJS continuation when the requested non-entry boundary is reached.
+    /// It rejects modules and child code units rather than claiming generic
+    /// interpreter interruption.
+    ArmRootSafePointBreakpoint {
+        safe_point: DebuggerSafePoint,
+    },
     /// Lists only exact breakpoint records currently retained by one live
     /// realm. The records carry no source, bytecode, VM object, or value.
     ListBreakpoints {
@@ -238,6 +246,9 @@ pub enum DebuggerReply {
         safe_point: DebuggerSafePoint,
     },
     BreakpointArmed {
+        safe_point: DebuggerSafePoint,
+    },
+    RootSafePointBreakpointArmed {
         safe_point: DebuggerSafePoint,
     },
     Breakpoints(Vec<DebuggerSafePoint>),
@@ -300,6 +311,7 @@ pub fn negotiate(request: &DebuggerRequest) -> DebuggerReply {
         | DebuggerRequest::ValidateSafePoint { .. }
         | DebuggerRequest::SetBreakpoint { .. }
         | DebuggerRequest::ArmEntryBreakpoint { .. }
+        | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
         | DebuggerRequest::ListBreakpoints { .. }
         | DebuggerRequest::ClearBreakpoint { .. }
         | DebuggerRequest::GetExecutionState { .. }
@@ -394,6 +406,17 @@ mod tests {
                     bytecode_offset: 0,
                 },
             },
+            DebuggerRequest::ArmRootSafePointBreakpoint {
+                safe_point: DebuggerSafePoint {
+                    program: DebuggerProgram {
+                        realm: realm(),
+                        program_handle: 12,
+                        program_generation: 5,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 5,
+                },
+            },
             DebuggerRequest::ListBreakpoints { realm: realm() },
             DebuggerRequest::ClearBreakpoint {
                 safe_point: DebuggerSafePoint {
@@ -466,6 +489,7 @@ mod tests {
             DebuggerReply::SafePointValidated { safe_point },
             DebuggerReply::BreakpointSet { safe_point },
             DebuggerReply::BreakpointArmed { safe_point },
+            DebuggerReply::RootSafePointBreakpointArmed { safe_point },
             DebuggerReply::Breakpoints(vec![safe_point]),
             DebuggerReply::BreakpointCleared {
                 safe_point,

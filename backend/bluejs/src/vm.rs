@@ -23,6 +23,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 mod builtins;
+mod debugger;
 mod errors;
 mod execution;
 mod functions;
@@ -37,6 +38,8 @@ mod shadow_realm;
 mod temporal;
 mod test262;
 mod test262_agents;
+use debugger::DebuggerContinuation;
+pub use debugger::VmDebuggerExecutionState;
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -339,6 +342,8 @@ enum InterpreterExit {
     },
     Suspend {
         pc: usize,
+        iterators: Vec<Value>,
+        handlers: Vec<HandlerFrame>,
     },
     /// An async execution context reaches an Await expression. Its execution
     /// context is moved into a continuation before the next Promise job turn
@@ -848,6 +853,11 @@ pub struct Vm {
     /// Annex B legacy static properties of this realm's `%RegExp%`.
     regexp_legacy: crate::regexp::LegacyStatics,
     result_root: Option<RootId>,
+    /// A deliberately narrow debugger-owned root-script continuation. It is
+    /// installed only at a compiler-verified root-code-unit instruction
+    /// boundary and keeps the active frame out of every ordinary execution
+    /// entry point until it is resumed or the VM is dropped.
+    debugger_continuation: Option<DebuggerContinuation>,
     stack: Vec<Value>,
     // None is a lexical binding's uninitialized state, never JS undefined.
     bindings: Vec<Option<Value>>,
@@ -1163,6 +1173,7 @@ impl Vm {
             typed_array_intrinsics: None,
             regexp_legacy: crate::regexp::LegacyStatics::default(),
             result_root: None,
+            debugger_continuation: None,
             stack: Vec::new(),
             bindings: Vec::new(),
             binding_metadata: Vec::new(),
@@ -1511,6 +1522,7 @@ impl Vm {
         entry: &str,
         modules: &HashMap<String, Bytecode>,
     ) -> Result<Value, RuntimeError> {
+        self.ensure_no_debugger_continuation()?;
         self.execute_module_graph_inner(entry, modules, true, false, ImportPhase::Evaluation)
     }
 }

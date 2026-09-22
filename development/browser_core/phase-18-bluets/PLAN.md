@@ -142,7 +142,7 @@ The initial implementation completes the work that has no BlueJS dependency befo
   returns at most 128 loaded tab/document-generation identities, with no URL,
   source, program, bytecode, or runtime value; an over-cap list fails closed.
   With a selected live `--inline-bluejs` executor, the session additionally
-  serves `ListPrograms`, bounded `ListSafePoints`, `ValidateSafePoint`, and v4
+  serves `ListPrograms`, bounded `ListSafePoints`, `ValidateSafePoint`, and v5
   `SetBreakpoint`/`ListBreakpoints`/`ClearBreakpoint` from the exact tab-owned
   BlueJS registry. These return or retain opaque core-minted program IDs and
   instruction-boundary tuples only; they reject wrong tab, realm, program
@@ -151,13 +151,18 @@ The initial implementation completes the work that has no BlueJS dependency befo
   `BreakpointConfiguration` capability are available only at that live seam;
   the latter is an idempotent bounded table cleared at realm replacement, not
   a general VM interruption mechanism. With both `--inline-bluejs` and the
-  debugger socket, v4 also offers `ArmEntryBreakpoint`, `GetExecutionState`,
-  and `ResumeExecution` for a pending declaration's exact root instruction-
-  zero boundary. It pauses before VM bytecode begins and resumes through the
-  same owner-session scheduler, exposing no source, bytecode, stack, scope,
-  object, or completion value. Step, arbitrary safe-point interruption,
-  exception, and runtime-value features remain planned. The real-process
-  regression verifies the transport, lifecycle, and stale-target routes.
+  debugger socket, v5 also offers `ArmRootSafePointBreakpoint`,
+  `GetExecutionState`, and `ResumeExecution` for a pending classic
+  declaration's exact root-code-unit boundary; `ArmEntryBreakpoint` remains
+  the zero-offset compatibility form. A non-entry arm runs BlueJS to that
+  exact compiler-verified boundary and retains the root interpreter frame
+  (operand stack, bindings, scopes, handlers, iterators, completion state,
+  and GC roots) until the owner-session scheduler resumes it. It exposes no
+  source, bytecode, stack, scope, object, or completion value. Modules,
+  top-level await, child function code units, re-arming/loop hits, stepping,
+  arbitrary nested-frame interruption, exception, and runtime-value features
+  remain planned. The real-process regression verifies transport, lifecycle,
+  stale-target, and same-frame pause/resume routes.
 - A parsed `Page` now discovers the explicit non-portable `application/x-blueice-typescript` and `application/x-blueice-typescript-module` declarations in document order, retaining inline source or an external `src` as data. It never grants loading authority or evaluates them: a future page loader must apply origin, feature-profile, integrity, resolver, and resource policy before assembling the `AuthorizedModuleLoader` for direct admission.
 - As a deliberately bounded normal-page fixture seam, `DirectPageScriptHost::execute_inline` may admit one inline declaration only. It derives a canonical module ID from core tab/document-generation/declaration identities and creates a one-module closed loader, so it neither embeds caller text in an identity nor reads an external source. `DirectPageInlineExecutor` can invoke that seam automatically only when a core owner explicitly selects it. By default it rejects and reports external `src` without reflecting the page-controlled URL; `PageScriptSourceAuthorizer` is the sole optional core-owned authority that can turn that declaration into a supplied closed graph plus resolver fingerprint. The executor never fetches, resolves, or falls back itself. A real fetch/cache/integrity implementation and remaining host bindings remain open.
 - The out-of-process portion now has a deliberately narrow shared-realm

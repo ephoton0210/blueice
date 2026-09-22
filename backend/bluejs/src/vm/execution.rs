@@ -100,6 +100,24 @@ impl Vm {
         publish_globals: bool,
         module: bool,
     ) -> Result<Value, RuntimeError> {
+        self.prepare_root_execution(code, module)?;
+        if publish_globals {
+            self.prepare_global_declarations(code)?;
+        }
+        let result = self.run(code);
+        self.finish_root_execution(result)
+    }
+
+    /// Initializes an outer script/module execution context. The native
+    /// debugger continuation owns this exact context while paused, so another
+    /// public execution entry must fail closed rather than replacing its
+    /// bindings, operand stack, or remaining instruction budget.
+    pub(super) fn prepare_root_execution(
+        &mut self,
+        code: &Bytecode,
+        module: bool,
+    ) -> Result<(), RuntimeError> {
+        self.ensure_no_debugger_continuation()?;
         if let Some(root) = self.result_root.take() {
             self.heap.unroot(root)?;
         }
@@ -125,15 +143,23 @@ impl Vm {
         self.dynamic_eval_bindings.clear();
         self.eval_dynamic_slots.clear();
         self.dynamic_eval_outer_bindings.clear();
-        if publish_globals {
-            self.prepare_global_declarations(code)?;
-        }
         // `this` lazily materializes the realm global only when script code
         // actually observes it. This keeps data-only executions within small
         // heap configurations while preserving script and arrow semantics.
         self.this = Value::Undefined;
         self.class_field_initializer = false;
-        let result = self.run(code).and_then(|value| {
+        Ok(())
+    }
+
+    /// Finishes the outer script/module execution context initialized by
+    /// [`Self::prepare_root_execution`]. It deliberately mirrors the normal
+    /// public execution cleanup so a debugger-resumed script cannot retain
+    /// frame-local roots, lexical bindings, or WeakRef keep-alive state.
+    pub(super) fn finish_root_execution(
+        &mut self,
+        result: Result<Value, RuntimeError>,
+    ) -> Result<Value, RuntimeError> {
+        let result = result.and_then(|value| {
             if let Value::Object(id) = value {
                 self.result_root = Some(self.heap.root(id)?);
             }
@@ -1137,6 +1163,11 @@ impl Vm {
             for id in continuation_references {
                 roots.push(id);
             }
+            // A native-debugger pause keeps iterator records in a
+            // Rust-owned root-frame continuation. They are not reachable from
+            // the ordinary operand stack while paused, so make every object
+            // edge visible to the heap before this allocation safepoint.
+            roots.extend(self.debugger_continuation_references());
             for (&promise, record) in &self.promises {
                 roots.push(promise);
                 if matches!(record.status, PromiseStatus::Pending) {

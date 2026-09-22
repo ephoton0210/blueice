@@ -114,6 +114,7 @@ impl DebuggerRequestReceiver {
             let executes_or_releases_entry = matches!(
                 &envelope.request,
                 DebuggerRequest::ArmEntryBreakpoint { .. }
+                    | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
                     | DebuggerRequest::ResumeExecution { .. }
             );
             let reply = handle_debugger_request_with_javascript_executor(
@@ -178,6 +179,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         }
         DebuggerRequest::ArmEntryBreakpoint { safe_point } => {
             arm_entry_breakpoint(tabs, javascript_executor, safe_point)
+        }
+        DebuggerRequest::ArmRootSafePointBreakpoint { safe_point } => {
+            arm_root_safe_point_breakpoint(tabs, javascript_executor, safe_point)
         }
         DebuggerRequest::ListBreakpoints { realm } => {
             list_breakpoints(tabs, javascript_executor.as_deref(), realm)
@@ -456,6 +460,40 @@ fn arm_entry_breakpoint(
     }
 }
 
+/// Arms the bounded continuation seam at an exact root-code-unit boundary.
+/// This deliberately has its own request/reply instead of making ordinary
+/// breakpoint configuration appear to interrupt a synchronous VM.
+fn arm_root_safe_point_breakpoint(
+    tabs: &TabManager,
+    javascript_executor: Option<&mut JavaScriptPageExecutor>,
+    safe_point: DebuggerSafePoint,
+) -> DebuggerReply {
+    if !safe_point.is_well_formed() {
+        return invalid_safe_point_target();
+    }
+    let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    let Some(executor) = javascript_executor else {
+        return unavailable_execution_control();
+    };
+    if !executor.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation) {
+        return unavailable_execution_control();
+    }
+    match executor.arm_debugger_root_safe_point_breakpoint(
+        tab_id,
+        safe_point.program.realm.realm_generation,
+        safe_point.program.program_handle,
+        safe_point.program.program_generation,
+        safe_point.code_unit_ordinal,
+        safe_point.bytecode_offset,
+    ) {
+        Ok(()) => DebuggerReply::RootSafePointBreakpointArmed { safe_point },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
 fn list_breakpoints(
     tabs: &TabManager,
     javascript_executor: Option<&JavaScriptPageExecutor>,
@@ -655,6 +693,10 @@ fn debugger_program_error(error: JavaScriptPageDebuggerError) -> DebuggerReply {
             DebuggerErrorCode::InvalidSafePoint,
             "debugger entry pause accepts only a pending root instruction boundary",
         ),
+        JavaScriptPageDebuggerError::NotResumableRootSafePoint => (
+            DebuggerErrorCode::InvalidSafePoint,
+            "debugger root continuation accepts only a pending classic-script root code-unit boundary",
+        ),
         JavaScriptPageDebuggerError::InvalidExecutionState => (
             DebuggerErrorCode::InvalidExecutionState,
             "debugger operation is not valid for the program execution state",
@@ -726,7 +768,7 @@ fn capability_reports(
                 DebuggerCapabilityState::Planned
             },
             if entry_execution_control_available {
-                "compiler-verified root-entry breakpoints pause unstarted page declarations"
+                "compiler-verified root-code-unit breakpoints pause pending classic page scripts"
             } else {
                 "native breakpoint interruption is not installed"
             },
@@ -739,7 +781,7 @@ fn capability_reports(
                 DebuggerCapabilityState::Planned
             },
             if entry_execution_control_available {
-                "resume is available only from a root-entry pause before bytecode execution"
+                "resume preserves one paused classic-script root frame; modules and child code units remain unavailable"
             } else {
                 "native pause and resume are not installed"
             },
@@ -1190,6 +1232,104 @@ mod tests {
             DebuggerReply::ExecutionResumed { program }
         );
 
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program },
+            ),
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::Completed,
+            }
+        );
+        assert_eq!(
+            executor.drain_reports_for_tab(tab_id),
+            vec![
+                crate::script::javascript::JavaScriptPageExecutionReport::Rejected {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 0,
+                    kind: crate::script::BlueJsPageScriptKind::Classic,
+                    category: "BlueJS page execution failed",
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn native_debugger_routes_a_non_entry_root_safe_point_to_same_frame_resume() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script>globalThis.before = 1; throw 2;</script>",
+            Some("https://example.test/native-root-safe-point.html".to_string()),
+        );
+        let realm = DebuggerPageRealm {
+            browser_context_id: DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: tab_id.as_u64(),
+            realm_generation: 1,
+        };
+        let mut executor = JavaScriptPageExecutor::with_config(
+            crate::script::javascript::JavaScriptPageExecutorConfig {
+                native_debugger_execution_control: true,
+                ..crate::script::javascript::JavaScriptPageExecutorConfig::default()
+            },
+        )
+        .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let DebuggerReply::Programs(programs) = handle_debugger_request_with_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::ListPrograms { realm },
+        ) else {
+            panic!("pending classic declaration must expose an opaque program")
+        };
+        let program = programs[0];
+        let DebuggerReply::SafePoints(safe_points) =
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ListSafePoints { program },
+            )
+        else {
+            panic!("pending classic declaration must expose exact safe points")
+        };
+        let safe_point = *safe_points
+            .iter()
+            .find(|safe_point| safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset != 0)
+            .expect("fixture has a non-entry root safe point");
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ArmRootSafePointBreakpoint { safe_point },
+            ),
+            DebuggerReply::RootSafePointBreakpointArmed { safe_point }
+        );
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program },
+            ),
+            DebuggerReply::ExecutionState {
+                program,
+                state: DebuggerExecutionState::Paused { safe_point },
+            }
+        );
+        assert!(executor.drain_reports_for_tab(tab_id).is_empty());
+        assert_eq!(
+            handle_debugger_request_with_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ResumeExecution { program },
+            ),
+            DebuggerReply::ExecutionResumed { program }
+        );
         executor.synchronize_and_execute(&tabs).unwrap();
         assert_eq!(
             handle_debugger_request_with_javascript_executor(

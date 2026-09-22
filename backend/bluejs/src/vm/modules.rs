@@ -1732,7 +1732,7 @@ impl Vm {
         self.active_scopes.clear();
         self.active_scope_slots.clear();
         match result? {
-            InterpreterExit::Suspend { pc } if pc == entry => Ok(()),
+            InterpreterExit::Suspend { pc, .. } if pc == entry => Ok(()),
             _ => unreachable!("module declaration prefix always suspends at its evaluation entry"),
         }
     }

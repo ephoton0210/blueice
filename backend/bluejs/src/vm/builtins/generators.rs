@@ -111,8 +111,14 @@ impl Vm {
             )
         };
         let state = match outcome {
-            Ok(InterpreterExit::Suspend { pc }) => {
+            Ok(InterpreterExit::Suspend {
+                pc,
+                iterators,
+                handlers,
+            }) => {
                 debug_assert_eq!(pc, code.generator_entry as usize);
+                debug_assert!(iterators.is_empty());
+                debug_assert!(handlers.is_empty());
                 let stack = self.stack.split_off(frame_base);
                 Ok(GeneratorState::Suspended {
                     code,

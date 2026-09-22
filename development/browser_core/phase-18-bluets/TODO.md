@@ -21,8 +21,9 @@ now opt into one such profile for inline declarations, and expose only
 source-free per-tab outcomes through its control plane. The opt-in JavaScript
 host now also supports a bounded private debugger program-location inventory,
 exact live safe-point validation, lifecycle-bound breakpoint configuration, and
-an opt-in root-entry pause/resume seam that stops a declaration before any VM
-bytecode executes. It is not arbitrary interpreter suspension or stepping.
+an opt-in root-code-unit pause/resume seam. It can stop a pending classic
+declaration at a verified non-entry root instruction while retaining its VM
+root frame; it is not arbitrary interpreter suspension or stepping.
 A launcher-supervised, capability-authenticated out-of-process BlueJS child
 can execute caller-authorized inline JavaScript and explicit BlueTS declarations
 in one bounded realm and DOM order. BlueTS receives only the closed supplied
@@ -284,8 +285,8 @@ or second module resolver to bypass them.
   page realm and remain separate from script/DOM and network IPC.
 
   Foundation delivered: `blueice_ipc::debugger` now owns an independently
-  framed v4 handshake, capability, bounded program-location vocabulary, and
-  source-free root-entry execution-control vocabulary.
+  framed v5 handshake, capability, bounded program-location vocabulary, and
+  source-free root-frame execution-control vocabulary.
   Its page-realm, program, and safe-point identities include
   browser-context/tab/realm and program generations, reject zero placeholder
   handles, and require a host to validate an exact BlueJS instruction boundary
@@ -294,7 +295,7 @@ or second module resolver to bypass them.
   return only core-minted opaque program IDs and bounded `(code-unit, offset)`
   tuples, never canonical source IDs, source text, bytecode bytes, VM objects,
   or completion values. These additive request/reply and capability shapes
-  advance the independent debugger protocol to v4, so a v1/v2/v3 peer fails its
+  advance the independent debugger protocol to v5, so a v1/v2/v3/v4 peer fails its
   `Hello` negotiation rather than attempting to deserialize an incompatible
   capability report. `blueice_engine::debugger` routes post-handshake
   requests from a socket worker to the one session thread that owns live tabs;
@@ -311,30 +312,32 @@ or second module resolver to bypass them.
   targets return `InvalidTarget`; an obsolete program generation returns
   `StaleProgram`; and a non-boundary tuple returns `InvalidSafePoint`.
   `ProgramLocations` is `available` only for an enabled, live JavaScript page
-  realm; it remains `planned` otherwise. v4 additionally exposes
-  `ArmEntryBreakpoint`, `GetExecutionState`, and `ResumeExecution` only when
-  `--inline-bluejs` is paired with the private debugger socket. The admission
-  turn never immediately executes the new declaration; each handshaken bounded
-  discovery/configuration request keeps it pending through one further session
-  turn, so a peer can learn and arm only its exact root code-unit instruction-
-  zero boundary. The session owner then reports `Paused` before calling the
-  ordinary BlueJS VM entry point and accepts resume only from that state. The
-  reply contains no source, bytecode,
-  stack, scope, object, or completion value. The root-entry continuation is
-  deliberately zero-execution: it does not serialize interpreter frames,
-  operand stack, handlers, GC roots, or nested calls. `Breakpoints` and
-  `PauseResume` are available only for this narrow seam; stepping, arbitrary
-  safe-point interruption, stack, scopes, exception policy, and bounded values
-  remain planned. Unit coverage proves exact successful validation, malformed-
-  boundary rejection, same-document cross-tab rejection, old realm rejection
-  after navigation, and real BlueJS execution only after root-entry resume.
-  A general VM continuation, source-to-safe-point page map, and debugger
-  consumer remain open. In particular, a configured non-entry breakpoint MUST
-  NOT be represented as a breakpoint hit or paused execution state.
+  realm; it remains `planned` otherwise. v5 additionally exposes
+  `ArmRootSafePointBreakpoint`, `GetExecutionState`, and `ResumeExecution`
+  only when `--inline-bluejs` is paired with the private debugger socket.
+  `ArmEntryBreakpoint` remains the zero-offset compatibility operation. The
+  admission turn never immediately executes the new declaration; each
+  handshaken bounded discovery/configuration request keeps it pending through
+  one further session turn, so a peer can learn and arm an exact root-code-unit
+  boundary. `ArmRootSafePointBreakpoint` starts a pending classic script and
+  returns `Paused` only when BlueJS has reached that exact verified root
+  instruction. Its continuation retains the root operand stack,
+  bindings/cells, scopes, handler records, iterator records, completion state,
+  and their GC roots; the paused VM rejects another execution until
+  `ResumeExecution` completes the same frame. The reply contains no source,
+  bytecode, stack, scope, object, or completion value. Modules, top-level
+  await, child function code units, re-arming/loop hits, stepping, arbitrary
+  nested-frame interruption, stack, scopes, exception policy, and bounded
+  values remain planned. Unit coverage proves malformed-boundary rejection,
+  same-document cross-tab rejection, realm replacement discarding a paused
+  continuation, GC rooting of paused iterator records, and real BlueJS
+  execution only after same-frame resume.
 
-  Acceptance: a JS page fixture pauses at a verified safe point, supports the
-  declared stepping subset, rejects stale frame/value handles after
-  navigation/resume, and does not pause another tab or render transport.
+  Acceptance for the delivered seam: a classic JS page fixture pauses at a
+  verified root-code-unit safe point and resumes its same frame; realm
+  replacement discards that continuation, and it cannot pause another tab or
+  render transport. Stepping plus frame/value handles remain outside this
+  capability and therefore have no acceptance claim yet.
 
 ## P0 — direct BlueTS page integration
 

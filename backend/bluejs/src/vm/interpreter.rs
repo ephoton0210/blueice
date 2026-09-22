@@ -33,7 +33,19 @@ impl Vm {
         let mut suspended_await = None;
         loop {
             if suspend_at == Some(pc) {
-                return Ok(InterpreterExit::Suspend { pc });
+                // The caller owns the returned records while execution is
+                // suspended. Handler stack depths are relative to this
+                // frame's operand-stack base, exactly like `Yield`, so a
+                // later interpreter entry can restore them without exposing
+                // an ambient caller frame to the continuation.
+                for handler in &mut handlers {
+                    handler.stack_depth -= handler_stack_base;
+                }
+                return Ok(InterpreterExit::Suspend {
+                    pc,
+                    iterators: std::mem::take(iterators),
+                    handlers: std::mem::take(&mut handlers),
+                });
             }
             self.charge_step()?;
             let instruction = code

@@ -14,7 +14,7 @@
 use crate::{
     BlueJsAstNodeKind, BlueJsProgramDebugError, BlueJsProgramHandle, BlueJsProgramRegistry,
     BlueJsProgramV1, BlueJsSafePoint, BlueJsSourceIdentity, HeapError, HeapStats, HostFunction,
-    HostObject, RuntimeError, Value, Vm, VmConfig,
+    HostObject, RuntimeError, Value, Vm, VmConfig, VmDebuggerExecutionState,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
@@ -77,6 +77,15 @@ pub struct BlueJsPageRealmStats {
     pub program_count: usize,
     pub bytecode_bytes: usize,
     pub heap: HeapStats,
+}
+
+/// Source-free state returned by the bounded native-debugger root-frame
+/// execution seam. It deliberately contains neither a VM value nor source or
+/// bytecode data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlueJsPageDebuggerExecutionState {
+    Paused { bytecode_offset: u32 },
+    Completed,
 }
 
 struct PageRealm {
@@ -417,6 +426,103 @@ impl BlueJsPageRuntime {
         }
     }
 
+    /// Executes one exact classic page program until a verified instruction
+    /// boundary in its root code unit. This is the only page-runtime path
+    /// that creates a resumable native-debugger continuation. It refuses
+    /// modules and child code units rather than claiming that their frame
+    /// state can be resumed by this synchronous root-frame implementation.
+    pub fn execute_program_until_debugger_pause(
+        &mut self,
+        tab_id: u64,
+        handle: BlueJsProgramHandle,
+        safe_point: BlueJsSafePoint,
+    ) -> Result<BlueJsPageDebuggerExecutionState, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        if !realm.programs.contains(&handle) {
+            return Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id, handle });
+        }
+        let (root, bytecode) = {
+            let compiled = self
+                .registry
+                .get(handle)
+                .map_err(BlueJsPageRuntimeError::ProgramRegistry)?;
+            self.registry
+                .validate_safe_point(handle, safe_point)
+                .map_err(BlueJsPageRuntimeError::ProgramRegistry)?;
+            let root = compiled
+                .ast_nodes()
+                .first()
+                .map(|node| node.kind())
+                .ok_or(BlueJsPageRuntimeError::ProgramShape)?;
+            (root, compiled.bytecode().clone())
+        };
+        if root != BlueJsAstNodeKind::Script {
+            return Err(BlueJsPageRuntimeError::DebuggerRootScriptOnly);
+        }
+        if safe_point.code_unit.ordinal() != 0 {
+            return Err(BlueJsPageRuntimeError::DebuggerRootCodeUnitOnly);
+        }
+        let realm = self
+            .realms
+            .get_mut(&tab_id)
+            .expect("realm ownership was checked before the registry lookup");
+        realm
+            .vm
+            .execute_script_until_debugger_pause(&bytecode, safe_point.bytecode_offset)
+            .map(page_debugger_execution_state)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
+    /// Internal-friendly form of the root continuation seam for hosts that
+    /// retain only an opaque program handle and source-free byte offset. It
+    /// still resolves that tuple through the generation-bound safe-point
+    /// inventory before starting any script instruction.
+    pub fn execute_program_until_debugger_pause_at_root_offset(
+        &mut self,
+        tab_id: u64,
+        handle: BlueJsProgramHandle,
+        bytecode_offset: u32,
+    ) -> Result<BlueJsPageDebuggerExecutionState, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        if !realm.programs.contains(&handle) {
+            return Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id, handle });
+        }
+        let safe_point = self
+            .registry
+            .get(handle)
+            .map_err(BlueJsPageRuntimeError::ProgramRegistry)?
+            .safe_points()
+            .find(|safe_point| {
+                safe_point.code_unit.ordinal() == 0 && safe_point.bytecode_offset == bytecode_offset
+            })
+            .ok_or(BlueJsPageRuntimeError::DebuggerRootCodeUnitOnly)?;
+        self.execute_program_until_debugger_pause(tab_id, handle, safe_point)
+    }
+
+    /// Resumes the single root-frame debugger continuation in a tab realm.
+    /// The caller does not receive a result value, bytecode, source, or VM
+    /// reference; terminal errors remain the page runtime's usual category.
+    pub fn resume_debugger_execution(
+        &mut self,
+        tab_id: u64,
+    ) -> Result<BlueJsPageDebuggerExecutionState, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get_mut(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        realm
+            .vm
+            .resume_debugger_execution()
+            .map(page_debugger_execution_state)
+            .map_err(BlueJsPageRuntimeError::Runtime)
+    }
+
     /// Executes an already-admitted ESM module graph in one tab realm. Every
     /// handle must belong to that realm, name a module root, and have a unique
     /// canonical module identity; BlueJS never re-resolves an import specifier
@@ -600,6 +706,12 @@ pub enum BlueJsPageRuntimeError {
         handle: BlueJsProgramHandle,
     },
     ProgramShape,
+    /// The root-frame native debugger seam never runs module linking or
+    /// top-level await under a parked continuation.
+    DebuggerRootScriptOnly,
+    /// Nested bytecode functions still execute on the Rust call stack, so a
+    /// root-frame continuation must reject their safe points exactly.
+    DebuggerRootCodeUnitOnly,
     DuplicateModuleIdentity(String),
     VmInitialization(HeapError),
     HostBinding(RuntimeError),
@@ -641,6 +753,11 @@ impl fmt::Display for BlueJsPageRuntimeError {
             Self::ProgramShape => {
                 formatter.write_str("compiled page program has no script or module root")
             }
+            Self::DebuggerRootScriptOnly => {
+                formatter.write_str("native debugger continuation supports classic scripts only")
+            }
+            Self::DebuggerRootCodeUnitOnly => formatter
+                .write_str("native debugger continuation supports root code-unit safe points only"),
             Self::DuplicateModuleIdentity(module) => {
                 write!(
                     formatter,
@@ -671,6 +788,17 @@ impl std::error::Error for BlueJsPageRuntimeError {
             Self::Runtime(error) => Some(error),
             _ => None,
         }
+    }
+}
+
+fn page_debugger_execution_state(
+    state: VmDebuggerExecutionState,
+) -> BlueJsPageDebuggerExecutionState {
+    match state {
+        VmDebuggerExecutionState::Paused { bytecode_offset } => {
+            BlueJsPageDebuggerExecutionState::Paused { bytecode_offset }
+        }
+        VmDebuggerExecutionState::Completed => BlueJsPageDebuggerExecutionState::Completed,
     }
 }
 
@@ -717,6 +845,129 @@ mod tests {
             Value::Undefined
         );
         assert_eq!(runtime.realm_stats(7).unwrap().program_count, 2);
+    }
+
+    #[test]
+    fn resumes_a_non_entry_root_safe_point_without_exposing_vm_state() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        let paused_program = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///paused.js"),
+                &BlueJsProgramV1::Script(
+                    parse("globalThis.before = 1; globalThis.after = 2;").unwrap(),
+                ),
+            )
+            .unwrap();
+        let probe = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///probe.js"),
+                &BlueJsProgramV1::Script(parse("globalThis.before + globalThis.after").unwrap()),
+            )
+            .unwrap();
+        let safe_point = runtime
+            .safe_points(7, paused_program, 128)
+            .unwrap()
+            .into_iter()
+            .find(|safe_point| {
+                safe_point.code_unit.ordinal() == 0 && safe_point.bytecode_offset != 0
+            })
+            .expect("fixture has a non-entry root safe point");
+
+        assert_eq!(
+            runtime
+                .execute_program_until_debugger_pause(7, paused_program, safe_point)
+                .unwrap(),
+            BlueJsPageDebuggerExecutionState::Paused {
+                bytecode_offset: safe_point.bytecode_offset
+            }
+        );
+        assert!(matches!(
+            runtime.execute_program(7, probe),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Unsupported(
+                "a debugger-paused root script must resume before another execution starts"
+            )))
+        ));
+        assert_eq!(
+            runtime.resume_debugger_execution(7).unwrap(),
+            BlueJsPageDebuggerExecutionState::Completed
+        );
+        assert_eq!(
+            runtime.execute_program(7, probe).unwrap(),
+            Value::Number(3.0)
+        );
+    }
+
+    #[test]
+    fn close_and_reopen_discard_a_paused_root_continuation_with_its_generation() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        let paused_program = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///discarded.js"),
+                &BlueJsProgramV1::Script(parse("globalThis.discarded = 1;").unwrap()),
+            )
+            .unwrap();
+        let safe_point = runtime
+            .safe_points(7, paused_program, 128)
+            .unwrap()
+            .into_iter()
+            .find(|safe_point| safe_point.code_unit.ordinal() == 0)
+            .unwrap();
+        assert!(matches!(
+            runtime.execute_program_until_debugger_pause(7, paused_program, safe_point),
+            Ok(BlueJsPageDebuggerExecutionState::Paused { .. })
+        ));
+
+        assert!(runtime.close_realm(7));
+        runtime.open_realm(7, origin()).unwrap();
+        assert_eq!(
+            runtime.resume_debugger_execution(7),
+            Err(BlueJsPageRuntimeError::Runtime(RuntimeError::Unsupported(
+                "no debugger-paused root script is available"
+            )))
+        );
+        assert_eq!(
+            runtime.execute_program(7, paused_program),
+            Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm {
+                tab_id: 7,
+                handle: paused_program
+            })
+        );
+    }
+
+    #[test]
+    fn debugger_continuation_rejects_child_function_code_units_exactly() {
+        let mut runtime = BlueJsPageRuntime::default();
+        runtime.open_realm(7, origin()).unwrap();
+        let program = runtime
+            .install_program(
+                7,
+                &origin(),
+                source("page:///nested.js"),
+                &BlueJsProgramV1::Script(parse("function f() { return 1; } f();").unwrap()),
+            )
+            .unwrap();
+        let child_safe_point = runtime
+            .safe_points(7, program, 128)
+            .unwrap()
+            .into_iter()
+            .find(|safe_point| safe_point.code_unit.ordinal() != 0)
+            .expect("fixture emits a child function code unit");
+        assert_eq!(
+            runtime.execute_program_until_debugger_pause(7, program, child_safe_point),
+            Err(BlueJsPageRuntimeError::DebuggerRootCodeUnitOnly)
+        );
+        assert_eq!(
+            runtime.execute_program(7, program).unwrap(),
+            Value::Number(1.0)
+        );
     }
 
     #[test]

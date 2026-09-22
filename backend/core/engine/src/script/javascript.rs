@@ -19,9 +19,10 @@ use super::{
 };
 use crate::{Page, TabId, TabManager};
 use blueice_bluejs::{
-    parse, parse_module, BlueJsPageOrigin, BlueJsPageRuntime, BlueJsPageRuntimeConfig,
-    BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1, BlueJsSourceIdentity,
-    CompileError, HostFunctionError, HostValue, ParseError, RuntimeError, Value,
+    parse, parse_module, BlueJsPageDebuggerExecutionState, BlueJsPageOrigin, BlueJsPageRuntime,
+    BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1,
+    BlueJsSourceIdentity, CompileError, HostFunctionError, HostValue, ParseError, RuntimeError,
+    Value,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::{fmt, io};
