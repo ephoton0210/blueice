@@ -47,6 +47,7 @@ mod unix {
     //! tells "core genuinely died" apart from "we deliberately superseded
     //! it."
 
+    use super::bluejs_host::{BlueJsHostCoreConfig, SpawnedBlueJsHost};
     use super::control;
 
     pub use super::control::default_control_socket_path;
@@ -66,6 +67,38 @@ mod unix {
     use std::sync::{Arc, Mutex};
     use std::thread;
     use std::time::{Duration, Instant};
+
+    /// Launcher-owned configuration for one `blueice-core` child.
+    ///
+    /// This deliberately contains operational policy only. In particular, it
+    /// cannot carry a page-host endpoint or capability token: when
+    /// [`Self::supervise_out_of_process_bluejs`] is selected, the launcher
+    /// creates a fresh private pair while it starts the core and retains the
+    /// matching child supervisor for that core's lifetime.
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    pub struct CoreLaunchOptions {
+        gatekeeper_socket: Option<PathBuf>,
+        supervise_out_of_process_bluejs: bool,
+    }
+
+    impl CoreLaunchOptions {
+        /// Forwards an owner-selected gatekeeper endpoint to the trusted core.
+        /// This is intentionally unrelated to the page-host capability.
+        pub fn with_gatekeeper_socket(mut self, path: PathBuf) -> Self {
+            self.gatekeeper_socket = Some(path);
+            self
+        }
+
+        /// Selects the launcher-owned, out-of-process BlueJS page-host route.
+        ///
+        /// This remains disabled by default. The launcher creates the private
+        /// socket and fresh token itself; callers cannot configure either
+        /// value through this API.
+        pub fn supervise_out_of_process_bluejs(mut self) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self
+        }
+    }
 
     /// The rendezvous socket path clients connect to, when none is given
     /// explicitly: `$XDG_RUNTIME_DIR/blueice/core.sock`, falling back to
@@ -332,6 +365,11 @@ mod unix {
         /// `core` instances would let their independently-zeroed
         /// `generation` counters collide on the same frame filename.
         frame_dir: PathBuf,
+        /// The launcher-owned startup policy that must be reproduced for a
+        /// replacement core. An out-of-process host is deliberately fresh
+        /// per core generation, so no private child capability crosses a
+        /// cutover boundary.
+        core_options: CoreLaunchOptions,
         /// Signaled exactly once, by whichever generation-tagged broadcast
         /// thread's own death is NOT a deliberate cutover supersession --
         /// what [`run_broker`] blocks on to know when the whole launcher
@@ -658,7 +696,12 @@ mod unix {
 
         let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
         let frame_dir = v2_frame_dir(&broker.frame_dir, target_generation);
-        let mut v2 = match SpawnedCore::spawn(broker.width, broker.height, &frame_dir) {
+        let mut v2 = match SpawnedCore::spawn_with_options(
+            broker.width,
+            broker.height,
+            &frame_dir,
+            broker.core_options.clone(),
+        ) {
             Ok(v2) => v2,
             Err(e) => {
                 return control::ControlReply::CutoverFailed {
@@ -725,6 +768,7 @@ mod unix {
         height: f64,
     ) -> io::Result<()> {
         let frame_dir = core.frame_dir.clone();
+        let core_options = core.options.clone();
         let core_writer = Arc::new(Mutex::new(core.stream.try_clone()?));
         let broadcast_stream = core.stream.try_clone()?;
         let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
@@ -741,6 +785,7 @@ mod unix {
             width,
             height,
             frame_dir,
+            core_options,
             done: done_tx.clone(),
         });
 
@@ -845,17 +890,70 @@ mod unix {
         child: Child,
         internal_socket_path: PathBuf,
         frame_dir: PathBuf,
+        /// Retained so a cutover can reproduce the selected launcher policy
+        /// without preserving a generation-specific page-host capability.
+        options: CoreLaunchOptions,
+        /// The launcher owns this handle, not the core or any frontend. Its
+        /// `Drop` implementation kills/reaps the isolated child after this
+        /// core has been terminated, and removes the child-only socket.
+        bluejs_host: Option<SpawnedBlueJsHost>,
         pub stream: UnixStream,
     }
 
     impl SpawnedCore {
         pub fn spawn(width: f64, height: f64, frame_dir: &Path) -> io::Result<Self> {
+            Self::spawn_with_options(width, height, frame_dir, CoreLaunchOptions::default())
+        }
+
+        /// Starts a core under launcher-owned operational policy.
+        ///
+        /// When out-of-process BlueJS is selected, this method is the only
+        /// place that creates the endpoint/token pair. It passes that private
+        /// capability directly to the newly spawned core, then retains the
+        /// child supervisor in this returned owner. Neither the public
+        /// frontend broker nor a page receives either value. This v1 launch
+        /// seam uses the core's existing private startup arguments; their
+        /// values are launcher-generated, are never logged or forwarded over
+        /// frontend IPC, and are not an operator-configurable interface. A
+        /// descriptor-passing startup channel would be separate Unix process
+        /// bootstrap work, not a reason to expose a second runtime protocol.
+        pub fn spawn_with_options(
+            width: f64,
+            height: f64,
+            frame_dir: &Path,
+            options: CoreLaunchOptions,
+        ) -> io::Result<Self> {
+            let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
+                let (host, config) = SpawnedBlueJsHost::spawn_for_core()?;
+                (Some(host), Some(config))
+            } else {
+                (None, None)
+            };
+            Self::spawn_with_private_host(
+                width,
+                height,
+                frame_dir,
+                options,
+                bluejs_host,
+                page_host_config,
+            )
+        }
+
+        fn spawn_with_private_host(
+            width: f64,
+            height: f64,
+            frame_dir: &Path,
+            options: CoreLaunchOptions,
+            bluejs_host: Option<SpawnedBlueJsHost>,
+            page_host_config: Option<BlueJsHostCoreConfig>,
+        ) -> io::Result<Self> {
             let this_exe = std::env::current_exe()?;
             let core_bin = sibling_core_binary(&this_exe);
             let internal_socket_path = unique_internal_socket_path();
             let _ = std::fs::remove_file(&internal_socket_path);
 
-            let child = Command::new(&core_bin)
+            let mut command = Command::new(&core_bin);
+            command
                 .arg("--socket")
                 .arg(&internal_socket_path)
                 .arg("--width")
@@ -863,16 +961,37 @@ mod unix {
                 .arg("--height")
                 .arg(height.to_string())
                 .arg("--frame-dir")
-                .arg(frame_dir)
-                .spawn()?;
+                .arg(frame_dir);
+            if let Some(gatekeeper_socket) = &options.gatekeeper_socket {
+                command.arg("--gatekeeper-socket").arg(gatekeeper_socket);
+            }
+            if let Some(config) = &page_host_config {
+                command
+                    .arg("--out-of-process-bluejs-socket")
+                    .arg(config.socket_path())
+                    .arg("--out-of-process-bluejs-token")
+                    .arg(config.session_token());
+            }
+            let mut child = command.spawn()?;
 
             if !wait_for_socket(&internal_socket_path, Duration::from_secs(5)) {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = std::fs::remove_file(&internal_socket_path);
                 return Err(io::Error::other(format!(
                     "blueice-core never created its socket at {}",
                     internal_socket_path.display()
                 )));
             }
-            let mut stream = UnixStream::connect(&internal_socket_path)?;
+            let mut stream = match UnixStream::connect(&internal_socket_path) {
+                Ok(stream) => stream,
+                Err(error) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_file(&internal_socket_path);
+                    return Err(error);
+                }
+            };
             // `core` requires the very first message on a fresh connection
             // to be `Hello` (`phase-1-ai-representation-layer/PLAN.md` §3);
             // this launcher is the connection's one and only direct client,
@@ -882,11 +1001,18 @@ mod unix {
             // this already-past-its-handshake connection, `core` just
             // answers it again rather than re-gating (see `blueice_engine::
             // session::run_session`'s own docs).
-            blueice_ipc::client_handshake(&mut stream)?;
+            if let Err(error) = blueice_ipc::client_handshake(&mut stream) {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = std::fs::remove_file(&internal_socket_path);
+                return Err(error);
+            }
             Ok(SpawnedCore {
                 child,
                 internal_socket_path,
                 frame_dir: frame_dir.to_path_buf(),
+                options,
+                bluejs_host,
                 stream,
             })
         }
@@ -896,6 +1022,11 @@ mod unix {
         fn drop(&mut self) {
             let _ = self.child.kill();
             let _ = self.child.wait();
+            // A delegated child may still be blocked on the core-owned
+            // protocol connection. Reap it only after core is gone, rather
+            // than allowing the child's private capability to outlive its
+            // intended core generation.
+            drop(self.bluejs_host.take());
             let _ = std::fs::remove_file(&self.internal_socket_path);
             // `child.kill()` sends SIGKILL, which never lets `blueice-core`
             // run its own graceful-exit cleanup (which would otherwise

@@ -187,3 +187,25 @@ fn launcher_can_delegate_the_single_authenticated_connection_to_a_trusted_core()
         "supervisor teardown must remove the delegated child socket"
     );
 }
+
+#[test]
+fn delegated_child_is_reaped_when_core_startup_never_claims_its_connection() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let (host, connection) = SpawnedBlueJsHost::spawn_for_core()
+        .expect("launcher must supervise the child before core startup");
+    let private_socket = connection.socket_path().to_path_buf();
+    assert!(private_socket.exists());
+
+    // This models a core spawn/early-handshake failure: no trusted core ever
+    // claims the one authenticated connection. The launcher owner must still
+    // reap the child and unlink its private endpoint rather than leaving an
+    // orphaned capability-bearing listener behind.
+    drop(host);
+    assert!(
+        !private_socket.exists(),
+        "dropping an unclaimed delegated child must remove its private socket"
+    );
+}

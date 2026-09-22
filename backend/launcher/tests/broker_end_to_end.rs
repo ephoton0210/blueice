@@ -31,7 +31,9 @@ use blueice_ipc::{
 use blueice_launcher::control::{
     read_control_reply, write_control_request, ControlReply, ControlRequest,
 };
-use std::os::unix::net::UnixStream;
+use std::io::{Read, Write};
+use std::net::TcpListener;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::{Arc, Barrier};
@@ -52,6 +54,23 @@ fn unique_path(label: &str) -> PathBuf {
         "blueice-launcher-e2e-{label}-{}-{n}",
         std::process::id()
     ))
+}
+
+/// The launcher delegates ordinary HTTP navigation to the core, which retains
+/// the existing fail-closed gatekeeper requirement. This isolated real socket
+/// lets the private-host regression prove page execution rather than merely a
+/// startup handshake.
+fn clearing_gatekeeper() -> PathBuf {
+    let path = unique_path("gatekeeper.sock");
+    let _ = std::fs::remove_file(&path);
+    let listener = UnixListener::bind(&path).expect("test gatekeeper must bind");
+    thread::spawn(move || {
+        for incoming in listener.incoming() {
+            let Ok(mut stream) = incoming else { break };
+            let _ = blueice_ai_gatekeeper::handle_one_check(&mut stream);
+        }
+    });
+    path
 }
 
 // `cargo llvm-cov` instruments the launcher and the core that it starts. On
@@ -78,10 +97,24 @@ struct Launcher {
     rendezvous_socket: PathBuf,
     control_socket: PathBuf,
     frame_dir: PathBuf,
+    /// Kept only by this lifecycle test. The launcher never publishes this
+    /// child-only path to frontend or page traffic.
+    private_bluejs_socket: Option<PathBuf>,
 }
 
 impl Launcher {
     fn spawn() -> Self {
+        Self::spawn_with_options(None, false)
+    }
+
+    fn spawn_with_supervised_bluejs(gatekeeper_socket: &Path) -> Self {
+        Self::spawn_with_options(Some(gatekeeper_socket), true)
+    }
+
+    fn spawn_with_options(
+        gatekeeper_socket: Option<&Path>,
+        supervise_out_of_process_bluejs: bool,
+    ) -> Self {
         let rendezvous_socket = unique_path("rendezvous.sock");
         let control_socket = unique_path("control.sock");
         let frame_dir = unique_path("frames");
@@ -89,30 +122,42 @@ impl Launcher {
         let _ = std::fs::remove_file(&control_socket);
         let _ = std::fs::remove_dir_all(&frame_dir);
 
-        let child = Command::new(env!("CARGO_BIN_EXE_blueice-launcher"))
-            .args([
-                "--socket",
-                rendezvous_socket.to_str().unwrap(),
-                "--control-socket",
-                control_socket.to_str().unwrap(),
-                "--width",
-                "320",
-                "--height",
-                "200",
-                "--frame-dir",
-                frame_dir.to_str().unwrap(),
-            ])
-            .spawn()
-            .expect("failed to spawn blueice-launcher");
+        let mut command = Command::new(env!("CARGO_BIN_EXE_blueice-launcher"));
+        command.args([
+            "--socket",
+            rendezvous_socket.to_str().unwrap(),
+            "--control-socket",
+            control_socket.to_str().unwrap(),
+            "--width",
+            "320",
+            "--height",
+            "200",
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ]);
+        if let Some(gatekeeper_socket) = gatekeeper_socket {
+            command.arg("--gatekeeper-socket").arg(gatekeeper_socket);
+        }
+        if supervise_out_of_process_bluejs {
+            command.arg("--out-of-process-bluejs");
+        }
+        let child = command.spawn().expect("failed to spawn blueice-launcher");
 
         // Construct the RAII owner before making assertions about process
         // readiness. Previously a timeout panicked while `child` was a bare
         // local, so the launcher (and its core) could survive the failed test.
+        let private_bluejs_socket = supervise_out_of_process_bluejs.then(|| {
+            std::env::temp_dir().join(format!(
+                "blueice-launcher-bluejs-host-{}-0.sock",
+                child.id()
+            ))
+        });
         let mut launcher = Launcher {
             child,
             rendezvous_socket,
             control_socket,
             frame_dir,
+            private_bluejs_socket,
         };
         let rendezvous_socket = launcher.rendezvous_socket.clone();
         launcher.wait_for_socket(&rendezvous_socket, "rendezvous");
@@ -197,6 +242,9 @@ impl Drop for Launcher {
         self.wait_or_kill(Duration::from_secs(1));
         let _ = std::fs::remove_file(&self.rendezvous_socket);
         let _ = std::fs::remove_file(&self.control_socket);
+        if let Some(path) = &self.private_bluejs_socket {
+            let _ = std::fs::remove_file(path);
+        }
         let _ = std::fs::remove_dir_all(&self.frame_dir);
     }
 }
@@ -377,6 +425,165 @@ fn shutdown_with_no_cutover_still_ends_the_whole_launcher_cleanly() {
         status.success(),
         "the launcher must exit cleanly (not be killed) after an ordinary Shutdown cascade"
     );
+}
+
+#[test]
+fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution() {
+    // This is intentionally the real launcher binary, not a direct core
+    // invocation or a hand-configured host socket. `--out-of-process-bluejs`
+    // is the only opt-in; the launcher itself creates the child endpoint and
+    // capability token, hands them directly to core, and retains supervision.
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    thread::spawn(move || {
+        let (mut stream, _) = listener
+            .accept()
+            .expect("fixture must receive HTTP request");
+        let mut request = [0u8; 1024];
+        let _ = stream.read(&mut request);
+        let body = concat!(
+            "<main>launcher-to-core-to-child</main>",
+            "<script>if (typeof document !== 'undefined' || typeof fetch !== 'undefined') throw 'host binding leaked'; globalThis.answer = 42;</script>",
+            "<script type=\"module\">export const moduleAnswer = 43;</script>",
+            "<script src=\"untrusted.js\"></script>"
+        );
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .expect("fixture must return page document");
+    });
+
+    let mut launcher = Launcher::spawn_with_supervised_bluejs(&gatekeeper_socket);
+    let private_socket = launcher
+        .private_bluejs_socket
+        .clone()
+        .expect("the opted-in launcher owns exactly one private child socket");
+    assert!(
+        private_socket.exists(),
+        "the supervised child must be ready before launcher exposes its rendezvous socket"
+    );
+
+    let mut frontend = launcher.connect();
+    write_client_message(&mut frontend, &ClientMessage::Navigate { url: url.clone() }).unwrap();
+    assert_eq!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::Navigated { url }
+    );
+    assert!(matches!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::FrameReady { generation: 1, .. }
+    ));
+    write_client_message(&mut frontend, &ClientMessage::GetBlueJsScriptReports).unwrap();
+    let reports = read_server_message(&mut frontend).unwrap();
+    let public_representation = format!("{reports:?}");
+    assert!(
+        !public_representation.contains(&private_socket.display().to_string())
+            && !public_representation.contains("out-of-process-bluejs"),
+        "the frontend broker must not reflect the launch-only child endpoint or capability"
+    );
+    assert_eq!(
+        reports,
+        ServerMessage::BlueJsScriptReports(vec![
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 0,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 1,
+                kind: blueice_ipc::BlueJsScriptKind::Module,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueJsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 2,
+                kind: blueice_ipc::BlueJsScriptKind::Classic,
+                outcome: blueice_ipc::BlueJsScriptExecutionOutcome::Rejected {
+                    category: "external JavaScript declarations require an authorized loader"
+                        .to_string(),
+                },
+            },
+        ])
+    );
+
+    // The only public operation here is normal frontend shutdown. It neither
+    // knows the child capability token nor has a route to the child socket.
+    write_client_message(&mut frontend, &ClientMessage::Shutdown).unwrap();
+    launcher.wait_or_kill(Duration::from_secs(5));
+    assert!(
+        !private_socket.exists(),
+        "launcher teardown must reap its private child and unlink its socket"
+    );
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn opt_in_launcher_replaces_the_private_child_at_cutover_and_reaps_both_generations() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let mut launcher = Launcher::spawn_with_supervised_bluejs(&gatekeeper_socket);
+    let v1_child_socket = launcher
+        .private_bluejs_socket
+        .clone()
+        .expect("the opted-in launcher must create v1's private child");
+    assert!(v1_child_socket.exists());
+
+    // Give cutover a real current tab to replay. `about:` avoids a network
+    // fixture while still exercising the core-replacement lifecycle.
+    let mut frontend = launcher.connect();
+    write_client_message(
+        &mut frontend,
+        &ClientMessage::Navigate {
+            url: "about:credits".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        read_server_message(&mut frontend).unwrap(),
+        ServerMessage::FrameReady { .. }
+    ));
+
+    let mut control = launcher.connect_control();
+    write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
+    assert!(matches!(
+        read_control_reply(&mut control).unwrap(),
+        ControlReply::CutoverDone { tabs_migrated: 1 }
+    ));
+    assert!(
+        !v1_child_socket.exists(),
+        "cutover must reap the superseded core's child and unlink its capability endpoint"
+    );
+
+    let v2_child_socket = std::env::temp_dir().join(format!(
+        "blueice-launcher-bluejs-host-{}-1.sock",
+        launcher.child.id()
+    ));
+    assert!(
+        v2_child_socket.exists(),
+        "replacement core must receive a fresh launcher-created child, not v1's capability"
+    );
+
+    write_client_message(&mut frontend, &ClientMessage::Shutdown).unwrap();
+    launcher.wait_or_kill(Duration::from_secs(5));
+    assert!(
+        !v2_child_socket.exists(),
+        "final launcher shutdown must reap the replacement child too"
+    );
+    let _ = std::fs::remove_file(gatekeeper_socket);
 }
 
 #[test]

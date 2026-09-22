@@ -24,8 +24,10 @@ exact live safe-point validation, and lifecycle-bound breakpoint configuration.
 A launcher-supervised, capability-authenticated out-of-process BlueJS child
 can execute a bounded, caller-authorized document graph; an explicitly paired
 core endpoint/token route forwards HTTP(S) inline declarations and closes child
-realms on navigation/tab removal. The normal launcher does not enable that
-route. The remaining boundary has no general DOM or event surface, live
+realms on navigation/tab removal. `blueice-launcher --out-of-process-bluejs`
+now creates that child/capability pair itself for each core generation and
+reaps it on ordinary shutdown or cutover; the default launcher leaves the mode
+disabled. The remaining boundary has no general DOM or event surface, live
 page-data contract boundary, debugger interruption or pause/runtime control,
 or MCP project-registration path.
 
@@ -69,10 +71,11 @@ or second module resolver to bypass them.
   listener: it requires `Hello` before a request, decodes the script protocol
   on a worker, and routes each request synchronously to the session thread that
   exclusively owns the live `TabManager`. This proves real-process DOM
-  dispatch without exposing a cross-thread DOM reference. The launcher-managed
-  out-of-process BlueJS host, JavaScript DOM bindings, and host-wide
-  source-fetch/cache accounting are still absent, so this prerequisite remains
-  open. A core owner can now construct the in-process direct host with a
+  dispatch without exposing a cross-thread DOM reference. The opt-in
+  launcher-managed out-of-process BlueJS host is now wired through core; the
+  JavaScript DOM bindings and host-wide source-fetch/cache accounting are
+  still absent, so this prerequisite remains open. A core owner can now
+  construct the in-process direct host with a
   caller-selected `DirectPageRealmOwner`, whose validated VM, realm,
   program-count, bytecode, and static-debug retention limits apply before a
   direct program executes. `DirectPageInlineExecutor` can receive the same
@@ -154,14 +157,20 @@ or second module resolver to bypass them.
   idempotent, a stale generation cannot close or inspect a successor, and a
   missing module edge is rejected before any graph program is retained. Unit
   tests cover those rules, and a real launcher-spawned child regression proves
-  the authenticated classic-plus-static-ESM route and clean shutdown. This is
-  deliberately not yet a core page-pipeline adapter: no live `Page`
-  declaration is forwarded through the launcher child, no document binding is
-  copied across, and no child process is enabled by the normal launcher
-  command. Production fetch/cache/integrity authority, core-to-child
-  lifecycle routing, shared JavaScript/BlueTS realm, host-wide memory
-  accounting, native debugger attachment, and general JavaScript
-  DOM-object/event binding remain open, so the prerequisite remains open.
+  the authenticated classic-plus-static-ESM route and clean shutdown.
+  `blueice-launcher --out-of-process-bluejs` now creates a fresh child and
+  private capability pair for each core generation, passes it only to that
+  core's startup boundary, forwards loaded HTTP(S) inline declarations through
+  the core adapter, and reaps the child/socket on shutdown or cutover. The
+  launcher-to-core-to-child regression proves inline classic and module
+  execution, source-free external-`src` rejection, no injected DOM/fetch
+  binding, no endpoint reflection through the frontend broker, and both
+  generations' cleanup. This does not copy a document binding across the
+  process boundary or grant child fetch, URL/import-map resolution, or external
+  graph authority. Production fetch/cache/integrity authority, a shared
+  JavaScript/BlueTS realm, host-wide memory accounting, native debugger
+  attachment, and general JavaScript DOM-object/event binding remain open, so
+  the prerequisite remains open.
 
   Acceptance: a page fixture can run a supported JavaScript classic script and
   module in its own realm; navigation/reload invalidates old program handles;
@@ -443,11 +452,12 @@ or second module resolver to bypass them.
   tab's bounded execution outcomes; it cannot enable the executor or expose
   page source, diagnostics, bytecode, or runtime values. The binary subprocess
   regression covers that opt-in mode across real HTTP navigation, a classic
-  declaration, a module declaration, and a static rejection. No concrete
-  fetch/cache/integrity implementation,
-  launcher-managed BlueJS process, or general external graph policy exists.
-  The closed-graph direct bridge integration is complete; those broader
-  page-host responsibilities remain separate open prerequisites.
+  declaration, a module declaration, and a static rejection. The separate
+  launcher-managed BlueJS process remains JavaScript-only and does not yet
+  own a shared BlueTS realm. No concrete fetch/cache/integrity implementation
+  or general external graph policy exists. The closed-graph direct bridge
+  integration is complete; those broader page-host responsibilities remain
+  separate open prerequisites.
 
   Acceptance: one typed classic script and one typed ESM module graph execute
   in a real page with no generated `.js` input; parse/resolution/type/lowering
