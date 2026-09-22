@@ -184,10 +184,32 @@ mod unix {
             loop {
                 let (frame_tab_id, request_id, message) =
                     blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
-                if matches!(request_id, Some(id) if id != action_id && id != representation_id) {
-                    continue;
-                }
+                // A `FrameReady` is valid regardless of which request
+                // produced it -- it's global per-tab state, not a
+                // per-request answer -- so it's cached unconditionally,
+                // *before* the "is this reply mine" check below. A gated
+                // navigation's own completion (`phase-7-local-ai/PLAN.md`'s
+                // background gatekeeper+fetch thread) can easily still be
+                // in flight when this call's own `Representation` arrives
+                // first and returns; nothing then re-reads the stream
+                // until some later call does, and that later call must
+                // still see this navigation's frame rather than silently
+                // discarding it as "not mine" the way every other message
+                // type below correctly is.
+                let mine = request_id.is_none()
+                    || matches!(request_id, Some(id) if id == action_id || id == representation_id);
                 match message {
+                ServerMessage::FrameReady { shm_path, width, height, generation } => {
+                    self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
+                }
+                // Everything else below is a definitive *answer* and must
+                // be attributed to the right request: an
+                // Error/GatekeeperBlocked/Representation tagged with
+                // someone else's id -- another client's broadcasted
+                // traffic on a connection shared through
+                // `blueice-launcher`'s broker -- must never be mistaken
+                // for this call's own answer.
+                _ if !mine => {}
                 ServerMessage::Representation(snapshot) => return Ok(ToolOutcome { error, snapshot }),
                 ServerMessage::Error { message } => error = Some(message),
                 // `phase-7-local-ai/PLAN.md`'s gatekeeper blocked this
@@ -199,9 +221,6 @@ mod unix {
                 // result is Phase 12's own future adapter work, not
                 // this slice's.
                 ServerMessage::GatekeeperBlocked { reason, category, url } => error = Some(format!("blocked by the gatekeeper ({category}) for {url}: {reason}")),
-                ServerMessage::FrameReady { shm_path, width, height, generation } => {
-                    self.record_frame(frame_tab_id, FrameInfo { shm_path, width, height, generation });
-                }
                 ServerMessage::Navigated { .. }
                 | ServerMessage::Dom(_)
                 | ServerMessage::Hello { .. }
@@ -258,11 +277,11 @@ mod unix {
             loop {
                 let (frame_tab_id, reply_id, message) =
                     blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
-                if matches!(reply_id, Some(id) if id != request_id) {
-                    continue;
-                }
+                // See `send_and_drain`'s identical comment: a `FrameReady`
+                // is cached unconditionally, regardless of which request
+                // produced it, before the "is this reply mine" check.
+                let mine = reply_id.is_none() || matches!(reply_id, Some(id) if id == request_id);
                 match message {
-                    ServerMessage::Representation(snapshot) => return Ok(snapshot),
                     ServerMessage::FrameReady {
                         shm_path,
                         width,
@@ -279,6 +298,8 @@ mod unix {
                             },
                         );
                     }
+                    _ if !mine => {}
+                    ServerMessage::Representation(snapshot) => return Ok(snapshot),
                     ServerMessage::Error { .. }
                     | ServerMessage::GatekeeperBlocked { .. }
                     | ServerMessage::Navigated { .. }
@@ -309,11 +330,11 @@ mod unix {
             loop {
                 let (frame_tab_id, reply_id, message) =
                     blueice_ipc::read_server_message_with_ids(&mut self.stream)?;
-                if matches!(reply_id, Some(id) if id != request_id) {
-                    continue;
-                }
+                // See `send_and_drain`'s identical comment: a `FrameReady`
+                // is cached unconditionally, regardless of which request
+                // produced it, before the "is this reply mine" check.
+                let mine = reply_id.is_none() || matches!(reply_id, Some(id) if id == request_id);
                 match message {
-                    ServerMessage::Dom(dump) => return Ok(dump),
                     ServerMessage::FrameReady {
                         shm_path,
                         width,
@@ -330,6 +351,8 @@ mod unix {
                             },
                         );
                     }
+                    _ if !mine => {}
+                    ServerMessage::Dom(dump) => return Ok(dump),
                     ServerMessage::Error { .. }
                     | ServerMessage::GatekeeperBlocked { .. }
                     | ServerMessage::Navigated { .. }
@@ -1109,6 +1132,79 @@ mod unix {
             let mut conn = CoreConnection::new(client);
             conn.dom(None).unwrap();
             assert_eq!(conn.last_frame(None).unwrap().generation, 5);
+        }
+
+        #[test]
+        fn a_frame_ready_tagged_with_an_earlier_calls_request_id_is_still_cached_by_a_later_call() {
+            // The realistic version of the two tests above: those tag
+            // their interleaved `FrameReady` with `reply_tab`, which
+            // sends no `request_id` at all (`None`), so it was never
+            // filtered by the "is this reply mine" check either loop
+            // does. In production (`phase-7-local-ai/PLAN.md`'s
+            // non-blocking dispatch) a gated navigation's own
+            // `Navigated`/`FrameReady` are tagged with *that navigate
+            // call's own* request_id, produced by a background thread on
+            // its own schedule -- they can easily still be in flight
+            // when a *later*, unrelated call's own reply arrives first
+            // and that call returns. Nothing then re-reads the socket
+            // until some later call does, and when it does, that
+            // stale-but-real-id `FrameReady` must still be cached, not
+            // silently dropped by a `continue` that only meant to skip
+            // *waiting* on it as this call's own answer.
+            let (client, server) = UnixStream::pair().unwrap();
+            fake_core(
+                server,
+                vec![
+                    Box::new(|msg, _s| {
+                        assert!(matches!(msg, ClientMessage::Navigate { .. }));
+                        // No reply yet -- stands in for the background
+                        // thread not having finished.
+                    }),
+                    Box::new(|msg, s| {
+                        assert!(matches!(msg, ClientMessage::GetRepresentation));
+                        // This call's own answer arrives well before the
+                        // pending navigation's -- `navigate()` returns
+                        // using this, having read nothing else yet.
+                        reply(s, &ServerMessage::Representation(sample_snapshot(0)));
+                        // *Now* the background navigation's own reply
+                        // lands, tagged with its own real request_id (1,
+                        // the first `next_request_id()` call `navigate`
+                        // made) -- but nothing is reading the stream
+                        // anymore, so it just sits there until the next
+                        // call reads past it.
+                        blueice_ipc::write_server_message_with_ids(
+                            s,
+                            Some(1),
+                            Some(1),
+                            &ServerMessage::FrameReady {
+                                shm_path: "/tmp/late".to_string(),
+                                width: 4,
+                                height: 4,
+                                generation: 7,
+                            },
+                        )
+                        .unwrap();
+                    }),
+                    Box::new(|msg, s| {
+                        assert!(matches!(msg, ClientMessage::GetRepresentation));
+                        reply(s, &ServerMessage::Representation(sample_snapshot(0)));
+                    }),
+                ],
+            );
+
+            let mut conn = CoreConnection::new(client);
+            conn.navigate("https://example.com", None).unwrap();
+            assert_eq!(
+                conn.last_frame(None),
+                None,
+                "the pending navigation's FrameReady has not arrived yet from this call's own perspective"
+            );
+            conn.representation(None).unwrap();
+            assert_eq!(
+                conn.last_frame(None).map(|f| f.generation),
+                Some(7),
+                "a later call must still cache a FrameReady tagged with an earlier call's own request_id, not discard it"
+            );
         }
 
         #[test]
