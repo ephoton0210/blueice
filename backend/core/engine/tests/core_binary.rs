@@ -395,11 +395,38 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
     assert_eq!(check.static_metadata.as_ref().unwrap().contract_count, 1);
     assert!(check.artifact_fingerprint.is_some());
 
+    // The public process route first returns an opaque bounded inventory. The
+    // caller discovers the static symbol ID from this exact check generation
+    // rather than guessing an ordinal, then follows its source/contract IDs.
+    blueice_ipc::compiler::write_compiler_request(
+        &mut compiler,
+        &blueice_ipc::compiler::CompilerRequest::ListStaticMetadata {
+            generation: check.generation,
+            kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Symbols,
+            cursor: None,
+            limit: Some(128),
+        },
+    )
+    .unwrap();
+    let blueice_ipc::compiler::CompilerReply::StaticMetadataPage(symbol_ids) =
+        blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap()
+    else {
+        panic!("real core must provide bounded exact-generation symbol IDs")
+    };
+    assert!(symbol_ids.next_cursor.is_none());
+    assert_eq!(
+        u32::try_from(symbol_ids.ids.len()).unwrap(),
+        check.static_metadata.as_ref().unwrap().symbol_count
+    );
+    let symbol_id = *symbol_ids
+        .ids
+        .first()
+        .expect("compiled-in interface must be discoverable in the inventory");
     blueice_ipc::compiler::write_compiler_request(
         &mut compiler,
         &blueice_ipc::compiler::CompilerRequest::GetStaticSymbol {
             generation: check.generation,
-            symbol_id: 0,
+            symbol_id,
         },
     )
     .unwrap();

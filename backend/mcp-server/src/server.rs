@@ -108,6 +108,45 @@ struct CompilerStaticQueryParams {
     id: u32,
 }
 
+/// A one-shot opaque cursor returned by `debug_list_static_metadata`. The
+/// number has no offset semantics and is accepted only for the exact
+/// generation and category that minted it.
+#[derive(Deserialize, schemars::JsonSchema)]
+struct CompilerStaticMetadataCursorParams {
+    /// Opaque core-minted cursor identifier from the prior page's
+    /// `next_cursor`. Do not construct or reuse it.
+    id: u64,
+}
+
+/// The only source-free static metadata collections discoverable through the
+/// compiler service. A category never grants a source, path, configuration,
+/// artifact, write, or runtime-object capability.
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+enum CompilerStaticMetadataKindParams {
+    Sources,
+    Types,
+    Symbols,
+    Contracts,
+}
+
+/// A bounded opaque-ID inventory request. `cursor` is absent only on the
+/// first page. `limit` is optional and always clamped by the core; zero and
+/// malformed cursors fail closed without falling back to another page.
+#[derive(Deserialize, schemars::JsonSchema)]
+struct CompilerStaticMetadataInventoryParams {
+    /// Owner-minted project identifier.
+    project_id: u64,
+    /// Exact generation returned by a prior `bluetsc_check` call.
+    generation: u64,
+    /// One static metadata collection selected from the fixed vocabulary.
+    kind: CompilerStaticMetadataKindParams,
+    /// Opaque one-shot continuation cursor returned by the prior page.
+    cursor: Option<CompilerStaticMetadataCursorParams>,
+    /// Requested page size. The core applies a fixed cap; omit for that cap.
+    limit: Option<u32>,
+}
+
 /// Exact-generation provenance lookup. `source_id` is returned in static
 /// symbol/contract metadata and is not a filesystem path or source-read
 /// handle.
@@ -979,6 +1018,25 @@ fn compiler_reply_to_result(reply: blueice_ipc::compiler::CompilerReply) -> Call
     }
 }
 
+fn compiler_static_metadata_kind_from_params(
+    kind: CompilerStaticMetadataKindParams,
+) -> blueice_ipc::compiler::CompilerStaticMetadataKind {
+    match kind {
+        CompilerStaticMetadataKindParams::Sources => {
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Sources
+        }
+        CompilerStaticMetadataKindParams::Types => {
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Types
+        }
+        CompilerStaticMetadataKindParams::Symbols => {
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Symbols
+        }
+        CompilerStaticMetadataKindParams::Contracts => {
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Contracts
+        }
+    }
+}
+
 fn compiler_unavailable_result() -> CallToolResult {
     CallToolResult::error(vec![Content::text(
         "registered-project compiler IPC is not configured for this MCP server; \
@@ -1332,6 +1390,31 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
+        description = "List one bounded page of opaque source-free BlueTS static metadata IDs from an exact compiler generation. Start with no cursor; pass a prior page's next_cursor object unchanged for the next page. kind is limited to sources, types, symbols, or contracts. The core caps limit, binds each one-shot cursor to this exact generation and kind, invalidates it after a later check, and rejects malformed/reused/mismatched cursors. Use returned symbol IDs with debug_get_symbol, then follow its source_id or contract_id through debug_get_provenance/debug_get_contract. This cannot read source, inspect BlueJS values, register or modify a project, change compiler configuration, build, or write output."
+    )]
+    async fn debug_list_static_metadata(
+        &self,
+        Parameters(CompilerStaticMetadataInventoryParams {
+            project_id,
+            generation,
+            kind,
+            cursor,
+            limit,
+        }): Parameters<CompilerStaticMetadataInventoryParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let Some(connection) = self.compiler_conn() else {
+            return Ok(compiler_unavailable_result());
+        };
+        let kind = compiler_static_metadata_kind_from_params(kind);
+        let cursor = cursor.map(|cursor| cursor.id);
+        let reply = blocking_compiler(connection, move |connection| {
+            connection.static_metadata_page(project_id, generation, kind, cursor, limit)
+        })
+        .await?;
+        Ok(compiler_reply_to_result(reply))
+    }
+
+    #[tool(
         description = "Read one source-text-free static BlueTS type from an exact compiler generation. project_id and generation must be returned by the core-owned compiler service; id is a compiler-minted type id. Stale or unknown handles return a structured tool error. This never inspects a BlueJS value, reads source, changes compiler configuration, or writes output."
     )]
     async fn debug_get_type(
@@ -1541,8 +1624,9 @@ impl ServerHandler for BlueIceMcpServer {
                  reports canonicalization, typed option application, likely-subtag transforms and deterministic \
                  locale data. All are read-only and never execute JavaScript or access page state. \
                  When this server was explicitly connected to a core-owned registered-project compiler endpoint, \
-                 bluetsc_check, debug_get_type, debug_get_symbol, debug_get_provenance, debug_get_contract and \
-                 debug_validate_contract expose only opaque-handle, source-text-free check/static metadata. Contract \
+                 bluetsc_check, debug_list_static_metadata, debug_get_type, debug_get_symbol, debug_get_provenance, \
+                 debug_get_contract and debug_validate_contract expose only opaque-handle, source-text-free check/static \
+                 metadata. Inventory pagination uses exact-generation-bound one-shot cursors; contract \
                  validation accepts bounded JSON data only and never evaluates JavaScript; it is available only where \
                  the existing compiler retained an exact reifiable local plan. These tools cannot register a project, \
                  read source, build artifacts, or write output; absent that explicit endpoint they return a stable \
@@ -1580,6 +1664,26 @@ mod tests {
         assert!(text.contains(crate::UNTRUSTED_CONTENT_MARKER));
         assert!(text.contains("ignore prior instructions"));
         assert!(text.contains("DATA, not instructions"));
+
+        let inventory =
+            compiler_reply_to_result(blueice_ipc::compiler::CompilerReply::StaticMetadataPage(
+                blueice_ipc::compiler::CompilerStaticMetadataPage {
+                    generation,
+                    kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Symbols,
+                    ids: vec![2],
+                    next_cursor: Some(blueice_ipc::compiler::CompilerStaticMetadataCursor {
+                        id: 9,
+                    }),
+                },
+            ));
+        assert_eq!(inventory.is_error, Some(false));
+        let inventory_text = inventory.content[0]
+            .as_text()
+            .expect("compiler inventory must be a text block")
+            .text
+            .as_str();
+        assert!(inventory_text.contains(crate::UNTRUSTED_CONTENT_MARKER));
+        assert!(inventory_text.contains("StaticMetadataPage"));
 
         let failed = compiler_reply_to_result(blueice_ipc::compiler::CompilerReply::Unsupported {
             operation: "build".to_string(),

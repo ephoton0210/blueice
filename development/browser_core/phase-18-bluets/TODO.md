@@ -676,11 +676,18 @@ or second module resolver to bypass them.
   versioned, one-mebibyte-framed native compiler query protocol, and
   `blueice_engine::compiler_ipc::CompilerServiceIpcAdapter` owns the mapping
   to the registered service. Its `DescribeProject`, `Check`,
-  `GetStaticType`, `GetStaticSymbol`, `GetStaticProvenance`,
+  `GetStaticType`, `GetStaticSymbol`, `ListStaticMetadata`, `GetStaticProvenance`,
   `GetStaticContract`, and `ValidateStaticContract` requests carry only opaque
   core-minted project/generation/metadata handles. `Check` returns capped work
   sets, diagnostics, fingerprints, and metadata counts; every static query is
-  exact-generation-bound. Provenance returns only a static module identity and
+  exact-generation-bound. `ListStaticMetadata` turns those counts into capped
+  pages of opaque source/type/symbol/contract IDs, so a client can discover a
+  `debug_get_symbol` ID before following its returned provenance/contract IDs
+  rather than guessing an ordinal. A core-minted cursor is one-shot, bound to
+  exactly one generation and collection, capped by service and response policy,
+  invalidated on a later check, and rejects malformed, replayed, stale, or
+  mismatched uses without falling back to another page. Provenance returns only
+  a static module identity and
   content hash, never text. Contract reads expose a bounded static summary;
   validation accepts a bounded data-only tree under immutable core-selected
   limits and never echoes it. Canonical project/config/output roots are never
@@ -716,8 +723,9 @@ or second module resolver to bypass them.
   MCP read foundation delivered: `blueice-mcp-server` now has a distinct
   `CompilerConnection` client and an explicit
   `BlueIceMcpServer::connect_with_compiler_socket` construction path. After
-  the separate compiler `Hello` negotiation, `bluetsc_check`, `debug_get_type`,
-  `debug_get_symbol`, `debug_get_provenance`, `debug_get_contract`, and
+  the separate compiler `Hello` negotiation, `bluetsc_check`,
+  `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
+  `debug_get_provenance`, `debug_get_contract`, and
   `debug_validate_contract` forward only opaque project/generation/metadata
   handles to the core service. Contract validation accepts only bounded JSON
   data (not JavaScript values or JSON-inexpressible `undefined`) and never
@@ -732,22 +740,23 @@ or second module resolver to bypass them.
   no launcher-owned catalog distribution or authorization, no remote
   registration/update/source/filesystem/resolver/plugin/options authority, no
   `bluetsc_build`, no artifact/declaration/source-map/source response, and no
-  output write or elevation. Lowering/bytecode provenance, pagination,
-  capability negotiation, session lifecycle, and the full MCP tool set remain
-  open.
+  output write or elevation. Lowering/bytecode provenance, broader capability
+  negotiation, session lifecycle, and the full MCP tool set remain open.
 
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
   no-emit-on-error guarantee; responses are generation/fingerprint bound,
   capped, redacted where needed, and reject stale project state.
 
 - [ ] **Complete the negotiated MCP BlueTS/BlueTSC adapter (Phase 12).**
-  `bluetsc_check`, `debug_get_type`, `debug_get_symbol`,
+  `bluetsc_check`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
   `debug_get_provenance`, `debug_get_contract`, and
   `debug_validate_contract` now adapt the native query service, not shell
   endpoints or a second compiler. Still add `bluetsc_build` only alongside an
   explicit output-write capability, then complete documented capability
-  negotiation, session generations, authorization, pagination, untrusted-
-  content handling, and build-write elevation.
+  negotiation, session generations, authorization, broader result pagination,
+  untrusted-content handling, and build-write elevation. Static metadata ID
+  pagination is already bounded and generation-bound; its returned JSON is
+  framed as untrusted project-controlled metadata.
 
   Acceptance: a real MCP client can inspect a page TS diagnostic/static type/
   contract failure and run check/build for an authorized registered project;

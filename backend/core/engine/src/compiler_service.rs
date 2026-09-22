@@ -34,6 +34,10 @@ pub struct CompilerServiceLimits {
     pub max_static_types: usize,
     pub max_static_symbols: usize,
     pub max_static_contracts: usize,
+    /// The maximum number of one-shot static-metadata page cursors retained
+    /// across every registered project. A later check for a project releases
+    /// that project's cursors, so remote inventory cannot grow unbounded.
+    pub max_static_metadata_cursors: usize,
     /// Fixed core-selected limits for validation requests. Query callers never
     /// provide or relax these bounds.
     pub contract_validation: ValidationLimits,
@@ -50,6 +54,7 @@ impl Default for CompilerServiceLimits {
             max_static_types: 16_384,
             max_static_symbols: 65_536,
             max_static_contracts: 16_384,
+            max_static_metadata_cursors: 1_024,
             contract_validation: ValidationLimits {
                 max_depth: 64,
                 max_collection_entries: 4_096,
@@ -170,6 +175,26 @@ pub struct CompilerServiceBuild {
     pub output: Option<BuildOutput>,
 }
 
+/// A compiler-owned static metadata collection. It contains compiler-minted
+/// IDs only; callers must use an exact-generation record query to inspect an
+/// ID. It is intentionally independent from the IPC vocabulary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StaticMetadataInventoryKind {
+    Sources,
+    Types,
+    Symbols,
+    Contracts,
+}
+
+/// One bounded static metadata inventory page retained by the service.
+/// `next_cursor` is a core-minted one-shot value, not an offset supplied by a
+/// caller or a source/path capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaticMetadataInventoryPage {
+    pub ids: Vec<u32>,
+    pub next_cursor: Option<u64>,
+}
+
 /// Fail-closed compiler-service errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompilerServiceError {
@@ -211,6 +236,15 @@ pub enum CompilerServiceError {
     UnknownContract {
         generation: RegisteredProjectGeneration,
         contract_id: ContractId,
+    },
+    InvalidStaticMetadataCursor {
+        generation: RegisteredProjectGeneration,
+    },
+    InvalidStaticMetadataPage {
+        limit: usize,
+    },
+    StaticMetadataCursorLimit {
+        limit: usize,
     },
     StaticMetadataLimit {
         resource: &'static str,
@@ -309,6 +343,19 @@ impl fmt::Display for CompilerServiceError {
                 generation.sequence(),
                 generation.project_id().as_u64()
             ),
+            Self::InvalidStaticMetadataCursor { generation } => write!(
+                formatter,
+                "invalid static metadata cursor for generation {} in project {}",
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
+            Self::InvalidStaticMetadataPage { limit } => {
+                write!(formatter, "invalid static metadata page limit {limit}")
+            }
+            Self::StaticMetadataCursorLimit { limit } => write!(
+                formatter,
+                "static metadata cursor limit {limit} has been reached"
+            ),
             Self::StaticMetadataLimit { resource, limit } => {
                 write!(
                     formatter,
@@ -332,7 +379,9 @@ impl std::error::Error for CompilerServiceError {}
 pub struct RegisteredProjectCompilerService {
     limits: CompilerServiceLimits,
     next_project_id: u64,
+    next_static_metadata_cursor: u64,
     projects: BTreeMap<RegisteredProjectId, RegisteredProject>,
+    static_metadata_cursors: BTreeMap<u64, StaticMetadataCursor>,
 }
 
 #[derive(Debug)]
@@ -349,12 +398,25 @@ struct RetainedCompilation {
     static_debug_info: Option<BlueTsDebugInfo>,
 }
 
+/// A private cursor state cannot be reconstructed from its number: it binds
+/// an opaque cursor to its exact retained generation, collection and next
+/// position. Cursors are consumed after one page so replay cannot act as a
+/// second pagination authority.
+#[derive(Debug, Clone, Copy)]
+struct StaticMetadataCursor {
+    generation: RegisteredProjectGeneration,
+    kind: StaticMetadataInventoryKind,
+    next_index: usize,
+}
+
 impl RegisteredProjectCompilerService {
     pub fn new(limits: CompilerServiceLimits) -> Self {
         Self {
             limits,
             next_project_id: 0,
+            next_static_metadata_cursor: 0,
             projects: BTreeMap::new(),
+            static_metadata_cursors: BTreeMap::new(),
         }
     }
 
@@ -457,6 +519,75 @@ impl RegisteredProjectCompilerService {
         Ok(self.static_info(generation)?.clone())
     }
 
+    /// Lists a bounded page of compiler-minted IDs from one exact successful
+    /// generation. A caller starts with no cursor; every continuation cursor
+    /// is private service state, binds its generation and collection exactly,
+    /// and is consumed after one use. This method exposes neither static text
+    /// nor a positional offset a client can forge.
+    pub fn static_metadata_inventory(
+        &mut self,
+        generation: RegisteredProjectGeneration,
+        kind: StaticMetadataInventoryKind,
+        cursor: Option<u64>,
+        limit: usize,
+    ) -> Result<StaticMetadataInventoryPage, CompilerServiceError> {
+        if limit == 0 {
+            return Err(CompilerServiceError::InvalidStaticMetadataPage { limit });
+        }
+
+        // Validate the successful exact generation before looking at a cursor.
+        // An old generation never regains visibility because a cursor happens
+        // to remain in memory momentarily.
+        let ids = static_metadata_ids(self.static_info(generation)?, kind);
+        let (start, consumed_cursor) = match cursor {
+            None => (0, None),
+            Some(0) => {
+                return Err(CompilerServiceError::InvalidStaticMetadataCursor { generation });
+            }
+            Some(cursor) => {
+                let state = self
+                    .static_metadata_cursors
+                    .get(&cursor)
+                    .copied()
+                    .filter(|state| state.generation == generation && state.kind == kind)
+                    .ok_or(CompilerServiceError::InvalidStaticMetadataCursor { generation })?;
+                if state.next_index >= ids.len() {
+                    return Err(CompilerServiceError::InvalidStaticMetadataCursor { generation });
+                }
+                (state.next_index, Some(cursor))
+            }
+        };
+
+        let end = start.saturating_add(limit).min(ids.len());
+        // An exhausted cursor-ID counter must fail before consuming a valid
+        // continuation. Response budgeting is likewise completed by the IPC
+        // adapter before it reaches this method.
+        if end < ids.len() && self.next_static_metadata_cursor == u64::MAX {
+            return Err(CompilerServiceError::StaticMetadataCursorLimit {
+                limit: self.limits.max_static_metadata_cursors,
+            });
+        }
+        if let Some(cursor) = consumed_cursor {
+            // A valid cursor is intentionally one-shot. Removing it only
+            // after every validation and future-page preflight above lets
+            // malformed/mismatched input fail without consuming it.
+            self.static_metadata_cursors.remove(&cursor);
+        }
+        let next_cursor = if end < ids.len() {
+            Some(self.mint_static_metadata_cursor(StaticMetadataCursor {
+                generation,
+                kind,
+                next_index: end,
+            })?)
+        } else {
+            None
+        };
+        Ok(StaticMetadataInventoryPage {
+            ids: ids[start..end].to_vec(),
+            next_cursor,
+        })
+    }
+
     /// Looks up one static type by its compiler-minted ID. This never attempts
     /// to inspect a BlueJS runtime value.
     pub fn static_type(
@@ -552,49 +683,76 @@ impl RegisteredProjectCompilerService {
         project_id: RegisteredProjectId,
     ) -> Result<(CompilerServiceCheck, Option<BuildOutput>), CompilerServiceError> {
         let limits = self.limits;
-        let project = self.project_mut(project_id)?;
-        let result = project.compiler.compile(
-            &project.registration.entry_module,
-            &project.registration.loader,
-            project.registration.compiler_options.clone(),
-        );
-        let static_debug_info = result.compilation.debug_info.clone();
-        if let Some(static_debug_info) = static_debug_info.as_ref() {
-            validate_static_debug_info(static_debug_info, limits)?;
+        let result = {
+            let project = self.project_mut(project_id)?;
+            let result = project.compiler.compile(
+                &project.registration.entry_module,
+                &project.registration.loader,
+                project.registration.compiler_options.clone(),
+            );
+            let static_debug_info = result.compilation.debug_info.clone();
+            if let Some(static_debug_info) = static_debug_info.as_ref() {
+                validate_static_debug_info(static_debug_info, limits)?;
+            }
+            let sequence = project
+                .next_generation
+                .checked_add(1)
+                .ok_or(CompilerServiceError::GenerationExhausted { project_id })?;
+            project.next_generation = sequence;
+            let generation = RegisteredProjectGeneration {
+                project_id,
+                sequence,
+            };
+            let diagnostics =
+                capped_diagnostics(&result.compilation.diagnostics, limits.max_diagnostics);
+            let artifact_fingerprint = result
+                .compilation
+                .output
+                .as_ref()
+                .map(|output| output.fingerprint.clone());
+            let check = CompilerServiceCheck {
+                generation,
+                cache_hit: result.cache_hit,
+                parsed_modules: result.parsed_modules,
+                reused_parsed_modules: result.reused_parsed_modules,
+                rechecked_modules: result.rechecked_modules,
+                reused_checked_modules: result.reused_checked_modules,
+                diagnostics,
+                has_errors: result.compilation.has_errors(),
+                artifact_fingerprint,
+                static_debug_info: static_debug_info.clone(),
+            };
+            project.latest = Some(RetainedCompilation {
+                generation,
+                static_debug_info,
+            });
+            (check, result.compilation.output)
+        };
+        // A new observed generation invalidates every continuation token for
+        // that project, including one held by a disconnected or malicious
+        // client. The token map is otherwise bounded by service policy.
+        self.static_metadata_cursors
+            .retain(|_, cursor| cursor.generation.project_id() != project_id);
+        Ok(result)
+    }
+
+    fn mint_static_metadata_cursor(
+        &mut self,
+        cursor: StaticMetadataCursor,
+    ) -> Result<u64, CompilerServiceError> {
+        if self.static_metadata_cursors.len() >= self.limits.max_static_metadata_cursors {
+            return Err(CompilerServiceError::StaticMetadataCursorLimit {
+                limit: self.limits.max_static_metadata_cursors,
+            });
         }
-        let sequence = project
-            .next_generation
-            .checked_add(1)
-            .ok_or(CompilerServiceError::GenerationExhausted { project_id })?;
-        project.next_generation = sequence;
-        let generation = RegisteredProjectGeneration {
-            project_id,
-            sequence,
-        };
-        let diagnostics =
-            capped_diagnostics(&result.compilation.diagnostics, limits.max_diagnostics);
-        let artifact_fingerprint = result
-            .compilation
-            .output
-            .as_ref()
-            .map(|output| output.fingerprint.clone());
-        let check = CompilerServiceCheck {
-            generation,
-            cache_hit: result.cache_hit,
-            parsed_modules: result.parsed_modules,
-            reused_parsed_modules: result.reused_parsed_modules,
-            rechecked_modules: result.rechecked_modules,
-            reused_checked_modules: result.reused_checked_modules,
-            diagnostics,
-            has_errors: result.compilation.has_errors(),
-            artifact_fingerprint,
-            static_debug_info: static_debug_info.clone(),
-        };
-        project.latest = Some(RetainedCompilation {
-            generation,
-            static_debug_info,
-        });
-        Ok((check, result.compilation.output))
+        let id = self.next_static_metadata_cursor.checked_add(1).ok_or(
+            CompilerServiceError::StaticMetadataCursorLimit {
+                limit: self.limits.max_static_metadata_cursors,
+            },
+        )?;
+        self.next_static_metadata_cursor = id;
+        self.static_metadata_cursors.insert(id, cursor);
+        Ok(id)
     }
 
     fn project(
@@ -677,6 +835,30 @@ fn capped_diagnostics(diagnostics: &[Diagnostic], limit: usize) -> CompilerServi
     CompilerServiceDiagnostics {
         entries: diagnostics.iter().take(limit).cloned().collect(),
         truncated: diagnostics.len() > limit,
+    }
+}
+
+/// Materializes only compiler-minted numeric handles for pagination. The
+/// returned page never includes source text, module identities, names, type
+/// displays, contract plans, compiler options, or runtime values.
+fn static_metadata_ids(info: &BlueTsDebugInfo, kind: StaticMetadataInventoryKind) -> Vec<u32> {
+    match kind {
+        StaticMetadataInventoryKind::Sources => {
+            info.sources.iter().map(|source| source.id.0).collect()
+        }
+        StaticMetadataInventoryKind::Types => info
+            .types
+            .iter()
+            .map(|static_type| static_type.id.0)
+            .collect(),
+        StaticMetadataInventoryKind::Symbols => {
+            info.symbols.iter().map(|symbol| symbol.id.0).collect()
+        }
+        StaticMetadataInventoryKind::Contracts => info
+            .contracts
+            .iter()
+            .map(|contract| contract.id.0)
+            .collect(),
     }
 }
 
@@ -888,6 +1070,142 @@ mod tests {
         assert!(matches!(
             service.static_contract(check.generation, contract.id),
             Err(CompilerServiceError::StaleGeneration { .. })
+        ));
+    }
+
+    #[test]
+    fn static_metadata_inventory_is_opaque_one_shot_and_generation_bound() {
+        let mut service = RegisteredProjectCompilerService::default();
+        let id = service
+            .register(registration(
+                "interface Settings { enabled: boolean; } \
+                 export const settings: Settings = { enabled: true };",
+            ))
+            .unwrap();
+        let check = service.check(id).unwrap();
+        let expected_symbol_ids = check
+            .static_debug_info
+            .as_ref()
+            .unwrap()
+            .symbols
+            .iter()
+            .map(|symbol| symbol.id.0)
+            .collect::<Vec<_>>();
+
+        for (kind, expected_count) in [
+            (
+                StaticMetadataInventoryKind::Sources,
+                check.static_debug_info.as_ref().unwrap().sources.len(),
+            ),
+            (
+                StaticMetadataInventoryKind::Types,
+                check.static_debug_info.as_ref().unwrap().types.len(),
+            ),
+            (
+                StaticMetadataInventoryKind::Symbols,
+                check.static_debug_info.as_ref().unwrap().symbols.len(),
+            ),
+            (
+                StaticMetadataInventoryKind::Contracts,
+                check.static_debug_info.as_ref().unwrap().contracts.len(),
+            ),
+        ] {
+            let page = service
+                .static_metadata_inventory(check.generation, kind, None, 128)
+                .unwrap();
+            assert_eq!(page.ids.len(), expected_count);
+            assert!(page.next_cursor.is_none());
+        }
+
+        let first = service
+            .static_metadata_inventory(
+                check.generation,
+                StaticMetadataInventoryKind::Symbols,
+                None,
+                1,
+            )
+            .unwrap();
+        assert_eq!(first.ids.len(), 1);
+        let cursor = first
+            .next_cursor
+            .expect("multiple symbols must require a continuation cursor");
+
+        // A cursor cannot be retargeted to another collection, and a failed
+        // retarget does not consume the valid symbols continuation.
+        assert!(matches!(
+            service.static_metadata_inventory(
+                check.generation,
+                StaticMetadataInventoryKind::Types,
+                Some(cursor),
+                1,
+            ),
+            Err(CompilerServiceError::InvalidStaticMetadataCursor { .. })
+        ));
+        let second = service
+            .static_metadata_inventory(
+                check.generation,
+                StaticMetadataInventoryKind::Symbols,
+                Some(cursor),
+                1,
+            )
+            .unwrap();
+        assert_eq!(second.ids.len(), 1);
+        assert!(matches!(
+            service.static_metadata_inventory(
+                check.generation,
+                StaticMetadataInventoryKind::Symbols,
+                Some(cursor),
+                1,
+            ),
+            Err(CompilerServiceError::InvalidStaticMetadataCursor { .. })
+        ));
+
+        let mut discovered = first.ids;
+        discovered.extend(second.ids);
+        let mut cursor = second.next_cursor;
+        while let Some(next) = cursor {
+            let page = service
+                .static_metadata_inventory(
+                    check.generation,
+                    StaticMetadataInventoryKind::Symbols,
+                    Some(next),
+                    1,
+                )
+                .unwrap();
+            discovered.extend(page.ids);
+            cursor = page.next_cursor;
+        }
+        assert_eq!(discovered, expected_symbol_ids);
+
+        let stale_cursor = service
+            .static_metadata_inventory(
+                check.generation,
+                StaticMetadataInventoryKind::Symbols,
+                None,
+                1,
+            )
+            .unwrap()
+            .next_cursor
+            .expect("fixture keeps multiple symbol IDs");
+        let later = service.check(id).unwrap();
+        assert_ne!(check.generation, later.generation);
+        assert!(matches!(
+            service.static_metadata_inventory(
+                check.generation,
+                StaticMetadataInventoryKind::Symbols,
+                Some(stale_cursor),
+                1,
+            ),
+            Err(CompilerServiceError::StaleGeneration { .. })
+        ));
+        assert!(matches!(
+            service.static_metadata_inventory(
+                later.generation,
+                StaticMetadataInventoryKind::Symbols,
+                Some(stale_cursor),
+                1,
+            ),
+            Err(CompilerServiceError::InvalidStaticMetadataCursor { .. })
         ));
     }
 

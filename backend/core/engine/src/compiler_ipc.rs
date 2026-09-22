@@ -20,7 +20,7 @@
 use crate::compiler_service::{
     CompilerServiceCheck, CompilerServiceError, CompilerServiceLimits,
     RegisteredProjectCompilerService, RegisteredProjectGeneration, RegisteredProjectId,
-    RegisteredProjectRegistration,
+    RegisteredProjectRegistration, StaticMetadataInventoryKind,
 };
 use blueice_bluets::{
     ContractId, ContractValue, Diagnostic, Severity, SourceId, SymbolKind, ValidationError,
@@ -30,6 +30,7 @@ use blueice_ipc::compiler::{
     CompilerContractValue, CompilerDiagnostic, CompilerDiagnosticSeverity, CompilerDiagnostics,
     CompilerErrorCode, CompilerGeneration, CompilerModuleList, CompilerProject,
     CompilerProjectIdentity, CompilerReply, CompilerRequest, CompilerStaticContract,
+    CompilerStaticMetadataCursor, CompilerStaticMetadataKind, CompilerStaticMetadataPage,
     CompilerStaticMetadataSummary, CompilerStaticProvenance, CompilerStaticSymbol,
     CompilerStaticType, CompilerSymbolKind,
 };
@@ -54,6 +55,10 @@ pub struct CompilerServiceIpcLimits {
     /// Cap for diagnostics in a check result, independent of the service's
     /// own retention limit.
     pub max_diagnostics: usize,
+    /// Maximum opaque IDs returned in one static-metadata inventory page. A
+    /// request may ask for fewer entries but cannot raise this core-selected
+    /// cap or use a cursor as an offset.
+    pub max_static_metadata_page_entries: usize,
 }
 
 impl Default for CompilerServiceIpcLimits {
@@ -63,6 +68,7 @@ impl Default for CompilerServiceIpcLimits {
             max_field_bytes: 16 * 1_024,
             max_modules_per_set: 1_024,
             max_diagnostics: 256,
+            max_static_metadata_page_entries: 128,
         }
     }
 }
@@ -75,6 +81,7 @@ pub enum CompilerServiceIpcConfigurationError {
     ZeroResponseBytes,
     ResponseExceedsTransportLimit,
     ZeroFieldBytes,
+    ZeroStaticMetadataPageEntries,
 }
 
 impl fmt::Display for CompilerServiceIpcConfigurationError {
@@ -87,6 +94,9 @@ impl fmt::Display for CompilerServiceIpcConfigurationError {
                 .write_str("compiler IPC response budget exceeds the protocol transport limit"),
             Self::ZeroFieldBytes => {
                 formatter.write_str("compiler IPC field budget must be nonzero")
+            }
+            Self::ZeroStaticMetadataPageEntries => {
+                formatter.write_str("compiler IPC static metadata page cap must be nonzero")
             }
         }
     }
@@ -163,6 +173,12 @@ impl CompilerServiceIpcAdapter {
                 generation,
                 symbol_id,
             } => self.static_symbol(generation, symbol_id),
+            CompilerRequest::ListStaticMetadata {
+                generation,
+                kind,
+                cursor,
+                limit,
+            } => self.static_metadata_page(generation, kind, cursor, limit),
             CompilerRequest::GetStaticProvenance {
                 generation,
                 source_id,
@@ -286,6 +302,82 @@ impl CompilerServiceIpcAdapter {
             static_type_id: symbol.static_type.map(|id| id.0),
             source_id: symbol.source.0,
             contract_id: symbol.contract.map(|id| id.0),
+        })
+    }
+
+    /// Returns one source-free page of opaque static IDs. The cursor is
+    /// validated by both this adapter and the core service, which binds it to
+    /// the exact retained generation and consumes it after one use. The page
+    /// cap has both a configured policy limit and a response-budget limit.
+    fn static_metadata_page(
+        &mut self,
+        generation: CompilerGeneration,
+        kind: CompilerStaticMetadataKind,
+        cursor: Option<CompilerStaticMetadataCursor>,
+        requested_limit: Option<u32>,
+    ) -> CompilerReply {
+        let generation = match generation_from_wire(generation) {
+            Ok(generation) => generation,
+            Err(error) => return handle_error_reply(error),
+        };
+        if cursor.is_some_and(|cursor| !cursor.is_well_formed()) {
+            return CompilerReply::Error {
+                code: CompilerErrorCode::InvalidMetadataCursor,
+                message: "invalid static metadata cursor".to_string(),
+            };
+        }
+        let requested_limit = match requested_limit {
+            Some(0) => {
+                return CompilerReply::Error {
+                    code: CompilerErrorCode::InvalidMetadataPage,
+                    message: "static metadata page limit must be positive".to_string(),
+                };
+            }
+            Some(limit) => usize::try_from(limit).unwrap_or(usize::MAX),
+            None => self.limits.max_static_metadata_page_entries,
+        };
+        // Each ID, list delimiter and conservative JSON framing are charged
+        // before the service consumes a one-shot cursor. This means a tiny
+        // adapter response policy returns a limit failure without losing the
+        // cursor or accidentally creating a partial page.
+        const PAGE_FIXED_BYTES: usize = 256;
+        const PAGE_ID_BYTES: usize = 32;
+        let response_cap = self
+            .limits
+            .max_response_bytes
+            .saturating_sub(PAGE_FIXED_BYTES)
+            / PAGE_ID_BYTES;
+        let limit = requested_limit
+            .min(self.limits.max_static_metadata_page_entries)
+            .min(response_cap);
+        if limit == 0 {
+            return response_limit_reply();
+        }
+        let page = match self.service.static_metadata_inventory(
+            generation,
+            static_metadata_kind_from_wire(kind),
+            cursor.map(|cursor| cursor.id),
+            limit,
+        ) {
+            Ok(page) => page,
+            Err(error) => return service_error_reply(&error),
+        };
+        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
+        if !budget.reserve_fixed(PAGE_FIXED_BYTES)
+            || page
+                .ids
+                .iter()
+                .any(|_| !budget.reserve_optional_fixed(PAGE_ID_BYTES))
+        {
+            return response_limit_reply();
+        }
+        CompilerReply::StaticMetadataPage(CompilerStaticMetadataPage {
+            generation: generation_to_wire(generation),
+            kind,
+            ids: page.ids,
+            next_cursor: page
+                .next_cursor
+                .map(|id| CompilerStaticMetadataCursor { id }),
         })
     }
 
@@ -572,6 +664,9 @@ fn validate_limits(
     if limits.max_field_bytes == 0 {
         return Err(CompilerServiceIpcConfigurationError::ZeroFieldBytes);
     }
+    if limits.max_static_metadata_page_entries == 0 {
+        return Err(CompilerServiceIpcConfigurationError::ZeroStaticMetadataPageEntries);
+    }
     Ok(())
 }
 
@@ -656,9 +751,18 @@ fn service_error_reply(error: &CompilerServiceError) -> CompilerReply {
             CompilerErrorCode::UnknownContract,
             "unknown static compiler contract",
         ),
+        CompilerServiceError::InvalidStaticMetadataCursor { .. } => (
+            CompilerErrorCode::InvalidMetadataCursor,
+            "invalid, consumed, stale, or mismatched static metadata cursor",
+        ),
+        CompilerServiceError::InvalidStaticMetadataPage { .. } => (
+            CompilerErrorCode::InvalidMetadataPage,
+            "invalid static metadata page request",
+        ),
         CompilerServiceError::ProjectLimit { .. }
         | CompilerServiceError::GenerationExhausted { .. }
         | CompilerServiceError::StaticMetadataLimit { .. }
+        | CompilerServiceError::StaticMetadataCursorLimit { .. }
         | CompilerServiceError::BuildOutputLimit { .. } => (
             CompilerErrorCode::ResourceLimit,
             "compiler service resource limit reached",
@@ -833,6 +937,15 @@ fn symbol_kind_to_wire(kind: SymbolKind) -> CompilerSymbolKind {
     }
 }
 
+fn static_metadata_kind_from_wire(kind: CompilerStaticMetadataKind) -> StaticMetadataInventoryKind {
+    match kind {
+        CompilerStaticMetadataKind::Sources => StaticMetadataInventoryKind::Sources,
+        CompilerStaticMetadataKind::Types => StaticMetadataInventoryKind::Types,
+        CompilerStaticMetadataKind::Symbols => StaticMetadataInventoryKind::Symbols,
+        CompilerStaticMetadataKind::Contracts => StaticMetadataInventoryKind::Contracts,
+    }
+}
+
 /// Pessimistic response accounting for JSON serialisation. A UTF-8 byte can
 /// require at most six JSON bytes (`\\u00xx`), and object/list punctuation is
 /// charged conservatively at each retained entry.
@@ -955,6 +1068,10 @@ mod tests {
         RuntimePolicy,
     };
 
+    mod inventory_tests {
+        include!("compiler_ipc/inventory_tests.rs");
+    }
+
     const ENTRY: &str = "project:///app/main.ts";
     const DEPENDENCY: &str = "project:///app/math.ts";
 
@@ -1065,108 +1182,6 @@ mod tests {
             }),
             CompilerReply::Error {
                 code: CompilerErrorCode::StaleGeneration,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn adapter_exposes_only_exact_generation_contracts_and_source_hashes() {
-        let mut adapter = CompilerServiceIpcAdapter::default();
-        let project = adapter
-            .register_core_project(registration(
-                "interface Settings { enabled: boolean; } \
-                 export const settings: Settings = { enabled: true };",
-            ))
-            .unwrap();
-        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
-            panic!("registered project must check through adapter")
-        };
-        assert_eq!(check.static_metadata.as_ref().unwrap().contract_count, 1);
-
-        let CompilerReply::StaticSymbol(symbol) =
-            adapter.handle(CompilerRequest::GetStaticSymbol {
-                generation: check.generation,
-                symbol_id: 1,
-            })
-        else {
-            panic!("the interface declaration must be addressable as a static symbol")
-        };
-        let contract_id = symbol
-            .contract_id
-            .expect("local interface must carry contract id");
-        assert_ne!(symbol.source_id, u32::MAX);
-
-        let CompilerReply::StaticProvenance(provenance) =
-            adapter.handle(CompilerRequest::GetStaticProvenance {
-                generation: check.generation,
-                source_id: symbol.source_id,
-            })
-        else {
-            panic!("symbol source ID must resolve to source-free provenance")
-        };
-        assert_eq!(provenance.source_id, symbol.source_id);
-        assert_ne!(provenance.content_hash, "Settings");
-
-        let CompilerReply::StaticContract(contract) =
-            adapter.handle(CompilerRequest::GetStaticContract {
-                generation: check.generation,
-                contract_id,
-            })
-        else {
-            panic!("symbol contract ID must resolve exactly")
-        };
-        assert_eq!(contract.contract_id, contract_id);
-        assert!(contract.root.contains("Reference"));
-
-        let secret = "caller-supplied-secret-never-echoed";
-        let CompilerReply::ContractValidation(validation) =
-            adapter.handle(CompilerRequest::ValidateStaticContract {
-                generation: check.generation,
-                contract_id,
-                value: CompilerContractValue::Object(std::collections::BTreeMap::from([(
-                    "enabled".to_string(),
-                    CompilerContractValue::String(secret.to_string()),
-                )])),
-            })
-        else {
-            panic!("invalid data-only snapshot is a validation result")
-        };
-        assert!(!validation.valid);
-        let reply_text = format!("{validation:?}");
-        assert!(!reply_text.contains(secret));
-        assert!(validation.failure.is_some());
-
-        let CompilerReply::Check(next) = adapter.handle(CompilerRequest::Check { project }) else {
-            panic!("later check must succeed")
-        };
-        assert!(matches!(
-            adapter.handle(CompilerRequest::GetStaticContract {
-                generation: check.generation,
-                contract_id,
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::StaleGeneration,
-                ..
-            }
-        ));
-        assert!(matches!(
-            adapter.handle(CompilerRequest::GetStaticProvenance {
-                generation: next.generation,
-                source_id: u32::MAX,
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::UnknownSource,
-                ..
-            }
-        ));
-        assert!(matches!(
-            adapter.handle(CompilerRequest::GetStaticContract {
-                generation: next.generation,
-                contract_id: u32::MAX,
-            }),
-            CompilerReply::Error {
-                code: CompilerErrorCode::UnknownContract,
                 ..
             }
         ));
@@ -1370,6 +1385,17 @@ mod tests {
             )
             .unwrap_err(),
             CompilerServiceIpcConfigurationError::ResponseExceedsTransportLimit
+        );
+        assert_eq!(
+            CompilerServiceIpcAdapter::new(
+                RegisteredProjectCompilerService::default(),
+                CompilerServiceIpcLimits {
+                    max_static_metadata_page_entries: 0,
+                    ..CompilerServiceIpcLimits::default()
+                },
+            )
+            .unwrap_err(),
+            CompilerServiceIpcConfigurationError::ZeroStaticMetadataPageEntries
         );
     }
 }

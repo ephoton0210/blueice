@@ -104,6 +104,26 @@ impl<S: Read + Write> CompilerConnection<S> {
         })
     }
 
+    /// Lists one capped, source-free page of compiler-minted metadata IDs for
+    /// an exact retained generation. A continuation cursor is opaque,
+    /// generation-bound, and one-shot; this client forwards it verbatim and
+    /// never guesses IDs or substitutes another generation.
+    pub fn static_metadata_page(
+        &mut self,
+        project_id: u64,
+        generation: u64,
+        kind: blueice_ipc::compiler::CompilerStaticMetadataKind,
+        cursor: Option<u64>,
+        limit: Option<u32>,
+    ) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        self.request(blueice_ipc::compiler::CompilerRequest::ListStaticMetadata {
+            generation: compiler_generation(project_id, generation),
+            kind,
+            cursor: cursor.map(|id| blueice_ipc::compiler::CompilerStaticMetadataCursor { id }),
+            limit,
+        })
+    }
+
     /// Looks up one source-text-free static provenance record from exactly one
     /// retained compiler generation. `source_id` is compiler-minted metadata,
     /// never a path or a source-read capability.
@@ -254,7 +274,8 @@ mod tests {
     }
 
     #[test]
-    fn compiler_connection_round_trips_exact_contract_and_provenance_queries() {
+    fn compiler_connection_discovers_symbol_ids_and_round_trips_exact_contract_and_provenance_queries(
+    ) {
         const ENTRY: &str = "project:///mcp/contracts.ts";
         let registration = RegisteredProjectRegistration {
             canonical_project_root: "project:///mcp".to_string(),
@@ -288,7 +309,7 @@ mod tests {
                 &blueice_ipc::compiler::negotiate(&hello),
             )
             .unwrap();
-            for _ in 0..5 {
+            for _ in 0..6 {
                 let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
                 let reply = request_sender.request(request).unwrap();
                 blueice_ipc::compiler::write_compiler_reply(&mut server, &reply).unwrap();
@@ -303,8 +324,32 @@ mod tests {
             else {
                 panic!("check must return an exact generation")
             };
+            let blueice_ipc::compiler::CompilerReply::StaticMetadataPage(symbols) = connection
+                .static_metadata_page(
+                    project.id,
+                    check.generation.sequence,
+                    blueice_ipc::compiler::CompilerStaticMetadataKind::Symbols,
+                    None,
+                    Some(128),
+                )
+                .unwrap()
+            else {
+                panic!("check metadata must discover bounded static symbol IDs")
+            };
+            assert!(symbols.next_cursor.is_none());
+            assert_eq!(
+                u32::try_from(symbols.ids.len()).unwrap(),
+                check.static_metadata.as_ref().unwrap().symbol_count
+            );
             let blueice_ipc::compiler::CompilerReply::StaticSymbol(symbol) = connection
-                .static_symbol(project.id, check.generation.sequence, 0)
+                .static_symbol(
+                    project.id,
+                    check.generation.sequence,
+                    *symbols
+                        .ids
+                        .first()
+                        .expect("fixture interface must be returned by inventory"),
+                )
                 .unwrap()
             else {
                 panic!("interface declaration must return a static symbol")

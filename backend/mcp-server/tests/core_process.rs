@@ -115,7 +115,7 @@ fn open_tab_list_tabs_and_close_tab_round_trip_over_a_real_core() {
 }
 
 #[test]
-fn compiler_connection_queries_contract_and_provenance_from_a_real_core_process() {
+fn compiler_connection_discovers_inventory_contract_and_provenance_from_a_real_core_process() {
     // This is the MCP-side e2e counterpart to core's compiler listener test:
     // use the public `CompilerConnection`, not a direct adapter, against a
     // core process that owns and seals the compiled-in catalog before binding
@@ -154,8 +154,32 @@ fn compiler_connection_queries_contract_and_provenance_from_a_real_core_process(
     let blueice_ipc::compiler::CompilerReply::Check(check) = compiler.check(1).unwrap() else {
         panic!("the sealed core profile must return a check generation")
     };
+    let blueice_ipc::compiler::CompilerReply::StaticMetadataPage(symbols) = compiler
+        .static_metadata_page(
+            1,
+            check.generation.sequence,
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Symbols,
+            None,
+            Some(128),
+        )
+        .unwrap()
+    else {
+        panic!("the public MCP compiler client must discover bounded symbol IDs")
+    };
+    assert!(symbols.next_cursor.is_none());
+    assert_eq!(
+        u32::try_from(symbols.ids.len()).unwrap(),
+        check.static_metadata.as_ref().unwrap().symbol_count
+    );
     let blueice_ipc::compiler::CompilerReply::StaticSymbol(symbol) = compiler
-        .static_symbol(1, check.generation.sequence, 0)
+        .static_symbol(
+            1,
+            check.generation.sequence,
+            *symbols
+                .ids
+                .first()
+                .expect("compiled-in interface must be returned in inventory"),
+        )
         .unwrap()
     else {
         panic!("the retained local interface must expose an opaque contract ID")

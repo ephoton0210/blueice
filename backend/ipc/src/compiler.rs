@@ -11,12 +11,12 @@
 //! project and generation handles minted by that owner.
 //!
 //! Version two exposes source-text-free identity, check, individual static
-//! type/symbol queries, compiler-minted provenance hashes, and a deliberately
-//! bounded subset of reifiable static-contract inspection/validation. Build
-//! artifacts, project registration/update, source reads, and output
-//! transactions remain separate capability-bearing operations. In particular,
-//! this module is not an MCP protocol and does not grant an MCP client any
-//! authority by itself.
+//! type/symbol queries, compiler-minted provenance hashes, a deliberately
+//! bounded subset of reifiable static-contract inspection/validation, and
+//! generation-bound pages of opaque metadata IDs. Build artifacts, project
+//! registration/update, source reads, and output transactions remain separate
+//! capability-bearing operations. In particular, this module is not an MCP
+//! protocol and does not grant an MCP client any authority by itself.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -109,6 +109,43 @@ pub struct CompilerStaticMetadataSummary {
     pub type_count: u32,
     pub symbol_count: u32,
     pub contract_count: u32,
+}
+
+/// A source-text-free metadata collection retained by a successful exact
+/// generation. Entries in an inventory page are compiler-minted opaque IDs;
+/// callers use the existing single-record queries to inspect one ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CompilerStaticMetadataKind {
+    Sources,
+    Types,
+    Symbols,
+    Contracts,
+}
+
+/// An opaque, one-shot pagination cursor minted by the core service. A
+/// client must not construct it: the core binds it to one exact generation
+/// and metadata kind, consumes it once, and invalidates it on a later check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CompilerStaticMetadataCursor {
+    pub id: u64,
+}
+
+impl CompilerStaticMetadataCursor {
+    pub fn is_well_formed(self) -> bool {
+        self.id != 0
+    }
+}
+
+/// One bounded page of compiler-minted static metadata IDs. `next_cursor` is
+/// absent only after the final page. It deliberately contains no source text,
+/// path, resolver/configuration, artifact, or runtime-value data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerStaticMetadataPage {
+    pub generation: CompilerGeneration,
+    pub kind: CompilerStaticMetadataKind,
+    pub ids: Vec<u32>,
+    pub next_cursor: Option<CompilerStaticMetadataCursor>,
 }
 
 /// A registered project's non-sensitive, source-text-free description.
@@ -261,6 +298,16 @@ pub enum CompilerRequest {
         generation: CompilerGeneration,
         symbol_id: u32,
     },
+    /// Lists one capped page of opaque static IDs from exactly one successful
+    /// generation. The optional cursor is core-minted and one-shot; `None`
+    /// begins a new inventory. The core clamps a positive request limit to a
+    /// fixed policy cap and rejects zero or malformed values.
+    ListStaticMetadata {
+        generation: CompilerGeneration,
+        kind: CompilerStaticMetadataKind,
+        cursor: Option<CompilerStaticMetadataCursor>,
+        limit: Option<u32>,
+    },
     /// Gets a compiler-minted source hash and static module identity from one
     /// exact successful generation. No source text crosses this request.
     GetStaticProvenance {
@@ -299,6 +346,8 @@ pub enum CompilerErrorCode {
     UnknownSource,
     UnknownContract,
     InvalidContractValue,
+    InvalidMetadataCursor,
+    InvalidMetadataPage,
     ResourceLimit,
     Unavailable,
 }
@@ -313,6 +362,7 @@ pub enum CompilerReply {
     Check(CompilerCheck),
     StaticType(CompilerStaticType),
     StaticSymbol(CompilerStaticSymbol),
+    StaticMetadataPage(CompilerStaticMetadataPage),
     StaticProvenance(CompilerStaticProvenance),
     StaticContract(CompilerStaticContract),
     ContractValidation(CompilerContractValidation),
@@ -345,6 +395,7 @@ pub fn negotiate(request: &CompilerRequest) -> CompilerReply {
         | CompilerRequest::Check { .. }
         | CompilerRequest::GetStaticType { .. }
         | CompilerRequest::GetStaticSymbol { .. }
+        | CompilerRequest::ListStaticMetadata { .. }
         | CompilerRequest::GetStaticProvenance { .. }
         | CompilerRequest::GetStaticContract { .. }
         | CompilerRequest::ValidateStaticContract { .. }
@@ -422,6 +473,12 @@ mod tests {
                 generation: generation(),
                 symbol_id: 5,
             },
+            CompilerRequest::ListStaticMetadata {
+                generation: generation(),
+                kind: CompilerStaticMetadataKind::Symbols,
+                cursor: Some(CompilerStaticMetadataCursor { id: 9 }),
+                limit: Some(2),
+            },
             CompilerRequest::GetStaticProvenance {
                 generation: generation(),
                 source_id: 7,
@@ -482,6 +539,16 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_compiler_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_compiler_reply(&mut receiver).unwrap(), reply);
+
+        let page = CompilerReply::StaticMetadataPage(CompilerStaticMetadataPage {
+            generation: generation(),
+            kind: CompilerStaticMetadataKind::Symbols,
+            ids: vec![0, 5],
+            next_cursor: Some(CompilerStaticMetadataCursor { id: 9 }),
+        });
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_compiler_reply(&mut sender, &page).unwrap();
+        assert_eq!(read_compiler_reply(&mut receiver).unwrap(), page);
     }
 
     #[test]
@@ -547,6 +614,8 @@ mod tests {
             sequence: 0,
         }
         .is_well_formed());
+        assert!(!CompilerStaticMetadataCursor { id: 0 }.is_well_formed());
+        assert!(CompilerStaticMetadataCursor { id: 1 }.is_well_formed());
         assert!(generation().is_well_formed());
     }
 }
