@@ -960,10 +960,7 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let fallback = self
-                            .active_binding_slot(&name)
-                            .map(|slot| self.eval_aware_binding_value(slot, &name))
-                            .transpose()?;
+                        let fallback = self.with_binding_fallback(&name)?;
                         let value = self.with_get(&name, fallback)?;
                         self.stack.push(value);
                     }
@@ -972,10 +969,7 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let fallback = self
-                            .active_binding_slot(&name)
-                            .map(|slot| self.eval_aware_binding_value(slot, &name))
-                            .transpose()?;
+                        let fallback = self.with_binding_fallback(&name)?;
                         let (value, receiver) = self.with_get_method(&name, fallback)?;
                         self.stack.push(value);
                         self.stack.push(receiver);
@@ -985,10 +979,7 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let fallback = self
-                            .active_binding_slot(&name)
-                            .map(|slot| self.eval_aware_binding_value(slot, &name))
-                            .transpose()?;
+                        let fallback = self.with_binding_fallback(&name)?;
                         let value = self.with_get_or_undefined(&name, fallback)?;
                         self.stack.push(value);
                     }

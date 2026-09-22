@@ -1837,6 +1837,33 @@ impl Vm {
         self.binding_value(slot)
     }
 
+    /// The `fallback` argument `with_lookup`/`with_get`/`with_get_or_undefined`
+    /// use for the enclosing binding behind the active `with` objects (or, for
+    /// a function whose body contains a direct eval, behind its own
+    /// parameter/variable environment): `Some(Some(value))` for an
+    /// initialized binding, `Some(None)` for one still in its temporal dead
+    /// zone (a plain reference throws for this either way; `typeof` throws
+    /// only for this case), and `None` when there is no local binding to
+    /// fall back on at all. A sloppy direct eval's own deletable `var` that
+    /// has been deleted, with nothing for its name to resolve outward to
+    /// either, reports `None` here rather than `Some(None)`: unlike TDZ, its
+    /// name is genuinely unresolvable, which `with_get`/`with_get_method`
+    /// still turn into the same ReferenceError but `with_get_or_undefined`
+    /// must not.
+    pub(super) fn with_binding_fallback(
+        &mut self,
+        name: &str,
+    ) -> Result<Option<Option<Value>>, RuntimeError> {
+        let Some(slot) = self.active_binding_slot(name) else {
+            return Ok(None);
+        };
+        let value = self.eval_aware_binding_value(slot, name)?;
+        if value.is_none() && self.eval_var_deleted(slot)? {
+            return Ok(None);
+        }
+        Ok(Some(value))
+    }
+
     /// Finds the innermost currently-active lexical or captured binding for
     /// an object-environment lookup. Bytecode can contain several slots with
     /// the same source name (notably catch parameters), so the last matching

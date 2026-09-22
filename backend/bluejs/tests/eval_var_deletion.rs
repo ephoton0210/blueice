@@ -119,3 +119,21 @@ fn typeof_a_deleted_eval_var_is_undefined_without_a_nested_eval() {
         text("undefined")
     );
 }
+
+#[test]
+fn typeof_a_deleted_eval_var_resolves_outward_and_never_throws() {
+    assert_eq!(
+        evaluate(
+            "var outward = 'x';
+             function t() {
+               var f = eval(\"var gone = 1; var outward = 2; (function () { \
+                 var before = typeof gone + typeof outward; \
+                 eval('delete gone; delete outward'); \
+                 return before + ',' + typeof gone + typeof outward; })\");
+               return f();
+             }
+             t()"
+        ),
+        text("numbernumber,undefinedstring")
+    );
+}
