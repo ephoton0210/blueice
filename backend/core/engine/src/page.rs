@@ -25,9 +25,20 @@ use blueice_ipc::{AiSnapshot, NodeAction};
 use blueice_layout::{Constraints, Fragment, layout};
 use blueice_paint::{Color, Frame, PaintCommand, Rect, paint};
 use blueice_raster::{Pixmap, rasterize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use url::Url;
+
+/// The mutation requested through an element's `classList` proxy. Keeping it
+/// typed at the core boundary avoids sending JavaScript method spelling into
+/// the DOM owner as an unvalidated free-form operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScriptClassListOperation {
+    Add,
+    Remove,
+    Toggle,
+    Contains,
+}
 
 pub struct Page {
     doc: Document,
@@ -78,11 +89,6 @@ impl Page {
         // an unrelated node that happens to have been assigned the same
         // recycled ID (plan §1's stable-ID-across-mutations requirement).
         self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
-        let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
-        self.styles = cascade(
-            &self.doc,
-            &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
-        );
         self.scroll_y = 0.0;
         // A fresh document invalidates every NodeId a prior interaction
         // might have recorded -- holding onto a stale ID here would let
@@ -91,6 +97,19 @@ impl Page {
         self.hovered = None;
         self.focused = None;
         self.highlighted = None;
+        self.restyle_and_relayout();
+    }
+
+    /// Re-cascades the current DOM then reflows it. Script mutation must use
+    /// this rather than [`Self::relayout`] alone because a node created after
+    /// navigation has no entry in the prior `styles` map; layout would leave
+    /// script DOM state and the rendered frame out of sync.
+    fn restyle_and_relayout(&mut self) {
+        let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
+        self.styles = cascade(
+            &self.doc,
+            &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
+        );
         self.relayout();
     }
 
@@ -200,7 +219,7 @@ impl Page {
     pub fn resize(&mut self, width: f64, height: f64) {
         self.viewport_width = width;
         self.viewport_height = height;
-        self.relayout();
+        self.restyle_and_relayout();
     }
 
     pub fn scroll_by(&mut self, delta_y: f64) {
@@ -216,9 +235,17 @@ impl Page {
     /// nearest one). Relative links are resolved against the current
     /// page URL when it is an absolute, hierarchical URL.
     pub fn click(&self, x: f64, y: f64) -> Option<String> {
-        let content_y = y + self.scroll_y;
-        let node = hit_test(&self.fragment, x, content_y)?;
+        let node = self.click_target(x, y)?;
         nearest_link_href(&self.doc, node).map(|href| self.resolve_link_href(href))
+    }
+
+    /// Returns the current DOM target for a pointer click. Core obtains this
+    /// before it invokes BlueJS listeners, so a listener may mutate/remove the
+    /// target while the browser still retains the pre-dispatch default action
+    /// (for example, a link navigation) to apply unless it is prevented.
+    pub fn click_target(&self, x: f64, y: f64) -> Option<NodeId> {
+        let content_y = y + self.scroll_y;
+        hit_test(&self.fragment, x, content_y)
     }
 
     /// Hit-tests a pointer move the same way [`Page::click`] hit-tests
@@ -324,6 +351,303 @@ impl Page {
         blueice_dom::dump(&self.doc)
     }
 
+    /// The script-host-facing `document.getElementById` operation.  It lives
+    /// here rather than exposing `Document` to BlueJS so only `core` owns
+    /// mutable DOM state across the process boundary.
+    pub fn script_get_element_by_id(&self, id: &str) -> Option<NodeId> {
+        find_element_by_id(&self.doc, self.doc.root(), id)
+    }
+
+    /// Runs the existing CSS selector matcher against the live DOM rather
+    /// than growing a second, subtly divergent selector implementation for
+    /// JavaScript. Unsupported/invalid selectors are reported to the script
+    /// host as a normal runtime error.
+    pub fn script_query_selector(&self, selector: &str) -> Result<Option<NodeId>, String> {
+        Ok(self.script_query_selector_all(selector)?.into_iter().next())
+    }
+
+    pub fn script_query_selector_all(&self, selector: &str) -> Result<Vec<NodeId>, String> {
+        let stylesheet = blueice_css::parse(&format!("{selector} {{ color: inherit; }}"));
+        let selectors = stylesheet
+            .rules
+            .first()
+            .map(|rule| &rule.selectors)
+            .filter(|selectors| !selectors.is_empty())
+            .ok_or_else(|| format!("unsupported selector: {selector}"))?;
+        let mut nodes = Vec::new();
+        collect_matching_nodes(&self.doc, self.doc.root(), selectors, &mut nodes);
+        Ok(nodes)
+    }
+
+    /// Inline classic-script source in document order. The HTML parser keeps
+    /// `<script>` text opaque (as it must); Phase 13's script scheduler uses
+    /// this extraction point to hand that already-parsed text to BlueJS rather
+    /// than re-parsing HTML or scanning raw response bytes itself.
+    pub fn inline_script_sources(&self) -> Vec<String> {
+        let mut sources = Vec::new();
+        collect_inline_script_sources(&self.doc, self.doc.root(), &mut sources);
+        sources
+    }
+
+    /// Allocates a detached element for the script host. The caller must use
+    /// [`Self::script_append_child`] to attach it, exactly matching DOM's
+    /// `document.createElement`/`appendChild` split.
+    pub fn script_create_element(&mut self, tag_name: String) -> NodeId {
+        self.doc.create_node(NodeData::Element {
+            tag_name,
+            attributes: Vec::new(),
+        })
+    }
+
+    pub fn script_create_text_node(&mut self, data: String) -> NodeId {
+        self.doc.create_node(NodeData::Text { data })
+    }
+
+    /// Appends two IPC-supplied node handles only after validating that they
+    /// belong to this document and the child is detached. This turns the DOM
+    /// crate's internal panic precondition into a structured script error.
+    pub fn script_append_child(&mut self, parent: NodeId, child: NodeId) -> Result<(), String> {
+        if !self.doc.contains(parent) || !self.doc.contains(child) {
+            return Err("script node does not belong to this document".to_string());
+        }
+        if self.doc.parent(child).is_some() {
+            return Err("script appendChild requires a detached child".to_string());
+        }
+        self.doc.append_child(parent, child);
+        self.restyle_and_relayout();
+        Ok(())
+    }
+
+    pub fn script_insert_before(
+        &mut self,
+        parent: NodeId,
+        child: NodeId,
+        reference: Option<NodeId>,
+    ) -> Result<(), String> {
+        if !self.doc.contains(parent) || !self.doc.contains(child) {
+            return Err("script node does not belong to this document".to_string());
+        }
+        if self.doc.parent(child).is_some() {
+            return Err("script insertBefore requires a detached child".to_string());
+        }
+        if let Some(reference) = reference {
+            if !self.doc.contains(reference) || self.doc.parent(reference) != Some(parent) {
+                return Err("script insertBefore reference is not a child of parent".to_string());
+            }
+        }
+        self.doc.insert_before(parent, child, reference);
+        self.restyle_and_relayout();
+        Ok(())
+    }
+
+    pub fn script_remove_child(&mut self, parent: NodeId, child: NodeId) -> Result<(), String> {
+        if !self.doc.contains(parent) || !self.doc.contains(child) {
+            return Err("script node does not belong to this document".to_string());
+        }
+        if self.doc.parent(child) != Some(parent) {
+            return Err("script removeChild requires a child of parent".to_string());
+        }
+        self.doc.detach(child);
+        self.restyle_and_relayout();
+        Ok(())
+    }
+
+    pub fn script_remove(&mut self, node: NodeId) -> Result<(), String> {
+        if !self.doc.contains(node) {
+            return Err("script node does not belong to this document".to_string());
+        }
+        if self.doc.parent(node).is_none() {
+            return Err("script remove requires an attached node".to_string());
+        }
+        self.doc.detach(node);
+        self.restyle_and_relayout();
+        Ok(())
+    }
+
+    pub fn script_text_content(&self, node: NodeId) -> Result<String, String> {
+        if !self.doc.contains(node) {
+            return Err("script node does not belong to this document".to_string());
+        }
+        Ok(node_text_content(&self.doc, node))
+    }
+
+    /// Replaces an element's children with one text node (or updates a Text
+    /// node in place), then recascades/layouts before the next render pass.
+    pub fn script_set_text_content(&mut self, node: NodeId, value: String) -> Result<(), String> {
+        if !self.doc.contains(node) {
+            return Err("script node does not belong to this document".to_string());
+        }
+        if let NodeData::Text { data } = self.doc.data_mut(node) {
+            *data = value;
+        } else {
+            let children = self.doc.children(node).collect::<Vec<_>>();
+            for child in children {
+                self.doc.remove_subtree(child);
+            }
+            let text = self.doc.create_node(NodeData::Text { data: value });
+            self.doc.append_child(node, text);
+        }
+        self.restyle_and_relayout();
+        Ok(())
+    }
+
+    pub fn script_get_attribute(&self, node: NodeId, name: &str) -> Result<Option<String>, String> {
+        let attributes = self.script_element_attributes(node)?;
+        Ok(attributes
+            .iter()
+            .find(|(attribute, _)| attribute.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.clone()))
+    }
+
+    pub fn script_set_attribute(
+        &mut self,
+        node: NodeId,
+        name: String,
+        value: String,
+    ) -> Result<(), String> {
+        let attributes = self.script_element_attributes_mut(node)?;
+        match attributes
+            .iter_mut()
+            .find(|(attribute, _)| attribute.eq_ignore_ascii_case(&name))
+        {
+            Some((_, existing)) => *existing = value,
+            None => attributes.push((name, value)),
+        }
+        self.restyle_and_relayout();
+        Ok(())
+    }
+
+    pub fn script_remove_attribute(&mut self, node: NodeId, name: &str) -> Result<(), String> {
+        let attributes = self.script_element_attributes_mut(node)?;
+        attributes.retain(|(attribute, _)| !attribute.eq_ignore_ascii_case(name));
+        self.restyle_and_relayout();
+        Ok(())
+    }
+
+    pub fn script_inner_html(&self, node: NodeId) -> Result<String, String> {
+        if !self.doc.contains(node) {
+            return Err("script node does not belong to this document".to_string());
+        }
+        let mut html = String::new();
+        for child in self.doc.children(node) {
+            serialize_html_node(&self.doc, child, &mut html);
+        }
+        Ok(html)
+    }
+
+    pub fn script_get_style_property(
+        &self,
+        node: NodeId,
+        property: &str,
+    ) -> Result<String, String> {
+        let style = self
+            .script_get_attribute(node, "style")?
+            .unwrap_or_default();
+        let mut declarations = parse_inline_style(&style);
+        Ok(declarations
+            .remove(&css_property_name(property))
+            .unwrap_or_default())
+    }
+
+    pub fn script_set_style_property(
+        &mut self,
+        node: NodeId,
+        property: String,
+        value: String,
+    ) -> Result<(), String> {
+        let mut style = parse_inline_style(
+            &self
+                .script_get_attribute(node, "style")?
+                .unwrap_or_default(),
+        );
+        let property = css_property_name(&property);
+        if value.is_empty() {
+            style.remove(&property);
+        } else {
+            style.insert(property, value);
+        }
+        let serialized = style
+            .into_iter()
+            .map(|(property, value)| format!("{property}: {value}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        if serialized.is_empty() {
+            self.script_remove_attribute(node, "style")
+        } else {
+            self.script_set_attribute(node, "style".to_string(), serialized)
+        }
+    }
+
+    pub fn script_class_list(
+        &mut self,
+        node: NodeId,
+        operation: ScriptClassListOperation,
+        class_name: String,
+    ) -> Result<bool, String> {
+        let mut classes = self
+            .script_get_attribute(node, "class")?
+            .unwrap_or_default()
+            .split_whitespace()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let present = classes.iter().any(|class| class == &class_name);
+        let result = match operation {
+            ScriptClassListOperation::Contains => present,
+            ScriptClassListOperation::Add => {
+                if !present && !class_name.is_empty() {
+                    classes.push(class_name);
+                }
+                true
+            }
+            ScriptClassListOperation::Remove => {
+                classes.retain(|class| class != &class_name);
+                false
+            }
+            ScriptClassListOperation::Toggle => {
+                if present {
+                    classes.retain(|class| class != &class_name);
+                    false
+                } else if class_name.is_empty() {
+                    false
+                } else {
+                    classes.push(class_name);
+                    true
+                }
+            }
+        };
+        if !matches!(operation, ScriptClassListOperation::Contains) {
+            if classes.is_empty() {
+                self.script_remove_attribute(node, "class")?;
+            } else {
+                self.script_set_attribute(node, "class".to_string(), classes.join(" "))?;
+            }
+        }
+        Ok(result)
+    }
+
+    fn script_element_attributes(&self, node: NodeId) -> Result<&[(String, String)], String> {
+        if !self.doc.contains(node) {
+            return Err("script node does not belong to this document".to_string());
+        }
+        match self.doc.data(node) {
+            NodeData::Element { attributes, .. } => Ok(attributes),
+            _ => Err("script operation requires an element node".to_string()),
+        }
+    }
+
+    fn script_element_attributes_mut(
+        &mut self,
+        node: NodeId,
+    ) -> Result<&mut Vec<(String, String)>, String> {
+        if !self.doc.contains(node) {
+            return Err("script node does not belong to this document".to_string());
+        }
+        match self.doc.data_mut(node) {
+            NodeData::Element { attributes, .. } => Ok(attributes),
+            _ => Err("script operation requires an element node".to_string()),
+        }
+    }
+
     /// Advances this tab's render-pass generation. `session` calls this
     /// immediately before writing the corresponding frame.
     pub(crate) fn advance_frame_generation(&mut self) -> u64 {
@@ -394,6 +718,120 @@ impl Page {
             self.viewport_height,
         )
     }
+}
+
+fn find_element_by_id(doc: &Document, node: NodeId, id: &str) -> Option<NodeId> {
+    if let NodeData::Element { attributes, .. } = doc.data(node) {
+        if attributes
+            .iter()
+            .any(|(name, value)| name == "id" && value == id)
+        {
+            return Some(node);
+        }
+    }
+    doc.children(node)
+        .find_map(|child| find_element_by_id(doc, child, id))
+}
+
+fn node_text_content(doc: &Document, node: NodeId) -> String {
+    match doc.data(node) {
+        NodeData::Text { data } => data.clone(),
+        NodeData::Document | NodeData::Element { .. } => doc
+            .children(node)
+            .map(|child| node_text_content(doc, child))
+            .collect(),
+    }
+}
+
+fn collect_inline_script_sources(doc: &Document, node: NodeId, sources: &mut Vec<String>) {
+    if let NodeData::Element { tag_name, .. } = doc.data(node) {
+        if tag_name.eq_ignore_ascii_case("script") {
+            sources.push(node_text_content(doc, node));
+            return;
+        }
+    }
+    for child in doc.children(node) {
+        collect_inline_script_sources(doc, child, sources);
+    }
+}
+
+fn collect_matching_nodes(
+    doc: &Document,
+    node: NodeId,
+    selectors: &[blueice_css::ComplexSelector],
+    nodes: &mut Vec<NodeId>,
+) {
+    if selectors
+        .iter()
+        .any(|selector| blueice_css::matches(doc, node, selector))
+    {
+        nodes.push(node);
+    }
+    for child in doc.children(node) {
+        collect_matching_nodes(doc, child, selectors, nodes);
+    }
+}
+
+fn serialize_html_node(doc: &Document, node: NodeId, html: &mut String) {
+    match doc.data(node) {
+        NodeData::Document => {
+            for child in doc.children(node) {
+                serialize_html_node(doc, child, html);
+            }
+        }
+        NodeData::Text { data } => html.push_str(&escape_html_text(data)),
+        NodeData::Element {
+            tag_name,
+            attributes,
+        } => {
+            html.push('<');
+            html.push_str(tag_name);
+            for (name, value) in attributes {
+                html.push(' ');
+                html.push_str(name);
+                html.push_str("=\"");
+                html.push_str(&escape_html_attribute(value));
+                html.push('"');
+            }
+            html.push('>');
+            for child in doc.children(node) {
+                serialize_html_node(doc, child, html);
+            }
+            html.push_str("</");
+            html.push_str(tag_name);
+            html.push('>');
+        }
+    }
+}
+
+fn escape_html_text(value: &str) -> String {
+    value.replace('&', "&amp;").replace('<', "&lt;")
+}
+
+fn escape_html_attribute(value: &str) -> String {
+    escape_html_text(value).replace('"', "&quot;")
+}
+
+fn parse_inline_style(style: &str) -> BTreeMap<String, String> {
+    style
+        .split(';')
+        .filter_map(|declaration| declaration.split_once(':'))
+        .map(|(property, value)| (css_property_name(property.trim()), value.trim().to_string()))
+        .filter(|(property, _)| !property.is_empty())
+        .collect()
+}
+
+fn css_property_name(property: &str) -> String {
+    let mut name = String::with_capacity(property.len() + 4);
+    for character in property.trim().chars() {
+        if character.is_ascii_uppercase() {
+            name.push('-');
+            name.push(character.to_ascii_lowercase());
+        } else {
+            name.push(character.to_ascii_lowercase());
+        }
+    }
+    name
 }
 
 fn crop(pixmap: &Pixmap, top: f64, width: f64, height: f64) -> Pixmap {

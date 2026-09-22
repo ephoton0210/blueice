@@ -18,7 +18,8 @@
 //! support in this reference implementation.
 
 use blueice_engine::downloads_page::DownloadsSource;
-use blueice_engine::{session, TabManager};
+use blueice_engine::script::ScriptSession;
+use blueice_engine::{TabManager, session};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -44,6 +45,10 @@ struct Args {
     /// default_downloads_socket_path()`. Overridable for the same reason
     /// `gatekeeper_socket` is: a test points a real subprocess at its own.
     downloads_socket: Option<PathBuf>,
+    /// The private long-lived BlueJS control/DOM socket. When supplied,
+    /// `core` waits for the script process handshake before accepting its
+    /// frontend client, so a page's first render can never race parser script.
+    script_socket: Option<PathBuf>,
 }
 
 /// Takes an injectable argument iterator (rather than reading
@@ -60,23 +65,41 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut frame_dir = None;
     let mut gatekeeper_socket = None;
     let mut downloads_socket = None;
+    let mut script_socket = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or_else(|| format!("{flag} requires a value"));
         match flag.as_str() {
             "--socket" => socket = Some(PathBuf::from(value()?)),
-            "--width" => width = value()?.parse().map_err(|_| "--width must be a number".to_string())?,
-            "--height" => height = value()?.parse().map_err(|_| "--height must be a number".to_string())?,
+            "--width" => {
+                width = value()?
+                    .parse()
+                    .map_err(|_| "--width must be a number".to_string())?
+            }
+            "--height" => {
+                height = value()?
+                    .parse()
+                    .map_err(|_| "--height must be a number".to_string())?
+            }
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--downloads-socket" => downloads_socket = Some(PathBuf::from(value()?)),
+            "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
 
     let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
-    Ok(Args { socket, width, height, frame_dir, gatekeeper_socket, downloads_socket })
+    Ok(Args {
+        socket,
+        width,
+        height,
+        frame_dir,
+        gatekeeper_socket,
+        downloads_socket,
+        script_socket,
+    })
 }
 
 fn main() -> ExitCode {
@@ -88,9 +111,41 @@ fn main() -> ExitCode {
         }
     };
 
-    let frame_dir = args.frame_dir.unwrap_or_else(|| std::env::temp_dir().join(format!("blueice-core-frames-{}", std::process::id())));
-    let gatekeeper_socket = args.gatekeeper_socket.unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
+    let frame_dir = args.frame_dir.unwrap_or_else(|| {
+        std::env::temp_dir().join(format!("blueice-core-frames-{}", std::process::id()))
+    });
+    let gatekeeper_socket = args
+        .gatekeeper_socket
+        .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
     let downloads_socket = args.downloads_socket;
+
+    // Bind the script listener before exposing core's frontend socket. The
+    // launcher waits for the latter as its readiness signal, which guarantees
+    // its BlueJS child never races this bind/connect sequence.
+    let script_listener = if let Some(path) = args.script_socket.as_ref() {
+        if let Some(parent) = path.parent() {
+            if let Err(error) = std::fs::create_dir_all(parent) {
+                eprintln!(
+                    "blueice-core: failed to create script socket directory {}: {error}",
+                    parent.display()
+                );
+                return ExitCode::FAILURE;
+            }
+        }
+        let _ = std::fs::remove_file(path);
+        match UnixListener::bind(path) {
+            Ok(listener) => Some(listener),
+            Err(e) => {
+                eprintln!(
+                    "blueice-core: failed to bind script socket {}: {e}",
+                    path.display()
+                );
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
+    };
 
     // A stale socket file from a previous run (e.g. one that crashed
     // instead of exiting cleanly) makes bind() fail with AddrInUse
@@ -100,12 +155,22 @@ fn main() -> ExitCode {
     let listener = match UnixListener::bind(&args.socket) {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("blueice-core: failed to bind {}: {e}", args.socket.display());
+            eprintln!(
+                "blueice-core: failed to bind {}: {e}",
+                args.socket.display()
+            );
             return ExitCode::FAILURE;
         }
     };
 
     let result = (|| -> std::io::Result<()> {
+        let mut script = match script_listener {
+            Some(listener) => {
+                let (stream, _) = listener.accept()?;
+                Some(ScriptSession::accept(stream)?)
+            }
+            None => None,
+        };
         let (mut stream, _) = listener.accept()?;
         let mut tabs = TabManager::new(args.width, args.height);
         tabs.set_downloads_source(Arc::new(match downloads_socket {
@@ -113,10 +178,33 @@ fn main() -> ExitCode {
             None => DownloadsSource::new(),
         }));
         let mut generation = 0u64;
-        session::run_session(&mut tabs, &mut stream, &frame_dir, &mut generation, &gatekeeper_socket)
+        let result = match script.as_mut() {
+            Some(script) => session::run_session_with_script(
+                &mut tabs,
+                &mut stream,
+                &frame_dir,
+                &mut generation,
+                &gatekeeper_socket,
+                script,
+            ),
+            None => session::run_session(
+                &mut tabs,
+                &mut stream,
+                &frame_dir,
+                &mut generation,
+                &gatekeeper_socket,
+            ),
+        };
+        if let Some(script) = script.as_mut() {
+            let _ = script.shutdown();
+        }
+        result
     })();
 
     let _ = std::fs::remove_file(&args.socket);
+    if let Some(path) = args.script_socket.as_ref() {
+        let _ = std::fs::remove_file(path);
+    }
     let _ = std::fs::remove_dir_all(&frame_dir);
 
     match result {
@@ -149,11 +237,28 @@ mod tests {
         assert_eq!(parsed.height, 600.0);
         assert_eq!(parsed.frame_dir, None);
         assert_eq!(parsed.gatekeeper_socket, None);
+        assert_eq!(parsed.script_socket, None);
     }
 
     #[test]
     fn every_flag_is_parsed() {
-        let parsed = args(&["--socket", "/tmp/x.sock", "--width", "100", "--height", "50", "--frame-dir", "/tmp/frames", "--gatekeeper-socket", "/tmp/gk.sock", "--downloads-socket", "/tmp/dl.sock"]).unwrap();
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--width",
+            "100",
+            "--height",
+            "50",
+            "--frame-dir",
+            "/tmp/frames",
+            "--gatekeeper-socket",
+            "/tmp/gk.sock",
+            "--downloads-socket",
+            "/tmp/dl.sock",
+            "--script-socket",
+            "/tmp/js.sock",
+        ])
+        .unwrap();
         assert_eq!(
             parsed,
             Args {
@@ -163,27 +268,40 @@ mod tests {
                 frame_dir: Some(PathBuf::from("/tmp/frames")),
                 gatekeeper_socket: Some(PathBuf::from("/tmp/gk.sock")),
                 downloads_socket: Some(PathBuf::from("/tmp/dl.sock")),
+                script_socket: Some(PathBuf::from("/tmp/js.sock")),
             }
         );
     }
 
     #[test]
     fn a_flag_missing_its_value_is_an_error() {
-        assert_eq!(args(&["--socket"]), Err("--socket requires a value".to_string()));
+        assert_eq!(
+            args(&["--socket"]),
+            Err("--socket requires a value".to_string())
+        );
     }
 
     #[test]
     fn a_non_numeric_width_is_an_error() {
-        assert_eq!(args(&["--socket", "/tmp/x.sock", "--width", "not-a-number"]), Err("--width must be a number".to_string()));
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", "--width", "not-a-number"]),
+            Err("--width must be a number".to_string())
+        );
     }
 
     #[test]
     fn a_non_numeric_height_is_an_error() {
-        assert_eq!(args(&["--socket", "/tmp/x.sock", "--height", "not-a-number"]), Err("--height must be a number".to_string()));
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", "--height", "not-a-number"]),
+            Err("--height must be a number".to_string())
+        );
     }
 
     #[test]
     fn an_unrecognized_flag_is_an_error() {
-        assert_eq!(args(&["--bogus"]), Err("unrecognized argument: --bogus".to_string()));
+        assert_eq!(
+            args(&["--bogus"]),
+            Err("unrecognized argument: --bogus".to_string())
+        );
     }
 }

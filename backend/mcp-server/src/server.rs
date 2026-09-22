@@ -22,6 +22,7 @@ use crate::downloads::{
 };
 use crate::{CoreConnection, CoreProcess};
 use base64::Engine;
+use blueice_bluejs::{analyze, run_batch};
 use blueice_ipc::NodeAction;
 use blueice_ipc::downloads::{ClientError, DownloadsClient, TransferInfo};
 use rmcp::handler::server::wrapper::Parameters;
@@ -148,6 +149,14 @@ struct TransferIdParams {
     id: u64,
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+struct BluejsCodeParams {
+    /// Classic JavaScript source for BlueJS's standalone batch realm. This
+    /// realm deliberately has no page DOM binding; page scripts use core's
+    /// script IPC connection instead.
+    code: String,
+}
+
 /// Lazily owns the browser-side connection for one MCP stdio session.
 ///
 /// An MCP client starts this adapter process when it opens its stdio
@@ -199,6 +208,16 @@ where
     .await
     .map_err(|e| ErrorData::internal_error(format!("mcp-server task join error: {e}"), None))?
     .map_err(|e| ErrorData::internal_error(format!("blueice-core IPC error: {e}"), None))
+}
+
+async fn bluejs_blocking<T, F>(f: F) -> Result<T, ErrorData>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(f).await.map_err(|error| {
+        ErrorData::internal_error(format!("bluejs task join error: {error}"), None)
+    })
 }
 
 fn outcome_to_result(outcome: crate::ToolOutcome) -> CallToolResult {
@@ -316,6 +335,61 @@ impl BlueIceMcpServer {
         Ok(CallToolResult::success(vec![Content::text(
             crate::wrap_untrusted_page_content(&dump),
         )]))
+    }
+
+    #[tool(
+        description = "Run classic JavaScript through BlueJS's existing standalone batch evaluator (no page DOM context) and return console output plus the final completion value. Untrusted script output is clearly delimited."
+    )]
+    async fn bluejs_run(
+        &self,
+        Parameters(BluejsCodeParams { code }): Parameters<BluejsCodeParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match bluejs_blocking(move || run_batch(&code)).await? {
+            Ok(result) => {
+                let text = serde_json::to_string_pretty(&serde_json::json!({
+                    "output": result.output,
+                    "completion": result.completion,
+                }))
+                .unwrap_or_else(|_| "{}".to_string());
+                Ok(CallToolResult::success(vec![Content::text(
+                    crate::wrap_untrusted_page_content(&text),
+                )]))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![Content::text(
+                error.to_string(),
+            )])),
+        }
+    }
+
+    #[tool(
+        description = "Analyze JavaScript without executing it. Returns BlueJS's AST-derived capability families and concrete static call sites; unknown computed callees are reported explicitly rather than guessed."
+    )]
+    async fn bluejs_analyze(
+        &self,
+        Parameters(BluejsCodeParams { code }): Parameters<BluejsCodeParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match bluejs_blocking(move || analyze(&code)).await? {
+            Ok(summary) => {
+                let capabilities = summary
+                    .capabilities
+                    .into_iter()
+                    .map(|capability| capability.as_str())
+                    .collect::<Vec<_>>();
+                let uses = summary
+                    .uses
+                    .into_iter()
+                    .map(|use_| serde_json::json!({ "capability": use_.capability.as_str(), "callee": use_.callee }))
+                    .collect::<Vec<_>>();
+                let text = serde_json::to_string_pretty(
+                    &serde_json::json!({ "capabilities": capabilities, "uses": uses }),
+                )
+                .unwrap_or_else(|_| "{}".to_string());
+                Ok(CallToolResult::success(vec![Content::text(
+                    crate::wrap_untrusted_page_content(&text),
+                )]))
+            }
+            Err(error) => Ok(CallToolResult::error(vec![Content::text(error.message)])),
+        }
     }
 
     #[tool(

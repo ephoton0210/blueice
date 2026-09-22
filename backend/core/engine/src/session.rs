@@ -52,6 +52,7 @@
 
 use crate::downloads_page::{DownloadsView, downloads_html, is_downloads_url};
 use crate::gatekeeper_client::{self, NavOutcome};
+use crate::script::ScriptScheduler;
 use crate::{Page, TabId, TabManager};
 use blueice_dom::NodeId;
 use blueice_ipc::downloads::TransferInfo;
@@ -141,6 +142,29 @@ pub fn run_session<S: Read + Write + ReadTimeout>(
     generation: &mut u64,
     gatekeeper_socket: &Path,
 ) -> io::Result<()> {
+    let mut no_scripts = NoScriptScheduler;
+    run_session_with_script(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        &mut no_scripts,
+    )
+}
+
+/// The production-capable session entry point. A script scheduler runs a
+/// document's parser scripts after a cleared navigation applies its DOM but
+/// before the navigation reply's first frame; [`run_session`] supplies a
+/// no-op scheduler for existing protocol-only callers and unit tests.
+pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    script_scheduler: &mut dyn ScriptScheduler,
+) -> io::Result<()> {
     // Best-effort: on at least one real platform, setting a read
     // timeout on a Unix domain socket whose peer has *already*
     // disconnected (a client that connects and drops the connection
@@ -215,9 +239,26 @@ pub fn run_session<S: Read + Write + ReadTimeout>(
                             None => write_unknown_tab_error(stream, request_id, target)?,
                         }
                     }
-                    ClientMessage::Click { x, y } => match tabs.get_mut(target) {
-                        Some(page) => {
-                            if let Some(href) = page.click(x, y) {
+                    ClientMessage::Click { x, y } => {
+                        let Some((node, href)) = tabs
+                            .get(target)
+                            .map(|page| (page.click_target(x, y), page.click(x, y)))
+                        else {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
+                        };
+                        let event = node
+                            .map(|node| {
+                                script_scheduler
+                                    .dispatch_event(tabs, target, node, "click")
+                                    .unwrap_or_default()
+                            })
+                            .unwrap_or_default();
+                        if !event.default_prevented {
+                            if let Some(href) = href {
+                                let page = tabs
+                                    .get_mut(target)
+                                    .expect("a script event cannot close a core-owned tab");
                                 begin_gated_navigation(
                                     page,
                                     stream,
@@ -233,10 +274,16 @@ pub fn run_session<S: Read + Write + ReadTimeout>(
                                     &completion_tx,
                                     gatekeeper_socket,
                                 )?;
+                                continue;
                             }
                         }
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
+                        if event.ran_event {
+                            let page = tabs
+                                .get_mut(target)
+                                .expect("a script event cannot close a core-owned tab");
+                            send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                        }
+                    }
                     ClientMessage::Scroll { delta_y } => match tabs.get_mut(target) {
                         Some(page) => {
                             page.scroll_by(delta_y);
@@ -272,36 +319,66 @@ pub fn run_session<S: Read + Write + ReadTimeout>(
                         )?,
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
-                    ClientMessage::ActOn { id, action } => match tabs.get_mut(target) {
-                        Some(page) => {
-                            let is_click = matches!(action, NodeAction::Click);
-                            match page.act(NodeId::from_u64(id), action) {
-                                Some(href) => begin_gated_navigation(
-                                    page,
-                                    stream,
-                                    frame_dir,
-                                    generation,
-                                    reply_tab,
-                                    request_id,
-                                    target,
-                                    href,
-                                    PendingKind::Navigate,
-                                    &mut pending_nav_seq,
-                                    &mut downloads_refresher,
-                                    &completion_tx,
-                                    gatekeeper_socket,
-                                )?,
-                                // A Click that didn't land on a link is a
-                                // no-op, same as a coordinate Click
-                                // elsewhere -- no reply.
-                                None if is_click => {}
-                                None => send_frame(
-                                    page, stream, frame_dir, generation, reply_tab, request_id,
-                                )?,
-                            }
+                    ClientMessage::ActOn { id, action } => {
+                        if tabs.get(target).is_none() {
+                            write_unknown_tab_error(stream, request_id, target)?;
+                            continue;
                         }
-                        None => write_unknown_tab_error(stream, request_id, target)?,
-                    },
+                        let node = NodeId::from_u64(id);
+                        let is_click = matches!(&action, NodeAction::Click);
+                        let is_value_change = matches!(&action, NodeAction::SetValue(_));
+                        // The default action changes the core-owned DOM first;
+                        // input/change listeners observe that new value.
+                        let href = tabs
+                            .get_mut(target)
+                            .expect("checked immediately above")
+                            .act(node, action);
+                        if is_click {
+                            let event = script_scheduler
+                                .dispatch_event(tabs, target, node, "click")
+                                .unwrap_or_default();
+                            if !event.default_prevented {
+                                if let Some(href) = href {
+                                    let page = tabs
+                                        .get_mut(target)
+                                        .expect("a script event cannot close a core-owned tab");
+                                    begin_gated_navigation(
+                                        page,
+                                        stream,
+                                        frame_dir,
+                                        generation,
+                                        reply_tab,
+                                        request_id,
+                                        target,
+                                        href,
+                                        PendingKind::Navigate,
+                                        &mut pending_nav_seq,
+                                        &mut downloads_refresher,
+                                        &completion_tx,
+                                        gatekeeper_socket,
+                                    )?;
+                                    continue;
+                                }
+                            }
+                            if event.ran_event {
+                                let page = tabs
+                                    .get_mut(target)
+                                    .expect("a script event cannot close a core-owned tab");
+                                send_frame(
+                                    page, stream, frame_dir, generation, reply_tab, request_id,
+                                )?;
+                            }
+                        } else {
+                            if is_value_change {
+                                let _ = script_scheduler.dispatch_event(tabs, target, node, "input");
+                                let _ = script_scheduler.dispatch_event(tabs, target, node, "change");
+                            }
+                            let page = tabs
+                                .get_mut(target)
+                                .expect("a script event cannot close a core-owned tab");
+                            send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                        }
+                    }
                     ClientMessage::Highlight { id } => match tabs.get_mut(target) {
                         Some(page) => {
                             page.set_highlight(id.map(NodeId::from_u64));
@@ -372,7 +449,32 @@ pub fn run_session<S: Read + Write + ReadTimeout>(
                 generation,
                 &pending_nav_seq,
                 completion,
+                script_scheduler,
             )?;
+        }
+
+        // Timer callbacks are regular BlueJS macrotasks, not render work.
+        // Poll them between frontend reads; a callback's completion barrier
+        // has applied every DOM write before this fresh frame is published.
+        // `None` deliberately marks this as an unsolicited render update,
+        // rather than pretending it answers the prior frontend request.
+        let timer_tabs: Vec<TabId> = tabs.ids().collect();
+        for tab_id in timer_tabs {
+            if script_scheduler
+                .run_due_timers(tabs, tab_id)
+                .unwrap_or(false)
+            {
+                if let Some(page) = tabs.get_mut(tab_id) {
+                    send_frame(
+                        page,
+                        stream,
+                        frame_dir,
+                        generation,
+                        Some(tab_id.as_u64()),
+                        None,
+                    )?;
+                }
+            }
         }
 
         // Keep any open `about:downloads` tab current, off this thread.
@@ -380,6 +482,14 @@ pub fn run_session<S: Read + Write + ReadTimeout>(
         while let Ok(listing) = listing_rx.try_recv() {
             downloads_refresher.apply(tabs, stream, frame_dir, generation, listing)?;
         }
+    }
+}
+
+struct NoScriptScheduler;
+
+impl ScriptScheduler for NoScriptScheduler {
+    fn run_document_scripts(&mut self, _: &mut TabManager, _: TabId) -> Result<(), String> {
+        Ok(())
     }
 }
 
@@ -704,6 +814,7 @@ fn apply_completion<S: Write>(
     generation: &mut u64,
     pending_nav_seq: &HashMap<TabId, u64>,
     completion: Completion,
+    script_scheduler: &mut dyn ScriptScheduler,
 ) -> io::Result<()> {
     let Completion {
         tab_id,
@@ -715,9 +826,9 @@ fn apply_completion<S: Write>(
     if pending_nav_seq.get(&tab_id) != Some(&seq) {
         return Ok(()); // superseded by a later navigation to this tab
     }
-    let Some(page) = tabs.get_mut(tab_id) else {
+    if tabs.get(tab_id).is_none() {
         return Ok(()); // the tab closed while this navigation was pending
-    };
+    }
     let reply_tab = Some(tab_id.as_u64());
     match outcome {
         NavOutcome::Cleared {
@@ -725,7 +836,20 @@ fn apply_completion<S: Write>(
             final_url,
             html,
         } => {
-            page.apply_fetched(clearance, &final_url, &html);
+            {
+                let page = tabs
+                    .get_mut(tab_id)
+                    .expect("the tab was checked immediately above");
+                page.apply_fetched(clearance, &final_url, &html);
+            }
+            // A script failure is page-local: its completed DOM mutations
+            // remain visible, while core still sends the navigation frame and
+            // keeps serving every other tab. This is the out-of-process crash
+            // containment rule in the ordinary runtime-error case too.
+            let _ = script_scheduler.run_document_scripts(tabs, tab_id);
+            let page = tabs
+                .get_mut(tab_id)
+                .expect("script execution cannot close a core-owned tab");
             reply_success(
                 page,
                 stream,

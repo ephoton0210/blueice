@@ -77,6 +77,37 @@ async fn an_official_mcp_client_lists_tools_without_a_sibling_core_binary() {
         names.contains(&"remove_sftp_password"),
         "missing Phase 11 credential removal: {names:?}"
     );
+    assert!(
+        names.contains(&"bluejs_run") && names.contains(&"bluejs_analyze"),
+        "missing BlueJS tools: {names:?}"
+    );
+
+    let arguments = serde_json::from_value(json!({ "code": "console.log('hello'); 2 + 3;" }))
+        .expect("bluejs_run arguments are a JSON object");
+    let result = client
+        .call_tool(CallToolRequestParams::new("bluejs_run").with_arguments(arguments))
+        .await
+        .expect("run BlueJS through rmcp");
+    assert_ne!(result.is_error, Some(true), "{result:?}");
+    let result = serde_json::to_value(result).expect("tool result serializes");
+    let text = result["content"][0]["text"]
+        .as_str()
+        .expect("bluejs output is text");
+    assert!(text.contains("\"completion\": \"5\""), "{text}");
+    assert!(text.contains("\"hello\""), "{text}");
+
+    let arguments = serde_json::from_value(json!({ "code": "document.getElementById('target');" }))
+        .expect("bluejs_analyze arguments are a JSON object");
+    let result = client
+        .call_tool(CallToolRequestParams::new("bluejs_analyze").with_arguments(arguments))
+        .await
+        .expect("analyze BlueJS through rmcp");
+    assert_ne!(result.is_error, Some(true), "{result:?}");
+    let result = serde_json::to_value(result).expect("tool result serializes");
+    let text = result["content"][0]["text"]
+        .as_str()
+        .expect("bluejs analysis is text");
+    assert!(text.contains("dom_read"), "{text}");
 
     client.cancel().await.expect("close the stdio MCP session");
 }

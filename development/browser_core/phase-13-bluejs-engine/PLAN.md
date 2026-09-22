@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress (execution model, GC, event-loop shape, process placement, and MVP language scope all decided; the tokenizer/parser is implemented — see `backend/bluejs` — object model, bytecode compiler/interpreter, GC, event loop, and the `blueice_ipc::script` wiring's `core`-side implementation are not yet started)
+**Status**: Complete. BlueJS now has the planned handle-based two-generation GC, fixed-width bytecode interpreter, shell, analysis/gatekeeper hook, and process-isolated DOM host. `core` accepts the always-resident BlueJS child before its first frontend frame, runs parser scripts before paint, dispatches input events before browser default actions, and polls due timer macrotasks between frontend reads. The launcher supervises the sibling process; unit, IPC, and core↔BlueJS E2E tests cover the boundary.
 
 ## Objective
 
@@ -74,20 +74,20 @@ This directly strengthens the conformance-test question below: running a Test262
 - [x] Decide process placement — out-of-process, isolated like `extension`/`ai-gatekeeper`, via a new `blueice_ipc::script` module, see "Wiring design" above
 - [x] Scope the MVP language-feature subset — resolved in `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope (decided)" section
 - [x] Decide the GC algorithm — two-generation (nursery + non-incremental mark-sweep tenured), see `research/js-engine-gc.md`
-- [ ] Implement the object model (handle-based, per the `blueice-dom` precedent) and the two-generation GC
+- [x] Implement the object model (handle-based, per the `blueice-dom` precedent) and the two-generation GC — `backend/bluejs/src/{value,heap}.rs`; nursery promotion plus tenured mark/sweep, rooted across active VM frames and host temporaries
 - [x] Implement the tokenizer/parser → AST — `backend/bluejs` (crate `blueice-bluejs`): a hand-written tokenizer (`token.rs`) and recursive-descent parser (`parser.rs`) covering exactly `phase-2-mvp-scope/PLAN.md`'s "MVP JS scope" grammar subset, 83 tests, ≥97% line coverage
 - [x] Decide the bytecode format — SpiderMonkey-style stack machine, fixed-width-per-opcode, with a reserved tiering flag bit (`JOF_IC`-equivalent), see `research/js-bytecode-eventloop.md`
-- [ ] Implement the AST→bytecode compilation step
-- [ ] Implement the bytecode interpreter for the MVP feature subset
+- [x] Implement the AST→bytecode compilation step — `backend/bluejs/src/compiler.rs`; lowers the scoped AST to fixed-width operand-stack instructions, including dedicated spread-call bytecodes
+- [x] Implement the bytecode interpreter for the MVP feature subset — `backend/bluejs/src/interpreter.rs`; closures, control flow, destructuring/default/rest parameters, arrays/objects/standard-library slice, errors, bounded execution, and DOM host proxies
 - [x] Decide the event loop shape — macrotask loop draining microtasks per-task, plus a separate render-pass entry point, see `research/js-bytecode-eventloop.md`
-- [ ] Implement the event loop and its interleaving with `core`'s render-pass/paint loop per that shape
-- [ ] Implement the `blueice_ipc::script` module (`ScriptRequest`/`ScriptReply`, `Hello`-handshake, plain request/reply first — batching and the shared-memory read fast path are additive follow-ups, not required for the first working slice)
-- [ ] Design the DOM-binding glue layer connecting BlueJS objects to `blueice-dom` (host bindings scoped in Phase 2's "MVP JS scope" section), carried over `blueice_ipc::script`
-- [ ] Design the AI-facing capability-summary output (derived from the AST) and its exact granularity, with Phase 7
-- [ ] Design the Phase 7 gatekeeper's script-level hook points against that summary, with Phase 7
-- [ ] Build the `bluejs` shell (REPL mode + batch-file mode, minimal host bindings)
-- [ ] Expose `bluejs_run`/`bluejs_analyze` as MCP tools, with Phase 12
-- [ ] Build the differential test harness (run corpus through `node` and `bluejs`, diff results with non-determinism normalization)
-- [ ] Curate the initial differential test corpus (Test262 subset scoped to the MVP feature set)
-- [ ] Wire the differential job into `.github/workflows/ci.yml`, per `testing/TEST_PLAN.md`
-- [ ] End-to-end smoke test: a real `<script>`-bearing fixture page executes correctly through the full Phase 3 pipeline
+- [x] Implement the event loop and its interleaving with `core`'s render-pass/paint loop per that shape — `EventLoop` supplies macrotask/microtask and render-pass ordering; production `core` runs parser scripts before a navigation's first frame and polls BlueJS due timer macrotasks between frontend reads, producing a fresh frame only after their DOM completion barrier
+- [x] Implement the `blueice_ipc::script` module (`ScriptRequest`/`ScriptReply`, `Hello`-handshake, plain request/reply first — batching and the shared-memory read fast path are additive follow-ups, not required for the first working slice) — now also has core→BlueJS `ScriptCommand` turn control and a completion barrier
+- [x] Design and implement the DOM-binding glue layer connecting BlueJS objects to `blueice-dom` (host bindings scoped in Phase 2's "MVP JS scope" section), carried over `blueice_ipc::script` — selectors, tree mutations, attributes, `classList`, `textContent`, read-only `innerHTML`, `value`/`checked`, inline style, `addEventListener`/`removeEventListener` with `preventDefault`, and `setTimeout`/`clearTimeout` all execute through the isolated core-owned DOM boundary
+- [x] Design the AI-facing capability-summary output (derived from the AST) and its exact granularity, with Phase 7 — `bluejs_analyze` returns AST-derived DOM/event/timer/network/storage/dynamic-code capability sites
+- [x] Design the Phase 7 gatekeeper's script-level hook points against that summary, with Phase 7 — the VM invokes the hook immediately before every implemented DOM host call
+- [x] Build the `bluejs` shell (REPL mode + batch-file mode, minimal host bindings) — `bluejs`, plus `--script-socket <path>` always-resident process mode
+- [x] Expose `bluejs_run`/`bluejs_analyze` as MCP tools, with Phase 12
+- [x] Build the differential test harness (run corpus through `node` and `bluejs`, diff results with non-determinism normalization)
+- [x] Curate the initial differential test corpus (Test262 subset scoped to the MVP feature set) — arithmetic, closures, destructuring, and loops
+- [x] Wire the differential job into `.github/workflows/ci.yml`, per `testing/TEST_PLAN.md`
+- [x] End-to-end smoke test: a real `<script>`-bearing fixture page executes correctly through the full Phase 3 pipeline — process-control loop, real Unix socket DOM IPC, mutation, cascade/layout, and paint

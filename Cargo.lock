@@ -153,6 +153,9 @@ dependencies = [
 [[package]]
 name = "blueice-bluejs"
 version = "0.1.0"
+dependencies = [
+ "blueice-ipc",
+]
 
 [[package]]
 name = "blueice-css"
@@ -183,6 +186,7 @@ name = "blueice-engine"
 version = "0.1.0"
 dependencies = [
  "blueice-ai-gatekeeper",
+ "blueice-bluejs",
  "blueice-css",
  "blueice-dom",
  "blueice-html",
@@ -272,6 +276,7 @@ name = "blueice-mcp-server"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "blueice-bluejs",
  "blueice-ipc",
  "blueice-launcher",
  "blueice-raster",

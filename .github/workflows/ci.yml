@@ -15,6 +15,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - uses: Swatinem/rust-cache@v2
       # `backend/core/html/tests/wpt_corpus.rs`'s WPT tree-construction
       # gate (see `testing/TEST_PLAN.md`) needs this checked out or it

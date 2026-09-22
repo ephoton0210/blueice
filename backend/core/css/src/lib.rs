@@ -28,9 +28,9 @@ mod selector;
 mod tokenizer;
 mod value;
 
-pub use cascade::{cascade, ua_stylesheet, ComputedStyle, Origin};
+pub use cascade::{ComputedStyle, Origin, cascade, ua_stylesheet};
 pub use parser::{Declaration, Rule};
-pub use selector::{ComplexSelector, Compound, SimpleSelector, Specificity};
+pub use selector::{ComplexSelector, Compound, SimpleSelector, Specificity, matches};
 pub use value::{Color, Length, Value};
 
 /// A parsed CSS stylesheet: its rules, in source order. Not yet matched
@@ -41,7 +41,9 @@ pub struct Stylesheet {
 }
 
 pub fn parse(input: &str) -> Stylesheet {
-    Stylesheet { rules: parser::parse(input) }
+    Stylesheet {
+        rules: parser::parse(input),
+    }
 }
 
 #[cfg(test)]

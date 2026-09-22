@@ -66,6 +66,11 @@ fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
     false
 }
 
+fn sibling_bluejs_binary() -> PathBuf {
+    let core = PathBuf::from(env!("CARGO_BIN_EXE_blueice-core"));
+    core.parent().unwrap().join("bluejs")
+}
+
 #[test]
 fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
     let output = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
@@ -194,6 +199,92 @@ fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
         !frame_dir.exists(),
         "blueice-core must remove its own frame directory on exit"
     );
+}
+
+#[test]
+fn subprocess_navigation_runs_bluejs_before_its_first_frame() {
+    let socket_path = unique_socket_path("bluejs-session");
+    let script_path = unique_socket_path("bluejs-script");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-script-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&script_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let gatekeeper_path = clearing_gatekeeper("js-gk");
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = r#"<div id="target"></div><script>
+            let target = document.querySelector('#target');
+            let message = document.createElement('p');
+            message.textContent = 'automatic bluejs turn';
+            target.appendChild(message);
+        </script>"#;
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--script-socket",
+            script_path.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_path.to_str().unwrap(),
+        ])
+        .spawn()
+        .expect("failed to spawn blueice-core with script socket");
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+
+    let mut bluejs = Command::new(sibling_bluejs_binary())
+        .args(["--script-socket", script_path.to_str().unwrap()])
+        .spawn()
+        .expect("failed to spawn bluejs sibling binary");
+    let mut stream = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut stream).unwrap();
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{addr}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { generation: 1, .. }
+    ));
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::GetDom).unwrap();
+    let dom = match blueice_ipc::read_server_message(&mut stream).unwrap() {
+        blueice_ipc::ServerMessage::Dom(dom) => dom,
+        reply => panic!("expected DOM after scripted navigation, got {reply:?}"),
+    };
+    assert!(dom.contains("automatic bluejs turn"));
+
+    blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(core.wait().unwrap().success());
+    assert!(bluejs.wait().unwrap().success());
+    assert!(!socket_path.exists());
+    assert!(!script_path.exists());
 }
 
 #[test]
