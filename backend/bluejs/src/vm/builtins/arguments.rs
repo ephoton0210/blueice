@@ -277,9 +277,7 @@ impl Vm {
         let Value::String(source) = value else {
             return Ok(value.clone());
         };
-        let source = source.to_utf8().map_err(|_| {
-            RuntimeError::SyntaxError("eval source contains an unpaired surrogate".into())
-        })?;
+        let source = crate::source_encoding::encode(source);
         let program = crate::parse_eval(&source, self.strict)
             .map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let visible = self.eval_visible_bindings();
@@ -365,11 +363,9 @@ impl Vm {
         let Value::String(source) = value else {
             return Ok(value.clone());
         };
-        let source = source.to_utf8().map_err(|_| {
-            RuntimeError::SyntaxError("eval source contains an unpaired surrogate".into())
-        })?;
-        let program =
-            crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let source = crate::source_encoding::encode(source);
+        let program = crate::parser::parse_encoded(&source)
+            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let code = crate::compiler::compile_eval(
             &program,
             &[],

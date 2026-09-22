@@ -821,11 +821,9 @@ impl Vm {
                 "$262.evalScript requires a source string".into(),
             ));
         };
-        let source = source.to_utf8().map_err(|_| {
-            RuntimeError::SyntaxError("script source contains an unpaired surrogate".into())
-        })?;
-        let program =
-            crate::parse(&source).map_err(|error| RuntimeError::SyntaxError(error.message))?;
+        let source = crate::source_encoding::encode(source);
+        let program = crate::parser::parse_encoded(&source)
+            .map_err(|error| RuntimeError::SyntaxError(error.message))?;
         let code = crate::compile(&program)
             .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
         self.execute_nested_script(&code)
