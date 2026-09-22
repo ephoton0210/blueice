@@ -21,6 +21,7 @@
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -228,6 +229,130 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
         !frame_dir.exists(),
         "blueice-core must remove its script frame directory on exit"
     );
+}
+
+#[test]
+fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_session() {
+    // This exercises the public process seam rather than adapter methods: the
+    // core owner selects a compiled-in closed project before binding the
+    // compiler socket, the listener negotiates on its worker, and the later
+    // query only completes after the live core session dispatches it.
+    let socket_path = unique_socket_path("compiler-core");
+    let compiler_socket_path = unique_socket_path("compiler-service");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-binary-test-compiler-frames-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&compiler_socket_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--compiler-socket",
+            compiler_socket_path.to_str().unwrap(),
+            "--compiler-project-profile",
+            "core-closed-fixture-v1",
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn blueice-core with its compiler listener");
+
+    assert!(wait_for(&socket_path, Duration::from_secs(5)));
+    assert!(wait_for(&compiler_socket_path, Duration::from_secs(5)));
+    assert_eq!(
+        std::fs::metadata(&compiler_socket_path)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600,
+        "compiler metadata socket must not rely on the ambient umask"
+    );
+    let mut frontend = UnixStream::connect(&socket_path).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+
+    // A query before Hello is rejected at the listener and cannot reach the
+    // catalog. This request supplies only an opaque numeric ID, never source
+    // or any registration field.
+    let mut invalid = UnixStream::connect(&compiler_socket_path).unwrap();
+    blueice_ipc::compiler::write_compiler_request(
+        &mut invalid,
+        &blueice_ipc::compiler::CompilerRequest::Check {
+            project: blueice_ipc::compiler::CompilerProject { id: 1 },
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::compiler::read_compiler_reply(&mut invalid).unwrap(),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::ProtocolVersion,
+            ..
+        }
+    ));
+    drop(invalid);
+
+    let mut compiler = UnixStream::connect(&compiler_socket_path).unwrap();
+    blueice_ipc::compiler::write_compiler_request(
+        &mut compiler,
+        &blueice_ipc::compiler::CompilerRequest::Hello {
+            protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap(),
+        blueice_ipc::compiler::CompilerReply::HelloAck {
+            protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
+        }
+    );
+    blueice_ipc::compiler::write_compiler_request(
+        &mut compiler,
+        &blueice_ipc::compiler::CompilerRequest::DescribeProject {
+            project: blueice_ipc::compiler::CompilerProject { id: 1 },
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap(),
+        blueice_ipc::compiler::CompilerReply::Project(
+            blueice_ipc::compiler::CompilerProjectIdentity {
+                project: blueice_ipc::compiler::CompilerProject { id: 1 },
+                entry_module: "project:///core-fixture/main.ts".to_string(),
+            }
+        )
+    );
+    blueice_ipc::compiler::write_compiler_request(
+        &mut compiler,
+        &blueice_ipc::compiler::CompilerRequest::Check {
+            project: blueice_ipc::compiler::CompilerProject { id: 1 },
+        },
+    )
+    .unwrap();
+    let blueice_ipc::compiler::CompilerReply::Check(check) =
+        blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap()
+    else {
+        panic!("core-registered fixture must return a bounded compiler check")
+    };
+    assert!(!check.has_errors, "{check:#?}");
+    assert_eq!(check.generation.project.id, 1);
+    assert!(check.static_metadata.is_some());
+    assert!(check.artifact_fingerprint.is_some());
+    drop(compiler);
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    let status = child.wait().expect("failed to wait for blueice-core");
+    assert!(
+        status.success(),
+        "compiler core must exit cleanly: {status}"
+    );
+    assert!(!compiler_socket_path.exists());
+    assert!(!frame_dir.exists());
 }
 
 #[test]

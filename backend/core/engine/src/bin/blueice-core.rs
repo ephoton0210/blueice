@@ -16,14 +16,22 @@
 //! Accepts exactly one client connection, then exits when that client
 //! disconnects or sends `Shutdown` -- there is no multi-frontend
 //! support in this reference implementation. Optional additional Unix sockets
-//! route the narrow BlueJS script protocol and debugger-discovery protocol into
-//! that same session thread; their listeners never own DOM, tab, realm, or VM
-//! state themselves.
+//! route the narrow BlueJS script, debugger, and registered-project compiler
+//! protocols into that same session thread; their listeners never own DOM,
+//! tab, realm, VM, source graph, or compiler-cache state themselves.
 
 #[cfg(unix)]
-use blueice_engine::{script, session, TabManager};
+use blueice_engine::{
+    compiler_ipc::{
+        compiler_service_ipc_request_channel, CompilerServiceIpcRequestSender,
+        CoreCompilerProjectCatalog,
+    },
+    script, session, TabManager,
+};
 #[cfg(unix)]
 use std::io;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 #[cfg(unix)]
@@ -57,6 +65,14 @@ struct Args {
     /// separate from both frontend and DOM-script IPC; the session thread
     /// validates each requested tab/document generation before replying.
     debugger_socket: Option<PathBuf>,
+    /// Optional listener for queries over projects a trusted core owner
+    /// registered during startup. Its protocol does not accept registration,
+    /// source, path, resolver, compiler-option, build, or write requests.
+    compiler_socket: Option<PathBuf>,
+    /// A compiled-in closed project profile selected by the core process
+    /// owner. This is a startup-only test/integration seam, not a project
+    /// file/path argument and never crosses compiler IPC.
+    compiler_project_profile: Option<String>,
     /// An explicitly selected, core-owned host typing profile for executing
     /// discovered inline BlueTS page declarations. Omission preserves the
     /// default no-inline-execution process mode; page content cannot select a
@@ -91,6 +107,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut gatekeeper_socket = None;
     let mut script_socket = None;
     let mut debugger_socket = None;
+    let mut compiler_socket = None;
+    let mut compiler_project_profile = None;
     let mut inline_bluets_profile = None;
     let mut inline_bluejs = false;
     let mut out_of_process_bluejs_socket = None;
@@ -115,6 +133,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
+            "--compiler-socket" => compiler_socket = Some(PathBuf::from(value()?)),
+            "--compiler-project-profile" => compiler_project_profile = Some(value()?),
             "--inline-bluets-profile" => inline_bluets_profile = Some(value()?),
             "--inline-bluejs" => inline_bluejs = true,
             "--out-of-process-bluejs-socket" => {
@@ -148,6 +168,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if compiler_project_profile.is_some() && compiler_socket.is_none() {
+        return Err("--compiler-project-profile requires --compiler-socket".to_string());
+    }
     Ok(Args {
         socket,
         width,
@@ -156,11 +179,65 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         gatekeeper_socket,
         script_socket,
         debugger_socket,
+        compiler_socket,
+        compiler_project_profile,
         inline_bluets_profile,
         inline_bluejs,
         out_of_process_bluejs_socket,
         out_of_process_bluejs_token,
     })
+}
+
+/// Registers the reference binary's deliberately compiled-in closed fixture.
+/// Real embedders use [`CoreCompilerProjectCatalog`] directly at trusted core
+/// startup, where they can supply their already-authorized graph and fixed
+/// policy without ever making a path/source/configuration API available to a
+/// compiler peer. Keeping this one profile in code gives the public process
+/// seam a real lifecycle regression target without turning a CLI flag into a
+/// filesystem project loader.
+#[cfg(unix)]
+fn register_compiler_startup_profile(
+    catalog: &mut CoreCompilerProjectCatalog,
+    profile: &str,
+) -> Result<(), String> {
+    use blueice_bluets::{
+        AuthorizedModule, AuthorizedModuleLoader, CompilerOptions, RuntimePolicy,
+    };
+
+    match profile {
+        "core-closed-fixture-v1" => {
+            let entry_module = "project:///core-fixture/main.ts";
+            catalog
+                .register_startup_project(
+                    blueice_engine::compiler_service::RegisteredProjectRegistration {
+                        canonical_project_root: "project:///core-fixture".to_string(),
+                        canonical_config_root: "project:///core-fixture/blue-ts.json".to_string(),
+                        canonical_output_root: "project:///core-fixture-dist".to_string(),
+                        entry_module: entry_module.to_string(),
+                        loader: AuthorizedModuleLoader::new(
+                            [AuthorizedModule::new(
+                                entry_module,
+                                "export const coreRegisteredAnswer: number = 42;",
+                            )],
+                            [],
+                        )
+                        .map_err(|error| {
+                            format!("invalid compiled-in compiler project profile: {error}")
+                        })?,
+                        compiler_options: CompilerOptions {
+                            resolver_fingerprint: "core-closed-fixture-v1".to_string(),
+                            runtime_policy: RuntimePolicy::Checked,
+                            ..CompilerOptions::default()
+                        },
+                    },
+                )
+                .map_err(|error| format!("failed to register compiler startup profile: {error}"))?;
+            Ok(())
+        }
+        _ => Err(format!(
+            "unsupported compiler project profile: {profile}; only core-owned compiled-in profiles are accepted"
+        )),
+    }
 }
 
 /// Serves one long-lived BlueJS script connection. Frame parsing lives at the
@@ -254,6 +331,64 @@ fn serve_debugger_listener(
     }
 }
 
+/// Serves one query-only registered-project compiler peer. Its `Hello`
+/// negotiation is intentionally completed on the listener side, while every
+/// later decoded request is synchronously handed to the sealed core catalog on
+/// the session thread. The worker owns no source, project registration, or
+/// incremental compiler cache.
+#[cfg(unix)]
+fn serve_compiler_connection(
+    mut stream: UnixStream,
+    sender: CompilerServiceIpcRequestSender,
+) -> io::Result<()> {
+    let first = blueice_ipc::compiler::read_compiler_request(&mut stream)?;
+    let accepted = matches!(
+        first,
+        blueice_ipc::compiler::CompilerRequest::Hello {
+            protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
+        }
+    );
+    let reply = blueice_ipc::compiler::negotiate(&first);
+    blueice_ipc::compiler::write_compiler_reply(&mut stream, &reply)?;
+    if !accepted {
+        return Ok(());
+    }
+
+    loop {
+        let request = match blueice_ipc::compiler::read_compiler_request(&mut stream) {
+            Ok(request) => request,
+            Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let reply = sender.request(request)?;
+        blueice_ipc::compiler::write_compiler_reply(&mut stream, &reply)?;
+    }
+}
+
+/// Accepts successive compiler query peers. Bad handshakes and disconnected
+/// peers affect only their own stream; they cannot tear down the frontend or
+/// alter the catalog registered by core startup.
+#[cfg(unix)]
+fn serve_compiler_listener(listener: UnixListener, sender: CompilerServiceIpcRequestSender) {
+    for stream in listener.incoming() {
+        let Ok(stream) = stream else {
+            break;
+        };
+        let _ = serve_compiler_connection(stream, sender.clone());
+    }
+}
+
+/// Binds the compiler control socket with an explicit owner-only filesystem
+/// mode. Opaque project IDs are not an authorization replacement, and a
+/// process that chooses to expose static compiler metadata must not rely on a
+/// permissive ambient umask to keep arbitrary local users off the listener.
+#[cfg(unix)]
+fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
+    let listener = UnixListener::bind(path)?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    Ok(listener)
+}
+
 #[cfg(unix)]
 fn main() -> ExitCode {
     let args = match parse_args(std::env::args().skip(1)) {
@@ -272,10 +407,28 @@ fn main() -> ExitCode {
         .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
     let script_socket = args.script_socket.clone();
     let debugger_socket = args.debugger_socket.clone();
+    let compiler_socket = args.compiler_socket.clone();
     let inline_bluets_profile = args.inline_bluets_profile.clone();
     let inline_bluejs = args.inline_bluejs;
     let out_of_process_bluejs_socket = args.out_of_process_bluejs_socket.clone();
     let out_of_process_bluejs_token = args.out_of_process_bluejs_token.clone();
+
+    // The optional compiler catalog is populated before *any* listener is
+    // bound. After `seal`, only its session owner can dispatch opaque query
+    // requests; neither this CLI nor a socket request accepts project inputs.
+    let mut compiler_catalog = compiler_socket
+        .as_ref()
+        .map(|_| CoreCompilerProjectCatalog::default());
+    if let Some(profile) = args.compiler_project_profile.as_deref() {
+        let catalog = compiler_catalog
+            .as_mut()
+            .expect("argument validation requires a compiler socket for a profile");
+        if let Err(error) = register_compiler_startup_profile(catalog, profile) {
+            eprintln!("blueice-core: {error}");
+            return ExitCode::FAILURE;
+        }
+    }
+    let mut compiler_service = compiler_catalog.map(CoreCompilerProjectCatalog::seal);
 
     let script_listener = match script_socket.as_ref() {
         Some(path) => {
@@ -312,6 +465,28 @@ fn main() -> ExitCode {
         }
         None => None,
     };
+    let compiler_listener = match compiler_socket.as_ref() {
+        Some(path) => {
+            let _ = std::fs::remove_file(path);
+            match bind_compiler_listener(path) {
+                Ok(listener) => Some(listener),
+                Err(error) => {
+                    if let Some(path) = &script_socket {
+                        let _ = std::fs::remove_file(path);
+                    }
+                    if let Some(path) = &debugger_socket {
+                        let _ = std::fs::remove_file(path);
+                    }
+                    eprintln!(
+                        "blueice-core: failed to bind compiler socket {}: {error}",
+                        path.display()
+                    );
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        None => None,
+    };
 
     // A stale socket file from a previous run (e.g. one that crashed
     // instead of exiting cleanly) makes bind() fail with AddrInUse
@@ -327,6 +502,9 @@ fn main() -> ExitCode {
             if let Some(path) = &debugger_socket {
                 let _ = std::fs::remove_file(path);
             }
+            if let Some(path) = &compiler_socket {
+                let _ = std::fs::remove_file(path);
+            }
             eprintln!(
                 "blueice-core: failed to bind {}: {e}",
                 args.socket.display()
@@ -339,11 +517,15 @@ fn main() -> ExitCode {
         let (script_sender, script_requests) = script::script_request_channel();
         let (debugger_sender, debugger_requests) =
             blueice_engine::debugger::debugger_request_channel();
+        let (compiler_sender, compiler_requests) = compiler_service_ipc_request_channel();
         if let Some(listener) = script_listener {
             thread::spawn(move || serve_script_listener(listener, script_sender));
         }
         if let Some(listener) = debugger_listener {
             thread::spawn(move || serve_debugger_listener(listener, debugger_sender));
+        }
+        if let Some(listener) = compiler_listener {
+            thread::spawn(move || serve_compiler_listener(listener, compiler_sender));
         }
         let (mut stream, _) = listener.accept()?;
         let mut tabs = TabManager::new(args.width, args.height);
@@ -365,6 +547,12 @@ fn main() -> ExitCode {
                 session::CoreSessionRequests {
                     script: script_socket.as_ref().map(|_| &script_requests),
                     debugger: debugger_socket.as_ref().map(|_| &debugger_requests),
+                    compiler: compiler_service.as_mut().map(|service| {
+                        session::CoreCompilerSessionRequests {
+                            receiver: &compiler_requests,
+                            service,
+                        }
+                    }),
                 },
                 Some(&mut javascript_executor),
             )
@@ -391,6 +579,12 @@ fn main() -> ExitCode {
                 session::CoreSessionRequests {
                     script: script_socket.as_ref().map(|_| &script_requests),
                     debugger: debugger_socket.as_ref().map(|_| &debugger_requests),
+                    compiler: compiler_service.as_mut().map(|service| {
+                        session::CoreCompilerSessionRequests {
+                            receiver: &compiler_requests,
+                            service,
+                        }
+                    }),
                 },
                 Some(&mut javascript_executor),
             )
@@ -415,18 +609,32 @@ fn main() -> ExitCode {
                 session::CoreSessionRequests {
                     script: script_socket.as_ref().map(|_| &script_requests),
                     debugger: debugger_socket.as_ref().map(|_| &debugger_requests),
+                    compiler: compiler_service.as_mut().map(|service| {
+                        session::CoreCompilerSessionRequests {
+                            receiver: &compiler_requests,
+                            service,
+                        }
+                    }),
                 },
                 Some(&mut inline_executor),
             )
         } else {
-            session::run_session_with_script_and_debugger_requests(
+            session::run_session_with_core_session_requests(
                 &mut tabs,
                 &mut stream,
                 &frame_dir,
                 &mut generation,
                 &gatekeeper_socket,
-                script_socket.as_ref().map(|_| &script_requests),
-                debugger_socket.as_ref().map(|_| &debugger_requests),
+                session::CoreSessionRequests {
+                    script: script_socket.as_ref().map(|_| &script_requests),
+                    debugger: debugger_socket.as_ref().map(|_| &debugger_requests),
+                    compiler: compiler_service.as_mut().map(|service| {
+                        session::CoreCompilerSessionRequests {
+                            receiver: &compiler_requests,
+                            service,
+                        }
+                    }),
+                },
             )
         }
     })();
@@ -436,6 +644,9 @@ fn main() -> ExitCode {
         let _ = std::fs::remove_file(path);
     }
     if let Some(path) = debugger_socket {
+        let _ = std::fs::remove_file(path);
+    }
+    if let Some(path) = compiler_socket {
         let _ = std::fs::remove_file(path);
     }
     let _ = std::fs::remove_dir_all(&frame_dir);
@@ -478,6 +689,8 @@ mod tests {
         assert_eq!(parsed.gatekeeper_socket, None);
         assert_eq!(parsed.script_socket, None);
         assert_eq!(parsed.debugger_socket, None);
+        assert_eq!(parsed.compiler_socket, None);
+        assert_eq!(parsed.compiler_project_profile, None);
         assert_eq!(parsed.inline_bluets_profile, None);
         assert!(!parsed.inline_bluejs);
         assert_eq!(parsed.out_of_process_bluejs_socket, None);
@@ -501,6 +714,10 @@ mod tests {
             "/tmp/script.sock",
             "--debugger-socket",
             "/tmp/debugger.sock",
+            "--compiler-socket",
+            "/tmp/compiler.sock",
+            "--compiler-project-profile",
+            "core-closed-fixture-v1",
             "--inline-bluets-profile",
             "core-script-document-text-v1",
         ])
@@ -515,6 +732,8 @@ mod tests {
                 gatekeeper_socket: Some(PathBuf::from("/tmp/gk.sock")),
                 script_socket: Some(PathBuf::from("/tmp/script.sock")),
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
+                compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
+                compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
                 inline_bluejs: false,
                 out_of_process_bluejs_socket: None,
@@ -604,6 +823,45 @@ mod tests {
                     .to_string()
             )
         );
+    }
+
+    #[test]
+    fn compiler_profile_is_startup_only_and_requires_its_query_listener() {
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--compiler-project-profile",
+                "core-closed-fixture-v1",
+            ]),
+            Err("--compiler-project-profile requires --compiler-socket".to_string())
+        );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--compiler-socket",
+            "/tmp/compiler.sock",
+            "--compiler-project-profile",
+            "core-closed-fixture-v1",
+        ])
+        .unwrap();
+        assert_eq!(
+            parsed.compiler_project_profile.as_deref(),
+            Some("core-closed-fixture-v1")
+        );
+    }
+
+    #[test]
+    fn compiler_startup_accepts_only_the_compiled_in_closed_profile() {
+        let mut catalog = CoreCompilerProjectCatalog::default();
+        assert!(
+            register_compiler_startup_profile(&mut catalog, "../untrusted-project")
+                .unwrap_err()
+                .contains("unsupported compiler project profile")
+        );
+        assert_eq!(catalog.registered_project_count(), 0);
+        register_compiler_startup_profile(&mut catalog, "core-closed-fixture-v1").unwrap();
+        assert_eq!(catalog.registered_project_count(), 1);
     }
 
     #[test]

@@ -624,9 +624,27 @@ or second module resolver to bypass them.
   closed. A worker may only forward decoded requests over the bounded channel;
   the adapter owner alone mutates the incremental compiler cache. There is no
   IPC registration/update request, filesystem loader, resolver/plugin/options
-  extension, output write, core-binary listener, launcher project catalog, or
-  project update yet. Contract/provenance queries and explicit artifact-write
-  elevation remain separate required capabilities.
+  extension or output write. At this adapter layer there is not yet a
+  launcher-owned project catalog/distribution mechanism or project update.
+  Contract/provenance queries and explicit artifact-write elevation remain
+  separate required capabilities.
+
+  Core lifecycle foundation delivered: a trusted core startup owner now builds
+  `CoreCompilerProjectCatalog`, registers complete closed projects through its
+  Rust-only `register_startup_project` seam, then consumes it with `seal`
+  before the listener/session begins. The sealed
+  `CoreCompilerServiceSession` has no registration/update API; its bounded
+  request receiver is the only route from an independently handshaken
+  `blueice-core --compiler-socket` worker to the mutable adapter/cache on the
+  core session thread. The reference process admits only the compiled-in
+  `core-closed-fixture-v1` integration profile, rather than accepting a
+  project path, source text, source graph, resolver, plugin, compiler option,
+  output root, or write flag from its command line or socket. Real-process
+  coverage proves rejected pre-`Hello` traffic cannot reach the catalog and a
+  handshaken opaque `DescribeProject`/`Check` receives source-free,
+  generation-bound metadata from the core-registered closed fixture. Launcher
+  catalog distribution/authorization and all update/write capabilities remain
+  deliberately open.
 
   MCP read foundation delivered: `blueice-mcp-server` now has a distinct
   `CompilerConnection` client and an explicit
@@ -637,13 +655,16 @@ or second module resolver to bypass them.
   project-controlled diagnostic prose, identifiers, and type displays as
   untrusted data. The ordinary browser-only `BlueIceMcpServer::spawn` path has
   no compiler connection: these tools report a fixed unavailable result and
-  cannot manufacture a local registration or invoke BlueTSC. There is still
-  no `blueice-core` compiler listener or launcher-owned project catalog, no
-  remote registration/update/source/filesystem/resolver/plugin/options
-  authority, no `bluetsc_build`, no artifact/declaration/source-map/source
-  response, and no output write or elevation. The remaining contract,
-  provenance, pagination, capability negotiation, session lifecycle, and
-  full MCP tool set remain open.
+  cannot manufacture a local registration or invoke BlueTSC. An end-to-end
+  fixture now proves that this `CompilerConnection` reaches a sealed
+  core-owned catalog only through its worker-to-session hand-off after a
+  separate compiler `Hello`; it cannot use the connection to re-open startup
+  registration. There is still no launcher-owned catalog distribution or
+  authorization, no remote registration/update/source/filesystem/resolver/
+  plugin/options authority, no `bluetsc_build`, no artifact/declaration/
+  source-map/source response, and no output write or elevation. The remaining
+  contract, provenance, pagination, capability negotiation, session lifecycle,
+  and full MCP tool set remain open.
 
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
   no-emit-on-error guarantee; responses are generation/fingerprint bound,

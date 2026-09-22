@@ -54,6 +54,7 @@ use crate::gatekeeper_client::{self, NavOutcome};
 #[cfg(unix)]
 use crate::script::javascript_child::{OutOfProcessJavaScriptPageExecutor, PageHostConnection};
 use crate::{
+    compiler_ipc::{CompilerServiceIpcRequestReceiver, CoreCompilerServiceSession},
     debugger::DebuggerRequestReceiver,
     script::{
         direct_page::{DirectPageScriptHost, DirectPageScriptKind},
@@ -97,10 +98,22 @@ pub trait ReadTimeout {
 /// workers own decoded transport only; the session owns all live tab/document
 /// resolution. Grouping them keeps the composite lifecycle API explicit
 /// without growing an unbounded list of transport parameters.
-#[derive(Clone, Copy, Default)]
+#[derive(Default)]
 pub struct CoreSessionRequests<'a> {
     pub script: Option<&'a ScriptRequestReceiver>,
     pub debugger: Option<&'a DebuggerRequestReceiver>,
+    /// The compiler listener's worker-to-session hand-off plus the sealed
+    /// core-owned catalog. Neither field is present in the ordinary browser
+    /// session, and the listener never receives the catalog itself.
+    pub compiler: Option<CoreCompilerSessionRequests<'a>>,
+}
+
+/// Compiler-specific half of [`CoreSessionRequests`]. Keeping the mutable
+/// sealed catalog paired with its receiver prevents a socket worker from
+/// observing or mutating compiler cache state directly.
+pub struct CoreCompilerSessionRequests<'a> {
+    pub receiver: &'a CompilerServiceIpcRequestReceiver,
+    pub service: &'a mut CoreCompilerServiceSession,
 }
 
 /// The mutually exclusive core-owned page-script lifecycle owners for one
@@ -226,6 +239,7 @@ pub fn run_session_with_script_requests_and_direct_page_host<S: Read + Write + R
         CoreSessionRequests {
             script: script_requests,
             debugger: None,
+            compiler: None,
         },
         PageScriptRuntime {
             direct_page_host,
@@ -258,6 +272,7 @@ pub fn run_session_with_script_requests_and_inline_page_executor<S: Read + Write
         CoreSessionRequests {
             script: script_requests,
             debugger: None,
+            compiler: None,
         },
         PageScriptRuntime {
             direct_page_host: None,
@@ -289,7 +304,36 @@ pub fn run_session_with_script_and_debugger_requests<S: Read + Write + ReadTimeo
         CoreSessionRequests {
             script: script_requests,
             debugger: debugger_requests,
+            compiler: None,
         },
+        PageScriptRuntime {
+            direct_page_host: None,
+            inline_page_executor: None,
+            javascript_executor: None,
+        },
+    )
+}
+
+/// Like [`run_session_with_script_and_debugger_requests`], with an optional
+/// sealed registered-project compiler session. This is the composite core
+/// startup seam used by the process binary when a trusted owner explicitly
+/// enabled its compiler listener; normal callers can continue using the
+/// narrower helper above and therefore have no compiler authority at all.
+pub fn run_session_with_core_session_requests<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    requests: CoreSessionRequests<'_>,
+) -> io::Result<()> {
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        requests,
         PageScriptRuntime {
             direct_page_host: None,
             inline_page_executor: None,
@@ -442,6 +486,7 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
     let (completion_tx, completion_rx) = mpsc::channel::<Completion>();
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
 
+    let mut requests = requests;
     loop {
         match blueice_ipc::read_client_message_with_ids(stream) {
             Ok((tab_id, request_id, msg)) => {
@@ -697,6 +742,11 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
                 .as_deref_mut()
                 .and_then(|executor| executor.debugger_executor());
             debugger_requests.dispatch_pending(tabs, debugger_executor);
+        }
+        if let Some(compiler_requests) = requests.compiler.as_mut() {
+            compiler_requests
+                .service
+                .dispatch_pending(compiler_requests.receiver);
         }
         synchronize_page_script_runtime(&mut page_script_runtime, tabs)?;
     }

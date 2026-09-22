@@ -10,10 +10,12 @@
 //! [`CompilerServiceIpcAdapter::handle`] method accepts only opaque handles;
 //! it cannot register, update, reconfigure, source-read, or write a project.
 //!
-//! This module intentionally stops short of a process listener and MCP tool.
-//! Those layers need their own launcher/session capability negotiation. The
-//! request channel follows the debugger's session-owner hand-off pattern so a
-//! future listener can never borrow compiler state on its worker thread.
+//! A [`CoreCompilerProjectCatalog`] is the explicit startup-only authority
+//! boundary: it accepts complete, owner-selected registrations and can then be
+//! sealed into a [`CoreCompilerServiceSession`]. The sealed session accepts
+//! only the decoded query channel below, so neither a socket worker nor an MCP
+//! client can acquire registration, source, path, resolver, option, or output
+//! authority after core startup.
 
 use crate::compiler_service::{
     CompilerServiceCheck, CompilerServiceError, CompilerServiceLimits,
@@ -330,6 +332,95 @@ impl CompilerServiceIpcAdapter {
             artifact_fingerprint,
             static_metadata,
         })
+    }
+}
+
+/// Startup-only catalog for the closed compiler projects selected by a core
+/// owner. It is intentionally separate from the long-lived query session: a
+/// caller must consume this catalog with [`Self::seal`] before handing a
+/// service to a listener/session loop, which makes later registration
+/// structurally impossible through that runtime object.
+#[derive(Debug)]
+pub struct CoreCompilerProjectCatalog {
+    adapter: CompilerServiceIpcAdapter,
+    registered_projects: Vec<CompilerProject>,
+}
+
+impl Default for CoreCompilerProjectCatalog {
+    fn default() -> Self {
+        Self::new(
+            RegisteredProjectCompilerService::default(),
+            CompilerServiceIpcLimits::default(),
+        )
+        .expect("default core compiler catalog policy must be valid")
+    }
+}
+
+impl CoreCompilerProjectCatalog {
+    /// Creates an empty catalog while the trusted core startup owner still
+    /// chooses its fixed project inputs. This API is never called by a wire
+    /// request or an MCP tool.
+    pub fn new(
+        service: RegisteredProjectCompilerService,
+        limits: CompilerServiceIpcLimits,
+    ) -> Result<Self, CompilerServiceIpcConfigurationError> {
+        Ok(Self {
+            adapter: CompilerServiceIpcAdapter::new(service, limits)?,
+            registered_projects: Vec::new(),
+        })
+    }
+
+    /// Registers one complete, already-authorized project during trusted core
+    /// startup. A registration cannot be changed after this call, and the
+    /// returned opaque ID does not reveal the roots or source graph.
+    pub fn register_startup_project(
+        &mut self,
+        registration: RegisteredProjectRegistration,
+    ) -> Result<CompilerProject, CompilerServiceError> {
+        let project = self.adapter.register_core_project(registration)?;
+        self.registered_projects.push(project);
+        Ok(project)
+    }
+
+    /// Returns how many registrations the trusted startup owner admitted.
+    /// It is intentionally a count, not a remote project enumeration API.
+    pub fn registered_project_count(&self) -> usize {
+        self.registered_projects.len()
+    }
+
+    /// Closes startup registration and creates the owner-side session object
+    /// used by the main core loop. `CoreCompilerServiceSession` deliberately
+    /// has no registration method.
+    pub fn seal(self) -> CoreCompilerServiceSession {
+        CoreCompilerServiceSession {
+            adapter: self.adapter,
+            registered_project_count: self.registered_projects.len(),
+        }
+    }
+}
+
+/// The sealed, main-session owner of the registered-project compiler cache.
+/// It can service only pre-negotiated opaque query requests received from a
+/// [`CompilerServiceIpcRequestReceiver`].
+#[derive(Debug)]
+pub struct CoreCompilerServiceSession {
+    adapter: CompilerServiceIpcAdapter,
+    registered_project_count: usize,
+}
+
+impl CoreCompilerServiceSession {
+    /// Drains a bounded batch on the core session thread. The listener worker
+    /// owns framing/handshake only and never obtains this adapter or its
+    /// incremental compiler state.
+    pub fn dispatch_pending(&mut self, receiver: &CompilerServiceIpcRequestReceiver) -> usize {
+        receiver.dispatch_pending(&mut self.adapter)
+    }
+
+    /// A startup-only count useful for core lifecycle diagnostics and tests.
+    /// Project identities themselves remain available only through a caller's
+    /// pre-existing opaque handle and `DescribeProject` query.
+    pub fn registered_project_count(&self) -> usize {
+        self.registered_project_count
     }
 }
 
@@ -866,6 +957,32 @@ mod tests {
         assert!(matches!(
             worker.join().unwrap().unwrap(),
             CompilerReply::Check(_)
+        ));
+    }
+
+    #[test]
+    fn startup_catalog_seals_registration_before_the_session_receives_queries() {
+        let mut catalog = CoreCompilerProjectCatalog::default();
+        let project = catalog
+            .register_startup_project(registration("export const value: number = answer;"))
+            .unwrap();
+        assert_eq!(catalog.registered_project_count(), 1);
+
+        // `seal` consumes the only object that exposes registration. The
+        // resulting service exposes only this bounded query dispatch API.
+        let mut session = catalog.seal();
+        assert_eq!(session.registered_project_count(), 1);
+        let (sender, receiver) = compiler_service_ipc_request_channel();
+        let worker = std::thread::spawn(move || {
+            sender.request(CompilerRequest::DescribeProject { project })
+        });
+        while session.dispatch_pending(&receiver) == 0 {
+            std::thread::yield_now();
+        }
+        assert!(matches!(
+            worker.join().unwrap().unwrap(),
+            CompilerReply::Project(CompilerProjectIdentity { project: returned, .. })
+                if returned == project
         ));
     }
 

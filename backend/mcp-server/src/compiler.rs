@@ -130,7 +130,8 @@ mod tests {
         AuthorizedModule, AuthorizedModuleLoader, CompilerOptions, RuntimePolicy,
     };
     use blueice_engine::{
-        compiler_ipc::CompilerServiceIpcAdapter, compiler_service::RegisteredProjectRegistration,
+        compiler_ipc::{compiler_service_ipc_request_channel, CoreCompilerProjectCatalog},
+        compiler_service::RegisteredProjectRegistration,
     };
     use std::os::unix::net::UnixStream;
     use std::thread;
@@ -159,13 +160,18 @@ mod tests {
     }
 
     #[test]
-    fn compiler_connection_checks_an_actual_core_owned_registered_project() {
-        let mut adapter = CompilerServiceIpcAdapter::default();
-        let project = adapter
-            .register_core_project(compiler_registration())
+    fn compiler_connection_checks_a_sealed_core_catalog_through_the_session_owner() {
+        // The MCP client gets only the owner-minted opaque project ID. The
+        // registration happens before `seal`, and the core session later owns
+        // the mutable adapter/cache while a listener worker has framing only.
+        let mut catalog = CoreCompilerProjectCatalog::default();
+        let project = catalog
+            .register_startup_project(compiler_registration())
             .unwrap();
+        let mut core_session = catalog.seal();
+        let (request_sender, request_receiver) = compiler_service_ipc_request_channel();
         let (client, mut server) = UnixStream::pair().unwrap();
-        let worker = thread::spawn(move || {
+        let listener = thread::spawn(move || {
             let hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
@@ -173,22 +179,27 @@ mod tests {
             )
             .unwrap();
             let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
-            let reply = adapter.handle(request);
+            let reply = request_sender.request(request).unwrap();
             blueice_ipc::compiler::write_compiler_reply(&mut server, &reply).unwrap();
         });
 
-        let mut connection = CompilerConnection::new(client);
-        connection.handshake().unwrap();
-        let blueice_ipc::compiler::CompilerReply::Check(check) =
+        let mcp_client = thread::spawn(move || {
+            let mut connection = CompilerConnection::new(client);
+            connection.handshake().unwrap();
             connection.check(project.id).unwrap()
-        else {
+        });
+        while core_session.dispatch_pending(&request_receiver) == 0 {
+            thread::yield_now();
+        }
+        let blueice_ipc::compiler::CompilerReply::Check(check) = mcp_client.join().unwrap() else {
             panic!("the MCP client must receive a source-free core check reply")
         };
         assert_eq!(check.generation.project, project);
         assert!(!check.has_errors, "{check:#?}");
         assert!(check.static_metadata.is_some());
         assert!(check.artifact_fingerprint.is_some());
-        worker.join().unwrap();
+        assert_eq!(core_session.registered_project_count(), 1);
+        listener.join().unwrap();
     }
 
     #[test]
