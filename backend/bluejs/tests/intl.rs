@@ -1194,6 +1194,20 @@ fn date_time_format_styles_select_their_field_widths() {
     assert_eq!(evaluate(source), Ok(Value::Bool(true)));
 }
 
+/// `formatMatcher: "basic"` with no component options matches the defaulted
+/// numeric date, like the best-fit default (it used to format only the day).
+#[test]
+fn basic_format_matcher_formats_the_defaulted_numeric_date() {
+    for source in [
+        "['de','fr','ja','en-US'].every(l => new Intl.DateTimeFormat(l,{timeZone:'UTC',formatMatcher:'basic'}).format(86400000) === new Intl.DateTimeFormat(l,{timeZone:'UTC'}).format(86400000))",
+        "let f=new Intl.DateTimeFormat('de',{timeZone:'UTC',formatMatcher:'basic'});let r=f.resolvedOptions();r.year==='numeric'&&r.month==='numeric'&&r.day==='numeric'&&f.formatToParts(86400000).filter(p=>p.type!=='literal').map(p=>p.type).join()==='day,month,year'",
+        "new Intl.DateTimeFormat('en-US',{timeZone:'UTC',formatMatcher:'basic',era:'short'}).formatToParts(0).map(p=>p.type).includes('year')",
+        "new Intl.DateTimeFormat('en',{formatMatcher:'basic'}).format(new Temporal.PlainDate(2020,3,4)).includes('2020')",
+    ] {
+        assert_eq!(evaluate(source), Ok(Value::Bool(true)), "{source}");
+    }
+}
+
 #[test]
 fn date_time_format_emits_complete_chinese_year_parts() {
     let source = "let f=new Intl.DateTimeFormat('zh-u-ca-chinese',{year:'numeric',timeZone:'UTC'});let p=f.formatToParts(new Date(2019,5,1));f.format(new Date(2019,5,1))==='2019己亥年'&&p.map(function(part){return part.type+':'+part.value}).join('|')==='relatedYear:2019|yearName:己亥|literal:年'";

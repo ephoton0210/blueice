@@ -971,3 +971,62 @@ fn h24_and_h11_hour_cycles_render_midnight_correctly() {
     assert!(h11.contains("0:00:00"), "h11 midnight: {h11:?}");
     assert!(!h11.contains("12:00:00"), "h11 midnight: {h11:?}");
 }
+
+/// With no component options, `formatMatcher: "basic"` must match the
+/// defaulted numeric year/month/day (ECMA-402 applies those defaults before
+/// the matcher runs) rather than an empty request, which scores best against
+/// the single-field `d` record and used to render only the day.
+#[test]
+fn basic_matcher_matches_the_defaulted_numeric_date() {
+    let format = |locale: &str, format_matcher, era| {
+        DateTimeFormat::try_new(
+            &[canonicalize(locale).unwrap()],
+            DateTimeFormatOptions {
+                format_matcher,
+                era,
+                time_zone: Some("UTC".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    };
+    for locale in ["de", "fr", "en-US", "ja", "ru"] {
+        let basic = format(locale, DateTimeFormatMatcher::Basic, None);
+        let best_fit = format(locale, DateTimeFormatMatcher::BestFit, None);
+        assert_eq!(
+            basic.format(86_400_000.0).unwrap(),
+            best_fit.format(86_400_000.0).unwrap(),
+            "{locale}"
+        );
+        let kinds = basic
+            .format_to_parts(86_400_000.0)
+            .unwrap()
+            .into_iter()
+            .map(|part| part.kind)
+            .filter(|kind| kind != "literal")
+            .collect::<Vec<_>>();
+        assert_eq!(kinds.len(), 3, "{locale}: {kinds:?}");
+        for kind in ["year", "month", "day"] {
+            assert!(kinds.iter().any(|actual| actual == kind), "{locale}");
+        }
+        // `era` is additive: the defaulted date is still matched, with the era.
+        let with_era = format(
+            locale,
+            DateTimeFormatMatcher::Basic,
+            Some(DateTimeWidth::Short),
+        )
+        .format_to_parts(86_400_000.0)
+        .unwrap();
+        for kind in ["year", "month", "day", "era"] {
+            assert!(with_era.iter().any(|part| part.kind == kind), "{locale}");
+        }
+    }
+    // The options a Basic formatter reports are the caller's, so Temporal
+    // values can still tell the defaults apart from explicit components.
+    assert_eq!(
+        format("de", DateTimeFormatMatcher::Basic, None)
+            .options()
+            .day,
+        None
+    );
+}
