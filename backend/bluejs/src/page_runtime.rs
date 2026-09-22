@@ -496,6 +496,54 @@ impl BlueJsPageRuntime {
         })
     }
 
+    /// Returns the opaque program handles currently owned by one live page
+    /// realm. The returned handles carry no source, bytecode, object, or VM
+    /// state; a debugger host must still validate every requested location
+    /// against the exact live handle.
+    pub fn program_handles(
+        &self,
+        tab_id: u64,
+    ) -> Result<Vec<BlueJsProgramHandle>, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        Ok(realm.programs.iter().copied().collect())
+    }
+
+    /// Enumerates compiler-verified instruction boundaries for one exact
+    /// program owned by a live page realm. This is a debugger-location
+    /// inventory, not a VM pause hook or a bytecode/source extraction API.
+    pub fn safe_points(
+        &self,
+        tab_id: u64,
+        handle: BlueJsProgramHandle,
+        max_safe_points: usize,
+    ) -> Result<Vec<BlueJsSafePoint>, BlueJsPageRuntimeError> {
+        let realm = self
+            .realms
+            .get(&tab_id)
+            .ok_or(BlueJsPageRuntimeError::UnknownRealm(tab_id))?;
+        if !realm.programs.contains(&handle) {
+            return Err(BlueJsPageRuntimeError::ProgramNotOwnedByRealm { tab_id, handle });
+        }
+        let program = self
+            .registry
+            .get(handle)
+            .map_err(BlueJsPageRuntimeError::ProgramRegistry)?;
+        let mut safe_points = Vec::new();
+        for safe_point in program.safe_points() {
+            if safe_points.len() == max_safe_points {
+                return Err(BlueJsPageRuntimeError::SafePointLimit {
+                    tab_id,
+                    limit: max_safe_points,
+                });
+            }
+            safe_points.push(safe_point);
+        }
+        Ok(safe_points)
+    }
+
     /// Validates a safe point only for the exact current program generation.
     pub fn validate_safe_point(
         &self,
@@ -543,6 +591,10 @@ pub enum BlueJsPageRuntimeError {
         tab_id: u64,
         limit: usize,
     },
+    SafePointLimit {
+        tab_id: u64,
+        limit: usize,
+    },
     ProgramNotOwnedByRealm {
         tab_id: u64,
         handle: BlueJsProgramHandle,
@@ -579,6 +631,9 @@ impl fmt::Display for BlueJsPageRuntimeError {
             }
             Self::BytecodeLimit { tab_id, limit } => {
                 write!(formatter, "tab {tab_id} exceeds bytecode limit {limit}")
+            }
+            Self::SafePointLimit { tab_id, limit } => {
+                write!(formatter, "tab {tab_id} exceeds safe-point limit {limit}")
             }
             Self::ProgramNotOwnedByRealm { tab_id, .. } => {
                 write!(formatter, "program is not owned by tab {tab_id}")
@@ -936,6 +991,15 @@ mod tests {
             .safe_points()
             .next()
             .unwrap();
+        assert_eq!(runtime.program_handles(1).unwrap(), vec![handle]);
+        assert_eq!(runtime.safe_points(1, handle, 32).unwrap()[0], safe_point);
+        assert_eq!(
+            runtime.safe_points(1, handle, 0),
+            Err(BlueJsPageRuntimeError::SafePointLimit {
+                tab_id: 1,
+                limit: 0,
+            })
+        );
         runtime.validate_safe_point(1, handle, safe_point).unwrap();
         let malformed = BlueJsSafePoint {
             code_unit: safe_point.code_unit,

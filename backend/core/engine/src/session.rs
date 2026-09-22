@@ -661,7 +661,10 @@ fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
             script_requests.dispatch_pending(tabs);
         }
         if let Some(debugger_requests) = requests.debugger {
-            debugger_requests.dispatch_pending(tabs);
+            debugger_requests.dispatch_pending(
+                tabs,
+                page_script_runtime.inline_javascript_executor.as_deref(),
+            );
         }
         synchronize_page_script_runtime(&mut page_script_runtime, tabs)?;
     }

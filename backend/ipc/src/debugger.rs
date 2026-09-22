@@ -7,11 +7,11 @@
 //! This channel is intentionally separate from page-script DOM calls and the
 //! public automation protocol. It gives `core` and an out-of-process BlueJS
 //! host one typed way to agree on a page realm, its generation, and executable
-//! program locations. The current module establishes framing, handshake, and
-//! capability discovery only. A host must report every operation as
-//! [`DebuggerCapabilityState::Available`] only after it implements the native
-//! behavior; no reply type is evidence that pause, stack, scope, or value
-//! inspection already exists.
+//! program locations. It establishes framing, handshake, capability discovery,
+//! and bounded opaque program-location operations. A host must report every
+//! operation as [`DebuggerCapabilityState::Available`] only after it implements
+//! the native behavior; a location reply is not evidence that pause, stack,
+//! scope, or value inspection already exists.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
@@ -19,12 +19,12 @@ use std::io::{self, Read, Write};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 1;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 2;
 
 /// A core-owned page realm identity. The browser-context field is present from
-/// v1 even while the current core exposes only its default context, so an old
-/// debugger client cannot silently retarget an equally numbered tab in a
-/// future context.
+/// from the first protocol revision even while the current core exposes only
+/// its default context, so an old debugger client cannot silently retarget an
+/// equally numbered tab in a future context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DebuggerPageRealm {
     pub browser_context_id: u64,
@@ -75,6 +75,10 @@ impl DebuggerSafePoint {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DebuggerCapability {
+    /// Enumerate opaque live program identities and compiler-verified
+    /// instruction boundaries, then revalidate an exact tuple. This does not
+    /// pause or inspect a VM.
+    ProgramLocations,
     Breakpoints,
     PauseResume,
     Stepping,
@@ -114,13 +118,17 @@ pub struct DebuggerCapabilities {
     pub max_stack_frames: u32,
     pub max_scope_bindings: u32,
     pub max_value_preview_bytes: u32,
+    /// Maximum instruction boundaries returned by one `ListSafePoints`
+    /// operation. This limit does not grant a caller source or bytecode.
+    pub max_safe_points_per_program: u32,
 }
 
 /// Core's requests to the out-of-process BlueJS debugger host.
 ///
-/// Command families are deliberately not added until their native behavior is
-/// real. Discovery establishes the negotiated capability contract first, so a
-/// later breakpoint/pause request has no ambiguous fallback semantics.
+/// Command families are deliberately added only with real native behavior.
+/// The first non-discovery family resolves opaque programs and exact
+/// compiler-verified instruction boundaries; it remains distinct from any
+/// later breakpoint/pause operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DebuggerRequest {
     Hello {
@@ -133,6 +141,22 @@ pub enum DebuggerRequest {
     ListPageRealms,
     DescribeCapabilities {
         realm: DebuggerPageRealm,
+    },
+    /// Lists opaque program identities currently retained by one exact page
+    /// realm. It never returns a source identity, bytecode, VM object, or
+    /// completion value.
+    ListPrograms {
+        realm: DebuggerPageRealm,
+    },
+    /// Lists bounded, compiler-verified instruction boundaries for one exact
+    /// live program generation. A caller must not infer or substitute offsets.
+    ListSafePoints {
+        program: DebuggerProgram,
+    },
+    /// Checks one supplied location against the exact current BlueJS program
+    /// generation. This operation does not execute or pause the program.
+    ValidateSafePoint {
+        safe_point: DebuggerSafePoint,
     },
     /// Catch-all for a newer request variant. Like the frontend protocol, a
     /// receiver preserves connection framing and replies with `Unsupported`
@@ -150,6 +174,11 @@ pub enum DebuggerReply {
     /// Reply to [`DebuggerRequest::ListPageRealms`].
     PageRealms(Vec<DebuggerPageRealm>),
     Capabilities(DebuggerCapabilities),
+    Programs(Vec<DebuggerProgram>),
+    SafePoints(Vec<DebuggerSafePoint>),
+    SafePointValidated {
+        safe_point: DebuggerSafePoint,
+    },
     Unsupported {
         operation: String,
         reason: String,
@@ -192,6 +221,9 @@ pub fn negotiate(request: &DebuggerRequest) -> DebuggerReply {
         },
         DebuggerRequest::ListPageRealms
         | DebuggerRequest::DescribeCapabilities { .. }
+        | DebuggerRequest::ListPrograms { .. }
+        | DebuggerRequest::ListSafePoints { .. }
+        | DebuggerRequest::ValidateSafePoint { .. }
         | DebuggerRequest::Unknown => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
             message: "debugger protocol requires Hello as its first request".to_string(),
@@ -241,6 +273,25 @@ mod tests {
             },
             DebuggerRequest::ListPageRealms,
             DebuggerRequest::DescribeCapabilities { realm: realm() },
+            DebuggerRequest::ListPrograms { realm: realm() },
+            DebuggerRequest::ListSafePoints {
+                program: DebuggerProgram {
+                    realm: realm(),
+                    program_handle: 12,
+                    program_generation: 5,
+                },
+            },
+            DebuggerRequest::ValidateSafePoint {
+                safe_point: DebuggerSafePoint {
+                    program: DebuggerProgram {
+                        realm: realm(),
+                        program_handle: 12,
+                        program_generation: 5,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 0,
+                },
+            },
             DebuggerRequest::Unknown,
         ] {
             let (mut sender, mut receiver) = UnixStream::pair().unwrap();
@@ -259,6 +310,7 @@ mod tests {
             max_stack_frames: 64,
             max_scope_bindings: 256,
             max_value_preview_bytes: 4_096,
+            max_safe_points_per_program: 4_096,
         });
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
@@ -268,6 +320,26 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 12,
+            program_generation: 5,
+        };
+        let safe_point = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 0,
+        };
+        for reply in [
+            DebuggerReply::Programs(vec![program]),
+            DebuggerReply::SafePoints(vec![safe_point]),
+            DebuggerReply::SafePointValidated { safe_point },
+        ] {
+            let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+            write_debugger_reply(&mut sender, &reply).unwrap();
+            assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+        }
     }
 
     #[test]
@@ -280,15 +352,17 @@ mod tests {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
             }
         );
-        assert!(matches!(
-            negotiate(&DebuggerRequest::Hello {
-                protocol_version: DEBUGGER_PROTOCOL_VERSION + 1,
-            }),
-            DebuggerReply::Error {
-                code: DebuggerErrorCode::ProtocolVersion,
-                ..
-            }
-        ));
+        for unsupported_version in [1, DEBUGGER_PROTOCOL_VERSION + 1] {
+            assert!(matches!(
+                negotiate(&DebuggerRequest::Hello {
+                    protocol_version: unsupported_version,
+                }),
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::ProtocolVersion,
+                    ..
+                }
+            ));
+        }
         assert!(matches!(
             negotiate(&DebuggerRequest::ListPageRealms),
             DebuggerReply::Error {

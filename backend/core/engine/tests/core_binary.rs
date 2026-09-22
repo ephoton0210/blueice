@@ -186,11 +186,12 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
 }
 
 #[test]
-fn real_subprocess_routes_debugger_discovery_through_the_live_core_session() {
+fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session() {
     // The debugger protocol must remain separate from both frontend and DOM
     // script IPC, but it still has to validate a target against the session's
-    // actual document lifecycle. Only discovery is installed: every runtime
-    // operation is deliberately advertised as planned.
+    // actual document lifecycle. The narrow program-location operation is
+    // installed only for the explicit in-process JavaScript host; breakpoint
+    // control and every VM-inspection operation remain deliberately planned.
     let socket_path = unique_socket_path("debugger-core");
     let debugger_socket_path = unique_socket_path("debugger-host");
     let frame_dir = std::env::temp_dir().join(format!(
@@ -208,7 +209,10 @@ fn real_subprocess_routes_debugger_discovery_through_the_live_core_session() {
         let (mut stream, _) = listener_one.accept().unwrap();
         let mut buf = [0u8; 1024];
         let _ = stream.read(&mut buf);
-        let body = "<main>first debugger document</main>";
+        let body = concat!(
+            "<main>first debugger document</main>",
+            "<script>const firstDebuggerLocation = 42;</script>"
+        );
         stream
             .write_all(
                 format!(
@@ -225,7 +229,10 @@ fn real_subprocess_routes_debugger_discovery_through_the_live_core_session() {
         let (mut stream, _) = listener_two.accept().unwrap();
         let mut buf = [0u8; 1024];
         let _ = stream.read(&mut buf);
-        let body = "<main>replacement debugger document</main>";
+        let body = concat!(
+            "<main>replacement debugger document</main>",
+            "<script>const replacementDebuggerLocation = 43;</script>"
+        );
         stream
             .write_all(
                 format!(
@@ -247,6 +254,7 @@ fn real_subprocess_routes_debugger_discovery_through_the_live_core_session() {
             frame_dir.to_str().unwrap(),
             "--gatekeeper-socket",
             gatekeeper_path.to_str().unwrap(),
+            "--inline-bluejs",
         ])
         .stderr(Stdio::piped())
         .spawn()
@@ -338,10 +346,76 @@ fn real_subprocess_routes_debugger_discovery_through_the_live_core_session() {
             other => panic!("expected debugger capabilities, got {other:?}"),
         };
     assert_eq!(first_capabilities.realm, first_realm);
+    assert!(first_capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::ProgramLocations
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
     assert!(first_capabilities
         .reports
         .iter()
+        .filter(|report| {
+            report.capability != blueice_ipc::debugger::DebuggerCapability::ProgramLocations
+        })
         .all(|report| { report.state == blueice_ipc::debugger::DebuggerCapabilityState::Planned }));
+
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListPrograms { realm: first_realm },
+    )
+    .unwrap();
+    let first_program = match blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap() {
+        blueice_ipc::debugger::DebuggerReply::Programs(programs) => {
+            assert_eq!(programs.len(), 1);
+            programs[0]
+        }
+        other => panic!("expected opaque debugger programs, got {other:?}"),
+    };
+    assert_eq!(first_program.realm, first_realm);
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ListSafePoints {
+            program: first_program,
+        },
+    )
+    .unwrap();
+    let first_safe_point = match blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap()
+    {
+        blueice_ipc::debugger::DebuggerReply::SafePoints(safe_points) => *safe_points
+            .first()
+            .expect("the compiled page program has a safe point"),
+        other => panic!("expected verified debugger safe points, got {other:?}"),
+    };
+    assert_eq!(first_safe_point.program, first_program);
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ValidateSafePoint {
+            safe_point: first_safe_point,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::SafePointValidated {
+            safe_point: first_safe_point,
+        }
+    );
+    blueice_ipc::debugger::write_debugger_request(
+        &mut debugger,
+        &blueice_ipc::debugger::DebuggerRequest::ValidateSafePoint {
+            safe_point: blueice_ipc::debugger::DebuggerSafePoint {
+                bytecode_offset: u32::MAX,
+                ..first_safe_point
+            },
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
+        blueice_ipc::debugger::DebuggerReply::Error {
+            code: blueice_ipc::debugger::DebuggerErrorCode::InvalidSafePoint,
+            ..
+        }
+    ));
 
     blueice_ipc::write_client_message(
         &mut frontend,
@@ -376,7 +450,9 @@ fn real_subprocess_routes_debugger_discovery_through_the_live_core_session() {
 
     blueice_ipc::debugger::write_debugger_request(
         &mut debugger,
-        &blueice_ipc::debugger::DebuggerRequest::DescribeCapabilities { realm: first_realm },
+        &blueice_ipc::debugger::DebuggerRequest::ListSafePoints {
+            program: first_program,
+        },
     )
     .unwrap();
     assert!(matches!(

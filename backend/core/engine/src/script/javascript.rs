@@ -25,6 +25,12 @@ use blueice_bluejs::{
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 
+mod debugger_support;
+use debugger_support::DebuggerProgramRecord;
+pub use debugger_support::{
+    JavaScriptPageDebuggerError, JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
+};
+
 /// The maximum number of source-free results retained for core observation.
 const MAX_EXECUTION_REPORTS: usize = 128;
 
@@ -40,6 +46,10 @@ pub struct JavaScriptPageExecutorConfig {
     /// Fixed validation budgets for the installed immutable host-to-script
     /// snapshot. Page code cannot widen these contract limits.
     pub binding_contract_limits: CoreScriptBindingContractLimits,
+    /// Maximum exact instruction boundaries the private debugger may retain in
+    /// one reply for an admitted program. It is fixed by the core host before
+    /// page execution; a page cannot request a wider inventory.
+    pub max_debugger_safe_points_per_program: usize,
 }
 
 impl Default for JavaScriptPageExecutorConfig {
@@ -49,6 +59,7 @@ impl Default for JavaScriptPageExecutorConfig {
             max_source_bytes_per_module: 1024 * 1024,
             max_modules_per_graph: 128,
             binding_contract_limits: CoreScriptBindingContractLimits::default(),
+            max_debugger_safe_points_per_program: 4_096,
         }
     }
 }
@@ -347,6 +358,8 @@ pub struct JavaScriptPageExecutor {
     external_source_authorizer: Option<Box<dyn JavaScriptPageSourceAuthorizer>>,
     live_documents: BTreeMap<TabId, LivePageIdentity>,
     observed_documents: BTreeMap<TabId, u64>,
+    debugger_programs: BTreeMap<TabId, Vec<DebuggerProgramRecord>>,
+    next_debugger_program_handle: u64,
     reports: VecDeque<JavaScriptPageExecutionReport>,
 }
 
@@ -366,7 +379,11 @@ impl JavaScriptPageExecutor {
     pub fn with_config(
         config: JavaScriptPageExecutorConfig,
     ) -> Result<Self, JavaScriptPageExecutorError> {
-        if config.max_source_bytes_per_module == 0 || config.max_modules_per_graph == 0 {
+        if config.max_source_bytes_per_module == 0
+            || config.max_modules_per_graph == 0
+            || config.max_debugger_safe_points_per_program == 0
+            || u32::try_from(config.max_debugger_safe_points_per_program).is_err()
+        {
             return Err(JavaScriptPageExecutorError::InvalidConfiguration);
         }
         let runtime = BlueJsPageRuntime::new(config.runtime)
@@ -377,6 +394,8 @@ impl JavaScriptPageExecutor {
             external_source_authorizer: None,
             live_documents: BTreeMap::new(),
             observed_documents: BTreeMap::new(),
+            debugger_programs: BTreeMap::new(),
+            next_debugger_program_handle: 1,
             reports: VecDeque::new(),
         })
     }
@@ -496,6 +515,7 @@ impl JavaScriptPageExecutor {
 
     fn close_page(&mut self, tab_id: TabId) {
         self.live_documents.remove(&tab_id);
+        self.debugger_programs.remove(&tab_id);
         self.runtime.close_realm(tab_id.as_u64());
     }
 
@@ -508,10 +528,12 @@ impl JavaScriptPageExecutor {
         let document_origin = identity.origin.as_str().to_string();
         match self.live_documents.get(&tab_id) {
             Some(current) if current == &identity => {}
-            Some(_) => self
-                .runtime
-                .navigate(tab_id.as_u64(), identity.origin.clone())
-                .map_err(JavaScriptPageExecutorError::PageRuntime)?,
+            Some(_) => {
+                self.debugger_programs.remove(&tab_id);
+                self.runtime
+                    .navigate(tab_id.as_u64(), identity.origin.clone())
+                    .map_err(JavaScriptPageExecutorError::PageRuntime)?
+            }
             None => self
                 .runtime
                 .open_realm(tab_id.as_u64(), identity.origin.clone())
@@ -683,6 +705,12 @@ impl JavaScriptPageExecutor {
             .runtime
             .install_program(tab_id.as_u64(), &origin, source_identity(module), &program)
             .map_err(page_runtime_category)?;
+        if let Err(category) = self.register_debugger_programs(tab_id, &[handle]) {
+            self.runtime
+                .discard_program(tab_id.as_u64(), handle)
+                .expect("an admitted classic program remains owned until execution");
+            return Err(category);
+        }
         self.runtime
             .execute_program(tab_id.as_u64(), handle)
             .map(|_: Value| ())
@@ -733,6 +761,10 @@ impl JavaScriptPageExecutor {
             .position(|module_id| module_id == graph.entry())
             .and_then(|index| installed.get(index).copied())
             .expect("graph construction validates the entry");
+        if let Err(category) = self.register_debugger_programs(tab_id, &installed) {
+            discard_programs(&mut self.runtime, tab_id, &installed);
+            return Err(category);
+        }
         self.runtime
             .execute_module_graph(tab_id.as_u64(), entry, installed)
             .map(|_: Value| ())
@@ -1157,6 +1189,99 @@ mod tests {
                 ..
             }]
         ));
+    }
+
+    #[test]
+    fn debugger_locations_are_opaque_exact_and_released_on_navigation() {
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<script>const answer = 40 + 2; answer;</script>",
+            "https://example.test/first.html",
+        );
+        let mut executor = JavaScriptPageExecutor::default();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let programs = executor.debugger_programs(tab_id, 1).unwrap();
+        assert_eq!(programs.len(), 1);
+        let program = programs[0];
+        let safe_points = executor
+            .debugger_safe_points(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+            )
+            .unwrap();
+        let safe_point = *safe_points
+            .first()
+            .expect("a compiled classic script has a safe point");
+        executor
+            .validate_debugger_safe_point(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                safe_point.code_unit_ordinal,
+                safe_point.bytecode_offset,
+            )
+            .unwrap();
+        assert_eq!(
+            executor.validate_debugger_safe_point(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+                safe_point.code_unit_ordinal,
+                u32::MAX,
+            ),
+            Err(JavaScriptPageDebuggerError::InvalidSafePoint)
+        );
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script>const successor = 43;</script>",
+            Some("https://example.test/second.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.debugger_programs(tab_id, 1),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        let successor = executor.debugger_programs(tab_id, 2).unwrap();
+        assert_eq!(successor.len(), 1);
+        assert_ne!(successor[0].program_handle, program.program_handle);
+        assert_eq!(
+            executor.debugger_safe_points(
+                tab_id,
+                2,
+                program.program_handle,
+                program.program_generation,
+            ),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
+    }
+
+    #[test]
+    fn debugger_safe_point_inventory_enforces_the_core_selected_reply_limit() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>const answer = 40 + 2; answer;</script>",
+            "https://example.test/limited-debugger.html",
+        );
+        let mut executor = JavaScriptPageExecutor::with_config(JavaScriptPageExecutorConfig {
+            max_debugger_safe_points_per_program: 1,
+            ..JavaScriptPageExecutorConfig::default()
+        })
+        .unwrap();
+
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let program = executor.debugger_programs(tab_id, 1).unwrap()[0];
+        assert_eq!(
+            executor.debugger_safe_points(
+                tab_id,
+                1,
+                program.program_handle,
+                program.program_generation,
+            ),
+            Err(JavaScriptPageDebuggerError::ResourceLimit)
+        );
     }
 
     #[test]

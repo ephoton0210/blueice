@@ -18,10 +18,14 @@ bridge now has a limited, in-memory mapping from a single direct module's
 top-level lowering spans to verified BlueJS safe points, plus an in-process
 page host with two read-only document-oriented profiles. `blueice-core` can
 now opt into one such profile for inline declarations, and expose only
-source-free per-tab outcomes through its control plane. It still has no
-general DOM or event surface, launcher-managed/out-of-process BlueJS host,
-live page-data contract boundary, debugger runtime, or MCP project-registration
-path.
+source-free per-tab outcomes through its control plane. The opt-in JavaScript
+host now also supports a bounded private debugger program-location inventory
+and exact live safe-point validation. A launcher-supervised,
+capability-authenticated out-of-process BlueJS child can execute a bounded,
+caller-authorized document graph, but core does not yet route its live page
+lifecycle into that child. The remaining boundary has no general DOM or event
+surface, live page-data contract boundary, debugger pause/runtime control, or
+MCP project-registration path.
 
 The critical path is intentionally ordered below. Do not grow the TypeScript
 syntax matrix while an earlier item prevents an already-supported program from
@@ -262,29 +266,43 @@ or second module resolver to bypass them.
   page realm and remain separate from script/DOM and network IPC.
 
   Foundation delivered: `blueice_ipc::debugger` now owns an independently
-  framed v1 handshake and capability-discovery vocabulary. Its page-realm,
-  program, and safe-point identities include browser-context/tab/realm and
-  program generations, reject zero placeholder handles, and state that a host
-  MUST validate exact BlueJS instruction boundaries rather than remap an
-  offset. The capability schema can report `available`, `planned`, or
-  `unsupported` for breakpoints, pause/resume, stepping, stack, scopes,
-  exception policy, and bounded values. `blueice_engine::debugger` now routes
-  post-handshake discovery requests from a socket worker to the one session
-  thread that owns live tabs. `blueice-core --debugger-socket <path>` binds
-  that separate listener, negotiates `Hello` at its transport boundary, and
-  validates the default browser-context ID, live tab, and exact private
-  document generation before returning a capability document.
+  framed v2 handshake, capability, and bounded program-location vocabulary.
+  Its page-realm, program, and safe-point identities include
+  browser-context/tab/realm and program generations, reject zero placeholder
+  handles, and require a host to validate an exact BlueJS instruction boundary
+  rather than remap an offset. `ListPrograms`, `ListSafePoints`, and
+  `ValidateSafePoint` are now real operations, not planned strings: they
+  return only core-minted opaque program IDs and bounded `(code-unit, offset)`
+  tuples, never canonical source IDs, source text, bytecode bytes, VM objects,
+  or completion values. These additive request/reply and capability shapes
+  advance the independent debugger protocol to v2, so a v1 peer fails its
+  `Hello` negotiation rather than attempting to deserialize an incompatible
+  capability report. `blueice_engine::debugger` routes post-handshake
+  requests from a socket worker to the one session thread that owns live tabs;
+  when that session selected `--inline-bluejs`, it resolves these opaque IDs
+  through the current `JavaScriptPageExecutor` and BlueJS page-runtime registry.
+  `blueice-core --debugger-socket <path>` binds that separate listener,
+  negotiates `Hello` at its transport boundary, and validates the default
+  browser-context ID, live tab, and exact private document generation before
+  performing either discovery or location work.
   `ListPageRealms` first returns at most 128 currently loaded
   `(browser-context, tab, document-generation)` identities with no URL,
   source, program, bytecode, or runtime value; exceeding that cap fails with
-  `ResourceLimit`. A stale generation returns `StaleRealm`; malformed/unknown
-  targets return `InvalidTarget`. The running core advertises every listed
-  capability as `planned` with fixed source-free details, never as `available`.
-  A real core subprocess regression proves the socket handshake, session-owned
-  bounded target discovery, planned-only report, target refresh, and
-  stale-realm rejection after navigation.
-  There is still no core-to-BlueJS program-registry validation, breakpoint
-  table, pause state, stack/scope/value implementation, or debugger consumer.
+  `ResourceLimit`. A stale realm returns `StaleRealm`; malformed/unknown
+  targets return `InvalidTarget`; an obsolete program generation returns
+  `StaleProgram`; and a non-boundary tuple returns `InvalidSafePoint`.
+  `ProgramLocations` is `available` only for an enabled, live JavaScript page
+  realm; it remains `planned` otherwise. Breakpoints, pause/resume, stepping,
+  stack, scopes, exception policy, and bounded values remain `planned` with
+  fixed source-free details. Unit coverage proves exact successful validation,
+  malformed-boundary rejection, same-document cross-tab rejection, and old
+  realm rejection after navigation; the established core subprocess regression
+  continues to prove the separate socket handshake and session-owned lifecycle
+  route.
+  There is still no breakpoint table or hook, pause state, stepping,
+  stack/scope/value implementation, source-to-safe-point page map, or debugger
+  consumer. In particular, location validation must not be represented as a
+  breakpoint installation or a paused execution state.
 
   Acceptance: a JS page fixture pauses at a verified safe point, supports the
   declared stepping subset, rejects stale frame/value handles after

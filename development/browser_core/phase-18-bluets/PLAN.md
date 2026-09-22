@@ -14,6 +14,12 @@ It is not yet connected to core's live page-loader/navigation lifecycle, so it
 is process/supervision evidence rather than a claim that normal page scripts
 already run out of process.
 
+The opt-in debugger socket now additionally supports source-free opaque
+program-location enumeration and exact compiler-verified BlueJS safe-point
+validation for a live JavaScript realm. Every request remains tab, document,
+and program-generation bound. It does not pause or step execution, install a
+breakpoint, or expose source, bytecode, a stack, scope, or runtime value.
+
 ## Objective
 
 Let a BlueIce page opt in to TypeScript source without a build-time `.js` artifact, while also providing BlueTSC for projects that need to compile TypeScript to portable JavaScript. Both paths preserve the reasons to author code in TypeScript: deterministic static diagnostics, source-level debugging, and—where data crosses a trust boundary—runtime validation of an explicit, reifiable contract.
