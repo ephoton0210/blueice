@@ -8,7 +8,8 @@
 //! under the ordinary collector schedule and under every stress schedule: a
 //! difference means a native function holds a heap object in a Rust local
 //! across an allocation without rooting it.
-use blueice_bluejs::{compile, parse, Value, Vm, VmConfig};
+use blueice_bluejs::{compile, compile_module, parse, parse_module, Value, Vm, VmConfig};
+use std::collections::HashMap;
 
 fn evaluate(
     source: &str,
@@ -150,4 +151,49 @@ fn atomics_wait_async_keeps_its_result_record_alive_while_the_promise_is_made() 
            && mismatch.async === false && mismatch.value === 'not-equal'\
            && immediate.async === false && immediate.value === 'timed-out'",
     );
+}
+
+/// `ShadowRealm.prototype.importValue` creates its Promise capability, then
+/// runs the whole import in the child realm and allocates wrappers in the
+/// caller's heap before it finally calls the capability's `resolve`/`reject`
+/// functions, which nothing else refers to.
+#[test]
+fn shadow_realm_import_value_keeps_its_promise_capability_alive_across_the_import() {
+    let source = "var outcome = 'pending';\
+        var realm = new ShadowRealm();\
+        realm.importValue('./mod.js', 'missing').then(\
+          () => { outcome = 'resolved'; },\
+          error => { outcome = Object.getPrototypeOf(error) === TypeError.prototype ? 'rejected' : 'wrong'; });\
+        realm.importValue('./mod.js', 'x').then(value => { outcome += ':' + value; });";
+    let run = |nursery: Option<usize>, threshold: Option<usize>| {
+        let mut config = VmConfig::default();
+        if let Some(capacity) = nursery {
+            config.heap.nursery_capacity = capacity;
+        }
+        if let Some(bytes) = threshold {
+            config.heap.major_threshold_bytes = bytes;
+        }
+        let modules = HashMap::from([(
+            "shadow/mod.js".to_string(),
+            compile_module(&parse_module("export var x = 42;").unwrap()).unwrap(),
+        )]);
+        let mut vm = Vm::new(config).unwrap();
+        vm.set_module_loader_context("shadow/main.js", modules);
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap_or_else(|error| panic!("nursery {nursery:?}: {error:?}"));
+        vm.run_promise_jobs().unwrap();
+        vm.execute_script(&compile(&parse("outcome").unwrap()).unwrap())
+            .unwrap()
+    };
+    let ordinary = run(None, None);
+    assert_eq!(ordinary, Value::String("rejected:42".into()));
+    for threshold in [
+        None,
+        Some(20_000),
+        Some(60_000),
+        Some(120_000),
+        Some(300_000),
+    ] {
+        assert_eq!(run(Some(1), threshold), ordinary, "threshold {threshold:?}");
+    }
 }
