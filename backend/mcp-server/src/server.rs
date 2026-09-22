@@ -148,12 +148,51 @@ struct TransferIdParams {
     id: u64,
 }
 
-async fn blocking<T, F>(conn: Arc<Mutex<CoreConnection<UnixStream>>>, f: F) -> Result<T, ErrorData>
+/// Lazily owns the browser-side connection for one MCP stdio session.
+///
+/// An MCP client starts this adapter process when it opens its stdio
+/// connection, and EOF ends that session.  Creating the adapter must not
+/// therefore also create a browser just to answer `initialize` or
+/// `tools/list`: only a browser-facing tool needs `core` at all.  The mutex
+/// makes concurrent first tool calls converge on one shared connection.
+struct CoreHandle {
+    width: u32,
+    height: u32,
+    process: Mutex<Option<CoreProcess>>,
+}
+
+impl CoreHandle {
+    fn new(width: u32, height: u32) -> Self {
+        Self {
+            width,
+            height,
+            process: Mutex::new(None),
+        }
+    }
+
+    fn connection(&self) -> io::Result<Arc<Mutex<CoreConnection<UnixStream>>>> {
+        let mut process = self
+            .process
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if process.is_none() {
+            *process = Some(CoreProcess::connect(self.width, self.height)?);
+        }
+        Ok(process
+            .as_ref()
+            .expect("a successful connection was just stored")
+            .conn
+            .clone())
+    }
+}
+
+async fn blocking<T, F>(core: Arc<CoreHandle>, f: F) -> Result<T, ErrorData>
 where
     F: FnOnce(&mut CoreConnection<UnixStream>) -> io::Result<T> + Send + 'static,
     T: Send + 'static,
 {
     tokio::task::spawn_blocking(move || {
+        let conn = core.connection()?;
         let mut guard = conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         f(&mut guard)
     })
@@ -217,29 +256,27 @@ fn transfer_error_result(error: CallError) -> CallToolResult {
     ))])
 }
 
-/// The MCP server itself -- owns its `core` connection for its whole
-/// lifetime. If a `blueice-launcher` rendezvous socket is reachable
-/// (see [`CoreProcess::connect`]), that shared `core`/`Page` is left
-/// running when the MCP client disconnects; otherwise (no launcher
-/// running) this privately spawned its own `core`, which *is* torn
-/// down with it.
+/// The MCP server itself. Its stdio process is started by an MCP client and
+/// exits when that client closes stdin. A browser-facing tool lazily connects
+/// to `core`; if a `blueice-launcher` rendezvous socket is reachable (see
+/// [`CoreProcess::connect`]), that shared `core`/`Page` is left running when
+/// the MCP client disconnects. Otherwise, the lazily private-spawned `core`
+/// is torn down with this adapter.
 pub struct BlueIceMcpServer {
-    core: CoreProcess,
+    core: Arc<CoreHandle>,
     /// Connected (and, if need be, started) only when a download tool is
     /// first used -- see [`DownloadsHandle`].
     downloads: Arc<DownloadsHandle>,
 }
 
 impl BlueIceMcpServer {
-    pub fn spawn(width: u32, height: u32) -> io::Result<Self> {
-        Ok(BlueIceMcpServer {
-            core: CoreProcess::connect(width, height)?,
+    /// Constructs the stdio service without doing browser I/O. The first
+    /// browser-facing tool starts or attaches to `core` on a blocking worker.
+    pub fn spawn(width: u32, height: u32) -> Self {
+        BlueIceMcpServer {
+            core: Arc::new(CoreHandle::new(width, height)),
             downloads: Arc::new(DownloadsHandle::new()),
-        })
-    }
-
-    fn conn(&self) -> Arc<Mutex<CoreConnection<UnixStream>>> {
-        self.core.conn.clone()
+        }
     }
 }
 
@@ -252,7 +289,7 @@ impl BlueIceMcpServer {
         &self,
         Parameters(NavigateParams { url, tab_id }): Parameters<NavigateParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| conn.navigate(&url, tab_id)).await?;
+        let outcome = blocking(self.core.clone(), move |conn| conn.navigate(&url, tab_id)).await?;
         Ok(outcome_to_result(outcome))
     }
 
@@ -261,7 +298,7 @@ impl BlueIceMcpServer {
         &self,
         Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let snapshot = blocking(self.conn(), move |conn| conn.representation(tab_id)).await?;
+        let snapshot = blocking(self.core.clone(), move |conn| conn.representation(tab_id)).await?;
         let text = serde_json::to_string_pretty(&snapshot).unwrap_or_else(|_| "{}".to_string());
         Ok(CallToolResult::success(vec![Content::text(
             crate::wrap_untrusted_page_content(&text),
@@ -275,7 +312,7 @@ impl BlueIceMcpServer {
         &self,
         Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let dump = blocking(self.conn(), move |conn| conn.dom(tab_id)).await?;
+        let dump = blocking(self.core.clone(), move |conn| conn.dom(tab_id)).await?;
         Ok(CallToolResult::success(vec![Content::text(
             crate::wrap_untrusted_page_content(&dump),
         )]))
@@ -288,7 +325,7 @@ impl BlueIceMcpServer {
         &self,
         Parameters(NodeIdParams { node_id, tab_id }): Parameters<NodeIdParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| {
+        let outcome = blocking(self.core.clone(), move |conn| {
             conn.act(node_id, NodeAction::Click, tab_id)
         })
         .await?;
@@ -304,7 +341,7 @@ impl BlueIceMcpServer {
             tab_id,
         }): Parameters<TypeTextParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| {
+        let outcome = blocking(self.core.clone(), move |conn| {
             conn.act(node_id, NodeAction::SetValue(text), tab_id)
         })
         .await?;
@@ -316,7 +353,7 @@ impl BlueIceMcpServer {
         &self,
         Parameters(NodeIdParams { node_id, tab_id }): Parameters<NodeIdParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| {
+        let outcome = blocking(self.core.clone(), move |conn| {
             conn.act(node_id, NodeAction::Focus, tab_id)
         })
         .await?;
@@ -330,7 +367,7 @@ impl BlueIceMcpServer {
         &self,
         Parameters(NodeIdParams { node_id, tab_id }): Parameters<NodeIdParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| {
+        let outcome = blocking(self.core.clone(), move |conn| {
             conn.act(node_id, NodeAction::ScrollIntoView, tab_id)
         })
         .await?;
@@ -344,7 +381,10 @@ impl BlueIceMcpServer {
         &self,
         Parameters(HighlightParams { node_id, tab_id }): Parameters<HighlightParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| conn.highlight(node_id, tab_id)).await?;
+        let outcome = blocking(self.core.clone(), move |conn| {
+            conn.highlight(node_id, tab_id)
+        })
+        .await?;
         Ok(outcome_to_result(outcome))
     }
 
@@ -355,7 +395,7 @@ impl BlueIceMcpServer {
         &self,
         Parameters(GetPageParams { tab_id }): Parameters<GetPageParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let png = blocking(self.conn(), move |conn| {
+        let png = blocking(self.core.clone(), move |conn| {
             let Some(frame) = conn.last_frame(tab_id).cloned() else {
                 return Ok(None);
             };
@@ -394,7 +434,7 @@ impl BlueIceMcpServer {
         description = "List every currently open tab (id and url). Use the returned tab_id with navigate/click/get_page_representation/etc. to address a specific tab -- there is no single 'current tab' tracked by core itself, since a human and an AI may be looking at different tabs at once."
     )]
     async fn list_tabs(&self) -> Result<CallToolResult, ErrorData> {
-        let tabs = blocking(self.conn(), |conn| conn.list_tabs()).await?;
+        let tabs = blocking(self.core.clone(), |conn| conn.list_tabs()).await?;
         let text = serde_json::to_string_pretty(&tabs).unwrap_or_else(|_| "[]".to_string());
         Ok(CallToolResult::success(vec![Content::text(
             crate::wrap_untrusted_page_content(&text),
@@ -408,7 +448,8 @@ impl BlueIceMcpServer {
         &self,
         Parameters(OpenTabParams { url }): Parameters<OpenTabParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| conn.open_tab(url.as_deref())).await?;
+        let outcome =
+            blocking(self.core.clone(), move |conn| conn.open_tab(url.as_deref())).await?;
         match outcome {
             crate::OpenTabOutcome::Opened { tab_id, url } => {
                 let text = serde_json::to_string_pretty(
@@ -430,7 +471,7 @@ impl BlueIceMcpServer {
         &self,
         Parameters(CloseTabParams { tab_id }): Parameters<CloseTabParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let outcome = blocking(self.conn(), move |conn| conn.close_tab(tab_id)).await?;
+        let outcome = blocking(self.core.clone(), move |conn| conn.close_tab(tab_id)).await?;
         match outcome {
             crate::CloseTabOutcome::Closed => Ok(CallToolResult::success(vec![Content::text(
                 format!("tab {tab_id} closed"),

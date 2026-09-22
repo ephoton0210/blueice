@@ -795,8 +795,8 @@ impl CoreProcess {
     /// `phase-8-live-core-hotswap/PLAN.md`'s "Minimal first slice" --
     /// falling back to [`CoreProcess::spawn`]'s private, unshared
     /// `core` only if nothing is listening there (no launcher running,
-    /// e.g. a standalone dev/test workflow). This is the constructor
-    /// `main.rs`/`BlueIceMcpServer::spawn` should use; `spawn` itself
+    /// e.g. a standalone dev/test workflow). `BlueIceMcpServer` calls
+    /// this lazily from its first browser-facing tool; `spawn` itself
     /// stays available directly for callers (and tests) that
     /// specifically want a private instance regardless.
     pub fn connect(width: u32, height: u32) -> io::Result<Self> {
