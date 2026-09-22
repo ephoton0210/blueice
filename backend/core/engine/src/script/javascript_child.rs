@@ -25,8 +25,9 @@ use super::{
 };
 use crate::script::javascript::{
     AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerBreakpoint,
-    JavaScriptPageDebuggerError, JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
-    JavaScriptPageExecutionReport, PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
+    JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
+    JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint, JavaScriptPageExecutionReport,
+    PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };
 use crate::script::page_source_authorizer::AuthorizedPageScriptGraph;
 pub use crate::script::page_source_authorizer::{
@@ -35,9 +36,9 @@ pub use crate::script::page_source_authorizer::{
 };
 use crate::{Page, TabId, TabManager};
 use blueice_ipc::page_host::{
-    self, PageHostDebuggerProgram, PageHostDebuggerSafePoint, PageHostDocument,
-    PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph, PageHostReply,
-    PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
+    self, PageHostDebuggerExecutionState, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
+    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
+    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
     PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
     PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
 };
@@ -203,6 +204,60 @@ pub trait PageHostClient {
             "page-host child does not implement debugger breakpoint configuration",
         ))
     }
+
+    /// Whether this private peer implements the v6 root-classic lifecycle.
+    /// A transport double must opt in explicitly; configuration alone never
+    /// advertises pause/resume to the public debugger.
+    fn debugger_execution_control_available(&self) -> bool {
+        false
+    }
+
+    fn arm_debugger_root_safe_point_breakpoint(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger execution control",
+        ))
+    }
+
+    fn debugger_execution_state(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger execution control",
+        ))
+    }
+
+    fn resume_debugger_execution(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger execution control",
+        ))
+    }
+
+    fn advance_debugger_execution(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement debugger execution control",
+        ))
+    }
 }
 
 impl PageHostClient for PageHostConnection {
@@ -305,6 +360,60 @@ impl PageHostClient for PageHostConnection {
             safe_point,
         })
     }
+
+    fn debugger_execution_control_available(&self) -> bool {
+        true
+    }
+
+    fn arm_debugger_root_safe_point_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+            tab_id,
+            document_generation,
+            safe_point,
+        })
+    }
+
+    fn debugger_execution_state(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::GetDebuggerExecutionState {
+            tab_id,
+            document_generation,
+            program,
+        })
+    }
+
+    fn resume_debugger_execution(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ResumeDebuggerExecution {
+            tab_id,
+            document_generation,
+            program,
+        })
+    }
+
+    fn advance_debugger_execution(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id,
+            document_generation,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -324,6 +433,10 @@ struct LiveDocument {
 pub struct OutOfProcessJavaScriptPageExecutor<C> {
     child: C,
     external_source_authorizer: Option<Box<dyn OutOfProcessPageScriptSourceAuthorizer>>,
+    /// This changes document scheduling, so it is selected only by the core
+    /// constructor and defaults to false for the existing page-host path.
+    native_debugger_execution_control: bool,
+    hold_pending_debugger_execution_once: bool,
     live_documents: BTreeMap<TabId, LiveDocument>,
     /// Core-minted public debugger identities keyed by the child-private
     /// program IDs they represent. Child IDs are transport keys only and can
@@ -366,6 +479,18 @@ impl OutOfProcessJavaScriptPageExecutor<PageHostConnection> {
             authorizer,
         ))
     }
+
+    /// Connects an explicitly selected child route with the bounded
+    /// root-classic debugger lifecycle. Normal OOP page execution remains the
+    /// default; a page and frontend cannot enable this constructor.
+    pub fn connect_with_debugger_execution_control(
+        socket_path: &Path,
+        session_token: &str,
+    ) -> io::Result<Self> {
+        Ok(Self::new_with_debugger_execution_control(
+            PageHostConnection::connect(socket_path, session_token)?,
+        ))
+    }
 }
 
 impl<C> OutOfProcessJavaScriptPageExecutor<C> {
@@ -376,6 +501,8 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
         Self {
             child,
             external_source_authorizer: None,
+            native_debugger_execution_control: false,
+            hold_pending_debugger_execution_once: false,
             live_documents: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
@@ -383,6 +510,14 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             reports: VecDeque::new(),
             blue_ts_reports: VecDeque::new(),
         }
+    }
+
+    /// Creates a test or core-selected child route that defers newly admitted
+    /// documents by one lifecycle turn for exact root-classic debugger arms.
+    pub fn new_with_debugger_execution_control(child: C) -> Self {
+        let mut executor = Self::new(child);
+        executor.native_debugger_execution_control = true;
+        executor
     }
 
     /// Wraps a caller-owned child connection and the only external-source
@@ -395,6 +530,8 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
         Self {
             child,
             external_source_authorizer: Some(Box::new(authorizer)),
+            native_debugger_execution_control: false,
+            hold_pending_debugger_execution_once: false,
             live_documents: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
@@ -455,6 +592,14 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
     /// child error string. A future launcher restart protocol is distinct work.
     pub fn synchronize_and_execute(&mut self, tabs: &TabManager) -> io::Result<()> {
         self.close_removed_tabs(tabs);
+        // Existing documents advance before newly observed documents are
+        // admitted. This gives the debugger request dispatcher one full
+        // session boundary to discover and arm an exact child root point.
+        if self.native_debugger_execution_control
+            && !std::mem::take(&mut self.hold_pending_debugger_execution_once)
+        {
+            self.advance_debugger_executions();
+        }
         for tab_id in tabs.ids() {
             let Some(page) = tabs.get(tab_id) else {
                 continue;
@@ -525,6 +670,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             document_url,
             declarations,
             self.external_source_authorizer.as_deref(),
+            self.native_debugger_execution_control,
         );
         let inline_scripts: Vec<_> = document
             .scripts
@@ -600,6 +746,41 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         }
         self.blue_ts_reports.push_back(report);
     }
+
+    fn advance_debugger_executions(&mut self) {
+        let documents: Vec<_> = self
+            .live_documents
+            .iter()
+            .map(|(&tab_id, document)| (tab_id, document.document_generation))
+            .collect();
+        for (tab_id, document_generation) in documents {
+            let reply = self
+                .child
+                .advance_debugger_execution(tab_id.as_u64(), document_generation);
+            let Ok(PageHostReply::DebuggerExecutionAdvanced {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                reports,
+            }) = reply
+            else {
+                // Child execution control is an all-or-nothing realm owner.
+                // A malformed/lost reply cannot leave a core-visible document
+                // that might be assumed to be safely paused.
+                self.close_page(tab_id);
+                continue;
+            };
+            if reply_tab_id != tab_id.as_u64() || reply_generation != document_generation {
+                self.close_page(tab_id);
+                continue;
+            }
+            for report in reports {
+                match child_report(report) {
+                    ChildExecutionReport::JavaScript(report) => self.push_report(report),
+                    ChildExecutionReport::BlueTs(report) => self.push_blue_ts_report(report),
+                }
+            }
+        }
+    }
 }
 
 impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExecutor<C> {
@@ -621,6 +802,12 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
 
     fn debugger_locations(&mut self) -> Option<&mut (dyn PageJavaScriptDebuggerLocations + '_)> {
         Some(self)
+    }
+
+    fn hold_pending_debugger_execution_once(&mut self) {
+        if self.native_debugger_execution_control {
+            self.hold_pending_debugger_execution_once = true;
+        }
     }
 }
 
@@ -918,6 +1105,153 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
         }
     }
+
+    fn debugger_execution_control_available(&self) -> bool {
+        self.native_debugger_execution_control && self.child.debugger_execution_control_available()
+    }
+
+    fn arm_debugger_root_safe_point_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_execution_control_available() || code_unit_ordinal != 0 {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let safe_point = PageHostDebuggerSafePoint {
+            program: self.child_program_for_core(
+                tab_id,
+                document_generation,
+                program_handle,
+                program_generation,
+            )?,
+            code_unit_ordinal,
+            bytecode_offset,
+        };
+        validate_child_safe_point_reply(self, tab_id, document_generation, safe_point)?;
+        let reply = self
+            .child
+            .arm_debugger_root_safe_point_breakpoint(
+                tab_id.as_u64(),
+                document_generation,
+                safe_point,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerRootSafePointBreakpointArmed {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                safe_point: reply_safe_point,
+            } if reply_tab_id == tab_id.as_u64()
+                && reply_generation == document_generation
+                && reply_safe_point == safe_point =>
+            {
+                Ok(())
+            }
+            PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        }
+    }
+
+    fn debugger_execution_state(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerError> {
+        if !self.debugger_execution_control_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_execution_state(tab_id.as_u64(), document_generation, program)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerExecutionState {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program: reply_program,
+            state,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || reply_program != program
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        match state {
+            PageHostDebuggerExecutionState::Pending => {
+                Ok(JavaScriptPageDebuggerExecutionState::Pending)
+            }
+            PageHostDebuggerExecutionState::Resuming => {
+                Ok(JavaScriptPageDebuggerExecutionState::Resuming)
+            }
+            PageHostDebuggerExecutionState::Completed => {
+                Ok(JavaScriptPageDebuggerExecutionState::Completed)
+            }
+            PageHostDebuggerExecutionState::Paused { safe_point }
+                if safe_point.program == program && safe_point.code_unit_ordinal == 0 =>
+            {
+                validate_child_safe_point_reply(self, tab_id, document_generation, safe_point)?;
+                Ok(JavaScriptPageDebuggerExecutionState::Paused {
+                    code_unit_ordinal: safe_point.code_unit_ordinal,
+                    bytecode_offset: safe_point.bytecode_offset,
+                })
+            }
+            PageHostDebuggerExecutionState::Paused { .. } => {
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            }
+        }
+    }
+
+    fn resume_debugger_execution(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        if !self.debugger_execution_control_available() {
+            return Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable);
+        }
+        let program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let reply = self
+            .child
+            .resume_debugger_execution(tab_id.as_u64(), document_generation, program)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        match reply {
+            PageHostReply::DebuggerExecutionResumed {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                program: reply_program,
+            } if reply_tab_id == tab_id.as_u64()
+                && reply_generation == document_generation
+                && reply_program == program =>
+            {
+                Ok(())
+            }
+            PageHostReply::Error { .. } => Err(child_debugger_reply_error(&reply)),
+            _ => Err(JavaScriptPageDebuggerError::NoLiveRealm),
+        }
+    }
 }
 
 impl<C> OutOfProcessJavaScriptPageExecutor<C> {
@@ -1029,6 +1363,10 @@ fn child_debugger_reply_error(reply: &PageHostReply) -> JavaScriptPageDebuggerEr
             code: PageHostErrorCode::ResourceLimit,
             ..
         } => JavaScriptPageDebuggerError::ResourceLimit,
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidDebuggerState,
+            ..
+        } => JavaScriptPageDebuggerError::InvalidExecutionState,
         // Treat every other unexpected/private-child response as a lost live
         // realm. The public debugger must not infer a child registry state,
         // source identity, VM result, or a usable fallback target from it.
@@ -1043,6 +1381,7 @@ fn authorized_document(
     document_url: &str,
     declarations: Vec<CombinedPageScriptDeclaration>,
     external_source_authorizer: Option<&dyn OutOfProcessPageScriptSourceAuthorizer>,
+    debugger_execution_control: bool,
 ) -> (
     PageHostDocument,
     Vec<JavaScriptPageExecutionReport>,
@@ -1117,6 +1456,7 @@ fn authorized_document(
             tab_id: tab_id.as_u64(),
             document_generation: identity.document_generation,
             snapshot,
+            debugger_execution_control,
             scripts,
         },
         reports,
@@ -1489,6 +1829,7 @@ fn child_error_category(code: PageHostErrorCode) -> &'static str {
         PageHostErrorCode::Authentication
         | PageHostErrorCode::ProtocolVersion
         | PageHostErrorCode::InvalidRequest
+        | PageHostErrorCode::InvalidDebuggerState
         | PageHostErrorCode::UnknownRealm
         | PageHostErrorCode::HostFailure => "out-of-process JavaScript host rejected the document",
     }
@@ -2724,6 +3065,118 @@ mod tests {
             }
         ));
 
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn core_proxies_real_child_root_safe_point_pause_and_resume_without_private_ids() {
+        use crate::debugger::handle_debugger_request_with_page_javascript_executor;
+        use blueice_ipc::debugger::{
+            DebuggerCapability, DebuggerCapabilityState, DebuggerPageRealm, DebuggerReply,
+            DebuggerRequest,
+        };
+
+        let (path, token, child) = spawn_child();
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>let first = 1; first += 1; globalThis.answer = first;</script>",
+            "https://example.test/root-safe-point.html",
+        );
+        let mut executor =
+            OutOfProcessJavaScriptPageExecutor::connect_with_debugger_execution_control(
+                &path, &token,
+            )
+            .unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        let realm = DebuggerPageRealm {
+            browser_context_id: crate::debugger::DEFAULT_BROWSER_CONTEXT_ID,
+            tab_id: tab_id.as_u64(),
+            realm_generation: 1,
+        };
+        let DebuggerReply::Capabilities(capabilities) =
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::DescribeCapabilities { realm },
+            )
+        else {
+            panic!("expected OOP debugger capabilities");
+        };
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::PauseResume
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        let program = match handle_debugger_request_with_page_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::ListPrograms { realm },
+        ) {
+            DebuggerReply::Programs(programs) => programs[0],
+            reply => panic!("expected public OOP debugger program, got {reply:?}"),
+        };
+        assert!(
+            program.program_handle >= CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
+            "core must not disclose child-private program IDs"
+        );
+        let safe_point = match handle_debugger_request_with_page_javascript_executor(
+            &tabs,
+            Some(&mut executor),
+            DebuggerRequest::ListSafePoints { program },
+        ) {
+            DebuggerReply::SafePoints(safe_points) => safe_points
+                .into_iter()
+                .find(|safe_point| {
+                    safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset != 0
+                })
+                .expect("fixture has a resumable root safe point"),
+            reply => panic!("expected public OOP safe points, got {reply:?}"),
+        };
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ArmRootSafePointBreakpoint { safe_point },
+            ),
+            DebuggerReply::RootSafePointBreakpointArmed { safe_point }
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program },
+            ),
+            DebuggerReply::ExecutionState {
+                program,
+                state: blueice_ipc::debugger::DebuggerExecutionState::Paused { safe_point },
+            }
+        );
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::ResumeExecution { program },
+            ),
+            DebuggerReply::ExecutionResumed { program }
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_page_javascript_executor(
+                &tabs,
+                Some(&mut executor),
+                DebuggerRequest::GetExecutionState { program },
+            ),
+            DebuggerReply::ExecutionState {
+                program,
+                state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
+            }
+        );
+        assert!(matches!(
+            executor.drain_reports_for_tab(tab_id).as_slice(),
+            [JavaScriptPageExecutionReport::Executed { ordinal: 0, .. }]
+        ));
         drop(executor);
         shutdown_child(&path, &token);
         child.join().unwrap();

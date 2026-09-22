@@ -13,26 +13,28 @@
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
 //!
-//! Version 5 retains the two fixed, core-derived document snapshots consumed
+//! Version 6 retains the two fixed, core-derived document snapshots consumed
 //! by the child-owned JavaScript bindings, the location-only debugger
-//! inventory, and a bounded exact-breakpoint configuration table. The
+//! inventory, a bounded exact-breakpoint configuration table, and an opt-in
+//! root-classic continuation seam. The
 //! transport has no profile or capability
 //! selector: every accepted document contains exactly the immutable text and
 //! canonical-origin copies selected by core.
 //! BlueTS stays a child-fixed, direct-lowering profile with no ambient host
 //! typings, compiler option, resolver, or emitted JavaScript crossing this
 //! channel. Apart from the two fixed JavaScript primitive snapshot callbacks,
-//! version 5 exposes only a core-proxied, source-free debugger location
-//! inventory and configuration records. Configuration neither pauses nor
-//! executes a child realm. It has no pause/resume, stack, scope, bytecode,
-//! source, runtime value transport, general host callback, fetch/cache, or
-//! client-facing API.
+//! version 6 exposes only a core-proxied, source-free debugger location
+//! inventory and configuration records. A core-selected document may opt in
+//! to the one-shot root-classic arm/state/resume lifecycle; the child admits
+//! no generic interruption, stepping, nested continuation, stack, scope,
+//! bytecode, source, runtime value transport, general host callback,
+//! fetch/cache, or client-facing API.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 5;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 6;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -82,6 +84,19 @@ pub struct PageHostDebuggerSafePoint {
     pub program: PageHostDebuggerProgram,
     pub code_unit_ordinal: u32,
     pub bytecode_offset: u32,
+}
+
+/// Source-free lifecycle state for the one-shot root-classic continuation
+/// seam. A `Paused` location is always an exact child-validated root safe
+/// point; no frame, scope, runtime value, source, or bytecode is serialized.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PageHostDebuggerExecutionState {
+    Pending,
+    Paused {
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    Resuming,
+    Completed,
 }
 
 impl PageHostDebuggerSafePoint {
@@ -190,6 +205,11 @@ pub struct PageHostDocument {
     pub tab_id: u64,
     pub document_generation: u64,
     pub snapshot: PageHostDocumentSnapshot,
+    /// Set only by the authenticated core lifecycle owner. When true, the
+    /// child holds document-order declarations until its next explicit
+    /// advance turn so core can inspect and arm an exact root-classic safe
+    /// point. Page content and frontend IPC cannot select this mode.
+    pub debugger_execution_control: bool,
     pub scripts: Vec<PageHostScript>,
 }
 
@@ -292,6 +312,35 @@ pub enum PageHostRequest {
         document_generation: u64,
         safe_point: PageHostDebuggerSafePoint,
     },
+    /// Arms one exact root-code-unit location for a classic declaration that
+    /// remains pending in a core-selected execution-control document. This is
+    /// distinct from breakpoint configuration: it starts execution only on a
+    /// later explicit advance turn and can retain one root-frame continuation.
+    ArmDebuggerRootSafePointBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    /// Reads only source-free lifecycle state for one exact child-private
+    /// program generation in the opt-in root-classic continuation seam.
+    GetDebuggerExecutionState {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    },
+    /// Marks one paused root-classic continuation for execution on the next
+    /// core-owned advance turn. It cannot inject a value or exception.
+    ResumeDebuggerExecution {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    },
+    /// Advances one exact opted-in realm in document order. It returns only
+    /// fixed execution categories and never exposes a completion value.
+    AdvanceDebuggerExecution {
+        tab_id: u64,
+        document_generation: u64,
+    },
     /// Ends the child process after its acknowledgement.
     Shutdown,
     /// A newer request must not be interpreted as an existing operation.
@@ -350,6 +399,27 @@ pub enum PageHostReply {
         safe_point: PageHostDebuggerSafePoint,
         was_present: bool,
     },
+    DebuggerRootSafePointBreakpointArmed {
+        tab_id: u64,
+        document_generation: u64,
+        safe_point: PageHostDebuggerSafePoint,
+    },
+    DebuggerExecutionState {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        state: PageHostDebuggerExecutionState,
+    },
+    DebuggerExecutionResumed {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    },
+    DebuggerExecutionAdvanced {
+        tab_id: u64,
+        document_generation: u64,
+        reports: Vec<PageHostScriptReport>,
+    },
     ShutdownAck,
     Error {
         code: PageHostErrorCode,
@@ -369,6 +439,9 @@ pub enum PageHostErrorCode {
     UnknownRealm,
     ResourceLimit,
     HostFailure,
+    /// The exact request is structurally valid but not eligible for the
+    /// bounded root-classic lifecycle in this document/program state.
+    InvalidDebuggerState,
 }
 
 /// Builds the only valid first reply. The caller must check this before it
@@ -453,6 +526,7 @@ mod tests {
                 document_text: "snapshot text".to_string(),
                 document_origin: "https://example.test".to_string(),
             },
+            debugger_execution_control: true,
             scripts: vec![PageHostScript {
                 ordinal: 0,
                 language: PageHostScriptLanguage::JavaScript,
@@ -537,6 +611,38 @@ mod tests {
                     bytecode_offset: 4,
                 },
             },
+            PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 3,
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: 11,
+                        program_generation: 13,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                },
+            },
+            PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+            },
+            PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+            },
+            PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 3,
+            },
             PageHostRequest::Shutdown,
             PageHostRequest::Unknown,
         ];
@@ -575,6 +681,28 @@ mod tests {
                 bytecode_offset: 4,
             },
             was_present: true,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerExecutionState {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            state: PageHostDebuggerExecutionState::Paused {
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: 11,
+                        program_generation: 13,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                },
+            },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();

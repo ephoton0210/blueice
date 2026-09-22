@@ -38,6 +38,7 @@ fn document(generation: u64, scripts: Vec<PageHostScript>) -> PageHostDocument {
             document_text: "test document snapshot".to_string(),
             document_origin: "https://example.test".to_string(),
         },
+        debugger_execution_control: false,
         scripts,
     }
 }

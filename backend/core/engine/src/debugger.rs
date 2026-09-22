@@ -279,10 +279,19 @@ fn handle_debugger_request_with_child_locations(
         DebuggerRequest::ClearBreakpoint { safe_point } => {
             clear_child_breakpoint(tabs, locations, safe_point)
         }
-        // Do not reuse in-process pause/resume routing merely because the
-        // child supports exact breakpoint configuration. The child route has
-        // no interruption, execution-control, stepping, stack, scope, or
-        // value proxy in this milestone.
+        DebuggerRequest::ArmRootSafePointBreakpoint { safe_point } => {
+            arm_child_root_safe_point_breakpoint(tabs, locations, safe_point)
+        }
+        DebuggerRequest::GetExecutionState { program } => {
+            child_execution_state(tabs, locations, program)
+        }
+        DebuggerRequest::ResumeExecution { program } => {
+            resume_child_execution(tabs, locations, program)
+        }
+        // `ArmEntryBreakpoint` remains an in-process compatibility operation.
+        // The isolated route deliberately exposes only its separately named
+        // root-classic continuation seam, never generic interruption,
+        // stepping, stacks, scopes, source, bytecode, or values.
         other => handle_debugger_request_with_javascript_executor(tabs, None, other),
     }
 }
@@ -330,6 +339,8 @@ fn describe_child_location_capabilities(
     };
     let breakpoint_configuration_available =
         locations_available && locations.debugger_breakpoint_configuration_available();
+    let execution_control_available =
+        locations_available && locations.debugger_execution_control_available();
     let max_breakpoints_per_realm = if breakpoint_configuration_available {
         locations.max_debugger_breakpoints_per_realm()
     } else {
@@ -341,7 +352,7 @@ fn describe_child_location_capabilities(
         reports: capability_reports(
             locations_available,
             breakpoint_configuration_available,
-            false,
+            execution_control_available,
         ),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -549,6 +560,104 @@ fn clear_child_breakpoint(
             safe_point,
             was_present,
         },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+/// Routes only the one-shot child root-classic continuation arm. The public
+/// tuple is resolved by core before the child-private mapping can be used;
+/// child code units and every generic VM interruption path stay unavailable.
+fn arm_child_root_safe_point_breakpoint(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    safe_point: DebuggerSafePoint,
+) -> DebuggerReply {
+    if !safe_point.is_well_formed() || safe_point.code_unit_ordinal != 0 {
+        return invalid_safe_point_target();
+    }
+    let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation)
+        || !locations.debugger_execution_control_available()
+    {
+        return unavailable_execution_control();
+    }
+    match locations.arm_debugger_root_safe_point_breakpoint(
+        tab_id,
+        safe_point.program.realm.realm_generation,
+        safe_point.program.program_handle,
+        safe_point.program.program_generation,
+        safe_point.code_unit_ordinal,
+        safe_point.bytecode_offset,
+    ) {
+        Ok(()) => DebuggerReply::RootSafePointBreakpointArmed { safe_point },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn child_execution_state(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    program: DebuggerProgram,
+) -> DebuggerReply {
+    if !program.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger program target".to_string(),
+        };
+    }
+    let tab_id = match resolve_live_realm(tabs, program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, program.realm.realm_generation)
+        || !locations.debugger_execution_control_available()
+    {
+        return unavailable_execution_control();
+    }
+    match locations.debugger_execution_state(
+        tab_id,
+        program.realm.realm_generation,
+        program.program_handle,
+        program.program_generation,
+    ) {
+        Ok(state) => DebuggerReply::ExecutionState {
+            program,
+            state: debugger_execution_state(state, program),
+        },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn resume_child_execution(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    program: DebuggerProgram,
+) -> DebuggerReply {
+    if !program.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger program target".to_string(),
+        };
+    }
+    let tab_id = match resolve_live_realm(tabs, program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    if !locations.debugger_has_live_realm(tab_id, program.realm.realm_generation)
+        || !locations.debugger_execution_control_available()
+    {
+        return unavailable_execution_control();
+    }
+    match locations.resume_debugger_execution(
+        tab_id,
+        program.realm.realm_generation,
+        program.program_handle,
+        program.program_generation,
+    ) {
+        Ok(()) => DebuggerReply::ExecutionResumed { program },
         Err(error) => debugger_program_error(error),
     }
 }

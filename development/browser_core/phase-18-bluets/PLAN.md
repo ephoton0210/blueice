@@ -261,7 +261,7 @@ The initial implementation completes the work that has no BlueJS dependency befo
   settings; the per-document origin only instantiates the fixed same-origin
   policy. A subprocess regression crosses core, a real HTTP origin, and the
   supervised child to prove the finished graph handoff. This is a bounded
-  integration fixture, not a general application-resource profile. The v5
+  integration fixture, not a general application-resource profile. The v6
   channel additionally carries source-free debugger-location operations (list
   retained programs, list a fixed bounded set of compiler-recorded safe
   points, and validate one exact tuple) and a 256-record exact-breakpoint
@@ -272,10 +272,16 @@ The initial implementation completes the work that has no BlueJS dependency befo
   tuple; core rejects duplicate or unmapped list records and revalidates each
   one before reminting a public record. Replacement and close discard both
   private and core mappings. The route deliberately does not proxy
-  interruption, pause/resume, stepping, VM frames, stacks, scopes, values,
-  bytecode, or source. DOM/event callbacks, URL or import-map resolution, an
-  in-process equivalent or broader deployment HTTP policy, and page-selected
-  compiler
+  generic interruption, stepping, VM frames, stacks, scopes, values, bytecode,
+  or source. A separately core-selected, default-off document lifecycle does
+  now defer document-order declarations for one turn and can arm a pending
+  classic program at one exact root-code-unit point. It reports only
+  `Pending`/`Paused`/`Resuming`/`Completed`; core revalidates the paused private
+  tuple before reminting it publicly, and only a later core-owned advance turn
+  resumes the same root frame. `ArmEntryBreakpoint`, modules, child code units,
+  re-arms/loop hits, and nested interruption remain unavailable. DOM/event
+  callbacks, URL or import-map resolution, an in-process equivalent or broader
+  deployment HTTP policy, and page-selected compiler
   profiles remain open.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.
 - The [BlueTS test report](TEST_REPORT.md) records the complete per-platform test-suite results, the TypeScript 5.9.3 oracle matrix and per-file line coverage for `blueice-bluets` and `blueice-bluets-bluejs` (2026-09-21).

@@ -46,8 +46,9 @@ pub use debugger_support::{
 ///
 /// The launcher-supervised child supports a bounded, exact breakpoint
 /// configuration table in addition to location discovery. The table neither
-/// pauses nor executes its VM. Pause/resume, stepping, stacks, scopes,
-/// source, bytecode, and runtime values remain excluded.
+/// pauses nor executes its VM unless an explicitly selected child execution
+/// controller implements the separate root-classic methods below. Stepping,
+/// stacks, scopes, source, bytecode, and runtime values remain excluded.
 pub trait PageJavaScriptDebuggerLocations {
     /// Whether this owner currently has the exact live tab/document realm.
     fn debugger_has_live_realm(&mut self, tab_id: TabId, document_generation: u64) -> bool;
@@ -132,6 +133,49 @@ pub trait PageJavaScriptDebuggerLocations {
         _bytecode_offset: u32,
     ) -> Result<bool, JavaScriptPageDebuggerError> {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Whether this selected child route has the bounded root-classic
+    /// execution-control lifecycle installed. This is distinct from ordinary
+    /// breakpoint configuration and is false by default.
+    fn debugger_execution_control_available(&self) -> bool {
+        false
+    }
+
+    /// Arms one pending classic program at an already validated root safe
+    /// point. No generic interruption or nested-function continuation exists.
+    fn arm_debugger_root_safe_point_breakpoint(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _code_unit_ordinal: u32,
+        _bytecode_offset: u32,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Reads source-free lifecycle state for one root-classic program.
+    fn debugger_execution_state(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+    ) -> Result<JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
+    }
+
+    /// Marks a paused root-classic continuation for the next child advance.
+    fn resume_debugger_execution(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+    ) -> Result<(), JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::ExecutionControlUnavailable)
     }
 }
 
