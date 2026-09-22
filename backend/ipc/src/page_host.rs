@@ -13,23 +13,34 @@
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
 //!
-//! Version 2 deliberately covers document lifecycle plus classic and static
-//! ESM graph execution for caller-classified standard JavaScript and explicit
-//! BlueTS declarations. BlueTS stays a child-fixed, direct-lowering profile:
-//! no compiler option, typing profile, resolver, or emitted JavaScript crosses
-//! this channel. It does not expose a debugger, DOM operation, runtime value,
-//! host callback, fetch/cache, or general client-facing API.
+//! Version 3 additionally carries the two fixed, core-derived document
+//! snapshots consumed by the child-owned JavaScript bindings. The transport
+//! has no profile or capability selector: every accepted document contains
+//! exactly the immutable text and canonical-origin copies selected by core.
+//! BlueTS stays a child-fixed, direct-lowering profile with no ambient host
+//! typings, compiler option, resolver, or emitted JavaScript crossing this
+//! channel. Apart from the two fixed JavaScript primitive snapshot callbacks,
+//! it exposes no debugger, DOM operation/object, runtime value transport,
+//! general host callback, fetch/cache, or client-facing API.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 2;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 3;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
 /// This is separate from per-document source budgets enforced by the child.
 pub const PAGE_HOST_MAX_FRAME_BYTES: usize = 12 * 1024 * 1024;
+
+/// The exact string budgets for the two fixed core-to-child document
+/// snapshots. `blueice-engine` uses the same values in its pure host-binding
+/// contract inventory before it serializes a document; the child repeats the
+/// byte checks before it replaces a realm. There is deliberately no generic
+/// binding-value transport with caller-controlled limits.
+pub const PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES: usize = 1_048_576;
+pub const PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES: usize = 4 * 1_024;
 
 /// A complete source record selected and fingerprinted by the caller-owned
 /// page loader. `source_hash` is verified by the child against `source`; it
@@ -108,13 +119,28 @@ pub struct PageHostScript {
     pub graph: PageHostModuleGraph,
 }
 
-/// One caller-authorized document snapshot. `origin` is opaque to the child:
-/// it must already be canonicalized and policy-approved by core/launcher.
+/// The only core-to-child values made available to ordinary JavaScript page
+/// code. They are copied primitive snapshots, not DOM handles, URL objects,
+/// resolver capabilities, or a page-selected binding profile.
+///
+/// `document_origin` must be the canonical HTTP(S) tuple origin. The child
+/// checks its canonical spelling before using it as either realm identity or
+/// callback result; a missing/empty or over-budget snapshot fails closed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDocumentSnapshot {
+    pub document_text: String,
+    pub document_origin: String,
+}
+
+/// One caller-authorized document snapshot. `snapshot` is supplied only by
+/// the core-owned page lifecycle adapter after it has validated the live DOM
+/// text and canonical origin. A page cannot add, remove, rename, or widen
+/// these bindings through this private protocol.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PageHostDocument {
     pub tab_id: u64,
     pub document_generation: u64,
-    pub origin: String,
+    pub snapshot: PageHostDocumentSnapshot,
     pub scripts: Vec<PageHostScript>,
 }
 
@@ -300,7 +326,10 @@ mod tests {
         PageHostDocument {
             tab_id: 7,
             document_generation: 3,
-            origin: "https://example.test".to_string(),
+            snapshot: PageHostDocumentSnapshot {
+                document_text: "snapshot text".to_string(),
+                document_origin: "https://example.test".to_string(),
+            },
             scripts: vec![PageHostScript {
                 ordinal: 0,
                 language: PageHostScriptLanguage::JavaScript,
@@ -378,7 +407,7 @@ mod tests {
         assert!(matches!(
             negotiate(
                 &PageHostRequest::Hello {
-                    protocol_version: 1,
+                    protocol_version: PAGE_HOST_PROTOCOL_VERSION - 1,
                     session_token: token.to_string(),
                 },
                 token,
@@ -427,5 +456,18 @@ mod tests {
         let oversized = u32::try_from(PAGE_HOST_MAX_FRAME_BYTES + 1).unwrap();
         let mut bytes = oversized.to_le_bytes().to_vec();
         assert!(read_page_host_request(&mut std::io::Cursor::new(&mut bytes)).is_err());
+    }
+
+    #[test]
+    fn version_three_document_requires_the_fixed_core_snapshot() {
+        let mut value = serde_json::to_value(PageHostRequest::SynchronizeDocument {
+            document: document(),
+        })
+        .unwrap();
+        value["SynchronizeDocument"]["document"]
+            .as_object_mut()
+            .unwrap()
+            .remove("snapshot");
+        assert!(serde_json::from_value::<PageHostRequest>(value).is_err());
     }
 }

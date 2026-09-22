@@ -11,21 +11,24 @@
 //! core mints a canonical identity, a one-module closed graph, and the fixed
 //! resolver fingerprint before sending it to the child. External `src` remains
 //! a source-free rejection; this adapter never fetches, resolves a URL, or
-//! expands the child's authority. It installs no document, DOM, event, IPC,
-//! storage, network, or URL binding in the child realm.
+//! expands the child's authority. It installs only fixed copied JavaScript
+//! document-text/origin callbacks; it installs no document object, DOM/event
+//! object, IPC, storage, network, URL, resolver, or page-selected binding in
+//! the child realm.
 
 use super::{
-    direct_page::DirectPageScriptKind, BlueJsPageScriptKind, CombinedPageScriptDeclaration,
-    CombinedPageScriptLanguage,
+    contracts::{core_script_binding_contract, CoreScriptBindingContractLimits},
+    direct_page::DirectPageScriptKind,
+    BlueJsPageScriptKind, CombinedPageScriptDeclaration, CombinedPageScriptLanguage,
 };
 use crate::script::javascript::{
     BlueTsPageExecutionReport, JavaScriptPageExecutionReport, PageJavaScriptExecutor,
 };
 use crate::{Page, TabId, TabManager};
 use blueice_ipc::page_host::{
-    self, PageHostDocument, PageHostErrorCode, PageHostModuleGraph, PageHostReply, PageHostRequest,
-    PageHostScript, PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome,
-    PageHostSource,
+    self, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
+    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
+    PageHostScriptOutcome, PageHostSource,
 };
 use blueice_net::canonical_http_origin;
 use std::collections::{BTreeMap, VecDeque};
@@ -234,8 +237,28 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
 
     fn synchronize_document(&mut self, tab_id: TabId, page: &Page, identity: LiveDocument) {
         let declarations = page.combined_page_script_declarations();
+        let snapshot = match core_document_snapshot(page, &identity) {
+            Ok(snapshot) => snapshot,
+            Err(()) => {
+                // Do not leave the prior generation runnable after the core
+                // rejected the successor's snapshots. Treat this just like a
+                // child admission failure: it is bounded, source-free, and
+                // cannot become a retry loop for one immutable document.
+                self.close_page(tab_id);
+                let (reports, blue_ts_reports) =
+                    binding_contract_rejections(tab_id, identity.document_generation, declarations);
+                for report in reports {
+                    self.push_report(report);
+                }
+                for report in blue_ts_reports {
+                    self.push_blue_ts_report(report);
+                }
+                self.live_documents.insert(tab_id, identity);
+                return;
+            }
+        };
         let (document, mut local_reports, mut local_blue_ts_reports) =
-            inline_authorized_document(tab_id, &identity, declarations);
+            inline_authorized_document(tab_id, &identity, snapshot, declarations);
         let inline_scripts: Vec<_> = document
             .scripts
             .iter()
@@ -332,6 +355,7 @@ impl<C: PageHostClient> PageJavaScriptExecutor for OutOfProcessJavaScriptPageExe
 fn inline_authorized_document(
     tab_id: TabId,
     identity: &LiveDocument,
+    snapshot: PageHostDocumentSnapshot,
     declarations: Vec<CombinedPageScriptDeclaration>,
 ) -> (
     PageHostDocument,
@@ -388,12 +412,83 @@ fn inline_authorized_document(
         PageHostDocument {
             tab_id: tab_id.as_u64(),
             document_generation: identity.document_generation,
-            origin: identity.origin.clone(),
+            snapshot,
             scripts,
         },
         reports,
         blue_ts_reports,
     )
+}
+
+/// Builds the only document values that the core may serialize as child
+/// bindings. The page neither selects their names/profile nor provides a
+/// capability token. The pure contracts match the child protocol's fixed
+/// byte budgets, while `live_page_identity` already derives the tuple origin
+/// from an admitted HTTP(S) document rather than page script input.
+fn core_document_snapshot(
+    page: &Page,
+    identity: &LiveDocument,
+) -> Result<PageHostDocumentSnapshot, ()> {
+    let document_text = page.script_document_text_content();
+    let document_origin = identity.origin.clone();
+    let limits = CoreScriptBindingContractLimits::default();
+    core_script_binding_contract("dom.document-text")
+        .expect("the fixed document-text binding has a contract inventory entry")
+        .validate_string(&document_text, limits.document_text)
+        .map_err(|_| ())?;
+    core_script_binding_contract("dom.document-origin")
+        .expect("the fixed document-origin binding has a contract inventory entry")
+        .validate_string(&document_origin, limits.document_origin)
+        .map_err(|_| ())?;
+    if canonical_http_origin(&document_origin).ok().as_deref() != Some(document_origin.as_str()) {
+        return Err(());
+    }
+    Ok(PageHostDocumentSnapshot {
+        document_text,
+        document_origin,
+    })
+}
+
+fn binding_contract_rejections(
+    tab_id: TabId,
+    document_generation: u64,
+    declarations: Vec<CombinedPageScriptDeclaration>,
+) -> (
+    Vec<JavaScriptPageExecutionReport>,
+    Vec<BlueTsPageExecutionReport>,
+) {
+    let mut java_script_reports = Vec::new();
+    let mut blue_ts_reports = Vec::new();
+    for declaration in declarations {
+        match declaration {
+            CombinedPageScriptDeclaration::Inline {
+                ordinal, language, ..
+            }
+            | CombinedPageScriptDeclaration::External {
+                ordinal, language, ..
+            } => match language {
+                CombinedPageScriptLanguage::JavaScript(kind) => {
+                    java_script_reports.push(rejected_report(
+                        tab_id,
+                        document_generation,
+                        ordinal,
+                        kind,
+                        "host binding contract rejected the page script",
+                    ))
+                }
+                CombinedPageScriptLanguage::BlueTs(kind) => {
+                    blue_ts_reports.push(rejected_blue_ts_report(
+                        tab_id,
+                        document_generation,
+                        ordinal,
+                        kind,
+                        "host binding contract rejected the page script",
+                    ))
+                }
+            },
+        }
+    }
+    (java_script_reports, blue_ts_reports)
 }
 
 fn live_page_identity(page: &Page) -> Option<LiveDocument> {
@@ -723,6 +818,40 @@ mod tests {
         );
     }
 
+    #[derive(Default)]
+    struct RecordingChild {
+        documents: Vec<PageHostDocument>,
+        closes: Vec<(u64, u64)>,
+    }
+
+    impl PageHostClient for RecordingChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            let reply = PageHostReply::Synchronized {
+                tab_id: document.tab_id,
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            };
+            self.documents.push(document);
+            Ok(reply)
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.closes.push((tab_id, document_generation));
+            Ok(PageHostReply::RealmClosed {
+                tab_id,
+                document_generation,
+            })
+        }
+    }
+
     #[test]
     fn core_routes_explicit_inline_documents_to_the_real_child_and_rejects_external_src() {
         let (path, token, child) = spawn_child();
@@ -767,6 +896,59 @@ mod tests {
     }
 
     #[test]
+    fn core_validates_and_installs_source_free_document_snapshots_in_the_real_child() {
+        let (path, token, child) = spawn_child();
+        let (tabs, tab_id) = loaded_tabs(
+            concat!(
+                "<p>core snapshot marker</p>",
+                "<script>",
+                "if (blueiceDocumentOrigin() !== 'https://example.test') throw 'origin';",
+                "if (blueiceDocumentText() === '') throw 'text';",
+                "if (typeof document !== 'undefined' || typeof fetch !== 'undefined') throw 'ambient';",
+                "</script>"
+            ),
+            "https://example.test/app/index.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::connect(&path, &token).unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.drain_reports_for_tab(tab_id),
+            vec![JavaScriptPageExecutionReport::Executed {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                ordinal: 0,
+                kind: BlueJsPageScriptKind::Classic,
+            }]
+        );
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn over_budget_core_snapshot_is_never_sent_to_the_child() {
+        let oversized = "x".repeat(blueice_ipc::page_host::PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES + 1);
+        let html = format!("<p>{oversized}</p><script>blueiceDocumentText();</script>");
+        let (tabs, tab_id) = loaded_tabs(&html, "https://example.test/app/index.html");
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(RecordingChild::default());
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.drain_reports_for_tab(tab_id),
+            vec![JavaScriptPageExecutionReport::Rejected {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                ordinal: 0,
+                kind: BlueJsPageScriptKind::Classic,
+                category: "host binding contract rejected the page script",
+            }]
+        );
+        let child = executor.into_child();
+        assert!(child.documents.is_empty());
+        assert!(child.closes.is_empty());
+    }
+
+    #[test]
     fn core_routes_interleaved_bluets_and_javascript_to_one_child_realm() {
         let (path, token, child) = spawn_child();
         let (tabs, tab_id) = loaded_tabs(
@@ -774,6 +956,7 @@ mod tests {
                 "<script>globalThis.beforeBlueTs = true;</script>",
                 "<script type=\"application/x-blueice-typescript\">const sharedAnswer: number = 42;</script>",
                 "<script>if (!globalThis.beforeBlueTs || sharedAnswer !== 42) throw 'shared realm failed';</script>",
+                "<script type=\"application/x-blueice-typescript\">blueiceDocumentText();</script>",
                 "<script type=\"application/x-blueice-typescript\" src=\"untrusted.ts\"></script>"
             ),
             "https://example.test/app/index.html",
@@ -811,6 +994,13 @@ mod tests {
                     document_generation: 1,
                     ordinal: 3,
                     kind: DirectPageScriptKind::Classic,
+                    category: "BlueTS compilation rejected the page script",
+                },
+                BlueTsPageExecutionReport::Rejected {
+                    tab_id: tab_id.as_u64(),
+                    document_generation: 1,
+                    ordinal: 4,
+                    kind: DirectPageScriptKind::Classic,
                     category: "external BlueTS declarations require an authorized loader",
                 },
             ]
@@ -825,7 +1015,7 @@ mod tests {
     fn navigation_replaces_the_child_document_and_close_releases_its_realm() {
         let (path, token, child) = spawn_child();
         let (mut tabs, tab_id) = loaded_tabs(
-            "<script>globalThis.first = true;</script>",
+            "<script>globalThis.firstSnapshot = blueiceDocumentText();</script>",
             "https://example.test/first",
         );
         let mut executor = OutOfProcessJavaScriptPageExecutor::connect(&path, &token).unwrap();
@@ -838,8 +1028,14 @@ mod tests {
             }]
         ));
         tabs.get_mut(tab_id).unwrap().load_html_str(
-            "<script>globalThis.second = true;</script>",
-            Some("https://example.test/second".to_string()),
+            concat!(
+                "<script>",
+                "if (typeof globalThis.firstSnapshot !== 'undefined') throw 'stale realm';",
+                "if (blueiceDocumentOrigin() !== 'https://second.example.test') throw 'origin';",
+                "globalThis.second = true;",
+                "</script>"
+            ),
+            Some("https://second.example.test/second".to_string()),
         );
         executor.synchronize_and_execute(&tabs).unwrap();
         assert!(matches!(

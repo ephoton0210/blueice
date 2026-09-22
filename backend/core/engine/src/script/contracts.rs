@@ -11,6 +11,9 @@
 //! storage, messaging, JSON, or extension APIs.
 
 use blueice_bluets::{ContractPlan, ContractValue, Type, ValidationError, ValidationLimits};
+use blueice_ipc::page_host::{
+    PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES, PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
+};
 use std::collections::BTreeMap;
 
 pub const CORE_SCRIPT_DOCUMENT_TEXT_RESULT_CONTRACT_V1: &str =
@@ -69,9 +72,12 @@ pub struct CoreScriptBindingContractLimits {
 impl Default for CoreScriptBindingContractLimits {
     fn default() -> Self {
         Self {
-            document_text: ValidationLimits::default(),
+            document_text: ValidationLimits {
+                max_string_bytes: PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
+                ..ValidationLimits::default()
+            },
             document_origin: ValidationLimits {
-                max_string_bytes: 4 * 1_024,
+                max_string_bytes: PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
                 ..ValidationLimits::default()
             },
         }

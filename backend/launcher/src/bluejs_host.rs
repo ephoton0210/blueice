@@ -16,7 +16,7 @@
 use blueice_bluejs::{
     parse, parse_module, BlueJsPageOrigin, BlueJsPageRuntime, BlueJsPageRuntimeConfig,
     BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1, BlueJsSourceIdentity,
-    CompileError, Module, ParseError, RuntimeError, Value,
+    CompileError, HostFunctionError, HostValue, Module, ParseError, RuntimeError, Value,
 };
 use blueice_bluets::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
@@ -27,10 +27,13 @@ use blueice_bluets_bluejs::{
     DirectScript,
 };
 use blueice_ipc::page_host::{
-    self, PageHostDocument, PageHostErrorCode, PageHostModuleGraph, PageHostRealmStats,
-    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
-    PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
+    self, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
+    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
+    PageHostStaticResolution, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
+    PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
+use blueice_net::canonical_http_origin;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
@@ -59,7 +62,9 @@ struct LiveDocument {
 ///
 /// It accepts only fully selected source records. In particular, this type
 /// has no filesystem/network resolver, no DOM/IPC callback path, and no API
-/// that gives the parent a VM or a program handle.
+/// that gives the parent a VM or a program handle. Its only host callbacks
+/// are the two fixed core-validated JavaScript string snapshots installed
+/// during document admission.
 pub struct BlueJsChildHost {
     runtime: BlueJsPageRuntime,
     documents: BTreeMap<u64, LiveDocument>,
@@ -128,9 +133,10 @@ impl BlueJsChildHost {
         if !matches!(source_bytes, Some(total) if total <= MAX_SOURCE_BYTES_PER_DOCUMENT) {
             return resource_limit();
         }
-        let origin = match BlueJsPageOrigin::new(document.origin) {
+        let origin = match validated_document_origin(&document.snapshot) {
             Ok(origin) => origin,
-            Err(_) => return invalid_request(),
+            Err(DocumentSnapshotError::ResourceLimit) => return resource_limit(),
+            Err(DocumentSnapshotError::Invalid) => return invalid_request(),
         };
         if let Some(current) = self.documents.get(&document.tab_id) {
             if document.document_generation < current.generation {
@@ -159,6 +165,20 @@ impl BlueJsChildHost {
             self.runtime.open_realm(document.tab_id, origin.clone())
         };
         if lifecycle.is_err() {
+            return host_failure();
+        }
+        if install_document_snapshot_bindings(
+            &mut self.runtime,
+            document.tab_id,
+            &document.snapshot,
+        )
+        .is_err()
+        {
+            // A replacement document whose fixed bindings cannot be installed
+            // must not leave a partially initialized successor realm. Closing
+            // this fresh VM also drops every copied snapshot immediately.
+            self.runtime.close_realm(document.tab_id);
+            self.documents.remove(&document.tab_id);
             return host_failure();
         }
         self.documents.insert(
@@ -306,6 +326,73 @@ impl BlueJsChildHost {
 impl Default for BlueJsChildHost {
     fn default() -> Self {
         Self::new().expect("the default BlueJS child-host configuration is valid")
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DocumentSnapshotError {
+    Invalid,
+    ResourceLimit,
+}
+
+/// Repeats the fixed core-side snapshot checks before a child VM observes a
+/// value. Parsing this already-serialized string does not give the child a
+/// URL object, resolver, or network operation: `canonical_http_origin` is a
+/// pure syntax/canonicalization check and this host never calls `fetch`.
+fn validated_document_origin(
+    snapshot: &PageHostDocumentSnapshot,
+) -> Result<BlueJsPageOrigin, DocumentSnapshotError> {
+    if snapshot.document_text.len() > PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES
+        || snapshot.document_origin.len() > PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES
+    {
+        return Err(DocumentSnapshotError::ResourceLimit);
+    }
+    let canonical = canonical_http_origin(&snapshot.document_origin)
+        .map_err(|_| DocumentSnapshotError::Invalid)?;
+    if canonical != snapshot.document_origin {
+        return Err(DocumentSnapshotError::Invalid);
+    }
+    BlueJsPageOrigin::new(canonical).map_err(|_| DocumentSnapshotError::Invalid)
+}
+
+/// Installs exactly the two core-selected immutable JavaScript callbacks. The
+/// registrar deliberately exposes no VM operation, DOM node, resolver, URL,
+/// fetch, IPC, or object handle. Captured Rust strings are copied snapshots
+/// and page arguments are rejected before a callback can return either one.
+fn install_document_snapshot_bindings(
+    runtime: &mut BlueJsPageRuntime,
+    tab_id: u64,
+    snapshot: &PageHostDocumentSnapshot,
+) -> Result<(), BlueJsPageRuntimeError> {
+    let document_text = snapshot.document_text.clone();
+    let document_origin = snapshot.document_origin.clone();
+    runtime.configure_realm_bindings(tab_id, move |bindings| {
+        bindings.install_global_function(
+            "blueiceDocumentOrigin",
+            0,
+            move |arguments: &[HostValue]| {
+                require_no_arguments(arguments, "blueiceDocumentOrigin")?;
+                Ok(HostValue::String(document_origin.clone().into()))
+            },
+        )?;
+        bindings.install_global_function(
+            "blueiceDocumentText",
+            0,
+            move |arguments: &[HostValue]| {
+                require_no_arguments(arguments, "blueiceDocumentText")?;
+                Ok(HostValue::String(document_text.clone().into()))
+            },
+        )
+    })
+}
+
+fn require_no_arguments(arguments: &[HostValue], function: &str) -> Result<(), HostFunctionError> {
+    if arguments.is_empty() {
+        Ok(())
+    } else {
+        Err(HostFunctionError::new(format!(
+            "{function} requires no arguments"
+        )))
     }
 }
 
@@ -1096,10 +1183,27 @@ mod tests {
     }
 
     fn document(generation: u64, scripts: Vec<PageHostScript>) -> PageHostDocument {
+        document_with_snapshot(
+            generation,
+            "test document snapshot".to_string(),
+            "https://example.test".to_string(),
+            scripts,
+        )
+    }
+
+    fn document_with_snapshot(
+        generation: u64,
+        document_text: String,
+        document_origin: String,
+        scripts: Vec<PageHostScript>,
+    ) -> PageHostDocument {
         PageHostDocument {
             tab_id: 7,
             document_generation: generation,
-            origin: "https://example.test".to_string(),
+            snapshot: PageHostDocumentSnapshot {
+                document_text,
+                document_origin,
+            },
             scripts,
         }
     }
@@ -1211,6 +1315,106 @@ mod tests {
                 program_count: 3,
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn child_installs_only_fixed_core_snapshot_callbacks_for_javascript() {
+        let mut host = BlueJsChildHost::default();
+        let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document_with_snapshot(
+                1,
+                "private document snapshot".to_string(),
+                "https://example.test".to_string(),
+                vec![
+                    classic(
+                        0,
+                        concat!(
+                            "if (blueiceDocumentText() !== 'private document snapshot') throw 'text';",
+                            "if (blueiceDocumentOrigin() !== 'https://example.test') throw 'origin';",
+                            "if (typeof document !== 'undefined' || typeof fetch !== 'undefined') throw 'ambient';"
+                        ),
+                    ),
+                    classic(1, "blueiceDocumentText(1);"),
+                ],
+            ),
+        });
+        let PageHostReply::Synchronized { reports, .. } = reply else {
+            panic!("expected synchronized reply");
+        };
+        assert_eq!(reports.len(), 2);
+        assert_eq!(reports[0].outcome, PageHostScriptOutcome::Executed);
+        assert!(matches!(
+            reports[1].outcome,
+            PageHostScriptOutcome::Rejected { .. }
+        ));
+        // Result records remain source/value-free even when a callback
+        // returned a private snapshot inside the child VM.
+        assert!(!format!("{:?}", reports).contains("private document snapshot"));
+    }
+
+    #[test]
+    fn snapshot_validation_happens_before_realm_creation_or_replacement() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document_with_snapshot(
+                    1,
+                    "snapshot".to_string(),
+                    "HTTP://EXAMPLE.test".to_string(),
+                    vec![classic(0, "globalThis.answer = 42;")],
+                ),
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::GetRealmStats {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::UnknownRealm,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document_with_snapshot(
+                    1,
+                    "x".repeat(PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES + 1),
+                    "https://example.test".to_string(),
+                    vec![classic(0, "globalThis.answer = 42;")],
+                ),
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::ResourceLimit,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn bluets_document_snapshot_calls_remain_rejected_without_verified_typings() {
+        let mut host = BlueJsChildHost::default();
+        let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(1, vec![blue_ts_classic(0, "blueiceDocumentText();")]),
+        });
+        assert!(matches!(
+            reply,
+            PageHostReply::Synchronized {
+                reports,
+                ..
+            } if matches!(
+                reports.as_slice(),
+                [PageHostScriptReport {
+                    language: PageHostScriptLanguage::BlueTs,
+                    outcome: PageHostScriptOutcome::Rejected { .. },
+                    ..
+                }]
+            )
         ));
     }
 

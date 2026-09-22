@@ -26,15 +26,21 @@ declaration at a verified non-entry root instruction while retaining its VM
 root frame; it is not arbitrary interpreter suspension or stepping.
 A launcher-supervised, capability-authenticated out-of-process BlueJS child
 can execute caller-authorized inline JavaScript and explicit BlueTS declarations
-in one bounded realm and DOM order. BlueTS receives only the closed supplied
-graph and a child-fixed checked compiler policy, then lowers directly into that
-realm without emitted-JavaScript reparse. The core route keeps its outcomes in
-the existing separate source-free JavaScript and BlueTS report lanes, and
-closes child realms on navigation/tab removal. `blueice-launcher
+in one bounded realm and DOM order. For each core-verified document it also
+installs JavaScript-only immutable `blueiceDocumentText()` and
+`blueiceDocumentOrigin()` copied snapshots: core validates their matching
+1 MiB/4 KiB string contracts before serialization and the child repeats both
+budgets plus canonical HTTP(S)-origin spelling before creating a realm. BlueTS
+receives only the closed supplied graph and a child-fixed checked compiler
+policy, then lowers directly into that realm without emitted-JavaScript
+reparse; because it has no verified ambient artifact for those snapshots, its
+direct calls remain explicit compilation rejections. The core route keeps its
+outcomes in the existing separate source-free JavaScript and BlueTS report
+lanes, and closes child realms on navigation/tab removal. `blueice-launcher
 --out-of-process-bluejs` creates that child/capability pair itself for each
 core generation and reaps it on ordinary shutdown or cutover; the default
 launcher leaves the mode disabled. The remaining boundary has no general DOM
-or event surface, live page-data contract boundary, production external source
+or event surface beyond those two copied strings, production external source
 authority, arbitrary debugger interruption/pause/runtime control, or MCP
 project-registration path.
 
@@ -144,7 +150,7 @@ or second module resolver to bypass them.
   in-process,
   no-general-DOM-object-or-event-binding
   foundation. A separate launcher-owned process foundation now also exists:
-  `blueice_ipc::page_host` defines a private v2 capability-authenticated
+  `blueice_ipc::page_host` defines a private v3 capability-authenticated
   launcher-to-child transport, and the `blueice-bluejs-host` child owns its
   own `BlueJsPageRuntime`, tab/document-generation table, program registry,
   and fixed realm/program/bytecode limits. A private frame is capped at
@@ -168,14 +174,28 @@ or second module resolver to bypass them.
   `blueice-launcher --out-of-process-bluejs` now creates a fresh child and
   private capability pair for each core generation, passes it only to that
   core's startup boundary, forwards loaded HTTP(S) inline declarations through
-  the core adapter, and reaps the child/socket on shutdown or cutover. The
+  the core adapter, and reaps the child/socket on shutdown or cutover. Version
+  3 has no page-selected binding profile or capability field: core supplies
+  exactly a copied document-text snapshot and canonical tuple-origin snapshot
+  only after its existing `dom.document-text`/`dom.document-origin` pure
+  contracts accept them. The child repeats the same 1 MiB/4 KiB byte limits
+  and rejects a non-canonical or missing origin before it replaces a realm,
+  then installs only immutable JavaScript callbacks
+  `blueiceDocumentText()`/`blueiceDocumentOrigin()` through the restricted
+  BlueJS registrar. Navigation, failed replacement, and close discard that VM
+  and both captured strings. No DOM object, URL object, resolver, fetch,
+  network, IPC, source/result value, or capability crosses that boundary. The
   launcher-to-core-to-child regression proves inline classic and module
   execution, explicit BlueTS direct lowering in the same realm and DOM order,
   source-free external-`src` rejection, no injected DOM/fetch
   binding, no endpoint reflection through the frontend broker, and both
-  generations' cleanup. This does not copy a document binding across the
-  process boundary or grant child fetch, URL/import-map resolution, or external
-  graph authority. Production fetch/cache/integrity authority, host-wide
+  generations' cleanup. Although ordinary BlueTS direct lowering remains
+  available for its closed graph, this route deliberately ships no verified
+  BlueTS ambient typing artifact for the JavaScript callbacks; direct
+  `blueiceDocumentText()`/`blueiceDocumentOrigin()` calls remain rejected
+  rather than being implied by a shared VM. It does not grant child fetch, URL/
+  import-map resolution, or external graph authority. Production fetch/cache/
+  integrity authority, host-wide
   memory accounting, native debugger
   attachment, and general JavaScript DOM-object/event binding remain open, so
   the prerequisite remains open.

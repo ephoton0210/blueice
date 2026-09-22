@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress. `backend/bluets` provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix; `backend/bluets-bluejs` proves direct classic-script and resolver-preserving ESM graph lowering to public BlueJS AST/bytecode without reparsing emitted JavaScript. A core startup owner can register closed projects in `CoreCompilerProjectCatalog`, seal it before the core session begins, and optionally expose opaque `describe`/`check`/static-type/symbol/source-provenance/reifiable-contract queries through a separately handshaken v2 `blueice-core --compiler-socket`; validation accepts only bounded data snapshots against an exact retained static generation. The reference binary has only a compiled-in closed integration profile, and MCP must be explicitly connected to that bounded service. `blueice-launcher --out-of-process-bluejs` now creates and supervises a separate, capability-authenticated BlueJS child for each core generation, routes loaded HTTP(S) inline JavaScript and explicit BlueTS declarations in DOM order into one bounded realm, and reaps it on shutdown or cutover. BlueTS gets only a caller-authorized closed graph and a child-fixed checked policy, then directly lowers into that realm without emitted-JavaScript reparse. No page/frontend/log can configure or reflect the child capability; the default launcher does not enable it. The child has no DOM/event binding, fetch/cache, URL/import-map resolution, or external graph authority. The opt-in debugger socket provides generation-checked source-free program/safe-point discovery, lifecycle-bound breakpoint configuration, and one-shot root-code-unit pause/resume for pending classic scripts; it does not expose modules, nested frames, stepping, stack, scope, or runtime values. Remaining prerequisites include production source/cache/integrity policy, bytecode source-map aggregation, launcher compiler-catalog distribution/authorization and update/output elevation, fuller negotiated MCP surface, and native debugger execution.
+**Status**: In progress. `backend/bluets` provides a standalone, host-neutral BlueTS front end and `bluetsc` command for an explicitly bounded initial language matrix; `backend/bluets-bluejs` proves direct classic-script and resolver-preserving ESM graph lowering to public BlueJS AST/bytecode without reparsing emitted JavaScript. A core startup owner can register closed projects in `CoreCompilerProjectCatalog`, seal it before the core session begins, and optionally expose opaque `describe`/`check`/static-type/symbol/source-provenance/reifiable-contract queries through a separately handshaken v2 `blueice-core --compiler-socket`; validation accepts only bounded data snapshots against an exact retained static generation. The reference binary has only a compiled-in closed integration profile, and MCP must be explicitly connected to that bounded service. `blueice-launcher --out-of-process-bluejs` now creates and supervises a separate, capability-authenticated BlueJS child for each core generation, routes loaded HTTP(S) inline JavaScript and explicit BlueTS declarations in DOM order into one bounded realm, and reaps it on shutdown or cutover. For each core-verified document, the child installs only JavaScript's immutable `blueiceDocumentText()` and `blueiceDocumentOrigin()` primitive snapshots after core and child enforce the same fixed contracts and canonical origin spelling. BlueTS still gets only a caller-authorized closed graph and a child-fixed checked policy; it has no verified ambient typing artifact for those bindings, so direct calls remain rejected rather than advertised. No page/frontend/log can configure or reflect the child capability; the default launcher does not enable it. The child has no DOM/event binding beyond those copied strings, fetch/cache, URL/import-map resolution, or external graph authority. The opt-in debugger socket provides generation-checked source-free program/safe-point discovery, lifecycle-bound breakpoint configuration, and one-shot root-code-unit pause/resume for pending classic scripts; it does not expose modules, nested frames, stepping, stack, scope, or runtime values. Remaining prerequisites include production source/cache/integrity policy, bytecode source-map aggregation, launcher compiler-catalog distribution/authorization and update/output elevation, fuller negotiated MCP surface, and native debugger execution.
 
 The prioritized completion worklist is [TODO.md](TODO.md). Update it with this plan when an implementation or acceptance condition changes.
 
@@ -15,7 +15,12 @@ inline JavaScript and explicit BlueTS declarations as core-minted closed
 one-module graphs in original DOM order, and closes their child realms on
 navigation or tab removal. The BlueTS child profile is fixed to checked direct
 lowering with no ambient declarations or page-selected resolver/compiler
-options. The explicit
+options. Its v3 document record has no profile/capability selector: the core
+must validate and supply exactly one copied document-text snapshot and one
+canonical HTTP(S)-origin snapshot, and the child repeats their fixed byte and
+canonical-spelling checks before installing JavaScript-only primitive
+callbacks. Navigation and close destroy that VM and its copied strings. The
+explicit
 `blueice-launcher --out-of-process-bluejs` mode creates that endpoint and token
 per core generation, passes them only to its core child, and retains the
 `SpawnedBlueJsHost` supervisor through normal shutdown or a cutover. Neither
@@ -177,7 +182,7 @@ The initial implementation completes the work that has no BlueJS dependency befo
   receives both a trusted child endpoint and its per-spawn capability token,
   inventories supported JavaScript and explicit BlueTS declarations under one
   DOM-order ordinal sequence, and turns each inline record into a core-minted
-  closed one-module graph. The private v2 child protocol carries a trusted
+  closed one-module graph. The private v3 child protocol carries a trusted
   language tag; JavaScript follows the normal BlueJS parser while BlueTS uses
   only an `AuthorizedModuleLoader` derived from that graph and child-fixed
   checked options before `blueice-bluets-bluejs` directly attaches it to the
@@ -188,9 +193,17 @@ The initial implementation completes the work that has no BlueJS dependency befo
   handing that configuration to one trusted core. `blueice-launcher
   --out-of-process-bluejs` creates the child itself and retains it as part of
   the core generation lifecycle; cutover creates a fresh child/capability pair
-  for the replacement core. There is no document binding, DOM/event callback,
-  fetch/cache, URL or import-map resolution, external graph authority, or
-  page-selected compiler profile; those broader host requirements remain open.
+  for the replacement core. Before realm replacement, core serializes exactly
+  two validated primitive snapshots for ordinary JavaScript:
+  `blueiceDocumentText()` (1 MiB) and `blueiceDocumentOrigin()` (4 KiB,
+  canonical HTTP(S) tuple). The child repeats those limits and canonical
+  spelling checks, installs no other binding, and destroys both copies on
+  navigation or close. It receives no DOM object, URL, resolver, fetch/cache,
+  IPC, or page-selected capability. BlueTS has no verified matching ambient
+  artifact on this route, so direct calls to either snapshot binding remain
+  checked-profile rejections rather than a supported BlueTS host surface.
+  DOM/event callbacks, URL or import-map resolution, external graph authority,
+  and page-selected compiler profiles remain open.
 - [`bluets-test-interface`](TEST_INTERFACE.md) now exposes the same persistent JSON-lines ready/request/reply transport as BlueJS's test adapter. It is intentionally compile-only, accepts BlueJS's `sloppy` mode as a `raw` alias, and has stable BlueTS diagnostic codes/spans and caller-controlled compiler limits; Test262 runtime execution remains a future bridge concern rather than a hidden BlueJS dependency.
 - The [BlueTS test report](TEST_REPORT.md) records the complete per-platform test-suite results, the TypeScript 5.9.3 oracle matrix and per-file line coverage for `blueice-bluets` and `blueice-bluets-bluejs` (2026-09-21).
 

@@ -10,8 +10,9 @@
 //! document generation lifecycle, source-free responses, and cleanup path.
 
 use blueice_ipc::page_host::{
-    PageHostDocument, PageHostModuleGraph, PageHostReply, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
+    PageHostDocument, PageHostDocumentSnapshot, PageHostModuleGraph, PageHostReply, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource,
+    PageHostStaticResolution,
 };
 use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
 use std::os::unix::net::UnixStream;
@@ -33,7 +34,10 @@ fn document(generation: u64, scripts: Vec<PageHostScript>) -> PageHostDocument {
     PageHostDocument {
         tab_id: 41,
         document_generation: generation,
-        origin: "https://example.test".to_string(),
+        snapshot: PageHostDocumentSnapshot {
+            document_text: "test document snapshot".to_string(),
+            document_origin: "https://example.test".to_string(),
+        },
         scripts,
     }
 }
@@ -86,7 +90,7 @@ fn launcher_spawns_an_isolated_host_that_executes_closed_graphs_and_reaps_cleanl
         .synchronize_document(document(1, vec![classic, module]))
         .expect("private host request must receive a reply");
     assert!(matches!(
-        reply,
+        &reply,
         PageHostReply::Synchronized {
             already_current: false,
             reports,
@@ -115,6 +119,54 @@ fn launcher_spawns_an_isolated_host_that_executes_closed_graphs_and_reaps_cleanl
         !private_socket.exists(),
         "launcher must clean the private child socket after a clean shutdown"
     );
+}
+
+#[test]
+fn launcher_child_binds_only_the_core_document_snapshots_and_returns_no_value() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let mut host = SpawnedBlueJsHost::spawn()
+        .expect("launcher must start and authenticate an isolated BlueJS child");
+    let source_id = "blueice://page/snapshot.js";
+    let reply = host
+        .synchronize_document(document(
+            1,
+            vec![PageHostScript {
+                ordinal: 0,
+                language: PageHostScriptLanguage::JavaScript,
+                kind: PageHostScriptKind::Classic,
+                graph: graph(
+                    source_id,
+                    vec![PageHostSource::new(
+                        source_id,
+                        concat!(
+                            "if (blueiceDocumentText() !== 'test document snapshot') throw 'text';",
+                            "if (blueiceDocumentOrigin() !== 'https://example.test') throw 'origin';",
+                            "if (typeof document !== 'undefined' || typeof fetch !== 'undefined') throw 'ambient';"
+                        ),
+                    )],
+                ),
+            }],
+        ))
+        .expect("private host request must receive a reply");
+    assert!(matches!(
+        &reply,
+        PageHostReply::Synchronized {
+            reports,
+            ..
+        } if matches!(
+            reports.as_slice(),
+            [report] if report.outcome == PageHostScriptOutcome::Executed
+        )
+    ));
+    assert!(
+        !format!("{reply:?}").contains("test document snapshot"),
+        "the source-free protocol reply must not disclose a callback result"
+    );
+    host.shutdown()
+        .expect("launcher must obtain child shutdown acknowledgement");
 }
 
 #[test]

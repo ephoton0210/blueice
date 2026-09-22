@@ -295,6 +295,7 @@ dependencies = [
  "blueice-bluets",
  "blueice-bluets-bluejs",
  "blueice-ipc",
+ "blueice-net",
  "serde",
  "serde_json",
  "sysinfo",
