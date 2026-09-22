@@ -37,6 +37,20 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(item["blocker"], "unclassified-parse")
         self.assertEqual(item["confidence"], "observed-symptom")
 
+    def test_excluded_status_is_a_host_capability_declaration_not_unsupported(self):
+        item = classify_item(
+            self.record(
+                "built-ins/Atomics/wait/cannot-suspend-throws.js",
+                status="excluded",
+                actual={"kind": "excluded", "reason": "host declares [[CanBlock]] = true, fixture requires CanBlockIsFalse"},
+                flags=["CanBlockIsFalse"],
+            ),
+            {"features": ["Atomics", "SharedArrayBuffer", "TypedArray"], "flags": ["CanBlockIsFalse"]},
+        )
+        self.assertEqual(item["blocker"], "host-capability-declared")
+        self.assertIn("host", item["dependencies"])
+        self.assertNotEqual(item["blocker"], "compiler-unsupported")
+
     def test_annex_staging_and_intl_remain_in_the_inventory(self):
         for path, scope in [("annexB/language/statements/try/x.js", "annexB"),
                             ("staging/sm/x.js", "staging"), ("intl402/Locale/x.js", "intl402")]:
