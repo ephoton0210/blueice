@@ -938,28 +938,37 @@ impl Vm {
             vec![Value::Object(target), key.value(), receiver.clone()],
             false,
         )?;
-        if let Some(descriptor) = self.object_get_own_property(target, key)? {
-            if descriptor.configurable == Some(false) {
-                if descriptor.writable == Some(false)
-                    && descriptor
-                        .value
-                        .as_ref()
-                        .is_some_and(|value| !same_value(value, &result))
-                {
-                    return Err(RuntimeError::TypeError(
-                        "Proxy get trap violated a non-writable property invariant".into(),
-                    ));
-                }
-                if descriptor.accessor()
-                    && descriptor.get == Some(Value::Undefined)
-                    && result != Value::Undefined
-                {
-                    return Err(RuntimeError::TypeError(
-                        "Proxy get trap violated an accessor invariant".into(),
-                    ));
+        // The trap's result is held nowhere else, and checking the invariants
+        // below can run a Proxy target's own traps.
+        let base = self.stack.len();
+        self.stack.push(result.clone());
+        let checked = (|| {
+            if let Some(descriptor) = self.object_get_own_property(target, key)? {
+                if descriptor.configurable == Some(false) {
+                    if descriptor.writable == Some(false)
+                        && descriptor
+                            .value
+                            .as_ref()
+                            .is_some_and(|value| !same_value(value, &result))
+                    {
+                        return Err(RuntimeError::TypeError(
+                            "Proxy get trap violated a non-writable property invariant".into(),
+                        ));
+                    }
+                    if descriptor.accessor()
+                        && descriptor.get == Some(Value::Undefined)
+                        && result != Value::Undefined
+                    {
+                        return Err(RuntimeError::TypeError(
+                            "Proxy get trap violated an accessor invariant".into(),
+                        ));
+                    }
                 }
             }
-        }
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        checked?;
         Ok(result)
     }
 
@@ -1216,52 +1225,64 @@ impl Vm {
             vec![Value::Object(target), key.value()],
             false,
         )?;
-        let target_descriptor = self.object_get_own_property(target, key)?;
-        let extensible = self.object_is_extensible(target)?;
-        if result == Value::Undefined {
-            if target_descriptor
-                .as_ref()
-                .is_some_and(|descriptor| descriptor.configurable == Some(false))
-                || (!extensible && target_descriptor.is_some())
+        // The trap's result descriptor object is held nowhere else, and the
+        // target's own descriptor and extensibility are read through traps of
+        // their own when the target is a Proxy.
+        let base = self.stack.len();
+        self.stack.push(result.clone());
+        let outcome = (|| {
+            let target_descriptor = self.object_get_own_property(target, key)?;
+            let extensible = self.object_is_extensible(target)?;
+            if result == Value::Undefined {
+                if target_descriptor
+                    .as_ref()
+                    .is_some_and(|descriptor| descriptor.configurable == Some(false))
+                    || (!extensible && target_descriptor.is_some())
+                {
+                    return Err(RuntimeError::TypeError(
+                        "Proxy getOwnPropertyDescriptor trap hid a required target property".into(),
+                    ));
+                }
+                return Ok(None);
+            }
+            let descriptor = complete_property_descriptor(self.read_descriptor(&result)?);
+            if !compatible_property_descriptor(extensible, target_descriptor.as_ref(), &descriptor)
             {
                 return Err(RuntimeError::TypeError(
-                    "Proxy getOwnPropertyDescriptor trap hid a required target property".into(),
+                    "Proxy getOwnPropertyDescriptor trap returned an incompatible descriptor"
+                        .into(),
                 ));
             }
-            return Ok(None);
-        }
-        let descriptor = complete_property_descriptor(self.read_descriptor(&result)?);
-        if !compatible_property_descriptor(extensible, target_descriptor.as_ref(), &descriptor) {
-            return Err(RuntimeError::TypeError(
-                "Proxy getOwnPropertyDescriptor trap returned an incompatible descriptor".into(),
-            ));
-        }
-        if descriptor.configurable == Some(false)
-            && target_descriptor
-                .as_ref()
-                .is_none_or(|current| current.configurable != Some(false))
-        {
-            return Err(RuntimeError::TypeError(
-                "Proxy getOwnPropertyDescriptor trap reported a new non-configurable property"
-                    .into(),
-            ));
-        }
-        // Proxy.[[GetOwnProperty]] has one stricter invariant than ordinary
-        // ValidateAndApplyPropertyDescriptor: a trap may not report a
-        // non-configurable target's writable data property as non-writable.
-        // The general compatibility predicate correctly permits the ordinary
-        // transition, so enforce this Proxy-specific observation separately.
-        if descriptor.configurable == Some(false)
-            && descriptor.writable == Some(false)
-            && target_descriptor.as_ref().is_some_and(|current| {
-                current.configurable == Some(false) && current.writable == Some(true)
-            })
-        {
-            return Err(RuntimeError::TypeError(
-                "Proxy getOwnPropertyDescriptor trap made a target property non-writable".into(),
-            ));
-        }
-        Ok(Some(descriptor))
+            if descriptor.configurable == Some(false)
+                && target_descriptor
+                    .as_ref()
+                    .is_none_or(|current| current.configurable != Some(false))
+            {
+                return Err(RuntimeError::TypeError(
+                    "Proxy getOwnPropertyDescriptor trap reported a new non-configurable property"
+                        .into(),
+                ));
+            }
+            // Proxy.[[GetOwnProperty]] has one stricter invariant than ordinary
+            // ValidateAndApplyPropertyDescriptor: a trap may not report a
+            // non-configurable target's writable data property as non-writable.
+            // The general compatibility predicate correctly permits the ordinary
+            // transition, so enforce this Proxy-specific observation separately.
+            if descriptor.configurable == Some(false)
+                && descriptor.writable == Some(false)
+                && target_descriptor.as_ref().is_some_and(|current| {
+                    current.configurable == Some(false) && current.writable == Some(true)
+                })
+            {
+                return Err(RuntimeError::TypeError(
+                    "Proxy getOwnPropertyDescriptor trap made a target property non-writable"
+                        .into(),
+                ));
+            }
+            Ok(Some(descriptor))
+        })();
+        self.stack.truncate(base);
+        outcome
     }
 
     pub(in super::super) fn proxy_define_own_property(
@@ -1398,11 +1419,22 @@ impl Vm {
                 ))
             }
         };
-        if !self.object_is_extensible(target)? && prototype != self.object_get_prototype(target)? {
-            return Err(RuntimeError::TypeError(
-                "Proxy getPrototypeOf trap disagreed with a non-extensible target".into(),
-            ));
-        }
+        // A fresh prototype is held nowhere else, and reading the target's
+        // extensibility and prototype can run a Proxy target's own traps.
+        let base = self.stack.len();
+        self.stack.push(result);
+        let checked = (|| {
+            if !self.object_is_extensible(target)?
+                && prototype != self.object_get_prototype(target)?
+            {
+                return Err(RuntimeError::TypeError(
+                    "Proxy getPrototypeOf trap disagreed with a non-extensible target".into(),
+                ));
+            }
+            Ok(())
+        })();
+        self.stack.truncate(base);
+        checked?;
         Ok(prototype)
     }
 

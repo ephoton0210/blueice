@@ -189,6 +189,11 @@ impl Parser {
     /// not both.
     fn parse_exported_class(&mut self, leading: Vec<Expr>) -> Result<Class, ParseError> {
         let mut decorators = leading;
+        // Decorators before `export` belong to the ExportDeclaration, not to
+        // the ClassDeclaration, whose source text therefore starts at `class`;
+        // decorators after `export` are the start of the ClassDeclaration.
+        // Either way it starts at the current token.
+        let start = self.token_start();
         if self.check_punct(Punct::At) {
             if !decorators.is_empty() {
                 return Err(self
@@ -200,7 +205,7 @@ impl Parser {
             self.advance(); // `class`
             self.parse_class()
         } else {
-            self.parse_decorated_class(decorators)
+            self.parse_decorated_class(decorators, start)
         }
     }
 

@@ -1200,9 +1200,11 @@ impl Vm {
                         "Function.toString requires a callable".into(),
                     ));
                 }
-                let initial_name = self
-                    .heap
-                    .function_initial_name(receiver.object_id().unwrap())?;
+                let function = receiver.object_id().unwrap();
+                if let Some(source_text) = self.heap.function_source_text(function)? {
+                    return Ok(Value::String(source_text));
+                }
+                let initial_name = self.heap.function_initial_name(function)?;
                 Ok(Value::String(JsString::native_function_source(
                     initial_name,
                 )))

@@ -257,6 +257,9 @@ impl Vm {
         }
         let result = (|| {
             let iterator = self.get_method(&source, &JsSymbol::well_known("iterator").into())?;
+            // A getter may have produced the method just now, so nothing but
+            // this local holds it while `C` is constructed below.
+            self.stack.push(iterator.clone());
             let constructor = self.is_constructor(receiver)?;
             if iterator == Value::Undefined {
                 // Each element is read, mapped and stored before the next

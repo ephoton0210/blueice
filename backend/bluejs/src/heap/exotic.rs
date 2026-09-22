@@ -125,8 +125,20 @@ impl Heap {
     ) -> Result<Option<&JsString>, HeapError> {
         Ok(match &self.object(object)?.kind {
             ObjectKind::NativeFunction { initial_name, .. } => Some(initial_name),
-            // HostHasSourceTextAvailable is false for compiled functions.
-            // Anonymous NativeFunction syntax is valid for every callable.
+            // Anonymous NativeFunction syntax is valid for every callable that
+            // is not a built-in function.
+            _ => None,
+        })
+    }
+
+    /// The source text `Function.prototype.toString` returns for a function
+    /// created from source, or `None` for any other object.
+    pub(crate) fn function_source_text(
+        &self,
+        object: ObjectId,
+    ) -> Result<Option<JsString>, HeapError> {
+        Ok(match &self.object(object)?.kind {
+            ObjectKind::Closure { code, .. } => code.source_text.to_js_string(),
             _ => None,
         })
     }
