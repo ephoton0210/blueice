@@ -243,11 +243,12 @@ or second module resolver to bypass them.
   rejection, while the unit regression also rejects invalid callback arity.
   It does not grant the child fetch, URL/import-map resolution, a filesystem,
   or external graph authority beyond the supplied graph. The concrete
-  child-only HTTP(S) authority now verifies a startup-selected URL/SHA-256
-  manifest, direct response policy, and a parsed closed static graph; its real
-  loopback process regression covers cache reuse plus integrity/MIME/redirect/
-  cross-origin denials without source reflection. Owner deployment
-  configuration, an in-process equivalent, host-wide
+  startup-selected child HTTP(S) authority now verifies a URL/SHA-256
+  manifest, direct response policy, and a parsed closed static graph; the same
+  core-owned implementation is the direct BlueTS external-source authorizer,
+  not a duplicate loader. Its child process and direct core-session loopback
+  regressions cover cache/integrity/MIME/redirect/cross-origin boundaries
+  without source reflection. Owner deployment configuration, host-wide
   memory accounting, native debugger
   attachment, and general JavaScript DOM-object/event binding remain open, so
   the prerequisite remains open.
@@ -595,10 +596,11 @@ or second module resolver to bypass them.
   snapshot profile and, only with an immutable core-owned startup authorizer,
   supplied closed external graphs. It also has only the core-proxied,
   source-free debugger location attachment described above: no debugger
-  control or general DOM surface. A concrete narrowly scoped child HTTP(S)
-  fetch/cache/integrity policy now exists, but no general external graph
-  policy, redirect/credential/import-map support, or in-process counterpart
-  exists. The closed-graph
+  control or general DOM surface. The concrete narrowly scoped HTTP(S)
+  fetch/cache/integrity policy is also the direct BlueTS external-source
+  authorizer, so the in-process path does not duplicate network policy. There
+  is still no general external graph policy, redirect/credential/import-map
+  support, or deployment configuration. The closed-graph
   direct bridge
   integration is complete; those broader page-host responsibilities remain
   separate open prerequisites.
