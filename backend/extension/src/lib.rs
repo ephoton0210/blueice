@@ -3,11 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `blueice-extension-host`: the minimal-slice implementation of
-//! `phase-9-extension-protocol/PLAN.md`'s "Minimal first slice" -- a
-//! hardcoded single extension (no WASM runtime, no manifest file
-//! parser yet), proving server-side capability enforcement end to end
-//! over a real process boundary before any of that fuller machinery
-//! exists.
+//! `phase-9-extension-protocol/PLAN.md`'s incremental reference host.
+//! It retains a hardcoded protocol-only fallback, and can now install one
+//! strict JSON manifest plus WASM module at startup to derive its registry
+//! identity and persistent grants before serving any connection. It still has
+//! no WASM runtime.
 //!
 //! **Where this logic lives, and why.** The plan doc's "Wiring design"
 //! frames the enforcing side as living inside `core` itself (an
@@ -40,15 +40,23 @@
 //! slice is proving the *authorization* mechanism, not the DOM-read
 //! capability's real payload.
 //!
-//! **Non-spoofable identity is still open work.** A real `extension_id`
-//! is meant to be derived from a hash of the extension's manifest +
-//! WASM module (per the plan doc), so it can't be spoofed at connect
-//! time. This slice's [`blueice_ipc::extension::ExtensionRequest::Hello`]
-//! still carries a plain author-chosen `extension_id` string -- the
-//! registry enforces *whatever* identity is declared, which is the
-//! actual mechanism under test here, but nothing yet stops a connecting
-//! process from simply declaring a different extension's id. Tracked as
-//! still-open in `phase-9-extension-protocol/PLAN.md`, not solved here.
+//! **Identity derivation versus peer authentication.**
+//! [`load_installed_extension`] derives a `sha256:` ID from exact manifest and
+//! WASM bytes, so package authors cannot assign an arbitrary friendly ID and a
+//! changed installed artifact receives a different registry identity. The
+//! current [`blueice_ipc::extension::ExtensionRequest::Hello`] still presents
+//! that derived ID as a bearer claim, however: binding a connection to the
+//! host-spawned WASM child (rather than merely checking a string supplied over
+//! the private socket) remains a real-core integration task. The derived
+//! identity is necessary installation evidence, not a substitute for that
+//! later process-authentication boundary.
+
+mod manifest;
+
+pub use manifest::{
+    load_installed_extension, registry_for_installed_extension, ExtensionManifest,
+    InstalledExtension, ManifestCapabilities, ManifestError, MANIFEST_API_VERSION,
+};
 
 use blueice_ipc::extension::{
     read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
@@ -64,9 +72,7 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
 
-/// The one hardcoded extension identity this minimal slice recognizes.
-/// A real, non-spoofable, manifest-derived identity scheme is still-open
-/// future work -- see this crate's own module docs.
+/// The one hardcoded identity used only when no installed manifest is supplied.
 pub const MINIMAL_SLICE_EXTENSION_ID: &str = "minimal-slice-extension";
 
 /// The capability this slice's one hardcoded extension is granted.
@@ -156,6 +162,19 @@ impl ExtensionRegistry {
         }
     }
 
+    /// Registers the complete set of capability API windows this Phase 9 host
+    /// understands. Installation grants remain a separate operation, so an
+    /// extension cannot turn host support into authority merely by declaring a
+    /// capability in its manifest or handshake.
+    pub fn with_supported_capabilities() -> Self {
+        let mut registry = Self::new();
+        let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
+        registry.register_capability_version_window(CAPABILITY_DOM_READ, v1);
+        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1);
+        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1);
+        registry
+    }
+
     /// Registers the API-version window this host implements for a
     /// capability. Registering a capability does not grant it to any
     /// extension; use [`Self::grant`] for that separate decision.
@@ -230,11 +249,7 @@ impl ExtensionRegistry {
     /// `NetworkIntercept` attempt is a concrete proof of server-side
     /// denial.
     pub fn minimal_slice() -> Self {
-        let mut registry = Self::new();
-        let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
-        registry.register_capability_version_window(CAPABILITY_DOM_READ, v1);
-        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1);
-        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1);
+        let mut registry = Self::with_supported_capabilities();
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
         registry
     }

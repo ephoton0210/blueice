@@ -30,11 +30,23 @@ fn unique_socket_path() -> PathBuf {
     ))
 }
 
+/// A socket pathname can be visible between `bind()` and the process entering
+/// `accept()`. Readiness must therefore mean a real client can connect, not
+/// merely that the filesystem entry exists.
 fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if path.exists() {
-            return true;
+        match UnixStream::connect(path) {
+            Ok(stream) => {
+                drop(stream);
+                return true;
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
+                ) => {}
+            Err(_) => return false,
         }
         thread::sleep(Duration::from_millis(20));
     }

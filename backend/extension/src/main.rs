@@ -16,11 +16,14 @@
 //!
 //! Extension connections are long-lived (unlike `ai-gatekeeper`'s
 //! one-shot-per-check connections), but this minimal slice still only
-//! needs to serve them one at a time, sequentially -- there's exactly
-//! one hardcoded extension in this slice, so there's no concurrency to
-//! prove yet.
+//! needs to serve them one at a time, sequentially. `--manifest` installs one
+//! validated package for that process lifetime; without it the historic
+//! hardcoded reference slice remains available for protocol-only testing.
 
-use blueice_extension_host::{handle_extension_connection_with_gatekeeper, ExtensionRegistry};
+use blueice_extension_host::{
+    handle_extension_connection_with_gatekeeper, load_installed_extension,
+    registry_for_installed_extension, ExtensionRegistry,
+};
 use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
@@ -30,6 +33,7 @@ use std::process::ExitCode;
 struct Args {
     socket: PathBuf,
     gatekeeper_socket: PathBuf,
+    manifest: Option<PathBuf>,
 }
 
 /// Takes an injectable argument iterator (rather than reading
@@ -39,6 +43,7 @@ struct Args {
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut socket = None;
     let mut gatekeeper_socket = None;
+    let mut manifest = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -46,6 +51,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         match flag.as_str() {
             "--socket" => socket = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
+            "--manifest" => manifest = Some(PathBuf::from(value()?)),
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
@@ -54,6 +60,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     Ok(Args {
         socket,
         gatekeeper_socket: gatekeeper_socket.unwrap_or_else(default_gatekeeper_socket_path),
+        manifest,
     })
 }
 
@@ -64,6 +71,24 @@ fn main() -> ExitCode {
             eprintln!("blueice-extension-host: {message}");
             return ExitCode::FAILURE;
         }
+    };
+
+    // Validate the package and populate the server-side registry before
+    // publishing a socket. A client must never race a briefly listening host
+    // whose identity/capability table has not been established yet.
+    let registry = match args.manifest.as_deref() {
+        Some(manifest_path) => match load_installed_extension(manifest_path) {
+            Ok(extension) => registry_for_installed_extension(&extension),
+            Err(error) => {
+                eprintln!(
+                    "blueice-extension-host: could not install {}: {error}",
+                    manifest_path.display()
+                );
+                let _ = std::fs::remove_file(&args.socket);
+                return ExitCode::FAILURE;
+            }
+        },
+        None => ExtensionRegistry::minimal_slice(),
     };
 
     // A stale socket file from a previous run (e.g. one that crashed
@@ -82,8 +107,6 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-
-    let registry = ExtensionRegistry::minimal_slice();
     for mut stream in listener.incoming().flatten() {
         let _ = handle_extension_connection_with_gatekeeper(
             &registry,
@@ -115,7 +138,8 @@ mod tests {
             args(&["--socket", "/tmp/x.sock"]).unwrap(),
             Args {
                 socket: PathBuf::from("/tmp/x.sock"),
-                gatekeeper_socket: default_gatekeeper_socket_path()
+                gatekeeper_socket: default_gatekeeper_socket_path(),
+                manifest: None,
             }
         );
     }
@@ -140,7 +164,8 @@ mod tests {
             .unwrap(),
             Args {
                 socket: PathBuf::from("/tmp/x.sock"),
-                gatekeeper_socket: PathBuf::from("/tmp/gatekeeper.sock")
+                gatekeeper_socket: PathBuf::from("/tmp/gatekeeper.sock"),
+                manifest: None,
             }
         );
     }
@@ -150,6 +175,27 @@ mod tests {
         assert_eq!(
             args(&["--socket", "/tmp/x.sock", "--gatekeeper-socket"]),
             Err("--gatekeeper-socket requires a value".to_string())
+        );
+    }
+
+    #[test]
+    fn a_manifest_override_is_parsed() {
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", "--manifest", "/tmp/extension.json"])
+                .unwrap(),
+            Args {
+                socket: PathBuf::from("/tmp/x.sock"),
+                gatekeeper_socket: default_gatekeeper_socket_path(),
+                manifest: Some(PathBuf::from("/tmp/extension.json")),
+            }
+        );
+    }
+
+    #[test]
+    fn a_manifest_flag_missing_its_value_is_an_error() {
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", "--manifest"]),
+            Err("--manifest requires a value".to_string())
         );
     }
 

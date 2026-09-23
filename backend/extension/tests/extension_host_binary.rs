@@ -17,10 +17,12 @@
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
 };
+use blueice_extension_host::load_installed_extension;
 use std::collections::BTreeMap;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -31,11 +33,23 @@ fn unique_socket_path(label: &str) -> PathBuf {
     ))
 }
 
+/// A pathname can exist just before a child process is able to accept it, so
+/// readiness means a real connection succeeds rather than merely observing a
+/// socket filesystem entry.
 fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if path.exists() {
-            return true;
+        match UnixStream::connect(path) {
+            Ok(stream) => {
+                drop(stream);
+                return true;
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
+                ) => {}
+            Err(_) => return false,
         }
         thread::sleep(Duration::from_millis(20));
     }
@@ -53,11 +67,19 @@ struct ExtensionHost {
 
 impl ExtensionHost {
     fn spawn(label: &str) -> Self {
+        Self::spawn_with_manifest(label, None)
+    }
+
+    fn spawn_with_manifest(label: &str, manifest: Option<&Path>) -> Self {
         let socket = unique_socket_path(label);
         let _ = std::fs::remove_file(&socket);
 
-        let child = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
-            .args(["--socket", socket.to_str().unwrap()])
+        let mut command = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"));
+        command.args(["--socket", socket.to_str().unwrap()]);
+        if let Some(manifest) = manifest {
+            command.args(["--manifest", manifest.to_str().unwrap()]);
+        }
+        let child = command
             .spawn()
             .expect("failed to spawn blueice-extension-host");
 
@@ -95,6 +117,28 @@ fn empty_hello_ack() -> ExtensionReply {
     ExtensionReply::HelloAck {
         unsupported_capabilities: BTreeMap::new(),
     }
+}
+
+fn manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "blueice-extension-host-package-{label}-{}-{id}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest = root.join("extension.json");
+    std::fs::write(
+        &manifest,
+        r#"{"name":"Binary test","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read"]}}"#,
+    )
+    .unwrap();
+    std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
+    let extension_id = load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
+    (root, manifest, extension_id)
 }
 
 #[test]
@@ -167,6 +211,48 @@ fn an_extension_id_that_was_never_registered_gets_capability_denied_even_for_dom
             panic!("expected CapabilityDenied for an unregistered extension_id, got {other:?}")
         }
     }
+}
+
+#[test]
+fn a_manifest_derived_identity_is_required_over_a_real_process_boundary() {
+    let (root, manifest, extension_id) = manifest_package("derived-id");
+    {
+        let host = ExtensionHost::spawn_with_manifest("derived-id", Some(&manifest));
+
+        let mut installed_extension = host.connect();
+        write_extension_request(&mut installed_extension, &hello(&extension_id)).unwrap();
+        assert_eq!(
+            read_extension_reply(&mut installed_extension).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(&mut installed_extension, &ExtensionRequest::DomRead).unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut installed_extension).unwrap(),
+            ExtensionReply::DomReadResult { .. }
+        ));
+        drop(installed_extension);
+
+        let mut friendly_name_impersonator = host.connect();
+        write_extension_request(
+            &mut friendly_name_impersonator,
+            &hello("Binary test"),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut friendly_name_impersonator).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut friendly_name_impersonator,
+            &ExtensionRequest::DomRead,
+        )
+        .unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut friendly_name_impersonator).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == "dom:read"
+        ));
+    }
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
