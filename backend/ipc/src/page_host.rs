@@ -45,12 +45,13 @@
 //! Version 12 adds one exact type-ID display lookup; it remains an explicit
 //! core-proxied operation, not a general static-record read or source access.
 //! Version 13 adds a payload-free parent-handle-bound symbol-ID inventory.
+//! Version 14 adds a payload-free parent-handle-bound contract-ID inventory.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 13;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 14;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -152,6 +153,14 @@ pub struct PageHostDebuggerBlueTsMetadataTypeId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PageHostDebuggerBlueTsMetadataSymbolId {
     pub symbol_id: u32,
+}
+
+/// One compiler-minted static contract ID for an exact private BlueTS metadata
+/// attachment. It deliberately carries no contract name, source span, plan,
+/// validation, bytecode, VM object, or value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataContractId {
+    pub contract_id: u32,
 }
 
 /// One child-local compiler-produced type display for an exact type ID under
@@ -444,6 +453,14 @@ pub enum PageHostRequest {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
     },
+    /// Lists compiler-minted contract IDs for a prior exact private metadata
+    /// handle. This is not a contract-name, span, plan, or validation read.
+    ListDebuggerBlueTsMetadataContracts {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    },
     /// Describes exactly one prior compiler-minted source ID. This private
     /// request returns module identity and a digest only, never source text.
     DescribeDebuggerBlueTsMetadataSource {
@@ -601,6 +618,15 @@ pub enum PageHostReply {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
         symbols: Vec<PageHostDebuggerBlueTsMetadataSymbolId>,
+    },
+    /// Bounded compiler-minted contract identities. The IDs are local to the
+    /// exact metadata attachment and carry no contract-record payload.
+    DebuggerBlueTsMetadataContracts {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contracts: Vec<PageHostDebuggerBlueTsMetadataContractId>,
     },
     DebuggerBlueTsMetadataSourceProvenance {
         tab_id: u64,
@@ -869,6 +895,18 @@ mod tests {
                     metadata_generation: 19,
                 },
             },
+            PageHostRequest::ListDebuggerBlueTsMetadataContracts {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+            },
             PageHostRequest::ListDebuggerSafePoints {
                 tab_id: 7,
                 document_generation: 3,
@@ -1078,6 +1116,23 @@ mod tests {
                 metadata_generation: 19,
             },
             symbols: vec![PageHostDebuggerBlueTsMetadataSymbolId { symbol_id: 0 }],
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataContracts {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            contracts: vec![PageHostDebuggerBlueTsMetadataContractId { contract_id: 0 }],
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();

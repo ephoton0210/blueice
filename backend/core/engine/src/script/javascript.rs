@@ -37,7 +37,7 @@ pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerProgram,
     JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
-    JavaScriptPageDebuggerStaticMetadataSourceId,
+    JavaScriptPageDebuggerStaticMetadataContractId, JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
     JavaScriptPageDebuggerStaticMetadataSymbolId, JavaScriptPageDebuggerStaticMetadataTypeDisplay,
@@ -121,6 +121,13 @@ pub trait PageJavaScriptDebuggerLocations {
     /// under an exact opaque metadata parent. Symbol record reads remain
     /// separately default-denied.
     fn debugger_static_metadata_symbol_inventory_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can list payload-free compiler-minted contract IDs
+    /// under an exact opaque metadata parent. Contract record reads remain
+    /// separately default-denied.
+    fn debugger_static_metadata_contract_inventory_available(&self) -> bool {
         false
     }
 
@@ -229,6 +236,22 @@ pub trait PageJavaScriptDebuggerLocations {
         _metadata_handle: u64,
         _metadata_generation: u64,
     ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataSymbolId>, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Lists compiler-minted contract IDs only after the caller presented an
+    /// exact metadata attachment. Implementations must not expose contract
+    /// names, spans, plans, or validate caller data from this inventory route.
+    fn debugger_static_metadata_contracts(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataContractId>, JavaScriptPageDebuggerError>
     {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }

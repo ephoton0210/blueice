@@ -76,6 +76,7 @@ struct StaticMetadataPolicy {
     type_inventory: bool,
     type_display: bool,
     symbol_inventory: bool,
+    contract_inventory: bool,
 }
 
 struct LauncherProcess {
@@ -142,6 +143,9 @@ impl LauncherProcess {
         }
         if policy.symbol_inventory {
             command.arg("--debugger-static-metadata-symbol-inventory");
+        }
+        if policy.contract_inventory {
+            command.arg("--debugger-static-metadata-contract-inventory");
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
@@ -565,6 +569,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             type_inventory: true,
             type_display: true,
             symbol_inventory: true,
+            contract_inventory: true,
         },
     );
 
@@ -581,14 +586,14 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
                 requested_metadata_capabilities:
                     DebuggerMetadataCapabilityManifest::opaque_selected(
-                        true, true, true, true, true, true
+                        true, true, true, true, true, true, true
                     ),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_selected(
-                true, true, true, true, true, true
+                true, true, true, true, true, true, true
             ),
         }
     );
@@ -604,6 +609,11 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     };
     assert!(capabilities.reports.iter().any(|report| {
         report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataInventory
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability
+            == blueice_ipc::debugger::DebuggerCapability::StaticMetadataContractInventory
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
     assert!(capabilities.reports.iter().any(|report| {
@@ -756,6 +766,27 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             && !format!("{symbols:?}").contains("number"),
         "symbol IDs must not contain names, type displays, or compiler-record payload"
     );
+    let contract_inventory_reply = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataContracts {
+            metadata: typed_metadata,
+        },
+    );
+    let DebuggerReply::StaticMetadataContracts(contracts) = contract_inventory_reply else {
+        panic!("expected bounded public static metadata contract IDs")
+    };
+    assert_eq!(
+        contracts.len(),
+        usize::try_from(summary.contract_count).unwrap()
+    );
+    assert!(contracts
+        .iter()
+        .all(|contract| contract.metadata == typed_metadata));
+    assert!(
+        !format!("{contracts:?}").contains("privateBlueTsMetadata")
+            && !format!("{contracts:?}").contains("number"),
+        "contract IDs must not contain names, plans, validation, or compiler-record payload"
+    );
     assert!(
         !format!("{summary:?}").contains("privateBlueTsMetadata")
             && !format!("{summary:?}").contains("inline-0.ts")
@@ -863,6 +894,18 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         debugger_request(
             &mut debugger,
             DebuggerRequest::ListStaticMetadataSymbols {
+                metadata: typed_metadata,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadataContracts {
                 metadata: typed_metadata,
             },
         ),

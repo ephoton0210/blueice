@@ -775,6 +775,16 @@ or second module resolver to bypass them.
   operation cannot turn a caller-guessed ID into a child probing target. No
   symbol name, source span, declared type, contract, bytecode, VM object,
   value, or general metadata record crosses this layer.
+  Page-host v14/debugger v13 now add independently default-denied
+  `OpaqueContractInventory` and
+  `--debugger-static-metadata-contract-inventory`. It requires the parent
+  inventory, live realm tuple, child capability report, and the exact
+  same-stream parent-handle receipt before it returns bounded
+  compiler-minted contract IDs. IDs remain payload-free and are separately
+  receipted at the fixed 65,536-contract ceiling, so a future contract-plan
+  or validation operation cannot turn a caller-guessed ID into a child
+  probing target. No contract name, source span, plan, validation result,
+  bytecode, VM object, value, or general metadata record crosses this layer.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope
