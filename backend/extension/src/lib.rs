@@ -796,6 +796,19 @@ where
                     )?;
                     continue;
                 }
+                if value.len() > blueice_ipc::extension::MAX_TEXT_WRITE_BYTES {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_DOM_WRITE.to_string(),
+                            reason: format!(
+                                "text-control values cannot exceed {} bytes",
+                                blueice_ipc::extension::MAX_TEXT_WRITE_BYTES
+                            ),
+                        },
+                    )?;
+                    continue;
+                }
                 // The v2 operation has one safe semantic shape: set a
                 // text-input value. Review is unconditional, so an extension
                 // cannot under-classify a sensitive target through metadata.
@@ -920,6 +933,19 @@ where
                         &ExtensionReply::CapabilityDenied {
                             capability: CAPABILITY_DOM_WRITE.to_string(),
                             reason,
+                        },
+                    )?;
+                    continue;
+                }
+                if value.len() > blueice_ipc::extension::MAX_TEXT_WRITE_BYTES {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_DOM_WRITE.to_string(),
+                            reason: format!(
+                                "text-control values cannot exceed {} bytes",
+                                blueice_ipc::extension::MAX_TEXT_WRITE_BYTES
+                            ),
                         },
                     )?;
                     continue;
@@ -1601,6 +1627,57 @@ mod tests {
             }
         );
         let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn oversized_v2_and_v4_text_writes_are_rejected_before_review_or_delegation() {
+        let registry = registry_with_dom_write_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                Path::new("/not-reached-for-oversized-text-writes.sock"),
+                &mut server,
+                |_| Ok("unused in this test".to_string()),
+                |_, _, _| panic!("an oversized write must not reach core"),
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 4)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        let oversized = "x".repeat(blueice_ipc::extension::MAX_TEXT_WRITE_BYTES + 1);
+        for request in [
+            ExtensionRequest::SetTextInputValue {
+                tab_id: 1,
+                node_id: 2,
+                value: oversized.clone(),
+            },
+            ExtensionRequest::SetTextareaValue {
+                tab_id: 1,
+                node_id: 3,
+                value: oversized.clone(),
+            },
+        ] {
+            write_extension_request(&mut client, &request).unwrap();
+            match read_extension_reply(&mut client).unwrap() {
+                ExtensionReply::OperationUnavailable { capability, reason } => {
+                    assert_eq!(capability, CAPABILITY_DOM_WRITE);
+                    assert!(reason.contains("4096 bytes"));
+                }
+                other => panic!("expected oversized value rejection, got {other:?}"),
+            }
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
     }
 
     #[test]

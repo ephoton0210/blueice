@@ -33,6 +33,12 @@ use std::collections::BTreeMap;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
+/// Maximum UTF-8 payload for a versioned native text-control write. The bound
+/// is part of the protocol rather than only the WASM ABI: a manually connected
+/// development client is subject to it too, and core repeats the check before
+/// changing a live page.
+pub const MAX_TEXT_WRITE_BYTES: usize = 4 * 1024;
+
 /// One message an extension process sends to the capability-enforcing
 /// side of this protocol.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

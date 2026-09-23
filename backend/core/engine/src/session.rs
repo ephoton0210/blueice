@@ -892,9 +892,16 @@ fn handle_extension_page_request<S: Write>(
         } => {
             let tab_id = TabId::from_u64(tab_id);
             let node_id = NodeId::from_u64(node_id);
-            let result = match tabs.get_mut(tab_id) {
-                Some(page) => page.set_text_input_value(node_id, value),
-                None => Err(format!("unknown tab {}", tab_id.as_u64())),
+            let result = if value.len() > blueice_ipc::extension::MAX_TEXT_WRITE_BYTES {
+                Err(format!(
+                    "text-control values cannot exceed {} bytes",
+                    blueice_ipc::extension::MAX_TEXT_WRITE_BYTES
+                ))
+            } else {
+                match tabs.get_mut(tab_id) {
+                    Some(page) => page.set_text_input_value(node_id, value),
+                    None => Err(format!("unknown tab {}", tab_id.as_u64())),
+                }
             };
             if result.is_ok() {
                 // Mirror first-party SetValue: script listeners observe the
@@ -955,9 +962,16 @@ fn handle_extension_page_request<S: Write>(
         } => {
             let tab_id = TabId::from_u64(tab_id);
             let node_id = NodeId::from_u64(node_id);
-            let result = match tabs.get_mut(tab_id) {
-                Some(page) => page.set_textarea_value(node_id, value),
-                None => Err(format!("unknown tab {}", tab_id.as_u64())),
+            let result = if value.len() > blueice_ipc::extension::MAX_TEXT_WRITE_BYTES {
+                Err(format!(
+                    "text-control values cannot exceed {} bytes",
+                    blueice_ipc::extension::MAX_TEXT_WRITE_BYTES
+                ))
+            } else {
+                match tabs.get_mut(tab_id) {
+                    Some(page) => page.set_textarea_value(node_id, value),
+                    None => Err(format!("unknown tab {}", tab_id.as_u64())),
+                }
             };
             if result.is_ok() {
                 // Match the other constrained form writes: event handlers
@@ -2089,6 +2103,44 @@ mod tests {
             Some("from extension")
         );
 
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::SetTextInputValue {
+                tab_id: tab_id.as_u64(),
+                node_id: input_id.as_u64(),
+                value: "x".repeat(blueice_ipc::extension::MAX_TEXT_WRITE_BYTES + 1),
+                reply: reply_tx,
+            })
+            .unwrap();
+        let error = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the live session must answer an oversized text-input write")
+            .expect_err("the core must reject oversized text-control values");
+        assert!(error.contains("4096 bytes"));
+
+        let (read_tx, read_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadRepresentation {
+                tab_id: Some(tab_id.as_u64()),
+                reply: read_tx,
+            })
+            .unwrap();
+        let snapshot: blueice_ipc::AiSnapshot = serde_json::from_str(
+            &read_rx
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            snapshot
+                .nodes
+                .iter()
+                .find(|node| node.id == input_id.as_u64())
+                .and_then(|node| node.state.value.as_deref()),
+            Some("from extension")
+        );
+
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         handle.join().unwrap().unwrap();
         let _ = std::fs::remove_dir_all(cleanup_dir);
@@ -2223,6 +2275,44 @@ mod tests {
         assert_eq!(reply_tab, Some(tab_id.as_u64()));
         assert_eq!(request_id, None);
         assert!(matches!(frame, ServerMessage::FrameReady { .. }));
+
+        let (read_tx, read_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadRepresentation {
+                tab_id: Some(tab_id.as_u64()),
+                reply: read_tx,
+            })
+            .unwrap();
+        let snapshot: blueice_ipc::AiSnapshot = serde_json::from_str(
+            &read_rx
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            snapshot
+                .nodes
+                .iter()
+                .find(|node| node.id == textarea_id.as_u64())
+                .and_then(|node| node.state.value.as_deref()),
+            Some("from extension with detail")
+        );
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::SetTextareaValue {
+                tab_id: tab_id.as_u64(),
+                node_id: textarea_id.as_u64(),
+                value: "x".repeat(blueice_ipc::extension::MAX_TEXT_WRITE_BYTES + 1),
+                reply: reply_tx,
+            })
+            .unwrap();
+        let error = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the live session must answer an oversized textarea write")
+            .expect_err("the core must reject oversized text-control values");
+        assert!(error.contains("4096 bytes"));
 
         let (read_tx, read_rx) = mpsc::channel();
         extension_tx

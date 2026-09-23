@@ -20,6 +20,7 @@
 use crate::InstalledExtension;
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    MAX_TEXT_WRITE_BYTES,
 };
 use std::os::unix::net::UnixStream;
 use wasmtime::{
@@ -32,10 +33,6 @@ const MAX_FUEL: u64 = 1_000_000;
 
 /// The maximum linear memory an extension instance may allocate or grow to.
 const MAX_LINEAR_MEMORY_BYTES: usize = 1024 * 1024;
-
-/// A text form value copied from guest memory is intentionally bounded before
-/// it can reach the core IPC frame or gatekeeper.
-const MAX_TEXT_VALUE_BYTES: usize = 4 * 1024;
 
 /// Representation JSON is bounded before it crosses from the host into guest
 /// linear memory. This is an ABI-level resource limit rather than an implicit
@@ -273,7 +270,7 @@ fn set_text_input_value(
     let (Ok(tab_id), Ok(node_id)) = (stable_id(tab_id), stable_id(node_id)) else {
         return RESULT_INVALID_ARGUMENT;
     };
-    let Ok((value_ptr, value_len)) = guest_range(value_ptr, value_len, MAX_TEXT_VALUE_BYTES) else {
+    let Ok((value_ptr, value_len)) = guest_range(value_ptr, value_len, MAX_TEXT_WRITE_BYTES) else {
         return RESULT_INVALID_ARGUMENT;
     };
     let Ok(value) = read_guest_bytes(caller, value_ptr, value_len) else {
@@ -332,7 +329,7 @@ fn set_textarea_value(
     let (Ok(tab_id), Ok(node_id)) = (stable_id(tab_id), stable_id(node_id)) else {
         return RESULT_INVALID_ARGUMENT;
     };
-    let Ok((value_ptr, value_len)) = guest_range(value_ptr, value_len, MAX_TEXT_VALUE_BYTES) else {
+    let Ok((value_ptr, value_len)) = guest_range(value_ptr, value_len, MAX_TEXT_WRITE_BYTES) else {
         return RESULT_INVALID_ARGUMENT;
     };
     let Ok(value) = read_guest_bytes(caller, value_ptr, value_len) else {
