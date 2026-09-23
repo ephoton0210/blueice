@@ -162,8 +162,8 @@ impl<S: Read + Write> CompilerConnection<S> {
     }
 
     /// Looks up one source-text-free static provenance record from exactly one
-    /// retained compiler generation. `source_id` is compiler-minted metadata,
-    /// never a path or a source-read capability.
+    /// retained compiler generation. Its labeled SHA-256 digest and `source_id`
+    /// are compiler-minted metadata, never a path or a source-read capability.
     pub fn static_provenance(
         &mut self,
         project_id: u64,
@@ -441,10 +441,11 @@ mod tests {
             }
         }
         let (provenance, contract, validation) = mcp_client.join().unwrap();
-        assert!(matches!(
-            provenance,
-            blueice_ipc::compiler::CompilerReply::StaticProvenance(_)
-        ));
+        let blueice_ipc::compiler::CompilerReply::StaticProvenance(provenance) = provenance else {
+            panic!("static provenance must remain a distinct compiler reply")
+        };
+        assert!(provenance.content_hash.starts_with("bts-sha256:"));
+        assert_eq!(provenance.content_hash.len(), "bts-sha256:".len() + 64);
         assert!(matches!(
             contract,
             blueice_ipc::compiler::CompilerReply::StaticContract(_)

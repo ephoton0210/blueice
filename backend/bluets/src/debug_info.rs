@@ -10,7 +10,9 @@ use crate::contracts::ContractPlan;
 use crate::diagnostic::SourceSpan;
 use crate::parser::{Declaration, InterfaceDeclaration, Module};
 use crate::LANGUAGE_VERSION;
+use ring::digest::{digest, SHA256};
 use std::collections::BTreeMap;
+use std::fmt::Write;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SymbolId(pub u32);
@@ -30,8 +32,11 @@ pub struct SourceId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ContractId(pub u32);
 
-/// A source identity contains a content hash but not source text.  A debugger
-/// host decides separately whether a requesting principal can read the text.
+/// A source identity contains a SHA-256 content digest but not source text.
+/// The digest makes the compiler/MCP provenance record collision-resistant;
+/// it is still metadata rather than source-read authority. A debugger host
+/// separately decides whether a requesting principal may see any source
+/// identity or digest at all.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DebugSource {
     pub id: SourceId,
@@ -274,17 +279,17 @@ fn source_hash(source: &str) -> String {
 }
 
 fn hash(value: &str) -> String {
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in value.bytes() {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x100000001b3);
+    let digest = digest(&SHA256, value.as_bytes());
+    let mut hex = String::with_capacity(digest.as_ref().len() * 2);
+    for byte in digest.as_ref() {
+        write!(&mut hex, "{byte:02x}").expect("writing a digest to String cannot fail");
     }
-    format!("bts-{hash:016x}")
+    format!("bts-sha256:{hex}")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::SourceId;
+    use super::{source_hash, SourceId};
     use crate::{compile, CompilerOptions, MapLoader, ModuleSource};
 
     #[test]
@@ -300,6 +305,14 @@ mod tests {
         assert_ne!(
             debug.sources[0].content_hash,
             "export const count: number = 1;"
+        );
+    }
+
+    #[test]
+    fn source_provenance_uses_a_labeled_cryptographic_digest() {
+        assert_eq!(
+            source_hash("abc"),
+            "bts-sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
     }
 

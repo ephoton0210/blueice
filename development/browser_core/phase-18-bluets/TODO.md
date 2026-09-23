@@ -732,9 +732,10 @@ or second module resolver to bypass them.
   from the other or from protocol version. Real launcher-supervised public
   debugger coverage requests both, proves the source IDs remain payload-free,
   and proves reload makes the prior metadata parent and source IDs stale. A
-  later source-detail/provenance capability needs its own disclosure policy
-  and cryptographic identity design; it must not reuse the private FNV
-  transport fingerprint. The page host still must route
+  later debugger source-detail/provenance capability still needs its own
+  disclosure policy; it must remain separately authorized and may use only
+  the compiler's labeled SHA-256 identity, never the private FNV transport
+  fingerprint. The page host still must route
   cache/hibernation events through the same invariant and add source policy,
   diagnostics/contracts, stack locations, and runtime-value inspection before
   this item can close.

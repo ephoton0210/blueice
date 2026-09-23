@@ -1716,7 +1716,7 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
-        description = "Read one source-text-free BlueTS provenance record from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id, generation and source_id are core-minted opaque handles returned after bluetsc_check and compiler metadata under that receipt. The result contains only a static module identity and content hash, never source text, a filesystem path, a resolver, or a source-read capability."
+        description = "Read one source-text-free BlueTS provenance record from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id, generation and source_id are core-minted opaque handles returned after bluetsc_check and compiler metadata under that receipt. The result contains only a static module identity and labeled SHA-256 content digest, never source text, a filesystem path, a resolver, or a source-read capability."
     )]
     async fn debug_get_provenance(
         &self,

@@ -607,10 +607,20 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         );
         assert_eq!(result.is_error, Some(false));
         assert_source_free_compiler_tool_result(&result);
-        assert!(matches!(
-            compiler_tool_reply(&result),
-            blueice_ipc::compiler::CompilerReply::StaticProvenance(_)
-        ));
+        let blueice_ipc::compiler::CompilerReply::StaticProvenance(provenance) =
+            compiler_tool_reply(&result)
+        else {
+            panic!("source provenance query must return a static provenance record")
+        };
+        assert!(
+            provenance.content_hash.starts_with("bts-sha256:"),
+            "public MCP provenance must use the labeled SHA-256 format"
+        );
+        assert_eq!(
+            provenance.content_hash.len(),
+            "bts-sha256:".len() + 64,
+            "public MCP provenance digest must contain exactly 32 SHA-256 bytes"
+        );
     }
     for type_id in &type_ids {
         let result = compiler_tool!(

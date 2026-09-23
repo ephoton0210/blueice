@@ -331,7 +331,8 @@ pub struct CompilerStaticSymbol {
 }
 
 /// One source-text-free provenance record from an exact compilation. The
-/// module identity and hash are static metadata, not a source-read endpoint.
+/// module identity and labeled SHA-256 digest are static metadata, not a
+/// source-read endpoint.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompilerStaticProvenance {
     pub generation: CompilerGeneration,
@@ -423,8 +424,9 @@ pub enum CompilerRequest {
         cursor: Option<CompilerStaticMetadataCursor>,
         limit: Option<u32>,
     },
-    /// Gets a compiler-minted source hash and static module identity from one
-    /// exact successful generation. No source text crosses this request.
+    /// Gets a compiler-minted SHA-256 source digest and static module identity
+    /// from one exact successful generation. No source text crosses this
+    /// request.
     GetStaticProvenance {
         generation: CompilerGeneration,
         source_id: u32,

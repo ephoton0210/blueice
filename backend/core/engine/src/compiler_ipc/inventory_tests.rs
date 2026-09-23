@@ -171,6 +171,8 @@ fn adapter_exposes_only_exact_generation_contracts_and_source_hashes() {
     };
     assert_eq!(provenance.source_id, symbol.source_id);
     assert_ne!(provenance.content_hash, "Settings");
+    assert!(provenance.content_hash.starts_with("bts-sha256:"));
+    assert_eq!(provenance.content_hash.len(), "bts-sha256:".len() + 64);
 
     let CompilerReply::StaticContract(contract) =
         adapter.handle(CompilerRequest::GetStaticContract {

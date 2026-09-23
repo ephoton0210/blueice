@@ -499,6 +499,8 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
         panic!("real core must return only source-free provenance")
     };
     assert_ne!(provenance.content_hash, "CoreFixtureSettings");
+    assert!(provenance.content_hash.starts_with("bts-sha256:"));
+    assert_eq!(provenance.content_hash.len(), "bts-sha256:".len() + 64);
     blueice_ipc::compiler::write_compiler_request(
         &mut compiler,
         &blueice_ipc::compiler::CompilerRequest::GetStaticContract {

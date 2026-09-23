@@ -624,9 +624,9 @@ impl RegisteredProjectCompilerService {
             })
     }
 
-    /// Returns one compiler-minted source identity and content hash. This is
-    /// provenance metadata only: no method on this service reads the source
-    /// represented by the returned handle.
+    /// Returns one compiler-minted source identity and SHA-256 content digest.
+    /// This is provenance metadata only: no method on this service reads the
+    /// source represented by the returned handle.
     pub fn static_provenance(
         &self,
         generation: RegisteredProjectGeneration,
