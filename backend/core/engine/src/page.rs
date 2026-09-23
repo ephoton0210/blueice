@@ -480,6 +480,40 @@ impl Page {
         Ok(())
     }
 
+    /// Selects one real, enabled `<option>` for the extension protocol's
+    /// version-6 `dom:write` operation. Like radio selection, the extension
+    /// carries only a stable node ID: core derives the owning live `<select>`
+    /// and performs the whole single-select transition atomically. The first
+    /// slice intentionally does not approximate multiple-select or disabled
+    /// option-group semantics, so those controls are rejected rather than
+    /// partially changed.
+    pub(crate) fn select_option(&mut self, id: NodeId) -> Result<(), String> {
+        let select = extension_select_option_owner(&self.doc, id)?;
+        let mut options = Vec::new();
+        collect_extension_select_options(&self.doc, select, &mut options);
+        if !options.contains(&id) {
+            return Err("the live select options could not be resolved".to_string());
+        }
+
+        for option in options {
+            let NodeData::Element { attributes, .. } = self.doc.data_mut(option) else {
+                unreachable!("a collected select option remains an element");
+            };
+            if option == id {
+                if !attributes
+                    .iter()
+                    .any(|(attribute, _)| attribute.eq_ignore_ascii_case("selected"))
+                {
+                    attributes.push(("selected".to_string(), String::new()));
+                }
+            } else {
+                attributes.retain(|(attribute, _)| !attribute.eq_ignore_ascii_case("selected"));
+            }
+        }
+        self.relayout();
+        Ok(())
+    }
+
     /// Resolves an anchor's raw `href` using the current document URL.
     /// Test-only pages and built-in pages may have no usable hierarchical
     /// base; in that case preserve the raw target, so the session's normal
@@ -993,6 +1027,96 @@ fn collect_extension_radio_group_members(
     }
     for child in doc.children(node) {
         collect_extension_radio_group_members(doc, child, name, form_owner, members);
+    }
+}
+
+/// Resolves the single-select that owns an extension-selectable option. This
+/// intentionally models only the safe subset whose semantics core can own
+/// exactly: a live, enabled native select without `multiple`, and a live,
+/// enabled option not contained by a disabled optgroup. Form association does
+/// not alter selection membership, so it is intentionally not part of this
+/// local DOM transition.
+fn extension_select_option_owner(doc: &Document, id: NodeId) -> Result<NodeId, String> {
+    if !doc.contains(id) {
+        return Err(format!("unknown option node {}", id.as_u64()));
+    }
+    let NodeData::Element {
+        tag_name,
+        attributes,
+    } = doc.data(id)
+    else {
+        return Err(format!(
+            "node {} is not an enabled single-select option",
+            id.as_u64()
+        ));
+    };
+    let is_enabled_option = tag_name.eq_ignore_ascii_case("option")
+        && !attributes
+            .iter()
+            .any(|(attribute, _)| attribute.eq_ignore_ascii_case("disabled"));
+    let select = nearest_select_ancestor(doc, id);
+    let select_is_enabled_single = select.is_some_and(|select| {
+        matches!(
+            doc.data(select),
+            NodeData::Element {
+                tag_name,
+                attributes,
+            } if tag_name.eq_ignore_ascii_case("select")
+                && !attributes.iter().any(|(attribute, _)| {
+                    attribute.eq_ignore_ascii_case("disabled")
+                        || attribute.eq_ignore_ascii_case("multiple")
+                })
+        )
+    });
+    if !is_enabled_option || !select_is_enabled_single || has_disabled_optgroup_ancestor(doc, id) {
+        return Err(format!(
+            "node {} is not an enabled single-select option",
+            id.as_u64()
+        ));
+    }
+    Ok(select.expect("a checked enabled single select is present"))
+}
+
+fn nearest_select_ancestor(doc: &Document, id: NodeId) -> Option<NodeId> {
+    let mut ancestor = doc.parent(id);
+    while let Some(node) = ancestor {
+        if matches!(doc.data(node), NodeData::Element { tag_name, .. } if tag_name.eq_ignore_ascii_case("select"))
+        {
+            return Some(node);
+        }
+        ancestor = doc.parent(node);
+    }
+    None
+}
+
+fn has_disabled_optgroup_ancestor(doc: &Document, id: NodeId) -> bool {
+    let mut ancestor = doc.parent(id);
+    while let Some(node) = ancestor {
+        if let NodeData::Element {
+            tag_name,
+            attributes,
+        } = doc.data(node)
+        {
+            if tag_name.eq_ignore_ascii_case("optgroup")
+                && attributes
+                    .iter()
+                    .any(|(attribute, _)| attribute.eq_ignore_ascii_case("disabled"))
+            {
+                return true;
+            }
+        }
+        ancestor = doc.parent(node);
+    }
+    false
+}
+
+fn collect_extension_select_options(doc: &Document, node: NodeId, options: &mut Vec<NodeId>) {
+    if matches!(doc.data(node), NodeData::Element { tag_name, .. } if tag_name.eq_ignore_ascii_case("option"))
+    {
+        options.push(node);
+    }
+    for child in doc.children(node) {
+        collect_extension_select_options(doc, child, options);
     }
 }
 
@@ -1545,6 +1669,52 @@ mod tests {
         assert!(page.set_radio_checked(external).is_err());
         assert!(page.set_radio_checked(other).is_err());
         assert!(page.set_radio_checked(NodeId::from_u64(9_999)).is_err());
+    }
+
+    #[test]
+    fn extension_select_option_selects_only_an_enabled_live_single_select_choice() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"
+                <label for="priority">Priority</label>
+                <select id="priority">
+                  <option id="first" selected>First</option>
+                  <option id="second">Second</option>
+                  <option id="disabled" disabled>Disabled</option>
+                  <optgroup label="Locked" disabled><option id="locked">Locked</option></optgroup>
+                </select>
+                <select id="multiple" multiple><option id="many">Many</option></select>
+                <select id="disabled-select" disabled><option id="disabled-owner">Disabled owner</option></select>
+                <div id="other"></div>
+            "#,
+            None,
+        );
+        let first = page.script_get_element_by_id("first").unwrap();
+        let second = page.script_get_element_by_id("second").unwrap();
+        let disabled = page.script_get_element_by_id("disabled").unwrap();
+        let locked = page.script_get_element_by_id("locked").unwrap();
+        let many = page.script_get_element_by_id("many").unwrap();
+        let disabled_owner = page.script_get_element_by_id("disabled-owner").unwrap();
+        let other = page.script_get_element_by_id("other").unwrap();
+
+        page.select_option(second).unwrap();
+        let snapshot = page.snapshot(1, 1);
+        let selected = |id: NodeId| {
+            snapshot
+                .nodes
+                .iter()
+                .find(|node| node.id == id.as_u64())
+                .map(|node| node.state.selected)
+        };
+        assert_eq!(selected(first), Some(false));
+        assert_eq!(selected(second), Some(true));
+
+        assert!(page.select_option(disabled).is_err());
+        assert!(page.select_option(locked).is_err());
+        assert!(page.select_option(many).is_err());
+        assert!(page.select_option(disabled_owner).is_err());
+        assert!(page.select_option(other).is_err());
+        assert!(page.select_option(NodeId::from_u64(9_999)).is_err());
     }
 
     #[test]

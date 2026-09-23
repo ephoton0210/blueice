@@ -206,6 +206,15 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
     linker
         .func_wrap(
             "blueice",
+            "select_option",
+            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, node_id: i64| {
+                select_option(&mut caller, tab_id, node_id)
+            },
+        )
+        .map_err(|error| format!("could not define the select_option ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
             "set_textarea_value",
             |mut caller: Caller<'_, RuntimeState>,
              tab_id: i64,
@@ -355,6 +364,19 @@ fn set_radio_checked(caller: &mut Caller<'_, RuntimeState>, tab_id: i64, node_id
     }
 }
 
+/// Selects one live option through the version-6 `dom:write` operation. The
+/// guest supplies no select owner, peer list, or selected Boolean: core
+/// validates the option and derives the single-select transition itself.
+fn select_option(caller: &mut Caller<'_, RuntimeState>, tab_id: i64, node_id: i64) -> i32 {
+    let (Ok(tab_id), Ok(node_id)) = (stable_id(tab_id), stable_id(node_id)) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(caller, ExtensionRequest::SelectOption { tab_id, node_id }) {
+        Ok(ExtensionReply::DomWriteAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
 fn set_textarea_value(
     caller: &mut Caller<'_, RuntimeState>,
     tab_id: i64,
@@ -495,6 +517,7 @@ mod tests {
                 (import "blueice" "set_text_input_value" (func $text (param i64 i64 i32 i32) (result i32)))
                 (import "blueice" "set_checkbox_checked" (func $checkbox (param i64 i64 i32) (result i32)))
                 (import "blueice" "set_radio_checked" (func $radio (param i64 i64) (result i32)))
+                (import "blueice" "select_option" (func $select (param i64 i64) (result i32)))
                 (import "blueice" "set_textarea_value" (func $textarea (param i64 i64 i32 i32) (result i32)))
                 (memory (export "memory") 1)
                 (data (i32.const 0) "BlueIce")
@@ -518,6 +541,10 @@ mod tests {
                     i64.const 7
                     i64.const 15
                     call $radio
+                    drop
+                    i64.const 7
+                    i64.const 16
+                    call $select
                     drop
                     i64.const 7
                     i64.const 14
@@ -564,6 +591,15 @@ mod tests {
                 ExtensionRequest::SetRadioChecked {
                     tab_id: 7,
                     node_id: 15,
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::DomWriteAck)
+                .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::SelectOption {
+                    tab_id: 7,
+                    node_id: 16,
                 }
             );
             blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::DomWriteAck)

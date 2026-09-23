@@ -165,6 +165,12 @@ pub enum ExtensionRequest {
     /// members with native-radio semantics. The request cannot supply a group
     /// name, form owner, or arbitrary attribute mutation.
     SetRadioChecked { tab_id: u64, node_id: u64 },
+    /// Version 6 of `dom:write`: selects one enabled option belonging to an
+    /// enabled native single-select. The extension supplies only the live
+    /// option ID: core derives its owning select and clears the select's other
+    /// options. Multiple-select controls and disabled options/groups are not
+    /// part of this deliberately narrow first operation.
+    SelectOption { tab_id: u64, node_id: u64 },
     /// Version 2 of `network:intercept`: install one declarative rule that
     /// blocks a navigation only when its canonical initial HTTP(S) URL exactly
     /// equals `url`. The rule is connection-scoped in core, so it disappears
@@ -420,6 +426,10 @@ mod tests {
             ExtensionRequest::SetRadioChecked {
                 tab_id: 42,
                 node_id: 102,
+            },
+            ExtensionRequest::SelectOption {
+                tab_id: 42,
+                node_id: 103,
             },
             ExtensionRequest::RegisterNetworkBlockUrl {
                 url: "https://example.test/private".to_string(),

@@ -170,9 +170,9 @@ impl ExtensionRegistry {
     pub fn with_supported_capabilities() -> Self {
         let mut registry = Self::new();
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
-        let v1_to_v5 = CapabilityVersionWindow::new(1, 5).expect("literal version window is valid");
+        let v1_to_v6 = CapabilityVersionWindow::new(1, 6).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
-        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v5);
+        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v6);
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v2);
         registry
     }
@@ -455,6 +455,36 @@ pub struct ExtensionConnectionAuthentication<'a> {
     runtime_events: Option<Arc<Mutex<mpsc::Receiver<ExtensionRuntimeEvent>>>>,
 }
 
+/// Core-owned delegates for one authenticated extension connection. Bundling
+/// the four protocol effects keeps the long-lived connection handler's
+/// authority surface explicit without growing its public argument list every
+/// time a new, independently reviewed operation is added.
+pub struct ExtensionActionDelegates<R, W, N, B> {
+    read_dom: R,
+    write_dom: W,
+    register_network_intercept: N,
+    register_network_block_url: B,
+}
+
+impl<R, W, N, B> ExtensionActionDelegates<R, W, N, B> {
+    /// Creates the complete delegate bundle for one connection. Each closure
+    /// is still invoked only after the handler's normal capability, version,
+    /// and (where required) gatekeeper checks.
+    pub fn new(
+        read_dom: R,
+        write_dom: W,
+        register_network_intercept: N,
+        register_network_block_url: B,
+    ) -> Self {
+        Self {
+            read_dom,
+            write_dom,
+            register_network_intercept,
+            register_network_block_url,
+        }
+    }
+}
+
 impl<'a> ExtensionConnectionAuthentication<'a> {
     /// Allows the documented bearer-claim development protocol.
     pub const fn unauthenticated() -> Self {
@@ -569,15 +599,12 @@ where
         gatekeeper_socket,
         stream,
         authentication,
-        read_dom,
-        write_dom,
-        register_network_intercept,
-        |_| {
+        ExtensionActionDelegates::new(read_dom, write_dom, register_network_intercept, |_| {
             Err(
                 "network:intercept version 2 needs a core-backed declarative rule handler"
                     .to_string(),
             )
-        },
+        }),
     )
 }
 
@@ -596,10 +623,7 @@ pub fn handle_extension_connection_with_actions_and_authentication_and_network_r
     gatekeeper_socket: &Path,
     stream: &mut S,
     authentication: ExtensionConnectionAuthentication<'_>,
-    mut read_dom: R,
-    mut write_dom: W,
-    mut register_network_intercept: N,
-    mut register_network_block_url: B,
+    delegates: ExtensionActionDelegates<R, W, N, B>,
 ) -> io::Result<()>
 where
     S: Read + Write,
@@ -612,6 +636,12 @@ where
     N: FnMut() -> Result<(), String>,
     B: FnMut(String) -> Result<(), String>,
 {
+    let ExtensionActionDelegates {
+        mut read_dom,
+        mut write_dom,
+        mut register_network_intercept,
+        mut register_network_block_url,
+    } = delegates;
     let mut identity = match read_extension_request(stream) {
         Ok(request) => match authenticated_hello(authentication.expected(), request) {
             Some((extension_id, capability_versions)) => {
@@ -1104,6 +1134,66 @@ where
                     }
                 }
             }
+            ExtensionRequest::SelectOption { tab_id, node_id } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE, 6)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_DOM_WRITE.to_string(),
+                            reason,
+                        },
+                    )?;
+                    continue;
+                }
+                // Version 6 deliberately represents only selection of one
+                // option. The extension cannot nominate an owning select,
+                // clear a particular peer, or classify its own target for
+                // review; core derives all of that from live DOM state.
+                match check_extension_action(
+                    gatekeeper_socket,
+                    &identity.extension_id,
+                    CAPABILITY_DOM_WRITE,
+                    "action=select-option".to_string(),
+                ) {
+                    Ok(GatekeeperReply::Cleared) => {
+                        let target = blueice_ipc::extension::DomWriteTarget::FormInput {
+                            input_type: "select".to_string(),
+                        };
+                        match write_dom(Some((tab_id, node_id)), "true".to_string(), &target) {
+                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
+                            Err(reason) => write_extension_reply(
+                                stream,
+                                &ExtensionReply::OperationUnavailable {
+                                    capability: CAPABILITY_DOM_WRITE.to_string(),
+                                    reason,
+                                },
+                            )?,
+                        }
+                    }
+                    Ok(GatekeeperReply::Rejected { reason, category }) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_DOM_WRITE.to_string(),
+                                reason,
+                                category,
+                            },
+                        )?;
+                    }
+                    Err(reason) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_DOM_WRITE.to_string(),
+                                reason,
+                                category: "gatekeeper-unavailable".to_string(),
+                            },
+                        )?;
+                    }
+                }
+            }
             ExtensionRequest::RegisterNetworkBlockUrl { url } => {
                 if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 2)
@@ -1348,6 +1438,14 @@ mod tests {
         ExtensionReply::HelloAck {
             unsupported_capabilities: BTreeMap::new(),
         }
+    }
+
+    fn unused_write_delegate(
+        _: Option<(u64, u64)>,
+        _: String,
+        _: &DomWriteTarget,
+    ) -> Result<(), String> {
+        Ok(())
     }
 
     #[test]
@@ -1757,6 +1855,117 @@ mod tests {
             }
         );
         let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v6_select_option_is_reviewed_and_delegated_without_select_metadata() {
+        let registry = registry_with_dom_write_granted();
+        let (gatekeeper_socket, gatekeeper) =
+            start_gatekeeper("clear-v6-select-option", GatekeeperReply::Cleared);
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                &socket_for_handler,
+                &mut server,
+                |_| Ok("unused in this test".to_string()),
+                move |target, value, write_target| {
+                    seen_tx.send((target, value, write_target.clone())).unwrap();
+                    Ok(())
+                },
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 6)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SelectOption {
+                tab_id: 7,
+                node_id: 16,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomWriteAck
+        );
+        assert_eq!(
+            seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            (
+                Some((7, 16)),
+                "true".to_string(),
+                DomWriteTarget::FormInput {
+                    input_type: "select".to_string()
+                }
+            )
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_DOM_WRITE.to_string(),
+                detail: "action=select-option".to_string(),
+            }
+        );
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v6_select_option_is_denied_after_a_v5_handshake_before_review_or_delegate() {
+        let registry = registry_with_dom_write_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                Path::new("/not-reached-for-v5-select-version-denial.sock"),
+                &mut server,
+                |_| Ok("unused in this test".to_string()),
+                |_, _, _| panic!("a v5 connection must not delegate a v6 select request"),
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 5)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SelectOption {
+                tab_id: 1,
+                node_id: 2,
+            },
+        )
+        .unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, reason } => {
+                assert_eq!(capability, CAPABILITY_DOM_WRITE);
+                assert!(reason.contains("requires version 6"));
+            }
+            other => panic!("expected a v6 version denial, got {other:?}"),
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
     }
 
     #[test]
@@ -2254,13 +2463,15 @@ mod tests {
                 &socket_for_handler,
                 &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
-                |_| Ok("unused in this test".to_string()),
-                |_, _, _| Ok(()),
-                || Ok(()),
-                move |url| {
-                    seen_tx.send(url).unwrap();
-                    Ok(())
-                },
+                ExtensionActionDelegates::new(
+                    |_| Ok("unused in this test".to_string()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    move |url| {
+                        seen_tx.send(url).unwrap();
+                        Ok(())
+                    },
+                ),
             )
         });
 
@@ -2315,10 +2526,12 @@ mod tests {
                 Path::new("/not-reached-for-v1-network-block-version-denial.sock"),
                 &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
-                |_| Ok("unused in this test".to_string()),
-                |_, _, _| Ok(()),
-                || Ok(()),
-                |_| panic!("a v1 connection must not install a v2 network rule"),
+                ExtensionActionDelegates::new(
+                    |_| Ok("unused in this test".to_string()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_| panic!("a v1 connection must not install a v2 network rule"),
+                ),
             )
         });
 
@@ -2363,10 +2576,12 @@ mod tests {
                 Path::new("/not-reached-for-oversized-network-rule.sock"),
                 &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
-                |_| Ok("unused in this test".to_string()),
-                |_, _, _| Ok(()),
-                || Ok(()),
-                |_| panic!("an oversized network rule must not reach core"),
+                ExtensionActionDelegates::new(
+                    |_| Ok("unused in this test".to_string()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_| panic!("an oversized network rule must not reach core"),
+                ),
             )
         });
 

@@ -90,7 +90,7 @@ pub trait ReadTimeout {
 /// the render pipeline.
 ///
 /// DOM version 1 requests leave `tab_id` absent and therefore preserve the
-/// default-tab behavior. DOM versions 2 through 4 carry an explicit tab and a
+/// default-tab behavior. DOM versions 2 through 6 carry an explicit tab and a
 /// stable control node ID for their narrow write operations. The separately
 /// versioned network rule carries no page target. The session validates each
 /// operation against its live `TabManager`/`Page` state before changing it.
@@ -120,6 +120,13 @@ pub enum ExtensionPageRequest {
     /// Selects one explicit radio while core owns the group-membership and
     /// mutual-exclusion semantics.
     SetRadioChecked {
+        tab_id: u64,
+        node_id: u64,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Selects one explicit option while core owns the live single-select
+    /// validation and the corresponding sibling deselection.
+    SelectOption {
         tab_id: u64,
         node_id: u64,
         reply: mpsc::Sender<Result<(), String>>,
@@ -1030,6 +1037,37 @@ fn handle_extension_page_request<S: Write>(
                 // A selected radio can clear other controls in its core-owned
                 // group, so publish one post-mutation input/change pair and a
                 // single shared frame after the entire group update.
+                let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "input");
+                let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "change");
+                let page = tabs
+                    .get_mut(tab_id)
+                    .expect("a checked extension target tab remains live");
+                send_frame(
+                    page,
+                    stream,
+                    frame_dir,
+                    generation,
+                    Some(tab_id.as_u64()),
+                    None,
+                )?;
+            }
+            let _ = reply.send(result);
+        }
+        ExtensionPageRequest::SelectOption {
+            tab_id,
+            node_id,
+            reply,
+        } => {
+            let tab_id = TabId::from_u64(tab_id);
+            let node_id = NodeId::from_u64(node_id);
+            let result = match tabs.get_mut(tab_id) {
+                Some(page) => page.select_option(node_id),
+                None => Err(format!("unknown tab {}", tab_id.as_u64())),
+            };
+            if result.is_ok() {
+                // A single-select transition can clear another option, so
+                // dispatch one input/change pair and publish one post-update
+                // frame only after core has completed the whole group change.
                 let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "input");
                 let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "change");
                 let page = tabs

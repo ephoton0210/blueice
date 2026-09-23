@@ -23,8 +23,8 @@ use blueice_engine::session::ExtensionPageRequest;
 use blueice_engine::{session, HistorySnapshotMode, TabManager};
 use blueice_extension_host::{
     handle_extension_connection_with_actions_and_authentication_and_network_rules,
-    load_installed_extension, registry_for_installed_extension, ExtensionConnectionAuthentication,
-    ExtensionRegistry,
+    load_installed_extension, registry_for_installed_extension, ExtensionActionDelegates,
+    ExtensionConnectionAuthentication, ExtensionRegistry,
 };
 use blueice_ipc::extension::ExtensionRuntimeEvent;
 use std::io::Read;
@@ -300,6 +300,23 @@ fn request_radio_checked(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
 }
 
+fn request_select_option(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: u64,
+    node_id: u64,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::SelectOption {
+        tab_id,
+        node_id,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
 fn request_textarea_value(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     tab_id: u64,
@@ -396,45 +413,54 @@ fn spawn_extension_listener(
                         &gatekeeper_socket,
                         &mut stream,
                         authentication,
-                        move |tab_id| request_tab_representation(&read_tx, tab_id),
-                        move |target, value, write_target| {
-                            match target {
-                        Some((tab_id, node_id)) => match write_target {
-                            blueice_ipc::extension::DomWriteTarget::FormInput { input_type }
-                                if input_type.eq_ignore_ascii_case("checkbox") =>
-                            {
-                                request_checkbox_checked(
-                                    &write_tx,
-                                    tab_id,
-                                    node_id,
-                                    value == "true",
+                        ExtensionActionDelegates::new(
+                            move |tab_id| request_tab_representation(&read_tx, tab_id),
+                            move |target,
+                                  value,
+                                  write_target: &blueice_ipc::extension::DomWriteTarget| {
+                                match target {
+                                Some((tab_id, node_id)) => match write_target {
+                                    blueice_ipc::extension::DomWriteTarget::FormInput {
+                                        input_type,
+                                    } if input_type.eq_ignore_ascii_case("checkbox") => {
+                                        request_checkbox_checked(
+                                            &write_tx,
+                                            tab_id,
+                                            node_id,
+                                            value == "true",
+                                        )
+                                    }
+                                    blueice_ipc::extension::DomWriteTarget::FormInput {
+                                        input_type,
+                                    } if input_type.eq_ignore_ascii_case("radio") => {
+                                        request_radio_checked(&write_tx, tab_id, node_id)
+                                    }
+                                    blueice_ipc::extension::DomWriteTarget::FormInput {
+                                        input_type,
+                                    } if input_type.eq_ignore_ascii_case("select") => {
+                                        request_select_option(&write_tx, tab_id, node_id)
+                                    }
+                                    blueice_ipc::extension::DomWriteTarget::FormInput {
+                                        input_type,
+                                    } if input_type.eq_ignore_ascii_case("textarea") => {
+                                        request_textarea_value(&write_tx, tab_id, node_id, value)
+                                    }
+                                    _ => request_text_input_value(&write_tx, tab_id, node_id, value),
+                                },
+                                None => Err(
+                                    "core-backed legacy dom:write has no stable target node; negotiate dom:write version 2 or 3 and use an explicit control operation"
+                                        .to_string(),
+                                ),
+                            }
+                            },
+                            || {
+                                Err(
+                                    "core-backed network:intercept needs a declarative rule format; the current extension wire protocol does not carry one"
+                                        .to_string(),
                                 )
-                            }
-                            blueice_ipc::extension::DomWriteTarget::FormInput { input_type }
-                                if input_type.eq_ignore_ascii_case("radio") =>
-                            {
-                                request_radio_checked(&write_tx, tab_id, node_id)
-                            }
-                            blueice_ipc::extension::DomWriteTarget::FormInput { input_type }
-                                if input_type.eq_ignore_ascii_case("textarea") =>
-                            {
-                                request_textarea_value(&write_tx, tab_id, node_id, value)
-                            }
-                            _ => request_text_input_value(&write_tx, tab_id, node_id, value),
-                        },
-                        None => Err(
-                            "core-backed legacy dom:write has no stable target node; negotiate dom:write version 2 or 3 and use an explicit control operation"
-                                .to_string(),
+                            },
+                            move |url| request_network_block_url(&rule_tx, connection_id, url),
                         ),
-                    }
-                        },
-                        || {
-                            Err(
-                            "core-backed network:intercept needs a declarative rule format; the current extension wire protocol does not carry one"
-                                .to_string(),
-                        )
-                        },
-                        move |url| request_network_block_url(&rule_tx, connection_id, url),
                     );
                 clear_network_block_urls(&request_tx, connection_id);
             });

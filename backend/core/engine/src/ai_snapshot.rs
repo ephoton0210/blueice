@@ -149,6 +149,8 @@ fn infer_role(tag: &str, attributes: &[(String, String)]) -> Option<Role> {
             _ => Role::TextBox,
         }),
         "textarea" => Some(Role::TextBox),
+        "select" => Some(Role::ComboBox),
+        "option" => Some(Role::Option),
         "ul" | "ol" => Some(Role::List),
         "li" => Some(Role::ListItem),
         "p" => Some(Role::Paragraph),
@@ -181,7 +183,7 @@ fn compute_name(
             None => (None, None),
         };
     }
-    if matches!(tag, "input" | "textarea") {
+    if matches!(tag, "input" | "textarea" | "select") {
         if let Some(id_attr) = attr(attributes, "id") {
             if let Some(label_text) = find_label_text_for(doc, id_attr) {
                 return (Some(label_text), Some(NameFrom::Contents));
@@ -467,6 +469,24 @@ mod tests {
         let node = find(&snap.nodes, "Agree");
         assert_eq!(node.role, Role::CheckBox);
         assert_eq!(node.state.checked, Some(true));
+    }
+
+    #[test]
+    fn a_native_select_and_its_options_are_addressable_with_selected_state() {
+        let page = page_with(
+            r#"<label for="priority">Priority</label><select id="priority"><option selected>First</option><option>Second</option></select>"#,
+        );
+        let snap = build(&page, 0, 1);
+        let select = find(&snap.nodes, "Priority");
+        let first = find(&snap.nodes, "First");
+        let second = find(&snap.nodes, "Second");
+        assert_eq!(select.role, Role::ComboBox);
+        assert_eq!(first.role, Role::Option);
+        assert_eq!(second.role, Role::Option);
+        assert_eq!(first.parent, Some(select.id));
+        assert_eq!(second.parent, Some(select.id));
+        assert!(first.state.selected);
+        assert!(!second.state.selected);
     }
 
     #[test]

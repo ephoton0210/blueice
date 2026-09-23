@@ -99,6 +99,13 @@ pub enum Role {
     Button,
     TextBox,
     CheckBox,
+    /// A native single- or multiple-choice select control. Its visible
+    /// options are represented as [`Self::Option`] children when they have
+    /// layout fragments, so a capability-constrained extension can address a
+    /// live choice through the same stable-ID representation it reads.
+    ComboBox,
+    /// One native `<option>` inside a represented select control.
+    Option,
     List,
     ListItem,
     Paragraph,
