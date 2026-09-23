@@ -1491,8 +1491,7 @@ impl Vm {
         construct: bool,
         target: Value,
     ) -> Result<Value, RuntimeError> {
-        // Nested calls recurse through the native stack; refuse before it can
-        // overflow (see `completion::CALL_STACK_RED_ZONE`).
+        // Refuse before the native stack can overflow (see `CALL_STACK_RED_ZONE`).
         if call_stack_exhausted(native_stack::remaining_stack(), self.call_depth) {
             return Err(RuntimeError::RangeError(
                 "maximum call depth exceeded".into(),

@@ -194,7 +194,7 @@ pub(crate) enum CharacterClassEscape {
 }
 
 impl CharacterClassEscape {
-    pub(crate) fn from_unit(unit: u16) -> Option<Self> {
+    fn from_unit(unit: u16) -> Option<Self> {
         Some(match unit {
             0x64 => Self::Digit,
             0x44 => Self::NonDigit,

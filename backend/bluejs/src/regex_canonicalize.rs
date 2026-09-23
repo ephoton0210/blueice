@@ -380,6 +380,18 @@ fn group(points: &[u32], at: usize, out: &mut Vec<u32>) -> Option<usize> {
     Some(end)
 }
 
+/// The class an escape letter names; the caller has already matched the letter.
+fn class_escape(letter: char) -> CharacterClassEscape {
+    match letter {
+        'd' => CharacterClassEscape::Digit,
+        'D' => CharacterClassEscape::NonDigit,
+        's' => CharacterClassEscape::Whitespace,
+        'S' => CharacterClassEscape::NonWhitespace,
+        'w' => CharacterClassEscape::Word,
+        _ => CharacterClassEscape::NonWord,
+    }
+}
+
 /// One member of a class, read at `*index`.
 fn class_atom(points: &[u32], index: &mut usize, named: bool) -> Option<Atom> {
     let point = *points.get(*index)?;
@@ -390,12 +402,9 @@ fn class_atom(points: &[u32], index: &mut usize, named: bool) -> Option<Atom> {
     let escaped = *points.get(*index + 1)?;
     let next = *index + 2;
     let (atom, end) = match ascii_char(escaped) {
-        Some('d' | 'D' | 's' | 'S' | 'w' | 'W') => (
-            Atom::Escape(CharacterClassEscape::from_unit(
-                u16::try_from(escaped).ok()?,
-            )?),
-            next,
-        ),
+        Some(letter @ ('d' | 'D' | 's' | 'S' | 'w' | 'W')) => {
+            (Atom::Escape(class_escape(letter)), next)
+        }
         Some('b') => (Atom::Unit(0x08), next),
         Some('t') => (Atom::Unit(0x09), next),
         Some('n') => (Atom::Unit(0x0a), next),

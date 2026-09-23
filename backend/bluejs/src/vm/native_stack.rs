@@ -88,92 +88,89 @@ fn lowest_stack_address() -> Option<usize> {
 mod tests {
     use super::remaining_stack;
 
-    const SUPPORTED: bool = cfg!(any(target_os = "linux", target_os = "macos", windows));
-
-    // Some hosts count the guard page as part of the reported extent (macOS on
-    // Apple silicon reports about one 16 KiB page more than was requested), so
-    // "no more than the stack given" is only true to within a few pages. The
-    // call-depth guard's red zone is far larger than that.
-    const REPORTING_SLACK: usize = 64 * 1024;
-
-    fn on_thread_with_stack<R: Send + 'static>(
-        bytes: usize,
-        work: impl FnOnce() -> R + Send + 'static,
-    ) -> R {
-        std::thread::Builder::new()
-            .stack_size(bytes)
-            .spawn(work)
-            .expect("spawn")
-            .join()
-            .expect("join")
-    }
-
-    #[inline(never)]
-    fn remaining_below(frames: usize) -> usize {
-        let padding = [0u8; 4096];
-        std::hint::black_box(&padding);
-        let remaining = if frames == 0 {
-            remaining_stack().expect("supported platform")
-        } else {
-            remaining_below(frames - 1)
-        };
-        std::hint::black_box(&padding);
-        remaining
-    }
-
+    #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
     #[test]
-    fn reports_about_the_stack_the_thread_was_given() {
-        if !SUPPORTED {
-            assert_eq!(remaining_stack(), None);
-            return;
-        }
-        const STACK: usize = 1024 * 1024;
-        let remaining = on_thread_with_stack(STACK, || remaining_stack().expect("supported"));
-        assert!(
-            remaining <= STACK + REPORTING_SLACK,
-            "{remaining} bytes on a {STACK}-byte stack"
-        );
-        // Almost all of a freshly spawned thread's stack is still unused.
-        assert!(
-            remaining > STACK / 2,
-            "{remaining} bytes on a {STACK}-byte stack"
-        );
+    fn reports_nothing_where_the_host_has_no_query() {
+        assert_eq!(remaining_stack(), None);
     }
 
-    #[test]
-    fn shrinks_by_what_the_frames_in_between_use() {
-        if !SUPPORTED {
-            return;
-        }
-        let (shallow, deep) = on_thread_with_stack(4 * 1024 * 1024, || {
-            (remaining_below(0), remaining_below(100))
-        });
-        // 100 frames each holding a 4 KiB array: at least ~400 KB deeper.
-        assert!(
-            shallow >= deep + 100 * 4096 * 9 / 10,
-            "shallow {shallow}, deep {deep}"
-        );
-    }
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    mod with_a_host_query {
+        use super::remaining_stack;
 
-    #[test]
-    fn is_answered_per_thread() {
-        if !SUPPORTED {
-            return;
-        }
-        let small = on_thread_with_stack(256 * 1024, || remaining_stack().expect("supported"));
-        let large = on_thread_with_stack(8 * 1024 * 1024, || remaining_stack().expect("supported"));
-        assert!(small <= 256 * 1024 + REPORTING_SLACK, "{small}");
-        assert!(large > 1024 * 1024, "{large}");
-    }
+        // Some hosts count the guard page as part of the reported extent (macOS
+        // on Apple silicon reports about one 16 KiB page more than was
+        // requested), so "no more than the stack given" is only true to within
+        // a few pages. The call-depth guard's red zone is far larger than that.
+        const REPORTING_SLACK: usize = 64 * 1024;
 
-    #[test]
-    fn repeated_queries_on_one_thread_agree_to_within_a_frame() {
-        if !SUPPORTED {
-            return;
+        fn on_thread_with_stack<R: Send + 'static>(
+            bytes: usize,
+            work: impl FnOnce() -> R + Send + 'static,
+        ) -> R {
+            std::thread::Builder::new()
+                .stack_size(bytes)
+                .spawn(work)
+                .expect("spawn")
+                .join()
+                .expect("join")
         }
-        let (first, second) = on_thread_with_stack(1024 * 1024, || {
-            (remaining_stack().unwrap(), remaining_stack().unwrap())
-        });
-        assert!(first.abs_diff(second) < 4096, "{first} vs {second}");
+
+        #[inline(never)]
+        fn remaining_below(frames: usize) -> usize {
+            let padding = [0u8; 4096];
+            std::hint::black_box(&padding);
+            let remaining = if frames == 0 {
+                remaining_stack().expect("supported platform")
+            } else {
+                remaining_below(frames - 1)
+            };
+            std::hint::black_box(&padding);
+            remaining
+        }
+
+        #[test]
+        fn reports_about_the_stack_the_thread_was_given() {
+            const STACK: usize = 1024 * 1024;
+            let remaining = on_thread_with_stack(STACK, || remaining_stack().expect("supported"));
+            assert!(
+                remaining <= STACK + REPORTING_SLACK,
+                "{remaining} bytes on a {STACK}-byte stack"
+            );
+            // Almost all of a freshly spawned thread's stack is still unused.
+            assert!(
+                remaining > STACK / 2,
+                "{remaining} bytes on a {STACK}-byte stack"
+            );
+        }
+
+        #[test]
+        fn shrinks_by_what_the_frames_in_between_use() {
+            let (shallow, deep) = on_thread_with_stack(4 * 1024 * 1024, || {
+                (remaining_below(0), remaining_below(100))
+            });
+            // 100 frames each holding a 4 KiB array: at least ~400 KB deeper.
+            assert!(
+                shallow >= deep + 100 * 4096 * 9 / 10,
+                "shallow {shallow}, deep {deep}"
+            );
+        }
+
+        #[test]
+        fn is_answered_per_thread() {
+            let small = on_thread_with_stack(256 * 1024, || remaining_stack().expect("supported"));
+            let large =
+                on_thread_with_stack(8 * 1024 * 1024, || remaining_stack().expect("supported"));
+            assert!(small <= 256 * 1024 + REPORTING_SLACK, "{small}");
+            assert!(large > 1024 * 1024, "{large}");
+        }
+
+        #[test]
+        fn repeated_queries_on_one_thread_agree_to_within_a_frame() {
+            let (first, second) = on_thread_with_stack(1024 * 1024, || {
+                (remaining_stack().unwrap(), remaining_stack().unwrap())
+            });
+            assert!(first.abs_diff(second) < 4096, "{first} vs {second}");
+        }
     }
 }
