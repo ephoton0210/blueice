@@ -19,6 +19,7 @@ use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
 };
 use std::collections::BTreeMap;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -27,10 +28,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 fn unique_socket_path(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "blueice-extension-host-test-{label}-{}.sock",
-        std::process::id()
-    ))
+    blueice_ipc::local_socket::default_socket_dir()
+        .join(format!("ext-host-{label}-{}.sock", std::process::id()))
 }
 
 /// A pathname can exist just before a child process is able to accept it, so
@@ -86,6 +85,11 @@ impl ExtensionHost {
         assert!(
             wait_for(&socket, Duration::from_secs(5)),
             "blueice-extension-host never created its socket"
+        );
+        assert_eq!(
+            std::fs::metadata(&socket).unwrap().permissions().mode() & 0o777,
+            0o600,
+            "the standalone extension listener must not be connectable by another local user"
         );
         ExtensionHost { child, socket }
     }

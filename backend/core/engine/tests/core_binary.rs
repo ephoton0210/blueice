@@ -34,6 +34,14 @@ fn unique_socket_path(label: &str) -> PathBuf {
     ))
 }
 
+/// Extension listeners are intentionally bound only below a directory the
+/// current user owns. Keep these test paths short for Darwin's Unix-domain
+/// socket limit while exercising that same production invariant.
+fn unique_private_extension_socket_path(label: &str) -> PathBuf {
+    blueice_ipc::local_socket::default_socket_dir()
+        .join(format!("core-ext-{label}-{}.sock", std::process::id()))
+}
+
 /// A gated `Navigate`/`OpenTab{url}` sent to the real subprocess needs
 /// *some* `ai-gatekeeper` behind the `--gatekeeper-socket` path it's
 /// given -- a genuinely unreachable one fails closed
@@ -332,7 +340,7 @@ fn installed_extension_reads_a_real_core_owned_representation_over_private_socke
     use std::collections::BTreeMap;
 
     let core_socket = unique_socket_path("extension-core");
-    let extension_socket = unique_socket_path("extension-protocol");
+    let extension_socket = unique_private_extension_socket_path("read");
     let frame_dir = std::env::temp_dir().join(format!(
         "blueice-core-extension-frames-{}",
         std::process::id()
@@ -424,7 +432,7 @@ fn core_waits_for_its_spawned_extension_host_and_rejects_a_bearer_claim_peer() {
     // per-user temporary root; the PID in `unique_socket_path` keeps these
     // concise labels independent.
     let core_socket = unique_socket_path("aec");
-    let extension_socket = unique_socket_path("aep");
+    let extension_socket = unique_private_extension_socket_path("auth");
     let frame_dir = std::env::temp_dir().join(format!(
         "blueice-core-authenticated-extension-frames-{}",
         std::process::id()
@@ -466,6 +474,15 @@ fn core_waits_for_its_spawned_extension_host_and_rejects_a_bearer_claim_peer() {
         );
     }
     assert!(wait_for(&extension_socket, Duration::from_secs(5)));
+    assert_eq!(
+        std::fs::metadata(&extension_socket)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600,
+        "the core-owned extension listener must be private before any peer connects"
+    );
 
     let mut bearer_claim_peer = UnixStream::connect(&extension_socket).unwrap();
     bearer_claim_peer
@@ -505,7 +522,7 @@ fn installed_extension_v2_writes_an_explicit_text_input_after_gatekeeper_review(
     // macOS leaves little room below its long per-user temporary root; the
     // PID in `unique_socket_path` still keeps these concise leaves unique.
     let core_socket = unique_socket_path("ev2c");
-    let extension_socket = unique_socket_path("ev2e");
+    let extension_socket = unique_private_extension_socket_path("write");
     let frame_dir = std::env::temp_dir().join(format!(
         "blueice-core-extension-v2-frames-{}",
         std::process::id()

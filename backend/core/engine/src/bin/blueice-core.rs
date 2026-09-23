@@ -337,16 +337,16 @@ fn main() -> ExitCode {
                 }
             };
             if let Some(parent) = socket.parent() {
-                if let Err(error) = std::fs::create_dir_all(parent) {
+                if let Err(error) = blueice_ipc::local_socket::ensure_private_socket_dir(parent) {
                     eprintln!(
-                        "blueice-core: failed to create extension socket directory {}: {error}",
+                        "blueice-core: failed to prepare private extension socket directory {}: {error}",
                         parent.display()
                     );
                     return ExitCode::FAILURE;
                 }
             }
             let _ = std::fs::remove_file(socket);
-            let listener = match UnixListener::bind(socket) {
+            let listener = match blueice_ipc::local_socket::bind_private_listener(socket) {
                 Ok(listener) => listener,
                 Err(error) => {
                     eprintln!(

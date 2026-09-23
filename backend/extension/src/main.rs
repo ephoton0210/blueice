@@ -32,7 +32,7 @@ use blueice_ipc::extension::{
 };
 use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
 use std::collections::BTreeMap;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -124,9 +124,18 @@ fn serve(socket: PathBuf, gatekeeper_socket: PathBuf, manifest: Option<PathBuf>)
     // instead of exiting cleanly) makes bind() fail with AddrInUse even
     // though nothing is actually listening -- remove it first, same as
     // `blueice-core`'s and `blueice-ai-gatekeeper`'s own binaries do.
+    if let Some(parent) = socket.parent() {
+        if let Err(error) = blueice_ipc::local_socket::ensure_private_socket_dir(parent) {
+            eprintln!(
+                "blueice-extension-host: failed to prepare private socket directory {}: {error}",
+                parent.display()
+            );
+            return ExitCode::FAILURE;
+        }
+    }
     let _ = std::fs::remove_file(&socket);
 
-    let listener = match UnixListener::bind(&socket) {
+    let listener = match blueice_ipc::local_socket::bind_private_listener(&socket) {
         Ok(listener) => listener,
         Err(e) => {
             eprintln!(
