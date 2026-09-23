@@ -22,7 +22,8 @@ use blueice_ipc::debugger::{
     DebuggerErrorCode, DebuggerExecutionState, DebuggerMetadataCapability,
     DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
     DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataHandle,
-    DebuggerStaticMetadataSummary, DEBUGGER_PROTOCOL_VERSION,
+    DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSummary, DEBUGGER_PROTOCOL_VERSION,
+    DEBUGGER_STATIC_METADATA_MAX_SOURCES,
 };
 use std::io;
 use std::sync::mpsc;
@@ -239,6 +240,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         }
         DebuggerRequest::ListStaticMetadata { .. } => unavailable_static_metadata_inventory(),
         DebuggerRequest::DescribeStaticMetadata { .. } => unavailable_static_metadata_summary(),
+        DebuggerRequest::ListStaticMetadataSources { .. } => {
+            unavailable_static_metadata_source_inventory()
+        }
         DebuggerRequest::ListSafePoints { program } => {
             list_safe_points(tabs, javascript_executor.as_deref(), program)
         }
@@ -338,6 +342,9 @@ fn handle_debugger_request_with_child_locations(
         DebuggerRequest::DescribeStaticMetadata { metadata } => {
             describe_child_static_metadata(tabs, locations, metadata_session, metadata)
         }
+        DebuggerRequest::ListStaticMetadataSources { metadata } => {
+            list_child_static_metadata_sources(tabs, locations, metadata_session, metadata)
+        }
         DebuggerRequest::ListSafePoints { program } => {
             list_child_safe_points(tabs, locations, program)
         }
@@ -431,6 +438,11 @@ fn describe_child_location_capabilities(
         && metadata_session
             .is_some_and(|session| session.permits(DebuggerMetadataCapability::OpaqueSummary))
         && locations.debugger_static_metadata_summary_available();
+    let static_metadata_source_inventory_available = static_metadata_inventory_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueSourceInventory)
+        })
+        && locations.debugger_static_metadata_source_inventory_available();
     let max_breakpoints_per_realm = if breakpoint_configuration_available {
         locations.max_debugger_breakpoints_per_realm()
     } else {
@@ -445,6 +457,7 @@ fn describe_child_location_capabilities(
             execution_control_available,
             static_metadata_inventory_available,
             static_metadata_summary_available,
+            static_metadata_source_inventory_available,
         ),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -601,6 +614,88 @@ fn describe_child_static_metadata(
             }
             DebuggerReply::StaticMetadataSummary(summary)
         }
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn list_child_static_metadata_sources(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    metadata: DebuggerStaticMetadataHandle,
+) -> DebuggerReply {
+    if !metadata.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static metadata source inventory target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_source_inventory();
+    };
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory) {
+        return unavailable_static_metadata_source_inventory();
+    }
+    let capabilities = describe_child_location_capabilities(
+        tabs,
+        locations,
+        Some(metadata_session),
+        metadata.program.realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        // Preserve the same stale/invalid realm outcome as the parent
+        // inventory and sibling summary paths. This still occurs before any
+        // child source-record access or source-ID disclosure.
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueSourceInventory,
+    ) else {
+        return unavailable_static_metadata_source_inventory();
+    };
+    if !authorization.permits(
+        metadata.program.realm,
+        DebuggerMetadataCapability::OpaqueSourceInventory,
+    ) {
+        return unavailable_static_metadata_source_inventory();
+    }
+    let tab_id = match resolve_live_realm(tabs, metadata.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    match locations.debugger_static_metadata_sources(
+        tab_id,
+        metadata.program.realm.realm_generation,
+        metadata.program.program_handle,
+        metadata.program.program_generation,
+        metadata.metadata_handle,
+        metadata.metadata_generation,
+    ) {
+        Ok(sources)
+            if sources.len() <= usize::try_from(DEBUGGER_STATIC_METADATA_MAX_SOURCES).unwrap() =>
+        {
+            let mut seen = std::collections::BTreeSet::new();
+            let mut result = Vec::with_capacity(sources.len());
+            for source in sources {
+                if !seen.insert(source.source_id) {
+                    return DebuggerReply::Error {
+                        code: DebuggerErrorCode::InvalidTarget,
+                        message: "duplicate debugger static metadata source identity".to_string(),
+                    };
+                }
+                result.push(DebuggerStaticMetadataSourceId {
+                    metadata,
+                    source_id: source.source_id,
+                });
+            }
+            DebuggerReply::StaticMetadataSources(result)
+        }
+        Ok(_) => DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            message: "debugger static metadata source inventory exceeds its fixed limit"
+                .to_string(),
+        },
         Err(error) => debugger_program_error(error),
     }
 }
@@ -933,6 +1028,7 @@ fn describe_capabilities(
             program_locations_available,
             program_locations_available,
             entry_execution_control_available,
+            false,
             false,
             false,
         ),
@@ -1344,6 +1440,14 @@ fn unavailable_static_metadata_summary() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_source_inventory() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "opaque debugger static metadata source inventory is not authorized for this session and live realm"
+            .to_string(),
+    }
+}
+
 fn unavailable_execution_control() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -1427,6 +1531,7 @@ fn capability_reports(
     entry_execution_control_available: bool,
     static_metadata_inventory_available: bool,
     static_metadata_summary_available: bool,
+    static_metadata_source_inventory_available: bool,
 ) -> Vec<DebuggerCapabilityReport> {
     [
         (
@@ -1532,6 +1637,19 @@ fn capability_reports(
                 "static metadata summaries require explicit inventory and summary session grants plus a live BlueTS child program"
             },
         ),
+        (
+            DebuggerCapability::StaticMetadataSourceInventory,
+            if static_metadata_source_inventory_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_source_inventory_available {
+                "bounded opaque static-metadata source identities are installed; source details remain unreadable"
+            } else {
+                "static metadata source identities require explicit inventory and source-inventory session grants plus a live BlueTS child program"
+            },
+        ),
     ]
     .into_iter()
     .map(|(capability, state, detail)| DebuggerCapabilityReport {
@@ -1564,6 +1682,10 @@ mod tests {
         }
 
         fn debugger_static_metadata_summary_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_source_inventory_available(&self) -> bool {
             true
         }
 
@@ -1628,6 +1750,28 @@ mod tests {
                     contract_count: 4,
                 },
             )
+        }
+
+        fn debugger_static_metadata_sources(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+            metadata_handle: u64,
+            metadata_generation: u64,
+        ) -> Result<
+            Vec<crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSourceId>,
+            JavaScriptPageDebuggerError,
+        > {
+            if metadata_handle != 41 || metadata_generation != 9 {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            Ok(vec![
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSourceId {
+                    source_id: 0,
+                },
+            ])
         }
 
         fn debugger_safe_points(
@@ -1817,6 +1961,58 @@ mod tests {
                 DebuggerRequest::DescribeStaticMetadata { metadata },
             ),
             unavailable_static_metadata_summary()
+        );
+
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&metadata_session),
+                DebuggerRequest::ListStaticMetadataSources { metadata },
+            ),
+            unavailable_static_metadata_source_inventory()
+        );
+
+        let source_inventory_hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_inventory(),
+        };
+        let source_inventory_hello_reply = blueice_ipc::debugger::negotiate(
+            &source_inventory_hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_inventory(),
+        );
+        let source_inventory_session = blueice_ipc::debugger::metadata_session_authorization(
+            &source_inventory_hello,
+            &source_inventory_hello_reply,
+        )
+        .expect("dependent source inventory policy must create a core-local session authorization");
+        let source_inventory_capabilities = handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&source_inventory_session),
+            DebuggerRequest::DescribeCapabilities { realm },
+        );
+        let DebuggerReply::Capabilities(source_inventory_capabilities) =
+            source_inventory_capabilities
+        else {
+            panic!("live realm source inventory capability discovery must succeed")
+        };
+        assert!(source_inventory_capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataSourceInventory
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&source_inventory_session),
+                DebuggerRequest::ListStaticMetadataSources { metadata },
+            ),
+            DebuggerReply::StaticMetadataSources(vec![DebuggerStaticMetadataSourceId {
+                metadata,
+                source_id: 0,
+            }])
         );
 
         let summary_hello = DebuggerRequest::Hello {

@@ -74,13 +74,14 @@ struct LauncherProcess {
 
 impl LauncherProcess {
     fn spawn(gatekeeper_socket: &Path) -> Self {
-        Self::spawn_with_static_metadata_policy(gatekeeper_socket, false, false)
+        Self::spawn_with_static_metadata_policy(gatekeeper_socket, false, false, false)
     }
 
     fn spawn_with_static_metadata_policy(
         gatekeeper_socket: &Path,
         static_metadata_inventory: bool,
         static_metadata_summary: bool,
+        static_metadata_source_inventory: bool,
     ) -> Self {
         let rendezvous_socket = unique_path("rendezvous");
         let control_socket = unique_path("control");
@@ -114,6 +115,9 @@ impl LauncherProcess {
         }
         if static_metadata_summary {
             command.arg("--debugger-static-metadata-summary");
+        }
+        if static_metadata_source_inventory {
+            command.arg("--debugger-static-metadata-source-inventory");
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
@@ -522,13 +526,13 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
 }
 
 #[test]
-fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_summary_after_negotiation() {
+fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotiation() {
     let gatekeeper_socket = clearing_gatekeeper();
     let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
     let url = format!("http://{}", listener.local_addr().unwrap());
     let fixture = serve_two_bluets_documents(listener);
     let mut launcher =
-        LauncherProcess::spawn_with_static_metadata_policy(&gatekeeper_socket, true, true);
+        LauncherProcess::spawn_with_static_metadata_policy(&gatekeeper_socket, true, true, true);
 
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
@@ -541,13 +545,14 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_summary_after
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
-                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_summary(
-                ),
+                requested_metadata_capabilities:
+                    DebuggerMetadataCapabilityManifest::opaque_summary_and_source_inventory(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
-            granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_summary(),
+            granted_metadata_capabilities:
+                DebuggerMetadataCapabilityManifest::opaque_summary_and_source_inventory(),
         }
     );
     let realm = one_realm(debugger_request(
@@ -566,6 +571,11 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_summary_after
     }));
     assert!(capabilities.reports.iter().any(|report| {
         report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSummary
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability
+            == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSourceInventory
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
     let DebuggerReply::Programs(programs) =
@@ -626,6 +636,28 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_summary_after
             && !format!("{summary:?}").contains("number"),
         "public summary must not contain a BlueTS metadata record payload"
     );
+    let source_inventory_reply = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSources {
+            metadata: typed_metadata,
+        },
+    );
+    let DebuggerReply::StaticMetadataSources(sources) = source_inventory_reply else {
+        panic!("expected bounded public static metadata source-record IDs")
+    };
+    assert_eq!(
+        sources.len(),
+        usize::try_from(summary.source_count).unwrap()
+    );
+    assert!(sources
+        .iter()
+        .all(|source| source.metadata == typed_metadata));
+    assert!(
+        !format!("{sources:?}").contains("privateBlueTsMetadata")
+            && !format!("{sources:?}").contains("inline-0.ts")
+            && !format!("{sources:?}").contains("number"),
+        "public source IDs must not contain source or compiler-record payload"
+    );
 
     navigate(&mut browser, &url);
     fixture
@@ -636,6 +668,18 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_summary_after
             &mut debugger,
             DebuggerRequest::ListStaticMetadata {
                 program: typed_metadata.program,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadataSources {
+                metadata: typed_metadata,
             },
         ),
         DebuggerReply::Error {

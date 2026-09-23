@@ -74,6 +74,9 @@ struct Args {
     /// fingerprints and aggregate counts, never source identity/text, spans,
     /// names, types, symbols, contracts, bytecode, or runtime values.
     debugger_static_metadata_summary: bool,
+    /// Core-owner opt-in for bounded metadata-handle-bound source-record IDs.
+    /// IDs disclose no module, hash, source text, span, or record detail.
+    debugger_static_metadata_source_inventory: bool,
     /// Optional listener for queries over projects a trusted core owner
     /// registered during startup. Its protocol does not accept registration,
     /// source, path, resolver, compiler-option, build, or write requests.
@@ -122,6 +125,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_socket = None;
     let mut debugger_static_metadata_inventory = false;
     let mut debugger_static_metadata_summary = false;
+    let mut debugger_static_metadata_source_inventory = false;
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
     let mut inline_bluets_profile = None;
@@ -151,6 +155,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
             "--debugger-static-metadata-inventory" => debugger_static_metadata_inventory = true,
             "--debugger-static-metadata-summary" => debugger_static_metadata_summary = true,
+            "--debugger-static-metadata-source-inventory" => {
+                debugger_static_metadata_source_inventory = true
+            }
             "--compiler-socket" => compiler_socket = Some(PathBuf::from(value()?)),
             "--compiler-project-profile" => compiler_project_profile = Some(value()?),
             "--inline-bluets-profile" => inline_bluets_profile = Some(value()?),
@@ -216,6 +223,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if debugger_static_metadata_source_inventory && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-source-inventory requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_source_inventory && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-source-inventory requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
     if compiler_socket.is_some() != compiler_project_profile.is_some() {
         return Err(
             "--compiler-socket and --compiler-project-profile must be provided together"
@@ -232,6 +250,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_socket,
         debugger_static_metadata_inventory,
         debugger_static_metadata_summary,
+        debugger_static_metadata_source_inventory,
         compiler_socket,
         compiler_project_profile,
         inline_bluets_profile,
@@ -534,7 +553,13 @@ fn main() -> ExitCode {
         .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
     let script_socket = args.script_socket.clone();
     let debugger_socket = args.debugger_socket.clone();
-    let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_summary {
+    let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_source_inventory
+        && args.debugger_static_metadata_summary
+    {
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_summary_and_source_inventory()
+    } else if args.debugger_static_metadata_source_inventory {
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_inventory()
+    } else if args.debugger_static_metadata_summary {
         blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_summary()
     } else if args.debugger_static_metadata_inventory {
         blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_inventory()
@@ -857,6 +882,7 @@ mod tests {
         assert_eq!(parsed.debugger_socket, None);
         assert!(!parsed.debugger_static_metadata_inventory);
         assert!(!parsed.debugger_static_metadata_summary);
+        assert!(!parsed.debugger_static_metadata_source_inventory);
         assert_eq!(parsed.compiler_socket, None);
         assert_eq!(parsed.compiler_project_profile, None);
         assert_eq!(parsed.inline_bluets_profile, None);
@@ -903,6 +929,7 @@ mod tests {
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
                 debugger_static_metadata_inventory: false,
                 debugger_static_metadata_summary: false,
+                debugger_static_metadata_source_inventory: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
@@ -978,6 +1005,32 @@ mod tests {
         .unwrap();
         assert!(summary.debugger_static_metadata_inventory);
         assert!(summary.debugger_static_metadata_summary);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-source-inventory",
+            ]),
+            Err(
+                "--debugger-static-metadata-source-inventory requires --debugger-static-metadata-inventory"
+                    .to_string()
+            )
+        );
+        let source_inventory = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-summary",
+            "--debugger-static-metadata-source-inventory",
+        ])
+        .unwrap();
+        assert!(source_inventory.debugger_static_metadata_inventory);
+        assert!(source_inventory.debugger_static_metadata_summary);
+        assert!(source_inventory.debugger_static_metadata_source_inventory);
     }
 
     #[test]

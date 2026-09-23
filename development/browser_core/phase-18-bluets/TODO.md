@@ -371,7 +371,7 @@ or second module resolver to bypass them.
   page realm and remain separate from script/DOM and network IPC.
 
   Foundation delivered: `blueice_ipc::debugger` now owns an independently
-  framed v7 handshake, capability, bounded program-location vocabulary, and
+  framed v8 handshake, capability, bounded program-location vocabulary, and
   source-free root-frame execution-control vocabulary.
   Its page-realm, program, and safe-point identities include
   browser-context/tab/realm and program generations, reject zero placeholder
@@ -381,7 +381,7 @@ or second module resolver to bypass them.
   return only core-minted opaque program IDs and bounded `(code-unit, offset)`
   tuples, never canonical source IDs, source text, bytecode bytes, VM objects,
   or completion values. These additive request/reply and capability shapes
-  advance the independent debugger protocol to v7, so a v1/v2/v3/v4/v5/v6 peer fails its
+  advance the independent debugger protocol to v8, so a v1/v2/v3/v4/v5/v6/v7 peer fails its
   `Hello` negotiation rather than attempting to deserialize an incompatible
   capability report. `blueice_engine::debugger` routes post-handshake
   requests from a socket worker to the one session thread that owns live tabs;
@@ -434,7 +434,7 @@ or second module resolver to bypass them.
   `ArmEntryBreakpoint` subprocess route remains the v4 compatibility
   acceptance.
 
-  The launcher-supervised child has a distinct v8 private page-host
+  The launcher-supervised child has a distinct v9 private page-host
   proxy for the public `ProgramLocations` and `BreakpointConfiguration`
   families. Core first
   resolves the public browser-context/tab/document generation, then requires
@@ -693,7 +693,7 @@ or second module resolver to bypass them.
   registry directly to its BlueTS classic and ESM graph admission, retaining
   only the exact child-local BlueJS program generation; replacement, binding
   setup failure, debugger inventory failure, and explicit close prune it
-  before a successor can be observed. Private page-host protocol v8 may now
+  before a successor can be observed. Private page-host protocol v9 may now
   enumerate at most one freshly child-minted opaque metadata handle for one
   exact live BlueTS program after its authenticated core requests it. That
   handle is in a namespace distinct from the child program ID and carries no
@@ -703,17 +703,38 @@ or second module resolver to bypass them.
   dependent bounded summary available only after the handle has been minted:
   it carries a fixed language label, compiler-options fingerprint, and four
   aggregate counts, never a source/module/name/type/span/symbol/contract
-  record, bytecode, VM object, or value. Debugger v7 now has separately
-  negotiated `OpaqueInventory` and dependent `OpaqueSummary` manifest
-  capabilities: core policy defaults to an empty grant, an owner must opt in
-  with `--debugger-static-metadata-inventory` and additionally
-  `--debugger-static-metadata-summary`, the socket peer must request both
-  canonical capabilities in `Hello`, and the exact live child realm must
-  advertise them before core remints at most one public opaque handle and
-  returns its summary for that program. The public handle is generation-bound
+  record, bytecode, VM object, or value. Debugger v8 now has separately
+  negotiated `OpaqueInventory`, dependent `OpaqueSummary`, and dependent
+  `OpaqueSourceInventory` manifest capabilities: core policy defaults to an
+  empty grant, an owner must opt in with
+  `--debugger-static-metadata-inventory` and independently select
+  `--debugger-static-metadata-summary` and/or
+  `--debugger-static-metadata-source-inventory`; the socket peer must request
+  the matching canonical capabilities in `Hello`, and the exact live child
+  realm must advertise them before core remints at most one public opaque
+  handle and returns its summary or only parent-bound compiler-minted source
+  IDs for that program. The public handle is generation-bound
   and numerically disjoint from both child and public-program IDs; the summary
   validates its exact realm/program/handle generation and is not a
-  dereference/read operation. The page host still must route
+  dereference/read operation. Page-host v9 and debugger v8 additionally make
+  the next, still non-dereferenceable layer explicit: `OpaqueSourceInventory`
+  is a separate canonical manifest capability, requiring both the parent
+  `OpaqueInventory` grant and
+  `--debugger-static-metadata-source-inventory`. It returns only a bounded
+  list of compiler-minted numeric `source_id` values returned only under the exact
+  public metadata handle. The core validates the live realm/program/handle
+  mapping, child reply tuple, fixed source limit, and duplicate IDs before
+  returning that parent-bound list. It returns no module name/URL, source or
+  content hash (including the non-cryptographic private transport fingerprint),
+  source text, span, symbol, type, contract, bytecode, VM object, value, or
+  source-record dereference. Summary and source-ID inventory may be enabled
+  together only through their full canonical manifest; neither is inferred
+  from the other or from protocol version. Real launcher-supervised public
+  debugger coverage requests both, proves the source IDs remain payload-free,
+  and proves reload makes the prior metadata parent and source IDs stale. A
+  later source-detail/provenance capability needs its own disclosure policy
+  and cryptographic identity design; it must not reuse the private FNV
+  transport fingerprint. The page host still must route
   cache/hibernation events through the same invariant and add source policy,
   diagnostics/contracts, stack locations, and runtime-value inspection before
   this item can close.

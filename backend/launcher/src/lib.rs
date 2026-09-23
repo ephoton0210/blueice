@@ -110,6 +110,10 @@ mod unix {
         /// identity/text, spans, names, type displays, symbols, contracts,
         /// bytecode, or runtime values.
         debugger_static_metadata_summary: bool,
+        /// Owner-only policy for a metadata-handle-bound compiler-minted
+        /// source-record ID inventory. It requires the parent inventory and
+        /// does not expose source identity, hash, text, or record detail.
+        debugger_static_metadata_source_inventory: bool,
     }
 
     impl CoreLaunchOptions {
@@ -209,6 +213,15 @@ mod unix {
         pub fn with_debugger_static_metadata_summary(mut self) -> Self {
             self.debugger_static_metadata_inventory = true;
             self.debugger_static_metadata_summary = true;
+            self
+        }
+
+        /// Enables only compiler-minted source-record IDs for an exact
+        /// static-metadata handle. The parent inventory remains the required
+        /// opaque authority; individual source/provenance detail is absent.
+        pub fn with_debugger_static_metadata_source_inventory(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
             self
         }
     }
@@ -1557,6 +1570,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_summary {
                     command.arg("--debugger-static-metadata-summary");
+                }
+                if options.debugger_static_metadata_source_inventory {
+                    command.arg("--debugger-static-metadata-source-inventory");
                 }
             }
             let mut child = command.spawn()?;

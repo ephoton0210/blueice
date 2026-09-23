@@ -45,6 +45,13 @@ pub struct JavaScriptPageDebuggerStaticMetadataSummary {
     pub contract_count: u32,
 }
 
+/// One compiler-minted source-record identity for an exact static metadata
+/// attachment. It has no module, hash, text, span, or record payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSourceId {
+    pub source_id: u32,
+}
+
 /// One compiler-verified instruction boundary represented without source or
 /// bytecode contents for the native debugger path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -9,12 +9,12 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version seven reserves a
-//! fail-closed session and per-realm capability boundary for future static
-//! metadata: `Hello` grants only the canonical intersection of a requested
-//! manifest and the core policy, and a metadata operation may be dispatched
-//! only after the exact target's capability report also grants its specific
-//! metadata capability. A host must report every operation as
+//! and an opt-in root-code-unit pause/resume seam. Version eight adds the
+//! fail-closed session and per-realm capability boundary for static metadata
+//! source-record identities: `Hello` grants only the canonical intersection
+//! of a requested manifest and the core policy, and a metadata operation may
+//! be dispatched only after the exact target's capability report also grants
+//! its specific metadata capability. A host must report every operation as
 //! [`DebuggerCapabilityState::Available`] only after it implements the native
 //! behavior; a configured breakpoint is not evidence that pause, stack,
 //! scope, value inspection, or static metadata access already exists.
@@ -25,7 +25,7 @@ use std::io::{self, Read, Write};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 7;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 8;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -133,6 +133,23 @@ pub const DEBUGGER_STATIC_METADATA_MAX_TYPES: u32 = 4_096;
 pub const DEBUGGER_STATIC_METADATA_MAX_SYMBOLS: u32 = 65_536;
 pub const DEBUGGER_STATIC_METADATA_MAX_CONTRACTS: u32 = 65_536;
 
+/// One source-record identity retained by an exact static metadata attachment.
+/// The identifier is compiler-minted but carries no module identity, source
+/// text, hash, span, symbol, type, contract, bytecode, VM object, or value.
+/// It is usable only with the enclosing opaque metadata handle, which remains
+/// generation-bound to its live program.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataSourceId {
+    pub metadata: DebuggerStaticMetadataHandle,
+    pub source_id: u32,
+}
+
+impl DebuggerStaticMetadataSourceId {
+    pub fn is_well_formed(self) -> bool {
+        self.metadata.is_well_formed()
+    }
+}
+
 /// A compiler-recorded executable bytecode boundary for one exact program.
 /// Hosts MUST validate this tuple against BlueJS's program registry rather
 /// than translating a nearest source offset heuristically.
@@ -179,6 +196,10 @@ pub enum DebuggerCapability {
     /// It is separate from inventory so a client cannot infer a read grant
     /// merely because it may enumerate handles.
     StaticMetadataSummary,
+    /// A bounded inventory of compiler-minted source-record identities for
+    /// one exact opaque metadata attachment. It exposes no source identity,
+    /// content hash, text, span, or record detail.
+    StaticMetadataSourceInventory,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -186,10 +207,10 @@ pub enum DebuggerCapability {
 ///
 /// This deliberately has no broad `StaticMetadata` or `All` variant. Every
 /// future metadata surface must add a distinct variant and map it to a
-/// distinct [`DebuggerCapability`] before it can be requested. Version seven
-/// adds the bounded summary capability. It depends on inventory because it
-/// accepts an exact opaque handle; neither variant exposes metadata records
-/// or a general inspection operation.
+/// distinct [`DebuggerCapability`] before it can be requested. Summary and
+/// source-record inventory each depend on inventory because they accept an
+/// exact opaque handle; neither exposes metadata records or a general
+/// inspection operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DebuggerMetadataCapability {
@@ -201,6 +222,11 @@ pub enum DebuggerMetadataCapability {
     /// identity, spans, names, type displays, symbols, contracts, bytecode,
     /// runtime values, or a metadata-record dereference.
     OpaqueSummary,
+    /// Lists only source-record IDs that remain bound to one metadata handle.
+    /// It depends on inventory because no source ID is valid without the
+    /// parent opaque handle. Source provenance/detail remains separately
+    /// default-denied and is not represented by this capability.
+    OpaqueSourceInventory,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -212,6 +238,7 @@ impl DebuggerMetadataCapability {
         match self {
             Self::OpaqueInventory => Some(DebuggerCapability::StaticMetadataInventory),
             Self::OpaqueSummary => Some(DebuggerCapability::StaticMetadataSummary),
+            Self::OpaqueSourceInventory => Some(DebuggerCapability::StaticMetadataSourceInventory),
             Self::Unknown => None,
         }
     }
@@ -220,6 +247,7 @@ impl DebuggerMetadataCapability {
         match self {
             Self::OpaqueInventory => Some(0),
             Self::OpaqueSummary => Some(1),
+            Self::OpaqueSourceInventory => Some(2),
             Self::Unknown => None,
         }
     }
@@ -277,6 +305,33 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants the opaque parent-handle inventory plus bounded source-record
+    /// identities. This does not grant any source detail or provenance.
+    pub fn opaque_source_inventory() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSourceInventory,
+            ],
+        }
+    }
+
+    /// Grants both currently independent derived surfaces for an opaque
+    /// metadata handle. Keeping this constructor explicit prevents an owner
+    /// that enables one bounded read from accidentally treating the other as
+    /// implied by transport version or inventory access alone.
+    pub fn opaque_summary_and_source_inventory() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSummary,
+                DebuggerMetadataCapability::OpaqueSourceInventory,
+            ],
+        }
+    }
+
     /// Validates the manifest version and strict canonical capability order.
     /// Empty is valid, which is how a caller explicitly requests no metadata.
     pub fn is_well_formed(&self) -> bool {
@@ -294,12 +349,18 @@ impl DebuggerMetadataCapabilityManifest {
             }
             previous = Some(index);
         }
-        !self
+        (!self
             .capabilities
             .contains(&DebuggerMetadataCapability::OpaqueSummary)
             || self
                 .capabilities
-                .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                .contains(&DebuggerMetadataCapability::OpaqueInventory))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueSourceInventory)
+                || self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -547,6 +608,11 @@ pub enum DebuggerRequest {
     DescribeStaticMetadata {
         metadata: DebuggerStaticMetadataHandle,
     },
+    /// Lists bounded compiler-minted source-record identities for one exact
+    /// metadata attachment. It is not a source/provenance read operation.
+    ListStaticMetadataSources {
+        metadata: DebuggerStaticMetadataHandle,
+    },
     /// Lists bounded, compiler-verified instruction boundaries for one exact
     /// live program generation. A caller must not infer or substitute offsets.
     ListSafePoints {
@@ -624,6 +690,9 @@ pub enum DebuggerReply {
     /// Reply to [`DebuggerRequest::DescribeStaticMetadata`]. The summary is
     /// bounded and source-free; individual metadata records remain private.
     StaticMetadataSummary(DebuggerStaticMetadataSummary),
+    /// Reply to [`DebuggerRequest::ListStaticMetadataSources`]. IDs are
+    /// parent-handle-bound and contain no source/provenance payload.
+    StaticMetadataSources(Vec<DebuggerStaticMetadataSourceId>),
     SafePoints(Vec<DebuggerSafePoint>),
     SafePointValidated {
         safe_point: DebuggerSafePoint,
@@ -711,6 +780,7 @@ pub fn negotiate(
         | DebuggerRequest::ListPrograms { .. }
         | DebuggerRequest::ListStaticMetadata { .. }
         | DebuggerRequest::DescribeStaticMetadata { .. }
+        | DebuggerRequest::ListStaticMetadataSources { .. }
         | DebuggerRequest::ListSafePoints { .. }
         | DebuggerRequest::ValidateSafePoint { .. }
         | DebuggerRequest::SetBreakpoint { .. }
@@ -803,6 +873,17 @@ mod tests {
                 },
             },
             DebuggerRequest::DescribeStaticMetadata {
+                metadata: DebuggerStaticMetadataHandle {
+                    program: DebuggerProgram {
+                        realm: realm(),
+                        program_handle: 12,
+                        program_generation: 5,
+                    },
+                    metadata_handle: 24,
+                    metadata_generation: 7,
+                },
+            },
+            DebuggerRequest::ListStaticMetadataSources {
                 metadata: DebuggerStaticMetadataHandle {
                     program: DebuggerProgram {
                         realm: realm(),
@@ -951,6 +1032,14 @@ mod tests {
                 symbol_count: 3,
                 contract_count: 4,
             }),
+            DebuggerReply::StaticMetadataSources(vec![DebuggerStaticMetadataSourceId {
+                metadata: DebuggerStaticMetadataHandle {
+                    program,
+                    metadata_handle: 24,
+                    metadata_generation: 7,
+                },
+                source_id: 0,
+            }]),
             DebuggerReply::SafePoints(vec![safe_point]),
             DebuggerReply::SafePointValidated { safe_point },
             DebuggerReply::BreakpointSet { safe_point },
@@ -1097,6 +1186,10 @@ mod tests {
             DebuggerMetadataCapabilityManifest {
                 version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
                 capabilities: vec![DebuggerMetadataCapability::OpaqueSummary],
+            },
+            DebuggerMetadataCapabilityManifest {
+                version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+                capabilities: vec![DebuggerMetadataCapability::OpaqueSourceInventory],
             },
         ] {
             assert!(matches!(
@@ -1259,6 +1352,56 @@ mod tests {
         assert!(summary_available
             .authorize_metadata(&inventory_only, DebuggerMetadataCapability::OpaqueSummary)
             .is_none());
+    }
+
+    #[test]
+    fn static_metadata_source_inventory_requires_its_own_dependent_grant() {
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_source_inventory());
+        let reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_source_inventory(),
+        );
+        let session = metadata_session_authorization(&request, &reply)
+            .expect("the canonical dependent source-inventory grant must negotiate");
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueInventory));
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueSourceInventory));
+
+        let inventory_only_request = hello(DebuggerMetadataCapabilityManifest::opaque_inventory());
+        let inventory_only_reply = negotiate(
+            &inventory_only_request,
+            &DebuggerMetadataCapabilityManifest::opaque_source_inventory(),
+        );
+        let inventory_only =
+            metadata_session_authorization(&inventory_only_request, &inventory_only_reply).unwrap();
+        assert!(!inventory_only.permits(DebuggerMetadataCapability::OpaqueSourceInventory));
+
+        let source_inventory_available = capabilities(vec![capability_report(
+            DebuggerCapability::StaticMetadataSourceInventory,
+            DebuggerCapabilityState::Available,
+        )]);
+        let authorization = source_inventory_available
+            .authorize_metadata(&session, DebuggerMetadataCapability::OpaqueSourceInventory)
+            .expect("source inventory requires its exact available report and session grant");
+        assert!(authorization.permits(realm(), DebuggerMetadataCapability::OpaqueSourceInventory));
+        assert!(source_inventory_available
+            .authorize_metadata(
+                &inventory_only,
+                DebuggerMetadataCapability::OpaqueSourceInventory
+            )
+            .is_none());
+
+        assert_eq!(
+            DebuggerMetadataCapabilityManifest::opaque_summary_and_source_inventory().capabilities,
+            vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSummary,
+                DebuggerMetadataCapability::OpaqueSourceInventory,
+            ]
+        );
+        assert!(
+            DebuggerMetadataCapabilityManifest::opaque_summary_and_source_inventory()
+                .is_well_formed()
+        );
     }
 
     #[test]

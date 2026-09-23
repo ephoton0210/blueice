@@ -37,7 +37,7 @@ pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerProgram,
     JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
-    JavaScriptPageDebuggerStaticMetadataSummary,
+    JavaScriptPageDebuggerStaticMetadataSourceId, JavaScriptPageDebuggerStaticMetadataSummary,
 };
 
 /// Source-free debugger location operations owned by an explicitly selected
@@ -85,6 +85,13 @@ pub trait PageJavaScriptDebuggerLocations {
         false
     }
 
+    /// Whether this route can list only compiler-minted source-record IDs for
+    /// an exact opaque metadata attachment. No source/provenance detail is
+    /// implied by this separate default-deny capability.
+    fn debugger_static_metadata_source_inventory_available(&self) -> bool {
+        false
+    }
+
     /// Lists only opaque public-facing program IDs for one live realm.
     fn debugger_programs(
         &mut self,
@@ -119,6 +126,22 @@ pub trait PageJavaScriptDebuggerLocations {
         _metadata_handle: u64,
         _metadata_generation: u64,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataSummary, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Lists source-record identities only after the caller presented an
+    /// exact metadata attachment. Implementations must not synthesize source
+    /// details from the numeric IDs.
+    fn debugger_static_metadata_sources(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataSourceId>, JavaScriptPageDebuggerError>
+    {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
 
