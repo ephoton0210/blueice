@@ -17,7 +17,7 @@
 //! -> request -> reply -> disconnect). Each accepted connection runs in its
 //! own bounded-time worker, so an idle local peer cannot block other reviews.
 
-use blueice_ai_gatekeeper::handle_one_check;
+use blueice_ai_gatekeeper::{default_settings_path, GatekeeperService};
 use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
 use blueice_ipc::local_socket::{bind_private_listener, ensure_private_socket_dir};
 use std::io::{self, Read, Write};
@@ -32,20 +32,24 @@ const CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 #[derive(Debug, PartialEq)]
 struct Args {
     socket: PathBuf,
+    settings: PathBuf,
 }
 
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut socket = None;
+    let mut settings = None;
     let mut it = args;
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or_else(|| format!("{flag} requires a value"));
         match flag.as_str() {
             "--socket" => socket = Some(PathBuf::from(value()?)),
+            "--settings" => settings = Some(PathBuf::from(value()?)),
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
     Ok(Args {
         socket: socket.unwrap_or_else(default_gatekeeper_socket_path),
+        settings: settings.unwrap_or_else(default_settings_path),
     })
 }
 
@@ -87,7 +91,7 @@ impl Write for DeadlineStream {
     }
 }
 
-fn run(path: PathBuf) -> io::Result<()> {
+fn run(path: PathBuf, settings_path: PathBuf) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         ensure_private_socket_dir(parent)?;
     }
@@ -98,11 +102,14 @@ fn run(path: PathBuf) -> io::Result<()> {
     let _ = std::fs::remove_file(&path);
 
     let listener = bind_private_listener(&path)?;
+    let service =
+        std::sync::Arc::new(GatekeeperService::new(Some(settings_path)).map_err(io::Error::other)?);
     for stream in listener.incoming().flatten() {
+        let service = service.clone();
         thread::spawn(move || {
             let _ = stream.set_write_timeout(Some(CHECK_TIMEOUT));
             let mut stream = DeadlineStream::new(stream);
-            let _ = handle_one_check(&mut stream);
+            let _ = service.handle_connection(&mut stream);
         });
     }
     Ok(())
@@ -117,7 +124,7 @@ fn main() -> ExitCode {
         }
     };
 
-    if let Err(error) = run(args.socket) {
+    if let Err(error) = run(args.socket, args.settings) {
         eprintln!("blueice-ai-gatekeeper: {error}");
         ExitCode::FAILURE
     } else {
@@ -138,7 +145,8 @@ mod tests {
         assert_eq!(
             args(&[]).unwrap(),
             Args {
-                socket: default_gatekeeper_socket_path()
+                socket: default_gatekeeper_socket_path(),
+                settings: default_settings_path(),
             }
         );
     }
@@ -148,8 +156,20 @@ mod tests {
         assert_eq!(
             args(&["--socket", "/tmp/private-gatekeeper.sock"]).unwrap(),
             Args {
-                socket: PathBuf::from("/tmp/private-gatekeeper.sock")
+                socket: PathBuf::from("/tmp/private-gatekeeper.sock"),
+                settings: default_settings_path(),
             }
+        );
+    }
+
+    #[test]
+    fn settings_override_is_parsed() {
+        assert_eq!(
+            args(&["--settings", "/tmp/gatekeeper.json"]),
+            Ok(Args {
+                socket: default_gatekeeper_socket_path(),
+                settings: PathBuf::from("/tmp/gatekeeper.json"),
+            })
         );
     }
 

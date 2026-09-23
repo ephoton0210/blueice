@@ -11,7 +11,10 @@
 //! identifier; updating them is an ordinary signed/reviewed BlueIce release,
 //! not a live remote policy download that an attacker could replace.
 
-use blueice_ipc::gatekeeper::{GatekeeperReply, GatekeeperRequest};
+use blueice_ipc::gatekeeper::{
+    GatekeeperReply, GatekeeperRequest, GatekeeperRuleInfo, GatekeeperSettings,
+    GatekeeperWorkflowStep,
+};
 
 /// Version carried in diagnostics and release notes for this compiled rule
 /// set. Keep it monotonic whenever a detection decision changes.
@@ -25,19 +28,112 @@ const PROMPT_INJECTION_PHRASES: &[&str] = &[
     "override the previous instructions",
 ];
 
+/// The complete compiled rule manifest. It is deliberately returned as data
+/// for `about:settings`, rather than duplicating prose in the UI: the page and
+/// the enforcement process therefore disclose the same release-owned policy.
+pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
+    vec![
+        GatekeeperRuleInfo {
+            id: "known-malicious-domain".to_string(),
+            category: "known-bad-domain".to_string(),
+            description: "Blocks the compiled local denylist, including malware.test and phishing.test, before a network fetch.".to_string(),
+            mandatory: true,
+        },
+        GatekeeperRuleInfo {
+            id: "url-unicode-obfuscation".to_string(),
+            category: "unicode-bidi-override / url-obfuscation".to_string(),
+            description: "Blocks bidirectional overrides and invisible Unicode characters in a URL.".to_string(),
+            mandatory: true,
+        },
+        GatekeeperRuleInfo {
+            id: "hidden-prompt-injection".to_string(),
+            category: "hidden-prompt-injection".to_string(),
+            description: "Blocks instruction-shaped content only when it is hidden or Unicode-obfuscated.".to_string(),
+            mandatory: true,
+        },
+        GatekeeperRuleInfo {
+            id: "dangerous-download".to_string(),
+            category: "dangerous-file-type".to_string(),
+            description: "Blocks executable and installer downloads before transfer bytes begin.".to_string(),
+            mandatory: true,
+        },
+        GatekeeperRuleInfo {
+            id: "sensitive-extension-action".to_string(),
+            category: "sensitive-extension-action / extension-action-obfuscation".to_string(),
+            description: "Blocks obfuscated extension metadata and writes to credential or payment-shaped inputs.".to_string(),
+            mandatory: true,
+        },
+    ]
+}
+
+/// The complete mandatory review workflow. The order is operational: it
+/// states where every check runs relative to fetch, parse, transfer, and an
+/// extension side effect.
+pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
+    vec![
+        GatekeeperWorkflowStep {
+            id: "url-before-fetch".to_string(),
+            trigger: "Every HTTP(S) navigation and redirect target".to_string(),
+            description: "Review URL before opening a network connection; a failure or unavailable gatekeeper blocks the navigation.".to_string(),
+            mandatory: true,
+        },
+        GatekeeperWorkflowStep {
+            id: "content-before-parse".to_string(),
+            trigger: "Every fetched page".to_string(),
+            description: "Review the final URL and HTML before parsing, cascade, layout, or paint.".to_string(),
+            mandatory: true,
+        },
+        GatekeeperWorkflowStep {
+            id: "download-before-bytes".to_string(),
+            trigger: "Every download after probe".to_string(),
+            description: "Review the URL and discovered file metadata before transfer bytes begin or resume.".to_string(),
+            mandatory: true,
+        },
+        GatekeeperWorkflowStep {
+            id: "extension-before-side-effect".to_string(),
+            trigger: "Every high-risk extension action".to_string(),
+            description: "Review non-extension-controlled action metadata before the core applies the capability side effect.".to_string(),
+            mandatory: true,
+        },
+    ]
+}
+
+pub fn settings(custom_blocked_hosts: Vec<String>) -> GatekeeperSettings {
+    GatekeeperSettings {
+        ruleset_version: RULESET_VERSION.to_string(),
+        baseline_rules: baseline_rules(),
+        workflow: mandatory_workflow(),
+        custom_blocked_hosts,
+    }
+}
+
 /// Reviews one complete gatekeeper request. The reply is deliberately
 /// self-contained: callers need no mutable rule engine and therefore no
 /// opportunity for one request to alter another's future decision.
 pub fn review(request: &GatekeeperRequest) -> GatekeeperReply {
+    review_with_custom_blocked_hosts(request, &[])
+}
+
+/// Reviews with a user-controlled *additive* local denylist. The compiled
+/// baseline remains the first layer and never consults mutable configuration.
+pub fn review_with_custom_blocked_hosts(
+    request: &GatekeeperRequest,
+    custom_blocked_hosts: &[String],
+) -> GatekeeperReply {
     match request {
-        GatekeeperRequest::CheckUrl { url } => review_url(url),
+        GatekeeperRequest::CheckUrl { url } => review_url(url, custom_blocked_hosts),
         GatekeeperRequest::CheckContent { url, html } => review_content(url, html),
         GatekeeperRequest::CheckDownload {
             url,
             file_name,
             content_type,
             ..
-        } => review_download(url, file_name, content_type.as_deref()),
+        } => review_download(
+            url,
+            file_name,
+            content_type.as_deref(),
+            custom_blocked_hosts,
+        ),
         GatekeeperRequest::CheckExtensionAction {
             extension_id,
             capability,
@@ -46,7 +142,7 @@ pub fn review(request: &GatekeeperRequest) -> GatekeeperReply {
     }
 }
 
-fn review_url(url: &str) -> GatekeeperReply {
+fn review_url(url: &str, custom_blocked_hosts: &[String]) -> GatekeeperReply {
     if contains_bidi_override(url) {
         return reject(
             "the URL contains a Unicode bidirectional override that can disguise its destination",
@@ -60,15 +156,16 @@ fn review_url(url: &str) -> GatekeeperReply {
         );
     }
     if let Some(host) = host_from_url(url) {
-        if KNOWN_MALICIOUS_HOSTS.iter().any(|bad| {
-            host == *bad
-                || host
-                    .strip_suffix(bad)
-                    .is_some_and(|prefix| prefix.ends_with('.'))
-        }) {
+        if matching_host(&host, KNOWN_MALICIOUS_HOSTS.iter().copied()) {
             return reject(
                 "the URL matches the local malicious-domain rule",
                 "known-bad-domain",
+            );
+        }
+        if matching_host(&host, custom_blocked_hosts.iter().map(String::as_str)) {
+            return reject(
+                "the URL matches a user-managed local blocked host",
+                "custom-blocked-domain",
             );
         }
     }
@@ -99,8 +196,13 @@ fn review_content(url: &str, html: &str) -> GatekeeperReply {
     GatekeeperReply::Cleared
 }
 
-fn review_download(url: &str, file_name: &str, content_type: Option<&str>) -> GatekeeperReply {
-    if let GatekeeperReply::Rejected { reason, category } = review_url(url) {
+fn review_download(
+    url: &str,
+    file_name: &str,
+    content_type: Option<&str>,
+    custom_blocked_hosts: &[String],
+) -> GatekeeperReply {
+    if let GatekeeperReply::Rejected { reason, category } = review_url(url, custom_blocked_hosts) {
         return GatekeeperReply::Rejected { reason, category };
     }
     let lower_name = file_name.trim().to_ascii_lowercase();
@@ -202,6 +304,15 @@ fn host_from_url(url: &str) -> Option<String> {
         authority.split(':').next().unwrap_or_default()
     };
     (!host.is_empty()).then(|| host.trim_end_matches('.').to_ascii_lowercase())
+}
+
+fn matching_host<'a>(host: &str, blocked_hosts: impl IntoIterator<Item = &'a str>) -> bool {
+    blocked_hosts.into_iter().any(|blocked| {
+        host == blocked
+            || host
+                .strip_suffix(blocked)
+                .is_some_and(|prefix| prefix.ends_with('.'))
+    })
 }
 
 /// Reduces HTML to lower-cased, space-normalized text without needing to

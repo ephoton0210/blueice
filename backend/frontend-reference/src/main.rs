@@ -31,11 +31,13 @@
 //! touches `core` at all, which is the point: visibility is purely a
 //! `frontend`-side, windowing-layer concern.
 //!
-//! Stdin commands include `credits`, which navigates to `core`'s built-in
-//! `about:credits` page (`blueice_engine::credits`) -- BlueIce's
-//! Help/About/Credits screen (`phase-4-human-rendering-path/PLAN.md`) -- and
-//! Phase 16's `tab-new`/`tab-close`/`tab N` plus group commands. They remain
-//! a testable stand-in for native menu/toolbar controls.
+//! Stdin commands include `credits` and `settings`, which navigate to core's
+//! built-in informational pages, plus Phase 16's `tab-new`/`tab-close`/`tab
+//! N` and group commands. The ordinary pointer focus and keyboard path writes
+//! only to the core-owned currently focused native text input, so the
+//! `about:settings` custom blocked-host field is usable without turning the
+//! frontend into an arbitrary DOM-writing client. These remain a testable
+//! stand-in for native menu/toolbar controls.
 //! `frontend` doesn't depend on `blueice-engine` to know that URL --
 //! like any other URL sent over `ClientMessage::Navigate`, it's just a
 //! string this process and `core` both happen to agree on, the same
@@ -57,6 +59,7 @@ use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
+use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
 
 /// Repacks RGBA8 (as produced by `blueice_raster::Pixmap`) into
@@ -155,6 +158,10 @@ const CREDITS_URL: &str = "about:credits";
 /// The built-in downloads page (`blueice_engine::downloads_page::
 /// DOWNLOADS_URL`) -- duplicated for the same reason as `CREDITS_URL`.
 const DOWNLOADS_URL: &str = "about:downloads";
+
+/// The built-in gatekeeper settings page. This remains a wire-level string
+/// because the frontend is intentionally a separate process from `core`.
+const GATEKEEPER_SETTINGS_URL: &str = "about:settings";
 
 /// Native window chrome is local to this frontend. `core` receives page
 /// coordinates below it, while the tab strip itself is rendered here from the
@@ -1054,6 +1061,20 @@ impl ApplicationHandler<UserEvent> for App {
                 };
                 self.send_selected(&ClientMessage::Scroll { delta_y });
             }
+            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                match event.logical_key {
+                    Key::Named(NamedKey::Backspace) => {
+                        self.send_selected(&ClientMessage::DeleteBackward);
+                    }
+                    _ => {
+                        if let Some(text) = event.text.as_deref().filter(|text| !text.is_empty()) {
+                            self.send_selected(&ClientMessage::InsertText {
+                                text: text.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -1287,11 +1308,11 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     })
 }
 
-/// The URL actually sent for a navigation: the bare downloads page is
-/// opened in the window's own language (`about:downloads?lang=<locale>`),
-/// everything else exactly as given.
+/// The URL actually sent for a navigation: bare built-in pages with localized
+/// content are opened in the window's own language; everything else stays
+/// exactly as given.
 fn navigation_url(url: &str, locale: &str) -> String {
-    if url == DOWNLOADS_URL {
+    if url == DOWNLOADS_URL || url == GATEKEEPER_SETTINGS_URL {
         format!("{url}?lang={locale}")
     } else {
         url.to_string()
@@ -1368,6 +1389,7 @@ fn stdin_line_to_event(line: &str) -> Option<UserEvent> {
         "hide" => Some(UserEvent::SetVisible(false)),
         "credits" => Some(UserEvent::Navigate(CREDITS_URL.to_string())),
         "downloads" => Some(UserEvent::Navigate(DOWNLOADS_URL.to_string())),
+        "settings" => Some(UserEvent::Navigate(GATEKEEPER_SETTINGS_URL.to_string())),
         "back" => Some(UserEvent::GoBack),
         "forward" => Some(UserEvent::GoForward),
         "tab-new" => Some(UserEvent::OpenTab),
@@ -1934,6 +1956,13 @@ mod tests {
     }
 
     #[test]
+    fn stdin_settings_command_navigates_to_the_built_in_gatekeeper_settings_page() {
+        assert!(
+            matches!(stdin_line_to_event("settings"), Some(UserEvent::Navigate(url)) if url == GATEKEEPER_SETTINGS_URL)
+        );
+    }
+
+    #[test]
     fn stdin_download_command_carries_the_url_to_fetch() {
         assert!(
             matches!(stdin_line_to_event("download https://example.com/a.iso"), Some(UserEvent::StartDownload(url)) if url == "https://example.com/a.iso")
@@ -1959,6 +1988,10 @@ mod tests {
             navigation_url("about:downloads", "en"),
             "about:downloads?lang=en"
         );
+        assert_eq!(
+            navigation_url("about:settings", "zh-TW"),
+            "about:settings?lang=zh-TW"
+        );
         for other in [
             "about:credits",
             "https://example.com/",
@@ -1968,7 +2001,7 @@ mod tests {
             assert_eq!(
                 navigation_url(other, "zh-TW"),
                 other,
-                "only the bare downloads URL is localized here"
+                "only the bare localized built-in page URLs are rewritten here"
             );
         }
     }

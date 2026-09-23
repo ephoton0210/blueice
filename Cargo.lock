@@ -189,6 +189,8 @@ name = "blueice-ai-gatekeeper"
 version = "0.1.0"
 dependencies = [
  "blueice-ipc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

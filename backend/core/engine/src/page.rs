@@ -19,8 +19,13 @@
 //! itself.
 
 use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsSource, DownloadsView};
+use crate::gatekeeper_settings_page::{
+    gatekeeper_settings_html, is_gatekeeper_settings_url, GatekeeperSettingsSource,
+    GatekeeperSettingsView, SettingsNotice,
+};
 use blueice_css::{cascade, ua_stylesheet, ComputedStyle, Origin, Rule};
 use blueice_dom::{Document, NodeData, NodeId};
+use blueice_ipc::gatekeeper::GatekeeperSettingsChange;
 use blueice_ipc::{AiSnapshot, NodeAction};
 use blueice_layout::{layout, Constraints, Fragment};
 use blueice_paint::{paint, Color, Frame, PaintCommand, Rect};
@@ -58,6 +63,11 @@ pub struct Page {
     /// Where `about:downloads` reads its list from; `None` (the default)
     /// renders the "service is not running" page.
     downloads: Option<Arc<DownloadsSource>>,
+    /// Where `about:settings` reads and updates the actual, private Phase 7
+    /// gatekeeper policy. It is optional so isolated parser/render tests do
+    /// not need a process, in which case the page says it is unavailable.
+    gatekeeper_settings: Option<Arc<GatekeeperSettingsSource>>,
+    settings_notice: Option<SettingsNotice>,
 }
 
 impl Page {
@@ -91,6 +101,8 @@ impl Page {
             highlighted: None,
             frame_generation: 0,
             downloads: None,
+            gatekeeper_settings: None,
+            settings_notice: None,
         }
     }
 
@@ -164,8 +176,21 @@ impl Page {
         self.downloads.as_ref()
     }
 
+    /// Where `about:settings` gets and updates the gatekeeper's complete
+    /// policy view. Every tab shares one source through [`crate::TabManager`].
+    pub fn set_gatekeeper_settings_source(
+        &mut self,
+        source: Option<Arc<GatekeeperSettingsSource>>,
+    ) {
+        self.gatekeeper_settings = source;
+    }
+
+    pub fn gatekeeper_settings_source(&self) -> Option<&Arc<GatekeeperSettingsSource>> {
+        self.gatekeeper_settings.as_ref()
+    }
+
     /// Loads the built-in page for `url` if it is one (`about:blank`,
-    /// `about:credits`, `about:downloads`), returning whether it was --
+    /// `about:credits`, `about:downloads`, `about:settings`), returning whether it was --
     /// never touching the network. The downloads page reads the downloads
     /// process over its socket, quickly and with a hard time bound (a
     /// hung process must not stall the session), and falls back to the
@@ -181,6 +206,18 @@ impl Page {
                 }
                 _ => downloads_html(&DownloadsView::Unavailable, locale),
             }
+        } else if is_gatekeeper_settings_url(url) {
+            let locale = crate::credits::locale_from_url(url);
+            let notice = self.settings_notice.take();
+            let view = match self
+                .gatekeeper_settings
+                .as_ref()
+                .map(|source| source.fetch())
+            {
+                Some(Ok(settings)) => GatekeeperSettingsView::Settings(settings),
+                _ => GatekeeperSettingsView::Unavailable,
+            };
+            gatekeeper_settings_html(&view, locale, notice)
         } else {
             return false;
         };
@@ -263,6 +300,20 @@ impl Page {
         hit_test(&self.fragment, x, content_y)
     }
 
+    /// Applies the native default focus action for a pointer click. Only an
+    /// enabled text input can become the editing target; every other click
+    /// clears a previous text-input focus. Keeping this state in the core
+    /// means the reference frontend never has to turn keyboard events into a
+    /// guessed DOM node ID.
+    pub(crate) fn focus_text_input_at(&mut self, target: Option<NodeId>) -> bool {
+        let focused = target.and_then(|node| nearest_supported_text_input(&self.doc, node));
+        if self.focused == focused {
+            return false;
+        }
+        self.focused = focused;
+        true
+    }
+
     /// Hit-tests a pointer move the same way [`Page::click`] hit-tests
     /// a click, becoming the single source of truth for "what's
     /// hovered" -- see `phase-1-ai-representation-layer/PLAN.md` §4.
@@ -327,6 +378,82 @@ impl Page {
         }
     }
 
+    /// Applies a control activated from the built-in `about:settings` page.
+    /// This is intentionally not a generic DOM-to-privileged bridge: only the
+    /// two fixed data attributes emitted by `gatekeeper_settings_html` are
+    /// recognized, their input is revalidated by the gatekeeper process, and
+    /// no action can disable a compiled rule or workflow step.
+    /// Returns `None` for an ordinary page control, and `Some` when this was
+    /// one of the fixed settings controls. A rejected update is still a
+    /// handled control: the refreshed page presents a localized rejection
+    /// notice, while the caller can preserve its ordinary frame lifecycle.
+    pub(crate) fn apply_gatekeeper_settings_control(
+        &mut self,
+        id: NodeId,
+    ) -> Option<Result<(), String>> {
+        if !self.url.as_deref().is_some_and(is_gatekeeper_settings_url) {
+            return None;
+        }
+        let change = self.gatekeeper_settings_change_for(id)?;
+        let locale = self
+            .url
+            .as_deref()
+            .map(crate::credits::locale_from_url)
+            .unwrap_or(blueice_i18n::DEFAULT_LOCALE);
+        let Some(source) = self.gatekeeper_settings.as_ref() else {
+            self.settings_notice = Some(SettingsNotice::Rejected);
+            let html = gatekeeper_settings_html(
+                &GatekeeperSettingsView::Unavailable,
+                locale,
+                self.settings_notice.take(),
+            );
+            self.load_html(&html);
+            return Some(Err(
+                "the gatekeeper settings source is unavailable".to_string()
+            ));
+        };
+        let (view, notice) = match source.update(change) {
+            Ok(settings) => (
+                GatekeeperSettingsView::Settings(settings),
+                SettingsNotice::Saved,
+            ),
+            Err(error) => {
+                let view = source
+                    .fetch()
+                    .map(GatekeeperSettingsView::Settings)
+                    .unwrap_or(GatekeeperSettingsView::Unavailable);
+                let html = gatekeeper_settings_html(&view, locale, Some(SettingsNotice::Rejected));
+                self.load_html(&html);
+                return Some(Err(error));
+            }
+        };
+        let html = gatekeeper_settings_html(&view, locale, Some(notice));
+        self.load_html(&html);
+        Some(Ok(()))
+    }
+
+    fn gatekeeper_settings_change_for(&self, mut node: NodeId) -> Option<GatekeeperSettingsChange> {
+        let action = loop {
+            if let Some(value) = element_attribute(&self.doc, node, "data-gatekeeper-action") {
+                break value.to_string();
+            }
+            node = self.doc.parent(node)?;
+        };
+        match action.as_str() {
+            "add-host" => {
+                let input =
+                    find_element_by_id(&self.doc, self.doc.root(), "gatekeeper-custom-host")?;
+                Some(GatekeeperSettingsChange::AddBlockedHost {
+                    host: element_attribute(&self.doc, input, "value")?.to_string(),
+                })
+            }
+            "remove-host" => Some(GatekeeperSettingsChange::RemoveBlockedHost {
+                host: element_attribute(&self.doc, node, "data-gatekeeper-host")?.to_string(),
+            }),
+            _ => None,
+        }
+    }
+
     /// Sets the value of a real, supported native text input for the
     /// extension protocol's versioned `dom:write` operation. Unlike the
     /// broader first-party [`NodeAction::SetValue`] compatibility action,
@@ -338,18 +465,7 @@ impl Page {
         if !self.doc.contains(id) {
             return Err(format!("unknown text input node {}", id.as_u64()));
         }
-        let is_supported_text_input = matches!(
-            self.doc.data(id),
-            NodeData::Element {
-                tag_name,
-                attributes,
-            } if tag_name.eq_ignore_ascii_case("input")
-                && attributes
-                    .iter()
-                    .find(|(name, _)| name.eq_ignore_ascii_case("type"))
-                    .is_none_or(|(_, input_type)| input_type.eq_ignore_ascii_case("text"))
-        );
-        if !is_supported_text_input {
+        if !is_supported_text_input(&self.doc, id) {
             return Err(format!(
                 "node {} is not a supported text input",
                 id.as_u64()
@@ -367,6 +483,48 @@ impl Page {
         }
         self.relayout();
         Ok(())
+    }
+
+    /// Appends user-entered text to the focused supported input. The input
+    /// target is selected solely by [`Self::focus_text_input_at`], rather than
+    /// supplied by a frontend or extension, so this remains a keyboard path
+    /// rather than a general DOM mutation capability.
+    pub(crate) fn insert_focused_text(&mut self, text: &str) -> bool {
+        let Some(id) = self
+            .focused
+            .filter(|id| is_supported_text_input(&self.doc, *id))
+        else {
+            return false;
+        };
+        if text.is_empty() {
+            return false;
+        }
+        let mut value = element_attribute(&self.doc, id, "value")
+            .unwrap_or_default()
+            .to_string();
+        value.push_str(text);
+        self.set_text_input_value(id, value)
+            .expect("focused supported text input remains writable");
+        true
+    }
+
+    /// Removes one Unicode scalar from the focused supported input.
+    pub(crate) fn delete_focused_text_backward(&mut self) -> bool {
+        let Some(id) = self
+            .focused
+            .filter(|id| is_supported_text_input(&self.doc, *id))
+        else {
+            return false;
+        };
+        let mut value = element_attribute(&self.doc, id, "value")
+            .unwrap_or_default()
+            .to_string();
+        if value.pop().is_none() {
+            return false;
+        }
+        self.set_text_input_value(id, value)
+            .expect("focused supported text input remains writable");
+        true
     }
 
     /// Sets the text content of a real, enabled native textarea for the
@@ -1021,6 +1179,16 @@ fn find_element_by_id(doc: &Document, node: NodeId, id: &str) -> Option<NodeId> 
         .find_map(|child| find_element_by_id(doc, child, id))
 }
 
+fn element_attribute<'a>(doc: &'a Document, node: NodeId, name: &str) -> Option<&'a str> {
+    let NodeData::Element { attributes, .. } = doc.data(node) else {
+        return None;
+    };
+    attributes
+        .iter()
+        .find(|(attribute, _)| attribute.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
+}
+
 /// Returns the group identity for one extension-selectable radio. This is
 /// intentionally stricter than arbitrary script DOM mutation: the extension
 /// provides only a stable node ID, so all group membership comes from the
@@ -1456,6 +1624,32 @@ fn nearest_link_href(doc: &Document, mut node: NodeId) -> Option<String> {
     }
 }
 
+fn nearest_supported_text_input(doc: &Document, mut node: NodeId) -> Option<NodeId> {
+    loop {
+        if is_supported_text_input(doc, node) {
+            return Some(node);
+        }
+        node = doc.parent(node)?;
+    }
+}
+
+fn is_supported_text_input(doc: &Document, id: NodeId) -> bool {
+    matches!(
+        doc.data(id),
+        NodeData::Element {
+            tag_name,
+            attributes,
+        } if tag_name.eq_ignore_ascii_case("input")
+            && !attributes
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case("disabled"))
+            && attributes
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("type"))
+                .is_none_or(|(_, input_type)| input_type.eq_ignore_ascii_case("text"))
+    )
+}
+
 /// The HTML for `url`, for the small set of `about:` URLs `navigate`
 /// serves locally instead of fetching over the network -- `None` for
 /// any other URL (including unrecognized `about:` ones, which aren't
@@ -1568,6 +1762,81 @@ mod tests {
         doc.children(root).find_map(|c| find_by_tag(doc, c, tag))
     }
 
+    fn find_by_attribute(doc: &Document, root: NodeId, name: &str, value: &str) -> Option<NodeId> {
+        if element_attribute(doc, root, name) == Some(value) {
+            return Some(root);
+        }
+        doc.children(root)
+            .find_map(|child| find_by_attribute(doc, child, name, value))
+    }
+
+    #[test]
+    fn about_settings_shows_and_applies_the_running_gatekeepers_additive_policy() {
+        use blueice_ai_gatekeeper::GatekeeperService;
+        use std::os::unix::net::UnixListener;
+        use std::sync::Arc;
+        use std::thread;
+
+        let socket = blueice_ipc::local_socket::default_socket_dir()
+            .join(format!("gks-{}", std::process::id()));
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let service = Arc::new(GatekeeperService::new(None).unwrap());
+        let worker = thread::spawn({
+            let service = service.clone();
+            move || {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                let mut handled = 0;
+                while handled < 2 && std::time::Instant::now() < deadline {
+                    match listener.accept() {
+                        Ok((mut stream, _)) => {
+                            service.handle_connection(&mut stream).unwrap();
+                            handled += 1;
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            thread::sleep(std::time::Duration::from_millis(5));
+                        }
+                        Err(error) => panic!("settings test listener failed: {error}"),
+                    }
+                }
+                assert_eq!(
+                    handled, 2,
+                    "the page must read then update the real service"
+                );
+            }
+        });
+
+        let mut page = Page::new(640.0, 480.0);
+        page.set_gatekeeper_settings_source(Some(Arc::new(
+            GatekeeperSettingsSource::without_default(&socket),
+        )));
+        page.navigate("about:settings?lang=en").unwrap();
+        assert!(page.dom_dump().contains("known-malicious-domain"));
+        let input =
+            find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-custom-host").unwrap();
+        let add = find_by_attribute(
+            page.doc(),
+            page.doc().root(),
+            "data-gatekeeper-action",
+            "add-host",
+        )
+        .unwrap();
+        page.act(input, NodeAction::SetValue("tracker.example".to_string()));
+        assert!(page.gatekeeper_settings.is_some());
+        assert_eq!(
+            page.gatekeeper_settings_change_for(add),
+            Some(GatekeeperSettingsChange::AddBlockedHost {
+                host: "tracker.example".to_string()
+            })
+        );
+        assert_eq!(page.apply_gatekeeper_settings_control(add), Some(Ok(())));
+        assert!(page.dom_dump().contains("tracker.example"));
+        assert!(page.dom_dump().contains("Gatekeeper settings saved"));
+        worker.join().unwrap();
+        let _ = std::fs::remove_file(socket);
+    }
+
     #[test]
     fn act_set_value_updates_the_value_attribute_and_the_painted_frame() {
         let mut page = Page::new(320.0, 200.0);
@@ -1596,6 +1865,34 @@ mod tests {
         );
         let snapshot = page.snapshot(1, 1);
         assert_eq!(snapshot.nodes[0].state.value.as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn focused_text_entry_is_limited_to_the_enabled_clicked_text_input() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"<input id="host" type="text"><input id="locked" disabled><input id="secret" type="password">"#,
+            None,
+        );
+        let host = page.script_get_element_by_id("host").unwrap();
+        let locked = page.script_get_element_by_id("locked").unwrap();
+        let secret = page.script_get_element_by_id("secret").unwrap();
+
+        assert!(page.focus_text_input_at(Some(host)));
+        assert!(page.insert_focused_text("tracker.example"));
+        assert!(page.delete_focused_text_backward());
+        assert_eq!(
+            element_attribute(page.doc(), host, "value"),
+            Some("tracker.exampl")
+        );
+
+        assert!(page.focus_text_input_at(Some(locked)));
+        assert!(!page.insert_focused_text("must not write"));
+        assert_eq!(element_attribute(page.doc(), locked, "value"), None);
+
+        assert!(!page.focus_text_input_at(Some(secret)));
+        assert!(!page.insert_focused_text("must not write"));
+        assert_eq!(element_attribute(page.doc(), secret, "value"), None);
     }
 
     #[test]

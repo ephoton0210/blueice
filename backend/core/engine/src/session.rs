@@ -493,7 +493,26 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                                     .unwrap_or_default()
                             })
                             .unwrap_or_default();
+                        let mut focus_changed = false;
                         if !event.default_prevented {
+                            focus_changed = tabs
+                                .get_mut(target)
+                                .expect("checked immediately above")
+                                .focus_text_input_at(node);
+                            if node.is_some_and(|node| {
+                                tabs.get_mut(target)
+                                    .expect("checked immediately above")
+                                    .apply_gatekeeper_settings_control(node)
+                                    .is_some()
+                            }) {
+                                let page = tabs
+                                    .get_mut(target)
+                                    .expect("a settings control cannot close a core-owned tab");
+                                send_frame(
+                                    page, stream, frame_dir, generation, reply_tab, request_id,
+                                )?;
+                                continue;
+                            }
                             if let Some(href) = href {
                                 begin_gated_navigation(
                                     tabs,
@@ -514,7 +533,7 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                                 continue;
                             }
                         }
-                        if event.ran_event {
+                        if event.ran_event || focus_changed {
                             let page = tabs
                                 .get_mut(target)
                                 .expect("a script event cannot close a core-owned tab");
@@ -528,6 +547,50 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                         }
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
+                    ClientMessage::InsertText { text } => {
+                        let changed = match tabs.get_mut(target) {
+                            Some(page) => page.insert_focused_text(&text),
+                            None => {
+                                write_unknown_tab_error(stream, request_id, target)?;
+                                continue;
+                            }
+                        };
+                        if changed {
+                            let focused = tabs
+                                .get(target)
+                                .and_then(|page| page.focused())
+                                .expect("a changed focused text input remains focused");
+                            let _ = script_scheduler.dispatch_event(tabs, target, focused, "input");
+                            let _ =
+                                script_scheduler.dispatch_event(tabs, target, focused, "change");
+                            let page = tabs
+                                .get_mut(target)
+                                .expect("a text edit cannot close a core-owned tab");
+                            send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                        }
+                    }
+                    ClientMessage::DeleteBackward => {
+                        let changed = match tabs.get_mut(target) {
+                            Some(page) => page.delete_focused_text_backward(),
+                            None => {
+                                write_unknown_tab_error(stream, request_id, target)?;
+                                continue;
+                            }
+                        };
+                        if changed {
+                            let focused = tabs
+                                .get(target)
+                                .and_then(|page| page.focused())
+                                .expect("a changed focused text input remains focused");
+                            let _ = script_scheduler.dispatch_event(tabs, target, focused, "input");
+                            let _ =
+                                script_scheduler.dispatch_event(tabs, target, focused, "change");
+                            let page = tabs
+                                .get_mut(target)
+                                .expect("a text edit cannot close a core-owned tab");
+                            send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+                        }
+                    }
                     ClientMessage::Hover { x, y } => {
                         if let Some(page) = tabs.get_mut(target) {
                             page.hover_at(x, y);
@@ -575,6 +638,20 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                                 .dispatch_event(tabs, target, node, "click")
                                 .unwrap_or_default();
                             if !event.default_prevented {
+                                if tabs
+                                    .get_mut(target)
+                                    .expect("checked immediately above")
+                                    .apply_gatekeeper_settings_control(node)
+                                    .is_some()
+                                {
+                                    let page = tabs
+                                        .get_mut(target)
+                                        .expect("a settings control cannot close a core-owned tab");
+                                    send_frame(
+                                        page, stream, frame_dir, generation, reply_tab, request_id,
+                                    )?;
+                                    continue;
+                                }
                                 if let Some(href) = href {
                                     begin_gated_navigation(
                                         tabs,
@@ -3195,6 +3272,41 @@ mod tests {
             panic!("expected Representation")
         };
         assert!(after.nodes[0].state.focused);
+
+        // The native frontend sends these narrower keyboard messages rather
+        // than guessing a DOM node ID. They are accepted only because the
+        // preceding focus action selected this supported text input.
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::InsertText {
+                text: "BlueIce".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+        let ServerMessage::Representation(with_text) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
+        assert_eq!(with_text.nodes[0].state.value.as_deref(), Some("BlueIce"));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::DeleteBackward).unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+        let ServerMessage::Representation(after_delete) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
+        assert_eq!(after_delete.nodes[0].state.value.as_deref(), Some("BlueIc"));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();

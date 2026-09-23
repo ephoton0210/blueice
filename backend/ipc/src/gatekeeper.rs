@@ -81,6 +81,72 @@ pub enum GatekeeperReply {
     Rejected { reason: String, category: String },
 }
 
+/// One immutable, compiled safety rule shown to a person on the built-in
+/// settings page. `mandatory` is deliberately data rather than an implication
+/// of the prose: clients must be able to say exactly which baseline rules a
+/// user may inspect but cannot turn off.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatekeeperRuleInfo {
+    pub id: String,
+    pub category: String,
+    pub description: String,
+    pub mandatory: bool,
+}
+
+/// A required point in the gatekeeper's enforcement workflow. This is part of
+/// the user-visible policy, not a client-side hint: URL/content/download and
+/// high-risk extension checks remain server-owned and mandatory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatekeeperWorkflowStep {
+    pub id: String,
+    pub trigger: String,
+    pub description: String,
+    pub mandatory: bool,
+}
+
+/// Complete inspectable gatekeeper policy. The compiled rules and workflow are
+/// immutable for a running release; `custom_blocked_hosts` is the deliberately
+/// narrow, additive adjustment surface a user controls locally.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatekeeperSettings {
+    pub ruleset_version: String,
+    pub baseline_rules: Vec<GatekeeperRuleInfo>,
+    pub workflow: Vec<GatekeeperWorkflowStep>,
+    pub custom_blocked_hosts: Vec<String>,
+}
+
+/// A user-requested, strictly additive local policy adjustment. There is no
+/// operation to disable or weaken a compiled rule or mandatory workflow step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GatekeeperSettingsChange {
+    AddBlockedHost { host: String },
+    RemoveBlockedHost { host: String },
+}
+
+/// The settings-control protocol shares the private gatekeeper socket with
+/// ordinary review checks, but deliberately has separate request/reply types.
+/// Existing review consumers can therefore never mistake configuration data
+/// for a `Cleared` verdict.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GatekeeperSettingsRequest {
+    Read,
+    Update { change: GatekeeperSettingsChange },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GatekeeperSettingsReply {
+    Settings(GatekeeperSettings),
+    Rejected { reason: String },
+}
+
+/// Internal service-side multiplexing result. Ordinary callers should use the
+/// typed review or settings helpers rather than constructing this enum.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GatekeeperWireRequest {
+    Review(GatekeeperRequest),
+    Settings(GatekeeperSettingsRequest),
+}
+
 pub fn write_gatekeeper_request<W: Write>(w: &mut W, msg: &GatekeeperRequest) -> io::Result<()> {
     crate::write_framed(w, msg)
 }
@@ -90,11 +156,51 @@ pub fn read_gatekeeper_request<R: Read>(r: &mut R) -> io::Result<GatekeeperReque
     serde_json::from_slice(&buf).map_err(io::Error::other)
 }
 
+/// Reads either the long-standing review protocol or the settings-control
+/// protocol. Only the gatekeeper service uses this multiplexer; callers use
+/// the typed read/write helpers below and cannot accidentally send one kind of
+/// request where the other is expected.
+pub fn read_gatekeeper_wire_request<R: Read>(r: &mut R) -> io::Result<GatekeeperWireRequest> {
+    let buf = crate::read_frame_bytes(r)?;
+    if let Ok(request) = serde_json::from_slice::<GatekeeperRequest>(&buf) {
+        return Ok(GatekeeperWireRequest::Review(request));
+    }
+    serde_json::from_slice::<GatekeeperSettingsRequest>(&buf)
+        .map(GatekeeperWireRequest::Settings)
+        .map_err(io::Error::other)
+}
+
 pub fn write_gatekeeper_reply<W: Write>(w: &mut W, msg: &GatekeeperReply) -> io::Result<()> {
     crate::write_framed(w, msg)
 }
 
 pub fn read_gatekeeper_reply<R: Read>(r: &mut R) -> io::Result<GatekeeperReply> {
+    let buf = crate::read_frame_bytes(r)?;
+    serde_json::from_slice(&buf).map_err(io::Error::other)
+}
+
+pub fn write_gatekeeper_settings_request<W: Write>(
+    w: &mut W,
+    msg: &GatekeeperSettingsRequest,
+) -> io::Result<()> {
+    crate::write_framed(w, msg)
+}
+
+pub fn read_gatekeeper_settings_request<R: Read>(
+    r: &mut R,
+) -> io::Result<GatekeeperSettingsRequest> {
+    let buf = crate::read_frame_bytes(r)?;
+    serde_json::from_slice(&buf).map_err(io::Error::other)
+}
+
+pub fn write_gatekeeper_settings_reply<W: Write>(
+    w: &mut W,
+    msg: &GatekeeperSettingsReply,
+) -> io::Result<()> {
+    crate::write_framed(w, msg)
+}
+
+pub fn read_gatekeeper_settings_reply<R: Read>(r: &mut R) -> io::Result<GatekeeperSettingsReply> {
     let buf = crate::read_frame_bytes(r)?;
     serde_json::from_slice(&buf).map_err(io::Error::other)
 }
@@ -171,6 +277,31 @@ mod tests {
             write_gatekeeper_reply(&mut a, &reply).unwrap();
             assert_eq!(read_gatekeeper_reply(&mut b).unwrap(), reply);
         }
+    }
+
+    #[test]
+    fn settings_protocol_round_trips_and_never_decodes_as_a_review() {
+        let settings_request = GatekeeperSettingsRequest::Update {
+            change: GatekeeperSettingsChange::AddBlockedHost {
+                host: "tracker.example".to_string(),
+            },
+        };
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        write_gatekeeper_settings_request(&mut a, &settings_request).unwrap();
+        assert_eq!(
+            read_gatekeeper_wire_request(&mut b).unwrap(),
+            GatekeeperWireRequest::Settings(settings_request)
+        );
+
+        let settings_reply = GatekeeperSettingsReply::Rejected {
+            reason: "invalid hostname".to_string(),
+        };
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        write_gatekeeper_settings_reply(&mut a, &settings_reply).unwrap();
+        assert_eq!(
+            read_gatekeeper_settings_reply(&mut b).unwrap(),
+            settings_reply
+        );
     }
 
     #[test]

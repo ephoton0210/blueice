@@ -17,6 +17,7 @@
 //! them instead of exactly one.
 
 use crate::downloads_page::DownloadsSource;
+use crate::gatekeeper_settings_page::GatekeeperSettingsSource;
 use crate::Page;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -211,6 +212,7 @@ pub struct TabManager {
     /// Handed to every tab (existing and future) so `about:downloads` works
     /// in any of them.
     downloads: Option<Arc<DownloadsSource>>,
+    gatekeeper_settings: Option<Arc<GatekeeperSettingsSource>>,
     /// Whether leaving an entry retains a locally displayable page snapshot,
     /// rather than the default URL-only history record.
     history_snapshot_mode: HistorySnapshotMode,
@@ -263,6 +265,7 @@ impl TabManager {
             viewport_width,
             viewport_height,
             downloads: None,
+            gatekeeper_settings: None,
             history_snapshot_mode,
             extension_navigation_block_rules: HashMap::new(),
         }
@@ -334,6 +337,7 @@ impl TabManager {
         self.next_tab_id += 1;
         let mut page = Page::new(self.viewport_width, self.viewport_height);
         page.set_downloads_source(self.downloads.clone());
+        page.set_gatekeeper_settings_source(self.gatekeeper_settings.clone());
         self.tabs.insert(
             id,
             Tab {
@@ -364,6 +368,26 @@ impl TabManager {
     /// The source `about:downloads` reads from, if one was set.
     pub fn downloads_source(&self) -> Option<&Arc<DownloadsSource>> {
         self.downloads.as_ref()
+    }
+
+    /// Where every tab's `about:settings` reaches the one real gatekeeper
+    /// service. Applied to current tabs, retained snapshot pages, and tabs
+    /// opened later just like the downloads source.
+    pub fn set_gatekeeper_settings_source(&mut self, source: Arc<GatekeeperSettingsSource>) {
+        for tab in self.tabs.values_mut() {
+            tab.page
+                .set_gatekeeper_settings_source(Some(source.clone()));
+            for entry in tab.back.iter_mut().chain(tab.forward.iter_mut()) {
+                if let Some(page) = entry.snapshot_mut() {
+                    page.set_gatekeeper_settings_source(Some(source.clone()));
+                }
+            }
+        }
+        self.gatekeeper_settings = Some(source);
+    }
+
+    pub fn gatekeeper_settings_source(&self) -> Option<&Arc<GatekeeperSettingsSource>> {
+        self.gatekeeper_settings.as_ref()
     }
 
     /// Closes `id`, returning `true` if it existed. Closing the last
@@ -542,6 +566,7 @@ impl TabManager {
         let mut page =
             Page::new_continuing_from(self.viewport_width, self.viewport_height, next_node_id);
         page.set_downloads_source(self.downloads.clone());
+        page.set_gatekeeper_settings_source(self.gatekeeper_settings.clone());
         page
     }
 

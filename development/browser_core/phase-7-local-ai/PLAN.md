@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress — the safety-gatekeeper's mechanism, protocol, concurrency, fail-closed behavior, always-resident launcher supervision, and a first deterministic/versioned rule-base are built and tested. The model-review layer, assistant agent, and per-component wiring beyond navigation remain future work.
+**Status**: In progress — the safety-gatekeeper's mechanism, protocol, concurrency, fail-closed behavior, always-resident launcher supervision, a first deterministic/versioned rule-base, and an inspectable bounded settings page are built and tested. The model-review layer, assistant agent, and per-component wiring beyond navigation remain future work.
 
 ## Objective
 
@@ -85,6 +85,8 @@ This deliberately reuses the same "poll loop + pending-work channel" shape `phas
 
 **Initial deterministic rule-base (implemented 2026-09-22).** `backend/ai-gatekeeper/src/rules.rs` has no model, prompt, network access, or shared mutable state. It evaluates one request deterministically and includes its monotonically maintained `RULESET_VERSION` in every rejection diagnostic. The first compiled rules reject known local blocklist hosts (`malware.test`/`phishing.test` and subdomains), bidirectional-override or zero-width URL obfuscation, bidirectional-override page text, instruction-shaped text only when paired with a hidden-content marker or zero-width obfuscation, and executable/installer downloads. Ordinary visible discussion of prompt injection remains clear to avoid treating security documentation itself as an attack. Rules are versioned and updated through ordinary reviewed BlueIce releases, rather than a remote live-policy feed that would add a new integrity dependency. This is the required independent rule-base layer; a future AI model review is additive and cannot modify its decision.
 
+**Inspectable, bounded gatekeeper settings (implemented 2026-09-23).** `about:settings` reads the policy from the *running* private `ai-gatekeeper` service, rather than copying a UI manifest into `core`. It displays the exact ruleset version, every compiled baseline rule, and each required URL/content/download/extension review stage, so the person inspecting it sees the same policy the process applies. A user may add or remove normalized DNS hosts from a persistent local denylist; those hosts are checked for navigation and downloads alongside the compiled denylist. This is intentionally additive only: the protocol has no operation to remove compiled rules, weaken a rule, or skip a mandatory workflow stage. The page renders no controls while the settings service is unavailable, and every mutation validates before atomically persisting it. The reference frontend's ordinary input focus/keyboard path drives the text field and button, while the core keeps the focus target and settings action resolution authoritative.
+
 ### Agent 2: Assistant
 
 Organizing data, summarization, and **live translation** per the given scope. Can tolerate higher latency and more model variety than the gatekeeper — a good candidate for a larger local model, or even a fallback that only activates when no external AI agent is connected.
@@ -127,6 +129,7 @@ Organizing data, summarization, and **live translation** per the given scope. Ca
 - [x] Add IPC-wire-protocol-level enforcement (server-side, not just the client-side compile-time guarantee), with Phase 9 — `blueice-core` owns the manifest-derived extension registry when the private extension socket is enabled and checks it before each core-backed read/write. V2 text-input writes and v3 enabled-native-checkbox writes use explicit tab/node IDs, are always reviewed with non-extension-controlled action labels, are validated against the live core DOM, and publish a shared frame before acknowledgement; unsupported legacy writes/interception shapes return structured `OperationUnavailable`. In authenticated `--extension-host` mode, core also requires a fresh child-environment-only credential before it accepts the manifest-derived identity.
 - [ ] Confirm synchronous-blocking applies to every page load, not just the action-level risk taxonomy
 - [x] Build the initial deterministic rule-base and version/update mechanism — compiled `RULESET_VERSION`, updated through reviewed BlueIce releases; URL obfuscation/blocklist, hidden prompt-injection, Unicode bidi, and executable-download signatures in `backend/ai-gatekeeper/src/rules.rs`, with gatekeeper and core integration tests
+- [x] Expose the enforced rule-base and workflow in a complete settings page, with bounded user adjustment — `about:settings` is sourced from the live gatekeeper and permits only persistent additive custom blocked-host entries; release-owned baseline rules and mandatory workflow stages remain non-editable
 - [ ] Review and firm up the AI-layer risk taxonomy draft above
 - [ ] Decide where the live-translation DOM-substitution hook sits relative to Phase 3's HTML→DOM pipeline, and whether original text is retained alongside the translation
 - [ ] Decide whether the Phase 1/5 AI-facing representation reflects translated or original text when live translation is active

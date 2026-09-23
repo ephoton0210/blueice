@@ -128,6 +128,17 @@ pub enum ClientMessage {
     Scroll {
         delta_y: f64,
     },
+    /// Inserts text at the end of the focused native text input. This is a
+    /// deliberately narrow human-input path: the core identifies the focused
+    /// input itself and refuses to turn keyboard events into arbitrary DOM
+    /// writes.
+    InsertText {
+        text: String,
+    },
+    /// Removes the final Unicode scalar from the focused native text input.
+    /// Like [`Self::InsertText`], this is a no-op unless the page has a
+    /// currently focused supported text input.
+    DeleteBackward,
     /// Requests a fresh [`AiSnapshot`] of the current page, replied to
     /// with [`ServerMessage::Representation`].
     GetRepresentation,
@@ -674,6 +685,10 @@ mod tests {
             },
             ClientMessage::Click { x: 12.5, y: 30.0 },
             ClientMessage::Scroll { delta_y: -40.0 },
+            ClientMessage::InsertText {
+                text: "BlueIce".to_string(),
+            },
+            ClientMessage::DeleteBackward,
             ClientMessage::Chrome(ChromeCommand::SetVisible(false)),
             ClientMessage::Hover { x: 5.0, y: 6.0 },
             ClientMessage::GetRepresentation,

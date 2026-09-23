@@ -18,6 +18,7 @@
 //! support in this reference implementation.
 
 use blueice_engine::downloads_page::DownloadsSource;
+use blueice_engine::gatekeeper_settings_page::GatekeeperSettingsSource;
 use blueice_engine::script::ScriptSession;
 use blueice_engine::session::ExtensionPageRequest;
 use blueice_engine::{session, HistorySnapshotMode, TabManager};
@@ -741,6 +742,9 @@ fn main() -> ExitCode {
             Some(socket) => DownloadsSource::at(socket),
             None => DownloadsSource::new(),
         }));
+        tabs.set_gatekeeper_settings_source(Arc::new(GatekeeperSettingsSource::at(
+            gatekeeper_socket.clone(),
+        )));
         if let Some(runtime_start) = extension_runtime_start.as_ref() {
             // The accepted frontend and its newly constructed session are the
             // earliest point at which a Wasm host request can reach a live

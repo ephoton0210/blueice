@@ -45,9 +45,15 @@ fn resource_text(locale: &str, namespace: &str) -> Option<&'static str> {
         ("en", "credits") => Some(include_str!("../locales/en/credits.ftl")),
         ("en", "downloads") => Some(include_str!("../locales/en/downloads.ftl")),
         ("en", "frontend") => Some(include_str!("../locales/en/frontend.ftl")),
+        ("en", "gatekeeper-settings") => {
+            Some(include_str!("../locales/en/gatekeeper-settings.ftl"))
+        }
         ("zh-TW", "credits") => Some(include_str!("../locales/zh-TW/credits.ftl")),
         ("zh-TW", "downloads") => Some(include_str!("../locales/zh-TW/downloads.ftl")),
         ("zh-TW", "frontend") => Some(include_str!("../locales/zh-TW/frontend.ftl")),
+        ("zh-TW", "gatekeeper-settings") => {
+            Some(include_str!("../locales/zh-TW/gatekeeper-settings.ftl"))
+        }
         // Test-only fixtures for the two defensive panics in
         // `bundle_for` below, which no real bundled `.ftl` file should
         // ever trigger -- these exist purely so those panics are
@@ -63,7 +69,9 @@ fn resource_text(locale: &str, namespace: &str) -> Option<&'static str> {
 
 fn bundle_for(locale: &str, namespace: &str) -> Option<FluentBundle<FluentResource>> {
     let text = resource_text(locale, namespace)?;
-    let langid: LanguageIdentifier = locale.parse().expect("locale tags in resource_text must be valid BCP-47");
+    let langid: LanguageIdentifier = locale
+        .parse()
+        .expect("locale tags in resource_text must be valid BCP-47");
     let resource = FluentResource::try_new(text.to_string()).unwrap_or_else(|(_, errors)| {
         panic!("bundled {locale}/{namespace}.ftl failed to parse: {errors:?}");
     });
@@ -74,7 +82,11 @@ fn bundle_for(locale: &str, namespace: &str) -> Option<FluentBundle<FluentResour
     Some(bundle)
 }
 
-fn format_message(bundle: &FluentBundle<FluentResource>, key: &str, args: &[(&str, &str)]) -> Option<String> {
+fn format_message(
+    bundle: &FluentBundle<FluentResource>,
+    key: &str,
+    args: &[(&str, &str)],
+) -> Option<String> {
     let msg = bundle.get_message(key)?;
     let pattern = msg.value()?;
     let mut fluent_args = FluentArgs::new();
@@ -100,7 +112,8 @@ pub fn translate(locale: &str, namespace: &str, key: &str, args: &[(&str, &str)]
             return text;
         }
     }
-    let bundle = bundle_for(DEFAULT_LOCALE, namespace).unwrap_or_else(|| panic!("no {DEFAULT_LOCALE} resource for namespace {namespace:?}"));
+    let bundle = bundle_for(DEFAULT_LOCALE, namespace)
+        .unwrap_or_else(|| panic!("no {DEFAULT_LOCALE} resource for namespace {namespace:?}"));
     format_message(&bundle, key, args).unwrap_or_else(|| panic!("missing key {key:?} in {DEFAULT_LOCALE}/{namespace} (the fallback locale must define every key)"))
 }
 
@@ -110,12 +123,18 @@ mod tests {
 
     #[test]
     fn translates_a_plain_key_in_the_default_locale() {
-        assert_eq!(translate("en", "credits", "about-title", &[]), "About BlueIce");
+        assert_eq!(
+            translate("en", "credits", "about-title", &[]),
+            "About BlueIce"
+        );
     }
 
     #[test]
     fn translates_the_same_key_in_a_supported_non_default_locale() {
-        assert_eq!(translate("zh-TW", "credits", "about-title", &[]), "關於 BlueIce");
+        assert_eq!(
+            translate("zh-TW", "credits", "about-title", &[]),
+            "關於 BlueIce"
+        );
     }
 
     // Fluent wraps a substituted argument in FSI/PDI (U+2068/U+2069)
@@ -130,19 +149,32 @@ mod tests {
 
     #[test]
     fn substitutes_a_named_argument() {
-        let title = translate("en", "frontend", "window-title-navigated", &[("url", "https://example.com")]);
+        let title = translate(
+            "en",
+            "frontend",
+            "window-title-navigated",
+            &[("url", "https://example.com")],
+        );
         assert_eq!(title, format!("BlueIce -- {FSI}https://example.com{PDI}"));
     }
 
     #[test]
     fn substitutes_a_named_argument_in_a_non_default_locale_too() {
-        let title = translate("zh-TW", "frontend", "window-title-navigated", &[("url", "https://example.com")]);
+        let title = translate(
+            "zh-TW",
+            "frontend",
+            "window-title-navigated",
+            &[("url", "https://example.com")],
+        );
         assert_eq!(title, format!("BlueIce —— {FSI}https://example.com{PDI}"));
     }
 
     #[test]
     fn an_unsupported_locale_falls_back_to_the_default_locale() {
-        assert_eq!(translate("fr", "credits", "about-title", &[]), translate("en", "credits", "about-title", &[]));
+        assert_eq!(
+            translate("fr", "credits", "about-title", &[]),
+            translate("en", "credits", "about-title", &[])
+        );
     }
 
     const CREDITS_KEYS: &[&str] = &[
@@ -201,6 +233,26 @@ mod tests {
         "note-resume-unsafe",
         "segments-heading",
     ];
+    const GATEKEEPER_SETTINGS_KEYS: &[&str] = &[
+        "title",
+        "intro",
+        "ruleset-version",
+        "baseline-rules-heading",
+        "workflow-heading",
+        "category",
+        "trigger",
+        "custom-blocklist-heading",
+        "mandatory",
+        "adjustable",
+        "add-host-label",
+        "add-host-button",
+        "remove-host-button",
+        "custom-blocklist-empty",
+        "locked-note",
+        "unavailable",
+        "saved",
+        "invalid",
+    ];
 
     #[test]
     fn every_supported_locale_defines_every_key_the_default_locale_does() {
@@ -208,11 +260,20 @@ mod tests {
         // documents -- a resource file silently missing a key it
         // should have, discovered here at test time rather than by a
         // user seeing English leak into an otherwise-translated screen.
-        for (namespace, keys) in [("credits", CREDITS_KEYS), ("frontend", FRONTEND_KEYS), ("downloads", DOWNLOADS_KEYS)] {
+        for (namespace, keys) in [
+            ("credits", CREDITS_KEYS),
+            ("frontend", FRONTEND_KEYS),
+            ("downloads", DOWNLOADS_KEYS),
+            ("gatekeeper-settings", GATEKEEPER_SETTINGS_KEYS),
+        ] {
             for locale in SUPPORTED_LOCALES {
-                let bundle = bundle_for(locale, namespace).unwrap_or_else(|| panic!("{locale}/{namespace} has no resource at all"));
+                let bundle = bundle_for(locale, namespace)
+                    .unwrap_or_else(|| panic!("{locale}/{namespace} has no resource at all"));
                 for key in keys {
-                    assert!(bundle.has_message(key), "{locale}/{namespace} is missing key {key:?} that {DEFAULT_LOCALE} defines");
+                    assert!(
+                        bundle.has_message(key),
+                        "{locale}/{namespace} is missing key {key:?} that {DEFAULT_LOCALE} defines"
+                    );
                 }
             }
         }
@@ -223,8 +284,14 @@ mod tests {
         for locale in SUPPORTED_LOCALES {
             for key in DOWNLOADS_KEYS {
                 let text = translate(locale, "downloads", key, &[("x", "y")]);
-                assert!(!text.contains(FSI) && !text.contains(PDI), "{locale}/{key}: {text:?}");
-                assert!(!text.contains("{ $") && !text.contains("{$"), "{locale}/{key} has a placeable: {text:?}");
+                assert!(
+                    !text.contains(FSI) && !text.contains(PDI),
+                    "{locale}/{key}: {text:?}"
+                );
+                assert!(
+                    !text.contains("{ $") && !text.contains("{$"),
+                    "{locale}/{key} has a placeable: {text:?}"
+                );
             }
         }
     }
