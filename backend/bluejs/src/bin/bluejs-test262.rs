@@ -480,11 +480,7 @@ mod tests {
         // The fix must not stop prefixing the test body -- only harness
         // includes. A bare implicit global in the *test body* itself must
         // still throw ReferenceError under "strict" mode.
-        let reply = eval_request(
-            "strict",
-            Vec::new(),
-            "bluejsCorpusProblemProbeBody = 1;",
-        );
+        let reply = eval_request("strict", Vec::new(), "bluejsCorpusProblemProbeBody = 1;");
         assert_eq!(reply["kind"], json!("ReferenceError"), "reply was: {reply}");
     }
 }
