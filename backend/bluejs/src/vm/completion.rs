@@ -126,15 +126,15 @@ pub(super) enum InterpreterExit {
 // abort rather than a catchable error. `enter_call` therefore refuses to nest
 // another call, with a catchable RangeError, once fewer than
 // `CALL_STACK_RED_ZONE` bytes remain on the current thread's own stack
-// (`stacker::remaining_stack`, which asks the OS about the thread actually
+// (`native_stack::remaining_stack`, which asks the OS about the thread actually
 // running the VM: a normal process's main thread, a smaller worker, or a
 // deliberately tiny one all get the right budget without any per-platform
 // constant here). Cheap and expensive frames are not distinguished: an
 // interpreted call costs about the same native stack whatever the script
 // does, so depth follows the stack the host provisioned.
 //
-// The guard deliberately errors instead of calling `stacker::maybe_grow`,
-// which would run the recursion on a freshly allocated stack segment. The
+// The guard deliberately errors instead of growing the stack onto a freshly
+// allocated segment. The
 // stack is the runaway-recursion boundary: growing it would leave only
 // `instruction_budget` (time, not memory) between a hostile script and
 // hundreds of megabytes of native stack.
@@ -156,14 +156,14 @@ pub(super) enum InterpreterExit {
 // minimum. On a normal 8 MiB stack it allows roughly 500 nested calls.
 pub(super) const CALL_STACK_RED_ZONE: usize = 256 * 1024;
 
-// Where the host cannot report the thread's stack (`stacker` has no backend
+// Where the host cannot report the thread's stack (`native_stack` has no backend
 // for an unknown OS, and under `miri` it reports nothing), fall back to the
 // conservative frame count the guard used before it measured bytes: 32 calls
 // at the measured cost fit inside 512 KiB.
 pub(super) const UNMEASURED_STACK_MAX_CALL_DEPTH: usize = 32;
 
 /// Whether one more nested call must be refused. `remaining_stack` is the
-/// byte count `stacker::remaining_stack` reported for the current thread.
+/// byte count `native_stack::remaining_stack` reported for the current thread.
 pub(super) fn call_stack_exhausted(remaining_stack: Option<usize>, call_depth: usize) -> bool {
     match remaining_stack {
         Some(remaining) => remaining < CALL_STACK_RED_ZONE,

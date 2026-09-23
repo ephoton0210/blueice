@@ -32,6 +32,7 @@ mod intrinsics;
 mod json;
 mod lifecycle;
 mod modules;
+mod native_stack;
 mod operations;
 mod properties;
 mod realm_reentrancy;
@@ -1492,7 +1493,7 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         // Nested calls recurse through the native stack; refuse before it can
         // overflow (see `completion::CALL_STACK_RED_ZONE`).
-        if call_stack_exhausted(stacker::remaining_stack(), self.call_depth) {
+        if call_stack_exhausted(native_stack::remaining_stack(), self.call_depth) {
             return Err(RuntimeError::RangeError(
                 "maximum call depth exceeded".into(),
             ));
