@@ -353,17 +353,20 @@ fn request_network_block_url(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
 }
 
-fn clear_network_block_urls(tx: &mpsc::Sender<ExtensionPageRequest>, connection_id: u64) {
+fn clear_network_block_urls(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    connection_id: u64,
+) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
-    if tx
+    tx
         .send(ExtensionPageRequest::ClearNetworkBlockUrls {
             connection_id,
             reply: reply_tx,
         })
-        .is_ok()
-    {
-        let _ = reply_rx.recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT);
-    }
+        .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())
 }
 
 /// Serves extension connections outside the session thread, but asks that
@@ -407,6 +410,7 @@ fn spawn_extension_listener(
                 let read_tx = request_tx.clone();
                 let write_tx = request_tx.clone();
                 let rule_tx = request_tx.clone();
+                let clear_tx = request_tx.clone();
                 let _ =
                     handle_extension_connection_with_actions_and_authentication_and_network_rules(
                         &registry,
@@ -460,9 +464,10 @@ fn spawn_extension_listener(
                                 )
                             },
                             move |url| request_network_block_url(&rule_tx, connection_id, url),
+                            move || clear_network_block_urls(&clear_tx, connection_id),
                         ),
                     );
-                clear_network_block_urls(&request_tx, connection_id);
+                let _ = clear_network_block_urls(&request_tx, connection_id);
             });
         }
     });

@@ -178,6 +178,12 @@ pub enum ExtensionRequest {
     /// the extension disconnects. This is deliberately not a callback,
     /// redirector, header editor, or arbitrary request scripting API.
     RegisterNetworkBlockUrl { url: String },
+    /// Version 3 of `network:intercept`: remove every exact navigation-block
+    /// rule owned by this connection. This cannot affect rules installed by a
+    /// different extension connection and has no extension-controlled payload,
+    /// so it needs no further gatekeeper action review. The same cleanup also
+    /// runs automatically when the connection ends.
+    ClearNetworkBlockUrls,
     /// Registers a network interception rule -- requires the
     /// `network:intercept` capability. Registering interception at all
     /// is high-risk, so the host always routes this request through the
@@ -283,8 +289,9 @@ pub enum ExtensionReply {
     DomReadResult { value: String },
     /// Reply to a granted [`ExtensionRequest::DomWrite`].
     DomWriteAck,
-    /// Reply to a granted and gatekeeper-cleared
-    /// [`ExtensionRequest::NetworkIntercept`] registration.
+    /// Reply to a granted `network:intercept` operation. Rule registration is
+    /// gatekeeper-cleared; clearing the caller's own connection-scoped rules
+    /// needs only ordinary capability/version authorization.
     NetworkInterceptAck,
     /// Authorization (and, where applicable, gatekeeper review) succeeded,
     /// but the host has no concrete implementation for this operation. This
@@ -435,6 +442,7 @@ mod tests {
             ExtensionRequest::RegisterNetworkBlockUrl {
                 url: "https://example.test/private".to_string(),
             },
+            ExtensionRequest::ClearNetworkBlockUrls,
             ExtensionRequest::NetworkIntercept,
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();

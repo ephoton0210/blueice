@@ -239,6 +239,15 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
     linker
         .func_wrap(
             "blueice",
+            "clear_network_block_urls",
+            |mut caller: Caller<'_, RuntimeState>| clear_network_block_urls(&mut caller),
+        )
+        .map_err(|error| {
+            format!("could not define the clear_network_block_urls ABI import: {error}")
+        })?;
+    linker
+        .func_wrap(
+            "blueice",
             "runtime_event_kind",
             |caller: Caller<'_, RuntimeState>| runtime_event_kind(&caller),
         )
@@ -428,6 +437,16 @@ fn register_network_block_url(
         return RESULT_INVALID_ARGUMENT;
     };
     match request_core(caller, ExtensionRequest::RegisterNetworkBlockUrl { url }) {
+        Ok(ExtensionReply::NetworkInterceptAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+/// Removes only the caller connection's version-2 exact block rules. This
+/// version-3 operation supplies no URL or other extension-controlled policy
+/// input and therefore merely reduces the caller's own active rule set.
+fn clear_network_block_urls(caller: &mut Caller<'_, RuntimeState>) -> i32 {
+    match request_core(caller, ExtensionRequest::ClearNetworkBlockUrls) {
         Ok(ExtensionReply::NetworkInterceptAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -645,6 +664,36 @@ mod tests {
                 ExtensionRequest::RegisterNetworkBlockUrl {
                     url: url.to_string(),
                 }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core,
+                &ExtensionReply::NetworkInterceptAck,
+            )
+            .unwrap();
+        });
+
+        execute_installed_extension(&extension, guest).unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reactor_forwards_a_network_rule_clear_to_core() {
+        let (root, extension) = installed_extension(
+            "network-rule-clear",
+            r#"(module
+                (import "blueice" "clear_network_block_urls" (func $clear (result i32)))
+                (func (export "blueice_start")
+                    call $clear
+                    i32.const 0
+                    i32.ne
+                    if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::ClearNetworkBlockUrls
             );
             blueice_ipc::extension::write_extension_reply(
                 &mut core,

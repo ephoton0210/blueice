@@ -32,7 +32,7 @@
 //! [`ExtensionReply::DomReadResult`] value, but
 //! [`handle_extension_connection_with_actions`] lets `blueice-core`
 //! provide core-owned representation reads plus explicit form-control writes
-//! and a v2 declarative navigation-block delegate without this crate taking an
+//! and v2/v3 declarative navigation-rule delegates without this crate taking an
 //! engine dependency. Generic `DomWrite` and legacy v1 `NetworkIntercept`
 //! still lack safe core operation shapes, so they are reported as unavailable
 //! rather than acknowledged without an effect.
@@ -170,10 +170,11 @@ impl ExtensionRegistry {
     pub fn with_supported_capabilities() -> Self {
         let mut registry = Self::new();
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
+        let v1_to_v3 = CapabilityVersionWindow::new(1, 3).expect("literal version window is valid");
         let v1_to_v6 = CapabilityVersionWindow::new(1, 6).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v6);
-        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v2);
+        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v3);
         registry
     }
 
@@ -456,17 +457,18 @@ pub struct ExtensionConnectionAuthentication<'a> {
 }
 
 /// Core-owned delegates for one authenticated extension connection. Bundling
-/// the four protocol effects keeps the long-lived connection handler's
+/// the five protocol effects keeps the long-lived connection handler's
 /// authority surface explicit without growing its public argument list every
 /// time a new, independently reviewed operation is added.
-pub struct ExtensionActionDelegates<R, W, N, B> {
+pub struct ExtensionActionDelegates<R, W, N, B, C> {
     read_dom: R,
     write_dom: W,
     register_network_intercept: N,
     register_network_block_url: B,
+    clear_network_block_urls: C,
 }
 
-impl<R, W, N, B> ExtensionActionDelegates<R, W, N, B> {
+impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
     /// Creates the complete delegate bundle for one connection. Each closure
     /// is still invoked only after the handler's normal capability, version,
     /// and (where required) gatekeeper checks.
@@ -475,12 +477,14 @@ impl<R, W, N, B> ExtensionActionDelegates<R, W, N, B> {
         write_dom: W,
         register_network_intercept: N,
         register_network_block_url: B,
+        clear_network_block_urls: C,
     ) -> Self {
         Self {
             read_dom,
             write_dom,
             register_network_intercept,
             register_network_block_url,
+            clear_network_block_urls,
         }
     }
 }
@@ -604,26 +608,32 @@ where
                 "network:intercept version 2 needs a core-backed declarative rule handler"
                     .to_string(),
             )
+        }, || {
+            Err(
+                "network:intercept version 3 needs a core-backed rule-clear handler".to_string(),
+            )
         }),
     )
 }
 
 /// Like [`handle_extension_connection_with_actions_and_authentication`], with
-/// a separate delegate for the version-2 exact navigation-block rule. Keeping
-/// it distinct from the legacy v1 acknowledgement preserves the latter's
-/// isolated protocol-test behavior while making a core-backed effect explicit.
+/// separate delegates for the version-2 exact navigation-block registration
+/// and version-3 caller-owned rule clear. Keeping both distinct from the
+/// legacy v1 acknowledgement preserves its isolated protocol-test behavior
+/// while making each core-backed effect explicit.
 pub fn handle_extension_connection_with_actions_and_authentication_and_network_rules<
     S,
     R,
     W,
     N,
     B,
+    C,
 >(
     registry: &ExtensionRegistry,
     gatekeeper_socket: &Path,
     stream: &mut S,
     authentication: ExtensionConnectionAuthentication<'_>,
-    delegates: ExtensionActionDelegates<R, W, N, B>,
+    delegates: ExtensionActionDelegates<R, W, N, B, C>,
 ) -> io::Result<()>
 where
     S: Read + Write,
@@ -635,12 +645,14 @@ where
     ) -> Result<(), String>,
     N: FnMut() -> Result<(), String>,
     B: FnMut(String) -> Result<(), String>,
+    C: FnMut() -> Result<(), String>,
 {
     let ExtensionActionDelegates {
         mut read_dom,
         mut write_dom,
         mut register_network_intercept,
         mut register_network_block_url,
+        mut clear_network_block_urls,
     } = delegates;
     let mut identity = match read_extension_request(stream) {
         Ok(request) => match authenticated_hello(authentication.expected(), request) {
@@ -1261,6 +1273,36 @@ where
                             },
                         )?;
                     }
+                }
+            }
+            ExtensionRequest::ClearNetworkBlockUrls => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 3)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                            reason,
+                        },
+                    )?;
+                    continue;
+                }
+                // A connection may only clear its own opaque rule bucket.
+                // Reducing its own declarative policy has no URL/body/header
+                // payload and creates no new privileged network effect, so
+                // ordinary capability/version enforcement is sufficient.
+                match clear_network_block_urls() {
+                    Ok(()) => {
+                        write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?
+                    }
+                    Err(reason) => write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                            reason,
+                        },
+                    )?,
                 }
             }
             ExtensionRequest::NetworkIntercept => {
@@ -2471,6 +2513,7 @@ mod tests {
                         seen_tx.send(url).unwrap();
                         Ok(())
                     },
+                    || panic!("a v2 request must not clear v3 rules"),
                 ),
             )
         });
@@ -2517,6 +2560,98 @@ mod tests {
     }
 
     #[test]
+    fn v3_network_rule_clear_is_delegated_without_gatekeeper_review() {
+        let registry = registry_with_network_intercept_granted();
+        let (cleared_tx, cleared_rx) = std::sync::mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                Path::new("/not-reached-for-safe-network-rule-clear.sock"),
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok("unused in this test".to_string()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_| panic!("a v3 clear must not register a rule"),
+                    move || {
+                        cleared_tx.send(()).unwrap();
+                        Ok(())
+                    },
+                ),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 3)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(&mut client, &ExtensionRequest::ClearNetworkBlockUrls).unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::NetworkInterceptAck
+        );
+        cleared_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn v3_network_rule_clear_requires_a_v3_handshake_before_its_delegate() {
+        let registry = registry_with_network_intercept_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                Path::new("/not-reached-for-v2-network-rule-clear-version-denial.sock"),
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok("unused in this test".to_string()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_| panic!("a v2 connection must not register a v2 rule in this test"),
+                    || panic!("a v2 connection must not clear v3 rules"),
+                ),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 2)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(&mut client, &ExtensionRequest::ClearNetworkBlockUrls).unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, reason } => {
+                assert_eq!(capability, CAPABILITY_NETWORK_INTERCEPT);
+                assert!(reason.contains("requires version 3"));
+            }
+            other => panic!("expected a v3 version denial, got {other:?}"),
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
     fn v2_network_block_url_requires_a_v2_handshake_before_review_or_delegate() {
         let registry = registry_with_network_intercept_granted();
         let (mut client, mut server) = UnixStream::pair().unwrap();
@@ -2531,6 +2666,7 @@ mod tests {
                     unused_write_delegate,
                     || Ok(()),
                     |_| panic!("a v1 connection must not install a v2 network rule"),
+                    || panic!("a v1 connection must not clear v3 rules"),
                 ),
             )
         });
@@ -2581,6 +2717,7 @@ mod tests {
                     unused_write_delegate,
                     || Ok(()),
                     |_| panic!("an oversized network rule must not reach core"),
+                    || panic!("an oversized network rule must not clear v3 rules"),
                 ),
             )
         });

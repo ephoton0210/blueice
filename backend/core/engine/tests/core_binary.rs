@@ -443,7 +443,7 @@ fn installed_extension_reads_a_real_core_owned_representation_over_private_socke
 }
 
 #[test]
-fn installed_extension_v2_network_rule_blocks_a_redirect_target_before_http_fetch() {
+fn installed_extension_v3_network_rule_clear_restores_navigation_after_a_redirect_block() {
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
@@ -499,7 +499,7 @@ fn installed_extension_v2_network_rule_blocks_a_redirect_target_before_http_fetc
             frame_dir.to_str().unwrap(),
         ])
         .spawn()
-        .expect("failed to spawn core with a v2 network-rule extension");
+        .expect("failed to spawn core with a v3 network-rule extension");
 
     assert!(wait_for(&core_socket, Duration::from_secs(5)));
     assert!(wait_for(&extension_socket, Duration::from_secs(5)));
@@ -510,7 +510,7 @@ fn installed_extension_v2_network_rule_blocks_a_redirect_target_before_http_fetc
         &mut extension,
         &ExtensionRequest::Hello {
             extension_id,
-            capability_versions: BTreeMap::from([("network:intercept".to_string(), 2)]),
+            capability_versions: BTreeMap::from([("network:intercept".to_string(), 3)]),
         },
     )
     .unwrap();
@@ -548,6 +548,36 @@ fn installed_extension_v2_network_rule_blocks_a_redirect_target_before_http_fetc
         "the extension rule must prevent core from opening an HTTP connection"
     );
     redirect_server.join().unwrap();
+
+    // Clearing is a version-3 operation that can only remove rules from this
+    // extension connection. It needs no new gatekeeper action review because
+    // it reduces, rather than adds, privileged network policy.
+    write_extension_request(&mut extension, &ExtensionRequest::ClearNetworkBlockUrls).unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::NetworkInterceptAck
+    );
+    listener.set_nonblocking(false).unwrap();
+    let target_server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        stream
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 19\r\nConnection: close\r\n\r\n<p>now allowed</p>\n",
+            )
+            .unwrap();
+    });
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url }
+    );
+    target_server.join().unwrap();
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();

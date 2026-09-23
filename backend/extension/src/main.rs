@@ -174,10 +174,11 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
     }
 
     // A package declares only the APIs it needs. The one-shot Wasm ABI uses
-    // explicit tab reads (v2) and the two existing bounded write operations
-    // (v2/v3), so negotiate the highest safe version per declared capability
-    // before guest code can invoke an import. Core remains free to reject an
-    // unsupported declaration without granting it any authority.
+    // explicit tab reads (v2), every currently bounded DOM write (v6), and
+    // declarative rule registration/clearing (v3), so negotiate the highest
+    // safe version per declared capability before guest code can invoke an
+    // import. Core remains free to reject an unsupported declaration without
+    // granting it any authority.
     let capability_versions: BTreeMap<_, _> = installed
         .manifest()
         .capabilities()
@@ -186,8 +187,8 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
         .map(|capability| {
             let version = match capability.as_str() {
                 CAPABILITY_DOM_READ => 2,
-                CAPABILITY_DOM_WRITE => 3,
-                CAPABILITY_NETWORK_INTERCEPT => 1,
+                CAPABILITY_DOM_WRITE => 6,
+                CAPABILITY_NETWORK_INTERCEPT => 3,
                 _ => 1,
             };
             (capability.clone(), version)

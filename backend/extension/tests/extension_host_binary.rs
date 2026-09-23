@@ -171,6 +171,41 @@ fn manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
     (root, manifest, extension_id)
 }
 
+fn network_rule_clear_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "blueice-extension-host-network-rule-package-{label}-{}-{id}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest = root.join("extension.json");
+    std::fs::write(
+        &manifest,
+        r#"{"name":"Network rule clear","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["network:intercept"]}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("extension.wasm"),
+        wat::parse_str(
+            r#"(module
+                (import "blueice" "clear_network_block_urls" (func $clear (result i32)))
+                (func (export "blueice_start")
+                    call $clear
+                    i32.const 0
+                    i32.ne
+                    if unreachable end))"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let extension_id = load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
+    (root, manifest, extension_id)
+}
+
 #[test]
 fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
     let output = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
@@ -338,6 +373,70 @@ fn core_connection_mode_authenticates_then_runs_a_navigation_event_reactor_over_
         &ExtensionReply::DomReadResult {
             value: r#"{"tab_id":1,"nodes":[]}"#.to_string(),
         },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::RuntimeEventStreamClosed,
+    )
+    .unwrap();
+    drop(listener);
+    assert!(host.wait().unwrap().success());
+    let _ = std::fs::remove_file(socket);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn core_connection_mode_negotiates_v3_and_runs_network_rule_clear_over_real_ipc() {
+    let (root, manifest, extension_id) = network_rule_clear_manifest_package("core-connect");
+    let socket = unique_socket_path("core-network-clear");
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
+    let authentication = "test-only-network-clear-credential";
+    let mut host = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
+        .args([
+            "--connect",
+            socket.to_str().unwrap(),
+            "--manifest",
+            manifest.to_str().unwrap(),
+        ])
+        .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
+        .spawn()
+        .expect("failed to launch blueice-extension-host for network rule clearing");
+
+    let (mut stream, _) = listener.accept().unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::HelloAuthenticated {
+            extension_id,
+            capability_versions: BTreeMap::from([("network:intercept".to_string(), 3)]),
+            authentication: authentication.to_string(),
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::RuntimeReady
+    );
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart)
+        .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::ClearNetworkBlockUrls
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::NetworkInterceptAck,
     )
     .unwrap();
     assert_eq!(
