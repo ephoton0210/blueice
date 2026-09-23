@@ -1979,16 +1979,36 @@ impl Vm {
             .iter()
             .map(|value| self.test262_export_foreign_value(realm_id, value))
             .collect::<Result<Vec<_>, _>>()?;
-        let result = {
+        // This call runs the child Realm's own `next`/`return`, which may
+        // itself call back into `self` through a reverse-membrane facade
+        // (e.g. a wrapped iterator whose underlying methods are parent
+        // closures) -- the same reentrancy concern `test262_foreign_call`
+        // documents and guards against. Mirror its raw-pointer/
+        // `register_active` discipline rather than holding a `self.
+        // test262_realms`-derived `realm` borrow across the call.
+        let child: *mut Vm = {
             let realm = self
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-            let receiver = Value::Object(target);
-            let method = realm.vm.get_property(&receiver, &property.into())?;
-            realm.vm.call_native(method, receiver, args, false)
+            &mut *realm.vm
         };
+        let _guard = register_active(self);
+        // SAFETY: `child` was derived from a `&mut` borrow of
+        // `self.test262_realms` whose only use was to produce this pointer
+        // (the block above); that borrow has already ended, and nothing
+        // between there and here re-borrows `self.test262_realms`, so this
+        // dereference does not alias any reference `self` itself is
+        // holding. `self` is registered active (above) for exactly this
+        // call's dynamic extent, matching `test262_foreign_call`'s
+        // identical pattern.
+        let result = unsafe {
+            (*child).remaining_instructions = (*child).config.instruction_budget;
+            let receiver = Value::Object(target);
+            let method = (*child).get_property(&receiver, &property.into())?;
+            (*child).call_native(method, receiver, args, false)
+        };
+        drop(_guard);
         // This is the local `next` applied to a foreign receiver, so its own
         // errors belong to this Realm: they are imported but not recreated.
         self.test262_import_foreign_result(realm_id, result)
