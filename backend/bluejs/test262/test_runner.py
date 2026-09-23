@@ -46,6 +46,8 @@ from run import (
     module_source_requests,
     module_sources,
     selected_files,
+    stale_corpus_reason,
+    STALE_CORPUS_FIXTURES,
 )
 
 
@@ -387,6 +389,28 @@ class RunnerTests(unittest.TestCase):
         # Never satisfies a negative-error expectation either.
         expected = {"phase": "runtime", "type": "TypeError"}
         self.assertEqual(classify({"kind": "excluded", "reason": "x"}, expected), "excluded")
+
+    def test_stale_corpus_fixtures_are_a_distinct_status_from_fail_unsupported_and_excluded(self):
+        # A fixture whose own assertions contradict the *current* ECMA-262
+        # draft (verified directly against the live spec text, not merely
+        # inferred from disagreement), with an upstream Test262 issue/fix
+        # already open, is not a BlueJS engine gap ("fail"), a capability
+        # this host lacks ("unsupported"), or a host capability declaration
+        # ("excluded") -- it is the corpus itself that hasn't caught up.
+        stale_path = "annexB/language/function-code/block-decl-func-skip-arguments.js"
+        self.assertIn(stale_path, STALE_CORPUS_FIXTURES)
+        reason = stale_corpus_reason(stale_path)
+        self.assertIsNotNone(reason)
+        self.assertIn("tc39/test262#5113", reason)
+        self.assertIn("tc39/test262#5112", reason)
+        # Every entry documents both the spec section verified and the
+        # upstream issue/PR -- never a bare "we disagree" -- and every
+        # unrelated path is unaffected.
+        for path, entry_reason in STALE_CORPUS_FIXTURES.items():
+            self.assertRegex(entry_reason, r"tc39/test262#\d+")
+        self.assertIsNone(stale_corpus_reason("staging/sm/lexical-environment/block-scoped-functions-annex-b-arguments.js"))
+        self.assertIsNone(stale_corpus_reason("annexB/language/function-code/block-decl-func-skip-arguments2.js"))
+        self.assertIsNone(stale_corpus_reason(""))
 
     def test_typed_array_harness_receives_a_bounded_extended_wall_deadline(self):
         self.assertEqual(case_timeout({"includes": []}, 2), 2)

@@ -51,6 +51,27 @@ class AnalysisTests(unittest.TestCase):
         self.assertIn("host", item["dependencies"])
         self.assertNotEqual(item["blocker"], "compiler-unsupported")
 
+    def test_stale_corpus_status_is_pending_an_upstream_fix_not_a_failure(self):
+        item = classify_item(
+            self.record(
+                "annexB/language/function-code/block-decl-func-skip-arguments.js",
+                status="stale_corpus",
+                actual={
+                    "kind": "stale_corpus",
+                    "reason": (
+                        "contradicts the current FunctionDeclarationInstantiation Annex B "
+                        "web-compat insertion point (verified against the live spec text); "
+                        "see tc39/test262#5113, fix pending in tc39/test262#5112"
+                    ),
+                },
+                flags=["noStrict"],
+            ),
+            {"features": [], "flags": ["noStrict"]},
+        )
+        self.assertEqual(item["blocker"], "corpus-stale-pending-upstream-fix")
+        self.assertNotEqual(item["blocker"], "compiler-unsupported")
+        self.assertNotEqual(item["blocker"], "host-capability-declared")
+
     def test_annex_staging_and_intl_remain_in_the_inventory(self):
         for path, scope in [("annexB/language/statements/try/x.js", "annexB"),
                             ("staging/sm/x.js", "staging"), ("intl402/Locale/x.js", "intl402")]:

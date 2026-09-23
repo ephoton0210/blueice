@@ -631,6 +631,47 @@ def canblock_exclusion(flags):
     return None
 
 
+# A fixture whose own assertions contradict the *current* ECMA-262 draft --
+# verified by reading the live spec text, not inferred from disagreeing with
+# BlueJS -- and which upstream Test262 has already independently identified
+# and drafted a fix for, is a different thing from an engine gap ("fail") or
+# a capability BlueJS lacks ("unsupported"): the corpus itself hasn't caught
+# up yet. "stale_corpus" says exactly that -- this host already matches the
+# current draft (like every other engine that implements it), and the test
+# will presumably start passing on its own once the upstream fix lands,
+# without any BlueJS change. Keyed by exact path only, each entry documents
+# the live spec citation and the upstream issue/PR, never "we disagree with
+# this test" alone.
+STALE_CORPUS_FIXTURES = {
+    # Verified 2026-09-23 against the live ECMA-262 draft's
+    # `FunctionDeclarationInstantiation` Annex B web-compat insertion point
+    # (https://tc39.es/ecma262/multipage/ordinary-and-exotic-objects-behaviours.html#step-functiondeclarationinstantiation-web-compat-insertion-point):
+    # the `funcName is not "arguments"` guard there gates only *creating a
+    # new* var binding; the sibling step that runs when the block function
+    # is evaluated (`funcEnv.SetMutableBinding(funcName, funcObj, false)`)
+    # has no such guard and still overwrites an existing `arguments`
+    # binding. This fixture (2017) was written against an older edition
+    # that appended `"arguments"` to `parameterNames` itself, a step the
+    # current algorithm no longer has -- V8 and SpiderMonkey both match the
+    # current text, as does BlueJS. tc39/test262#5113 documents this exact
+    # contradiction (it conflicts with
+    # staging/sm/lexical-environment/block-scoped-functions-annex-b-arguments.js,
+    # which is NOT in this table -- that fixture already matches the
+    # current draft); tc39/test262#5112 is the open, unmerged fix.
+    "annexB/language/function-code/block-decl-func-skip-arguments.js": (
+        "contradicts the current FunctionDeclarationInstantiation Annex B "
+        "web-compat insertion point (verified against the live spec text); "
+        "see tc39/test262#5113, fix pending in tc39/test262#5112"
+    ),
+}
+
+
+def stale_corpus_reason(relative):
+    """The reason `relative` is a known-stale corpus fixture (see
+    STALE_CORPUS_FIXTURES), or None for every other path."""
+    return STALE_CORPUS_FIXTURES.get(relative)
+
+
 def fetch(destination):
     if destination.exists():
         raise ValueError(f"refusing to replace existing corpus: {destination}")
@@ -1452,6 +1493,15 @@ def main():
                     # declaration already answers the fixture, so running it
                     # would only ever produce the wrong outcome for it.
                     results.append({"path": relative, "mode": mode, "status": "excluded", "expected": negative, "actual": {"kind": "excluded", "reason": exclusion}, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
+                    continue
+                stale_reason = stale_corpus_reason(relative)
+                if stale_reason is not None:
+                    # Never dispatched: this fixture's own assertions
+                    # contradict the current spec text (verified directly,
+                    # not inferred), so running it would only ever fail --
+                    # not because of an engine gap, but because the fixture
+                    # itself is stale pending an upstream Test262 fix.
+                    results.append({"path": relative, "mode": mode, "status": "stale_corpus", "expected": negative, "actual": {"kind": "stale_corpus", "reason": stale_reason}, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
                     continue
                 request = {"source": source_for_execution, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget, relative, source_for_execution)}
                 if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
