@@ -10,6 +10,10 @@
 //! real cross-process protocol in `blueice-ipc`, not something
 //! `core`'s design depends on. A WinUI3/SwiftUI/Qt frontend later
 //! would sit at exactly this same boundary.
+//! `blueice-frontend --launcher --url <url>` joins the default
+//! launcher-owned render pass instead of spawning a private core; `--socket`
+//! selects an explicit launcher socket for isolated runs. Phase 6 uses shared
+//! mode so an MCP-driven agent and this window observe one state.
 //!
 //! Frame delivery is push-based, not request/reply: `core` doesn't
 //! reply to every `ClientMessage` (a `Click` that doesn't land on a
@@ -40,6 +44,7 @@
 
 use blueice_ipc::downloads::{default_downloads_socket_path, DownloadsClient, TransferInfo};
 use blueice_ipc::{shm, ClientMessage, ServerMessage, TabGroupSummary, TabSummary};
+use blueice_launcher::default_rendezvous_socket_path;
 use softbuffer::{Context, Surface};
 use std::collections::{HashMap, HashSet};
 use std::io::BufRead;
@@ -253,7 +258,11 @@ struct TabStrip {
 }
 
 struct App {
-    core: Child,
+    /// The frontend owns and reaps a core only in its historical
+    /// standalone mode. Phase 6's shared-observer mode connects to a
+    /// launcher rendezvous socket, which belongs to the launcher and
+    /// must stay alive when this window closes.
+    core: Option<Child>,
     writer: UnixStream,
     window: Option<Rc<Window>>,
     surface: Option<Surface<Rc<Window>, Rc<Window>>>,
@@ -1188,26 +1197,94 @@ impl ApplicationHandler<UserEvent> for App {
                 // Blocking I/O (and possibly starting a process): off the UI thread.
                 std::thread::spawn(move || {
                     match start_download(&url) {
-                    Ok(transfer) => eprintln!(
-                        "blueice-frontend: download {} queued for {} (type `downloads` to watch it)",
-                        transfer.id, transfer.url
-                    ),
-                    Err(message) => {
-                        eprintln!("blueice-frontend: could not start the download: {message}")
+                        Ok(transfer) => eprintln!(
+                            "blueice-frontend: download {} queued for {} (type `downloads` to watch it)",
+                            transfer.id, transfer.url
+                        ),
+                        Err(message) => {
+                            eprintln!("blueice-frontend: could not start the download: {message}")
+                        }
                     }
-                }
                 });
             }
             UserEvent::Quit => {
-                self.send_unscoped(&ClientMessage::Shutdown);
+                // A shared launcher is also serving the agent and may
+                // serve other human windows. Closing one frontend must
+                // only disconnect that client, never terminate their
+                // common render pass.
+                if self.core.is_some() {
+                    self.send_unscoped(&ClientMessage::Shutdown);
+                }
                 event_loop.exit();
             }
         }
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        let _ = self.core.wait();
+        if let Some(core) = &mut self.core {
+            let _ = core.wait();
+        }
     }
+}
+
+#[derive(Debug, PartialEq)]
+struct Args {
+    /// The initial page, preserving the original positional-URL CLI
+    /// convention for standalone use.
+    url: String,
+    /// A launcher rendezvous socket to join instead of starting a
+    /// private core. This is Phase 6's human-and-agent shared-state
+    /// entry point.
+    socket: Option<PathBuf>,
+    /// Join the launcher's conventional per-user rendezvous socket.
+    launcher: bool,
+}
+
+fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
+    let mut url = None;
+    let mut socket = None;
+    let mut launcher = false;
+    let mut args = args;
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--socket" => {
+                if launcher {
+                    return Err("--socket cannot be combined with --launcher".to_string());
+                }
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--socket requires a path".to_string())?;
+                socket = Some(PathBuf::from(value));
+            }
+            "--launcher" => {
+                if socket.is_some() {
+                    return Err("--launcher cannot be combined with --socket".to_string());
+                }
+                launcher = true;
+            }
+            "--url" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--url requires a value".to_string())?;
+                if url.replace(value).is_some() {
+                    return Err("initial URL was specified more than once".to_string());
+                }
+            }
+            value if value.starts_with('-') => {
+                return Err(format!("unrecognized argument: {value}"));
+            }
+            value => {
+                if url.replace(value.to_string()).is_some() {
+                    return Err("only one positional initial URL is supported".to_string());
+                }
+            }
+        }
+    }
+    Ok(Args {
+        url: url.unwrap_or_else(|| "https://example.com".to_string()),
+        socket,
+        launcher,
+    })
 }
 
 /// The URL actually sent for a navigation: the bare downloads page is
@@ -1440,37 +1517,52 @@ fn spawn_server_reader(mut reader: UnixStream, proxy: EventLoopProxy<UserEvent>)
 }
 
 fn main() {
-    let url = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "https://example.com".to_string());
+    let args = parse_args(std::env::args().skip(1)).unwrap_or_else(|message| {
+        eprintln!("blueice-frontend: {message}");
+        std::process::exit(2);
+    });
 
-    let this_exe = std::env::current_exe().expect("failed to resolve own executable path");
-    let core_bin = sibling_core_binary(&this_exe);
-    let socket_path = unique_socket_path();
-    let _ = std::fs::remove_file(&socket_path);
+    let Args {
+        url,
+        socket,
+        launcher,
+    } = args;
+    let shared_socket = socket.or_else(|| launcher.then(default_rendezvous_socket_path));
+    let (core, socket_path, owns_socket) = if let Some(socket) = shared_socket {
+        // Do not delete or supervise a launcher-owned socket: it is the
+        // explicit proof path where this human window and an MCP-driven
+        // agent share one brokered core/render pass.
+        (None, socket, false)
+    } else {
+        let this_exe = std::env::current_exe().expect("failed to resolve own executable path");
+        let core_bin = sibling_core_binary(&this_exe);
+        let socket_path = unique_socket_path();
+        let _ = std::fs::remove_file(&socket_path);
 
-    let core = Command::new(&core_bin)
-        .arg("--socket")
-        .arg(&socket_path)
-        .arg("--width")
-        .arg("800")
-        .arg("--height")
-        .arg("600")
-        .spawn()
-        .unwrap_or_else(|e| {
+        let core = Command::new(&core_bin)
+            .arg("--socket")
+            .arg(&socket_path)
+            .arg("--width")
+            .arg("800")
+            .arg("--height")
+            .arg("600")
+            .spawn()
+            .unwrap_or_else(|e| {
+                panic!(
+                    "failed to spawn {} ({e}) -- expected it next to {}",
+                    core_bin.display(),
+                    this_exe.display()
+                )
+            });
+
+        if !wait_for_socket(&socket_path, Duration::from_secs(5)) {
             panic!(
-                "failed to spawn {} ({e}) -- expected it next to {}",
-                core_bin.display(),
-                this_exe.display()
-            )
-        });
-
-    if !wait_for_socket(&socket_path, Duration::from_secs(5)) {
-        panic!(
-            "blueice-core never created its socket at {}",
-            socket_path.display()
-        );
-    }
+                "blueice-core never created its socket at {}",
+                socket_path.display()
+            );
+        }
+        (Some(core), socket_path, true)
+    };
     let mut writer = UnixStream::connect(&socket_path).expect("failed to connect to blueice-core");
     // `core` requires the very first message on a fresh connection to
     // be `Hello` (`phase-1-ai-representation-layer/PLAN.md` §3) -- done
@@ -1515,12 +1607,88 @@ fn main() {
         .run_app(&mut app)
         .expect("event loop exited with an error");
 
-    let _ = std::fs::remove_file(&socket_path);
+    if owns_socket {
+        let _ = std::fs::remove_file(&socket_path);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn args(values: &[&str]) -> Result<Args, String> {
+        parse_args(values.iter().map(|value| value.to_string()))
+    }
+
+    #[test]
+    fn frontend_arguments_preserve_the_positional_url_default() {
+        assert_eq!(
+            args(&[]).unwrap(),
+            Args {
+                url: "https://example.com".to_string(),
+                socket: None,
+                launcher: false,
+            }
+        );
+        assert_eq!(
+            args(&["https://blueice.example/demo"]).unwrap(),
+            Args {
+                url: "https://blueice.example/demo".to_string(),
+                socket: None,
+                launcher: false,
+            }
+        );
+    }
+
+    #[test]
+    fn frontend_arguments_accept_a_shared_launcher_socket_and_explicit_url() {
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/blueice-shared.sock",
+                "--url",
+                "http://127.0.0.1:4000/index.html",
+            ])
+            .unwrap(),
+            Args {
+                url: "http://127.0.0.1:4000/index.html".to_string(),
+                socket: Some(PathBuf::from("/tmp/blueice-shared.sock")),
+                launcher: false,
+            }
+        );
+    }
+
+    #[test]
+    fn frontend_arguments_can_join_the_default_launcher_socket() {
+        assert_eq!(
+            args(&["--launcher"]),
+            Ok(Args {
+                url: "https://example.com".to_string(),
+                socket: None,
+                launcher: true,
+            })
+        );
+    }
+
+    #[test]
+    fn malformed_frontend_arguments_are_rejected_before_any_core_is_started() {
+        assert_eq!(
+            args(&["--socket"]),
+            Err("--socket requires a path".to_string())
+        );
+        assert_eq!(
+            args(&["--url", "a", "b"]),
+            Err("only one positional initial URL is supported".to_string())
+        );
+        assert_eq!(
+            args(&["--unknown"]),
+            Err("unrecognized argument: --unknown".to_string())
+        );
+        assert_eq!(
+            args(&["--launcher", "--socket", "/tmp/x.sock"]),
+            Err("--socket cannot be combined with --launcher".to_string())
+        );
+    }
 
     #[test]
     fn rgba_to_xrgb_packs_channels_and_drops_alpha() {

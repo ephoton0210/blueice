@@ -220,6 +220,7 @@ version = "0.1.0"
 dependencies = [
  "blueice-i18n",
  "blueice-ipc",
+ "blueice-launcher",
  "softbuffer",
  "winit",
 ]
