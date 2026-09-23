@@ -165,8 +165,9 @@ impl ExtensionRegistry {
         let mut registry = Self::new();
         let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
+        let v1_to_v3 = CapabilityVersionWindow::new(1, 3).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
-        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v2);
+        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v3);
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1);
         registry
     }
@@ -731,6 +732,71 @@ where
                     }
                 }
             }
+            ExtensionRequest::SetCheckboxChecked {
+                tab_id,
+                node_id,
+                checked,
+            } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE, 3)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_DOM_WRITE.to_string(),
+                            reason,
+                        },
+                    )?;
+                    continue;
+                }
+                // The v3 operation is a deliberately bounded checkbox state
+                // change. The action label and form-control class are owned
+                // here, never selected by the extension, so review cannot be
+                // weakened by untrusted metadata.
+                match check_extension_action(
+                    gatekeeper_socket,
+                    &identity.extension_id,
+                    CAPABILITY_DOM_WRITE,
+                    "action=set-checkbox-checked".to_string(),
+                ) {
+                    Ok(GatekeeperReply::Cleared) => {
+                        let target = blueice_ipc::extension::DomWriteTarget::FormInput {
+                            input_type: "checkbox".to_string(),
+                        };
+                        let checked = if checked { "true" } else { "false" }.to_string();
+                        match write_dom(Some((tab_id, node_id)), checked, &target) {
+                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
+                            Err(reason) => write_extension_reply(
+                                stream,
+                                &ExtensionReply::OperationUnavailable {
+                                    capability: CAPABILITY_DOM_WRITE.to_string(),
+                                    reason,
+                                },
+                            )?,
+                        }
+                    }
+                    Ok(GatekeeperReply::Rejected { reason, category }) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_DOM_WRITE.to_string(),
+                                reason,
+                                category,
+                            },
+                        )?;
+                    }
+                    Err(reason) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_DOM_WRITE.to_string(),
+                                reason,
+                                category: "gatekeeper-unavailable".to_string(),
+                            },
+                        )?;
+                    }
+                }
+            }
             ExtensionRequest::NetworkIntercept => {
                 if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 1)
@@ -1181,6 +1247,119 @@ mod tests {
             }
         );
         let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v3_checkbox_write_is_reviewed_and_delegated_with_explicit_ids() {
+        let registry = registry_with_dom_write_granted();
+        let (gatekeeper_socket, gatekeeper) =
+            start_gatekeeper("clear-v3-checkbox", GatekeeperReply::Cleared);
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                &socket_for_handler,
+                &mut server,
+                |_| Ok("unused in this test".to_string()),
+                move |target, value, write_target| {
+                    seen_tx.send((target, value, write_target.clone())).unwrap();
+                    Ok(())
+                },
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 3)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetCheckboxChecked {
+                tab_id: 7,
+                node_id: 12,
+                checked: true,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomWriteAck
+        );
+        assert_eq!(
+            seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            (
+                Some((7, 12)),
+                "true".to_string(),
+                DomWriteTarget::FormInput {
+                    input_type: "checkbox".to_string()
+                }
+            )
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_DOM_WRITE.to_string(),
+                detail: "action=set-checkbox-checked".to_string(),
+            }
+        );
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v3_checkbox_write_is_denied_after_a_v2_handshake_before_review_or_delegate() {
+        let registry = registry_with_dom_write_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                Path::new("/not-reached-for-v2-checkbox-version-denial.sock"),
+                &mut server,
+                |_| Ok("unused in this test".to_string()),
+                |_, _, _| panic!("a v2 connection must not delegate a v3 request"),
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 2)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetCheckboxChecked {
+                tab_id: 1,
+                node_id: 2,
+                checked: false,
+            },
+        )
+        .unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, reason } => {
+                assert_eq!(capability, CAPABILITY_DOM_WRITE);
+                assert!(reason.contains("requires version 3"));
+            }
+            other => panic!("expected a v3 version denial, got {other:?}"),
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
     }
 
     #[test]

@@ -244,6 +244,25 @@ fn request_text_input_value(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
 }
 
+fn request_checkbox_checked(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: u64,
+    node_id: u64,
+    checked: bool,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::SetCheckboxChecked {
+        tab_id,
+        node_id,
+        checked,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
 /// Serves extension connections outside the session thread, but asks that
 /// thread for the one piece of real `Page` data Phase 9 currently supports.
 /// This keeps a `Page` single-thread-owned just like navigation and frontend
@@ -277,13 +296,23 @@ fn spawn_extension_listener(
                     &mut stream,
                     authentication,
                     |tab_id| request_tab_representation(&request_tx, tab_id),
-                    |target, value, _| {
+                    |target, value, write_target| {
                         match target {
-                        Some((tab_id, node_id)) => {
-                            request_text_input_value(&request_tx, tab_id, node_id, value)
-                        }
+                        Some((tab_id, node_id)) => match write_target {
+                            blueice_ipc::extension::DomWriteTarget::FormInput { input_type }
+                                if input_type.eq_ignore_ascii_case("checkbox") =>
+                            {
+                                request_checkbox_checked(
+                                    &request_tx,
+                                    tab_id,
+                                    node_id,
+                                    value == "true",
+                                )
+                            }
+                            _ => request_text_input_value(&request_tx, tab_id, node_id, value),
+                        },
                         None => Err(
-                            "core-backed legacy dom:write has no stable target node; negotiate dom:write version 2 and use SetTextInputValue"
+                            "core-backed legacy dom:write has no stable target node; negotiate dom:write version 2 or 3 and use an explicit control operation"
                                 .to_string(),
                         ),
                     }

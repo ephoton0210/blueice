@@ -369,6 +369,49 @@ impl Page {
         Ok(())
     }
 
+    /// Sets the checked state of a real, enabled native checkbox for the
+    /// extension protocol's version-3 `dom:write` operation. This remains a
+    /// bounded semantic operation rather than a generic attribute setter:
+    /// radios have group semantics that need their own protocol design, and a
+    /// disabled control must remain unavailable to an extension write.
+    pub(crate) fn set_checkbox_checked(&mut self, id: NodeId, checked: bool) -> Result<(), String> {
+        if !self.doc.contains(id) {
+            return Err(format!("unknown checkbox node {}", id.as_u64()));
+        }
+        let is_supported_checkbox = matches!(
+            self.doc.data(id),
+            NodeData::Element {
+                tag_name,
+                attributes,
+            } if tag_name.eq_ignore_ascii_case("input")
+                && attributes.iter().any(|(name, value)| {
+                    name.eq_ignore_ascii_case("type") && value.eq_ignore_ascii_case("checkbox")
+                })
+                && !attributes.iter().any(|(name, _)| name.eq_ignore_ascii_case("disabled"))
+        );
+        if !is_supported_checkbox {
+            return Err(format!(
+                "node {} is not an enabled native checkbox",
+                id.as_u64()
+            ));
+        }
+        let NodeData::Element { attributes, .. } = self.doc.data_mut(id) else {
+            unreachable!("a checked checkbox node remains an element");
+        };
+        if checked {
+            if !attributes
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case("checked"))
+            {
+                attributes.push(("checked".to_string(), String::new()));
+            }
+        } else {
+            attributes.retain(|(name, _)| !name.eq_ignore_ascii_case("checked"));
+        }
+        self.relayout();
+        Ok(())
+    }
+
     /// Resolves an anchor's raw `href` using the current document URL.
     /// Test-only pages and built-in pages may have no usable hierarchical
     /// base; in that case preserve the raw target, so the session's normal
@@ -1221,6 +1264,44 @@ mod tests {
             page.set_text_input_value(NodeId::from_u64(9_999), "stale".to_string())
                 .is_err()
         );
+    }
+
+    #[test]
+    fn extension_checkbox_write_only_changes_live_enabled_native_checkboxes() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"<input id="check" type="checkbox"><input id="disabled" type="checkbox" disabled><input id="radio" type="radio"><div id="other"></div>"#,
+            None,
+        );
+        let checkbox = page.script_get_element_by_id("check").unwrap();
+        let disabled = page.script_get_element_by_id("disabled").unwrap();
+        let radio = page.script_get_element_by_id("radio").unwrap();
+        let other = page.script_get_element_by_id("other").unwrap();
+
+        page.set_checkbox_checked(checkbox, true).unwrap();
+        assert_eq!(
+            page.snapshot(1, 1)
+                .nodes
+                .iter()
+                .find(|node| node.id == checkbox.as_u64())
+                .and_then(|node| node.state.checked),
+            Some(true)
+        );
+        page.set_checkbox_checked(checkbox, false).unwrap();
+        assert_eq!(
+            page.snapshot(2, 1)
+                .nodes
+                .iter()
+                .find(|node| node.id == checkbox.as_u64())
+                .and_then(|node| node.state.checked),
+            Some(false)
+        );
+        assert!(page.set_checkbox_checked(disabled, true).is_err());
+        assert!(page.set_checkbox_checked(radio, true).is_err());
+        assert!(page.set_checkbox_checked(other, true).is_err());
+        assert!(page
+            .set_checkbox_checked(NodeId::from_u64(9_999), true)
+            .is_err());
     }
 
     #[test]

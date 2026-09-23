@@ -89,8 +89,8 @@ pub trait ReadTimeout {
 /// the render pipeline.
 ///
 /// Version 1 requests leave `tab_id` absent and therefore preserve the
-/// default-tab behavior. Version 2 carries an explicit tab and, for its
-/// narrow write operation, a stable text-input node ID. The session validates
+/// default-tab behavior. Versions 2 and 3 carry an explicit tab and a stable
+/// control node ID for their narrow write operations. The session validates
 /// both against its live `TabManager`/`Page` before changing anything.
 pub enum ExtensionPageRequest {
     ReadRepresentation {
@@ -101,6 +101,12 @@ pub enum ExtensionPageRequest {
         tab_id: u64,
         node_id: u64,
         value: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    SetCheckboxChecked {
+        tab_id: u64,
+        node_id: u64,
+        checked: bool,
         reply: mpsc::Sender<Result<(), String>>,
     },
 }
@@ -828,6 +834,38 @@ fn handle_extension_page_request<S: Write>(
             if result.is_ok() {
                 // Mirror first-party SetValue: script listeners observe the
                 // core-owned new value before observers receive its frame.
+                let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "input");
+                let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "change");
+                let page = tabs
+                    .get_mut(tab_id)
+                    .expect("a checked extension target tab remains live");
+                send_frame(
+                    page,
+                    stream,
+                    frame_dir,
+                    generation,
+                    Some(tab_id.as_u64()),
+                    None,
+                )?;
+            }
+            let _ = reply.send(result);
+        }
+        ExtensionPageRequest::SetCheckboxChecked {
+            tab_id,
+            node_id,
+            checked,
+            reply,
+        } => {
+            let tab_id = TabId::from_u64(tab_id);
+            let node_id = NodeId::from_u64(node_id);
+            let result = match tabs.get_mut(tab_id) {
+                Some(page) => page.set_checkbox_checked(node_id, checked),
+                None => Err(format!("unknown tab {}", tab_id.as_u64())),
+            };
+            if result.is_ok() {
+                // Match the text-input extension operation: page event
+                // handlers see core's new state before the shared frame is
+                // published to observers.
                 let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "input");
                 let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "change");
                 let page = tabs
@@ -1849,6 +1887,85 @@ mod tests {
                 .find(|node| node.id == input_id.as_u64())
                 .and_then(|node| node.state.value.as_deref()),
             Some("from extension")
+        );
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        handle.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(cleanup_dir);
+    }
+
+    #[test]
+    fn extension_v3_checkbox_write_updates_the_addressed_control_and_pushes_a_frame() {
+        let (mut client, mut server) = client_pair();
+        let (extension_tx, extension_rx) = mpsc::channel();
+        let dir = temp_frame_dir("extension-v3-checkbox-write");
+        let cleanup_dir = dir.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            r#"<label for="agree">Agree</label><input id="agree" type="checkbox">"#,
+            Some("https://example.test/form".to_string()),
+        );
+        let checkbox_id = tabs
+            .get(tab_id)
+            .unwrap()
+            .script_get_element_by_id("agree")
+            .unwrap();
+        let gatekeeper = PathBuf::from("/not-used-after-host-review");
+        let handle = thread::spawn(move || {
+            let mut generation = 0;
+            run_session_with_extension_requests(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper,
+                &extension_rx,
+            )
+        });
+
+        blueice_ipc::client_handshake(&mut client).unwrap();
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::SetCheckboxChecked {
+                tab_id: tab_id.as_u64(),
+                node_id: checkbox_id.as_u64(),
+                checked: true,
+                reply: reply_tx,
+            })
+            .unwrap();
+        reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the live session must answer the extension checkbox write")
+            .expect("the addressed checkbox must accept its checked state");
+        let (reply_tab, request_id, frame) =
+            blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert_eq!(reply_tab, Some(tab_id.as_u64()));
+        assert_eq!(request_id, None);
+        assert!(matches!(frame, ServerMessage::FrameReady { .. }));
+
+        let (read_tx, read_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadRepresentation {
+                tab_id: Some(tab_id.as_u64()),
+                reply: read_tx,
+            })
+            .unwrap();
+        let snapshot: blueice_ipc::AiSnapshot = serde_json::from_str(
+            &read_rx
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            snapshot
+                .nodes
+                .iter()
+                .find(|node| node.id == checkbox_id.as_u64())
+                .and_then(|node| node.state.checked),
+            Some(true)
         );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();

@@ -114,6 +114,16 @@ pub enum ExtensionRequest {
         node_id: u64,
         value: String,
     },
+    /// Version 3 of `dom:write`: changes the checked state of one explicit,
+    /// enabled native checkbox in one explicit tab. This is intentionally not
+    /// a generic attribute mutation: core verifies the live element/tag/type,
+    /// rejects radios and disabled controls, performs gatekeeper review, and
+    /// only then changes its own document state.
+    SetCheckboxChecked {
+        tab_id: u64,
+        node_id: u64,
+        checked: bool,
+    },
     /// Registers a network interception rule -- requires the
     /// `network:intercept` capability. Registering interception at all
     /// is high-risk, so the host always routes this request through the
@@ -323,6 +333,11 @@ mod tests {
                 tab_id: 42,
                 node_id: 99,
                 value: "shared value".to_string(),
+            },
+            ExtensionRequest::SetCheckboxChecked {
+                tab_id: 42,
+                node_id: 100,
+                checked: true,
             },
             ExtensionRequest::NetworkIntercept,
         ] {

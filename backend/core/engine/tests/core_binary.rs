@@ -513,7 +513,7 @@ fn core_waits_for_its_spawned_extension_host_and_rejects_a_bearer_claim_peer() {
 }
 
 #[test]
-fn installed_extension_v2_writes_an_explicit_text_input_after_gatekeeper_review() {
+fn installed_extension_v3_writes_explicit_form_controls_after_gatekeeper_review() {
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
@@ -524,7 +524,7 @@ fn installed_extension_v2_writes_an_explicit_text_input_after_gatekeeper_review(
     let core_socket = unique_socket_path("ev2c");
     let extension_socket = unique_private_extension_socket_path("write");
     let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-extension-v2-frames-{}",
+        "blueice-core-extension-v3-frames-{}",
         std::process::id()
     ));
     let (package_root, manifest, extension_id) =
@@ -540,7 +540,7 @@ fn installed_extension_v2_writes_an_explicit_text_input_after_gatekeeper_review(
         let (mut stream, _) = listener.accept().unwrap();
         let mut buf = [0u8; 1024];
         let _ = stream.read(&mut buf);
-        let body = r#"<label for="shared">Shared value</label><input id="shared" type="text" value="before">"#;
+        let body = r#"<label for="shared">Shared value</label><input id="shared" type="text" value="before"><label for="agree">Agree</label><input id="agree" type="checkbox">"#;
         stream
             .write_all(
                 format!(
@@ -566,7 +566,7 @@ fn installed_extension_v2_writes_an_explicit_text_input_after_gatekeeper_review(
             frame_dir.to_str().unwrap(),
         ])
         .spawn()
-        .expect("failed to spawn core with a v2 installed extension");
+        .expect("failed to spawn core with a v3 installed extension");
 
     assert!(wait_for(&core_socket, Duration::from_secs(5)));
     assert!(wait_for(&extension_socket, Duration::from_secs(5)));
@@ -592,14 +592,21 @@ fn installed_extension_v2_writes_an_explicit_text_input_after_gatekeeper_review(
         &blueice_ipc::ClientMessage::GetRepresentation,
     )
     .unwrap();
-    let input_id = match blueice_ipc::read_server_message(&mut frontend).unwrap() {
+    let (input_id, checkbox_id) = match blueice_ipc::read_server_message(&mut frontend).unwrap() {
         blueice_ipc::ServerMessage::Representation(snapshot) => {
-            snapshot
+            let input_id = snapshot
                 .nodes
-                .into_iter()
+                .iter()
                 .find(|node| matches!(node.role, blueice_ipc::Role::TextBox))
                 .expect("the navigated form must expose its text input")
-                .id
+                .id;
+            let checkbox_id = snapshot
+                .nodes
+                .iter()
+                .find(|node| matches!(node.role, blueice_ipc::Role::CheckBox))
+                .expect("the navigated form must expose its checkbox")
+                .id;
+            (input_id, checkbox_id)
         }
         other => panic!("expected the input representation, got {other:?}"),
     };
@@ -611,7 +618,7 @@ fn installed_extension_v2_writes_an_explicit_text_input_after_gatekeeper_review(
             extension_id,
             capability_versions: BTreeMap::from([
                 ("dom:read".to_string(), 2),
-                ("dom:write".to_string(), 2),
+                ("dom:write".to_string(), 3),
             ]),
         },
     )
@@ -644,6 +651,28 @@ fn installed_extension_v2_writes_an_explicit_text_input_after_gatekeeper_review(
         blueice_ipc::ServerMessage::FrameReady { .. }
     ));
 
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::SetCheckboxChecked {
+            tab_id: 1,
+            node_id: checkbox_id,
+            checked: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::DomWriteAck
+    );
+    let (reply_tab, request_id, frame) =
+        blueice_ipc::read_server_message_with_ids(&mut frontend).unwrap();
+    assert_eq!(reply_tab, Some(1));
+    assert_eq!(request_id, None);
+    assert!(matches!(
+        frame,
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+
     write_extension_request(&mut extension, &ExtensionRequest::DomReadTab { tab_id: 1 }).unwrap();
     let snapshot = match read_extension_reply(&mut extension).unwrap() {
         ExtensionReply::DomReadResult { value } => {
@@ -659,6 +688,14 @@ fn installed_extension_v2_writes_an_explicit_text_input_after_gatekeeper_review(
             .find(|node| node.id == input_id)
             .and_then(|node| node.state.value.as_deref()),
         Some("from extension v2")
+    );
+    assert_eq!(
+        snapshot
+            .nodes
+            .iter()
+            .find(|node| node.id == checkbox_id)
+            .and_then(|node| node.state.checked),
+        Some(true)
     );
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
