@@ -1793,6 +1793,7 @@ mod tests {
 
     struct MetadataLocations {
         malformed_summary: bool,
+        malformed_provenance: bool,
     }
 
     impl PageJavaScriptDebuggerLocations for MetadataLocations {
@@ -1923,7 +1924,11 @@ mod tests {
             Ok(
                 crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSourceProvenance {
                     source_id: target.source_id,
-                    module: "page:///main.ts".to_string(),
+                    module: if self.malformed_provenance {
+                        "file:///private/main.ts".to_string()
+                    } else {
+                        "page:///main.ts".to_string()
+                    },
                     content_hash: "bts-sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".to_string(),
                 },
             )
@@ -2022,6 +2027,7 @@ mod tests {
         };
         let mut locations = MetadataLocations {
             malformed_summary: false,
+            malformed_provenance: false,
         };
 
         let denied_capabilities = handle_debugger_request_with_child_locations(
@@ -2241,6 +2247,7 @@ mod tests {
             .expect("dependent summary policy must create a core-local session authorization");
         let mut locations = MetadataLocations {
             malformed_summary: true,
+            malformed_provenance: false,
         };
         assert!(matches!(
             handle_debugger_request_with_child_locations(
@@ -2274,6 +2281,7 @@ mod tests {
         };
         let mut locations = MetadataLocations {
             malformed_summary: false,
+            malformed_provenance: false,
         };
 
         let source_inventory_hello = DebuggerRequest::Hello {
@@ -2365,6 +2373,19 @@ mod tests {
                         .to_string(),
             })
         );
+        locations.malformed_provenance = true;
+        assert!(matches!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&provenance_session),
+                DebuggerRequest::DescribeStaticMetadataSource { source },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
     }
 
     #[test]
