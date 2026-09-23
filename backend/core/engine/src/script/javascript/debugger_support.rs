@@ -84,6 +84,15 @@ pub struct JavaScriptPageDebuggerStaticMetadataContractDisplay {
     pub display: String,
 }
 
+/// One child-validated boolean outcome for a data-only snapshot against an
+/// exact contract identity. It carries no submitted data, plan, failure path,
+/// expected shape, observed category, bytecode, VM object, or runtime value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataContractValidation {
+    pub contract_id: u32,
+    pub valid: bool,
+}
+
 /// One exact opaque parent and compiler-minted contract-ID target for the
 /// separately authorized contract-display operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

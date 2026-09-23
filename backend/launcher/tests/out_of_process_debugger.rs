@@ -13,6 +13,7 @@
 //! and that every opaque realm, program, and safe-point identity expires with
 //! its document.
 
+use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
     read_debugger_reply, write_debugger_request, DebuggerErrorCode,
     DebuggerMetadataCapabilityManifest, DebuggerMetadataCapabilitySelection, DebuggerPageRealm,
@@ -79,6 +80,7 @@ struct StaticMetadataPolicy {
     contract_inventory: bool,
     symbol_display: bool,
     contract_display: bool,
+    contract_validation: bool,
 }
 
 struct LauncherProcess {
@@ -154,6 +156,9 @@ impl LauncherProcess {
         }
         if policy.contract_display {
             command.arg("--debugger-static-metadata-contract-display");
+        }
+        if policy.contract_validation {
+            command.arg("--debugger-static-metadata-contract-validation");
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
@@ -586,6 +591,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             contract_inventory: true,
             symbol_display: true,
             contract_display: true,
+            contract_validation: true,
         },
     );
 
@@ -612,6 +618,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                             contract_inventory: true,
                             symbol_display: true,
                             contract_display: true,
+                            contract_validation: true,
                         },
                     ),
             },
@@ -629,6 +636,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     contract_inventory: true,
                     symbol_display: true,
                     contract_display: true,
+                    contract_validation: true,
                 },
             ),
         }
@@ -654,6 +662,11 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     assert!(capabilities.reports.iter().any(|report| {
         report.capability
             == blueice_ipc::debugger::DebuggerCapability::StaticMetadataContractDisplay
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability
+            == blueice_ipc::debugger::DebuggerCapability::StaticMetadataContractValidation
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
     assert!(capabilities.reports.iter().any(|report| {
@@ -763,6 +776,22 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     metadata: typed_metadata,
                     contract_id: 0,
                 },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::CapabilityUnavailable,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ValidateStaticMetadataContract {
+                contract: blueice_ipc::debugger::DebuggerStaticMetadataContractId {
+                    metadata: typed_metadata,
+                    contract_id: 0,
+                },
+                value: CompilerContractValue::Boolean(true),
             },
         ),
         DebuggerReply::Error {
@@ -900,6 +929,50 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             "contract display may expose its authorized name, never declaration source, field, type, or module identity"
         );
     }
+    let valid_contract_validation = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ValidateStaticMetadataContract {
+            contract: contracts[0],
+            value: CompilerContractValue::Object(
+                [("enabled".to_string(), CompilerContractValue::Boolean(true))]
+                    .into_iter()
+                    .collect(),
+            ),
+        },
+    );
+    let DebuggerReply::StaticMetadataContractValidation(valid_contract_validation) =
+        valid_contract_validation
+    else {
+        panic!("expected bounded public static contract validation result")
+    };
+    assert_eq!(valid_contract_validation.contract, contracts[0]);
+    assert!(valid_contract_validation.valid);
+    let invalid_contract_validation = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ValidateStaticMetadataContract {
+            contract: contracts[0],
+            value: CompilerContractValue::Object(
+                [(
+                    "enabled".to_string(),
+                    CompilerContractValue::String("not-a-boolean".to_string()),
+                )]
+                .into_iter()
+                .collect(),
+            ),
+        },
+    );
+    let DebuggerReply::StaticMetadataContractValidation(invalid_contract_validation) =
+        invalid_contract_validation
+    else {
+        panic!("expected a redacted invalid static contract validation result")
+    };
+    assert_eq!(invalid_contract_validation.contract, contracts[0]);
+    assert!(!invalid_contract_validation.valid);
+    assert!(
+        !format!("{invalid_contract_validation:?}").contains("enabled")
+            && !format!("{invalid_contract_validation:?}").contains("string"),
+        "contract validation must not reflect caller input or structural failure detail"
+    );
     assert!(
         !format!("{summary:?}").contains("privateBlueTsMetadata")
             && !format!("{summary:?}").contains("inline-0.ts")
@@ -972,6 +1045,19 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             &mut debugger,
             DebuggerRequest::DescribeStaticMetadataContract {
                 contract: contracts[0],
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ValidateStaticMetadataContract {
+                contract: contracts[0],
+                value: CompilerContractValue::Boolean(true),
             },
         ),
         DebuggerReply::Error {

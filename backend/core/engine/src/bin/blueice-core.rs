@@ -96,6 +96,10 @@ struct Args {
     /// Core-owner opt-in for one bounded compiler-produced display under a
     /// contract ID previously emitted by the separate contract inventory.
     debugger_static_metadata_contract_display: bool,
+    /// Core-owner opt-in for data-only validation against a contract ID
+    /// previously emitted by the separate contract inventory. The reply is
+    /// only a boolean; plans and structural failure detail stay private.
+    debugger_static_metadata_contract_validation: bool,
     /// Core-owner opt-in for one bounded compiler-produced display under a
     /// symbol ID previously emitted by the separate symbol inventory.
     debugger_static_metadata_symbol_display: bool,
@@ -154,6 +158,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_symbol_inventory = false;
     let mut debugger_static_metadata_contract_inventory = false;
     let mut debugger_static_metadata_contract_display = false;
+    let mut debugger_static_metadata_contract_validation = false;
     let mut debugger_static_metadata_symbol_display = false;
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
@@ -204,6 +209,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--debugger-static-metadata-contract-display" => {
                 debugger_static_metadata_contract_display = true
+            }
+            "--debugger-static-metadata-contract-validation" => {
+                debugger_static_metadata_contract_validation = true
             }
             "--debugger-static-metadata-symbol-display" => {
                 debugger_static_metadata_symbol_display = true
@@ -350,6 +358,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if debugger_static_metadata_contract_validation && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-contract-validation requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_contract_validation && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-contract-validation requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
     if debugger_static_metadata_symbol_display && debugger_socket.is_none() {
         return Err(
             "--debugger-static-metadata-symbol-display requires --debugger-socket".to_string(),
@@ -384,6 +403,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_symbol_inventory,
         debugger_static_metadata_contract_inventory,
         debugger_static_metadata_contract_display,
+        debugger_static_metadata_contract_validation,
         debugger_static_metadata_symbol_display,
         compiler_socket,
         compiler_project_profile,
@@ -699,6 +719,7 @@ fn main() -> ExitCode {
                 contract_inventory: args.debugger_static_metadata_contract_inventory,
                 symbol_display: args.debugger_static_metadata_symbol_display,
                 contract_display: args.debugger_static_metadata_contract_display,
+                contract_validation: args.debugger_static_metadata_contract_validation,
             },
         )
     } else {
@@ -1075,6 +1096,7 @@ mod tests {
                 debugger_static_metadata_symbol_inventory: false,
                 debugger_static_metadata_contract_inventory: false,
                 debugger_static_metadata_contract_display: false,
+                debugger_static_metadata_contract_validation: false,
                 debugger_static_metadata_symbol_display: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
@@ -1201,6 +1223,29 @@ mod tests {
         ])
         .unwrap();
         assert!(provenance.debugger_static_metadata_source_provenance);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-contract-validation",
+            ]),
+            Err(
+                "--debugger-static-metadata-contract-validation requires --debugger-static-metadata-inventory"
+                    .to_string()
+            )
+        );
+        let contract_validation = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-contract-validation",
+        ])
+        .unwrap();
+        assert!(contract_validation.debugger_static_metadata_contract_validation);
     }
 
     #[test]

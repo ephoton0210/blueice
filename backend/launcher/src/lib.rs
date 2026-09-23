@@ -134,6 +134,10 @@ mod unix {
         /// Owner-only policy for compiler-produced contract displays bound to
         /// a prior opaque contract receipt. Plans and validation stay denied.
         debugger_static_metadata_contract_display: bool,
+        /// Owner-only policy for a data-only validation against a prior opaque
+        /// contract receipt. The public result is only a boolean; plan and
+        /// structural failure data remain denied.
+        debugger_static_metadata_contract_validation: bool,
         /// Owner-only policy for compiler-produced symbol displays bound to a
         /// prior opaque symbol receipt. Source/static records remain denied.
         debugger_static_metadata_symbol_display: bool,
@@ -303,6 +307,16 @@ mod unix {
             self.debugger_static_metadata_inventory = true;
             self.debugger_static_metadata_contract_inventory = true;
             self.debugger_static_metadata_contract_display = true;
+            self
+        }
+
+        /// Enables a bounded data-only validation for an already inventoried
+        /// contract ID. This also selects parent and contract inventories, but
+        /// only exposes a boolean outcome—never the plan or failure detail.
+        pub fn with_debugger_static_metadata_contract_validation(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_contract_inventory = true;
+            self.debugger_static_metadata_contract_validation = true;
             self
         }
 
@@ -1682,6 +1696,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_contract_display {
                     command.arg("--debugger-static-metadata-contract-display");
+                }
+                if options.debugger_static_metadata_contract_validation {
+                    command.arg("--debugger-static-metadata-contract-validation");
                 }
                 if options.debugger_static_metadata_symbol_display {
                     command.arg("--debugger-static-metadata-symbol-display");

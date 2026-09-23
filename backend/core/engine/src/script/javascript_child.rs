@@ -30,6 +30,7 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataContractDisplay,
     JavaScriptPageDebuggerStaticMetadataContractId,
     JavaScriptPageDebuggerStaticMetadataContractTarget,
+    JavaScriptPageDebuggerStaticMetadataContractValidation,
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
@@ -45,6 +46,7 @@ pub use crate::script::page_source_authorizer::{
     OutOfProcessPageScriptSourceAuthorizer, OutOfProcessPageScriptSourceRequest,
 };
 use crate::{Page, TabId, TabManager};
+use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES, DEBUGGER_STATIC_METADATA_MAX_CONTRACTS,
     DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
@@ -241,6 +243,13 @@ pub trait PageHostClient {
         false
     }
 
+    /// Whether this peer implements a data-only validation against one exact
+    /// prior contract ID. The boolean result remains separately default-denied
+    /// by core and must not expose plans or structural failure detail.
+    fn debugger_bluets_metadata_contract_validation_available(&self) -> bool {
+        false
+    }
+
     /// Whether this peer implements a bounded display lookup for one exact
     /// symbol ID. The core must still apply independent public policy and the
     /// same-stream symbol-ID receipt before this private operation is called.
@@ -372,6 +381,21 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement BlueTS debugger contract displays",
+        ))
+    }
+
+    fn debugger_bluets_metadata_contract_validation(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _contract_id: u32,
+        _value: CompilerContractValue,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger contract validation",
         ))
     }
 
@@ -561,6 +585,10 @@ impl PageHostClient for PageHostConnection {
         true
     }
 
+    fn debugger_bluets_metadata_contract_validation_available(&self) -> bool {
+        true
+    }
+
     fn debugger_bluets_metadata_symbol_display_available(&self) -> bool {
         true
     }
@@ -723,6 +751,25 @@ impl PageHostClient for PageHostConnection {
             program,
             metadata,
             contract_id,
+        })
+    }
+
+    fn debugger_bluets_metadata_contract_validation(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+        value: CompilerContractValue,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ValidateDebuggerBlueTsMetadataContract {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            contract_id,
+            value,
         })
     }
 
@@ -1486,6 +1533,14 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                 .debugger_bluets_metadata_contract_display_available()
     }
 
+    fn debugger_static_metadata_contract_validation_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_contracts_available()
+            && self
+                .child
+                .debugger_bluets_metadata_contract_validation_available()
+    }
+
     fn debugger_static_metadata_symbol_display_available(&self) -> bool {
         self.child.debugger_bluets_metadata_available()
             && self.child.debugger_bluets_metadata_symbols_available()
@@ -2087,6 +2142,65 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         Ok(JavaScriptPageDebuggerStaticMetadataContractDisplay {
             contract_id: contract.contract_id,
             display: contract.display,
+        })
+    }
+
+    fn debugger_static_metadata_contract_validation(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataContractTarget,
+        value: CompilerContractValue,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractValidation, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_contract_validation_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_contract_validation(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.contract_id,
+                value,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataContractValidation {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            validation,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || validation.contract_id != target.contract_id
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataContractValidation {
+            contract_id: validation.contract_id,
+            valid: validation.valid,
         })
     }
 

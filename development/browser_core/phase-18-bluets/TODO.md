@@ -809,6 +809,19 @@ or second module resolver to bypass them.
   behavior/result, type, bytecode, VM object, value, or general static-record
   read. The real supervised-child test now retains an actual reifiable
   interface contract and proves negotiated disclosure plus reload staleness.
+  Page-host v17/debugger v16 add the tenth independently default-denied
+  `OpaqueContractValidation` capability and owner-only
+  `--debugger-static-metadata-contract-validation` flag. It requires the
+  parent inventory, contract-ID inventory, exact same-stream contract-ID
+  receipt, live realm tuple, and child report. Core rejects inputs exceeding
+  fixed depth (64), collection-entry (4,096), node (32,768), string/key
+  (256 KiB), or finite-number policy before forwarding; the child repeats
+  those limits before its pure `ContractPlan` validator runs. It echoes the
+  exact contract ID before core re-mints only `valid: true|false`; input,
+  plan, failure path, expected/observed category, source/span/type, bytecode,
+  VM object, runtime value, and static-record read remain unavailable. The
+  public supervised-child regression proves receipt rejection, valid/invalid
+  results without detail reflection, and reload staleness.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

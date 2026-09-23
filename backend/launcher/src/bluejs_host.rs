@@ -21,7 +21,7 @@ use blueice_bluejs::{
 };
 use blueice_bluets::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
-    RuntimePolicy,
+    ContractValue, RuntimePolicy, ValidationLimits,
 };
 use blueice_bluets_bluejs::page_host_typings::{
     page_host_document_runtime_bindings_v1, PageHostDocumentTypingsV1,
@@ -30,23 +30,29 @@ use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
     DirectModuleGraph, DirectScript,
 };
+use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
-    DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES, DEBUGGER_STATIC_METADATA_MAX_CONTRACTS,
-    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
-    DEBUGGER_STATIC_METADATA_MAX_TYPES, DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES,
+    DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES,
+    DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_COLLECTION_ENTRIES,
+    DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_DEPTH,
+    DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_NODES,
+    DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_STRING_BYTES,
+    DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
+    DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
+    DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES,
     DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
     self, PageHostDebuggerBlueTsMetadataContractDisplay, PageHostDebuggerBlueTsMetadataContractId,
-    PageHostDebuggerBlueTsMetadataSourceId, PageHostDebuggerBlueTsMetadataSourceProvenance,
-    PageHostDebuggerBlueTsMetadataSummary, PageHostDebuggerBlueTsMetadataSymbolDisplay,
-    PageHostDebuggerBlueTsMetadataSymbolId, PageHostDebuggerBlueTsMetadataTypeDisplay,
-    PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerExecutionState,
-    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
-    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
-    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PageHostDebuggerBlueTsMetadataContractValidation, PageHostDebuggerBlueTsMetadataSourceId,
+    PageHostDebuggerBlueTsMetadataSourceProvenance, PageHostDebuggerBlueTsMetadataSummary,
+    PageHostDebuggerBlueTsMetadataSymbolDisplay, PageHostDebuggerBlueTsMetadataSymbolId,
+    PageHostDebuggerBlueTsMetadataTypeDisplay, PageHostDebuggerBlueTsMetadataTypeId,
+    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
+    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
+    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -353,6 +359,21 @@ impl BlueJsChildHost {
                 program,
                 metadata,
                 contract_id,
+            ),
+            PageHostRequest::ValidateDebuggerBlueTsMetadataContract {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                contract_id,
+                value,
+            } => self.debugger_bluets_metadata_contract_validation(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                contract_id,
+                value,
             ),
             PageHostRequest::DescribeDebuggerBlueTsMetadataSymbol {
                 tab_id,
@@ -1578,6 +1599,79 @@ impl BlueJsChildHost {
         }
     }
 
+    /// Validates a data-only snapshot under immutable child-selected limits
+    /// against one exact private contract target. The reply never echoes the
+    /// input or exposes a contract plan, path, expected type, observed type,
+    /// bytecode, VM object, or runtime value.
+    fn debugger_bluets_metadata_contract_validation(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+        value: CompilerContractValue,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let value = match debugger_contract_value(value) {
+            Ok(value) => value,
+            Err(()) => return invalid_request(),
+        };
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let valid = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let Some(contract) = retained
+                    .static_info()
+                    .contracts
+                    .iter()
+                    .find(|contract| contract.id.0 == contract_id)
+                else {
+                    return invalid_request();
+                };
+                contract
+                    .plan
+                    .validate_with_limits(&value, debugger_contract_validation_limits())
+                    .is_ok()
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataContractValidation {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            validation: PageHostDebuggerBlueTsMetadataContractValidation { contract_id, valid },
+        }
+    }
+
     /// Returns the explicitly authorized, source-text-free provenance for one
     /// source ID that remains owned by this exact child program and metadata
     /// attachment. A failed registry lookup destroys the child-private handle
@@ -2736,6 +2830,77 @@ fn child_debugger_execution_state(
         ChildDebuggerExecutionStatus::ResumeRequested => PageHostDebuggerExecutionState::Resuming,
         ChildDebuggerExecutionStatus::Completed => PageHostDebuggerExecutionState::Completed,
     }
+}
+
+/// The immutable data-only envelope for debugger contract validation. It is
+/// intentionally independent from document/profile limits and cannot be
+/// configured over a public or private request.
+fn debugger_contract_validation_limits() -> ValidationLimits {
+    ValidationLimits {
+        max_depth: DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_DEPTH,
+        max_collection_entries: DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_COLLECTION_ENTRIES,
+        max_nodes: DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_NODES,
+        max_string_bytes: DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_STRING_BYTES,
+    }
+}
+
+/// Converts the shared data-only IPC value to the pure BlueTS validation value
+/// while applying the fixed debugger limits before a second recursive tree is
+/// retained. It never accepts a JavaScript object, function, getter, proxy,
+/// host handle, source graph, or compiler configuration.
+fn debugger_contract_value(value: CompilerContractValue) -> Result<ContractValue, ()> {
+    fn convert(
+        value: CompilerContractValue,
+        limits: ValidationLimits,
+        depth: usize,
+        nodes: &mut usize,
+    ) -> Result<ContractValue, ()> {
+        if depth > limits.max_depth || *nodes >= limits.max_nodes {
+            return Err(());
+        }
+        *nodes += 1;
+        match value {
+            CompilerContractValue::Null => Ok(ContractValue::Null),
+            CompilerContractValue::Undefined => Ok(ContractValue::Undefined),
+            CompilerContractValue::Boolean(value) => Ok(ContractValue::Boolean(value)),
+            CompilerContractValue::Number(value) => value
+                .parse::<f64>()
+                .ok()
+                .filter(|value| value.is_finite())
+                .map(ContractValue::Number)
+                .ok_or(()),
+            CompilerContractValue::String(value) => (value.len() <= limits.max_string_bytes)
+                .then_some(ContractValue::String(value))
+                .ok_or(()),
+            CompilerContractValue::Array(values) => {
+                if values.len() > limits.max_collection_entries {
+                    return Err(());
+                }
+                values
+                    .into_iter()
+                    .map(|value| convert(value, limits, depth + 1, nodes))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(ContractValue::Array)
+            }
+            CompilerContractValue::Object(values) => {
+                if values.len() > limits.max_collection_entries
+                    || values.keys().any(|key| key.len() > limits.max_string_bytes)
+                {
+                    return Err(());
+                }
+                values
+                    .into_iter()
+                    .map(|(key, value)| {
+                        convert(value, limits, depth + 1, nodes).map(|value| (key, value))
+                    })
+                    .collect::<Result<BTreeMap<_, _>, _>>()
+                    .map(ContractValue::Object)
+            }
+        }
+    }
+
+    let mut nodes = 0;
+    convert(value, debugger_contract_validation_limits(), 0, &mut nodes)
 }
 
 fn invalid_request() -> PageHostReply {

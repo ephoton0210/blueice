@@ -50,12 +50,16 @@
 //! core-proxied operation, not a general static-record read or source access.
 //! Version 16 adds one exact contract-ID display lookup; it remains an explicit
 //! core-proxied operation, not a general static-record read or source access.
+//! Version 17 adds a separately requested, data-only validation against one
+//! exact prior contract ID. Its reply is only a boolean, never the input,
+//! contract plan, or structural failure detail.
 
+use crate::compiler::CompilerContractValue;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 16;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 17;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -175,6 +179,16 @@ pub struct PageHostDebuggerBlueTsMetadataContractId {
 pub struct PageHostDebuggerBlueTsMetadataContractDisplay {
     pub contract_id: u32,
     pub display: String,
+}
+
+/// One child-local boolean result for validating a data-only snapshot against
+/// an exact contract ID. It exposes neither the submitted value nor plan/error
+/// detail; the enclosing reply binds it to one private program and metadata
+/// handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataContractValidation {
+    pub contract_id: u32,
+    pub valid: bool,
 }
 
 /// One child-local compiler-produced symbol display for an exact symbol ID
@@ -495,6 +509,16 @@ pub enum PageHostRequest {
         metadata: PageHostDebuggerMetadataHandle,
         contract_id: u32,
     },
+    /// Validates a core-forwarded data-only snapshot against one exact prior
+    /// contract ID. The child applies fixed limits and returns only a boolean.
+    ValidateDebuggerBlueTsMetadataContract {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+        value: CompilerContractValue,
+    },
     /// Describes a compiler-minted symbol ID under a prior exact private
     /// metadata handle. This is not a symbol span/type/contract or record read.
     DescribeDebuggerBlueTsMetadataSymbol {
@@ -679,6 +703,15 @@ pub enum PageHostReply {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
         contract: PageHostDebuggerBlueTsMetadataContractDisplay,
+    },
+    /// A data-only exact-contract validation outcome. It contains no caller
+    /// value, plan, failure path, expected shape, or runtime object.
+    DebuggerBlueTsMetadataContractValidation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        validation: PageHostDebuggerBlueTsMetadataContractValidation,
     },
     /// One bounded compiler-produced symbol display. The enclosing tuple keeps
     /// it bound to an exact child program and metadata attachment.
@@ -981,6 +1014,24 @@ mod tests {
                 },
                 contract_id: 0,
             },
+            PageHostRequest::ValidateDebuggerBlueTsMetadataContract {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                contract_id: 0,
+                value: CompilerContractValue::Object(
+                    [("enabled".to_string(), CompilerContractValue::Boolean(true))]
+                        .into_iter()
+                        .collect(),
+                ),
+            },
             PageHostRequest::DescribeDebuggerBlueTsMetadataSymbol {
                 tab_id: 7,
                 document_generation: 3,
@@ -1242,6 +1293,26 @@ mod tests {
             contract: PageHostDebuggerBlueTsMetadataContractDisplay {
                 contract_id: 0,
                 display: "ProjectControlledContract".to_string(),
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataContractValidation {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            validation: PageHostDebuggerBlueTsMetadataContractValidation {
+                contract_id: 0,
+                valid: true,
             },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();

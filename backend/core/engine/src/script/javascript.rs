@@ -24,6 +24,7 @@ use blueice_bluejs::{
     BlueJsSourceIdentity, CompileError, HostFunctionError, HostValue, ParseError, RuntimeError,
     Value,
 };
+use blueice_ipc::compiler::CompilerContractValue;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::{fmt, io};
 
@@ -40,6 +41,7 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataContractDisplay,
     JavaScriptPageDebuggerStaticMetadataContractId,
     JavaScriptPageDebuggerStaticMetadataContractTarget,
+    JavaScriptPageDebuggerStaticMetadataContractValidation,
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
@@ -140,6 +142,13 @@ pub trait PageJavaScriptDebuggerLocations {
     /// contract ID. Contract names remain an independently default-denied
     /// surface; plans and validation behavior do not cross this boundary.
     fn debugger_static_metadata_contract_display_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can validate one data-only snapshot against a prior
+    /// exact contract-ID receipt. The boolean outcome is independently
+    /// default-denied; plan and structural failure detail stay unavailable.
+    fn debugger_static_metadata_contract_validation_available(&self) -> bool {
         false
     }
 
@@ -283,6 +292,21 @@ pub trait PageJavaScriptDebuggerLocations {
         _document_generation: u64,
         _target: JavaScriptPageDebuggerStaticMetadataContractTarget,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataContractDisplay, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Validates one data-only snapshot against an exact contract target. An
+    /// implementation must enforce its fixed value limits before touching a
+    /// retained plan and return only a boolean, never the input or plan/error
+    /// detail.
+    fn debugger_static_metadata_contract_validation(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataContractTarget,
+        _value: CompilerContractValue,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractValidation, JavaScriptPageDebuggerError>
     {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
