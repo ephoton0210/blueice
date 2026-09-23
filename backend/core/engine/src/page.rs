@@ -310,13 +310,10 @@ impl Page {
                     }
                 }
                 // `load_html` (the only other path that mutates `doc`)
-                // always relayouts afterward; this in-place mutation was
-                // missed. Inert today since nothing in blueice-layout/
-                // blueice-paint reads an element's `value` attribute
-                // yet, but the render pass and AI snapshot would
-                // otherwise silently go stale relative to `dom_dump()`
-                // (which reads `doc` live) the moment layout starts
-                // rendering input values.
+                // always relayouts afterward. The input-value fragment and
+                // accessibility snapshot both read this core-owned attribute,
+                // so this render pass is the synchronization point the human
+                // and MCP observers share after a value change.
                 self.relayout();
                 None
             }
@@ -1120,14 +1117,7 @@ mod tests {
     }
 
     #[test]
-    fn act_set_value_updates_the_value_attribute() {
-        // No existing test exercised `NodeAction::SetValue` at all. Its
-        // handler was also found to skip the `relayout()` call every
-        // other `doc`-mutating path makes (harmless today since nothing
-        // in blueice-layout/blueice-paint reads an input's value yet, so
-        // there's no *observable* effect to assert on here beyond "it
-        // doesn't panic" -- but the call is now in place for whenever
-        // layout does start reading it).
+    fn act_set_value_updates_the_value_attribute_and_the_painted_frame() {
         let mut page = Page::new(320.0, 200.0);
         page.load_html_str(r#"<input type="text">"#, None);
         let input_id = find_by_tag(page.doc(), page.doc().root(), "input").unwrap();
@@ -1138,6 +1128,22 @@ mod tests {
             panic!("expected an element")
         };
         assert!(attributes.contains(&("value".to_string(), "hello".to_string())));
+        let frame = page.render();
+        assert!(
+            frame
+                .commands
+                .iter()
+                .any(|command| matches!(command, PaintCommand::Rect { rect, .. } if rect.width > 0.0 && rect.height > 0.0)),
+            "the post-action frame must retain the visible input control box"
+        );
+        assert!(
+            frame.commands.iter().any(|command| {
+                matches!(command, PaintCommand::Text { text, .. } if text == "hello")
+            }),
+            "the post-action frame must visibly contain the core-owned value"
+        );
+        let snapshot = page.snapshot(1, 1);
+        assert_eq!(snapshot.nodes[0].state.value.as_deref(), Some("hello"));
     }
 
     #[test]

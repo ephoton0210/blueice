@@ -39,7 +39,7 @@ LLM.
 ## Checklist
 
 - [x] Confirm the demo's target site(s)/page(s) are in-scope for the Phase 2 MVP and cleared under the Phase 5/plan §5 access policy — first-party `demo-site/`, loopback only
-- [x] Pick and scope a concrete demo task — see `SCENARIO.md`: inspect/describe the visible MVP elements, highlight the labelled text box, and follow the local confirmation link
+- [x] Pick and scope a concrete demo task — see `SCENARIO.md`: inspect/describe the visible MVP elements, set and confirm the labelled text-box value, highlight it, and follow the local confirmation link
 - [ ] Wire an LLM-driven agent to the Phase 5 API (no CDP/Puppeteer path)
 - [ ] Demonstrate human + agent observing the same page/state simultaneously
 - [ ] Record results (what worked, what broke, what surprised)

@@ -111,10 +111,15 @@ text 269.5,38.4 "link" #000000 16.0 normal normal
 text 302.9,38.4 "." #000000 16.0 normal normal
 text 0.0,57.6 "one" #000000 16.0 normal normal
 text 0.0,76.8 "two" #000000 16.0 normal normal
-rect 0.0,96.0 320.0x48.4 #eeeeee
+rect 0.0,96.0 320.0x80.4 #eeeeee
 border 0.0,96.0 320.0x1.0 #333333
-border 319.0,96.0 1.0x48.4 #333333
-border 0.0,143.4 320.0x1.0 #333333
-border 0.0,96.0 1.0x48.4 #333333
+border 319.0,96.0 1.0x80.4 #333333
+border 0.0,175.4 320.0x1.0 #333333
+border 0.0,96.0 1.0x80.4 #333333
 text 5.0,101.0 "Name" #000000 16.0 normal normal
-text 5.0,120.2 "Go" #000000 16.0 normal normal
+rect 5.0,120.2 320.0x32.0 #ffffff
+border 5.0,120.2 320.0x1.0 #767676
+border 324.0,120.2 1.0x32.0 #767676
+border 5.0,151.2 320.0x1.0 #767676
+border 5.0,120.2 1.0x32.0 #767676
+text 5.0,152.2 "Go" #000000 16.0 normal normal

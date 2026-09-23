@@ -2101,6 +2101,56 @@ mod tests {
     }
 
     #[test]
+    fn act_on_set_value_is_reflected_in_the_next_representation() {
+        let dir = temp_frame_dir("act-on-set-value");
+        let gatekeeper = clearing_gatekeeper("act-on-set-value");
+        let (mut client, mut server) = client_pair();
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            default_page(&mut tabs)
+                .load_html_str(r#"<input id="name" type="text" placeholder="Name">"#, None);
+            let mut generation = 0u64;
+            run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
+            dir
+        });
+        handshake(&mut client);
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+        let ServerMessage::Representation(before) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
+        let input_id = before.nodes[0].id;
+        assert_eq!(before.nodes[0].state.value, None);
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::ActOn {
+                id: input_id,
+                action: NodeAction::SetValue("BlueIce".to_string()),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+        let ServerMessage::Representation(after) =
+            blueice_ipc::read_server_message(&mut client).unwrap()
+        else {
+            panic!("expected Representation")
+        };
+        assert_eq!(after.nodes[0].state.value.as_deref(), Some("BlueIce"));
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        let dir = handle.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn act_on_an_unknown_id_is_a_harmless_no_op() {
         let dir = temp_frame_dir("act-on-unknown");
         let gatekeeper = clearing_gatekeeper("act-on-unknown");

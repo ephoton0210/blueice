@@ -11,17 +11,19 @@ The LLM agent's task is deliberately small and objectively checkable:
 2. From the representation and a screenshot, report the heading, the bold and
    italic labels, the two list items, the bordered light-grey form box, and the
    labelled `Name` text box.
-3. Highlight the `Name` text box, so the human window receives the same
+3. Set the `Name` text box to `BlueIce` by its stable representation node ID,
+   then use the post-action representation to confirm that value. The human
+   window must show `BlueIce` inside the same core-rendered input box.
+4. Highlight the `Name` text box, so the human window receives the same
    core-produced highlight frame, then confirm its role and label through the
    post-action representation.
-4. Click `Continue to confirmation` by its stable representation node ID and
+5. Click `Continue to confirmation` by its stable representation node ID and
    confirm the resulting heading is `Task complete`.
 
-The static form is inspected and highlighted but is not populated. BlueIce's
-current `SetValue` updates the DOM but does not yet paint an input value or
-include it in `AiSnapshot::NodeState`; claiming a shared human/agent proof for
-typed text would therefore be false. Rendering and representing form values is
-recorded as a follow-up MVP gap, not silently hidden by this demo.
+For the supported native text-input slice, `SetValue` mutates the core-owned
+`value` attribute, relayouts, paints that value inside the form control, and
+returns it in `AiSnapshot::NodeState`. The agent must use the post-action
+representation rather than assume its write succeeded.
 
 For the common-observer proof, run `blueice-launcher` normally, start the
 reference frontend with `--launcher --url http://127.0.0.1:<port>/index.html`,

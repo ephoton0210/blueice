@@ -78,6 +78,12 @@ pub struct Bounds {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct NodeState {
+    /// The current value of a supported native text input, when the
+    /// document supplies one. Keeping this in the representation makes a
+    /// successful [`NodeAction::SetValue`] observable through the same
+    /// core-owned state that the human frame renders.
+    #[serde(default)]
+    pub value: Option<String>,
     pub checked: Option<bool>,
     pub disabled: bool,
     pub required: bool,
@@ -122,10 +128,9 @@ pub enum NodeAction {
     Click,
     Focus,
     /// Sets the target's `value` attribute directly (the DOM-binding
-    /// surface `phase-2-mvp-scope/PLAN.md`'s JS scope named) --
-    /// changes DOM/AI-visible state immediately, independent of
-    /// whether BlueJS has run; doesn't yet change the painted frame,
-    /// since MVP layout doesn't render an input's value as text.
+    /// surface `phase-2-mvp-scope/PLAN.md`'s JS scope named). The core
+    /// relayouts after the mutation, so supported text inputs show the
+    /// resulting value in both the rendered frame and [`NodeState`].
     SetValue(String),
     /// Scrolls the viewport so the target's top aligns with the
     /// viewport's top, clamped to the page's scrollable range -- a

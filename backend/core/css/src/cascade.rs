@@ -298,6 +298,19 @@ h1, h2, h3, h4, h5, h6 {
 button, input, select, textarea {
   display: inline-block;
 }
+/* The MVP block algorithm deliberately treats inline-block as a block box.
+ * Give editable inputs a visible, stable control box within that model so a
+ * value written through the AI action path is observable in the same frame as
+ * the rest of the page. This is a narrow text-input default, not an attempt
+ * to reproduce platform-native form controls. */
+input {
+  box-sizing: border-box;
+  width: 20em;
+  height: 2em;
+  padding: 2px 4px;
+  border: 1px solid #767676;
+  background-color: #ffffff;
+}
 head, title, style, script, link, meta, colgroup {
   display: none;
 }

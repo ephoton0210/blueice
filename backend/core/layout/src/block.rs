@@ -103,6 +103,33 @@ fn resolve_line_height(value: &Value, font_size: f64) -> Option<f64> {
     }
 }
 
+/// Returns the text the MVP can paint inside a native text input. Inputs are
+/// void elements, so their mutable value lives on the element attribute rather
+/// than in a DOM text child. Materialising it as a normal text fragment keeps
+/// painting and rasterisation generic.
+fn input_value(doc: &Document, node: NodeId) -> Option<&str> {
+    let NodeData::Element {
+        tag_name,
+        attributes,
+    } = doc.data(node)
+    else {
+        return None;
+    };
+    (tag_name == "input"
+        && attributes
+            .iter()
+            .find(|(name, _)| name == "type")
+            .is_none_or(|(_, input_type)| input_type.eq_ignore_ascii_case("text")))
+        .then(|| {
+            attributes
+                .iter()
+                .find(|(name, _)| name == "value")
+                .map(|(_, value)| value.as_str())
+        })
+        .flatten()
+        .filter(|value| !value.is_empty())
+}
+
 pub(crate) fn layout_block(doc: &Document, node: NodeId, styles: &StyleMap, available_width: f64) -> Fragment {
     let style = styles.get(&node);
     let font_size = style.map(|s| s.font_size_px).unwrap_or(16.0);
@@ -171,6 +198,28 @@ pub(crate) fn layout_block(doc: &Document, node: NodeId, styles: &StyleMap, avai
         let (lines, used_height) = layout_inline_run(doc, &pending_inline, styles, content_width, cursor_y);
         children_fragments.extend(lines);
         cursor_y += used_height;
+    }
+
+    // `<input>` is a void element. Its user-editable text is stored in its
+    // `value` attribute, not a child node for `collect_words` to discover.
+    // Emit a normal text fragment below the control's padding so the normal
+    // paint path renders exactly the DOM value `NodeAction::SetValue` updates.
+    if let Some(value) = input_value(doc, node) {
+        let text_width = blueice_font::measure_text_width(value, font_size, false, false);
+        let line_height = style
+            .and_then(|s| s.line_height.as_ref())
+            .and_then(|line_height| resolve_line_height(line_height, font_size))
+            .unwrap_or_else(|| default_line_height(font_size));
+        children_fragments.push(Fragment {
+            node: Some(node),
+            kind: FragmentKind::Text(value.to_string()),
+            x: 0.0,
+            y: cursor_y,
+            width: text_width,
+            height: line_height,
+            children: Vec::new(),
+        });
+        cursor_y += line_height;
     }
 
     let intrinsic_content_height = cursor_y;

@@ -269,6 +269,10 @@ fn compute_state(
         && matches!(attr(attributes, "type"), Some("checkbox") | Some("radio")))
     .then(|| has_attr(attributes, "checked"));
     NodeState {
+        value: (tag == "input"
+            && attr(attributes, "type").is_none_or(|input_type| input_type.eq_ignore_ascii_case("text")))
+            .then(|| attr(attributes, "value").map(str::to_string))
+            .flatten(),
         checked,
         disabled: has_attr(attributes, "disabled"),
         required: has_attr(attributes, "required"),
@@ -332,6 +336,7 @@ fn compute_occlusion(nodes: &mut [AiNode]) {
 mod tests {
     use super::*;
     use crate::Page;
+    use blueice_ipc::NodeAction;
 
     fn page_with(html: &str) -> Page {
         let mut page = Page::new(320.0, 400.0);
@@ -426,6 +431,26 @@ mod tests {
         let snap = build(&page, 0, 1);
         let node = find(&snap.nodes, "Search");
         assert_eq!(node.name_from, Some(NameFrom::Placeholder));
+    }
+
+    #[test]
+    fn a_text_input_reports_the_value_that_the_shared_frame_would_render() {
+        let mut page = page_with(r#"<input type="text" value="initial">"#);
+        let before = build(&page, 0, 1);
+        let input = before
+            .nodes
+            .iter()
+            .find(|node| node.role == Role::TextBox)
+            .unwrap();
+        assert_eq!(input.state.value.as_deref(), Some("initial"));
+        assert!(input.bounds.width > 0.0 && input.bounds.height > 0.0);
+
+        page.act(
+            NodeId::from_u64(input.id),
+            NodeAction::SetValue("changed".to_string()),
+        );
+        let after = build(&page, 1, 1);
+        assert_eq!(after.nodes[0].state.value.as_deref(), Some("changed"));
     }
 
     #[test]
