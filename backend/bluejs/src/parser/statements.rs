@@ -345,6 +345,12 @@ impl Parser {
         self.expect_punct(Punct::LParen)?;
 
         if self.eat_punct(Punct::Semicolon) {
+            // `for await (;;)` has no `of` clause at all -- the bare
+            // C-style empty head is rejected here, before any declaration
+            // or expression parsing gets a chance to.
+            if is_await {
+                return Err(self.syntax_error("for await requires an of clause"));
+            }
             return self.parse_for_rest(None);
         }
 
@@ -453,6 +459,12 @@ impl Parser {
             if self.check_keyword(Keyword::In) {
                 if let Some(initializer) = initializer {
                     if decl_kind == DeclKind::Var && matches!(pattern, Pattern::Identifier(_)) {
+                        // The Annex B `var x = init in ...` for-in shape has
+                        // no `for await` counterpart -- `for await` only
+                        // ever accepts an `of` clause.
+                        if is_await {
+                            return Err(self.syntax_error("for await requires an of clause"));
+                        }
                         self.advance();
                         let right = self.parse_expression()?;
                         self.expect_punct(Punct::RParen).map_err(known_syntax)?;
@@ -493,6 +505,12 @@ impl Parser {
                 return Err(known_syntax(self.syntax_error(
                     "for-in/of declaration heads cannot have initializers",
                 )));
+            }
+            // Every declaration-headed shape that falls through to here
+            // commits to a C-style `for` (its `in`/`of` clauses were both
+            // already ruled out above) -- `for await` has no C-style form.
+            if is_await {
+                return Err(self.syntax_error("for await requires an of clause"));
             }
             self.expect_punct(Punct::Semicolon).map_err(known_syntax)?;
             return self.parse_for_rest(Some(ForInit::VarDecl(decl_kind, declarators)));
