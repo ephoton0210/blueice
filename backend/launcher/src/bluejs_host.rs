@@ -27,8 +27,8 @@ use blueice_bluets_bluejs::page_host_typings::{
     page_host_document_runtime_bindings_v1, PageHostDocumentTypingsV1,
 };
 use blueice_bluets_bluejs::{
-    compile_direct_module_graph, compile_direct_script, BridgeError, DirectModuleGraph,
-    DirectScript,
+    compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
+    DirectModuleGraph, DirectScript,
 };
 use blueice_ipc::page_host::{
     self, PageHostDebuggerExecutionState, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
@@ -128,6 +128,11 @@ struct PendingDebuggerExecution {
 /// during document admission.
 pub struct BlueJsChildHost {
     runtime: BlueJsPageRuntime,
+    /// Static BlueTS metadata paired with the exact child-local BlueJS
+    /// generation that direct lowering admitted. This remains entirely in the
+    /// child: the page-host protocol has no source, symbol, type, contract,
+    /// or runtime-value inspection operation.
+    debug_registry: DirectDebugRegistry,
     documents: BTreeMap<u64, LiveDocument>,
     next_debugger_program_handle: u64,
     next_debugger_program_generation: u64,
@@ -148,6 +153,7 @@ impl BlueJsChildHost {
     ) -> Result<Self, BlueJsPageRuntimeError> {
         Ok(Self {
             runtime: BlueJsPageRuntime::new(config)?,
+            debug_registry: DirectDebugRegistry::default(),
             documents: BTreeMap::new(),
             next_debugger_program_handle: 1,
             next_debugger_program_generation: 1,
@@ -283,6 +289,11 @@ impl BlueJsChildHost {
         if lifecycle.is_err() {
             return host_failure();
         }
+        // Realm replacement invalidates every prior program generation for
+        // this tab. Prune before the successor is exposed so a stale static
+        // record cannot survive the navigation window in the child.
+        self.debug_registry
+            .prune_invalid(self.runtime.program_registry());
         if install_document_snapshot_bindings(
             &mut self.runtime,
             document.tab_id,
@@ -294,6 +305,8 @@ impl BlueJsChildHost {
             // must not leave a partially initialized successor realm. Closing
             // this fresh VM also drops every copied snapshot immediately.
             self.runtime.close_realm(document.tab_id);
+            self.debug_registry
+                .prune_invalid(self.runtime.program_registry());
             self.documents.remove(&document.tab_id);
             return host_failure();
         }
@@ -376,6 +389,7 @@ impl BlueJsChildHost {
                 PreparedScript::BlueTsClassic { ordinal, script } => {
                     let outcome = execute_bluets_classic(
                         &mut self.runtime,
+                        &mut self.debug_registry,
                         document.tab_id,
                         &origin,
                         &script,
@@ -390,6 +404,7 @@ impl BlueJsChildHost {
                 PreparedScript::BlueTsModule { ordinal, graph } => {
                     let outcome = execute_bluets_module_graph(
                         &mut self.runtime,
+                        &mut self.debug_registry,
                         document.tab_id,
                         &origin,
                         &graph,
@@ -416,6 +431,8 @@ impl BlueJsChildHost {
             // Do not report a runnable successor if the child could not mint
             // a bounded opaque inventory for every retained program.
             self.runtime.close_realm(document.tab_id);
+            self.debug_registry
+                .prune_invalid(self.runtime.program_registry());
             self.documents.remove(&document.tab_id);
             return host_failure();
         }
@@ -568,6 +585,8 @@ impl BlueJsChildHost {
 
     fn fail_debugger_execution_document(&mut self, tab_id: u64) -> PageHostReply {
         self.runtime.close_realm(tab_id);
+        self.debug_registry
+            .prune_invalid(self.runtime.program_registry());
         self.documents.remove(&tab_id);
         host_failure()
     }
@@ -578,6 +597,8 @@ impl BlueJsChildHost {
             Some(document) if document.generation != document_generation => stale_document(),
             Some(_) => {
                 self.runtime.close_realm(tab_id);
+                self.debug_registry
+                    .prune_invalid(self.runtime.program_registry());
                 self.documents.remove(&tab_id);
                 PageHostReply::RealmClosed {
                     tab_id,
@@ -1031,12 +1052,20 @@ impl BlueJsChildHost {
                         programs.clone(),
                     )
                 }
-                DeferredChildExecution::BlueTsClassic { script } => {
-                    execute_bluets_classic(&mut self.runtime, tab_id, &origin, script)
-                }
-                DeferredChildExecution::BlueTsModule { graph } => {
-                    execute_bluets_module_graph(&mut self.runtime, tab_id, &origin, graph)
-                }
+                DeferredChildExecution::BlueTsClassic { script } => execute_bluets_classic(
+                    &mut self.runtime,
+                    &mut self.debug_registry,
+                    tab_id,
+                    &origin,
+                    script,
+                ),
+                DeferredChildExecution::BlueTsModule { graph } => execute_bluets_module_graph(
+                    &mut self.runtime,
+                    &mut self.debug_registry,
+                    tab_id,
+                    &origin,
+                    graph,
+                ),
             };
             if paused {
                 self.documents
@@ -1397,14 +1426,16 @@ fn bluets_compiler_options(graph: &PageHostModuleGraph) -> Result<CompilerOption
 
 fn execute_bluets_classic(
     runtime: &mut BlueJsPageRuntime,
+    debug_registry: &mut DirectDebugRegistry,
     tab_id: u64,
     origin: &BlueJsPageOrigin,
     script: &DirectScript,
 ) -> PageHostScriptOutcome {
-    let attachment = match script.attach_in_page_realm(runtime, tab_id, origin) {
-        Ok(attachment) => attachment,
-        Err(error) => return rejected(bluets_bridge_category(error)),
-    };
+    let attachment =
+        match script.attach_debug_in_page_realm(runtime, tab_id, origin, debug_registry) {
+            Ok(attachment) => attachment,
+            Err(error) => return rejected(bluets_bridge_category(error)),
+        };
     match runtime
         .execute_program(tab_id, attachment.handle)
         .map(|_: Value| ())
@@ -1416,11 +1447,13 @@ fn execute_bluets_classic(
 
 fn execute_bluets_module_graph(
     runtime: &mut BlueJsPageRuntime,
+    debug_registry: &mut DirectDebugRegistry,
     tab_id: u64,
     origin: &BlueJsPageOrigin,
     graph: &DirectModuleGraph,
 ) -> PageHostScriptOutcome {
-    let attachment = match graph.attach_in_page_realm(runtime, tab_id, origin) {
+    let attachment = match graph.attach_debug_in_page_realm(runtime, tab_id, origin, debug_registry)
+    {
         Ok(attachment) => attachment,
         Err(error) => return rejected(bluets_bridge_category(error)),
     };
@@ -2536,6 +2569,76 @@ mod tests {
     }
 
     #[test]
+    fn child_bluets_debug_metadata_is_bound_to_its_live_realm_generation() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(1, vec![blue_ts_classic(0, "const answer: number = 42;")]),
+            }),
+            PageHostReply::Synchronized { reports, .. }
+                if reports == vec![script_report(
+                    7,
+                    1,
+                    0,
+                    PageHostScriptLanguage::BlueTs,
+                    PageHostScriptKind::Classic,
+                    PageHostScriptOutcome::Executed,
+                )]
+        ));
+        assert_eq!(host.debug_registry.len(), 1);
+        let first_handle = host
+            .documents
+            .get(&7)
+            .expect("the first child realm remains live")
+            .debugger_programs
+            .values()
+            .map(|record| record.runtime_handle)
+            .find(|handle| {
+                host.debug_registry
+                    .get(host.runtime.program_registry(), *handle)
+                    .is_ok()
+            })
+            .expect("the BlueTS program retains static metadata");
+        let first_static_info = host
+            .debug_registry
+            .get(host.runtime.program_registry(), first_handle)
+            .expect("the exact live generation resolves its metadata")
+            .static_info();
+        assert!(first_static_info
+            .sources
+            .iter()
+            .any(|source| source.module == "blueice://page/inline-0.ts"));
+        assert!(!first_static_info.types.is_empty());
+
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(
+                    2,
+                    vec![blue_ts_classic(0, "const answer: string = 'next';")]
+                ),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert_eq!(host.debug_registry.len(), 1);
+        assert!(host
+            .debug_registry
+            .get(host.runtime.program_registry(), first_handle)
+            .is_err());
+
+        assert!(matches!(
+            host.handle_request(PageHostRequest::CloseRealm {
+                tab_id: 7,
+                document_generation: 2,
+            }),
+            PageHostReply::RealmClosed {
+                tab_id: 7,
+                document_generation: 2,
+            }
+        ));
+        assert!(host.debug_registry.is_empty());
+    }
+
+    #[test]
     fn child_installs_only_fixed_core_snapshot_callbacks_for_javascript() {
         let mut host = BlueJsChildHost::default();
         let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
@@ -2739,6 +2842,73 @@ mod tests {
                 }]
             )
         ));
+        assert_eq!(host.debug_registry.len(), 2);
+        let mut retained_modules: Vec<_> = host
+            .documents
+            .get(&7)
+            .expect("the child realm remains live")
+            .debugger_programs
+            .values()
+            .filter_map(|record| {
+                host.debug_registry
+                    .get(host.runtime.program_registry(), record.runtime_handle)
+                    .ok()
+            })
+            .map(|metadata| {
+                let sources = &metadata.static_info().sources;
+                sources
+                    .iter()
+                    .find(|source| source.module == entry || source.module == dependency)
+                    .expect("each module keeps its own static source metadata")
+                    .module
+                    .clone()
+            })
+            .collect();
+        retained_modules.sort();
+        assert_eq!(
+            retained_modules,
+            vec![dependency.to_string(), entry.to_string()]
+        );
+    }
+
+    #[test]
+    fn deferred_bluets_attaches_static_metadata_only_when_the_document_executes() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![blue_ts_classic(0, "const deferredAnswer: number = 42;")],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        assert!(host.debug_registry.is_empty());
+
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                if reports == vec![script_report(
+                    7,
+                    1,
+                    0,
+                    PageHostScriptLanguage::BlueTs,
+                    PageHostScriptKind::Classic,
+                    PageHostScriptOutcome::Executed,
+                )]
+        ));
+        assert_eq!(host.debug_registry.len(), 1);
+        assert!(matches!(
+            host.handle_request(PageHostRequest::CloseRealm {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::RealmClosed { .. }
+        ));
+        assert!(host.debug_registry.is_empty());
     }
 
     #[test]

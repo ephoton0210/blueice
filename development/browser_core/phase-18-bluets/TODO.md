@@ -679,10 +679,15 @@ or second module resolver to bypass them.
   IDs) for every graph generation and rolls back all retained records/programs
   if any module fails the limit or identity checks. `DirectPageRealmOwner`
   prunes the registry automatically after its navigation/reload and close
-  operations. The page host still must route all actual lifecycle/cache/
-  hibernation events through that owner (or an equivalent invariant) and add
-  source policy, diagnostics/contracts, debugger IPC, stack locations, and
-  runtime-value inspection before this item can close.
+  operations. The isolated page-host child now applies that same bounded
+  registry directly to its BlueTS classic and ESM graph admission, retaining
+  only the exact child-local BlueJS program generation; replacement, binding
+  setup failure, debugger inventory failure, and explicit close prune it
+  before a successor can be observed. It exposes none of those records over
+  page-host IPC. The page host still must route cache/hibernation events
+  through the same invariant and add source policy, diagnostics/contracts,
+  debugger IPC, stack locations, and runtime-value inspection before this
+  item can close.
 
   Acceptance: TS breakpoints, stack locations, scopes, symbol navigation, and
   static type display point to original source; navigation, reload, cache
