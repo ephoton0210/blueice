@@ -15,6 +15,7 @@ use crate::{
         JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
         JavaScriptPageDebuggerStaticMetadataContractTarget,
         JavaScriptPageDebuggerStaticMetadataSourceTarget,
+        JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
         JavaScriptPageDebuggerStaticMetadataSymbolTarget,
         JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageExecutor,
         PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
@@ -31,7 +32,8 @@ use blueice_ipc::debugger::{
     DebuggerStaticMetadataHandle, DebuggerStaticMetadataLoweringSummary,
     DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSourceProvenance,
     DebuggerStaticMetadataSummary, DebuggerStaticMetadataSymbolDisplay,
-    DebuggerStaticMetadataSymbolId, DebuggerStaticMetadataTypeDisplay,
+    DebuggerStaticMetadataSymbolId, DebuggerStaticMetadataSymbolLocation,
+    DebuggerStaticMetadataSymbolLocationTarget, DebuggerStaticMetadataTypeDisplay,
     DebuggerStaticMetadataTypeId, DEBUGGER_PROTOCOL_VERSION,
     DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
     DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
@@ -278,6 +280,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::DescribeStaticMetadataSymbol { .. } => {
             unavailable_static_metadata_symbol_display()
         }
+        DebuggerRequest::DescribeStaticMetadataSymbolLocation { .. } => {
+            unavailable_static_metadata_symbol_location()
+        }
         DebuggerRequest::DescribeStaticMetadataSource { .. } => {
             unavailable_static_metadata_source_provenance()
         }
@@ -418,6 +423,14 @@ fn handle_debugger_request_with_child_locations(
         DebuggerRequest::DescribeStaticMetadataSymbol { symbol } => {
             describe_child_static_metadata_symbol(tabs, locations, metadata_session, symbol)
         }
+        DebuggerRequest::DescribeStaticMetadataSymbolLocation { target } => {
+            describe_child_static_metadata_symbol_location(
+                tabs,
+                locations,
+                metadata_session,
+                target,
+            )
+        }
         DebuggerRequest::DescribeStaticMetadataSource { source } => {
             describe_child_static_metadata_source_provenance(
                 tabs,
@@ -488,7 +501,7 @@ fn describe_child_location_capabilities(
     realm: DebuggerPageRealm,
 ) -> DebuggerReply {
     if let Err(reply) = resolve_live_realm(tabs, realm) {
-        return reply;
+        return *reply;
     }
     // `Available` is stronger than "core has a similarly numbered page":
     // the authenticated child must acknowledge this exact live realm on its
@@ -568,6 +581,12 @@ fn describe_child_location_capabilities(
             session.permits(DebuggerMetadataCapability::OpaqueSymbolDisplay)
         })
         && locations.debugger_static_metadata_symbol_display_available();
+    let static_metadata_symbol_location_available = static_metadata_source_inventory_available
+        && static_metadata_symbol_inventory_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueSymbolLocation)
+        })
+        && locations.debugger_static_metadata_symbol_location_available();
     let max_breakpoints_per_realm = if breakpoint_configuration_available {
         locations.max_debugger_breakpoints_per_realm()
     } else {
@@ -592,6 +611,7 @@ fn describe_child_location_capabilities(
             static_metadata_contract_display_available,
             static_metadata_contract_validation_available,
             static_metadata_symbol_display_available,
+            static_metadata_symbol_location_available,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -639,7 +659,7 @@ fn list_child_static_metadata(
 
     let tab_id = match resolve_live_realm(tabs, program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata(
         tab_id,
@@ -740,7 +760,7 @@ fn describe_child_static_metadata(
 
     let tab_id = match resolve_live_realm(tabs, metadata.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata_summary(
         tab_id,
@@ -819,7 +839,7 @@ fn describe_child_static_metadata_lowering_summary(
     }
     let tab_id = match resolve_live_realm(tabs, metadata.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata_lowering_summary(
         tab_id,
@@ -897,7 +917,7 @@ fn list_child_static_metadata_sources(
     }
     let tab_id = match resolve_live_realm(tabs, metadata.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata_sources(
         tab_id,
@@ -924,12 +944,18 @@ fn list_child_static_metadata_sources(
                     source_id: source.source_id,
                 });
             }
-            if metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceProvenance)
+            // Keep only a bounded local receipt set when an enabled dependent
+            // operation can consume source IDs. This preserves default deny
+            // for inventory-only sessions while letting symbol-location use
+            // the exact same stream-local identity boundary as provenance.
+            if (metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceProvenance)
+                || metadata_session.permits(DebuggerMetadataCapability::OpaqueSymbolLocation))
                 && !metadata_session.observe_sources(&result)
             {
                 return DebuggerReply::Error {
                     code: DebuggerErrorCode::ResourceLimit,
-                    message: "debugger source provenance receipt budget is exhausted".to_string(),
+                    message: "debugger static metadata source receipt budget is exhausted"
+                        .to_string(),
                 };
             }
             DebuggerReply::StaticMetadataSources(result)
@@ -991,7 +1017,7 @@ fn list_child_static_metadata_types(
     }
     let tab_id = match resolve_live_realm(tabs, metadata.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata_types(
         tab_id,
@@ -1081,7 +1107,7 @@ fn list_child_static_metadata_symbols(
     }
     let tab_id = match resolve_live_realm(tabs, metadata.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata_symbols(
         tab_id,
@@ -1172,7 +1198,7 @@ fn list_child_static_metadata_contracts(
     }
     let tab_id = match resolve_live_realm(tabs, metadata.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata_contracts(
         tab_id,
@@ -1266,7 +1292,7 @@ fn describe_child_static_metadata_contract(
     }
     let tab_id = match resolve_live_realm(tabs, contract.metadata.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata_contract_display(
         tab_id,
@@ -1352,7 +1378,7 @@ fn validate_child_static_metadata_contract(
     }
     let tab_id = match resolve_live_realm(tabs, contract.metadata.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata_contract_validation(
         tab_id,
@@ -1500,7 +1526,7 @@ fn describe_child_static_metadata_type(
     }
     let tab_id = match resolve_live_realm(tabs, static_type.metadata.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata_type_display(
         tab_id,
@@ -1578,7 +1604,7 @@ fn describe_child_static_metadata_symbol(
     }
     let tab_id = match resolve_live_realm(tabs, symbol.metadata.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata_symbol_display(
         tab_id,
@@ -1610,6 +1636,98 @@ fn describe_child_static_metadata_symbol(
                 };
             }
             DebuggerReply::StaticMetadataSymbol(symbol_display)
+        }
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+/// Discloses one half-open source byte range only after the exact stream has
+/// independently inventoried both its symbol and source IDs. The caller never
+/// supplies an offset, and the reply contains no source/module/name/type/
+/// contract/bytecode data or source-map translation.
+fn describe_child_static_metadata_symbol_location(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    target: DebuggerStaticMetadataSymbolLocationTarget,
+) -> DebuggerReply {
+    if !target.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static metadata symbol location target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_symbol_location();
+    };
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceInventory)
+        || !metadata_session.permits(DebuggerMetadataCapability::OpaqueSymbolInventory)
+        || !metadata_session.observed_symbol(target.symbol)
+        || !metadata_session.observed_source(target.source)
+    {
+        return unavailable_static_metadata_symbol_location();
+    }
+    let capabilities = describe_child_location_capabilities(
+        tabs,
+        locations,
+        Some(metadata_session),
+        target.symbol.metadata.program.realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueSymbolLocation,
+    ) else {
+        return unavailable_static_metadata_symbol_location();
+    };
+    if !authorization.permits(
+        target.symbol.metadata.program.realm,
+        DebuggerMetadataCapability::OpaqueSymbolLocation,
+    ) {
+        return unavailable_static_metadata_symbol_location();
+    }
+    let tab_id = match resolve_live_realm(tabs, target.symbol.metadata.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    match locations.debugger_static_metadata_symbol_location(
+        tab_id,
+        target.symbol.metadata.program.realm.realm_generation,
+        JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
+            program_handle: target.symbol.metadata.program.program_handle,
+            program_generation: target.symbol.metadata.program.program_generation,
+            metadata_handle: target.symbol.metadata.metadata_handle,
+            metadata_generation: target.symbol.metadata.metadata_generation,
+            symbol_id: target.symbol.symbol_id,
+            source_id: target.source.source_id,
+        },
+    ) {
+        Ok(location) => {
+            if location.symbol_id != target.symbol.symbol_id
+                || location.source_id != target.source.source_id
+            {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    message: "mismatched debugger static metadata symbol location identity"
+                        .to_string(),
+                };
+            }
+            let location = DebuggerStaticMetadataSymbolLocation {
+                symbol: target.symbol,
+                source: target.source,
+                start_byte: location.start_byte,
+                end_byte: location.end_byte,
+            };
+            if !location.is_well_formed() {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    message: "invalid debugger static metadata symbol location".to_string(),
+                };
+            }
+            DebuggerReply::StaticMetadataSymbolLocation(location)
         }
         Err(error) => debugger_program_error(error),
     }
@@ -1662,7 +1780,7 @@ fn describe_child_static_metadata_source_provenance(
     }
     let tab_id = match resolve_live_realm(tabs, source.metadata.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     match locations.debugger_static_metadata_source_provenance(
         tab_id,
@@ -1700,7 +1818,7 @@ fn list_child_programs(
 ) -> DebuggerReply {
     let tab_id = match resolve_live_realm(tabs, realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     if !locations.debugger_has_live_realm(tab_id, realm.realm_generation) {
         return unavailable_program_locations();
@@ -1733,7 +1851,7 @@ fn list_child_safe_points(
     }
     let tab_id = match resolve_live_realm(tabs, program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     if !locations.debugger_has_live_realm(tab_id, program.realm.realm_generation) {
         return unavailable_program_locations();
@@ -1771,7 +1889,7 @@ fn validate_child_safe_point(
     }
     let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     if !locations.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation) {
         return unavailable_program_locations();
@@ -1799,7 +1917,7 @@ fn set_child_breakpoint(
     }
     let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     if !locations.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation)
         || !locations.debugger_breakpoint_configuration_available()
@@ -1826,7 +1944,7 @@ fn list_child_breakpoints(
 ) -> DebuggerReply {
     let tab_id = match resolve_live_realm(tabs, realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     if !locations.debugger_has_live_realm(tab_id, realm.realm_generation)
         || !locations.debugger_breakpoint_configuration_available()
@@ -1870,7 +1988,7 @@ fn clear_child_breakpoint(
     }
     let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     if !locations.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation)
         || !locations.debugger_breakpoint_configuration_available()
@@ -1906,7 +2024,7 @@ fn arm_child_root_safe_point_breakpoint(
     }
     let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     if !locations.debugger_has_live_realm(tab_id, safe_point.program.realm.realm_generation)
         || !locations.debugger_execution_control_available()
@@ -1939,7 +2057,7 @@ fn child_execution_state(
     }
     let tab_id = match resolve_live_realm(tabs, program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     if !locations.debugger_has_live_realm(tab_id, program.realm.realm_generation)
         || !locations.debugger_execution_control_available()
@@ -1973,7 +2091,7 @@ fn resume_child_execution(
     }
     let tab_id = match resolve_live_realm(tabs, program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     if !locations.debugger_has_live_realm(tab_id, program.realm.realm_generation)
         || !locations.debugger_execution_control_available()
@@ -1997,7 +2115,7 @@ fn describe_capabilities(
     realm: DebuggerPageRealm,
 ) -> DebuggerReply {
     if let Err(reply) = resolve_live_realm(tabs, realm) {
-        return reply;
+        return *reply;
     }
     let program_locations_available = javascript_executor.is_some_and(|executor| {
         executor.debugger_has_live_realm(TabId::from_u64(realm.tab_id), realm.realm_generation)
@@ -2033,6 +2151,7 @@ fn describe_capabilities(
             static_metadata_contract_display_available: false,
             static_metadata_contract_validation_available: false,
             static_metadata_symbol_display_available: false,
+            static_metadata_symbol_location_available: false,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -2044,25 +2163,30 @@ fn describe_capabilities(
     })
 }
 
-fn resolve_live_realm(tabs: &TabManager, realm: DebuggerPageRealm) -> Result<TabId, DebuggerReply> {
+/// Resolves a realm for one debugger operation without copying a large public
+/// wire reply through every local `Result` error path.
+fn resolve_live_realm(
+    tabs: &TabManager,
+    realm: DebuggerPageRealm,
+) -> Result<TabId, Box<DebuggerReply>> {
     if !realm.is_well_formed() || realm.browser_context_id != DEFAULT_BROWSER_CONTEXT_ID {
-        return Err(DebuggerReply::Error {
+        return Err(Box::new(DebuggerReply::Error {
             code: DebuggerErrorCode::InvalidTarget,
             message: "invalid debugger realm target".to_string(),
-        });
+        }));
     }
     let tab_id = TabId::from_u64(realm.tab_id);
     let Some(page) = tabs.get(tab_id) else {
-        return Err(DebuggerReply::Error {
+        return Err(Box::new(DebuggerReply::Error {
             code: DebuggerErrorCode::InvalidTarget,
             message: "unknown debugger tab".to_string(),
-        });
+        }));
     };
     if page.document_generation() != realm.realm_generation {
-        return Err(DebuggerReply::Error {
+        return Err(Box::new(DebuggerReply::Error {
             code: DebuggerErrorCode::StaleRealm,
             message: "stale debugger realm generation".to_string(),
-        });
+        }));
     }
     Ok(tab_id)
 }
@@ -2074,7 +2198,7 @@ fn list_programs(
 ) -> DebuggerReply {
     let tab_id = match resolve_live_realm(tabs, realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     let Some(executor) = javascript_executor else {
         return unavailable_program_locations();
@@ -2110,7 +2234,7 @@ fn list_safe_points(
     }
     let tab_id = match resolve_live_realm(tabs, program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     let Some(executor) = javascript_executor else {
         return unavailable_program_locations();
@@ -2151,7 +2275,7 @@ fn validate_safe_point(
     }
     let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     let Some(executor) = javascript_executor else {
         return unavailable_program_locations();
@@ -2182,7 +2306,7 @@ fn set_breakpoint(
     }
     let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     let Some(executor) = javascript_executor else {
         return unavailable_breakpoint_configuration();
@@ -2213,7 +2337,7 @@ fn arm_entry_breakpoint(
     }
     let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     let Some(executor) = javascript_executor else {
         return unavailable_execution_control();
@@ -2247,7 +2371,7 @@ fn arm_root_safe_point_breakpoint(
     }
     let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     let Some(executor) = javascript_executor else {
         return unavailable_execution_control();
@@ -2275,7 +2399,7 @@ fn list_breakpoints(
 ) -> DebuggerReply {
     let tab_id = match resolve_live_realm(tabs, realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     let Some(executor) = javascript_executor else {
         return unavailable_breakpoint_configuration();
@@ -2312,7 +2436,7 @@ fn clear_breakpoint(
     }
     let tab_id = match resolve_live_realm(tabs, safe_point.program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     let Some(executor) = javascript_executor else {
         return unavailable_breakpoint_configuration();
@@ -2349,7 +2473,7 @@ fn execution_state(
     }
     let tab_id = match resolve_live_realm(tabs, program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     let Some(executor) = javascript_executor else {
         return unavailable_execution_control();
@@ -2384,7 +2508,7 @@ fn resume_execution(
     }
     let tab_id = match resolve_live_realm(tabs, program.realm) {
         Ok(tab_id) => tab_id,
-        Err(reply) => return reply,
+        Err(reply) => return *reply,
     };
     let Some(executor) = javascript_executor else {
         return unavailable_execution_control();
@@ -2514,6 +2638,13 @@ fn unavailable_static_metadata_symbol_display() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_symbol_location() -> DebuggerReply {
+    DebuggerReply::Unsupported {
+        operation: "describe static metadata symbol location".to_string(),
+        reason: "static metadata symbol locations require an explicitly negotiated owner grant, prior symbol/source receipts, and a live BlueTS child program".to_string(),
+    }
+}
+
 fn unavailable_static_metadata_source_provenance() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -2615,6 +2746,7 @@ struct DebuggerCapabilityAvailability {
     static_metadata_contract_display_available: bool,
     static_metadata_contract_validation_available: bool,
     static_metadata_symbol_display_available: bool,
+    static_metadata_symbol_location_available: bool,
 }
 
 fn capability_reports(
@@ -2634,6 +2766,7 @@ fn capability_reports(
         static_metadata_contract_display_available,
         static_metadata_contract_validation_available,
         static_metadata_symbol_display_available,
+        static_metadata_symbol_location_available,
     }: DebuggerCapabilityAvailability,
 ) -> Vec<DebuggerCapabilityReport> {
     [
@@ -2870,6 +3003,19 @@ fn capability_reports(
                 "static metadata symbol displays require explicit inventory, symbol-inventory, and symbol-display session grants plus a live BlueTS child program"
             },
         ),
+        (
+            DebuggerCapability::StaticMetadataSymbolLocation,
+            if static_metadata_symbol_location_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_symbol_location_available {
+                "bounded source-text-free static symbol locations are installed for prior symbol and source-ID receipts"
+            } else {
+                "static metadata symbol locations require explicit inventory, source-inventory, symbol-inventory, and symbol-location session grants plus a live BlueTS child program"
+            },
+        ),
     ]
     .into_iter()
     .map(|(capability, state, detail)| DebuggerCapabilityReport {
@@ -2927,6 +3073,10 @@ mod tests {
         }
 
         fn debugger_static_metadata_symbol_display_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_symbol_location_available(&self) -> bool {
             true
         }
 
@@ -3137,6 +3287,32 @@ mod tests {
                         target.symbol_id
                     },
                     display: "ProjectControlledName".to_string(),
+                },
+            )
+        }
+
+        fn debugger_static_metadata_symbol_location(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            target: crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
+        ) -> Result<
+            crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSymbolLocation,
+            JavaScriptPageDebuggerError,
+        > {
+            if target.metadata_handle != 41
+                || target.metadata_generation != 9
+                || target.symbol_id != 0
+                || target.source_id != 0
+            {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            Ok(
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSymbolLocation {
+                    symbol_id: target.symbol_id,
+                    source_id: target.source_id,
+                    start_byte: 6,
+                    end_byte: 31,
                 },
             )
         }
@@ -3982,6 +4158,144 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn static_metadata_symbol_location_requires_exact_symbol_and_source_receipts() {
+        let (tabs, realm) = loaded_tabs();
+        let program = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let metadata = DebuggerStaticMetadataHandle {
+            program,
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let symbol = DebuggerStaticMetadataSymbolId {
+            metadata,
+            symbol_id: 0,
+        };
+        let source = DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id: 0,
+        };
+        let target = DebuggerStaticMetadataSymbolLocationTarget { symbol, source };
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_symbol_location(),
+        };
+        let hello_reply = blueice_ipc::debugger::negotiate(
+            &hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_symbol_location(),
+        );
+        let session = blueice_ipc::debugger::metadata_session_authorization(&hello, &hello_reply)
+            .expect(
+                "dependent symbol-location policy must create a core-local session authorization",
+            );
+        let mut locations = MetadataLocations {
+            malformed_summary: false,
+            malformed_provenance: false,
+            malformed_lowering_summary: false,
+            mismatched_symbol_display: false,
+            mismatched_contract_display: false,
+            mismatched_contract_validation: false,
+        };
+        let DebuggerReply::Capabilities(capabilities) =
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeCapabilities { realm },
+            )
+        else {
+            panic!("live realm symbol-location capability discovery must succeed")
+        };
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataSymbolLocation
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeStaticMetadataSymbolLocation { target },
+            ),
+            unavailable_static_metadata_symbol_location(),
+            "a caller cannot probe a child location before both IDs crossed this stream"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadata { program },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadataSources { metadata },
+            ),
+            DebuggerReply::StaticMetadataSources(vec![source])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadataSymbols { metadata },
+            ),
+            DebuggerReply::StaticMetadataSymbols(vec![
+                symbol,
+                DebuggerStaticMetadataSymbolId {
+                    metadata,
+                    symbol_id: 1,
+                },
+                DebuggerStaticMetadataSymbolId {
+                    metadata,
+                    symbol_id: 2,
+                },
+            ])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeStaticMetadataSymbolLocation { target },
+            ),
+            DebuggerReply::StaticMetadataSymbolLocation(DebuggerStaticMetadataSymbolLocation {
+                symbol,
+                source,
+                start_byte: 6,
+                end_byte: 31,
+            })
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+                    target: DebuggerStaticMetadataSymbolLocationTarget {
+                        source: DebuggerStaticMetadataSourceId {
+                            source_id: 1,
+                            ..source
+                        },
+                        ..target
+                    },
+                },
+            ),
+            unavailable_static_metadata_symbol_location(),
+            "a guessed source ID cannot be paired with an observed symbol"
+        );
     }
 
     #[test]

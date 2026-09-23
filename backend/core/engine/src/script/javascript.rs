@@ -47,7 +47,10 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
     JavaScriptPageDebuggerStaticMetadataSymbolDisplay,
-    JavaScriptPageDebuggerStaticMetadataSymbolId, JavaScriptPageDebuggerStaticMetadataSymbolTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolId,
+    JavaScriptPageDebuggerStaticMetadataSymbolLocation,
+    JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolTarget,
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
     JavaScriptPageDebuggerStaticMetadataTypeTarget,
 };
@@ -136,6 +139,14 @@ pub trait PageJavaScriptDebuggerLocations {
     /// under an exact opaque metadata parent. Symbol record reads remain
     /// separately default-denied.
     fn debugger_static_metadata_symbol_inventory_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can disclose a source-text-free half-open byte
+    /// range for a prior exact symbol and independently inventoried source.
+    /// This is separate from symbol names and source provenance because it
+    /// exposes source structure.
+    fn debugger_static_metadata_symbol_location_available(&self) -> bool {
         false
     }
 
@@ -344,6 +355,19 @@ pub trait PageJavaScriptDebuggerLocations {
         _document_generation: u64,
         _target: JavaScriptPageDebuggerStaticMetadataSymbolTarget,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolDisplay, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes one source-text-free declaration range for an exact prior
+    /// symbol. Implementations must not turn it into source/module/name/type/
+    /// contract/bytecode or arbitrary static-record access.
+    fn debugger_static_metadata_symbol_location(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolLocation, JavaScriptPageDebuggerError>
     {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }

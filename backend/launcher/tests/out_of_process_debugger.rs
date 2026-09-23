@@ -79,6 +79,7 @@ struct StaticMetadataPolicy {
     symbol_inventory: bool,
     contract_inventory: bool,
     symbol_display: bool,
+    symbol_location: bool,
     contract_display: bool,
     contract_validation: bool,
     lowering_summary: bool,
@@ -154,6 +155,9 @@ impl LauncherProcess {
         }
         if policy.symbol_display {
             command.arg("--debugger-static-metadata-symbol-display");
+        }
+        if policy.symbol_location {
+            command.arg("--debugger-static-metadata-symbol-location");
         }
         if policy.contract_display {
             command.arg("--debugger-static-metadata-contract-display");
@@ -594,6 +598,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             symbol_inventory: true,
             contract_inventory: true,
             symbol_display: true,
+            symbol_location: true,
             contract_display: true,
             contract_validation: true,
             lowering_summary: true,
@@ -622,6 +627,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                             symbol_inventory: true,
                             contract_inventory: true,
                             symbol_display: true,
+                            symbol_location: true,
                             contract_display: true,
                             contract_validation: true,
                             lowering_summary: true,
@@ -641,6 +647,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     symbol_inventory: true,
                     contract_inventory: true,
                     symbol_display: true,
+                    symbol_location: true,
                     contract_display: true,
                     contract_validation: true,
                     lowering_summary: true,
@@ -664,6 +671,10 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     }));
     assert!(capabilities.reports.iter().any(|report| {
         report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSymbolDisplay
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSymbolLocation
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
     assert!(capabilities.reports.iter().any(|report| {
@@ -1080,6 +1091,47 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             "provenance must contain no source text or static-record payload"
         );
     }
+    let location_target = blueice_ipc::debugger::DebuggerStaticMetadataSymbolLocationTarget {
+        symbol: symbols[0],
+        source: sources[0],
+    };
+    let guessed_location_reply = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+            target: blueice_ipc::debugger::DebuggerStaticMetadataSymbolLocationTarget {
+                source: blueice_ipc::debugger::DebuggerStaticMetadataSourceId {
+                    source_id: u32::MAX,
+                    ..sources[0]
+                },
+                ..location_target
+            },
+        },
+    );
+    assert!(
+        matches!(guessed_location_reply, DebuggerReply::Unsupported { .. },),
+        "a guessed source ID must fail before the child: {guessed_location_reply:?}"
+    );
+    let location_reply = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+            target: location_target,
+        },
+    );
+    let DebuggerReply::StaticMetadataSymbolLocation(location) = location_reply else {
+        panic!("expected a bounded public static symbol location")
+    };
+    assert_eq!(location.symbol, symbols[0]);
+    assert_eq!(location.source, sources[0]);
+    assert!(location.start_byte < location.end_byte);
+    assert!(
+        location.end_byte <= blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+    );
+    assert!(
+        !format!("{location:?}").contains("privateBlueTsMetadata")
+            && !format!("{location:?}").contains("inline-0.ts")
+            && !format!("{location:?}").contains("number"),
+        "symbol location must expose only opaque IDs and a bounded byte range"
+    );
 
     navigate(&mut browser, &url);
     fixture
@@ -1126,6 +1178,18 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         debugger_request(
             &mut debugger,
             DebuggerRequest::DescribeStaticMetadataSymbol { symbol: symbols[0] },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+                target: location_target,
+            },
         ),
         DebuggerReply::Error {
             code: DebuggerErrorCode::StaleRealm,

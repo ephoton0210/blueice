@@ -126,6 +126,31 @@ pub struct JavaScriptPageDebuggerStaticMetadataSymbolDisplay {
     pub display: String,
 }
 
+/// One child-validated source-text-free half-open declaration range for an
+/// exact symbol. The paired source ID must be independently receipted by the
+/// public dispatcher; this value carries no module identity, source text,
+/// line/column translation, bytecode, type, contract, or runtime value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolLocation {
+    pub symbol_id: u32,
+    pub source_id: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
+/// One exact opaque parent, symbol-ID, and source-ID target for a
+/// source-text-free symbol location. Both IDs were independently inventoried
+/// by the public debugger stream before the child can see this request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub symbol_id: u32,
+    pub source_id: u32,
+}
+
 /// One exact opaque parent and compiler-minted symbol-ID target for the
 /// separately authorized symbol-display operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

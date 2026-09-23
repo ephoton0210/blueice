@@ -835,6 +835,19 @@ or second module resolver to bypass them.
   bytecode offset, VM object, value, or general metadata read crosses this
   layer. The real launcher-supervised regression proves default denial,
   receipt rejection, canonical disclosure, and reload staleness.
+  Page-host v19/debugger v18 add the twelfth independently default-denied
+  `OpaqueSymbolLocation` capability and the owner-only
+  `--debugger-static-metadata-symbol-location` flag. It requires the parent
+  inventory plus source-ID and symbol-ID inventories, exact same-stream
+  receipts for both IDs under the same opaque metadata handle, a live
+  realm/program/metadata tuple, and a child capability report. The public
+  request contains only that receipted symbol/source pair; it returns only
+  the same opaque IDs and a non-empty half-open UTF-8 byte range capped at
+  1 MiB. Core verifies the child's echoed pair and range before re-minting
+  it. No source text, module/path identity, line/column mapping, symbol
+  name, type, contract, bytecode, runtime value, source-map translation, or
+  general static-record read crosses this layer. The private child regression
+  proves source-free disclosure plus unknown-target and reload rejection.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

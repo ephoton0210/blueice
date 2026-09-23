@@ -144,6 +144,11 @@ mod unix {
         /// Owner-only policy for compiler-produced symbol displays bound to a
         /// prior opaque symbol receipt. Source/static records remain denied.
         debugger_static_metadata_symbol_display: bool,
+        /// Owner-only policy for one source-text-free byte range bound to
+        /// separate opaque symbol and source receipts. Module identity,
+        /// source text, line/column, names, types, contracts, and bytecode
+        /// remain default-denied.
+        debugger_static_metadata_symbol_location: bool,
     }
 
     impl CoreLaunchOptions {
@@ -339,6 +344,19 @@ mod unix {
             self.debugger_static_metadata_inventory = true;
             self.debugger_static_metadata_symbol_inventory = true;
             self.debugger_static_metadata_symbol_display = true;
+            self
+        }
+
+        /// Enables one bounded half-open UTF-8 byte range for an exact
+        /// separately inventoried symbol/source pair. This selects parent,
+        /// source-ID, and symbol-ID inventories; it never enables source
+        /// text, module identity, line/column mappings, metadata records,
+        /// names, types, contracts, bytecode, or runtime values.
+        pub fn with_debugger_static_metadata_symbol_location(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self.debugger_static_metadata_symbol_inventory = true;
+            self.debugger_static_metadata_symbol_location = true;
             self
         }
     }
@@ -1717,6 +1735,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_symbol_display {
                     command.arg("--debugger-static-metadata-symbol-display");
+                }
+                if options.debugger_static_metadata_symbol_location {
+                    command.arg("--debugger-static-metadata-symbol-location");
                 }
             }
             let mut child = command.spawn()?;

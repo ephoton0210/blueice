@@ -9,8 +9,10 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version seventeen adds the
-//! independently default-deny lowering-map summary operation for a prior
+//! and an opt-in root-code-unit pause/resume seam. Version eighteen adds the
+//! independently default-deny symbol-location operation for prior opaque
+//! symbol and source receipts. Version seventeen added the independently
+//! default-deny lowering-map summary operation for a prior
 //! opaque metadata handle. Version sixteen added the default-deny data-only
 //! contract-validation operation for a prior opaque
 //! contract ID
@@ -31,7 +33,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 17;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 18;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -138,6 +140,9 @@ pub const DEBUGGER_STATIC_METADATA_MAX_SOURCES: u32 = 4_096;
 pub const DEBUGGER_STATIC_METADATA_MAX_TYPES: u32 = 4_096;
 pub const DEBUGGER_STATIC_METADATA_MAX_SYMBOLS: u32 = 65_536;
 pub const DEBUGGER_STATIC_METADATA_MAX_CONTRACTS: u32 = 65_536;
+/// Maximum end offset for one authorized static source span. This matches the
+/// page host's fixed one-mebibyte per-module compiler admission limit.
+pub const DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES: u32 = 1_048_576;
 /// Maximum UTF-8 byte length for one explicitly authorized static type
 /// display. This is a fixed protocol budget, not a caller-provided limit.
 pub const DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES: usize = 4_096;
@@ -322,6 +327,50 @@ impl DebuggerStaticMetadataSymbolDisplay {
     }
 }
 
+/// One owner-authorized location for a compiler-minted symbol that the exact
+/// debugger stream previously inventoried. The range is a half-open UTF-8
+/// byte range under a separately receipted source ID: it is not source text,
+/// a module identity, a line/column conversion, a bytecode position, or a
+/// source-read capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataSymbolLocation {
+    pub symbol: DebuggerStaticMetadataSymbolId,
+    pub source: DebuggerStaticMetadataSourceId,
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
+impl DebuggerStaticMetadataSymbolLocation {
+    /// Rejects malformed or over-budget child locations before they reach a
+    /// debugger client. An unchecked machine-sized offset can never become a
+    /// wire-range or allocation ambiguity.
+    pub fn is_well_formed(self) -> bool {
+        self.symbol.is_well_formed()
+            && self.source.is_well_formed()
+            && self.symbol.metadata == self.source.metadata
+            && self.start_byte < self.end_byte
+            && self.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+    }
+}
+
+/// One exact prior symbol/source receipt pair for the separately authorized
+/// symbol-location operation. Core validates both IDs against the same stream
+/// before forwarding a private lookup, so a child result cannot introduce an
+/// unrequested source identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataSymbolLocationTarget {
+    pub symbol: DebuggerStaticMetadataSymbolId,
+    pub source: DebuggerStaticMetadataSourceId,
+}
+
+impl DebuggerStaticMetadataSymbolLocationTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.symbol.is_well_formed()
+            && self.source.is_well_formed()
+            && self.symbol.metadata == self.source.metadata
+    }
+}
+
 impl DebuggerStaticMetadataSymbolId {
     pub fn is_well_formed(self) -> bool {
         self.metadata.is_well_formed()
@@ -465,6 +514,9 @@ pub enum DebuggerCapability {
     /// returned by the exact stream's symbol inventory. It does not expose a
     /// source span, type, contract, bytecode, or general static-record read.
     StaticMetadataSymbolDisplay,
+    /// One half-open byte range for a symbol and a separately receipted source
+    /// ID. It contains no source/module/name/type/contract/bytecode payload.
+    StaticMetadataSymbolLocation,
     /// One bounded compiler-produced display for a contract ID previously
     /// returned by the exact stream's contract inventory. It does not expose a
     /// source span, plan, validation behavior, bytecode, or general
@@ -544,6 +596,11 @@ pub enum DebuggerMetadataCapability {
     /// and an aggregate verified-entry count for the exact opaque metadata
     /// handle. Map entries, spans, AST nodes, and bytecode remain unavailable.
     OpaqueLoweringSummary,
+    /// Describes a half-open byte range for one compiler-minted symbol that
+    /// the stream previously inventoried, under a separately receipted source
+    /// ID. It is source-text-free but discloses source structure, so it needs
+    /// its own default-deny authorization.
+    OpaqueSymbolLocation,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -571,6 +628,7 @@ impl DebuggerMetadataCapability {
                 Some(DebuggerCapability::StaticMetadataContractValidation)
             }
             Self::OpaqueLoweringSummary => Some(DebuggerCapability::StaticMetadataLoweringSummary),
+            Self::OpaqueSymbolLocation => Some(DebuggerCapability::StaticMetadataSymbolLocation),
             Self::Unknown => None,
         }
     }
@@ -589,6 +647,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueContractDisplay => Some(9),
             Self::OpaqueContractValidation => Some(10),
             Self::OpaqueLoweringSummary => Some(11),
+            Self::OpaqueSymbolLocation => Some(12),
             Self::Unknown => None,
         }
     }
@@ -631,6 +690,7 @@ pub struct DebuggerMetadataCapabilitySelection {
     pub contract_display: bool,
     pub contract_validation: bool,
     pub lowering_summary: bool,
+    pub symbol_location: bool,
 }
 
 impl DebuggerMetadataCapabilityManifest {
@@ -817,6 +877,20 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants one source-text-free symbol location only with its required
+    /// parent, source, and symbol inventory receipts.
+    pub fn opaque_symbol_location() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSourceInventory,
+                DebuggerMetadataCapability::OpaqueSymbolInventory,
+                DebuggerMetadataCapability::OpaqueSymbolLocation,
+            ],
+        }
+    }
+
     /// Builds the exact canonical manifest selected by a trusted owner after
     /// it independently validated each prerequisite flag. Keeping this
     /// operation here avoids a caller hand-assembling a reordered manifest.
@@ -833,6 +907,7 @@ impl DebuggerMetadataCapabilityManifest {
             contract_display,
             contract_validation,
             lowering_summary,
+            symbol_location,
         } = selection;
         let any = summary
             || source_inventory
@@ -844,7 +919,8 @@ impl DebuggerMetadataCapabilityManifest {
             || symbol_display
             || contract_display
             || contract_validation
-            || lowering_summary;
+            || lowering_summary
+            || symbol_location;
         let mut capabilities = Vec::new();
         if any {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
@@ -852,7 +928,7 @@ impl DebuggerMetadataCapabilityManifest {
         if summary {
             capabilities.push(DebuggerMetadataCapability::OpaqueSummary);
         }
-        if source_inventory {
+        if source_inventory || symbol_location {
             capabilities.push(DebuggerMetadataCapability::OpaqueSourceInventory);
         }
         if source_provenance {
@@ -864,7 +940,7 @@ impl DebuggerMetadataCapabilityManifest {
         if type_display {
             capabilities.push(DebuggerMetadataCapability::OpaqueTypeDisplay);
         }
-        if symbol_inventory || symbol_display {
+        if symbol_inventory || symbol_display || symbol_location {
             capabilities.push(DebuggerMetadataCapability::OpaqueSymbolInventory);
         }
         if contract_inventory || contract_display || contract_validation {
@@ -881,6 +957,9 @@ impl DebuggerMetadataCapabilityManifest {
         }
         if lowering_summary {
             capabilities.push(DebuggerMetadataCapability::OpaqueLoweringSummary);
+        }
+        if symbol_location {
+            capabilities.push(DebuggerMetadataCapability::OpaqueSymbolLocation);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -1001,6 +1080,18 @@ impl DebuggerMetadataCapabilityManifest {
                 || self
                     .capabilities
                     .contains(&DebuggerMetadataCapability::OpaqueInventory))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueSymbolLocation)
+                || (self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueSourceInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueSymbolInventory)))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -1636,6 +1727,12 @@ pub enum DebuggerRequest {
     DescribeStaticMetadataSymbol {
         symbol: DebuggerStaticMetadataSymbolId,
     },
+    /// Describes one half-open byte range for a symbol previously returned by
+    /// [`Self::ListStaticMetadataSymbols`]. The reply requires a separately
+    /// receipted source ID and carries neither text nor module identity.
+    DescribeStaticMetadataSymbolLocation {
+        target: DebuggerStaticMetadataSymbolLocationTarget,
+    },
     /// Lists only compiler-minted contract identities for one exact metadata
     /// attachment. It is not a contract name/span/plan/validation read.
     ListStaticMetadataContracts {
@@ -1758,6 +1855,10 @@ pub enum DebuggerReply {
     /// Reply to [`DebuggerRequest::DescribeStaticMetadataSymbol`]. The symbol
     /// display remains parent-bound, receipted, and source-text-free.
     StaticMetadataSymbol(DebuggerStaticMetadataSymbolDisplay),
+    /// Reply to [`DebuggerRequest::DescribeStaticMetadataSymbolLocation`].
+    /// The location is parent-bound, receipted, source-text-free, and does
+    /// not include a module identity or a bytecode/source-map translation.
+    StaticMetadataSymbolLocation(DebuggerStaticMetadataSymbolLocation),
     /// Reply to [`DebuggerRequest::ListStaticMetadataContracts`]. IDs remain
     /// parent-bound and contain no contract name, span, plan, or validation
     /// payload.
@@ -1865,6 +1966,7 @@ pub fn negotiate(
         | DebuggerRequest::DescribeStaticMetadataType { .. }
         | DebuggerRequest::ListStaticMetadataSymbols { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbol { .. }
+        | DebuggerRequest::DescribeStaticMetadataSymbolLocation { .. }
         | DebuggerRequest::ListStaticMetadataContracts { .. }
         | DebuggerRequest::DescribeStaticMetadataContract { .. }
         | DebuggerRequest::ValidateStaticMetadataContract { .. }
@@ -2041,6 +2143,34 @@ mod tests {
                         metadata_generation: 7,
                     },
                     symbol_id: 0,
+                },
+            },
+            DebuggerRequest::DescribeStaticMetadataSymbolLocation {
+                target: DebuggerStaticMetadataSymbolLocationTarget {
+                    symbol: DebuggerStaticMetadataSymbolId {
+                        metadata: DebuggerStaticMetadataHandle {
+                            program: DebuggerProgram {
+                                realm: realm(),
+                                program_handle: 12,
+                                program_generation: 5,
+                            },
+                            metadata_handle: 24,
+                            metadata_generation: 7,
+                        },
+                        symbol_id: 0,
+                    },
+                    source: DebuggerStaticMetadataSourceId {
+                        metadata: DebuggerStaticMetadataHandle {
+                            program: DebuggerProgram {
+                                realm: realm(),
+                                program_handle: 12,
+                                program_generation: 5,
+                            },
+                            metadata_handle: 24,
+                            metadata_generation: 7,
+                        },
+                        source_id: 0,
+                    },
                 },
             },
             DebuggerRequest::ListStaticMetadataContracts {
@@ -2283,6 +2413,26 @@ mod tests {
                     symbol_id: 0,
                 },
                 display: "ProjectControlledName".to_string(),
+            }),
+            DebuggerReply::StaticMetadataSymbolLocation(DebuggerStaticMetadataSymbolLocation {
+                symbol: DebuggerStaticMetadataSymbolId {
+                    metadata: DebuggerStaticMetadataHandle {
+                        program,
+                        metadata_handle: 24,
+                        metadata_generation: 7,
+                    },
+                    symbol_id: 0,
+                },
+                source: DebuggerStaticMetadataSourceId {
+                    metadata: DebuggerStaticMetadataHandle {
+                        program,
+                        metadata_handle: 24,
+                        metadata_generation: 7,
+                    },
+                    source_id: 0,
+                },
+                start_byte: 6,
+                end_byte: 31,
             }),
             DebuggerReply::StaticMetadataContracts(vec![DebuggerStaticMetadataContractId {
                 metadata: DebuggerStaticMetadataHandle {

@@ -38,8 +38,8 @@ use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_NODES,
     DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_STRING_BYTES,
     DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
-    DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
-    DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES,
+    DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
+    DEBUGGER_STATIC_METADATA_MAX_TYPES, DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES,
     DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
@@ -48,12 +48,13 @@ use blueice_ipc::page_host::{
     PageHostDebuggerBlueTsMetadataLoweringSummary, PageHostDebuggerBlueTsMetadataSourceId,
     PageHostDebuggerBlueTsMetadataSourceProvenance, PageHostDebuggerBlueTsMetadataSummary,
     PageHostDebuggerBlueTsMetadataSymbolDisplay, PageHostDebuggerBlueTsMetadataSymbolId,
-    PageHostDebuggerBlueTsMetadataTypeDisplay, PageHostDebuggerBlueTsMetadataTypeId,
-    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
-    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
-    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
-    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
-    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataTypeDisplay,
+    PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerExecutionState,
+    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
+    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
+    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
+    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -394,6 +395,19 @@ impl BlueJsChildHost {
                 metadata,
                 symbol_id,
             } => self.debugger_bluets_metadata_symbol_display(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_id,
+            ),
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_id,
+            } => self.debugger_bluets_metadata_symbol_location(
                 tab_id,
                 document_generation,
                 program,
@@ -1531,6 +1545,98 @@ impl BlueJsChildHost {
             program,
             metadata,
             symbol,
+        }
+    }
+
+    /// Returns one source-text-free half-open declaration range for an exact
+    /// compiler-minted symbol. The location contains only the symbol/source
+    /// numeric identities and byte offsets; module identity, source contents,
+    /// names, types, contracts, bytecode, values, and source-map translation
+    /// remain private to the child.
+    fn debugger_bluets_metadata_symbol_location(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let location = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let Some(symbol) = retained
+                    .static_info()
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.id.0 == symbol_id)
+                else {
+                    return invalid_request();
+                };
+                let Some(source) = retained
+                    .static_info()
+                    .sources
+                    .iter()
+                    .find(|source| source.id == symbol.source)
+                else {
+                    return invalid_request();
+                };
+                if symbol.span.module != source.module
+                    || symbol.span.start >= symbol.span.end
+                    || symbol.span.end
+                        > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES).unwrap()
+                {
+                    return invalid_request();
+                }
+                let Ok(start_byte) = u32::try_from(symbol.span.start) else {
+                    return invalid_request();
+                };
+                let Ok(end_byte) = u32::try_from(symbol.span.end) else {
+                    return invalid_request();
+                };
+                PageHostDebuggerBlueTsMetadataSymbolLocation {
+                    symbol_id,
+                    source_id: source.id.0,
+                    start_byte,
+                    end_byte,
+                }
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            location,
         }
     }
 
@@ -4231,6 +4337,120 @@ mod tests {
             }),
             PageHostReply::Error {
                 code: PageHostErrorCode::UnknownRealm,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn child_bluets_symbol_location_is_live_bound_and_source_text_free() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(1, vec![blue_ts_classic(0, "const typedAnswer: number = 42;")]),
+            }),
+            PageHostReply::Synchronized { reports, .. }
+                if reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
+        ));
+        let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => *programs
+                .first()
+                .expect("the one BlueTS program remains live"),
+            reply => panic!("expected private debugger program inventory, got {reply:?}"),
+        };
+        let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => *metadata
+                .first()
+                .expect("the BlueTS program retains one static attachment"),
+            reply => panic!("expected private BlueTS metadata inventory, got {reply:?}"),
+        };
+        let sources =
+            match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataSources {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata,
+            }) {
+                PageHostReply::DebuggerBlueTsMetadataSources { sources, .. } => sources,
+                reply => panic!("expected private source-ID inventory, got {reply:?}"),
+            };
+        let symbol = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataSymbols {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+            metadata,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadataSymbols { symbols, .. } => *symbols
+                .first()
+                .expect("the BlueTS attachment retains a declared symbol"),
+            reply => panic!("expected private symbol-ID inventory, got {reply:?}"),
+        };
+        let reply = host.handle_request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata,
+                symbol_id: symbol.symbol_id,
+            },
+        );
+        let PageHostReply::DebuggerBlueTsMetadataSymbolLocation { location, .. } = reply else {
+            panic!("expected bounded private symbol location")
+        };
+        assert_eq!(location.symbol_id, symbol.symbol_id);
+        assert!(sources
+            .iter()
+            .any(|source| source.source_id == location.source_id));
+        assert!(location.start_byte < location.end_byte);
+        assert!(location.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES);
+        // The result is deliberately only ID/range structure, even inside the
+        // private bridge: no source text, module identity, name, or type leaks.
+        assert!(!format!("{location:?}").contains("typedAnswer"));
+        assert!(!format!("{location:?}").contains("inline-0.ts"));
+        assert!(!format!("{location:?}").contains("number"));
+        assert!(matches!(
+            host.handle_request(
+                PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                    metadata,
+                    symbol_id: u32::MAX,
+                }
+            ),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(
+                    2,
+                    vec![blue_ts_classic(0, "const replacement: number = 1;")]
+                ),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(
+                PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                    metadata,
+                    symbol_id: symbol.symbol_id,
+                }
+            ),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
                 ..
             }
         ));
