@@ -465,6 +465,11 @@ pub enum CompilerErrorCode {
     InvalidContractValue,
     InvalidMetadataCursor,
     InvalidMetadataPage,
+    /// The MCP adapter has not received this exact opaque metadata ID in an
+    /// inventory page for its current session and generation. This is a
+    /// public-adapter boundary, not an assertion that the core has no such
+    /// internal record.
+    UnobservedMetadata,
     ResourceLimit,
     Unavailable,
 }

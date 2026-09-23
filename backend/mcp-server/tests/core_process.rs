@@ -404,7 +404,7 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
     );
 
     macro_rules! compiler_tool {
-        ($name:literal, $arguments:expr) => {{
+        ($name:expr, $arguments:expr) => {{
             let mut arguments = $arguments;
             arguments["session_id"] = serde_json::Value::String(compiler_session.clone());
             client
@@ -517,6 +517,68 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         blueice_ipc::compiler::CompilerErrorCode::StaleGeneration
     );
     assert!(message.contains("not observed by this MCP session"));
+
+    // Generation evidence alone is not dereference authority. Before this
+    // receipt has received an inventory page, every metadata category must
+    // reject a numerically guessed ID in the MCP adapter without passing it
+    // to the real core process.
+    for (tool, arguments) in [
+        (
+            "debug_get_provenance",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "source_id": 0,
+            }),
+        ),
+        (
+            "debug_get_type",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+            }),
+        ),
+        (
+            "debug_get_symbol",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+            }),
+        ),
+        (
+            "debug_get_contract",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+            }),
+        ),
+        (
+            "debug_validate_contract",
+            serde_json::json!({
+                "project_id": 1,
+                "generation": check.generation.sequence,
+                "id": 0,
+                "value": { "enabled": true },
+            }),
+        ),
+    ] {
+        let result = compiler_tool!(tool, arguments);
+        assert_eq!(result.is_error, Some(true));
+        assert_source_free_compiler_tool_result(&result);
+        let blueice_ipc::compiler::CompilerReply::Error { code, message } =
+            compiler_tool_reply(&result)
+        else {
+            panic!("unobserved {tool} ID must fail before compiler IPC")
+        };
+        assert_eq!(
+            code,
+            blueice_ipc::compiler::CompilerErrorCode::UnobservedMetadata
+        );
+        assert!(message.contains("not observed in an inventory page"));
+    }
 
     let mut source_ids = Vec::new();
     let mut type_ids = Vec::new();

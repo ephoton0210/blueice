@@ -869,7 +869,12 @@ or second module resolver to bypass them.
   exact-generation-bound. `ListStaticMetadata` turns those counts into capped
   pages of opaque source/type/symbol/contract IDs, so a client can discover a
   `debug_get_symbol` ID before following its returned provenance/contract IDs
-  rather than guessing an ordinal. A core-minted cursor is one-shot, bound to
+  rather than guessing an ordinal. The public MCP adapter now treats those
+  pages as capability receipts: it rejects a guessed, wrong-category, or
+  never-inventoried type/symbol/source/contract ID before forwarding a
+  dereference or validation to core. A later successful check revokes that
+  project's old receipts, and a fixed per-session receipt budget prevents
+  cross-project inventory from accumulating without bound. A core-minted cursor is one-shot, bound to
   exactly one generation and collection, capped by service and response policy,
   invalidated on a later check, and rejects malformed, replayed, stale, or
   mismatched uses without falling back to another page. Provenance returns only
@@ -953,9 +958,11 @@ or second module resolver to bypass them.
   a missing, malformed, subset, reordered, nor locally derived manifest. Every
   compiler tool echoes and requires that receipt;
   static queries additionally require the exact generation first observed by
-  `bluetsc_check` under the same receipt. A malformed core attestation,
-  mismatched or unobserved generation fails source-free, and receipt/session
-  state is never retargeted on launcher cutover.
+  `bluetsc_check` under the same receipt and the individual ID first returned
+  from the matching `debug_list_static_metadata` category. A malformed core
+  attestation, mismatched/unobserved generation, guessed/wrong-category ID,
+  or exhausted receipt budget fails source-free, and receipt/session state is
+  never retargeted on launcher cutover.
   There is still
   no general launcher-owned catalog distribution or authorization beyond the
   one fixed closed profile, no remote registration/update/source/filesystem/

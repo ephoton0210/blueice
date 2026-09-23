@@ -26,7 +26,7 @@ use rmcp::model::{
 use rmcp::schemars;
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -1014,17 +1014,174 @@ impl CompilerMcpSessionReceipt {
     }
 }
 
-/// The only mutable state MCP adds around the sealed compiler transport. A
-/// successful check records exactly the core-minted generation it returned;
-/// every later static request on this MCP receipt must repeat that exact
-/// generation. Holding this lock before the compiler-stream lock serializes a
-/// later check with its metadata reads, so a newly observed generation cannot
-/// race an older one into this adapter's session.
+/// The most static metadata IDs one MCP session will retain as capability
+/// receipts. This covers all source/type/symbol/contract records the default
+/// core policy retains for one registered project, while preventing a client
+/// that inventories many owner-registered projects from turning its public
+/// adapter session into an unbounded ID store.
+const MAX_OBSERVED_COMPILER_STATIC_METADATA_IDS: usize = 102_400;
+
+/// The metadata category under which an opaque ID was disclosed. Keeping this
+/// private ordered vocabulary avoids making IPC enum ordering part of the
+/// public compiler protocol solely for the MCP receipt ledger.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum ObservedCompilerStaticMetadataKind {
+    Sources,
+    Types,
+    Symbols,
+    Contracts,
+}
+
+impl From<blueice_ipc::compiler::CompilerStaticMetadataKind>
+    for ObservedCompilerStaticMetadataKind
+{
+    fn from(kind: blueice_ipc::compiler::CompilerStaticMetadataKind) -> Self {
+        match kind {
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Sources => Self::Sources,
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Types => Self::Types,
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Symbols => Self::Symbols,
+            blueice_ipc::compiler::CompilerStaticMetadataKind::Contracts => Self::Contracts,
+        }
+    }
+}
+
+/// A successful `bluetsc_check` records exactly the core-minted generation it
+/// returned. An ID gains no dereference authority merely by being a small
+/// integer: it must also have appeared in an inventory page on this receipt,
+/// for the exact project, generation, and category. A later check for a
+/// project revokes that project's old inventory evidence.
+#[derive(Default)]
+struct CompilerMcpSessionState {
+    observed_generations: BTreeMap<u64, u64>,
+    observed_static_metadata: BTreeMap<u64, BTreeSet<(ObservedCompilerStaticMetadataKind, u32)>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum CompilerMetadataReceiptError {
+    Limit,
+    InvalidPage(&'static str),
+}
+
+impl CompilerMcpSessionState {
+    fn observe_generation(&mut self, project_id: u64, generation: u64) {
+        self.observed_generations.insert(project_id, generation);
+        self.observed_static_metadata.remove(&project_id);
+    }
+
+    fn static_metadata_id_is_observed(
+        &self,
+        project_id: u64,
+        kind: ObservedCompilerStaticMetadataKind,
+        id: u32,
+    ) -> bool {
+        self.observed_static_metadata
+            .get(&project_id)
+            .is_some_and(|ids| ids.contains(&(kind, id)))
+    }
+
+    fn observed_static_metadata_count(&self) -> usize {
+        self.observed_static_metadata
+            .values()
+            .map(BTreeSet::len)
+            .sum()
+    }
+
+    /// Gives the core a page limit that cannot make an accepted page exceed
+    /// the MCP receipt budget. `None` otherwise means the core-selected page
+    /// cap; converting it to a sufficiently large explicit limit preserves
+    /// that behavior while retaining the final remaining capacity.
+    fn inventory_limit(
+        &self,
+        requested: Option<u32>,
+    ) -> Result<Option<u32>, CompilerMetadataReceiptError> {
+        if requested == Some(0) {
+            return Ok(requested);
+        }
+        let remaining = MAX_OBSERVED_COMPILER_STATIC_METADATA_IDS
+            .saturating_sub(self.observed_static_metadata_count());
+        let remaining = u32::try_from(remaining).unwrap_or(u32::MAX);
+        if remaining == 0 {
+            return Err(CompilerMetadataReceiptError::Limit);
+        }
+        Ok(Some(requested.unwrap_or(u32::MAX).min(remaining)))
+    }
+
+    fn observe_static_metadata_page(
+        &mut self,
+        project_id: u64,
+        generation: u64,
+        requested_kind: blueice_ipc::compiler::CompilerStaticMetadataKind,
+        page: &blueice_ipc::compiler::CompilerStaticMetadataPage,
+    ) -> Result<(), CompilerMetadataReceiptError> {
+        let expected_generation = blueice_ipc::compiler::CompilerGeneration {
+            project: blueice_ipc::compiler::CompilerProject { id: project_id },
+            sequence: generation,
+        };
+        if page.generation != expected_generation || page.kind != requested_kind {
+            return Err(CompilerMetadataReceiptError::InvalidPage(
+                "core returned a static metadata page for a different project, generation, or category",
+            ));
+        }
+        let kind = requested_kind.into();
+        let received = page
+            .ids
+            .iter()
+            .map(|id| (kind, *id))
+            .collect::<BTreeSet<_>>();
+        if received.len() != page.ids.len() {
+            return Err(CompilerMetadataReceiptError::InvalidPage(
+                "core returned a static metadata page with duplicate opaque IDs",
+            ));
+        }
+        let additional = self
+            .observed_static_metadata
+            .get(&project_id)
+            .map_or(received.len(), |existing| {
+                received.iter().filter(|id| !existing.contains(id)).count()
+            });
+        if self
+            .observed_static_metadata_count()
+            .checked_add(additional)
+            .is_none_or(|count| count > MAX_OBSERVED_COMPILER_STATIC_METADATA_IDS)
+        {
+            return Err(CompilerMetadataReceiptError::Limit);
+        }
+        self.observed_static_metadata
+            .entry(project_id)
+            .or_default()
+            .extend(received);
+        Ok(())
+    }
+}
+
+fn compiler_metadata_receipt_error_reply(
+    error: CompilerMetadataReceiptError,
+) -> blueice_ipc::compiler::CompilerReply {
+    let (code, message) = match error {
+        CompilerMetadataReceiptError::Limit => (
+            blueice_ipc::compiler::CompilerErrorCode::ResourceLimit,
+            "this MCP session has reached its fixed static metadata receipt limit; start a new session before inventorying more IDs",
+        ),
+        CompilerMetadataReceiptError::InvalidPage(message) => (
+            blueice_ipc::compiler::CompilerErrorCode::InvalidMetadataPage,
+            message,
+        ),
+    };
+    blueice_ipc::compiler::CompilerReply::Error {
+        code,
+        message: message.to_string(),
+    }
+}
+
+/// The only mutable state MCP adds around the sealed compiler transport.
+/// Holding this lock before the compiler-stream lock serializes a later check
+/// with metadata reads, so a newly observed generation cannot race stale
+/// receipt evidence into this adapter's session.
 #[derive(Clone)]
 struct CompilerMcpAdapter {
     connection: Arc<Mutex<CompilerConnection<UnixStream>>>,
     receipt: CompilerMcpSessionReceipt,
-    observed_generations: Arc<Mutex<BTreeMap<u64, u64>>>,
+    session_state: Arc<Mutex<CompilerMcpSessionState>>,
 }
 
 impl CompilerMcpAdapter {
@@ -1047,7 +1204,7 @@ impl CompilerMcpAdapter {
                 session_attestation,
                 capability_manifest,
             )?,
-            observed_generations: Arc::new(Mutex::new(BTreeMap::new())),
+            session_state: Arc::new(Mutex::new(CompilerMcpSessionState::default())),
         })
     }
 
@@ -1058,21 +1215,21 @@ impl CompilerMcpAdapter {
 
 async fn blocking_compiler_session<T, F>(adapter: CompilerMcpAdapter, f: F) -> Result<T, ErrorData>
 where
-    F: FnOnce(&mut CompilerConnection<UnixStream>, &mut BTreeMap<u64, u64>) -> io::Result<T>
+    F: FnOnce(&mut CompilerConnection<UnixStream>, &mut CompilerMcpSessionState) -> io::Result<T>
         + Send
         + 'static,
     T: Send + 'static,
 {
     tokio::task::spawn_blocking(move || {
-        let mut generations = adapter
-            .observed_generations
+        let mut session_state = adapter
+            .session_state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut connection = adapter
             .connection
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        f(&mut connection, &mut generations)
+        f(&mut connection, &mut session_state)
     })
     .await
     .map_err(|error| {
@@ -1087,15 +1244,32 @@ where
 }
 
 fn compiler_generation_is_observed(
-    observed_generations: &BTreeMap<u64, u64>,
+    session_state: &CompilerMcpSessionState,
     project_id: u64,
     generation: u64,
 ) -> Option<blueice_ipc::compiler::CompilerReply> {
-    (observed_generations.get(&project_id) != Some(&generation)).then(|| {
+    (session_state.observed_generations.get(&project_id) != Some(&generation)).then(|| {
         blueice_ipc::compiler::CompilerReply::Error {
             code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
             message: "compiler generation was not observed by this MCP session; call bluetsc_check with this session first".to_string(),
         }
+    })
+}
+
+fn compiler_static_metadata_id_is_observed(
+    session_state: &CompilerMcpSessionState,
+    project_id: u64,
+    generation: u64,
+    kind: ObservedCompilerStaticMetadataKind,
+    id: u32,
+) -> Option<blueice_ipc::compiler::CompilerReply> {
+    compiler_generation_is_observed(session_state, project_id, generation).or_else(|| {
+        (!session_state.static_metadata_id_is_observed(project_id, kind, id)).then(|| {
+            blueice_ipc::compiler::CompilerReply::Error {
+                code: blueice_ipc::compiler::CompilerErrorCode::UnobservedMetadata,
+                message: "static compiler metadata ID was not observed in an inventory page for this MCP session; call debug_list_static_metadata with the matching category first".to_string(),
+            }
+        })
     })
 }
 
@@ -1595,7 +1769,7 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
-        description = "Check an already core-registered BlueTS/BlueTSC project through the negotiated compiler service. session_id must be the opaque receipt returned by bluetsc_session_capabilities for this exact MCP adapter; project_id is an opaque owner-minted handle, not a path. A successful check records its exact core generation in this session, which later static queries must repeat. The result is source-text-free and read-only: it can include capped diagnostics, work-set summaries, fingerprints and metadata counts, but never source, emitted artifacts, output paths, resolver/compiler options, or filesystem writes. A build/output operation is intentionally unsupported in this slice."
+        description = "Check an already core-registered BlueTS/BlueTSC project through the negotiated compiler service. session_id must be the opaque receipt returned by bluetsc_session_capabilities for this exact MCP adapter; project_id is an opaque owner-minted handle, not a path. A successful check records its exact core generation in this session and revokes that project's previous metadata-ID receipts; later static queries must repeat the generation and first receive their individual ID from debug_list_static_metadata. The result is source-text-free and read-only: it can include capped diagnostics, work-set summaries, fingerprints and metadata counts, but never source, emitted artifacts, output paths, resolver/compiler options, or filesystem writes. A build/output operation is intentionally unsupported in this slice."
     )]
     async fn bluetsc_check(
         &self,
@@ -1610,19 +1784,20 @@ impl BlueIceMcpServer {
         if !compiler.accepts_session(session_id.as_deref()) {
             return Ok(compiler_session_mismatch_result());
         }
-        let reply = blocking_compiler_session(compiler.clone(), move |connection, generations| {
-            let reply = connection.check(project_id)?;
-            if let blueice_ipc::compiler::CompilerReply::Check(check) = &reply {
-                generations.insert(project_id, check.generation.sequence);
-            }
-            Ok(reply)
-        })
-        .await?;
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                let reply = connection.check(project_id)?;
+                if let blueice_ipc::compiler::CompilerReply::Check(check) = &reply {
+                    session_state.observe_generation(project_id, check.generation.sequence);
+                }
+                Ok(reply)
+            })
+            .await?;
         Ok(compiler_reply_to_result(&compiler.receipt, reply))
     }
 
     #[tool(
-        description = "List one bounded page of opaque source-free BlueTS static metadata IDs from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities, and generation must come from a successful bluetsc_check using that same receipt. Start with no cursor; pass a prior page's next_cursor object unchanged for the next page. kind is limited to sources, types, symbols, or contracts. The core caps limit, binds each one-shot cursor to this exact generation and kind, invalidates it after a later check, and rejects malformed/reused/mismatched cursors. Use returned symbol IDs with debug_get_symbol, then follow its source_id or contract_id through debug_get_provenance/debug_get_contract. This cannot read source, inspect BlueJS values, register or modify a project, change compiler configuration, build, or write output."
+        description = "List one bounded page of opaque source-free BlueTS static metadata IDs from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities, and generation must come from a successful bluetsc_check using that same receipt. Start with no cursor; pass a prior page's next_cursor object unchanged for the next page. kind is limited to sources, types, symbols, or contracts. Only IDs actually returned by these pages may be passed to the matching debug_get_* tool; the adapter rejects guessed IDs before compiler IPC. The core caps limit, binds each one-shot cursor to this exact generation and kind, invalidates it after a later check, and rejects malformed/reused/mismatched cursors. This cannot read source, inspect BlueJS values, register or modify a project, change compiler configuration, build, or write output."
     )]
     async fn debug_list_static_metadata(
         &self,
@@ -1643,20 +1818,34 @@ impl BlueIceMcpServer {
         }
         let kind = compiler_static_metadata_kind_from_params(kind);
         let cursor = cursor.map(|cursor| cursor.id);
-        let reply = blocking_compiler_session(compiler.clone(), move |connection, generations| {
-            if let Some(reply) =
-                compiler_generation_is_observed(generations, project_id, generation)
-            {
-                return Ok(reply);
-            }
-            connection.static_metadata_page(project_id, generation, kind, cursor, limit)
-        })
-        .await?;
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                if let Some(reply) =
+                    compiler_generation_is_observed(session_state, project_id, generation)
+                {
+                    return Ok(reply);
+                }
+                let limit = match session_state.inventory_limit(limit) {
+                    Ok(limit) => limit,
+                    Err(error) => return Ok(compiler_metadata_receipt_error_reply(error)),
+                };
+                let reply =
+                    connection.static_metadata_page(project_id, generation, kind, cursor, limit)?;
+                if let blueice_ipc::compiler::CompilerReply::StaticMetadataPage(page) = &reply {
+                    if let Err(error) = session_state
+                        .observe_static_metadata_page(project_id, generation, kind, page)
+                    {
+                        return Ok(compiler_metadata_receipt_error_reply(error));
+                    }
+                }
+                Ok(reply)
+            })
+            .await?;
         Ok(compiler_reply_to_result(&compiler.receipt, reply))
     }
 
     #[tool(
-        description = "Read one source-text-free static BlueTS type from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id and generation must come from bluetsc_check using that receipt; id is a compiler-minted type id. Stale or unknown handles return a structured tool error. This never inspects a BlueJS value, reads source, changes compiler configuration, or writes output."
+        description = "Read one source-text-free static BlueTS type previously returned by debug_list_static_metadata with kind types, from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id and generation must come from bluetsc_check using that receipt. Guessed, wrong-category, stale, or unknown handles return a structured tool error before dereference. This never inspects a BlueJS value, reads source, changes compiler configuration, or writes output."
     )]
     async fn debug_get_type(
         &self,
@@ -1673,20 +1862,25 @@ impl BlueIceMcpServer {
         if !compiler.accepts_session(session_id.as_deref()) {
             return Ok(compiler_session_mismatch_result());
         }
-        let reply = blocking_compiler_session(compiler.clone(), move |connection, generations| {
-            if let Some(reply) =
-                compiler_generation_is_observed(generations, project_id, generation)
-            {
-                return Ok(reply);
-            }
-            connection.static_type(project_id, generation, id)
-        })
-        .await?;
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                if let Some(reply) = compiler_static_metadata_id_is_observed(
+                    session_state,
+                    project_id,
+                    generation,
+                    ObservedCompilerStaticMetadataKind::Types,
+                    id,
+                ) {
+                    return Ok(reply);
+                }
+                connection.static_type(project_id, generation, id)
+            })
+            .await?;
         Ok(compiler_reply_to_result(&compiler.receipt, reply))
     }
 
     #[tool(
-        description = "Read one source-text-free static BlueTS symbol from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id and generation must come from bluetsc_check using that receipt; id is a compiler-minted symbol id. Stale or unknown handles return a structured tool error. This never reads project source, exposes runtime values, alters a project, or writes artifacts."
+        description = "Read one source-text-free static BlueTS symbol previously returned by debug_list_static_metadata with kind symbols, from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id and generation must come from bluetsc_check using that receipt. Guessed, wrong-category, stale, or unknown handles return a structured tool error before dereference. This never reads project source, exposes runtime values, alters a project, or writes artifacts."
     )]
     async fn debug_get_symbol(
         &self,
@@ -1703,20 +1897,25 @@ impl BlueIceMcpServer {
         if !compiler.accepts_session(session_id.as_deref()) {
             return Ok(compiler_session_mismatch_result());
         }
-        let reply = blocking_compiler_session(compiler.clone(), move |connection, generations| {
-            if let Some(reply) =
-                compiler_generation_is_observed(generations, project_id, generation)
-            {
-                return Ok(reply);
-            }
-            connection.static_symbol(project_id, generation, id)
-        })
-        .await?;
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                if let Some(reply) = compiler_static_metadata_id_is_observed(
+                    session_state,
+                    project_id,
+                    generation,
+                    ObservedCompilerStaticMetadataKind::Symbols,
+                    id,
+                ) {
+                    return Ok(reply);
+                }
+                connection.static_symbol(project_id, generation, id)
+            })
+            .await?;
         Ok(compiler_reply_to_result(&compiler.receipt, reply))
     }
 
     #[tool(
-        description = "Read one source-text-free BlueTS provenance record from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id, generation and source_id are core-minted opaque handles returned after bluetsc_check and compiler metadata under that receipt. The result contains only a static module identity and labeled SHA-256 content digest, never source text, a filesystem path, a resolver, or a source-read capability."
+        description = "Read one source-text-free BlueTS provenance record whose source_id was previously returned by debug_list_static_metadata with kind sources, from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id and generation come from bluetsc_check under that receipt. Guessed, wrong-category, stale, or unknown IDs fail before dereference. The result contains only a static module identity and labeled SHA-256 content digest, never source text, a filesystem path, a resolver, or a source-read capability."
     )]
     async fn debug_get_provenance(
         &self,
@@ -1733,20 +1932,25 @@ impl BlueIceMcpServer {
         if !compiler.accepts_session(session_id.as_deref()) {
             return Ok(compiler_session_mismatch_result());
         }
-        let reply = blocking_compiler_session(compiler.clone(), move |connection, generations| {
-            if let Some(reply) =
-                compiler_generation_is_observed(generations, project_id, generation)
-            {
-                return Ok(reply);
-            }
-            connection.static_provenance(project_id, generation, source_id)
-        })
-        .await?;
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                if let Some(reply) = compiler_static_metadata_id_is_observed(
+                    session_state,
+                    project_id,
+                    generation,
+                    ObservedCompilerStaticMetadataKind::Sources,
+                    source_id,
+                ) {
+                    return Ok(reply);
+                }
+                connection.static_provenance(project_id, generation, source_id)
+            })
+            .await?;
         Ok(compiler_reply_to_result(&compiler.receipt, reply))
     }
 
     #[tool(
-        description = "Read one bounded source-text-free static BlueTS contract summary from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id, generation and id must come from bluetsc_check and metadata under that receipt. A contract exists only for a successfully compiled, local non-generic declaration the existing compiler could reify exactly; imported, generic or erased types deliberately have no contract. This does not evaluate JavaScript, read source, change compiler configuration, or write output."
+        description = "Read one bounded source-text-free static BlueTS contract summary previously returned by debug_list_static_metadata with kind contracts, from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id and generation come from bluetsc_check under that receipt. Guessed, wrong-category, stale, or unknown IDs fail before dereference. A contract exists only for a successfully compiled, local non-generic declaration the existing compiler could reify exactly; imported, generic or erased types deliberately have no contract. This does not evaluate JavaScript, read source, change compiler configuration, or write output."
     )]
     async fn debug_get_contract(
         &self,
@@ -1763,20 +1967,25 @@ impl BlueIceMcpServer {
         if !compiler.accepts_session(session_id.as_deref()) {
             return Ok(compiler_session_mismatch_result());
         }
-        let reply = blocking_compiler_session(compiler.clone(), move |connection, generations| {
-            if let Some(reply) =
-                compiler_generation_is_observed(generations, project_id, generation)
-            {
-                return Ok(reply);
-            }
-            connection.static_contract(project_id, generation, id)
-        })
-        .await?;
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                if let Some(reply) = compiler_static_metadata_id_is_observed(
+                    session_state,
+                    project_id,
+                    generation,
+                    ObservedCompilerStaticMetadataKind::Contracts,
+                    id,
+                ) {
+                    return Ok(reply);
+                }
+                connection.static_contract(project_id, generation, id)
+            })
+            .await?;
         Ok(compiler_reply_to_result(&compiler.receipt, reply))
     }
 
     #[tool(
-        description = "Validate JSON data against one exact, compiler-retained static BlueTS contract observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id, generation and id are opaque core-minted handles returned after bluetsc_check and metadata under that receipt. The core enforces fixed depth, collection, node and string limits; this is a pure data-only check, never JavaScript execution or page-object inspection. The input is not echoed. JSON has no undefined value, so this tool validates only JSON-compatible snapshots."
+        description = "Validate JSON data against one exact static BlueTS contract previously returned by debug_list_static_metadata with kind contracts, from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id and generation come from bluetsc_check under that receipt. Guessed, wrong-category, stale, or unknown IDs fail before validation. The core enforces fixed depth, collection, node and string limits; this is a pure data-only check, never JavaScript execution or page-object inspection. The input is not echoed. JSON has no undefined value, so this tool validates only JSON-compatible snapshots."
     )]
     async fn debug_validate_contract(
         &self,
@@ -1796,15 +2005,20 @@ impl BlueIceMcpServer {
         if !compiler.accepts_session(session_id.as_deref()) {
             return Ok(compiler_session_mismatch_result());
         }
-        let reply = blocking_compiler_session(compiler.clone(), move |connection, generations| {
-            if let Some(reply) =
-                compiler_generation_is_observed(generations, project_id, generation)
-            {
-                return Ok(reply);
-            }
-            connection.validate_static_contract(project_id, generation, id, value)
-        })
-        .await?;
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                if let Some(reply) = compiler_static_metadata_id_is_observed(
+                    session_state,
+                    project_id,
+                    generation,
+                    ObservedCompilerStaticMetadataKind::Contracts,
+                    id,
+                ) {
+                    return Ok(reply);
+                }
+                connection.validate_static_contract(project_id, generation, id, value)
+            })
+            .await?;
         Ok(compiler_reply_to_result(&compiler.receipt, reply))
     }
 
@@ -1914,8 +2128,8 @@ impl ServerHandler for BlueIceMcpServer {
                  bluetsc_describe_project, bluetsc_check, debug_list_static_metadata, debug_get_type, debug_get_symbol, debug_get_provenance, \
                  debug_get_contract and debug_validate_contract. A successful check records an exact generation for that \
                  one accepted compiler stream. Its receipt includes the complete core-authored capability manifest; MCP \
-                 neither derives nor narrows that vocabulary. Static queries reject a different receipt or a generation not observed by \
-                 that session. The tools expose only opaque-handle, source-text-free check/static metadata. Inventory \
+                 neither derives nor narrows that vocabulary. Static queries reject a different receipt, a generation not observed by \
+                 that session, or an ID not returned by a matching inventory page under that receipt. The tools expose only opaque-handle, source-text-free check/static metadata. Inventory \
                  pagination uses exact-generation-bound one-shot cursors; contract \
                  validation accepts bounded JSON data only and never evaluates JavaScript; it is available only where \
                  the existing compiler retained an exact reifiable local plan. These tools cannot register a project, \
@@ -1931,6 +2145,81 @@ impl ServerHandler for BlueIceMcpServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compiler_metadata_receipts_are_generation_and_category_bound() {
+        let mut state = CompilerMcpSessionState::default();
+        state.observe_generation(7, 3);
+
+        let unobserved = compiler_static_metadata_id_is_observed(
+            &state,
+            7,
+            3,
+            ObservedCompilerStaticMetadataKind::Sources,
+            11,
+        )
+        .expect("an ID never returned by inventory must be denied");
+        assert!(matches!(
+            unobserved,
+            blueice_ipc::compiler::CompilerReply::Error {
+                code: blueice_ipc::compiler::CompilerErrorCode::UnobservedMetadata,
+                ..
+            }
+        ));
+
+        state
+            .observe_static_metadata_page(
+                7,
+                3,
+                blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+                &blueice_ipc::compiler::CompilerStaticMetadataPage {
+                    generation: blueice_ipc::compiler::CompilerGeneration {
+                        project: blueice_ipc::compiler::CompilerProject { id: 7 },
+                        sequence: 3,
+                    },
+                    kind: blueice_ipc::compiler::CompilerStaticMetadataKind::Sources,
+                    ids: vec![11],
+                    next_cursor: None,
+                },
+            )
+            .unwrap();
+        assert!(compiler_static_metadata_id_is_observed(
+            &state,
+            7,
+            3,
+            ObservedCompilerStaticMetadataKind::Sources,
+            11,
+        )
+        .is_none());
+        assert!(matches!(
+            compiler_static_metadata_id_is_observed(
+                &state,
+                7,
+                3,
+                ObservedCompilerStaticMetadataKind::Types,
+                11,
+            ),
+            Some(blueice_ipc::compiler::CompilerReply::Error {
+                code: blueice_ipc::compiler::CompilerErrorCode::UnobservedMetadata,
+                ..
+            })
+        ));
+
+        state.observe_generation(7, 4);
+        assert!(matches!(
+            compiler_static_metadata_id_is_observed(
+                &state,
+                7,
+                4,
+                ObservedCompilerStaticMetadataKind::Sources,
+                11,
+            ),
+            Some(blueice_ipc::compiler::CompilerReply::Error {
+                code: blueice_ipc::compiler::CompilerErrorCode::UnobservedMetadata,
+                ..
+            })
+        ));
+    }
 
     #[test]
     fn compiler_adapter_receipt_is_minted_by_the_core_handshake() {
