@@ -233,6 +233,13 @@ impl Parser {
                     "a labelled statement cannot contain a generator or async function declaration",
                 ));
             }
+            // Annex B.3.2 allows a labelled function declaration in sloppy
+            // code only.
+            Stmt::FunctionDecl(_) if self.strict => {
+                return Err(self.syntax_error(
+                    "a labelled function declaration is not allowed in strict mode code",
+                ));
+            }
             _ => {}
         }
         Ok(Stmt::Labelled {
@@ -248,7 +255,7 @@ impl Parser {
             if self.at_eof() {
                 return Err(self.error("unterminated block, expected '}'"));
             }
-            stmts.push(self.parse_statement()?);
+            stmts.push(unlabel_function_declaration(self.parse_statement()?));
         }
         self.expect_punct(Punct::RBrace)?;
         Ok(stmts)
@@ -668,7 +675,7 @@ impl Parser {
                 if self.at_eof() {
                     return Err(self.syntax_error("unterminated switch statement, expected '}'"));
                 }
-                consequent.push(self.parse_statement()?);
+                consequent.push(unlabel_function_declaration(self.parse_statement()?));
             }
             cases.push(SwitchCase { test, consequent });
         }

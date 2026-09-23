@@ -274,7 +274,7 @@ impl Compiler {
                             None
                         };
                         if let Some(slot) = self.resolve(name) {
-                            if self.bytecode.dynamic_eval_slots.contains(&slot) {
+                            if self.bytecode.bindings[slot as usize].eval_var {
                                 self.emit(Opcode::DeleteDynamicBinding, slot)?;
                             } else {
                                 self.constant(Value::Bool(false))?;
@@ -325,6 +325,19 @@ impl Compiler {
                         .constants
                         .push(Value::String(name.as_str().into()));
                     self.emit(Opcode::TypeofName, index)?;
+                } else if *op == UnaryOp::Typeof
+                    && matches!(&**arg, Expr::Identifier(name) if self.resolve(name).is_some_and(|slot| self.bytecode.bindings[slot as usize].eval_var))
+                {
+                    // A sloppy direct eval's own `var` is deletable at
+                    // runtime even though it resolves to a static slot at
+                    // compile time: `typeof` on it must not throw once
+                    // `delete` has removed the binding and the name has
+                    // nothing to resolve outward to either.
+                    let Expr::Identifier(name) = &**arg else {
+                        unreachable!()
+                    };
+                    let slot = self.resolve(name).expect("just matched Some");
+                    self.emit(Opcode::TypeofBinding, slot)?;
                 } else {
                     self.expression(arg)?;
                     self.emit(opcode, 0)?;

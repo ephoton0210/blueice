@@ -972,10 +972,7 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let fallback = self
-                            .active_binding_slot(&name)
-                            .map(|slot| self.eval_aware_binding_value(slot, &name))
-                            .transpose()?;
+                        let fallback = self.with_binding_fallback(&name)?;
                         let value = self.with_get(&name, fallback)?;
                         self.stack.push(value);
                     }
@@ -984,10 +981,7 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let fallback = self
-                            .active_binding_slot(&name)
-                            .map(|slot| self.eval_aware_binding_value(slot, &name))
-                            .transpose()?;
+                        let fallback = self.with_binding_fallback(&name)?;
                         let (value, receiver) = self.with_get_method(&name, fallback)?;
                         self.stack.push(value);
                         self.stack.push(receiver);
@@ -997,10 +991,7 @@ impl Vm {
                             unreachable!("compiler emits a name")
                         };
                         let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
-                        let fallback = self
-                            .active_binding_slot(&name)
-                            .map(|slot| self.eval_aware_binding_value(slot, &name))
-                            .transpose()?;
+                        let fallback = self.with_binding_fallback(&name)?;
                         let value = self.with_get_or_undefined(&name, fallback)?;
                         self.stack.push(value);
                     }
@@ -1138,6 +1129,13 @@ impl Vm {
                             })?;
                         self.stack.push(value);
                     }
+                    Opcode::TypeofBinding => {
+                        let value = self
+                            .eval_aware_binding_value(operand, &code.bindings[operand].name)?
+                            .unwrap_or(Value::Undefined);
+                        self.stack
+                            .push(Value::String(self.typeof_value(&value)?.into()));
+                    }
                     Opcode::ResolveBindingReference => {
                         let slot = operand;
                         let dynamic = self.cells.get(&slot).and_then(|cell| {
@@ -1173,22 +1171,14 @@ impl Vm {
                         let value = self.pop();
                         self.store_binding(operand, value)?;
                     }
-                    Opcode::StoreBinding => {
-                        // ECMA-262 §9.1.1.1.5: TDZ takes precedence over the
-                        // immutable-binding assignment error, including const.
-                        let name = &code.bindings[operand].name;
+                    Opcode::StoreBinding | Opcode::StoreEvalVar => {
                         let value = self.stack.last().expect("store has a value").clone();
-                        if !self.store_dynamic_eval_shadowing_binding(operand, name, value)? {
-                            if self.binding_value(operand)?.is_none() {
-                                return Err(RuntimeError::ReferenceError(name.clone()));
-                            }
-                            if binding_allows_assignment(&code.bindings[operand], code.strict)? {
-                                self.store_binding(
-                                    operand,
-                                    self.stack.last().expect("store has a value").clone(),
-                                )?;
-                            }
-                        }
+                        self.assign_binding_slot(
+                            code,
+                            operand,
+                            value,
+                            instruction.opcode == Opcode::StoreEvalVar,
+                        )?;
                     }
                     Opcode::StoreBindingReference => {
                         let (target, marker, value, result) = if operand == 0 {
@@ -1213,13 +1203,19 @@ impl Vm {
                         let slot = slot as usize;
                         match marker {
                             Value::Null => {
-                                if self.binding_value(slot)?.is_none() {
-                                    return Err(RuntimeError::ReferenceError(
-                                        code.bindings[slot].name.clone(),
-                                    ));
-                                }
-                                if binding_allows_assignment(&code.bindings[slot], code.strict)? {
-                                    self.store_binding(slot, value.clone())?;
+                                if self.eval_var_deleted(slot)? {
+                                    let name = &code.bindings[slot].name;
+                                    self.assign_unbound_name(name, value.clone(), code.strict)?;
+                                } else {
+                                    if self.binding_value(slot)?.is_none() {
+                                        return Err(RuntimeError::ReferenceError(
+                                            code.bindings[slot].name.clone(),
+                                        ));
+                                    }
+                                    if binding_allows_assignment(&code.bindings[slot], code.strict)?
+                                    {
+                                        self.store_binding(slot, value.clone())?;
+                                    }
                                 }
                             }
                             Value::Object(cell) => self.store_global_cell(cell, value.clone())?,
@@ -1316,16 +1312,18 @@ impl Vm {
                                 let Value::Object(id) = object else {
                                     unreachable!("with objects are objects")
                                 };
-                                outcome =
-                                    Value::Bool(self.object_delete(id, &name.as_str().into())?);
+                                outcome = Value::Bool(if self.is_parameter_eval_env(id) {
+                                    self.delete_eval_env_var(id, &name)?
+                                } else {
+                                    self.object_delete(id, &name.as_str().into())?
+                                });
                                 break;
                             }
                         }
                         self.stack.push(outcome);
                     }
                     Opcode::DeleteDynamicBinding => {
-                        let name = &code.bindings[operand].name;
-                        let deleted = self.delete_dynamic_eval_binding(name)?;
+                        let deleted = self.delete_eval_var(operand)?;
                         self.stack.push(Value::Bool(deleted));
                     }
                     Opcode::EnterScope => {

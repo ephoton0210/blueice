@@ -220,6 +220,7 @@ fn super_and_eval_context_errors_describe_missing_internal_context() {
         strict_immutable: false,
         lexical: true,
         catch_parameter: false,
+        eval_var: false,
     });
     vm.cells.insert(0, home);
     assert_eq!(

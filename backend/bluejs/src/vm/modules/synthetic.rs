@@ -92,6 +92,7 @@ impl Vm {
             strict_immutable: true,
             lexical: false,
             catch_parameter: false,
+            eval_var: false,
         });
         code.scopes.push(vec![0]);
         // No function-declaration prefix exists to hoist, so the whole
@@ -122,7 +123,16 @@ impl Vm {
         roots: &mut Vec<RootId>,
     ) -> Result<(), RuntimeError> {
         let mut targets = Vec::new();
-        for (name, code) in modules.iter() {
+        // `modules` is host-supplied, so its HashMap iteration order must not
+        // choose which resolution error a cyclic graph reports first. Keep
+        // each module's request order below (that is source order), while
+        // visiting independent module records in canonical key order.
+        let mut names: Vec<_> = modules.keys().collect();
+        names.sort_unstable();
+        for name in names {
+            let code = modules
+                .get(name)
+                .expect("module key was collected from this map");
             for import in &code.module_imports {
                 if import.module_type != ModuleType::JavaScript
                     && !matches!(import.import_name, ModuleImportName::Source)

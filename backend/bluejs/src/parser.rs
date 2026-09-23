@@ -73,7 +73,16 @@ impl From<LexError> for ParseError {
     }
 }
 
+/// Parses one classic Script. `source` is ordinary host text: to run source
+/// that may hold an unpaired surrogate, see [`parse_encoded`].
 pub fn parse(source: &str) -> Result<Program, ParseError> {
+    parse_encoded(&crate::source_encoding::escape(source))
+}
+
+/// [`parse`] over *lexer text* (see [`crate::source_encoding`]), the form in
+/// which the source of `eval`, `Function` and `ShadowRealm.prototype.evaluate`
+/// reaches the parser, since a JavaScript string may hold unpaired surrogates.
+pub(crate) fn parse_encoded(source: &str) -> Result<Program, ParseError> {
     let mut parser = Parser::new_script(source);
     let mut body = Vec::new();
     let mut prologue = DirectivePrologue::default();
@@ -91,7 +100,7 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
     Ok(program)
 }
 
-/// Parses direct-eval source before its caller applies context-sensitive
+/// Parses direct-eval source (lexer text) before its caller applies context-sensitive
 /// `super` early errors. At script top level those expressions are invalid,
 /// but a direct eval inherits the calling method's `[[HomeObject]]`. Eval
 /// code is strict when the calling code is (`strict`) or when its own
@@ -191,6 +200,25 @@ pub(crate) fn closes_template_placeholder(source: &str) -> bool {
             parser.async_depth = async_depth;
             parser.parse_expression().is_ok() && parser.eat_punct(Punct::RBrace) && parser.at_eof()
         })
+}
+
+/// A label on a function declaration in a StatementList (Annex B.3.2) has no
+/// effect: the declaration is hoisted and scoped exactly like an unlabelled
+/// one, and no `break` can name a label that has no statements. Dropping the
+/// labels lets every later phase treat the two forms alike. (A labelled
+/// function in a statement position, `if (x) l: function f() {}`, is not a
+/// list item and stays rejected.)
+fn unlabel_function_declaration(statement: Stmt) -> Stmt {
+    let Stmt::Labelled { label, item } = statement else {
+        return statement;
+    };
+    match unlabel_function_declaration(*item) {
+        function @ Stmt::FunctionDecl(_) => function,
+        other => Stmt::Labelled {
+            label,
+            item: Box::new(other),
+        },
+    }
 }
 
 /// The words reserved only in strict mode code (§13.1.1), which the tokenizer
@@ -660,7 +688,7 @@ impl Parser {
         prologue: &mut DirectivePrologue,
     ) -> Result<Stmt, ParseError> {
         let start = self.pos;
-        let statement = self.parse_statement()?;
+        let statement = unlabel_function_declaration(self.parse_statement()?);
         if !prologue.open {
             return Ok(statement);
         }

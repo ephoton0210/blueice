@@ -600,6 +600,36 @@ REGEXP_BMP_LITERAL_FIXTURES = {
 }
 REGEXP_NON_WHITESPACE_BMP_FIXTURE = "built-ins/RegExp/character-class-escape-non-whitespace.js"
 
+# ECMA-262's Agent Record [[CanBlock]] field is host-defined (AgentCanSuspend
+# returns it verbatim; the spec's own note on it gives a browser's main
+# thread as one example of a host that might reasonably choose false, not a
+# universal rule). Test262 tags each Atomics.wait-suspend fixture with the
+# host capability it assumes (CanBlockIsTrue / CanBlockIsFalse) rather than
+# asserting both are achievable by the same host at once, and INTERPRETING.md
+# says a fixture "should only be run" against a host whose own [[CanBlock]]
+# matches. BlueJS's Atomics.wait genuinely suspends the agent (see
+# atomics_wait/atomics_wait_status in
+# backend/bluejs/src/vm/builtins/binary_data.rs), and every CanBlockIsTrue
+# fixture already passes against that behavior, so this host's own
+# [[CanBlock]] is true. A CanBlockIsFalse fixture is therefore inapplicable
+# to this host, not an engine gap: making it pass would mean making
+# Atomics.wait always throw, which would break every already-passing
+# CanBlockIsTrue fixture. This is a host capability declaration, distinct
+# from a capability BlueJS actually lacks, so it gets its own "excluded"
+# outcome instead of being folded into "unsupported".
+HOST_CAN_BLOCK = True
+CANBLOCK_FLAG_REQUIREMENT = {"CanBlockIsTrue": True, "CanBlockIsFalse": False}
+
+
+def canblock_exclusion(flags):
+    """The reason a CanBlockIsTrue/CanBlockIsFalse-flagged fixture does not
+    apply to this host's declared HOST_CAN_BLOCK, or None if it does (or
+    carries neither flag)."""
+    for flag, required in CANBLOCK_FLAG_REQUIREMENT.items():
+        if flag in flags and required != HOST_CAN_BLOCK:
+            return f"host declares [[CanBlock]] = {str(HOST_CAN_BLOCK).lower()}, fixture requires {flag}"
+    return None
+
 
 def fetch(destination):
     if destination.exists():
@@ -948,6 +978,10 @@ def classify(reply, negative):
     kind = reply.get("kind")
     if kind == "unsupported":
         return "unsupported"
+    if kind == "excluded":
+        # A host-capability declaration disagreeing with a fixture's own
+        # applicability (see HOST_CAN_BLOCK), never a negative-error match.
+        return "excluded"
     if kind in {"timeout", "resource_error"}:
         return "timeout" if kind == "timeout" else "fail"
     if kind in {"harness_error", "worker_error"}:
@@ -1381,6 +1415,13 @@ def main():
             for mode in modes(data):
                 report_case(mode)
                 negative = data.get("negative")
+                exclusion = canblock_exclusion(data.get("flags", []))
+                if exclusion is not None:
+                    # Never dispatched: this host's own [[CanBlock]]
+                    # declaration already answers the fixture, so running it
+                    # would only ever produce the wrong outcome for it.
+                    results.append({"path": relative, "mode": mode, "status": "excluded", "expected": negative, "actual": {"kind": "excluded", "reason": exclusion}, "features": data.get("features", []), "flags": data.get("flags", []), "sha256": digest})
+                    continue
                 request = {"source": source_for_execution, "mode": mode, "includes": data.get("includes", []), "harness_sources": harness_sources, "asynchronous": "async" in data.get("flags", []), "parse_only": bool(negative and negative["phase"] == "parse"), "is_html_dda": "IsHTMLDDA" in data.get("features", []), "instruction_budget": instruction_budget(data, args.instruction_budget, relative, source_for_execution)}
                 if REGEXP_PROPERTY_ESCAPES_FEATURE in data.get("features", []):
                     request["string_limit"] = REGEXP_PROPERTY_ESCAPES_STRING_LIMIT

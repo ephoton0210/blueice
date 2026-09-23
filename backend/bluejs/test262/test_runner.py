@@ -9,6 +9,7 @@ from unittest import mock
 
 import run
 from run import (
+    HOST_CAN_BLOCK,
     ITERATOR_ZIP_BASIC_MATRIX_FIXTURES,
     ITERATOR_ZIP_BASIC_MATRIX_INSTRUCTION_BUDGET,
     FINITE_STRESS_FIXTURES,
@@ -31,6 +32,7 @@ from run import (
     ZONED_DATE_TIME_SAME_EPOCH_MATRIX_FIXTURES,
     ZONED_DATE_TIME_SAME_EPOCH_MATRIX_INSTRUCTION_BUDGET,
     Worker,
+    canblock_exclusion,
     case_timeout,
     classify,
     default_jobs,
@@ -341,6 +343,32 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(case_timeout({}, 2, relative), 2)
         sibling = "language/expressions/dynamic-import/await-import-evaluation-2.js"
         self.assertEqual(instruction_budget({}, 100_000, sibling), 100_000)
+
+    def test_canblock_flag_mismatch_is_excluded_not_failed_or_unsupported(self):
+        # This host's Atomics.wait genuinely suspends the agent (every
+        # CanBlockIsTrue fixture already passes against that behavior), so
+        # its declared [[CanBlock]] is true. A CanBlockIsFalse fixture
+        # assumes the opposite and can only be satisfied by making
+        # Atomics.wait always throw, which would break every already-passing
+        # CanBlockIsTrue fixture -- so it is excluded rather than dispatched,
+        # and "excluded" is its own status, never conflated with
+        # "unsupported" (a capability this host actually lacks).
+        self.assertTrue(HOST_CAN_BLOCK)
+        reason = canblock_exclusion(["CanBlockIsFalse"])
+        self.assertIsNotNone(reason)
+        self.assertIn("CanBlockIsFalse", reason)
+        # A flag combined with an unrelated one is still excluded.
+        self.assertIsNotNone(canblock_exclusion(["onlyStrict", "CanBlockIsFalse"]))
+        # The matching flag, and no flag at all, are not excluded.
+        self.assertIsNone(canblock_exclusion(["CanBlockIsTrue"]))
+        self.assertIsNone(canblock_exclusion([]))
+        self.assertIsNone(canblock_exclusion(["onlyStrict"]))
+
+    def test_excluded_kind_classifies_as_its_own_status(self):
+        self.assertEqual(classify({"kind": "excluded", "reason": "x"}, None), "excluded")
+        # Never satisfies a negative-error expectation either.
+        expected = {"phase": "runtime", "type": "TypeError"}
+        self.assertEqual(classify({"kind": "excluded", "reason": "x"}, expected), "excluded")
 
     def test_typed_array_harness_receives_a_bounded_extended_wall_deadline(self):
         self.assertEqual(case_timeout({"includes": []}, 2), 2)

@@ -519,15 +519,25 @@ impl Compiler {
             self.emit(Opcode::StoreBinding, slot)?;
             self.emit(Opcode::Pop, 0)?;
         }
-        // Annex B.3.2/B.3.3 only supplies the legacy outer var for
-        // ordinary functions. Generator and async declarations stay
-        // exclusively lexical even in sloppy code.
-        if matches!(statement, Stmt::FunctionDecl(_)) && is_annex_b_function(function) {
-            if let Some(outer) = self.annex_b_outer_var_slot(slot) {
-                self.emit(Opcode::GetBinding, slot)?;
-                self.emit(Opcode::StoreBinding, outer)?;
-                self.emit(Opcode::Pop, 0)?;
-            }
+        Ok(())
+    }
+
+    /// Annex B.3.2/B.3.3: evaluating a block-level function declaration
+    /// copies the block's function value to the legacy outer var, at the
+    /// place the declaration stands (the block binding itself is initialized
+    /// when the block is entered). Only ordinary functions have the outer var;
+    /// generator and async declarations stay exclusively lexical.
+    fn annex_b_outer_var_assignment(&mut self, function: &Function) -> Result<(), CompileError> {
+        if !is_annex_b_function(function) {
+            return Ok(());
+        }
+        let Some(slot) = function.name.as_ref().and_then(|name| self.resolve(name)) else {
+            return Ok(());
+        };
+        if let Some(outer) = self.annex_b_outer_var_slot(slot) {
+            self.emit(Opcode::GetBinding, slot)?;
+            self.emit(Opcode::StoreBinding, outer)?;
+            self.emit(Opcode::Pop, 0)?;
         }
         Ok(())
     }
@@ -626,7 +636,8 @@ impl Compiler {
                 result?;
                 self.emit(Opcode::LeaveWith, 0)?;
             }
-            Stmt::FunctionDecl(_) | Stmt::ModuleDefaultFunction { .. } => {}
+            Stmt::FunctionDecl(function) => self.annex_b_outer_var_assignment(function)?,
+            Stmt::ModuleDefaultFunction { .. } => {}
             Stmt::ClassDecl(class) => {
                 // The declaration's own binding is initialized once the whole
                 // class has been evaluated; the class body sees the separate
@@ -1036,24 +1047,12 @@ impl Compiler {
             Stmt::ClassDecl(_) => Err(CompileError::InvalidSyntax(
                 "a labelled statement cannot contain a class declaration",
             )),
-            Stmt::FunctionDecl(function)
-                if self.bytecode.strict || function.generator || function.is_async =>
-            {
-                Err(CompileError::InvalidSyntax(
-                    "invalid labelled function declaration",
-                ))
-            }
-            Stmt::FunctionDecl(function) => {
-                // Annex B permits this sloppy-mode form. Its binding is
-                // var-scoped, while creation occurs when the label executes.
-                self.function(function, false)?;
-                let slot = self
-                    .resolve(function.name.as_ref().expect("declaration has a name"))
-                    .unwrap();
-                self.emit(Opcode::StoreBinding, slot)?;
-                self.emit(Opcode::Pop, 0)?;
-                Ok(())
-            }
+            // A labelled function declaration in a statement list was
+            // unlabelled by the parser (Annex B.3.2), so this is one in a
+            // position that takes a Statement, or a generator/async function.
+            Stmt::FunctionDecl(_) => Err(CompileError::InvalidSyntax(
+                "invalid labelled function declaration",
+            )),
             _ => {
                 self.loops.push(Loop {
                     labels,
@@ -1177,6 +1176,12 @@ impl Compiler {
         // switch-local binding.
         self.expression(discriminant)?;
         self.enter_scope(lexical, &vars, false)?;
+        // BlockDeclarationInstantiation covers the whole CaseBlock: every
+        // function declared in any case clause exists before the first case
+        // runs.
+        for case in cases {
+            self.function_declarations(&case.consequent)?;
+        }
 
         let mut case_entries = vec![None; cases.len()];
         for (index, case) in cases.iter().enumerate() {
@@ -1224,7 +1229,7 @@ impl Compiler {
         });
         for (case, jump) in cases.iter().zip(body_jumps) {
             self.patch(jump, self.offset()?);
-            self.statements(&case.consequent)?;
+            self.statements_after_function_declarations(&case.consequent)?;
         }
         let end = self.offset()?;
         self.patch(no_match_exit, end);
@@ -1500,6 +1505,7 @@ impl Compiler {
                         .rev()
                         .find_map(|slots| slots.get(name))
                         .copied()
+                        .or_else(|| self.eval_catch_parameter_slot(name))
                         .or_else(|| self.names[self.local_scope].get(name).copied())
                         .or_else(|| self.resolve(name));
                     let Some(slot) = resolved else {
@@ -1517,7 +1523,12 @@ impl Compiler {
                     self.names.last().unwrap()[name]
                 };
                 if kind == DeclKind::Var {
-                    self.emit(Opcode::StoreBinding, slot)?;
+                    let store = if self.bytecode.bindings[slot as usize].eval_var {
+                        Opcode::StoreEvalVar
+                    } else {
+                        Opcode::StoreBinding
+                    };
+                    self.emit(store, slot)?;
                     self.emit(Opcode::Pop, 0)?;
                 } else {
                     self.emit(Opcode::InitializeBinding, slot)?;
@@ -1588,6 +1599,20 @@ impl Compiler {
             }
         }
         Ok(())
+    }
+
+    /// Annex B.3.4: the initializer of a `var` in eval code, whose caller is
+    /// inside a catch block with a simple parameter of the same name, assigns
+    /// that catch parameter. The parameter is nearer than the variable
+    /// environment the var itself is declared in.
+    fn eval_catch_parameter_slot(&self, name: &str) -> Option<u32> {
+        if self.function {
+            return None;
+        }
+        let slot = *self.names.first()?.get(name)?;
+        self.bytecode.bindings[slot as usize]
+            .catch_parameter
+            .then_some(slot)
     }
 
     /// Leaves the array-pattern iterator record below one element value.  A

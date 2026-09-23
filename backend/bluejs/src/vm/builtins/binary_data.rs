@@ -1082,48 +1082,56 @@ impl Vm {
         let observed = self.atomics_read(object, index)?;
         let prototype = self.object_prototype;
         let result = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
-        if observed != expected {
-            self.define_data(result, "async", Value::Bool(false), true, true, true)?;
-            self.define_data(
-                result,
-                "value",
-                Value::String("not-equal".into()),
-                true,
-                true,
-                true,
-            )?;
-            return Ok(Value::Object(result));
-        }
-        let timeout = args.get(3).map_or(Ok::<_, RuntimeError>(None), |timeout| {
-            let timeout = self.coerce_number(timeout)?;
-            Ok(if timeout.is_nan() || timeout == f64::INFINITY {
-                None
-            } else if timeout <= 0.0 {
-                Some(std::time::Duration::ZERO)
-            } else {
-                Some(std::time::Duration::from_secs_f64(timeout / 1_000.0))
-            })
-        })?;
-        if timeout == Some(std::time::Duration::ZERO) {
-            self.define_data(result, "async", Value::Bool(false), true, true, true)?;
-            self.define_data(
-                result,
-                "value",
-                Value::String("timed-out".into()),
-                true,
-                true,
-                true,
-            )?;
-            return Ok(Value::Object(result));
-        }
-        let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object)?;
-        let position = byte_offset + index * kind.byte_width();
-        let backing = self.heap.shared_buffer_backing(buffer)?;
-        let promise = self.new_promise()?;
-        self.schedule_test262_async_wait(backing, position, timeout, promise);
-        self.define_data(result, "async", Value::Bool(true), true, true, true)?;
-        self.define_data(result, "value", Value::Object(promise), true, true, true)?;
-        Ok(Value::Object(result))
+        // The result record is held nowhere else while its properties are
+        // defined and the Promise is allocated.
+        let base = self.stack.len();
+        self.stack.push(Value::Object(result));
+        let outcome = (|| {
+            if observed != expected {
+                self.define_data(result, "async", Value::Bool(false), true, true, true)?;
+                self.define_data(
+                    result,
+                    "value",
+                    Value::String("not-equal".into()),
+                    true,
+                    true,
+                    true,
+                )?;
+                return Ok(());
+            }
+            let timeout = args.get(3).map_or(Ok::<_, RuntimeError>(None), |timeout| {
+                let timeout = self.coerce_number(timeout)?;
+                Ok(if timeout.is_nan() || timeout == f64::INFINITY {
+                    None
+                } else if timeout <= 0.0 {
+                    Some(std::time::Duration::ZERO)
+                } else {
+                    Some(std::time::Duration::from_secs_f64(timeout / 1_000.0))
+                })
+            })?;
+            if timeout == Some(std::time::Duration::ZERO) {
+                self.define_data(result, "async", Value::Bool(false), true, true, true)?;
+                self.define_data(
+                    result,
+                    "value",
+                    Value::String("timed-out".into()),
+                    true,
+                    true,
+                    true,
+                )?;
+                return Ok(());
+            }
+            let (buffer, byte_offset, _, _) = self.heap.typed_array_info(object)?;
+            let position = byte_offset + index * kind.byte_width();
+            let backing = self.heap.shared_buffer_backing(buffer)?;
+            let promise = self.new_promise()?;
+            self.stack.push(Value::Object(promise));
+            self.schedule_test262_async_wait(backing, position, timeout, promise);
+            self.define_data(result, "async", Value::Bool(true), true, true, true)?;
+            self.define_data(result, "value", Value::Object(promise), true, true, true)
+        })();
+        self.stack.truncate(base);
+        outcome.map(|()| Value::Object(result))
     }
 
     pub(super) fn typed_array_constructor(

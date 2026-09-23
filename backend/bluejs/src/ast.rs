@@ -275,10 +275,22 @@ impl SourceText {
         Self::range(&text, 0, end)
     }
 
-    /// The source text, or `None` for a function that has none.
+    /// The source text as lexer text (see [`crate::source_encoding`]): what the
+    /// parser read, in which an unpaired surrogate of the source is a single
+    /// reserved character. [`SourceText::to_js_string`] reads it back as the
+    /// exact original code units, for source without an unpaired surrogate or a
+    /// character of that reserved block this is the text itself.
+    ///
+    /// `None` for a function that has none.
     pub fn as_str(&self) -> Option<&str> {
         let text = self.text.as_deref()?;
         text.get(self.start as usize..self.end as usize)
+    }
+
+    /// The source text as the ECMAScript string `Function.prototype.toString`
+    /// returns: its exact code units, unpaired surrogates included.
+    pub fn to_js_string(&self) -> Option<JsString> {
+        self.as_str().map(crate::source_encoding::decode)
     }
 }
 
@@ -862,6 +874,12 @@ pub(crate) fn params_contain_direct_eval(params: &[Param]) -> bool {
     })
 }
 
+/// Whether a direct `eval(...)` call belongs to a function body's own
+/// evaluation (not to a nested function or arrow).
+pub(crate) fn body_contains_direct_eval(body: &[Stmt]) -> bool {
+    stmts_contain_super(body, SuperSearch::DirectEval)
+}
+
 /// Whether an ordinary function's parameters or body can observe the
 /// function's own `arguments` object: a lexical reference to the name (arrow
 /// functions inside it share the object; nested ordinary functions have their
@@ -1300,6 +1318,8 @@ mod tests {
         assert_eq!(Arc::strong_count(&text), 3);
         // No text: the default of every synthesized function.
         assert_eq!(SourceText::default().as_str(), None);
+        assert_eq!(SourceText::default().to_js_string(), None);
+        assert_eq!(range.to_js_string(), Some(JsString::from("function () {}")));
         assert_eq!(format!("{:?}", SourceText::default()), "SourceText(none)");
         // Where a function was written is metadata, not structure.
         assert_eq!(range, SourceText::default());

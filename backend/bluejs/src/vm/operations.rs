@@ -4,6 +4,10 @@
 
 //! String, numeric, comparison, and object-environment VM operations.
 
+use num_bigint::{BigInt, Sign};
+use num_traits::{One, ToPrimitive, Zero};
+use std::cmp::Ordering;
+
 use super::*;
 
 impl Vm {
@@ -710,19 +714,16 @@ impl Vm {
                     && slot.fract() == 0.0
                     && (slot as usize) < code.bindings.len() =>
             {
-                let slot = slot as usize;
-                let name = &code.bindings[slot].name;
-                if !self.store_dynamic_eval_shadowing_binding(slot, name, value.clone())? {
-                    if self.binding_value(slot)?.is_none() {
-                        return Err(RuntimeError::ReferenceError(name.clone()));
-                    }
-                    if binding_allows_assignment(&code.bindings[slot], code.strict)? {
-                        self.store_binding(slot, value.clone())?;
-                    }
-                }
+                self.assign_binding_slot(code, slot as usize, value.clone(), false)?;
             }
             (Value::Undefined, Value::String(name)) => {
                 let name = name.to_utf8().expect("compiler emits a UTF-8 identifier");
+                // PutValue on an unresolvable Reference: a ReferenceError in
+                // strict code (strict eval inside a function that has a
+                // variable environment object, or inside `with`).
+                if code.strict {
+                    return Err(RuntimeError::ReferenceError(name));
+                }
                 if !self.set_dynamic_eval_binding(&name, value.clone())?
                     && !self.set_global_binding(&name, value.clone())?
                 {
@@ -767,4 +768,56 @@ impl Vm {
             }
         }
     }
+}
+
+/// BigInt shifts use the full signed right operand, unlike Number shifts
+/// whose count is reduced modulo 32. A negative count reverses direction.
+fn bigint_shift(value: BigInt, count: BigInt, left: bool) -> Result<BigInt, RuntimeError> {
+    let reverse = count.sign() == Sign::Minus;
+    let shift_left = left != reverse;
+    let magnitude = count.magnitude().to_usize();
+    let Some(magnitude) = magnitude else {
+        if !shift_left {
+            return Ok(if value.sign() == Sign::Minus {
+                BigInt::from(-1)
+            } else {
+                BigInt::from(0)
+            });
+        }
+        return Err(RuntimeError::RangeError(
+            "BigInt shift count exceeds implementation capacity".into(),
+        ));
+    };
+    Ok(if shift_left {
+        value << magnitude
+    } else {
+        value >> magnitude
+    })
+}
+
+/// BigInt::exponentiate permits only non-negative BigInt exponents. The
+/// standard result is exact; this interpreter additionally bounds the host
+/// exponent representation before allocating the result.
+fn bigint_exponentiate(base: BigInt, exponent: BigInt) -> Result<BigInt, RuntimeError> {
+    if exponent.sign() == Sign::Minus {
+        return Err(RuntimeError::RangeError(
+            "BigInt exponent must be non-negative".into(),
+        ));
+    }
+    if base.is_zero() {
+        return Ok(if exponent.is_zero() {
+            BigInt::one()
+        } else {
+            BigInt::zero()
+        });
+    }
+    if base == BigInt::one() {
+        return Ok(base);
+    }
+    let Some(exponent) = exponent.to_u32() else {
+        return Err(RuntimeError::RangeError(
+            "BigInt exponent exceeds implementation capacity".into(),
+        ));
+    };
+    Ok(base.pow(exponent))
 }

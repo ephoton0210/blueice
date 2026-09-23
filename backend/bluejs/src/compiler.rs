@@ -514,6 +514,9 @@ pub(crate) fn compile_eval(
                     .copied()
             })
             .collect();
+        for &slot in &compiler.bytecode.dynamic_eval_slots {
+            compiler.bytecode.bindings[slot as usize].eval_var = true;
+        }
     }
     if has_using_declaration(&program.body) {
         return Err(CompileError::InvalidSyntax(
@@ -695,6 +698,7 @@ impl Compiler {
                 ),
                 lexical: kind != DeclKind::Var,
                 catch_parameter: false,
+                eval_var: false,
             });
             names.insert(name, slot);
             slots.push(slot);
@@ -1707,16 +1711,7 @@ fn var_names(statements: &[Stmt]) -> Result<BTreeSet<String>, CompileError> {
             Stmt::While { body, .. } | Stmt::DoWhile { body, .. } | Stmt::With { body, .. } => {
                 pending.push(body)
             }
-            // Annex B.3.2 (labelled function declarations): the function's
-            // name is a var binding of the enclosing function or script.
-            Stmt::Labelled { item, .. } => {
-                if let Stmt::FunctionDecl(function) = &**item {
-                    if !function.generator && !function.is_async {
-                        names.extend(function.name.iter().cloned());
-                    }
-                }
-                pending.push(item)
-            }
+            Stmt::Labelled { item, .. } => pending.push(item),
             Stmt::For { init, body, .. } => {
                 if let Some(ForInit::VarDecl(DeclKind::Var, declarations)) = init {
                     for declaration in declarations {

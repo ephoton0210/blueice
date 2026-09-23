@@ -9,7 +9,8 @@ use super::*;
 /// through [`crate::Vm::execute_module_graph`], but this distinct goal keeps
 /// module strictness and top-level syntax separate from classic scripts.
 pub fn parse_module(source: &str) -> Result<Module, ParseError> {
-    let mut parser = Parser::new_module(source);
+    let source = crate::source_encoding::escape(source);
+    let mut parser = Parser::new_module(&source);
     parser.module_await = true;
     parser.module = true;
     parser.strict = true;

@@ -36,7 +36,7 @@ WORKSTREAMS = {
     "intl": ("P2.2", "ECMA-402 constructors, algorithms and locale data", ["library"]),
     "review": ("P3.1", "Unmapped/staging targets requiring specification and applicability review", []),
 }
-STATUSES = {"pass", "fail", "unsupported", "timeout", "harness_error"}
+STATUSES = {"pass", "fail", "unsupported", "excluded", "timeout", "harness_error"}
 
 
 def target_for(path, features):
@@ -79,6 +79,12 @@ def observed_blocker(record):
     message = actual.get("message", "")
     if record["status"] == "harness_error":
         return "harness-infrastructure"
+    if record["status"] == "excluded":
+        # A host capability declaration (e.g. Atomics.wait's [[CanBlock]])
+        # disagreeing with a fixture's own applicability -- never a
+        # capability BlueJS actually lacks, so kept distinct from
+        # "compiler-unsupported" below.
+        return "host-capability-declared"
     if kind == "timeout":
         return "instruction-limit" if "instruction budget" in message else "deadline"
     if kind == "resource_error":
@@ -150,11 +156,11 @@ def markdown(report):
             "Targets are inferred from paths/metadata; blockers are first observed symptoms, not proven root causes. "
             "Feature/dependency counts overlap. Target counts are exclusive and reconcile to all modes. "
             "Priorities are dependency order, not failure-count order. Passed negatives remain passes; no outcomes are excluded.", "",
-            "| Order | Target | Pass | Fail | Unsupported | Timeout | Harness error | Prerequisites |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |"]
+            "| Order | Target | Pass | Fail | Unsupported | Excluded | Timeout | Harness error | Prerequisites |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
     for name, (priority, title, dependencies) in WORKSTREAMS.items():
         counts = report["targets"].get(name, {})
-        numbers = " | ".join(str(counts.get(status, 0)) for status in ("pass", "fail", "unsupported", "timeout", "harness_error"))
+        numbers = " | ".join(str(counts.get(status, 0)) for status in ("pass", "fail", "unsupported", "excluded", "timeout", "harness_error"))
         rows.append(f"| {priority} | {name}: {title} | {numbers} | {', '.join(dependencies) or '—'} |")
     rows += ["", "## Observed blockers", "", "| Symptom | Modes | Representative test / mode |", "| --- | ---: | --- |"]
     for blocker, count in sorted(report["blockers"].items(), key=lambda item: (-item[1], item[0])):

@@ -889,6 +889,57 @@ fn module_graph_initializes_function_exports_before_cyclic_evaluation() {
 }
 
 #[test]
+fn cyclic_module_graph_reports_static_synthetic_errors_deterministically() {
+    let sources = [
+        (
+            "cycle-diagnostic/main.js",
+            "import './bridge.js'; import value from './a.json' with { type: 'json' }; export { value };",
+        ),
+        (
+            "cycle-diagnostic/bridge.js",
+            "import './main.js'; import value from './b.json' with { type: 'json' }; export { value };",
+        ),
+    ];
+    let forward_modules: HashMap<_, _> = sources
+        .into_iter()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    let reverse_modules: HashMap<_, _> = sources
+        .into_iter()
+        .rev()
+        .map(|(name, source)| {
+            (
+                name.to_string(),
+                compile_module(&parse_module(source).unwrap()).unwrap(),
+            )
+        })
+        .collect();
+    let error_message = |modules| {
+        let mut vm = Vm::default();
+        vm.set_json_module_sources(HashMap::from([
+            ("cycle-diagnostic/a.json".to_string(), "{".to_string()),
+            ("cycle-diagnostic/b.json".to_string(), "{".to_string()),
+        ]));
+        match vm.execute_module_graph("cycle-diagnostic/main.js", &modules) {
+            Err(RuntimeError::ModuleResolution(message)) => message,
+            result => panic!("expected a JSON module resolution error, got {result:?}"),
+        }
+    };
+    let forward = error_message(forward_modules);
+    let reverse = error_message(reverse_modules);
+    assert_eq!(forward, reverse);
+    assert!(
+        forward.contains("invalid JSON module cycle-diagnostic/b.json:"),
+        "{forward}"
+    );
+}
+
+#[test]
 fn module_graph_keeps_indirect_exports_and_import_immutability() {
     let sources = [
         (

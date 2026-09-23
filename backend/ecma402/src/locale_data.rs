@@ -1129,6 +1129,18 @@ impl LocaleDataProvider {
         date_time_formats::basic_format_records(locale)
     }
 
+    /// Returns the field widths the locale's own `yMd` `availableFormats`
+    /// pattern text actually renders with (see
+    /// `date_time_formats::numeric_date_pattern_widths`), used to correct
+    /// DateTimeFormat's *default* numeric date -- ICU4X's own length-styled
+    /// numeric date pattern does not reliably agree with it.
+    pub(crate) fn numeric_date_pattern_widths(
+        self,
+        locale: &str,
+    ) -> Option<crate::DateTimeFormatRecord> {
+        date_time_formats::numeric_date_pattern_widths(locale)
+    }
+
     /// Returns the locale's pinned CLDR pattern and localized field label for
     /// appending a missing DateTimeFormat field to the closest skeleton.
     pub(crate) fn date_time_append_item(

@@ -1,10 +1,10 @@
 # Intl, regex deadlines and Test262
 
-## Current conformance snapshot (Ubuntu only, 2026-09-19)
+## Current conformance snapshot (Ubuntu/WSL2 only, 2026-09-22)
 
-The current complete Test262 evidence is the unfiltered Ubuntu 24.04.3 LTS run in [the Ubuntu Test262 report](TEST262_LINUX_REPORT.md), not any focused filter or older platform report. It records 96,203 / 102,926 passing runner modes (93.468%), including 86,304 / 91,820 ECMA-262 Core modes (93.993%) and 6,364 / 6,714 ECMA-402 modes (94.787%). Every non-Temporal `intl402/` group passes in that inventory; `intl402/Temporal/` is an ECMA-262 bridge surface, and the combined `intl402/Temporal/` plus `built-ins/Temporal/` result is 12,682 / 13,268 (95.583%).
+The current complete Test262 evidence is the unfiltered Ubuntu 24.04.4 LTS (WSL2) run in [the Ubuntu Test262 report](TEST262_LINUX_REPORT.md), on `feature/test262-remaining-failures` at commit `9decbb3` (not yet merged to `main`), not any focused filter or older platform report. It records 102,859 / 102,926 passing runner modes (99.935%), including 91,814 / 91,820 ECMA-262 Core modes (99.993%) and 6,714 / 6,714 ECMA-402 modes (100.000%). Every `intl402/` group passes in that inventory, including `intl402/Temporal/`; `intl402/Temporal/` is an ECMA-262 bridge surface, and the combined `intl402/Temporal/` plus `built-ins/Temporal/` result is 13,268 / 13,268 (100.000%).
 
-This is Ubuntu evidence only. macOS and Windows remain explicitly deferred; their old engine-snapshot results were removed rather than represented as current compatibility data. The dated implementation notes below remain useful for provenance, but a conflict with this snapshot is resolved in favour of the current Ubuntu report and the Phase 25 [conformance matrix](../phase-25-ecma402-internationalization/CONFORMANCE.md).
+This is Ubuntu/WSL2 evidence only. macOS and Windows remain explicitly deferred (not yet re-run against this commit); their reports still reflect the 2026-09-21 `eaeb5c1` figures. The dated implementation notes below remain useful for provenance, but a conflict with this snapshot is resolved in favour of the current Ubuntu report and the Phase 25 [conformance matrix](../phase-25-ecma402-internationalization/CONFORMANCE.md).
 
 Requested 2026-09-09, continuing from `2519fc1`. This document records the design before implementation and will record actual validation outcomes.
 
