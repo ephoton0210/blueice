@@ -1000,6 +1000,13 @@ or second module resolver to bypass them.
   required CI job, so this release item remains open pending the complete CI
   evidence rather than being marked complete from a local proxy.
 
+  Latest local repeat (2026-09-23): after merging the remaining Test262
+  failures and the current page-host/debugger/compiler integration work,
+  `cargo test --workspace`, `cargo fmt --all -- --check`, and
+  `cargo clippy --workspace --all-targets -- -D warnings` passed again. The
+  TypeScript oracle remains CI-owned and is not claimed as locally executed
+  without its explicitly provisioned `BLUEICE_BLUETSC_ORACLE` input.
+
   Acceptance: Phase 18's required CI jobs are green with no ignored required
   oracle/integration test and no suppressed cross-crate warning that masks a
   release gate.
