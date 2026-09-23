@@ -137,7 +137,22 @@ fn manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
         r#"{"name":"Binary test","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read"]}}"#,
     )
     .unwrap();
-    std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
+    std::fs::write(
+        root.join("extension.wasm"),
+        wat::parse_str(
+            r#"(module
+                (import "blueice" "dom_read_utf8" (func $read (param i64 i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (func (export "blueice_start")
+                    i64.const 1
+                    i32.const 0
+                    i32.const 1024
+                    call $read
+                    drop))"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
     let extension_id = load_installed_extension(&manifest)
         .unwrap()
         .extension_id()
@@ -253,7 +268,7 @@ fn a_manifest_derived_identity_is_required_over_a_real_process_boundary() {
 }
 
 #[test]
-fn core_connection_mode_proves_an_environment_only_credential_with_the_manifest_identity() {
+fn core_connection_mode_authenticates_then_runs_the_wasm_reactor_over_real_ipc() {
     let (root, manifest, extension_id) = manifest_package("core-connect");
     let socket = unique_socket_path("core-connect");
     let _ = std::fs::remove_file(&socket);
@@ -275,7 +290,7 @@ fn core_connection_mode_proves_an_environment_only_credential_with_the_manifest_
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::HelloAuthenticated {
             extension_id,
-            capability_versions: BTreeMap::from([("dom:read".to_string(), 1)]),
+            capability_versions: BTreeMap::from([("dom:read".to_string(), 2)]),
             authentication: authentication.to_string(),
         }
     );
@@ -283,6 +298,23 @@ fn core_connection_mode_proves_an_environment_only_credential_with_the_manifest_
         &mut stream,
         &ExtensionReply::HelloAck {
             unsupported_capabilities: BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::RuntimeReady
+    );
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart)
+        .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::DomReadTab { tab_id: 1 }
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::DomReadResult {
+            value: r#"{"tab_id":1,"nodes":[]}"#.to_string(),
         },
     )
     .unwrap();

@@ -13,9 +13,10 @@
 //! host-spawned mode binds it to an environment-only child credential through
 //! `HelloAuthenticated`; manual development listeners intentionally retain the
 //! bearer `Hello` form.
-//! There is no WASM runtime in this slice: validating the module's
-//! header establishes that the package is shaped for the selected format without
-//! pretending it has executed extension code.
+//! The private runtime executes these validated exact bytes after its
+//! authenticated core handshake. This loader still performs only package
+//! validation and identity derivation; it does not grant ambient OS authority
+//! to a module.
 
 use crate::{
     ExtensionRegistry, CAPABILITY_DOM_READ, CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT,
@@ -34,6 +35,11 @@ pub const MANIFEST_API_VERSION: u32 = 1;
 const IDENTITY_DOMAIN: &[u8] = b"blueice-extension-identity-v1\0";
 const WASM_MAGIC: &[u8; 4] = b"\0asm";
 const WASM_VERSION_1: &[u8; 4] = &[1, 0, 0, 0];
+
+/// The largest package module the host will load into memory. The runtime has
+/// stricter per-instance linear-memory limits; this bound protects install and
+/// compilation from an arbitrarily large package artifact first.
+pub const MAX_WASM_MODULE_BYTES: usize = 1024 * 1024;
 
 /// The install-time capability classes described by Phase 9. Only `declared`
 /// grants authority immediately; optional and runtime-ephemeral declarations
@@ -104,6 +110,7 @@ pub struct InstalledExtension {
     manifest: ExtensionManifest,
     manifest_path: PathBuf,
     wasm_path: PathBuf,
+    wasm_bytes: Vec<u8>,
     extension_id: String,
 }
 
@@ -118,6 +125,13 @@ impl InstalledExtension {
 
     pub fn wasm_path(&self) -> &Path {
         &self.wasm_path
+    }
+
+    /// The exact validated module bytes used when deriving this package's
+    /// identity. Runtime execution consumes these bytes directly instead of
+    /// reopening a path that could change after installation.
+    pub fn wasm_bytes(&self) -> &[u8] {
+        &self.wasm_bytes
     }
 
     /// The `sha256:<hex>` identity that protocol peers must use in `Hello`.
@@ -214,6 +228,7 @@ pub fn load_installed_extension(
         manifest,
         manifest_path: manifest_path.to_path_buf(),
         wasm_path,
+        wasm_bytes,
         extension_id,
     })
 }
@@ -324,6 +339,12 @@ fn is_supported_capability(capability: &str) -> bool {
 }
 
 fn validate_wasm_header(bytes: &[u8]) -> Result<(), ManifestError> {
+    if bytes.len() > MAX_WASM_MODULE_BYTES {
+        return Err(ManifestError::Invalid(format!(
+            "extension Wasm module exceeds the {} byte package limit",
+            MAX_WASM_MODULE_BYTES
+        )));
+    }
     if bytes.len() < 8 || &bytes[..4] != WASM_MAGIC || &bytes[4..8] != WASM_VERSION_1 {
         return Err(ManifestError::Invalid(
             "extension entry_point is not a WebAssembly version-1 module".to_string(),
@@ -459,6 +480,18 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("not a WebAssembly"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn an_oversized_wasm_module_is_rejected_before_identity_derivation() {
+        let mut wasm = WASM_V1.to_vec();
+        wasm.resize(MAX_WASM_MODULE_BYTES + 1, 0);
+        let (root, path) = temporary_package("oversized-wasm", &manifest("{}"), &wasm);
+        assert!(load_installed_extension(&path)
+            .unwrap_err()
+            .to_string()
+            .contains("package limit"));
         let _ = std::fs::remove_dir_all(root);
     }
 

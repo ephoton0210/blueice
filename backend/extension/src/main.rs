@@ -17,18 +17,17 @@
 //! In its original `--socket` mode this is a standalone, sequential protocol
 //! reference server. In `--connect` mode it is instead the peer launched by
 //! `blueice-core`: it validates the selected package, proves the fresh
-//! credential that core supplied only through its environment, and keeps the
-//! authenticated connection alive for the (future) WASM runtime. That second
-//! mode is deliberately not a WASM runtime; it establishes the process
-//! authentication boundary that the runtime will inherit.
+//! credential that core supplied only through its environment, then runs the
+//! installed module's bounded
+//! `blueice_start` reactor without WASI or ambient OS authority.
 
 use blueice_extension_host::{
-    handle_extension_connection_with_gatekeeper, load_installed_extension,
-    registry_for_installed_extension, ExtensionRegistry,
+    execute_installed_extension, handle_extension_connection_with_gatekeeper,
+    load_installed_extension, registry_for_installed_extension, ExtensionRegistry,
+    CAPABILITY_DOM_READ, CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT,
 };
 use blueice_ipc::extension::{
-    read_extension_reply, read_extension_request, write_extension_request, ExtensionReply,
-    ExtensionRequest,
+    read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
 };
 use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
 use std::collections::BTreeMap;
@@ -172,16 +171,25 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
         return Err("BLUEICE_EXTENSION_AUTH_TOKEN must not be empty".to_string());
     }
 
-    // A package declares only the APIs it needs. Version 1 is deliberately
-    // the conservative common denominator for this connection-liveness host;
-    // its eventual WASM runtime can opt into v2 requests after implementing
-    // them, without changing the authentication handshake.
+    // A package declares only the APIs it needs. The one-shot Wasm ABI uses
+    // explicit tab reads (v2) and the two existing bounded write operations
+    // (v2/v3), so negotiate the highest safe version per declared capability
+    // before guest code can invoke an import. Core remains free to reject an
+    // unsupported declaration without granting it any authority.
     let capability_versions: BTreeMap<_, _> = installed
         .manifest()
         .capabilities()
         .declared()
         .iter()
-        .map(|capability| (capability.clone(), 1))
+        .map(|capability| {
+            let version = match capability.as_str() {
+                CAPABILITY_DOM_READ => 2,
+                CAPABILITY_DOM_WRITE => 3,
+                CAPABILITY_NETWORK_INTERCEPT => 1,
+                _ => 1,
+            };
+            (capability.clone(), version)
+        })
         .collect();
     let mut stream = UnixStream::connect(&socket).map_err(|error| {
         format!(
@@ -209,13 +217,26 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
         }
     }
 
-    // No core-to-host requests exist yet: the planned WASM runtime will own
-    // the authenticated stream and make extension requests itself. Keeping
-    // this stream alive today lets core verify the peer binding without
-    // pretending an unimplemented runtime executed package code. EOF (or a
-    // reset) means core ended and is a normal child shutdown condition.
-    while read_extension_request(&mut stream).is_ok() {}
-    Ok(())
+    // Authentication proves that this is the core-spawned package host, but
+    // the core's session does not own a live `TabManager` until a frontend has
+    // connected. Wait for its one-shot lifecycle barrier before a guest can
+    // issue a page request, avoiding a startup-time fake acknowledgement or
+    // one-second session-channel timeout.
+    write_extension_request(&mut stream, &ExtensionRequest::RuntimeReady)
+        .map_err(|error| format!("could not announce extension runtime readiness: {error}"))?;
+    match read_extension_reply(&mut stream)
+        .map_err(|error| format!("core did not start the extension runtime: {error}"))?
+    {
+        ExtensionReply::RuntimeStart => {}
+        reply => {
+            return Err(format!(
+                "core returned an unexpected extension runtime-start reply: {reply:?}"
+            ))
+        }
+    }
+
+    execute_installed_extension(&installed, stream)
+        .map_err(|error| format!("could not run the installed WASM extension: {error}"))
 }
 
 fn main() -> ExitCode {

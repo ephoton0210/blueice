@@ -9,3 +9,7 @@ blueice-ipc = { path = "../ipc" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+wasmtime = { version = "49.0.0", default-features = false, features = ["cranelift", "runtime"] }
+
+[dev-dependencies]
+wat = "1"

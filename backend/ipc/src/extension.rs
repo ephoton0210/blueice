@@ -77,6 +77,12 @@ pub enum ExtensionRequest {
         capability_versions: BTreeMap<String, u32>,
         authentication: String,
     },
+    /// Internal lifecycle barrier for a core-spawned, authenticated host.
+    /// After `HelloAck`, the host sends this before executing its WASM reactor;
+    /// core replies [`ExtensionReply::RuntimeStart`] only after it has accepted
+    /// a frontend and initialized the session that owns live page state. This
+    /// is not an extension capability and does not grant any new authority.
+    RuntimeReady,
     /// Query the AI-facing representation, read-only -- requires the
     /// `dom:read` capability. The standalone reference host returns a
     /// placeholder. An installed extension served by `blueice-core` receives
@@ -211,6 +217,11 @@ pub enum ExtensionReply {
     HelloAck {
         unsupported_capabilities: BTreeMap<String, UnsupportedCapabilityVersion>,
     },
+    /// Core's response to an authenticated host's
+    /// [`ExtensionRequest::RuntimeReady`]. It means the core session now owns
+    /// a live `TabManager`, so bounded extension requests can reach it rather
+    /// than timing out during pre-frontend process startup.
+    RuntimeStart,
     /// Reply to a granted [`ExtensionRequest::DomRead`].
     DomReadResult { value: String },
     /// Reply to a granted [`ExtensionRequest::DomWrite`].
@@ -317,6 +328,7 @@ mod tests {
                 capability_versions: sample_capability_versions(),
                 authentication: "not-a-real-secret-in-this-round-trip-test".to_string(),
             },
+            ExtensionRequest::RuntimeReady,
             ExtensionRequest::DomRead,
             ExtensionRequest::DomReadTab { tab_id: 42 },
             ExtensionRequest::DomWrite {
@@ -368,6 +380,7 @@ mod tests {
                     ),
                 ]),
             },
+            ExtensionReply::RuntimeStart,
             ExtensionReply::DomReadResult {
                 value: "placeholder".to_string(),
             },

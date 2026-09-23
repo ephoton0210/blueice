@@ -6,8 +6,9 @@
 //! `phase-9-extension-protocol/PLAN.md`'s incremental reference host.
 //! It retains a hardcoded protocol-only fallback, and can now install one
 //! strict JSON manifest plus WASM module at startup to derive its registry
-//! identity and persistent grants before serving any connection. It still has
-//! no WASM runtime.
+//! identity and persistent grants before serving any connection. Its
+//! core-spawned mode now runs a bounded, no-WASI WebAssembly reactor after
+//! authentication.
 //!
 //! **Where this logic lives, and why.** The plan doc's "Wiring design"
 //! frames the enforcing side as living inside `core` itself (an
@@ -16,11 +17,12 @@
 //! reference server. `blueice-core` can now opt in with an installed manifest
 //! and private extension socket: it owns the registry and calls
 //! [`handle_extension_connection_with_actions`] from a connection worker,
-//! delegating the one supported real operation back to its session thread.
+//! delegating bounded real operations back to its session thread.
 //! This crate still does not depend on `blueice-engine`; that preserves the
 //! protocol/engine boundary and keeps `Page`/`TabManager` single-thread-owned.
-//! The bridge is deliberately narrow until the wire protocol gains a tab
-//! target, stable write-node ID, and interception-rule representation.
+//! The bridge remains deliberately narrow: it has explicit tab/node targets
+//! for text and checkbox writes, but no generic DOM mutation or declarative
+//! interception-rule representation.
 //!
 //! **What's real, what's a placeholder** (mirrors `blueice-ai-
 //! gatekeeper`'s own "mechanism real, content stub" scoping): the
@@ -28,12 +30,10 @@
 //! real and tested. The standalone binary retains a fixed
 //! [`ExtensionReply::DomReadResult`] value, but
 //! [`handle_extension_connection_with_actions`] lets `blueice-core`
-//! provide a core-owned `Page` representation without this crate taking
-//! an engine dependency. The current core bridge deliberately implements
-//! only that read path: the wire protocol has no stable target node for a
-//! real DOM write and no interception-rule representation, so those
-//! otherwise-authorized operations are reported as unavailable rather
-//! than being acknowledged without an effect.
+//! provide core-owned representation reads plus explicit text/checkbox writes
+//! without this crate taking an engine dependency. Generic `DomWrite` and
+//! `NetworkIntercept` still lack safe core operation shapes, so they are
+//! reported as unavailable rather than acknowledged without an effect.
 //!
 //! **Identity derivation versus peer authentication.**
 //! [`load_installed_extension`] derives a `sha256:` ID from exact manifest and
@@ -47,11 +47,13 @@
 //! form for protocol development; a derived identity alone is not credentials.
 
 mod manifest;
+mod runtime;
 
 pub use manifest::{
     load_installed_extension, registry_for_installed_extension, ExtensionManifest,
     InstalledExtension, ManifestCapabilities, ManifestError, MANIFEST_API_VERSION,
 };
+pub use runtime::execute_installed_extension;
 
 use blueice_ipc::extension::{
     read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
@@ -65,7 +67,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
 /// The one hardcoded identity used only when no installed manifest is supplied.
@@ -446,6 +448,7 @@ where
 pub struct ExtensionConnectionAuthentication<'a> {
     expected: Option<&'a str>,
     authenticated_ready: Option<mpsc::Sender<()>>,
+    runtime_start: Option<Arc<Mutex<mpsc::Receiver<()>>>>,
 }
 
 impl<'a> ExtensionConnectionAuthentication<'a> {
@@ -454,6 +457,7 @@ impl<'a> ExtensionConnectionAuthentication<'a> {
         Self {
             expected: None,
             authenticated_ready: None,
+            runtime_start: None,
         }
     }
 
@@ -462,6 +466,7 @@ impl<'a> ExtensionConnectionAuthentication<'a> {
         Self {
             expected: Some(expected),
             authenticated_ready: None,
+            runtime_start: None,
         }
     }
 
@@ -469,6 +474,18 @@ impl<'a> ExtensionConnectionAuthentication<'a> {
     /// be handled on the connection.
     pub fn with_ready_notification(mut self, ready: mpsc::Sender<()>) -> Self {
         self.authenticated_ready = Some(ready);
+        self
+    }
+
+    /// Installs core's one-shot session-start barrier for the authenticated
+    /// child. The receiver is shared only because the listener accepts peers
+    /// concurrently; only a peer that already proved `expected` can consume
+    /// it through `RuntimeReady`.
+    pub fn with_runtime_start_receiver(
+        mut self,
+        runtime_start: Arc<Mutex<mpsc::Receiver<()>>>,
+    ) -> Self {
+        self.runtime_start = Some(runtime_start);
         self
     }
 
@@ -480,6 +497,17 @@ impl<'a> ExtensionConnectionAuthentication<'a> {
         if let Some(ready) = &self.authenticated_ready {
             let _ = ready.send(());
         }
+    }
+
+    fn wait_for_runtime_start(&self) -> Result<(), String> {
+        let receiver = self.runtime_start.as_ref().ok_or_else(|| {
+            "the core has no runtime-start barrier for this extension connection".to_string()
+        })?;
+        receiver
+            .lock()
+            .map_err(|_| "the core runtime-start barrier was poisoned".to_string())?
+            .recv()
+            .map_err(|_| "the core ended before its extension runtime could start".to_string())
     }
 }
 
@@ -519,6 +547,7 @@ where
         Err(_) => return Ok(()), // disconnected, or sent something unparseable, before ever completing the handshake
     };
     authentication.signal_ready();
+    let mut runtime_started = false;
 
     loop {
         let request = match read_extension_request(stream) {
@@ -552,6 +581,31 @@ where
                     negotiate_hello(registry, extension_id, capability_versions);
                 write_extension_reply(stream, &reply)?;
                 identity = new_identity;
+            }
+            ExtensionRequest::RuntimeReady => {
+                let result = if runtime_started {
+                    Err("the extension runtime has already started on this connection".to_string())
+                } else if authentication.expected().is_none() {
+                    Err(
+                        "RuntimeReady is reserved for a core-spawned authenticated host"
+                            .to_string(),
+                    )
+                } else {
+                    authentication.wait_for_runtime_start()
+                };
+                match result {
+                    Ok(()) => {
+                        runtime_started = true;
+                        write_extension_reply(stream, &ExtensionReply::RuntimeStart)?;
+                    }
+                    Err(reason) => write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: "runtime".to_string(),
+                            reason,
+                        },
+                    )?,
+                }
             }
             ExtensionRequest::DomRead => {
                 if let Some(reason) =
@@ -1816,6 +1870,53 @@ mod tests {
         write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
         handle.join().unwrap().unwrap();
         assert!(read_extension_reply(&mut client).is_err());
+    }
+
+    #[test]
+    fn authenticated_runtime_waits_for_core_session_start_before_it_can_run() {
+        let registry = ExtensionRegistry::minimal_slice();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let expected = "a-core-generated-runtime-credential".to_string();
+        let (runtime_start_tx, runtime_start_rx) = std::sync::mpsc::channel();
+        let runtime_start_rx = Arc::new(Mutex::new(runtime_start_rx));
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication(
+                &registry,
+                Path::new("/not-used-before-a-dom-action.sock"),
+                &mut server,
+                ExtensionConnectionAuthentication::required(&expected)
+                    .with_runtime_start_receiver(runtime_start_rx),
+                |_| Ok(PLACEHOLDER_DOM_READ_VALUE.to_string()),
+                |_, _, _| Ok(()),
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::HelloAuthenticated {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability_versions: BTreeMap::from([(CAPABILITY_DOM_READ.to_string(), 1)]),
+                authentication: "a-core-generated-runtime-credential".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(&mut client, &ExtensionRequest::RuntimeReady).unwrap();
+
+        // The handler is waiting at this point; only the core session's
+        // explicit sender can release the host to execute guest code.
+        runtime_start_tx.send(()).unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::RuntimeStart
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
     }
 
     #[test]

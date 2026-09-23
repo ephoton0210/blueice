@@ -102,9 +102,10 @@ fn core_extension_host_probe_script(root: &Path) -> PathBuf {
 
 /// `blueice-core` owns the child lifecycle and invokes a host executable with
 /// `--connect`/`--manifest`. This test-only process is deliberately tiny: it
-/// verifies that public invocation contract without relying on a sibling
-/// package's already-built binary. The real `blueice-extension-host --connect`
-/// path is tested in that package's own binary integration test.
+/// verifies that public invocation contract and its runtime-start sequencing
+/// without relying on a sibling package's already-built binary. The real
+/// `blueice-extension-host --connect` WASM path is tested in that package's
+/// own binary integration test.
 #[test]
 fn extension_host_probe_child_authenticates_to_core() {
     let Ok(socket) = std::env::var("BLUEICE_TEST_EXTENSION_SOCKET") else {
@@ -134,6 +135,15 @@ fn extension_host_probe_child_authenticates_to_core() {
         blueice_ipc::extension::read_extension_reply(&mut stream).unwrap(),
         blueice_ipc::extension::ExtensionReply::HelloAck { .. }
     ));
+    blueice_ipc::extension::write_extension_request(
+        &mut stream,
+        &blueice_ipc::extension::ExtensionRequest::RuntimeReady,
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_reply(&mut stream).unwrap(),
+        blueice_ipc::extension::ExtensionReply::RuntimeStart
+    );
 }
 
 fn extension_manifest_package(

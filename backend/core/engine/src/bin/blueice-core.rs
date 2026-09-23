@@ -29,7 +29,7 @@ use std::io::Read;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode};
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -79,6 +79,7 @@ struct ExtensionService {
     listener: UnixListener,
     registry: Arc<ExtensionRegistry>,
     required_authentication: Option<String>,
+    runtime_start: Option<Arc<Mutex<mpsc::Receiver<()>>>>,
 }
 
 /// A core-owned response must be prompt enough not to hold an extension
@@ -281,6 +282,7 @@ fn spawn_extension_listener(
             let request_tx = request_tx.clone();
             let required_authentication = service.required_authentication.clone();
             let authenticated_ready = authenticated_ready.clone();
+            let runtime_start = service.runtime_start.clone();
             thread::spawn(move || {
                 let authentication = match required_authentication.as_deref() {
                     Some(expected) => ExtensionConnectionAuthentication::required(expected),
@@ -288,6 +290,10 @@ fn spawn_extension_listener(
                 };
                 let authentication = match authenticated_ready {
                     Some(ready) => authentication.with_ready_notification(ready),
+                    None => authentication,
+                };
+                let authentication = match runtime_start {
+                    Some(receiver) => authentication.with_runtime_start_receiver(receiver),
                     None => authentication,
                 };
                 let _ = handle_extension_connection_with_actions_and_authentication(
@@ -350,7 +356,7 @@ fn main() -> ExitCode {
     // derive its registry identity before core publishes either socket. When
     // `--extension-host` is supplied, the listener additionally requires the
     // freshly generated credential from exactly that core-spawned child.
-    let extension_service = match (
+    let (extension_service, extension_runtime_start) = match (
         args.extension_socket.as_ref(),
         args.extension_manifest.as_deref(),
     ) {
@@ -396,14 +402,24 @@ fn main() -> ExitCode {
                 },
                 None => None,
             };
-            Some(ExtensionService {
-                socket: socket.clone(),
-                listener,
-                registry: Arc::new(registry_for_installed_extension(&installed)),
-                required_authentication,
-            })
+            let (runtime_start, runtime_start_receiver) = if args.extension_host.is_some() {
+                let (sender, receiver) = mpsc::channel();
+                (Some(sender), Some(Arc::new(Mutex::new(receiver))))
+            } else {
+                (None, None)
+            };
+            (
+                Some(ExtensionService {
+                    socket: socket.clone(),
+                    listener,
+                    registry: Arc::new(registry_for_installed_extension(&installed)),
+                    required_authentication,
+                    runtime_start: runtime_start_receiver,
+                }),
+                runtime_start,
+            )
         }
-        (None, None) => None,
+        (None, None) => (None, None),
         // `parse_args` enforces this before `main`; retain a total match so a
         // future construction of `Args` cannot accidentally make an unsafe
         // partial configuration reachable.
@@ -547,6 +563,13 @@ fn main() -> ExitCode {
             Some(socket) => DownloadsSource::at(socket),
             None => DownloadsSource::new(),
         }));
+        if let Some(runtime_start) = extension_runtime_start.as_ref() {
+            // The accepted frontend and its newly constructed session are the
+            // earliest point at which a Wasm host request can reach a live
+            // `TabManager`. The sender is one-shot: only the authenticated
+            // child can consume its paired receiver through RuntimeReady.
+            let _ = runtime_start.send(());
+        }
         let mut generation = 0u64;
         let result = match (script.as_mut(), extension_requests.as_ref()) {
             (Some(script), Some(extension_requests)) => {
