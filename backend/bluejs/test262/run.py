@@ -1041,6 +1041,22 @@ LARGE_FIXTURE_RESOURCES = {
         "instruction_budget": 100_000_000,
         "timeout": 90,
     },
+    # 21 string doublings from "0," peak at a single 2**22 + 3 (4,194,307)
+    # char string, which as UTF-16 is 8,388,614 bytes -- just past both the
+    # default 1 MiB per-string ceiling and, measured, past 8 MiB too (8 MiB
+    # is 8,388,608 bytes, 6 short); 16 MiB clears it with headroom. Parsing
+    # the resulting 2**21+1-element JSON array is what actually drives the
+    # heap requirement, not the peak string: measured to fail at a 256 MiB
+    # ceiling and pass at 512 MiB, so 512 MiB is the fixture's real
+    # (approximate) minimum, not a comfortable multiple of it -- this one
+    # genuinely needs that much live/tenured data, unlike the other
+    # entries here which use 3-4x headroom over a smaller minimum.
+    "staging/sm/JSON/parse-mega-huge-array.js": {
+        "string_limit": 16 * 1024 * 1024,
+        "heap_limit": 512 * 1024 * 1024,
+        "instruction_budget": 50_000_000,
+        "timeout": 20,
+    },
 }
 
 
