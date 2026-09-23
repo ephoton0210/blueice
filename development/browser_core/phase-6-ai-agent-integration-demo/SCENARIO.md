@@ -54,14 +54,31 @@ target/debug/blueice-launcher --socket "$SOCKET"
 target/debug/blueice-frontend-reference --socket "$SOCKET" --url http://127.0.0.1:4312/index.html
 ```
 
-Finally, in a fourth terminal, run a locally installed Ollama model that
-supports vision and tool calling. The default `http://127.0.0.1:11434/v1/`
-endpoint is loopback-only and requires no API key; never use a remote model
-endpoint for this local evidence run.
+Finally, in a fourth terminal, select one local model backend that supports
+vision and tool calling. The default is a locally installed Ollama model at
+`http://127.0.0.1:11434/v1/`. Its endpoint is loopback-only and requires no API
+key; never use a remote model endpoint for this local evidence run.
 
 ```sh
 target/debug/blueice-phase6-agent \
   --model "<local-ollama-model>" \
+  --demo-url http://127.0.0.1:4312/index.html \
+  --launcher-socket "$SOCKET" \
+  --transcript "$RUN_DIR/agent.jsonl" \
+  --evidence-dir "$RUN_DIR/evidence"
+```
+
+Advanced operators can instead run their chosen Hugging Face TGI model locally
+(including their selected model, quantization, adapter, and accelerator
+settings) and point the runner at its loopback-compatible endpoint. TGI's
+`/v1/chat/completions` endpoint supports the required Messages API; no Hugging
+Face cloud account or token is used by this runner.
+
+```sh
+target/debug/blueice-phase6-agent \
+  --provider huggingface \
+  --huggingface-base http://127.0.0.1:8080/v1/ \
+  --model "<local-tgi-model>" \
   --demo-url http://127.0.0.1:4312/index.html \
   --launcher-socket "$SOCKET" \
   --transcript "$RUN_DIR/agent.jsonl" \

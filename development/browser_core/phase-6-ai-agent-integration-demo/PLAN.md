@@ -3,9 +3,9 @@
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
 **Status**: In progress — the first-party, loopback-only scenario, shared
-human/agent observer path, and a local Ollama Chat/MCP live-model driver are
-implemented and tested; an actual configured LLM run and its human-observer
-evidence remain.
+human/agent observer path, and local Ollama/Hugging Face TGI Chat/MCP
+live-model drivers are implemented and tested; an actual configured LLM run and
+its human-observer evidence remain.
 
 ## Objective
 
@@ -33,21 +33,36 @@ LLM.
 
 ### Live-model driver (2026-09-23)
 
-`blueice-phase6-agent` is an opt-in binary in `backend/mcp-server`. It uses the
-official OpenAI Responses function-calling loop: send narrowly described tool
-definitions, execute every returned call locally, return its output with the
-matching `call_id`, and continue until the model provides a final report. The
-current OpenAI function-calling guidance is the source for that multi-turn
-shape and strict JSON-schema constraints: <https://developers.openai.com/api/docs/guides/function-calling>.
+`blueice-phase6-agent` is an opt-in binary in `backend/mcp-server`. It uses a
+bounded OpenAI-compatible Chat Completions function-calling loop: send narrowly
+described tool definitions, execute every returned call locally, return its
+output with the matching `tool_call_id`, and continue until the model provides
+a final report.
 
-**Local-model update (2026-09-23).** The live driver now uses a local Ollama
-server through its loopback OpenAI-compatible Chat Completions endpoint
-(`http://127.0.0.1:11434/v1/chat/completions`), not OpenAI Responses. It sends
-the same bounded function definitions and writes tool results back as chat tool
-messages; model requests stay local and require no API key. `--ollama-base`
-defaults to that loopback server and rejects a non-loopback host. Operators
-select an installed lightweight vision-and-tool-capable Ollama model through
-`--model`; the real-run/human-observer evidence requirements remain unchanged.
+**Local-model update (2026-09-23).** The driver supports two self-operated
+local backends:
+
+- `--provider ollama` (the default) uses Ollama's credential-free loopback
+  OpenAI-compatible endpoint at `http://127.0.0.1:11434/v1/`; `--ollama-base`
+  can change its loopback port.
+- `--provider huggingface --huggingface-base <http://127.0.0.1:port/v1/>`
+  targets an operator-run Hugging Face Text Generation Inference (TGI) server.
+  This lets advanced operators choose the model, quantization, adapters, and
+  accelerator allocation when they start their local server. TGI's Messages API
+  and function calling are OpenAI Chat Completions-compatible (TGI 1.4.3 or
+  newer for tool support): <https://huggingface.co/docs/text-generation-inference/guidance>.
+
+Both selections send the same bounded function definitions and write tool
+results back as chat tool messages. The runner accepts only credential-free
+loopback `http(s)://.../v1/` bases, has no API-key flag, and never falls back to
+a cloud endpoint. It records the provider and local base in the transcript, but
+never credentials. The real-run/human-observer evidence requirements remain
+unchanged.
+
+While any scenario action remains, the runner requests `tool_choice: "auto"`.
+After all six actions are complete it sends `tool_choice: "none"` for the final
+report; this accommodates TGI's documented `auto` tool-selection behavior
+without permitting another browser operation.
 
 The driver does **not** give a model the raw MCP tool inventory. It exposes
 only six zero-argument scenario operations: fixed loopback navigation, page
@@ -73,12 +88,13 @@ occurred. Its local tests cover URL containment, refusal of model-supplied
 arguments, live-node assertions, and required-launcher no-fallback behavior;
 they do not claim to be an LLM provider run.
 
-Run prerequisites are deliberately explicit: an operator must install and run
-a loopback Ollama server, pull a local vision-and-tool-capable lightweight
-model, and pass that installed model name through `--model`. No API key is
-accepted, needed, or recorded. No local Ollama model/human observer was
-configured in this development environment on 2026-09-23, so no live model
-transcript or human screenshot is claimed yet.
+Run prerequisites are deliberately explicit: an operator must either install
+and run a loopback Ollama server with a local vision-and-tool-capable lightweight
+model, or operate a loopback Hugging Face TGI server with a model configured by
+the operator. In both cases the model name passed through `--model` must match
+the local server's configuration. No API key is accepted, needed, or recorded.
+No local model/human observer was configured in this development environment on
+2026-09-23, so no live model transcript or human screenshot is claimed yet.
 
 - Pick a small, concrete demo task and site/page scope, within what the Phase 2 MVP scope can actually render.
 - Wire an LLM-driven agent to consume the Phase 5 API as its only channel for perceiving and acting on the page (no fallback to CDP/Puppeteer, since that would undermine what's being demonstrated).
@@ -90,7 +106,7 @@ transcript or human screenshot is claimed yet.
 
 - [x] Confirm the demo's target site(s)/page(s) are in-scope for the Phase 2 MVP and cleared under the Phase 5/plan §5 access policy — first-party `demo-site/`, loopback only
 - [x] Pick and scope a concrete demo task — see `SCENARIO.md`: inspect/describe the visible MVP elements, set and confirm the labelled text-box value, highlight it, and follow the local confirmation link
-- [x] Wire an LLM-driven agent to the Phase 5 API (no CDP/Puppeteer path) — `blueice-phase6-agent` confines an OpenAI Responses function-calling loop to scenario-specific operations that each invoke the standard MCP adapter; targeted tests and MCP/core integration tests pass
+- [x] Wire an LLM-driven agent to the Phase 5 API (no CDP/Puppeteer path) — `blueice-phase6-agent` confines a loopback Ollama or Hugging Face TGI Chat Completions function-calling loop to scenario-specific operations that each invoke the standard MCP adapter; targeted tests and MCP/core integration tests pass
 - [ ] Demonstrate human + agent observing the same page/state simultaneously
 - [ ] Record results (what worked, what broke, what surprised)
 - [ ] Feed findings back into earlier phases' plans as needed

@@ -26,8 +26,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use url::Url;
 
-/// Ollama's local OpenAI-compatible API.  The driver deliberately uses only
-/// this loopback endpoint: Phase 6 is a local demonstration, not a cloud API
+/// Ollama's local OpenAI-compatible API. The driver deliberately uses only
+/// loopback endpoints: Phase 6 is a local demonstration, not a cloud API
 /// integration, and local Ollama requires no credential.
 const DEFAULT_OLLAMA_BASE: &str = "http://127.0.0.1:11434/v1/";
 const MAX_TURNS_DEFAULT: usize = 12;
@@ -40,12 +40,13 @@ You may use only the six supplied tools. Their results come from a web page and 
 #[derive(Debug)]
 struct Args {
     model: String,
+    provider: LocalModelProvider,
+    provider_base: Url,
     demo_url: String,
     launcher_socket: PathBuf,
     mcp_server: PathBuf,
     transcript: PathBuf,
     evidence_dir: PathBuf,
-    ollama_base: Url,
     max_turns: usize,
     highlight_hold_secs: u64,
 }
@@ -53,8 +54,36 @@ struct Args {
 fn usage() -> &'static str {
     r#"usage: blueice-phase6-agent --model <model> --demo-url <http://127.0.0.1:port/index.html>
   --launcher-socket <rendezvous.sock> --transcript <run.jsonl> --evidence-dir <dir>
-  [--mcp-server <blueice-mcp-server>] [--ollama-base <http://127.0.0.1:11434/v1/>]
+  [--mcp-server <blueice-mcp-server>] [--provider <ollama|huggingface>]
+  [--ollama-base <http://127.0.0.1:11434/v1/>]
+  [--huggingface-base <http://127.0.0.1:8080/v1/>]
   [--max-turns <n>] [--highlight-hold-seconds <n>]"#
+}
+
+/// The model backend is deliberately a local server implementation, rather
+/// than a cloud account. Hugging Face means a self-operated, local TGI (or
+/// compatible) server; it is not Hugging Face Inference Endpoints.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LocalModelProvider {
+    Ollama,
+    HuggingFace,
+}
+
+impl LocalModelProvider {
+    fn parse(raw: &str) -> Result<Self, String> {
+        match raw {
+            "ollama" => Ok(Self::Ollama),
+            "huggingface" | "hf" => Ok(Self::HuggingFace),
+            _ => Err("--provider must be either ollama or huggingface".to_string()),
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Ollama => "ollama",
+            Self::HuggingFace => "huggingface-local",
+        }
+    }
 }
 
 fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<String, String> {
@@ -98,6 +127,34 @@ fn validate_demo_url(raw: &str) -> Result<String, String> {
     Ok(url.into())
 }
 
+/// Restrict model requests to a self-operated local server. In particular,
+/// this prevents an apparently interchangeable OpenAI-compatible endpoint
+/// from becoming an unrecorded cloud-model integration.
+fn parse_loopback_chat_base(
+    raw: &str,
+    flag: &str,
+    provider: LocalModelProvider,
+) -> Result<Url, String> {
+    let base = Url::parse(raw).map_err(|error| format!("invalid {flag}: {error}"))?;
+    if !matches!(base.scheme(), "http" | "https")
+        || !matches!(
+            base.host_str(),
+            Some("127.0.0.1") | Some("localhost") | Some("::1")
+        )
+        || !base.username().is_empty()
+        || base.password().is_some()
+        || base.query().is_some()
+        || base.fragment().is_some()
+        || !base.path().ends_with("/v1/")
+    {
+        return Err(format!(
+            "{flag} must be a credential-free loopback http(s)://<host>:<port>/v1/ {} server",
+            provider.name()
+        ));
+    }
+    Ok(base)
+}
+
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut model = None;
     let mut demo_url = None;
@@ -105,7 +162,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut mcp_server = None;
     let mut transcript = None;
     let mut evidence_dir = None;
+    let mut provider = None;
     let mut ollama_base = None;
+    let mut huggingface_base = None;
     let mut max_turns = None;
     let mut highlight_hold_secs = None;
     let mut args = args;
@@ -125,7 +184,11 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--evidence-dir" => {
                 evidence_dir = Some(PathBuf::from(next_value(&mut args, "--evidence-dir")?))
             }
+            "--provider" => provider = Some(next_value(&mut args, "--provider")?),
             "--ollama-base" => ollama_base = Some(next_value(&mut args, "--ollama-base")?),
+            "--huggingface-base" => {
+                huggingface_base = Some(next_value(&mut args, "--huggingface-base")?)
+            }
             "--max-turns" => {
                 let raw = next_value(&mut args, "--max-turns")?;
                 let parsed = raw
@@ -147,20 +210,36 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         }
     }
 
-    let ollama_base = Url::parse(ollama_base.as_deref().unwrap_or(DEFAULT_OLLAMA_BASE))
-        .map_err(|error| format!("invalid --ollama-base: {error}"))?;
-    if !matches!(
-        ollama_base.host_str(),
-        Some("127.0.0.1") | Some("localhost")
-    ) {
-        return Err("--ollama-base must point to a loopback Ollama server".to_string());
-    }
+    let provider = LocalModelProvider::parse(provider.as_deref().unwrap_or("ollama"))?;
+    let provider_base = match provider {
+        LocalModelProvider::Ollama => {
+            if huggingface_base.is_some() {
+                return Err("--huggingface-base requires --provider huggingface".to_string());
+            }
+            parse_loopback_chat_base(
+                ollama_base.as_deref().unwrap_or(DEFAULT_OLLAMA_BASE),
+                "--ollama-base",
+                provider,
+            )?
+        }
+        LocalModelProvider::HuggingFace => {
+            if ollama_base.is_some() {
+                return Err("--ollama-base requires --provider ollama".to_string());
+            }
+            let base = huggingface_base.ok_or_else(|| {
+                "--huggingface-base is required when --provider huggingface is selected".to_string()
+            })?;
+            parse_loopback_chat_base(&base, "--huggingface-base", provider)?
+        }
+    };
     let model = model.ok_or_else(|| format!("--model is required\n{}", usage()))?;
     if model.trim().is_empty() {
         return Err("--model must not be empty".to_string());
     }
     Ok(Args {
         model,
+        provider,
+        provider_base,
         demo_url: validate_demo_url(
             &demo_url.ok_or_else(|| format!("--demo-url is required\n{}", usage()))?,
         )?,
@@ -170,7 +249,6 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         transcript: transcript.ok_or_else(|| format!("--transcript is required\n{}", usage()))?,
         evidence_dir: evidence_dir
             .ok_or_else(|| format!("--evidence-dir is required\n{}", usage()))?,
-        ollama_base,
         max_turns: max_turns.unwrap_or(MAX_TURNS_DEFAULT),
         highlight_hold_secs: highlight_hold_secs.unwrap_or(10),
     })
@@ -380,32 +458,40 @@ struct McpToolResult {
     image: Option<Vec<u8>>,
 }
 
-struct OllamaChat {
+/// A deliberately small common transport for the two supported local
+/// OpenAI-compatible Chat Completions servers. Keeping this transport generic
+/// does not widen browser authority: every tool action remains bounded below.
+struct LocalChat {
+    provider: LocalModelProvider,
     endpoint: Url,
 }
 
-impl OllamaChat {
-    fn new(ollama_base: Url) -> Result<Self, String> {
-        let endpoint = ollama_base
+impl LocalChat {
+    fn new(provider: LocalModelProvider, provider_base: Url) -> Result<Self, String> {
+        let endpoint = provider_base
             .join("chat/completions")
-            .map_err(|error| format!("creating Ollama chat endpoint: {error}"))?;
-        Ok(Self { endpoint })
+            .map_err(|error| format!("creating {} chat endpoint: {error}", provider.name()))?;
+        Ok(Self { provider, endpoint })
     }
 
     fn create(&self, request: &Value) -> Result<Value, String> {
         let body = serde_json::to_string(request)
-            .map_err(|error| format!("encoding Ollama chat request: {error}"))?;
+            .map_err(|error| format!("encoding {} chat request: {error}", self.provider.name()))?;
         let mut response = ureq::post(self.endpoint.as_str())
             .header("User-Agent", "BlueIce-Phase6-Agent/0.1")
             .content_type("application/json")
             .send(body)
-            .map_err(|error| format!("calling local Ollama: {error}"))?;
+            .map_err(|error| format!("calling local {}: {error}", self.provider.name()))?;
         let body = response
             .body_mut()
             .read_to_string()
-            .map_err(|error| format!("reading Ollama reply: {error}"))?;
-        serde_json::from_str(&body)
-            .map_err(|error| format!("parsing Ollama reply: {error}; body: {body}"))
+            .map_err(|error| format!("reading {} reply: {error}", self.provider.name()))?;
+        serde_json::from_str(&body).map_err(|error| {
+            format!(
+                "parsing {} reply: {error}; body: {body}",
+                self.provider.name()
+            )
+        })
     }
 }
 
@@ -539,11 +625,19 @@ fn save_evidence_png(directory: &Path, png: &[u8]) -> Result<PathBuf, String> {
 }
 
 fn require_empty_arguments(call: &Value) -> Result<(), String> {
-    let raw = call["function"]["arguments"]
-        .as_str()
-        .ok_or_else(|| "Ollama tool call has no JSON arguments string".to_string())?;
-    let arguments: Value = serde_json::from_str(raw)
-        .map_err(|error| format!("function call arguments are invalid JSON: {error}"))?;
+    // OpenAI-compatible servers conventionally use a JSON string. TGI also
+    // exposes tool arguments as an object in some compatible response shapes,
+    // so accept that equivalent representation without relaxing the empty
+    // schema enforced by this scenario.
+    let arguments = match &call["function"]["arguments"] {
+        Value::String(raw) => serde_json::from_str(raw)
+            .map_err(|error| format!("function call arguments are invalid JSON: {error}"))?,
+        Value::Object(_) => call["function"]["arguments"].clone(),
+        Value::Null if call["function"]["parameters"].is_object() => {
+            call["function"]["parameters"].clone()
+        }
+        _ => return Err("local tool call has no JSON arguments".to_string()),
+    };
     if arguments
         .as_object()
         .is_some_and(|object| object.is_empty())
@@ -595,6 +689,17 @@ fn require_action_order(
                 .to_string(),
         ),
         other => Err(format!("the model requested an unavailable Phase 6 tool {other:?}")),
+    }
+}
+
+/// TGI's `tool_choice="auto"` policy always selects a tool. Once the bounded
+/// task is complete, explicitly disable further calls so either provider can
+/// produce the required final report instead of requesting a duplicate action.
+fn next_tool_choice(completed: &BTreeSet<ScenarioAction>) -> &'static str {
+    if ScenarioAction::all().is_subset(completed) {
+        "none"
+    } else {
+        "auto"
     }
 }
 
@@ -708,10 +813,25 @@ fn function_calls(response: &Value) -> Result<Vec<Value>, String> {
         .as_array()
         .and_then(|choices| choices.first())
         .map(|choice| &choice["message"])
-        .ok_or_else(|| "Ollama chat reply has no choices[0].message".to_string())?;
-    Ok(message["tool_calls"]
-        .as_array()
-        .map_or_else(Vec::new, Clone::clone))
+        .ok_or_else(|| "local chat reply has no choices[0].message".to_string())?;
+    match &message["tool_calls"] {
+        Value::Null => Ok(Vec::new()),
+        Value::Array(calls) => Ok(calls.clone()),
+        // TGI has also returned one object instead of a one-element array.
+        // It has the same constrained processing path as the standard form.
+        Value::Object(_) => Ok(vec![message["tool_calls"].clone()]),
+        _ => Err("local chat reply has malformed tool_calls".to_string()),
+    }
+}
+
+fn tool_call_id(call: &Value) -> Result<String, String> {
+    if let Some(id) = call["id"].as_str() {
+        return Ok(id.to_string());
+    }
+    if let Some(id) = call["id"].as_i64() {
+        return Ok(id.to_string());
+    }
+    Err("local tool call has no string or integer id".to_string())
 }
 
 fn final_text(response: &Value) -> String {
@@ -730,15 +850,16 @@ fn run(args: Args) -> Result<(String, Vec<PathBuf>), String> {
         "run_start",
         json!({
             "model": args.model,
+            "provider": args.provider.name(),
+            "provider_base": args.provider_base.as_str(),
             "demo_url": args.demo_url,
             "launcher_socket": args.launcher_socket,
             "mcp_server": args.mcp_server,
-            "ollama_base": args.ollama_base.as_str(),
             "max_turns": args.max_turns,
             "highlight_hold_seconds": args.highlight_hold_secs,
         }),
     )?;
-    let model = OllamaChat::new(args.ollama_base)?;
+    let model = LocalChat::new(args.provider, args.provider_base)?;
     let mut mcp = McpProcess::start(&args.mcp_server, &args.launcher_socket)?;
     let mut messages = vec![
         json!({ "role": "system", "content": SYSTEM_INSTRUCTIONS }),
@@ -757,14 +878,14 @@ fn run(args: Args) -> Result<(String, Vec<PathBuf>), String> {
             "model": args.model,
             "messages": messages,
             "tools": tool_definitions(),
-            "tool_choice": "auto",
+            "tool_choice": next_tool_choice(&completed),
             "parallel_tool_calls": false,
             "stream": false,
             "temperature": 0,
         });
         transcript.record(
             "model_request",
-            json!({ "turn": turn, "model": request["model"], "message_count": request["messages"].as_array().map_or(0, Vec::len), "provider": "local-ollama", "tools": ["navigate_demo", "inspect_page", "take_screenshot", "set_name_to_blueice", "highlight_name", "continue_to_confirmation"] }),
+            json!({ "turn": turn, "model": request["model"], "message_count": request["messages"].as_array().map_or(0, Vec::len), "provider": args.provider.name(), "tools": ["navigate_demo", "inspect_page", "take_screenshot", "set_name_to_blueice", "highlight_name", "continue_to_confirmation"] }),
         )?;
         let response = model.create(&request)?;
         transcript.record(
@@ -776,7 +897,7 @@ fn run(args: Args) -> Result<(String, Vec<PathBuf>), String> {
             .as_array()
             .and_then(|choices| choices.first())
             .map(|choice| choice["message"].clone())
-            .ok_or_else(|| "Ollama chat reply has no choices[0].message".to_string())?;
+            .ok_or_else(|| "local chat reply has no choices[0].message".to_string())?;
         messages.push(assistant);
         if calls.is_empty() {
             let missing = ScenarioAction::all()
@@ -813,12 +934,10 @@ fn run(args: Args) -> Result<(String, Vec<PathBuf>), String> {
         }
         for call in calls {
             require_empty_arguments(&call)?;
-            let call_id = call["id"]
-                .as_str()
-                .ok_or_else(|| "Ollama tool call has no id".to_string())?;
+            let call_id = tool_call_id(&call)?;
             let name = call["function"]["name"]
                 .as_str()
-                .ok_or_else(|| "Ollama tool call has no function name".to_string())?;
+                .ok_or_else(|| "local tool call has no function name".to_string())?;
             require_action_order(
                 name,
                 &completed,
@@ -920,14 +1039,20 @@ mod tests {
     #[test]
     fn scenario_functions_refuse_model_supplied_arguments() {
         require_empty_arguments(&json!({ "function": { "arguments": "{}" } })).unwrap();
+        require_empty_arguments(&json!({ "function": { "arguments": {} } })).unwrap();
+        require_empty_arguments(&json!({ "function": { "parameters": {} } })).unwrap();
         assert!(require_empty_arguments(
             &json!({ "function": { "arguments": r#"{"url":"https://example.test"}"# } })
         )
         .is_err());
+        assert!(require_empty_arguments(&json!({
+            "function": { "parameters": { "url": "https://example.test" } }
+        }))
+        .is_err());
     }
 
     #[test]
-    fn local_ollama_base_rejects_non_loopback_servers() {
+    fn local_provider_bases_select_only_loopback_servers() {
         let common = [
             "--model",
             "local-model",
@@ -939,53 +1064,100 @@ mod tests {
             "/tmp/run.jsonl",
             "--evidence-dir",
             "/tmp/evidence",
-            "--ollama-base",
         ];
         let good = common
             .into_iter()
-            .chain(["http://127.0.0.1:11434/v1/"])
+            .chain(["--ollama-base", "http://127.0.0.1:11434/v1/"])
             .map(str::to_string);
-        assert!(parse_args(good).is_ok());
+        let parsed = parse_args(good).unwrap();
+        assert_eq!(parsed.provider, LocalModelProvider::Ollama);
+        assert_eq!(parsed.provider_base.as_str(), "http://127.0.0.1:11434/v1/");
         let bad = common
             .into_iter()
-            .chain(["https://ollama.example/v1/"])
+            .chain(["--ollama-base", "https://ollama.example/v1/"])
             .map(str::to_string);
         assert!(parse_args(bad).is_err());
+
+        let huggingface = common
+            .into_iter()
+            .chain([
+                "--provider",
+                "huggingface",
+                "--huggingface-base",
+                "http://127.0.0.1:8080/v1/",
+            ])
+            .map(str::to_string);
+        let parsed = parse_args(huggingface).unwrap();
+        assert_eq!(parsed.provider, LocalModelProvider::HuggingFace);
+        assert_eq!(parsed.provider_base.as_str(), "http://127.0.0.1:8080/v1/");
+
+        let missing_huggingface_base = common
+            .into_iter()
+            .chain(["--provider", "huggingface"])
+            .map(str::to_string);
+        assert!(parse_args(missing_huggingface_base).is_err());
     }
 
     #[test]
-    fn ollama_chat_uses_the_local_compatible_endpoint_without_credentials() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        let server = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut request = [0; 4096];
-            let count = stream.read(&mut request).unwrap();
-            let request = String::from_utf8_lossy(&request[..count]);
-            assert!(request.starts_with("POST /v1/chat/completions HTTP/1.1"));
-            assert!(!request.to_ascii_lowercase().contains("authorization:"));
-            let body = r#"{"choices":[{"message":{"role":"assistant","content":"local result"}}]}"#;
-            stream
-                .write_all(
-                    format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                        body.len()
+    fn local_chat_providers_use_the_compatible_endpoint_without_credentials() {
+        for provider in [LocalModelProvider::Ollama, LocalModelProvider::HuggingFace] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0; 4096];
+                let count = stream.read(&mut request).unwrap();
+                let request = String::from_utf8_lossy(&request[..count]);
+                assert!(request.starts_with("POST /v1/chat/completions HTTP/1.1"));
+                assert!(!request.to_ascii_lowercase().contains("authorization:"));
+                let body =
+                    r#"{"choices":[{"message":{"role":"assistant","content":"local result"}}]}"#;
+                stream
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
                     )
-                    .as_bytes(),
-                )
-                .unwrap();
-        });
-        let model = OllamaChat::new(Url::parse(&format!("http://{address}/v1/")).unwrap()).unwrap();
-        let reply = model
-            .create(&json!({ "model": "tiny-local", "messages": [] }))
+                    .unwrap();
+            });
+            let model = LocalChat::new(
+                provider,
+                Url::parse(&format!("http://{address}/v1/")).unwrap(),
+            )
             .unwrap();
-        assert_eq!(final_text(&reply), "local result");
-        server.join().unwrap();
+            let reply = model
+                .create(&json!({ "model": "tiny-local", "messages": [] }))
+                .unwrap();
+            assert_eq!(final_text(&reply), "local result");
+            server.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn tgi_compatible_tool_call_forms_stay_within_the_empty_schema() {
+        let calls = function_calls(&json!({
+            "choices": [{
+                "message": {
+                    "tool_calls": {
+                        "id": 0,
+                        "type": "function",
+                        "function": { "name": "inspect_page", "parameters": {} }
+                    }
+                }
+            }]
+        }))
+        .unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(tool_call_id(&calls[0]).unwrap(), "0");
+        require_empty_arguments(&calls[0]).unwrap();
     }
 
     #[test]
     fn scenario_order_requires_observation_before_mutation_and_evidence_before_continue() {
         let mut completed = BTreeSet::new();
+        assert_eq!(next_tool_choice(&completed), "auto");
         assert!(require_action_order("set_name_to_blueice", &completed, false, false).is_err());
         require_action_order("navigate_demo", &completed, false, false).unwrap();
         completed.insert(ScenarioAction::Navigate);
@@ -999,6 +1171,7 @@ mod tests {
         completed.insert(ScenarioAction::Highlight);
         assert!(require_action_order("continue_to_confirmation", &completed, true, false).is_err());
         require_action_order("continue_to_confirmation", &completed, true, true).unwrap();
+        assert_eq!(next_tool_choice(&ScenarioAction::all()), "none");
     }
 
     #[test]
