@@ -31,18 +31,18 @@ use blueice_bluets_bluejs::{
     DirectModuleGraph, DirectScript,
 };
 use blueice_ipc::debugger::{
-    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_TYPES,
-    DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
+    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
+    DEBUGGER_STATIC_METADATA_MAX_TYPES, DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
     self, PageHostDebuggerBlueTsMetadataSourceId, PageHostDebuggerBlueTsMetadataSourceProvenance,
-    PageHostDebuggerBlueTsMetadataSummary, PageHostDebuggerBlueTsMetadataTypeDisplay,
-    PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerExecutionState,
-    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
-    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
-    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PageHostDebuggerBlueTsMetadataSummary, PageHostDebuggerBlueTsMetadataSymbolId,
+    PageHostDebuggerBlueTsMetadataTypeDisplay, PageHostDebuggerBlueTsMetadataTypeId,
+    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
+    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
+    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -314,6 +314,17 @@ impl BlueJsChildHost {
                 program,
                 metadata,
                 type_id,
+            ),
+            PageHostRequest::ListDebuggerBlueTsMetadataSymbols {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+            } => self.debugger_bluets_metadata_symbols(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
             ),
             PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
                 tab_id,
@@ -1235,6 +1246,77 @@ impl BlueJsChildHost {
             program,
             metadata,
             static_type,
+        }
+    }
+
+    /// Lists only compiler-minted symbol IDs after the caller supplies an
+    /// exact child program and metadata attachment. Names, spans, declared
+    /// types, contracts, bytecode, VM objects, and values remain private.
+    fn debugger_bluets_metadata_symbols(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let symbols = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let static_symbols = &retained.static_info().symbols;
+                if static_symbols.len()
+                    > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_SYMBOLS).unwrap()
+                {
+                    return resource_limit();
+                }
+                let mut identities = BTreeSet::new();
+                let mut symbols = Vec::with_capacity(static_symbols.len());
+                for symbol in static_symbols {
+                    if !identities.insert(symbol.id.0) {
+                        return invalid_request();
+                    }
+                    symbols.push(PageHostDebuggerBlueTsMetadataSymbolId {
+                        symbol_id: symbol.id.0,
+                    });
+                }
+                symbols
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataSymbols {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            symbols,
         }
     }
 

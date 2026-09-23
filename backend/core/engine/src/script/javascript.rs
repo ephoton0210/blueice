@@ -40,8 +40,8 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
-    JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
-    JavaScriptPageDebuggerStaticMetadataTypeTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolId, JavaScriptPageDebuggerStaticMetadataTypeDisplay,
+    JavaScriptPageDebuggerStaticMetadataTypeId, JavaScriptPageDebuggerStaticMetadataTypeTarget,
 };
 
 /// Source-free debugger location operations owned by an explicitly selected
@@ -114,6 +114,13 @@ pub trait PageJavaScriptDebuggerLocations {
     /// for a prior type-ID inventory receipt. This remains separately
     /// default-denied because displays can contain project-authored names.
     fn debugger_static_metadata_type_display_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can list payload-free compiler-minted symbol IDs
+    /// under an exact opaque metadata parent. Symbol record reads remain
+    /// separately default-denied.
+    fn debugger_static_metadata_symbol_inventory_available(&self) -> bool {
         false
     }
 
@@ -207,6 +214,22 @@ pub trait PageJavaScriptDebuggerLocations {
         _document_generation: u64,
         _target: JavaScriptPageDebuggerStaticMetadataTypeTarget,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Lists compiler-minted symbol IDs only after the caller presented an
+    /// exact metadata attachment. Implementations must not expose symbol
+    /// names, spans, declared types, or synthesize static records from IDs.
+    fn debugger_static_metadata_symbols(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataSymbolId>, JavaScriptPageDebuggerError>
+    {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
 

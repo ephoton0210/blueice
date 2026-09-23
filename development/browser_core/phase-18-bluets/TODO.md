@@ -765,6 +765,16 @@ or second module resolver to bypass them.
   contract, bytecode, VM object, value, or general record read. The real
   launcher-supervised integration test proves the complete opt-in flow and
   reload invalidates a prior type target.
+  Page-host v13/debugger v12 now add independently default-denied
+  `OpaqueSymbolInventory` and
+  `--debugger-static-metadata-symbol-inventory`. It requires the parent
+  inventory, live realm tuple, child capability report, and the exact
+  same-stream parent-handle receipt before it returns bounded
+  compiler-minted symbol IDs. IDs remain payload-free and are separately
+  receipted at the fixed 65,536-symbol ceiling, so a future symbol-detail
+  operation cannot turn a caller-guessed ID into a child probing target. No
+  symbol name, source span, declared type, contract, bytecode, VM object,
+  value, or general metadata record crosses this layer.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

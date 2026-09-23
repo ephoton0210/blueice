@@ -9,12 +9,12 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version nine adds the
-//! default-deny source-provenance operation for a prior source ID: `Hello`
-//! grants only the canonical intersection of a requested manifest and the
-//! core policy, and a metadata operation may be dispatched only after the
-//! exact target's capability report also grants its specific metadata
-//! capability. A host must report every operation as
+//! and an opt-in root-code-unit pause/resume seam. Version twelve adds the
+//! default-deny payload-free symbol-ID inventory for a prior opaque metadata
+//! handle: `Hello` grants only the canonical intersection of a requested
+//! manifest and the core policy, and a metadata operation may be dispatched
+//! only after the exact target's capability report also grants its specific
+//! metadata capability. A host must report every operation as
 //! [`DebuggerCapabilityState::Available`] only after it implements the native
 //! behavior; a configured breakpoint is not evidence that pause, stack,
 //! scope, value inspection, or static metadata access already exists.
@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 11;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 12;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -172,6 +172,21 @@ impl DebuggerStaticMetadataTypeId {
     }
 }
 
+/// One compiler-minted static symbol identity for an exact opaque metadata
+/// attachment. It exposes no symbol name, source span, declared type,
+/// contract, bytecode, VM object, value, or arbitrary metadata read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataSymbolId {
+    pub metadata: DebuggerStaticMetadataHandle,
+    pub symbol_id: u32,
+}
+
+impl DebuggerStaticMetadataSymbolId {
+    pub fn is_well_formed(self) -> bool {
+        self.metadata.is_well_formed()
+    }
+}
+
 /// One owner-authorized, bounded display for a compiler-minted type ID that
 /// was previously returned by the exact stream's type inventory. A display is
 /// source-text-free but can contain project-authored identifiers, so it is a
@@ -297,6 +312,10 @@ pub enum DebuggerCapability {
     /// source span, symbol, contract, bytecode, runtime value, or general
     /// metadata-record read.
     StaticMetadataTypeDisplay,
+    /// A bounded inventory of compiler-minted symbol-record identities for
+    /// one exact opaque metadata attachment. It does not disclose names,
+    /// spans, types, or other static records.
+    StaticMetadataSymbolInventory,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -338,6 +357,10 @@ pub enum DebuggerMetadataCapability {
     /// can include project-authored identifiers, so this is independently
     /// default-denied and remains bounded to one prior receipt.
     OpaqueTypeDisplay,
+    /// Lists only compiler-minted symbol-record IDs that remain bound to one
+    /// metadata handle. Symbol names, spans, types, contracts, and record
+    /// reads remain distinct, future default-deny capabilities.
+    OpaqueSymbolInventory,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -355,6 +378,7 @@ impl DebuggerMetadataCapability {
             }
             Self::OpaqueTypeInventory => Some(DebuggerCapability::StaticMetadataTypeInventory),
             Self::OpaqueTypeDisplay => Some(DebuggerCapability::StaticMetadataTypeDisplay),
+            Self::OpaqueSymbolInventory => Some(DebuggerCapability::StaticMetadataSymbolInventory),
             Self::Unknown => None,
         }
     }
@@ -367,6 +391,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSourceProvenance => Some(3),
             Self::OpaqueTypeInventory => Some(4),
             Self::OpaqueTypeDisplay => Some(5),
+            Self::OpaqueSymbolInventory => Some(6),
             Self::Unknown => None,
         }
     }
@@ -492,6 +517,19 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants the opaque parent-handle inventory plus compiler-minted symbol
+    /// record identities. IDs are not names, spans, declared types, or
+    /// static-record reads; those require distinct later capabilities.
+    pub fn opaque_symbol_inventory() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSymbolInventory,
+            ],
+        }
+    }
+
     /// Builds the exact canonical manifest selected by a trusted owner after
     /// it independently validated each prerequisite flag. Keeping this
     /// operation here avoids a caller hand-assembling a reordered manifest.
@@ -501,9 +539,14 @@ impl DebuggerMetadataCapabilityManifest {
         source_provenance: bool,
         type_inventory: bool,
         type_display: bool,
+        symbol_inventory: bool,
     ) -> Self {
-        let any =
-            summary || source_inventory || source_provenance || type_inventory || type_display;
+        let any = summary
+            || source_inventory
+            || source_provenance
+            || type_inventory
+            || type_display
+            || symbol_inventory;
         let mut capabilities = Vec::new();
         if any {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
@@ -522,6 +565,9 @@ impl DebuggerMetadataCapabilityManifest {
         }
         if type_display {
             capabilities.push(DebuggerMetadataCapability::OpaqueTypeDisplay);
+        }
+        if symbol_inventory {
+            capabilities.push(DebuggerMetadataCapability::OpaqueSymbolInventory);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -597,6 +643,12 @@ impl DebuggerMetadataCapabilityManifest {
                     && self
                         .capabilities
                         .contains(&DebuggerMetadataCapability::OpaqueTypeInventory)))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueSymbolInventory)
+                || self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -691,6 +743,10 @@ pub struct DebuggerMetadataSessionAuthorization {
     /// This remains local and source-free so a future type display operation
     /// cannot turn a guessed ID into a child metadata probe.
     observed_type_identities: Arc<Mutex<BTreeSet<DebuggerMetadataTypeIdentity>>>,
+    /// Bounded per-stream receipts for symbol IDs emitted by symbol inventory.
+    /// Kept payload-free now so a future symbol read cannot turn a guessed ID
+    /// into a child metadata probe.
+    observed_symbol_identities: Arc<Mutex<BTreeSet<DebuggerMetadataSymbolIdentity>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -742,6 +798,18 @@ struct DebuggerMetadataTypeIdentity {
     type_id: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct DebuggerMetadataSymbolIdentity {
+    browser_context_id: u64,
+    tab_id: u64,
+    realm_generation: u64,
+    program_handle: u64,
+    program_generation: u64,
+    metadata_handle: u64,
+    metadata_generation: u64,
+    symbol_id: u32,
+}
+
 impl From<DebuggerStaticMetadataTypeId> for DebuggerMetadataTypeIdentity {
     fn from(static_type: DebuggerStaticMetadataTypeId) -> Self {
         Self {
@@ -753,6 +821,21 @@ impl From<DebuggerStaticMetadataTypeId> for DebuggerMetadataTypeIdentity {
             metadata_handle: static_type.metadata.metadata_handle,
             metadata_generation: static_type.metadata.metadata_generation,
             type_id: static_type.type_id,
+        }
+    }
+}
+
+impl From<DebuggerStaticMetadataSymbolId> for DebuggerMetadataSymbolIdentity {
+    fn from(symbol: DebuggerStaticMetadataSymbolId) -> Self {
+        Self {
+            browser_context_id: symbol.metadata.program.realm.browser_context_id,
+            tab_id: symbol.metadata.program.realm.tab_id,
+            realm_generation: symbol.metadata.program.realm.realm_generation,
+            program_handle: symbol.metadata.program.program_handle,
+            program_generation: symbol.metadata.program.program_generation,
+            metadata_handle: symbol.metadata.metadata_handle,
+            metadata_generation: symbol.metadata.metadata_generation,
+            symbol_id: symbol.symbol_id,
         }
     }
 }
@@ -787,6 +870,11 @@ pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_SOURCE_IDENTITIES: usize = 4_09
 /// separate from source receipts so a future type-display capability cannot
 /// obtain an unbounded guessed-ID oracle from a long-lived stream.
 pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_TYPE_IDENTITIES: usize = 4_096;
+
+/// One metadata session may remember at most one complete symbol-ID inventory
+/// at the public symbol count limit. The fixed budget preserves a receipt
+/// boundary without making a long-lived stream an unbounded cache.
+pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_SYMBOL_IDENTITIES: usize = 65_536;
 
 impl DebuggerMetadataSessionAuthorization {
     /// Whether this session negotiated one exact metadata capability. A
@@ -895,6 +983,40 @@ impl DebuggerMetadataSessionAuthorization {
             .lock()
             .is_ok_and(|observed| observed.contains(&static_type.into()))
     }
+
+    /// Records exact symbol IDs emitted by symbol inventory on this stream.
+    pub fn observe_symbols(&self, symbols: &[DebuggerStaticMetadataSymbolId]) -> bool {
+        let Ok(mut observed) = self.observed_symbol_identities.lock() else {
+            return false;
+        };
+        let new_count = symbols
+            .iter()
+            .copied()
+            .map(DebuggerMetadataSymbolIdentity::from)
+            .filter(|symbol| !observed.contains(symbol))
+            .collect::<BTreeSet<_>>()
+            .len();
+        if observed.len().saturating_add(new_count)
+            > DEBUGGER_METADATA_SESSION_MAX_OBSERVED_SYMBOL_IDENTITIES
+        {
+            return false;
+        }
+        observed.extend(
+            symbols
+                .iter()
+                .copied()
+                .map(DebuggerMetadataSymbolIdentity::from),
+        );
+        true
+    }
+
+    /// Whether this exact symbol ID was emitted by symbol inventory on this
+    /// session. This establishes the opaque boundary for future symbol reads.
+    pub fn observed_symbol(&self, symbol: DebuggerStaticMetadataSymbolId) -> bool {
+        self.observed_symbol_identities
+            .lock()
+            .is_ok_and(|observed| observed.contains(&symbol.into()))
+    }
 }
 
 /// Reconstructs the core-local session authorization from the exact `Hello`
@@ -933,6 +1055,7 @@ pub fn metadata_session_authorization(
         observed_metadata_identities: Arc::new(Mutex::new(BTreeSet::new())),
         observed_source_identities: Arc::new(Mutex::new(BTreeSet::new())),
         observed_type_identities: Arc::new(Mutex::new(BTreeSet::new())),
+        observed_symbol_identities: Arc::new(Mutex::new(BTreeSet::new())),
     })
 }
 
@@ -1070,6 +1193,11 @@ pub enum DebuggerRequest {
     DescribeStaticMetadataType {
         static_type: DebuggerStaticMetadataTypeId,
     },
+    /// Lists only compiler-minted symbol-record identities for one exact
+    /// metadata attachment. It is not a symbol name/span/type or record read.
+    ListStaticMetadataSymbols {
+        metadata: DebuggerStaticMetadataHandle,
+    },
     /// Describes one source ID previously returned by
     /// [`Self::ListStaticMetadataSources`]. This separately authorized
     /// operation returns compiler-canonical module identity and a labeled
@@ -1163,6 +1291,9 @@ pub enum DebuggerReply {
     /// Reply to [`DebuggerRequest::DescribeStaticMetadataType`]. The type
     /// display remains parent-bound and source-text-free.
     StaticMetadataType(DebuggerStaticMetadataTypeDisplay),
+    /// Reply to [`DebuggerRequest::ListStaticMetadataSymbols`]. IDs remain
+    /// parent-bound and contain no symbol name, span, type, or record payload.
+    StaticMetadataSymbols(Vec<DebuggerStaticMetadataSymbolId>),
     /// Reply to [`DebuggerRequest::DescribeStaticMetadataSource`]. This is a
     /// bounded owner-authorized provenance disclosure, never source text.
     StaticMetadataSourceProvenance(DebuggerStaticMetadataSourceProvenance),
@@ -1256,6 +1387,7 @@ pub fn negotiate(
         | DebuggerRequest::ListStaticMetadataSources { .. }
         | DebuggerRequest::ListStaticMetadataTypes { .. }
         | DebuggerRequest::DescribeStaticMetadataType { .. }
+        | DebuggerRequest::ListStaticMetadataSymbols { .. }
         | DebuggerRequest::DescribeStaticMetadataSource { .. }
         | DebuggerRequest::ListSafePoints { .. }
         | DebuggerRequest::ValidateSafePoint { .. }
@@ -1393,6 +1525,17 @@ mod tests {
                         metadata_generation: 7,
                     },
                     type_id: 0,
+                },
+            },
+            DebuggerRequest::ListStaticMetadataSymbols {
+                metadata: DebuggerStaticMetadataHandle {
+                    program: DebuggerProgram {
+                        realm: realm(),
+                        program_handle: 12,
+                        program_generation: 5,
+                    },
+                    metadata_handle: 24,
+                    metadata_generation: 7,
                 },
             },
             DebuggerRequest::ListSafePoints {
@@ -1560,6 +1703,14 @@ mod tests {
                 },
                 display: "number".to_string(),
             }),
+            DebuggerReply::StaticMetadataSymbols(vec![DebuggerStaticMetadataSymbolId {
+                metadata: DebuggerStaticMetadataHandle {
+                    program,
+                    metadata_handle: 24,
+                    metadata_generation: 7,
+                },
+                symbol_id: 0,
+            }]),
             DebuggerReply::SafePoints(vec![safe_point]),
             DebuggerReply::SafePointValidated { safe_point },
             DebuggerReply::BreakpointSet { safe_point },
@@ -2236,6 +2387,44 @@ mod tests {
         let malformed = DebuggerMetadataCapabilityManifest {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
             capabilities: vec![DebuggerMetadataCapability::OpaqueTypeDisplay],
+        };
+        assert!(!malformed.is_well_formed());
+    }
+
+    #[test]
+    fn symbol_inventory_is_parent_bound_and_receipted_without_symbol_detail() {
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 5,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let symbol = DebuggerStaticMetadataSymbolId {
+            metadata,
+            symbol_id: 0,
+        };
+        assert!(symbol.is_well_formed());
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_symbol_inventory());
+        let reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_symbol_inventory(),
+        );
+        let session = metadata_session_authorization(&request, &reply).unwrap();
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueSymbolInventory));
+        assert!(!session.observed_symbol(symbol));
+        assert!(session.observe_symbols(&[symbol]));
+        assert!(session.observed_symbol(symbol));
+        assert!(!session.observed_symbol(DebuggerStaticMetadataSymbolId {
+            symbol_id: 1,
+            ..symbol
+        }));
+
+        let malformed = DebuggerMetadataCapabilityManifest {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![DebuggerMetadataCapability::OpaqueSymbolInventory],
         };
         assert!(!malformed.is_well_formed());
     }

@@ -125,6 +125,9 @@ mod unix {
         /// under a previously inventoried type ID. Displays can contain
         /// project-authored names and therefore remain independently denied.
         debugger_static_metadata_type_display: bool,
+        /// Owner-only policy for compiler-minted symbol-record IDs bound to
+        /// an opaque metadata handle. Symbol detail remains default-denied.
+        debugger_static_metadata_symbol_inventory: bool,
     }
 
     impl CoreLaunchOptions {
@@ -263,6 +266,15 @@ mod unix {
             self.debugger_static_metadata_inventory = true;
             self.debugger_static_metadata_type_inventory = true;
             self.debugger_static_metadata_type_display = true;
+            self
+        }
+
+        /// Enables compiler-minted symbol-record IDs for one exact metadata
+        /// handle. This also selects the required opaque parent inventory,
+        /// while symbol names, spans, types, and record reads remain denied.
+        pub fn with_debugger_static_metadata_symbol_inventory(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_symbol_inventory = true;
             self
         }
     }
@@ -1623,6 +1635,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_type_display {
                     command.arg("--debugger-static-metadata-type-display");
+                }
+                if options.debugger_static_metadata_symbol_inventory {
+                    command.arg("--debugger-static-metadata-symbol-inventory");
                 }
             }
             let mut child = command.spawn()?;

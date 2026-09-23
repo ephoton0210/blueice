@@ -25,8 +25,9 @@ use blueice_ipc::debugger::{
     DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
     DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataHandle,
     DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSourceProvenance,
-    DebuggerStaticMetadataSummary, DebuggerStaticMetadataTypeDisplay, DebuggerStaticMetadataTypeId,
-    DEBUGGER_PROTOCOL_VERSION, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
+    DebuggerStaticMetadataSummary, DebuggerStaticMetadataSymbolId,
+    DebuggerStaticMetadataTypeDisplay, DebuggerStaticMetadataTypeId, DEBUGGER_PROTOCOL_VERSION,
+    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
     DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
 use std::io;
@@ -253,6 +254,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::DescribeStaticMetadataType { .. } => {
             unavailable_static_metadata_type_display()
         }
+        DebuggerRequest::ListStaticMetadataSymbols { .. } => {
+            unavailable_static_metadata_symbol_inventory()
+        }
         DebuggerRequest::DescribeStaticMetadataSource { .. } => {
             unavailable_static_metadata_source_provenance()
         }
@@ -363,6 +367,9 @@ fn handle_debugger_request_with_child_locations(
         }
         DebuggerRequest::DescribeStaticMetadataType { static_type } => {
             describe_child_static_metadata_type(tabs, locations, metadata_session, static_type)
+        }
+        DebuggerRequest::ListStaticMetadataSymbols { metadata } => {
+            list_child_static_metadata_symbols(tabs, locations, metadata_session, metadata)
         }
         DebuggerRequest::DescribeStaticMetadataSource { source } => {
             describe_child_static_metadata_source_provenance(
@@ -484,6 +491,11 @@ fn describe_child_location_capabilities(
         && metadata_session
             .is_some_and(|session| session.permits(DebuggerMetadataCapability::OpaqueTypeDisplay))
         && locations.debugger_static_metadata_type_display_available();
+    let static_metadata_symbol_inventory_available = static_metadata_inventory_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueSymbolInventory)
+        })
+        && locations.debugger_static_metadata_symbol_inventory_available();
     let max_breakpoints_per_realm = if breakpoint_configuration_available {
         locations.max_debugger_breakpoints_per_realm()
     } else {
@@ -502,6 +514,7 @@ fn describe_child_location_capabilities(
             static_metadata_source_provenance_available,
             static_metadata_type_inventory_available,
             static_metadata_type_display_available,
+            static_metadata_symbol_inventory_available,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -577,11 +590,13 @@ fn list_child_static_metadata(
                 });
             }
             // The inventory is the only operation that can mint a parent
-            // handle into this stream's local receipt ledger. Summary and
-            // source inventory are independently authorized, but neither may
-            // turn a guessed numeric handle into a child query target.
+            // handle into this stream's local receipt ledger. Every dependent
+            // metadata capability must have this receipt first; none may turn
+            // a guessed numeric handle into a child query target.
             if (metadata_session.permits(DebuggerMetadataCapability::OpaqueSummary)
-                || metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceInventory))
+                || metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceInventory)
+                || metadata_session.permits(DebuggerMetadataCapability::OpaqueTypeInventory)
+                || metadata_session.permits(DebuggerMetadataCapability::OpaqueSymbolInventory))
                 && !metadata_session.observe_metadata(&handles)
             {
                 return DebuggerReply::Error {
@@ -859,6 +874,97 @@ fn list_child_static_metadata_types(
         Ok(_) => DebuggerReply::Error {
             code: DebuggerErrorCode::ResourceLimit,
             message: "debugger static metadata type inventory exceeds its fixed limit".to_string(),
+        },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+/// Lists compiler-minted symbol IDs under one opaque metadata parent. This
+/// default-deny operation is payload-free and records a same-stream receipt
+/// now, so a later symbol detail operation cannot accept a guessed ID.
+fn list_child_static_metadata_symbols(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    metadata: DebuggerStaticMetadataHandle,
+) -> DebuggerReply {
+    if !metadata.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static metadata symbol inventory target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_symbol_inventory();
+    };
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.observed_metadata(metadata)
+    {
+        return unavailable_static_metadata_symbol_inventory();
+    }
+    let capabilities = describe_child_location_capabilities(
+        tabs,
+        locations,
+        Some(metadata_session),
+        metadata.program.realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueSymbolInventory,
+    ) else {
+        return unavailable_static_metadata_symbol_inventory();
+    };
+    if !authorization.permits(
+        metadata.program.realm,
+        DebuggerMetadataCapability::OpaqueSymbolInventory,
+    ) {
+        return unavailable_static_metadata_symbol_inventory();
+    }
+    let tab_id = match resolve_live_realm(tabs, metadata.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    match locations.debugger_static_metadata_symbols(
+        tab_id,
+        metadata.program.realm.realm_generation,
+        metadata.program.program_handle,
+        metadata.program.program_generation,
+        metadata.metadata_handle,
+        metadata.metadata_generation,
+    ) {
+        Ok(symbols)
+            if symbols.len() <= usize::try_from(DEBUGGER_STATIC_METADATA_MAX_SYMBOLS).unwrap() =>
+        {
+            let mut seen = std::collections::BTreeSet::new();
+            let mut result = Vec::with_capacity(symbols.len());
+            for symbol in symbols {
+                if !seen.insert(symbol.symbol_id) {
+                    return DebuggerReply::Error {
+                        code: DebuggerErrorCode::InvalidTarget,
+                        message: "duplicate debugger static metadata symbol identity".to_string(),
+                    };
+                }
+                result.push(DebuggerStaticMetadataSymbolId {
+                    metadata,
+                    symbol_id: symbol.symbol_id,
+                });
+            }
+            if !metadata_session.observe_symbols(&result) {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::ResourceLimit,
+                    message: "debugger static metadata symbol receipt budget is exhausted"
+                        .to_string(),
+                };
+            }
+            DebuggerReply::StaticMetadataSymbols(result)
+        }
+        Ok(_) => DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            message: "debugger static metadata symbol inventory exceeds its fixed limit"
+                .to_string(),
         },
         Err(error) => debugger_program_error(error),
     }
@@ -1354,6 +1460,7 @@ fn describe_capabilities(
             static_metadata_source_provenance_available: false,
             static_metadata_type_inventory_available: false,
             static_metadata_type_display_available: false,
+            static_metadata_symbol_inventory_available: false,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -1787,6 +1894,14 @@ fn unavailable_static_metadata_type_display() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_symbol_inventory() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "opaque debugger static metadata symbol inventory is not authorized for this session and live realm"
+            .to_string(),
+    }
+}
+
 fn unavailable_static_metadata_source_provenance() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -1882,6 +1997,7 @@ struct DebuggerCapabilityAvailability {
     static_metadata_source_provenance_available: bool,
     static_metadata_type_inventory_available: bool,
     static_metadata_type_display_available: bool,
+    static_metadata_symbol_inventory_available: bool,
 }
 
 fn capability_reports(
@@ -1895,6 +2011,7 @@ fn capability_reports(
         static_metadata_source_provenance_available,
         static_metadata_type_inventory_available,
         static_metadata_type_display_available,
+        static_metadata_symbol_inventory_available,
     }: DebuggerCapabilityAvailability,
 ) -> Vec<DebuggerCapabilityReport> {
     [
@@ -2053,6 +2170,19 @@ fn capability_reports(
                 "static metadata type displays require explicit inventory, type-inventory, and type-display session grants plus a live BlueTS child program"
             },
         ),
+        (
+            DebuggerCapability::StaticMetadataSymbolInventory,
+            if static_metadata_symbol_inventory_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_symbol_inventory_available {
+                "bounded opaque static-metadata symbol identities are installed; symbol records remain unreadable"
+            } else {
+                "static metadata symbol identities require explicit inventory and symbol-inventory session grants plus a live BlueTS child program"
+            },
+        ),
     ]
     .into_iter()
     .map(|(capability, state, detail)| DebuggerCapabilityReport {
@@ -2094,6 +2224,10 @@ mod tests {
         }
 
         fn debugger_static_metadata_source_provenance_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_symbol_inventory_available(&self) -> bool {
             true
         }
 
@@ -2210,6 +2344,34 @@ mod tests {
             )
         }
 
+        fn debugger_static_metadata_symbols(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+            metadata_handle: u64,
+            metadata_generation: u64,
+        ) -> Result<
+            Vec<crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSymbolId>,
+            JavaScriptPageDebuggerError,
+        > {
+            if metadata_handle != 41 || metadata_generation != 9 {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            Ok(vec![
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSymbolId {
+                    symbol_id: 0,
+                },
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSymbolId {
+                    symbol_id: 1,
+                },
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSymbolId {
+                    symbol_id: 2,
+                },
+            ])
+        }
+
         fn debugger_safe_points(
             &mut self,
             _tab_id: TabId,
@@ -2323,6 +2485,10 @@ mod tests {
             report.capability == DebuggerCapability::StaticMetadataSummary
                 && report.state == DebuggerCapabilityState::Planned
         }));
+        assert!(denied_capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataSymbolInventory
+                && report.state == DebuggerCapabilityState::Planned
+        }));
         assert_eq!(
             handle_debugger_request_with_child_locations(
                 &tabs,
@@ -2408,6 +2574,87 @@ mod tests {
                 DebuggerRequest::ListStaticMetadataSources { metadata },
             ),
             unavailable_static_metadata_source_inventory()
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&metadata_session),
+                DebuggerRequest::ListStaticMetadataSymbols { metadata },
+            ),
+            unavailable_static_metadata_symbol_inventory(),
+            "symbol inventory remains default-denied under a parent-only grant"
+        );
+
+        let symbol_inventory_hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_symbol_inventory(),
+        };
+        let symbol_inventory_hello_reply = blueice_ipc::debugger::negotiate(
+            &symbol_inventory_hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_symbol_inventory(),
+        );
+        let symbol_inventory_session = blueice_ipc::debugger::metadata_session_authorization(
+            &symbol_inventory_hello,
+            &symbol_inventory_hello_reply,
+        )
+        .expect("dependent symbol inventory policy must create a core-local session authorization");
+        let symbol_inventory_capabilities = handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&symbol_inventory_session),
+            DebuggerRequest::DescribeCapabilities { realm },
+        );
+        let DebuggerReply::Capabilities(symbol_inventory_capabilities) =
+            symbol_inventory_capabilities
+        else {
+            panic!("live realm symbol inventory capability discovery must succeed")
+        };
+        assert!(symbol_inventory_capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataSymbolInventory
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&symbol_inventory_session),
+                DebuggerRequest::ListStaticMetadataSymbols { metadata },
+            ),
+            unavailable_static_metadata_symbol_inventory(),
+            "symbol inventory cannot dereference a parent handle guessed before inventory"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&symbol_inventory_session),
+                DebuggerRequest::ListStaticMetadata { program },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&symbol_inventory_session),
+                DebuggerRequest::ListStaticMetadataSymbols { metadata },
+            ),
+            DebuggerReply::StaticMetadataSymbols(vec![
+                DebuggerStaticMetadataSymbolId {
+                    metadata,
+                    symbol_id: 0,
+                },
+                DebuggerStaticMetadataSymbolId {
+                    metadata,
+                    symbol_id: 1,
+                },
+                DebuggerStaticMetadataSymbolId {
+                    metadata,
+                    symbol_id: 2,
+                },
+            ])
         );
 
         let source_inventory_hello = DebuggerRequest::Hello {

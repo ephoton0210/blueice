@@ -64,6 +64,20 @@ fn clearing_gatekeeper() -> PathBuf {
     path
 }
 
+/// Every metadata operation remains separately default-denied. Keeping these
+/// launch-time choices named prevents a positional boolean from accidentally
+/// widening the public debugger test policy as capabilities are added.
+#[derive(Default)]
+struct StaticMetadataPolicy {
+    inventory: bool,
+    summary: bool,
+    source_inventory: bool,
+    source_provenance: bool,
+    type_inventory: bool,
+    type_display: bool,
+    symbol_inventory: bool,
+}
+
 struct LauncherProcess {
     child: Child,
     rendezvous_socket: PathBuf,
@@ -74,25 +88,12 @@ struct LauncherProcess {
 
 impl LauncherProcess {
     fn spawn(gatekeeper_socket: &Path) -> Self {
-        Self::spawn_with_static_metadata_policy(
-            gatekeeper_socket,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-        )
+        Self::spawn_with_static_metadata_policy(gatekeeper_socket, StaticMetadataPolicy::default())
     }
 
     fn spawn_with_static_metadata_policy(
         gatekeeper_socket: &Path,
-        static_metadata_inventory: bool,
-        static_metadata_summary: bool,
-        static_metadata_source_inventory: bool,
-        static_metadata_source_provenance: bool,
-        static_metadata_type_inventory: bool,
-        static_metadata_type_display: bool,
+        policy: StaticMetadataPolicy,
     ) -> Self {
         let rendezvous_socket = unique_path("rendezvous");
         let control_socket = unique_path("control");
@@ -121,23 +122,26 @@ impl LauncherProcess {
             "--frame-dir",
             frame_dir.to_str().unwrap(),
         ]);
-        if static_metadata_inventory {
+        if policy.inventory {
             command.arg("--debugger-static-metadata-inventory");
         }
-        if static_metadata_summary {
+        if policy.summary {
             command.arg("--debugger-static-metadata-summary");
         }
-        if static_metadata_source_inventory {
+        if policy.source_inventory {
             command.arg("--debugger-static-metadata-source-inventory");
         }
-        if static_metadata_source_provenance {
+        if policy.source_provenance {
             command.arg("--debugger-static-metadata-source-provenance");
         }
-        if static_metadata_type_inventory {
+        if policy.type_inventory {
             command.arg("--debugger-static-metadata-type-inventory");
         }
-        if static_metadata_type_display {
+        if policy.type_display {
             command.arg("--debugger-static-metadata-type-display");
+        }
+        if policy.symbol_inventory {
+            command.arg("--debugger-static-metadata-symbol-inventory");
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
@@ -553,12 +557,15 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     let fixture = serve_two_bluets_documents(listener);
     let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
         &gatekeeper_socket,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
+        StaticMetadataPolicy {
+            inventory: true,
+            summary: true,
+            source_inventory: true,
+            source_provenance: true,
+            type_inventory: true,
+            type_display: true,
+            symbol_inventory: true,
+        },
     );
 
     let mut browser = launcher.connect_browser();
@@ -574,14 +581,14 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
                 requested_metadata_capabilities:
                     DebuggerMetadataCapabilityManifest::opaque_selected(
-                        true, true, true, true, true
+                        true, true, true, true, true, true
                     ),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_selected(
-                true, true, true, true, true
+                true, true, true, true, true, true
             ),
         }
     );
@@ -605,6 +612,11 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     }));
     assert!(capabilities.reports.iter().any(|report| {
         report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataTypeDisplay
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability
+            == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSymbolInventory
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
     assert!(capabilities.reports.iter().any(|report| {
@@ -723,6 +735,27 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             "type display must not expose source text"
         );
     }
+    let symbol_inventory_reply = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSymbols {
+            metadata: typed_metadata,
+        },
+    );
+    let DebuggerReply::StaticMetadataSymbols(symbols) = symbol_inventory_reply else {
+        panic!("expected bounded public static metadata symbol-record IDs")
+    };
+    assert_eq!(
+        symbols.len(),
+        usize::try_from(summary.symbol_count).unwrap()
+    );
+    assert!(symbols
+        .iter()
+        .all(|symbol| symbol.metadata == typed_metadata));
+    assert!(
+        !format!("{symbols:?}").contains("privateBlueTsMetadata")
+            && !format!("{symbols:?}").contains("number"),
+        "symbol IDs must not contain names, type displays, or compiler-record payload"
+    );
     assert!(
         !format!("{summary:?}").contains("privateBlueTsMetadata")
             && !format!("{summary:?}").contains("inline-0.ts")
@@ -819,6 +852,18 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             &mut debugger,
             DebuggerRequest::DescribeStaticMetadataType {
                 static_type: types[0],
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadataSymbols {
+                metadata: typed_metadata,
             },
         ),
         DebuggerReply::Error {
