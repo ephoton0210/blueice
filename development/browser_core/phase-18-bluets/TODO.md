@@ -825,9 +825,10 @@ or second module resolver to bypass them.
   output root, or write flag from its command line or socket. Real-process
   coverage proves rejected pre-`Hello` traffic cannot reach the catalog and a
   handshaken opaque `DescribeProject`/`Check` receives source-free,
-  generation-bound metadata from the core-registered closed fixture. Its v3
-  process regression also proves v1/v2 rejection, a fresh core-minted
-  per-accepted-stream session attestation, plus exact source-hash
+  generation-bound metadata from the core-registered closed fixture. Its v4
+  process regression also proves v1/v2/v3 rejection, a fresh core-minted
+  per-accepted-stream session attestation and exact fixed query-only capability
+  manifest, plus exact source-hash
   provenance/contract lookup and redacted invalid-data validation. The
   launcher now has one explicit `--compiler-mcp-socket <absolute-path>` seam:
   it validates and owns that stable public `0600` endpoint before spawning a
@@ -868,8 +869,10 @@ or second module resolver to bypass them.
   source text. It cannot use the connection to re-open startup registration.
   `bluetsc_session_capabilities` truthfully reports whether the compiler
   adapter is attached and, when it is, returns the exact opaque receipt minted
-  by the core listener for that accepted relay stream and the fixed seven
-  read-only operations. Every compiler tool echoes and requires that receipt;
+  by the core listener for that accepted relay stream together with the complete
+  core-authored v1 manifest of eight read-only operations. MCP accepts neither
+  a missing, malformed, subset, reordered, nor locally derived manifest. Every
+  compiler tool echoes and requires that receipt;
   static queries additionally require the exact generation first observed by
   `bluetsc_check` under the same receipt. A malformed core attestation,
   mismatched or unobserved generation fails source-free, and receipt/session
@@ -881,7 +884,7 @@ or second module resolver to bypass them.
   declaration/source-map/source response, and no output write or elevation.
   The delivered `bluetsc_session_capabilities` receipt/generation gate covers
   this adapter's current connection lifecycle, including core-side
-  per-accepted-stream attestation. Lowering/bytecode provenance, broader MCP
+  per-accepted-stream attestation and exact capability manifest. Lowering/bytecode provenance, broader MCP
   negotiation, and the full MCP tool set remain open.
 
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic

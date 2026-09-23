@@ -19,6 +19,7 @@ use std::io::{self, Read, Write};
 pub struct CompilerConnection<S> {
     stream: S,
     session_attestation: Option<blueice_ipc::compiler::CompilerSessionAttestation>,
+    capability_manifest: Option<blueice_ipc::compiler::CompilerSessionCapabilityManifest>,
 }
 
 impl<S: Read + Write> CompilerConnection<S> {
@@ -26,6 +27,7 @@ impl<S: Read + Write> CompilerConnection<S> {
         Self {
             stream,
             session_attestation: None,
+            capability_manifest: None,
         }
     }
 
@@ -39,6 +41,11 @@ impl<S: Read + Write> CompilerConnection<S> {
             COMPILER_PROTOCOL_VERSION,
         };
 
+        // A retry must not leave prior core evidence usable when this new
+        // negotiation fails. The connection is query-capable only after the
+        // exact acknowledgement below repopulates both values.
+        self.session_attestation = None;
+        self.capability_manifest = None;
         write_compiler_request(
             &mut self.stream,
             &CompilerRequest::Hello {
@@ -49,10 +56,13 @@ impl<S: Read + Write> CompilerConnection<S> {
             CompilerReply::HelloAck {
                 protocol_version,
                 session_attestation,
+                capability_manifest,
             } if protocol_version == COMPILER_PROTOCOL_VERSION
-                && session_attestation.is_well_formed() =>
+                && session_attestation.is_well_formed()
+                && capability_manifest.is_well_formed() =>
             {
                 self.session_attestation = Some(session_attestation);
+                self.capability_manifest = Some(capability_manifest);
                 Ok(())
             }
             CompilerReply::Error { message, .. } => Err(io::Error::other(message)),
@@ -63,12 +73,22 @@ impl<S: Read + Write> CompilerConnection<S> {
     }
 
     /// Returns the source-free core evidence minted for this exact accepted
-    /// transport stream. It is available only after a successful v3
+    /// transport stream. It is available only after a successful v4
     /// handshake, and it grants no authority beyond the stream itself.
     pub fn session_attestation(
         &self,
     ) -> Option<&blueice_ipc::compiler::CompilerSessionAttestation> {
         self.session_attestation.as_ref()
+    }
+
+    /// Returns the complete fixed query-only capability manifest selected by
+    /// the core for this accepted stream. It is never constructed from MCP
+    /// tool definitions or caller input, and remains absent after any failed
+    /// handshake.
+    pub fn capability_manifest(
+        &self,
+    ) -> Option<&blueice_ipc::compiler::CompilerSessionCapabilityManifest> {
+        self.capability_manifest.as_ref()
     }
 
     /// Returns the source-text-free description selected by the core for an
@@ -196,6 +216,12 @@ impl<S: Read + Write> CompilerConnection<S> {
         &mut self,
         request: blueice_ipc::compiler::CompilerRequest,
     ) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        if self.session_attestation.is_none() || self.capability_manifest.is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "compiler query requires a completed core-attested capability handshake",
+            ));
+        }
         blueice_ipc::compiler::write_compiler_request(&mut self.stream, &request)?;
         blueice_ipc::compiler::read_compiler_reply(&mut self.stream)
     }
@@ -253,6 +279,14 @@ mod tests {
         }
     }
 
+    fn session_evidence() -> blueice_ipc::compiler::CompilerSessionHelloEvidence {
+        blueice_ipc::compiler::CompilerSessionHelloEvidence {
+            session_attestation: session_attestation(),
+            capability_manifest:
+                blueice_ipc::compiler::CompilerSessionCapabilityManifest::fixed_query_only(),
+        }
+    }
+
     #[test]
     fn compiler_connection_checks_a_sealed_core_catalog_through_the_session_owner() {
         // The MCP client gets only the owner-minted opaque project ID. The
@@ -269,7 +303,7 @@ mod tests {
             let hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
-                &blueice_ipc::compiler::negotiate(&hello, Some(session_attestation())),
+                &blueice_ipc::compiler::negotiate(&hello, Some(session_evidence())),
             )
             .unwrap();
             let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
@@ -329,7 +363,7 @@ mod tests {
             let hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
-                &blueice_ipc::compiler::negotiate(&hello, Some(session_attestation())),
+                &blueice_ipc::compiler::negotiate(&hello, Some(session_evidence())),
             )
             .unwrap();
             for _ in 0..6 {
@@ -437,7 +471,7 @@ mod tests {
             ));
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
-                &blueice_ipc::compiler::negotiate(&hello, Some(session_attestation())),
+                &blueice_ipc::compiler::negotiate(&hello, Some(session_evidence())),
             )
             .unwrap();
 
@@ -501,6 +535,10 @@ mod tests {
             connection.session_attestation(),
             Some(&session_attestation())
         );
+        assert_eq!(
+            connection.capability_manifest(),
+            Some(&blueice_ipc::compiler::CompilerSessionCapabilityManifest::fixed_query_only())
+        );
         assert!(matches!(
             connection.check(41).unwrap(),
             blueice_ipc::compiler::CompilerReply::Error {
@@ -537,6 +575,8 @@ mod tests {
                     session_attestation: blueice_ipc::compiler::CompilerSessionAttestation {
                         id: "not-hex".to_string(),
                     },
+                    capability_manifest:
+                        blueice_ipc::compiler::CompilerSessionCapabilityManifest::fixed_query_only(),
                 },
             )
             .unwrap();
@@ -549,6 +589,48 @@ mod tests {
             "malformed core evidence must not create a usable compiler session: {error}"
         );
         assert_eq!(connection.session_attestation(), None);
+        assert_eq!(connection.capability_manifest(), None);
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn compiler_connection_rejects_a_malformed_core_capability_manifest_before_queries() {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        let worker = thread::spawn(move || {
+            let _hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
+            blueice_ipc::compiler::write_compiler_reply(
+                &mut server,
+                &blueice_ipc::compiler::CompilerReply::HelloAck {
+                    protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
+                    session_attestation: session_attestation(),
+                    capability_manifest: blueice_ipc::compiler::CompilerSessionCapabilityManifest {
+                        version: 0,
+                        operation_ids: Vec::new(),
+                    },
+                },
+            )
+            .unwrap();
+        });
+
+        let mut connection = CompilerConnection::new(client);
+        let error = connection.handshake().unwrap_err();
+        assert!(
+            error.to_string().contains("expected compiler Hello"),
+            "malformed core manifest must not create a usable compiler session: {error}"
+        );
+        assert_eq!(connection.session_attestation(), None);
+        assert_eq!(connection.capability_manifest(), None);
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn compiler_connection_rejects_queries_before_a_core_capability_handshake() {
+        let (client, _server) = UnixStream::pair().unwrap();
+        let mut connection = CompilerConnection::new(client);
+        let error = connection.check(1).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::NotConnected);
+        assert!(error
+            .to_string()
+            .contains("core-attested capability handshake"));
     }
 }

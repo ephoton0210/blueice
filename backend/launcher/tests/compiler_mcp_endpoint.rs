@@ -165,12 +165,14 @@ fn open_fixed_core_profile(
     let CompilerReply::HelloAck {
         protocol_version,
         session_attestation,
+        capability_manifest,
     } = read_compiler_reply(&mut stream).unwrap()
     else {
         panic!("fixed core profile must mint an attested compiler stream")
     };
     assert_eq!(protocol_version, COMPILER_PROTOCOL_VERSION);
     assert!(session_attestation.is_well_formed());
+    assert!(capability_manifest.is_well_formed());
     write_compiler_request(
         &mut stream,
         &CompilerRequest::Check {

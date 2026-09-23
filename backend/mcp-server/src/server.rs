@@ -982,12 +982,16 @@ struct CompilerMcpSessionReceipt {
     id: String,
     compiler_protocol_version: u32,
     binding: &'static str,
-    capabilities: [&'static str; 7],
+    /// The complete core-authored query-only vocabulary for this accepted
+    /// stream. MCP copies it after strict validation; it never derives this
+    /// manifest from its local tool router.
+    capability_manifest: blueice_ipc::compiler::CompilerSessionCapabilityManifest,
 }
 
 impl CompilerMcpSessionReceipt {
     fn from_core(
         session_attestation: blueice_ipc::compiler::CompilerSessionAttestation,
+        capability_manifest: blueice_ipc::compiler::CompilerSessionCapabilityManifest,
     ) -> io::Result<Self> {
         if !session_attestation.is_well_formed() {
             return Err(io::Error::new(
@@ -995,19 +999,17 @@ impl CompilerMcpSessionReceipt {
                 "core returned an invalid compiler session attestation",
             ));
         }
+        if !capability_manifest.is_well_formed() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "core returned an invalid compiler capability manifest",
+            ));
+        }
         Ok(Self {
             id: session_attestation.id,
             compiler_protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
             binding: "one core-attested compiler IPC stream pinned by the launcher relay; a cutover closes this stream rather than retargeting it",
-            capabilities: [
-                "check registered opaque project",
-                "list bounded static metadata",
-                "read static type",
-                "read static symbol",
-                "read static provenance",
-                "read static contract",
-                "validate bounded JSON against static contract",
-            ],
+            capability_manifest,
         })
     }
 }
@@ -1033,9 +1035,18 @@ impl CompilerMcpAdapter {
                 "compiler connection has no completed core-attested handshake",
             )
         })?;
+        let capability_manifest = connection.capability_manifest().cloned().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotConnected,
+                "compiler connection has no completed core capability manifest",
+            )
+        })?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
-            receipt: CompilerMcpSessionReceipt::from_core(session_attestation)?,
+            receipt: CompilerMcpSessionReceipt::from_core(
+                session_attestation,
+                capability_manifest,
+            )?,
             observed_generations: Arc::new(Mutex::new(BTreeMap::new())),
         })
     }
@@ -1182,6 +1193,7 @@ fn compiler_session_capabilities_result(compiler: Option<&CompilerMcpAdapter>) -
             "session": compiler.receipt,
             "limitations": [
                 "The receipt binds this MCP adapter to its one accepted compiler IPC stream.",
+                "Its capability_manifest is copied from the core after exact validation; MCP does not derive or narrow that vocabulary.",
                 "Call bluetsc_check with this receipt before static metadata queries; each such query must repeat the exact observed generation.",
                 "No registration, source/path/resolver/options/update/build/artifact/output-write capability is installed.",
             ],
@@ -1553,7 +1565,7 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
-        description = "Report whether this MCP server has an explicitly attached query-only compiler adapter, its opaque MCP session receipt, and its fixed source-free capabilities. If available, pass the returned session.id unchanged to every compiler tool and call bluetsc_check before static metadata queries. The receipt identifies this one accepted compiler IPC stream; it grants no project registration, source/path/resolver/options/update/build/artifact/output-write authority."
+        description = "Report whether this MCP server has an explicitly attached query-only compiler adapter, its opaque MCP session receipt, and its core-authored fixed source-free capability manifest. If available, pass the returned session.id unchanged to every compiler tool and call bluetsc_check before static metadata queries. The receipt identifies this one accepted compiler IPC stream; it grants no project registration, source/path/resolver/options/update/build/artifact/output-write authority."
     )]
     async fn bluetsc_session_capabilities(&self) -> Result<CallToolResult, ErrorData> {
         Ok(compiler_session_capabilities_result(self.compiler.as_ref()))
@@ -1878,7 +1890,8 @@ impl ServerHandler for BlueIceMcpServer {
                  core-owned registered-project compiler endpoint. When available, repeat its opaque session receipt on \
                  bluetsc_check, debug_list_static_metadata, debug_get_type, debug_get_symbol, debug_get_provenance, \
                  debug_get_contract and debug_validate_contract. A successful check records an exact generation for that \
-                 one accepted compiler stream; static queries reject a different receipt or a generation not observed by \
+                 one accepted compiler stream. Its receipt includes the complete core-authored capability manifest; MCP \
+                 neither derives nor narrows that vocabulary. Static queries reject a different receipt or a generation not observed by \
                  that session. The tools expose only opaque-handle, source-text-free check/static metadata. Inventory \
                  pagination uses exact-generation-bound one-shot cursors; contract \
                  validation accepts bounded JSON data only and never evaluates JavaScript; it is available only where \
@@ -1907,7 +1920,14 @@ mod tests {
             let hello = blueice_ipc::compiler::read_compiler_request(&mut core).unwrap();
             blueice_ipc::compiler::write_compiler_reply(
                 &mut core,
-                &blueice_ipc::compiler::negotiate(&hello, Some(core_attestation)),
+                &blueice_ipc::compiler::negotiate(
+                    &hello,
+                    Some(blueice_ipc::compiler::CompilerSessionHelloEvidence {
+                        session_attestation: core_attestation,
+                        capability_manifest:
+                            blueice_ipc::compiler::CompilerSessionCapabilityManifest::fixed_query_only(),
+                    }),
+                ),
             )
             .unwrap();
         });
@@ -1916,6 +1936,7 @@ mod tests {
         connection.handshake().unwrap();
         let adapter = CompilerMcpAdapter::new(connection).unwrap();
         assert_eq!(adapter.receipt.id, expected_attestation.id);
+        assert!(adapter.receipt.capability_manifest.is_well_formed());
         assert_eq!(
             adapter.receipt.binding,
             "one core-attested compiler IPC stream pinned by the launcher relay; a cutover closes this stream rather than retargeting it"
@@ -1929,15 +1950,8 @@ mod tests {
             id: "a".repeat(64),
             compiler_protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
             binding: "test compiler stream",
-            capabilities: [
-                "check registered opaque project",
-                "list bounded static metadata",
-                "read static type",
-                "read static symbol",
-                "read static provenance",
-                "read static contract",
-                "validate bounded JSON against static contract",
-            ],
+            capability_manifest:
+                blueice_ipc::compiler::CompilerSessionCapabilityManifest::fixed_query_only(),
         };
         let generation = blueice_ipc::compiler::CompilerGeneration {
             project: blueice_ipc::compiler::CompilerProject { id: 7 },

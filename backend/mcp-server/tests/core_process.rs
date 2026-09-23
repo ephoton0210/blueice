@@ -89,11 +89,28 @@ fn compiler_session_id(result: &rmcp::model::CallToolResult) -> String {
             blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION
         ))
     );
-    let capabilities = session
-        .get("capabilities")
+    let manifest = session
+        .get("capability_manifest")
+        .expect("session receipt must expose the core-authored capability manifest");
+    assert_eq!(
+        manifest.get("version"),
+        Some(&serde_json::json!(
+            blueice_ipc::compiler::COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION
+        ))
+    );
+    let operation_ids = manifest
+        .get("operation_ids")
         .and_then(serde_json::Value::as_array)
-        .expect("session receipt must expose its fixed read-only capabilities");
-    assert_eq!(capabilities.len(), 7);
+        .expect("capability manifest must expose its complete query vocabulary");
+    assert_eq!(operation_ids.len(), 8);
+    assert_eq!(
+        operation_ids.first(),
+        Some(&serde_json::json!("describe-project"))
+    );
+    assert_eq!(
+        operation_ids.last(),
+        Some(&serde_json::json!("validate-static-contract"))
+    );
     assert!(
         !text.contains("coreRegisteredAnswer") && !text.contains("core-fixture-dist"),
         "capability result must remain source/output-free: {text}"
