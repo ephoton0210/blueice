@@ -145,12 +145,35 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     })
 }
 
-fn request_default_tab_representation(
+fn request_tab_representation(
     tx: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: Option<u64>,
 ) -> Result<String, String> {
     let (reply_tx, reply_rx) = mpsc::channel();
-    tx.send(ExtensionPageRequest::ReadDefaultTabRepresentation { reply: reply_tx })
-        .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    tx.send(ExtensionPageRequest::ReadRepresentation {
+        tab_id,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
+fn request_text_input_value(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: u64,
+    node_id: u64,
+    value: String,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::SetTextInputValue {
+        tab_id,
+        node_id,
+        value,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
     reply_rx
         .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
@@ -176,12 +199,15 @@ fn spawn_extension_listener(
                     &registry,
                     &gatekeeper_socket,
                     &mut stream,
-                    || request_default_tab_representation(&request_tx),
-                    |_, _| {
-                        Err(
-                            "core-backed dom:write needs a stable target node; the current extension wire protocol does not carry one"
+                    |tab_id| request_tab_representation(&request_tx, tab_id),
+                    |target, value, _| match target {
+                        Some((tab_id, node_id)) => {
+                            request_text_input_value(&request_tx, tab_id, node_id, value)
+                        }
+                        None => Err(
+                            "core-backed legacy dom:write has no stable target node; negotiate dom:write version 2 and use SetTextInputValue"
                                 .to_string(),
-                        )
+                        ),
                     },
                     || {
                         Err(

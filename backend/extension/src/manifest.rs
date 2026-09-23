@@ -469,11 +469,11 @@ mod tests {
         let extension = load_installed_extension(&path).unwrap();
         let registry = registry_for_installed_extension(&extension);
         assert_eq!(
-            registry.unsupported_capability_version(CAPABILITY_DOM_READ, 2),
+            registry.unsupported_capability_version(CAPABILITY_DOM_READ, 3),
             Some(
                 blueice_ipc::extension::UnsupportedCapabilityVersion::OutsideSupportedRange {
                     min_inclusive: 1,
-                    max_inclusive: 1,
+                    max_inclusive: 2,
                 }
             )
         );

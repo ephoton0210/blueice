@@ -88,14 +88,20 @@ pub trait ReadTimeout {
 /// without ever sharing `Page` across threads or taking a mutable lock around
 /// the render pipeline.
 ///
-/// This first core bridge intentionally exposes only the default tab's
-/// AI-facing representation. The current extension wire protocol has no tab
-/// target, stable write-node ID, or interception-rule form; accepting a
-/// request that cannot be applied faithfully would be less safe than leaving
-/// it unavailable at the host boundary.
+/// Version 1 requests leave `tab_id` absent and therefore preserve the
+/// default-tab behavior. Version 2 carries an explicit tab and, for its
+/// narrow write operation, a stable text-input node ID. The session validates
+/// both against its live `TabManager`/`Page` before changing anything.
 pub enum ExtensionPageRequest {
-    ReadDefaultTabRepresentation {
+    ReadRepresentation {
+        tab_id: Option<u64>,
         reply: mpsc::Sender<Result<String, String>>,
+    },
+    SetTextInputValue {
+        tab_id: u64,
+        node_id: u64,
+        value: String,
+        reply: mpsc::Sender<Result<(), String>>,
     },
 }
 
@@ -765,23 +771,40 @@ pub fn run_session_with_script_and_extension_requests<S: Read + Write + ReadTime
 
         if let Some(extension_requests) = extension_requests {
             while let Ok(request) = extension_requests.try_recv() {
-                handle_extension_page_request(tabs, request);
+                handle_extension_page_request(
+                    tabs,
+                    stream,
+                    frame_dir,
+                    generation,
+                    script_scheduler,
+                    request,
+                )?;
             }
         }
     }
 }
 
-/// Applies a request received from the extension host. It has no access to a
-/// client stream and therefore cannot emit an unsolicited frontend reply;
-/// instead the typed one-shot response gives the extension connection exactly
-/// one answer while keeping this session loop the only owner of page state.
-fn handle_extension_page_request(tabs: &TabManager, request: ExtensionPageRequest) {
+/// Applies a request received from the extension host. An accepted write
+/// produces the same uncorrelated fresh frame that other background-originated
+/// core work does, so every connected observer sees the core-owned mutation.
+/// The typed one-shot response then gives the extension connection one answer
+/// while keeping this session loop the only owner of page state.
+fn handle_extension_page_request<S: Write>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    script_scheduler: &mut dyn ScriptScheduler,
+    request: ExtensionPageRequest,
+) -> io::Result<()> {
     match request {
-        ExtensionPageRequest::ReadDefaultTabRepresentation { reply } => {
-            let tab_id = tabs.default_tab();
+        ExtensionPageRequest::ReadRepresentation { tab_id, reply } => {
+            let tab_id = tab_id
+                .map(TabId::from_u64)
+                .unwrap_or_else(|| tabs.default_tab());
             let result = tabs
                 .get(tab_id)
-                .ok_or_else(|| "the default tab is not open".to_string())
+                .ok_or_else(|| format!("unknown tab {}", tab_id.as_u64()))
                 .and_then(|page| {
                     serde_json::to_string(&page.snapshot(page.frame_generation(), tab_id.as_u64()))
                         .map_err(|error| {
@@ -790,7 +813,39 @@ fn handle_extension_page_request(tabs: &TabManager, request: ExtensionPageReques
                 });
             let _ = reply.send(result);
         }
+        ExtensionPageRequest::SetTextInputValue {
+            tab_id,
+            node_id,
+            value,
+            reply,
+        } => {
+            let tab_id = TabId::from_u64(tab_id);
+            let node_id = NodeId::from_u64(node_id);
+            let result = match tabs.get_mut(tab_id) {
+                Some(page) => page.set_text_input_value(node_id, value),
+                None => Err(format!("unknown tab {}", tab_id.as_u64())),
+            };
+            if result.is_ok() {
+                // Mirror first-party SetValue: script listeners observe the
+                // core-owned new value before observers receive its frame.
+                let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "input");
+                let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "change");
+                let page = tabs
+                    .get_mut(tab_id)
+                    .expect("a checked extension target tab remains live");
+                send_frame(
+                    page,
+                    stream,
+                    frame_dir,
+                    generation,
+                    Some(tab_id.as_u64()),
+                    None,
+                )?;
+            }
+            let _ = reply.send(result);
+        }
     }
+    Ok(())
 }
 
 struct NoScriptScheduler;
@@ -1699,7 +1754,10 @@ mod tests {
 
         let (reply_tx, reply_rx) = mpsc::channel();
         extension_tx
-            .send(ExtensionPageRequest::ReadDefaultTabRepresentation { reply: reply_tx })
+            .send(ExtensionPageRequest::ReadRepresentation {
+                tab_id: None,
+                reply: reply_tx,
+            })
             .unwrap();
         let encoded = reply_rx
             .recv_timeout(Duration::from_secs(1))
@@ -1711,6 +1769,86 @@ mod tests {
         assert!(
             !snapshot.nodes.is_empty(),
             "the core-backed snapshot must be from the navigated credits page, not the empty initial tab"
+        );
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        handle.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(cleanup_dir);
+    }
+
+    #[test]
+    fn extension_v2_text_write_updates_the_addressed_input_and_pushes_a_frame() {
+        let (mut client, mut server) = client_pair();
+        let (extension_tx, extension_rx) = mpsc::channel();
+        let dir = temp_frame_dir("extension-v2-text-write");
+        let cleanup_dir = dir.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let tab_id = tabs.default_tab();
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            r#"<label for="shared">Shared field</label><input id="shared" type="text" value="before">"#,
+            Some("https://example.test/form".to_string()),
+        );
+        let input_id = tabs
+            .get(tab_id)
+            .unwrap()
+            .script_get_element_by_id("shared")
+            .unwrap();
+        let gatekeeper = PathBuf::from("/not-used-after-host-review");
+        let handle = thread::spawn(move || {
+            let mut generation = 0;
+            run_session_with_extension_requests(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper,
+                &extension_rx,
+            )
+        });
+
+        blueice_ipc::client_handshake(&mut client).unwrap();
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::SetTextInputValue {
+                tab_id: tab_id.as_u64(),
+                node_id: input_id.as_u64(),
+                value: "from extension".to_string(),
+                reply: reply_tx,
+            })
+            .unwrap();
+        reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the live session must answer the extension write")
+            .expect("the addressed text input must accept the value");
+        let (reply_tab, request_id, frame) =
+            blueice_ipc::read_server_message_with_ids(&mut client).unwrap();
+        assert_eq!(reply_tab, Some(tab_id.as_u64()));
+        assert_eq!(request_id, None);
+        assert!(matches!(frame, ServerMessage::FrameReady { .. }));
+
+        let (read_tx, read_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadRepresentation {
+                tab_id: Some(tab_id.as_u64()),
+                reply: read_tx,
+            })
+            .unwrap();
+        let snapshot: blueice_ipc::AiSnapshot = serde_json::from_str(
+            &read_rx
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(snapshot.tab_id, tab_id.as_u64());
+        assert_eq!(
+            snapshot
+                .nodes
+                .iter()
+                .find(|node| node.id == input_id.as_u64())
+                .and_then(|node| node.state.value.as_deref()),
+            Some("from extension")
         );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();

@@ -68,6 +68,11 @@ pub enum ExtensionRequest {
     /// explicit future protocol extension rather than an implicit "active
     /// tab" convention.
     DomRead,
+    /// Version 2 of `dom:read`: returns the AI-facing representation of the
+    /// explicit core tab. An extension that negotiated only `dom:read` v1
+    /// must keep using [`Self::DomRead`], preserving the original default-tab
+    /// behavior rather than gaining a new addressing convention silently.
+    DomReadTab { tab_id: u64 },
     /// Mutate something DOM-shaped -- requires the `dom:write`
     /// capability, deliberately not granted to this minimal slice's one
     /// hardcoded extension, so this is the request that proves
@@ -80,6 +85,17 @@ pub enum ExtensionRequest {
         value: String,
         #[serde(default)]
         target: DomWriteTarget,
+    },
+    /// Version 2 of `dom:write`: changes the value of one explicit, supported
+    /// native text input in one explicit tab. This is intentionally not a
+    /// generic DOM-mutation language: core validates both IDs and the input
+    /// type before it changes its own document. Every invocation receives
+    /// gatekeeper review; no extension-provided field-type label is trusted
+    /// to decide whether the operation is high-risk.
+    SetTextInputValue {
+        tab_id: u64,
+        node_id: u64,
+        value: String,
     },
     /// Registers a network interception rule -- requires the
     /// `network:intercept` capability. Registering interception at all
@@ -270,6 +286,7 @@ mod tests {
                 capability_versions: BTreeMap::new(),
             },
             ExtensionRequest::DomRead,
+            ExtensionRequest::DomReadTab { tab_id: 42 },
             ExtensionRequest::DomWrite {
                 value: "new content".to_string(),
                 target: DomWriteTarget::Document,
@@ -279,6 +296,11 @@ mod tests {
                 target: DomWriteTarget::FormInput {
                     input_type: "password".to_string(),
                 },
+            },
+            ExtensionRequest::SetTextInputValue {
+                tab_id: 42,
+                node_id: 99,
+                value: "shared value".to_string(),
             },
             ExtensionRequest::NetworkIntercept,
         ] {

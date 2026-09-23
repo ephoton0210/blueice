@@ -327,6 +327,48 @@ impl Page {
         }
     }
 
+    /// Sets the value of a real, supported native text input for the
+    /// extension protocol's versioned `dom:write` operation. Unlike the
+    /// broader first-party [`NodeAction::SetValue`] compatibility action,
+    /// this external boundary verifies that the target is a live `<input>`
+    /// with no `type` or `type=text`; an extension cannot use an AI node ID to
+    /// smuggle a value attribute onto arbitrary document content or a
+    /// sensitive input type.
+    pub(crate) fn set_text_input_value(&mut self, id: NodeId, value: String) -> Result<(), String> {
+        if !self.doc.contains(id) {
+            return Err(format!("unknown text input node {}", id.as_u64()));
+        }
+        let is_supported_text_input = matches!(
+            self.doc.data(id),
+            NodeData::Element {
+                tag_name,
+                attributes,
+            } if tag_name.eq_ignore_ascii_case("input")
+                && attributes
+                    .iter()
+                    .find(|(name, _)| name.eq_ignore_ascii_case("type"))
+                    .is_none_or(|(_, input_type)| input_type.eq_ignore_ascii_case("text"))
+        );
+        if !is_supported_text_input {
+            return Err(format!(
+                "node {} is not a supported text input",
+                id.as_u64()
+            ));
+        }
+        let NodeData::Element { attributes, .. } = self.doc.data_mut(id) else {
+            unreachable!("a checked input node remains an element");
+        };
+        match attributes
+            .iter_mut()
+            .find(|(name, _)| name.eq_ignore_ascii_case("value"))
+        {
+            Some((_, existing)) => *existing = value,
+            None => attributes.push(("value".to_string(), value)),
+        }
+        self.relayout();
+        Ok(())
+    }
+
     /// Resolves an anchor's raw `href` using the current document URL.
     /// Test-only pages and built-in pages may have no usable hierarchical
     /// base; in that case preserve the raw target, so the session's normal
@@ -1144,6 +1186,41 @@ mod tests {
         );
         let snapshot = page.snapshot(1, 1);
         assert_eq!(snapshot.nodes[0].state.value.as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn extension_text_input_write_only_accepts_live_supported_text_inputs() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"<input id="text"><input id="password" type="password"><div id="other"></div>"#,
+            None,
+        );
+        let text = page.script_get_element_by_id("text").unwrap();
+        let password = page.script_get_element_by_id("password").unwrap();
+        let other = page.script_get_element_by_id("other").unwrap();
+
+        page.set_text_input_value(text, "from extension".to_string())
+            .unwrap();
+        assert_eq!(
+            page.snapshot(1, 1)
+                .nodes
+                .iter()
+                .find(|node| node.id == text.as_u64())
+                .and_then(|node| node.state.value.as_deref()),
+            Some("from extension")
+        );
+        assert!(
+            page.set_text_input_value(password, "must not write".to_string())
+                .is_err()
+        );
+        assert!(
+            page.set_text_input_value(other, "must not write".to_string())
+                .is_err()
+        );
+        assert!(
+            page.set_text_input_value(NodeId::from_u64(9_999), "stale".to_string())
+                .is_err()
+        );
     }
 
     #[test]

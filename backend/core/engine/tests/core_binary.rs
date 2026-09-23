@@ -72,7 +72,10 @@ fn sibling_bluejs_binary() -> PathBuf {
     core.parent().unwrap().join("bluejs")
 }
 
-fn extension_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
+fn extension_manifest_package(
+    label: &str,
+    declared_capabilities: &[&str],
+) -> (PathBuf, PathBuf, String) {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let ordinal = NEXT.fetch_add(1, Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!(
@@ -82,9 +85,16 @@ fn extension_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     let manifest = root.join("extension.json");
+    let declared_capabilities = declared_capabilities
+        .iter()
+        .map(|capability| format!("\"{capability}\""))
+        .collect::<Vec<_>>()
+        .join(",");
     std::fs::write(
         &manifest,
-        r#"{"name":"Core bridge test","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read"]}}"#,
+        format!(
+            r#"{{"name":"Core bridge test","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{{"declared":[{declared_capabilities}]}}}}"#
+        ),
     )
     .unwrap();
     std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
@@ -271,7 +281,8 @@ fn installed_extension_reads_a_real_core_owned_representation_over_private_socke
         "blueice-core-extension-frames-{}",
         std::process::id()
     ));
-    let (package_root, manifest, extension_id) = extension_manifest_package("real-read");
+    let (package_root, manifest, extension_id) =
+        extension_manifest_package("real-read", &["dom:read"]);
     let _ = std::fs::remove_file(&core_socket);
     let _ = std::fs::remove_file(&extension_socket);
     let _ = std::fs::remove_dir_all(&frame_dir);
@@ -346,6 +357,165 @@ fn installed_extension_reads_a_real_core_owned_representation_over_private_socke
     assert!(!extension_socket.exists());
     assert!(!frame_dir.exists());
     let _ = std::fs::remove_dir_all(package_root);
+}
+
+#[test]
+fn installed_extension_v2_writes_an_explicit_text_input_after_gatekeeper_review() {
+    use blueice_ipc::extension::{
+        ExtensionReply, ExtensionRequest, read_extension_reply, write_extension_request,
+    };
+    use std::collections::BTreeMap;
+
+    // macOS leaves little room below its long per-user temporary root; the
+    // PID in `unique_socket_path` still keeps these concise leaves unique.
+    let core_socket = unique_socket_path("ev2c");
+    let extension_socket = unique_socket_path("ev2e");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-extension-v2-frames-{}",
+        std::process::id()
+    ));
+    let (package_root, manifest, extension_id) =
+        extension_manifest_package("real-write", &["dom:read", "dom:write"]);
+    let gatekeeper_socket = clearing_gatekeeper("ev2g");
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 1024];
+        let _ = stream.read(&mut buf);
+        let body = r#"<label for="shared">Shared value</label><input id="shared" type="text" value="before">"#;
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    });
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .spawn()
+        .expect("failed to spawn core with a v2 installed extension");
+
+    assert!(wait_for(&core_socket, Duration::from_secs(5)));
+    assert!(wait_for(&extension_socket, Duration::from_secs(5)));
+    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: format!("http://{addr}"),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::GetRepresentation,
+    )
+    .unwrap();
+    let input_id = match blueice_ipc::read_server_message(&mut frontend).unwrap() {
+        blueice_ipc::ServerMessage::Representation(snapshot) => {
+            snapshot
+                .nodes
+                .into_iter()
+                .find(|node| matches!(node.role, blueice_ipc::Role::TextBox))
+                .expect("the navigated form must expose its text input")
+                .id
+        }
+        other => panic!("expected the input representation, got {other:?}"),
+    };
+
+    let mut extension = UnixStream::connect(&extension_socket).unwrap();
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::Hello {
+            extension_id,
+            capability_versions: BTreeMap::from([
+                ("dom:read".to_string(), 2),
+                ("dom:write".to_string(), 2),
+            ]),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::SetTextInputValue {
+            tab_id: 1,
+            node_id: input_id,
+            value: "from extension v2".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::DomWriteAck
+    );
+    let (reply_tab, request_id, frame) =
+        blueice_ipc::read_server_message_with_ids(&mut frontend).unwrap();
+    assert_eq!(reply_tab, Some(1));
+    assert_eq!(request_id, None);
+    assert!(matches!(
+        frame,
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+
+    write_extension_request(&mut extension, &ExtensionRequest::DomReadTab { tab_id: 1 }).unwrap();
+    let snapshot = match read_extension_reply(&mut extension).unwrap() {
+        ExtensionReply::DomReadResult { value } => {
+            serde_json::from_str::<blueice_ipc::AiSnapshot>(&value).unwrap()
+        }
+        other => panic!("expected the written core snapshot, got {other:?}"),
+    };
+    assert_eq!(snapshot.tab_id, 1);
+    assert_eq!(
+        snapshot
+            .nodes
+            .iter()
+            .find(|node| node.id == input_id)
+            .and_then(|node| node.state.value.as_deref()),
+        Some("from extension v2")
+    );
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(core.wait().unwrap().success());
+    assert!(!core_socket.exists());
+    assert!(!extension_socket.exists());
+    assert!(!frame_dir.exists());
+    let _ = std::fs::remove_dir_all(package_root);
+    let _ = std::fs::remove_file(gatekeeper_socket);
 }
 
 #[test]

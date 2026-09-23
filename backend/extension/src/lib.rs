@@ -162,8 +162,9 @@ impl ExtensionRegistry {
     pub fn with_supported_capabilities() -> Self {
         let mut registry = Self::new();
         let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
-        registry.register_capability_version_window(CAPABILITY_DOM_READ, v1);
-        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1);
+        let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
+        registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
+        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1);
         registry
     }
@@ -254,7 +255,7 @@ impl ExtensionRegistry {
 /// half of an authorization decision in a later request.
 struct ConnectionIdentity {
     extension_id: String,
-    negotiated_capabilities: HashSet<String>,
+    negotiated_capabilities: BTreeMap<String, u32>,
 }
 
 fn negotiate_hello(
@@ -264,8 +265,8 @@ fn negotiate_hello(
 ) -> (ConnectionIdentity, ExtensionReply) {
     let unsupported_capabilities = registry.unsupported_capability_versions(&capability_versions);
     let negotiated_capabilities = capability_versions
-        .into_keys()
-        .filter(|capability| !unsupported_capabilities.contains_key(capability))
+        .into_iter()
+        .filter(|(capability, _)| !unsupported_capabilities.contains_key(capability))
         .collect();
 
     (
@@ -283,10 +284,17 @@ fn capability_denial_reason(
     registry: &ExtensionRegistry,
     identity: &ConnectionIdentity,
     capability: &str,
+    minimum_version: u32,
 ) -> Option<String> {
-    if !identity.negotiated_capabilities.contains(capability) {
+    let Some(version) = identity.negotiated_capabilities.get(capability) else {
         return Some(format!(
             "{} did not negotiate a supported version of {capability}",
+            identity.extension_id
+        ));
+    };
+    if *version < minimum_version {
+        return Some(format!(
+            "{} negotiated {capability} version {version}, but this request requires version {minimum_version}",
             identity.extension_id
         ));
     }
@@ -380,8 +388,8 @@ pub fn handle_extension_connection_with_gatekeeper<S: Read + Write>(
         registry,
         gatekeeper_socket,
         stream,
-        || Ok(PLACEHOLDER_DOM_READ_VALUE.to_string()),
-        |_, _| Ok(()),
+        |_| Ok(PLACEHOLDER_DOM_READ_VALUE.to_string()),
+        |_, _, _| Ok(()),
         || Ok(()),
     )
 }
@@ -407,8 +415,12 @@ pub fn handle_extension_connection_with_actions<S, R, W, N>(
 ) -> io::Result<()>
 where
     S: Read + Write,
-    R: FnMut() -> Result<String, String>,
-    W: FnMut(String, &blueice_ipc::extension::DomWriteTarget) -> Result<(), String>,
+    R: FnMut(Option<u64>) -> Result<String, String>,
+    W: FnMut(
+        Option<(u64, u64)>,
+        String,
+        &blueice_ipc::extension::DomWriteTarget,
+    ) -> Result<(), String>,
     N: FnMut() -> Result<(), String>,
 {
     let mut identity = match read_extension_request(stream) {
@@ -441,7 +453,7 @@ where
             }
             ExtensionRequest::DomRead => {
                 if let Some(reason) =
-                    capability_denial_reason(registry, &identity, CAPABILITY_DOM_READ)
+                    capability_denial_reason(registry, &identity, CAPABILITY_DOM_READ, 1)
                 {
                     write_extension_reply(
                         stream,
@@ -451,7 +463,33 @@ where
                         },
                     )?;
                 } else {
-                    match read_dom() {
+                    match read_dom(None) {
+                        Ok(value) => {
+                            write_extension_reply(stream, &ExtensionReply::DomReadResult { value })?
+                        }
+                        Err(reason) => write_extension_reply(
+                            stream,
+                            &ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_DOM_READ.to_string(),
+                                reason,
+                            },
+                        )?,
+                    }
+                }
+            }
+            ExtensionRequest::DomReadTab { tab_id } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_DOM_READ, 2)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_DOM_READ.to_string(),
+                            reason,
+                        },
+                    )?;
+                } else {
+                    match read_dom(Some(tab_id)) {
                         Ok(value) => {
                             write_extension_reply(stream, &ExtensionReply::DomReadResult { value })?
                         }
@@ -467,7 +505,7 @@ where
             }
             ExtensionRequest::DomWrite { value, target } => {
                 if let Some(reason) =
-                    capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE)
+                    capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE, 1)
                 {
                     write_extension_reply(
                         stream,
@@ -485,7 +523,7 @@ where
                             "only gatekeeper-triggering targets reach extension action review",
                         ),
                     ) {
-                        Ok(GatekeeperReply::Cleared) => match write_dom(value, &target) {
+                        Ok(GatekeeperReply::Cleared) => match write_dom(None, value, &target) {
                             Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
                             Err(reason) => write_extension_reply(
                                 stream,
@@ -517,7 +555,7 @@ where
                         }
                     }
                 } else {
-                    match write_dom(value, &target) {
+                    match write_dom(None, value, &target) {
                         Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
                         Err(reason) => write_extension_reply(
                             stream,
@@ -529,9 +567,72 @@ where
                     }
                 }
             }
+            ExtensionRequest::SetTextInputValue {
+                tab_id,
+                node_id,
+                value,
+            } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE, 2)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_DOM_WRITE.to_string(),
+                            reason,
+                        },
+                    )?;
+                    continue;
+                }
+                // The v2 operation has one safe semantic shape: set a
+                // text-input value. Review is unconditional, so an extension
+                // cannot under-classify a sensitive target through metadata.
+                match check_extension_action(
+                    gatekeeper_socket,
+                    &identity.extension_id,
+                    CAPABILITY_DOM_WRITE,
+                    "action=set-text-input-value".to_string(),
+                ) {
+                    Ok(GatekeeperReply::Cleared) => {
+                        let target = blueice_ipc::extension::DomWriteTarget::FormInput {
+                            input_type: "text".to_string(),
+                        };
+                        match write_dom(Some((tab_id, node_id)), value, &target) {
+                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
+                            Err(reason) => write_extension_reply(
+                                stream,
+                                &ExtensionReply::OperationUnavailable {
+                                    capability: CAPABILITY_DOM_WRITE.to_string(),
+                                    reason,
+                                },
+                            )?,
+                        }
+                    }
+                    Ok(GatekeeperReply::Rejected { reason, category }) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_DOM_WRITE.to_string(),
+                                reason,
+                                category,
+                            },
+                        )?;
+                    }
+                    Err(reason) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_DOM_WRITE.to_string(),
+                                reason,
+                                category: "gatekeeper-unavailable".to_string(),
+                            },
+                        )?;
+                    }
+                }
+            }
             ExtensionRequest::NetworkIntercept => {
                 if let Some(reason) =
-                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT)
+                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 1)
                 {
                     write_extension_reply(
                         stream,
@@ -745,7 +846,7 @@ mod tests {
 
         write_extension_request(
             &mut client,
-            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 2)]),
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 3)]),
         )
         .unwrap();
         assert_eq!(
@@ -755,7 +856,7 @@ mod tests {
                     CAPABILITY_DOM_READ.to_string(),
                     UnsupportedCapabilityVersion::OutsideSupportedRange {
                         min_inclusive: 1,
-                        max_inclusive: 1
+                        max_inclusive: 2
                     },
                 )]),
             }
@@ -772,6 +873,172 @@ mod tests {
 
         drop(client);
         handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn v2_tab_reads_are_denied_after_a_v1_handshake_but_v1_reads_keep_working() {
+        let registry = ExtensionRegistry::minimal_slice();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_READ, 1)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(&mut client, &ExtensionRequest::DomReadTab { tab_id: 2 }).unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, reason } => {
+                assert_eq!(capability, CAPABILITY_DOM_READ);
+                assert!(reason.contains("requires version 2"));
+            }
+            other => panic!("expected a v2 version denial, got {other:?}"),
+        }
+        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomReadResult {
+                value: PLACEHOLDER_DOM_READ_VALUE.to_string()
+            }
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn v2_text_input_write_is_reviewed_and_delegated_with_its_explicit_ids() {
+        let registry = registry_with_dom_write_granted();
+        let (gatekeeper_socket, gatekeeper) =
+            start_gatekeeper("clear-v2-text-input", GatekeeperReply::Cleared);
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                &socket_for_handler,
+                &mut server,
+                |_| Ok("unused in this test".to_string()),
+                move |target, value, _| {
+                    seen_tx.send((target, value)).unwrap();
+                    Ok(())
+                },
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 2)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetTextInputValue {
+                tab_id: 7,
+                node_id: 11,
+                value: "core-owned value".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomWriteAck
+        );
+        assert_eq!(
+            seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            (Some((7, 11)), "core-owned value".to_string())
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_DOM_WRITE.to_string(),
+                detail: "action=set-text-input-value".to_string(),
+            }
+        );
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v2_text_input_write_a_gatekeeper_rejects_never_reaches_the_delegate() {
+        let registry = registry_with_dom_write_granted();
+        let (gatekeeper_socket, gatekeeper) = start_gatekeeper(
+            "reject-v2-text-input",
+            GatekeeperReply::Rejected {
+                reason: "external input mutation needs confirmation".to_string(),
+                category: "sensitive-extension-action".to_string(),
+            },
+        );
+        let delegated = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let delegated_for_handler = std::sync::Arc::clone(&delegated);
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                &socket_for_handler,
+                &mut server,
+                |_| Ok("unused in this test".to_string()),
+                move |_, _, _| {
+                    delegated_for_handler.store(true, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                },
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 2)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetTextInputValue {
+                tab_id: 1,
+                node_id: 2,
+                value: "must not reach core".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::GatekeeperBlocked {
+                capability: CAPABILITY_DOM_WRITE.to_string(),
+                reason: "external input mutation needs confirmation".to_string(),
+                category: "sensitive-extension-action".to_string(),
+            }
+        );
+        assert!(!delegated.load(std::sync::atomic::Ordering::SeqCst));
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_DOM_WRITE.to_string(),
+                detail: "action=set-text-input-value".to_string(),
+            }
+        );
+        let _ = std::fs::remove_file(gatekeeper_socket);
     }
 
     #[test]
@@ -836,8 +1103,8 @@ mod tests {
                 &registry,
                 Path::new("/not-used-by-dom-read"),
                 &mut server,
-                || Err("the core session has ended".to_string()),
-                |_, _| Ok(()),
+                |_| Err("the core session has ended".to_string()),
+                |_, _, _| Ok(()),
                 || Ok(()),
             )
         });
