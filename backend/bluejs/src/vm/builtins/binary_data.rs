@@ -508,7 +508,14 @@ impl Vm {
             true,
             constructor,
         )?;
-        let result_buffer = self.array_buffer_receiver(&result)?;
+        // A cross-Realm `@@species` (`{[Symbol.species]: g.MyArrayBuffer}`)
+        // legitimately constructs a real object that belongs to that other
+        // Test262 Realm; back in this Realm that comes back as a foreign
+        // facade, not a local buffer. Resolve it to a local mirror the same
+        // way `%TypedArray%.prototype.slice`'s own foreign-species path
+        // already does (`typed_arrays.rs`), write through the mirror, then
+        // sync it into the real Realm-owned buffer.
+        let (result_buffer, foreign_realm) = self.species_result_buffer(&result)?;
         if self.heap.buffer_is_immutable(result_buffer)? {
             return Err(RuntimeError::TypeError(
                 "ArrayBuffer species returned an immutable buffer".into(),
@@ -531,7 +538,34 @@ impl Vm {
         }
         let bytes = self.heap.array_buffer_copy(buffer, start, width)?;
         self.with_roots(|heap| heap.array_buffer_write(result_buffer, 0, &bytes))?;
+        if let Some(realm_id) = foreign_realm {
+            self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        }
         Ok(result)
+    }
+
+    /// Resolves a SpeciesConstructor result to a local `ObjectId` whose bytes
+    /// can be validated/written with ordinary local heap operations. A local
+    /// buffer is returned as-is; a foreign facade (the species constructor
+    /// belongs to another Test262 Realm) is resolved to a fresh local mirror
+    /// (`test262_foreign_buffer_clone`), and the returned Realm id must be
+    /// passed to `test262_sync_foreign_buffer_mirrors` after writing into
+    /// that mirror so the real Realm-owned buffer observes the write.
+    pub(super) fn species_result_buffer(
+        &mut self,
+        result: &Value,
+    ) -> Result<(ObjectId, Option<ObjectId>), RuntimeError> {
+        let invalid = || {
+            RuntimeError::TypeError("ArrayBuffer method requires an ArrayBuffer receiver".into())
+        };
+        let object = result.object_id().ok_or_else(invalid)?;
+        if let Some((realm_id, ..)) = self.test262_foreign_reference(object) {
+            let mirror = self
+                .test262_foreign_buffer_clone(object)?
+                .ok_or_else(invalid)?;
+            return Ok((mirror, Some(realm_id)));
+        }
+        Ok((self.array_buffer_receiver(result)?, None))
     }
 
     pub(super) fn shared_array_buffer_slice(
@@ -556,7 +590,12 @@ impl Vm {
             true,
             constructor,
         )?;
-        let result_buffer = self.shared_array_buffer_receiver(&result)?;
+        // See `array_buffer_slice`'s identical foreign-species comment
+        // above. A shared buffer's local mirror already shares the real
+        // backing store directly (`test262_foreign_buffer_clone`), so the
+        // write below is immediately visible cross-Realm without needing the
+        // mirror-sync step the ordinary ArrayBuffer path takes.
+        let (result_buffer, _foreign_realm) = self.shared_species_result_buffer(&result)?;
         if result_buffer == buffer {
             return Err(RuntimeError::TypeError(
                 "SharedArrayBuffer species returned the source buffer".into(),
@@ -570,6 +609,27 @@ impl Vm {
         let bytes = self.heap.array_buffer_copy(buffer, start, width)?;
         self.with_roots(|heap| heap.array_buffer_write(result_buffer, 0, &bytes))?;
         Ok(result)
+    }
+
+    /// `species_result_buffer`'s `SharedArrayBuffer` counterpart: the error
+    /// message and local-receiver check use the `SharedArrayBuffer` variants.
+    pub(super) fn shared_species_result_buffer(
+        &mut self,
+        result: &Value,
+    ) -> Result<(ObjectId, Option<ObjectId>), RuntimeError> {
+        let invalid = || {
+            RuntimeError::TypeError(
+                "SharedArrayBuffer method requires a SharedArrayBuffer receiver".into(),
+            )
+        };
+        let object = result.object_id().ok_or_else(invalid)?;
+        if let Some((realm_id, ..)) = self.test262_foreign_reference(object) {
+            let mirror = self
+                .test262_foreign_buffer_clone(object)?
+                .ok_or_else(invalid)?;
+            return Ok((mirror, Some(realm_id)));
+        }
+        Ok((self.shared_array_buffer_receiver(result)?, None))
     }
 
     pub(super) fn relative_buffer_index(

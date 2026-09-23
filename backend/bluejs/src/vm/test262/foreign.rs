@@ -968,6 +968,69 @@ impl Vm {
         self.test262_import_foreign_result(realm_id, result)
     }
 
+    /// Runs an `ArrayBuffer`/`SharedArrayBuffer` `slice`-family method
+    /// directly against the real buffer object in its owning Test262 Realm,
+    /// the same shape as `test262_foreign_typed_array_native_call` above.
+    /// Unlike a TypedArray view, the receiver here *is* the buffer, so the
+    /// membrane target doubles as the buffer-mirror sync key instead of one
+    /// reached through `typed_array_info`. Running in the owning Realm
+    /// (rather than re-fetching `slice` as a property in the caller's Realm,
+    /// `test262_foreign_next`'s approach) is required so
+    /// `%ArrayBuffer.prototype.slice%`'s SpeciesConstructor lookup reads
+    /// that Realm's own `constructor`/`@@species` off the real receiver,
+    /// matching `slice-species.js`'s
+    /// `ArrayBuffer.prototype.slice.call(g.a, 8, 16)` cross-realm case
+    /// (`b.constructor === g.ArrayBuffer`).
+    pub(in super::super) fn test262_foreign_array_buffer_native_call(
+        &mut self,
+        function: NativeFunction,
+        receiver: Value,
+        args: Vec<Value>,
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        let wrapper = receiver
+            .object_id()
+            .expect("foreign ArrayBuffer receiver has an object identity");
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign ArrayBuffer receiver has a membrane record");
+        // A local TypedArray may have been constructed over this same
+        // ArrayBuffer's mirror (`test262_foreign_buffer_clone`); flush any
+        // bytes written through it before `slice` reads from the owning
+        // Realm's real target, exactly as the TypedArray-method path above
+        // does before re-entering that Realm.
+        self.test262_sync_foreign_buffer_mirrors(realm_id)?;
+        let args = args
+            .iter()
+            .map(|value| self.test262_export_foreign_value(realm_id, value))
+            .collect::<Result<Vec<_>, _>>()?;
+        let result = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            let result = realm
+                .vm
+                .native_call(function, Value::Object(target), args, construct);
+            match result {
+                Ok(value) => Ok(value),
+                Err(error) => realm
+                    .vm
+                    .error_value(error)
+                    .and_then(|error| Err(RuntimeError::Thrown(error))),
+            }
+        };
+        // None of this family mutates its source buffer's bytes (`slice`
+        // and `sliceToImmutable` only read from `target` and allocate a new
+        // buffer), so no local mirror ever goes stale here. Refreshing
+        // anyway keeps this call symmetric with the TypedArray-method path
+        // and stays correct if a future family member (e.g. an in-place
+        // resize) is ever added to this branch.
+        self.test262_refresh_foreign_buffer_mirrors(realm_id, target)?;
+        self.test262_import_foreign_result(realm_id, result)
+    }
+
     /// Runs an `Atomics` function whose first argument is a facade denoting a
     /// TypedArray in another Test262 Realm. Atomics validates and accesses
     /// that argument's internal slots, which live in the child VM's heap, so
@@ -1788,9 +1851,20 @@ impl Vm {
         )
     }
 
+    /// Re-fetches `property` (`"next"` or `"return"`) on the real receiver in
+    /// its owning Test262 Realm and calls it there. Used both for the
+    /// pre-existing iterator-protocol natives (`ArrayIteratorNext`/
+    /// `IteratorNext`/`RegExpIteratorNext`, always `"next"`) and for
+    /// `%WrapForValidIteratorPrototype%`'s `IteratorWrapperNext`/
+    /// `IteratorWrapperReturn`, whose local implementation reads a captured
+    /// internal-slot method rather than re-reading a property — but since
+    /// that slot's method is always the owning Realm's own shared prototype
+    /// method, re-fetching `property` by name on the real (child-Realm)
+    /// receiver and calling it there reaches the identical function.
     pub(in super::super) fn test262_foreign_next(
         &mut self,
         receiver: &Value,
+        property: &str,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
         let Value::Object(wrapper) = receiver else {
@@ -1810,8 +1884,8 @@ impl Vm {
                 .expect("foreign realm remains live");
             realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
             let receiver = Value::Object(target);
-            let next = realm.vm.get_property(&receiver, &"next".into())?;
-            realm.vm.call_native(next, receiver, args, false)
+            let method = realm.vm.get_property(&receiver, &property.into())?;
+            realm.vm.call_native(method, receiver, args, false)
         };
         // This is the local `next` applied to a foreign receiver, so its own
         // errors belong to this Realm: they are imported but not recreated.
