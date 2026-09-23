@@ -61,6 +61,8 @@ mod primitive;
 mod program_abi;
 mod program_debug;
 mod property;
+mod regex_backrefs;
+mod regex_canonicalize;
 mod regex_escapes;
 mod regex_group_names;
 #[doc(hidden)]
