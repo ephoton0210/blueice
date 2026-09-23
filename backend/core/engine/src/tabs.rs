@@ -268,10 +268,10 @@ impl TabManager {
         }
     }
 
-    /// Adds a connection-scoped rule for a canonical initial HTTP(S)
-    /// navigation URL. This first declarative rule has no redirect, header,
-    /// callback, or request-body semantics: it only prevents beginning a
-    /// matching navigation in this core session.
+    /// Adds a connection-scoped rule for a canonical HTTP(S) navigation URL.
+    /// A navigation snapshots the live rule set when it begins and evaluates
+    /// that snapshot before every redirect hop, but this remains declarative:
+    /// there is no callback, header, or request-body semantics.
     pub(crate) fn add_extension_navigation_block_rule(
         &mut self,
         connection_id: u64,
@@ -300,16 +300,23 @@ impl TabManager {
         self.extension_navigation_block_rules.remove(&connection_id);
     }
 
+    /// Takes a per-navigation immutable view of every currently live rule.
+    /// The background fetch worker receives this ordinary data rather than a
+    /// reference to `TabManager`, keeping the session thread the sole owner of
+    /// live tab state while still letting every redirect hop be evaluated.
+    pub(crate) fn extension_navigation_block_rule_snapshot(&self) -> HashSet<String> {
+        self.extension_navigation_block_rules
+            .values()
+            .flat_map(|rules| rules.iter().cloned())
+            .collect()
+    }
+
     /// Tests the exact canonical initial navigation URL against every live
     /// connection's declarative block rules. Invalid/non-network URLs are not
     /// matches; their normal built-in/scheme validation paths still apply.
+    #[cfg(test)]
     pub(crate) fn is_extension_navigation_blocked(&self, url: &str) -> bool {
-        let Ok(canonical_url) = canonical_http_navigation_url(url) else {
-            return false;
-        };
-        self.extension_navigation_block_rules
-            .values()
-            .any(|rules| rules.contains(&canonical_url))
+        extension_navigation_rules_block_url(&self.extension_navigation_block_rule_snapshot(), url)
     }
 
     pub fn history_snapshot_mode(&self) -> HistorySnapshotMode {
@@ -697,6 +704,13 @@ impl TabManager {
 /// Produces the sole representation used in declarative navigation rules.
 /// Fragments never cross HTTP, so they cannot make a different network rule;
 /// credentials are forbidden rather than retained in long-lived core state.
+pub(crate) fn extension_navigation_rules_block_url(rules: &HashSet<String>, url: &str) -> bool {
+    let Ok(canonical_url) = canonical_http_navigation_url(url) else {
+        return false;
+    };
+    rules.contains(&canonical_url)
+}
+
 fn canonical_http_navigation_url(input: &str) -> Result<String, String> {
     let mut url =
         Url::parse(input).map_err(|error| format!("navigation-block URL is invalid: {error}"))?;

@@ -4,8 +4,8 @@
 
 //! `core`'s client side of the `ai-gatekeeper` protocol
 //! (`blueice_ipc::gatekeeper`) -- the background-thread half of
-//! `phase-7-local-ai/PLAN.md`'s "Wiring design": [`check_and_fetch`] is
-//! meant to run inside a `std::thread::spawn`'d closure
+//! `phase-7-local-ai/PLAN.md`'s "Wiring design": the navigation review/fetch
+//! loop is meant to run inside a `std::thread::spawn`'d closure
 //! (`session.rs`'s own `begin_gated_navigation`), never on `run_
 //! session`'s own thread, so a slow/unreachable gatekeeper or a slow
 //! fetch never blocks the one shared connection other tabs/clients are
@@ -15,16 +15,18 @@
 //! `phase-7-local-ai/PLAN.md`'s "Decision: a typestate/capability-token
 //! pattern" commits to. It is deliberately **not** `Clone`, has **no
 //! public constructor**, and its fields are private to this module --
-//! the only way to produce one is [`check_and_fetch`] actually
+//! the only way to produce one is the review/fetch loop actually
 //! completing both gatekeeper stages successfully. [`crate::Page::
 //! apply_fetched`] requires one as a parameter purely for this
 //! compile-time effect: skipping the gate becomes a compile error, not
 //! a runtime convention a differently-written caller could omit.
 
+use crate::tabs::extension_navigation_rules_block_url;
 use crate::TabId;
 use blueice_ipc::gatekeeper::{
     read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply, GatekeeperRequest,
 };
+use std::collections::HashSet;
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -62,6 +64,11 @@ pub(crate) enum NavOutcome {
         category: String,
         url: String,
     },
+    /// A declarative extension rule matched one URL in the navigation's
+    /// immutable start-of-navigation rule snapshot. This is deliberately not
+    /// reported as a gatekeeper decision: no review or network request was
+    /// made for the blocked hop.
+    ExtensionRuleBlocked { url: String },
     /// The gatekeeper cleared the URL stage, but the actual network
     /// fetch itself failed -- an ordinary navigation error, mapped to
     /// `ServerMessage::Error` exactly as an unfetchable URL was before
@@ -73,6 +80,11 @@ enum StageOutcome {
     Cleared,
     Rejected { reason: String, category: String },
 }
+
+/// Match the established HTTP client's redirect budget while keeping every
+/// hop in core's explicit policy loop. A cycle therefore fails closed as an
+/// ordinary fetch failure rather than creating unbounded gatekeeper work.
+const MAX_NAVIGATION_REDIRECTS: usize = 10;
 
 /// One gatekeeper round trip: a short-lived connection (connect ->
 /// request -> reply -> disconnect, per the plan doc's "Process &
@@ -100,54 +112,93 @@ fn check_stage(gatekeeper_socket: &Path, request: &GatekeeperRequest) -> StageOu
     }
 }
 
-/// Runs both gatekeeper stages plus the fetch in between: `CheckUrl` ->
-/// (if cleared) fetch via `blueice-net` -> `CheckContent` -> a
-/// [`NavOutcome`]. Meant to run entirely on a background thread --
-/// never touches any `Page`/`TabManager` state itself, only produces a
-/// value the caller applies back on the main thread once it arrives.
+/// Runs the navigation review sequence: `CheckUrl` and one fetch hop repeat
+/// for every redirect target, then final `CheckContent` produces a
+/// [`NavOutcome`]. Meant to run entirely on a background thread -- never
+/// touches any `Page`/`TabManager` state itself, only produces a value the
+/// caller applies back on the main thread once it arrives.
+#[cfg(test)]
 pub(crate) fn check_and_fetch(tab_id: TabId, url: String, gatekeeper_socket: &Path) -> NavOutcome {
-    if let StageOutcome::Rejected { reason, category } = check_stage(
-        gatekeeper_socket,
-        &GatekeeperRequest::CheckUrl { url: url.clone() },
-    ) {
-        return NavOutcome::GatekeeperBlocked {
-            reason,
-            category,
-            url,
-        };
-    }
+    check_and_fetch_with_navigation_rules(tab_id, url, gatekeeper_socket, HashSet::new())
+}
 
-    let fetched = match blueice_net::fetch(&url) {
-        Ok(fetched) => fetched,
-        Err(e) => {
-            return NavOutcome::FetchFailed {
-                message: e.to_string(),
-            }
+/// Runs a network navigation through two Phase 7 review stages while applying
+/// `navigation_rules` before **every** connection, including redirect targets.
+/// The set is an immutable snapshot captured on the session thread at the
+/// beginning of navigation; it contains no `Page` or socket state and is safe
+/// to move into this background worker.
+pub(crate) fn check_and_fetch_with_navigation_rules(
+    tab_id: TabId,
+    url: String,
+    gatekeeper_socket: &Path,
+    navigation_rules: HashSet<String>,
+) -> NavOutcome {
+    let mut current_url = url;
+    for redirects_followed in 0..=MAX_NAVIGATION_REDIRECTS {
+        if extension_navigation_rules_block_url(&navigation_rules, &current_url) {
+            return NavOutcome::ExtensionRuleBlocked { url: current_url };
         }
-    };
+        if let StageOutcome::Rejected { reason, category } = check_stage(
+            gatekeeper_socket,
+            &GatekeeperRequest::CheckUrl {
+                url: current_url.clone(),
+            },
+        ) {
+            return NavOutcome::GatekeeperBlocked {
+                reason,
+                category,
+                url: current_url,
+            };
+        }
 
-    if let StageOutcome::Rejected { reason, category } = check_stage(
-        gatekeeper_socket,
-        &GatekeeperRequest::CheckContent {
-            url: fetched.final_url.clone(),
-            html: fetched.body.clone(),
-        },
-    ) {
-        return NavOutcome::GatekeeperBlocked {
-            reason,
-            category,
-            url: fetched.final_url,
+        let fetched = match blueice_net::fetch_navigation_hop(&current_url) {
+            Ok(fetched) => fetched,
+            Err(e) => {
+                return NavOutcome::FetchFailed {
+                    message: e.to_string(),
+                }
+            }
+        };
+
+        let fetched = match fetched {
+            blueice_net::FetchHop::Redirect { location } => {
+                if redirects_followed == MAX_NAVIGATION_REDIRECTS {
+                    return NavOutcome::FetchFailed {
+                        message: format!(
+                            "navigation exceeded the {MAX_NAVIGATION_REDIRECTS}-redirect limit"
+                        ),
+                    };
+                }
+                current_url = location;
+                continue;
+            }
+            blueice_net::FetchHop::Page(fetched) => fetched,
+        };
+
+        if let StageOutcome::Rejected { reason, category } = check_stage(
+            gatekeeper_socket,
+            &GatekeeperRequest::CheckContent {
+                url: fetched.final_url.clone(),
+                html: fetched.body.clone(),
+            },
+        ) {
+            return NavOutcome::GatekeeperBlocked {
+                reason,
+                category,
+                url: fetched.final_url,
+            };
+        }
+
+        return NavOutcome::Cleared {
+            clearance: GatekeeperClearance {
+                tab_id,
+                url: fetched.final_url.clone(),
+            },
+            final_url: fetched.final_url,
+            html: fetched.body,
         };
     }
-
-    NavOutcome::Cleared {
-        clearance: GatekeeperClearance {
-            tab_id,
-            url: fetched.final_url.clone(),
-        },
-        final_url: fetched.final_url,
-        html: fetched.body,
-    }
+    unreachable!("the bounded redirect loop always returns or commits a page")
 }
 
 #[cfg(test)]
@@ -220,6 +271,141 @@ mod tests {
     }
 
     #[test]
+    fn redirect_targets_are_url_reviewed_before_their_connection_and_final_content_review() {
+        let final_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let final_url = format!("http://{}/after", final_listener.local_addr().unwrap());
+        let final_server = thread::spawn(move || {
+            let (mut stream, _) = final_listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\n<p>final</p>",
+                )
+                .unwrap();
+        });
+        let redirect_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let initial_url = format!("http://{}/before", redirect_listener.local_addr().unwrap());
+        let redirect_server = thread::spawn({
+            let final_url = final_url.clone();
+            move || {
+                let (mut stream, _) = redirect_listener.accept().unwrap();
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                stream
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 302 Found\r\nLocation: {final_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        )
+                        .as_bytes(),
+                    )
+                    .unwrap();
+            }
+        });
+        let gatekeeper = unique_gatekeeper_socket_path("redirect-hop-reviews");
+        let _ = std::fs::remove_file(&gatekeeper);
+        let listener = UnixListener::bind(&gatekeeper).unwrap();
+        let reviewer = thread::spawn(move || {
+            let mut requests = Vec::new();
+            for _ in 0..3 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let request = read_gatekeeper_request(&mut stream).unwrap();
+                write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared).unwrap();
+                requests.push(request);
+            }
+            requests
+        });
+
+        match check_and_fetch_with_navigation_rules(
+            TabId::from_u64(9),
+            initial_url.clone(),
+            &gatekeeper,
+            HashSet::new(),
+        ) {
+            NavOutcome::Cleared {
+                final_url: committed,
+                html,
+                ..
+            } => {
+                assert_eq!(committed, final_url);
+                assert_eq!(html, "<p>final</p>");
+            }
+            _ => panic!("expected the reviewed redirect chain to commit"),
+        }
+        assert_eq!(
+            reviewer.join().unwrap(),
+            vec![
+                GatekeeperRequest::CheckUrl { url: initial_url },
+                GatekeeperRequest::CheckUrl {
+                    url: final_url.clone(),
+                },
+                GatekeeperRequest::CheckContent {
+                    url: final_url,
+                    html: "<p>final</p>".to_string(),
+                },
+            ]
+        );
+        redirect_server.join().unwrap();
+        final_server.join().unwrap();
+        let _ = std::fs::remove_file(gatekeeper);
+    }
+
+    #[test]
+    fn an_extension_rule_blocks_a_redirect_target_before_its_review_or_fetch() {
+        let target_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        target_listener.set_nonblocking(true).unwrap();
+        let blocked_url = format!("http://{}/blocked", target_listener.local_addr().unwrap());
+        let redirect_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let initial_url = format!("http://{}/before", redirect_listener.local_addr().unwrap());
+        let redirect_server = thread::spawn({
+            let blocked_url = blocked_url.clone();
+            move || {
+                let (mut stream, _) = redirect_listener.accept().unwrap();
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                stream
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 302 Found\r\nLocation: {blocked_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        )
+                        .as_bytes(),
+                    )
+                    .unwrap();
+            }
+        });
+        let gatekeeper = unique_gatekeeper_socket_path("redirect-rule-before-fetch");
+        let _ = std::fs::remove_file(&gatekeeper);
+        let listener = UnixListener::bind(&gatekeeper).unwrap();
+        let reviewer = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_gatekeeper_request(&mut stream).unwrap();
+            write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared).unwrap();
+            request
+        });
+
+        match check_and_fetch_with_navigation_rules(
+            TabId::from_u64(10),
+            initial_url.clone(),
+            &gatekeeper,
+            HashSet::from([blocked_url.clone()]),
+        ) {
+            NavOutcome::ExtensionRuleBlocked { url } => assert_eq!(url, blocked_url),
+            _ => panic!("the redirect target must be blocked before a second review or fetch"),
+        }
+        assert_eq!(
+            reviewer.join().unwrap(),
+            GatekeeperRequest::CheckUrl { url: initial_url }
+        );
+        redirect_server.join().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        assert!(matches!(
+            target_listener.accept(),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+        ));
+        let _ = std::fs::remove_file(gatekeeper);
+    }
+
+    #[test]
     fn fails_closed_when_no_gatekeeper_is_listening() {
         let gatekeeper = unique_gatekeeper_socket_path("unreachable"); // nothing bound here
         match check_and_fetch(
@@ -235,6 +421,9 @@ mod tests {
             }
             NavOutcome::FetchFailed { .. } => {
                 panic!("an unreachable gatekeeper must block before ever attempting a fetch")
+            }
+            NavOutcome::ExtensionRuleBlocked { .. } => {
+                panic!("an empty navigation-rule set cannot block this test")
             }
         }
     }

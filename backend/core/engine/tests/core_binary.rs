@@ -443,7 +443,7 @@ fn installed_extension_reads_a_real_core_owned_representation_over_private_socke
 }
 
 #[test]
-fn installed_extension_v2_network_rule_blocks_matching_navigation_before_http_fetch() {
+fn installed_extension_v2_network_rule_blocks_a_redirect_target_before_http_fetch() {
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
@@ -458,7 +458,7 @@ fn installed_extension_v2_network_rule_blocks_matching_navigation_before_http_fe
     ));
     let (package_root, manifest, extension_id) =
         extension_manifest_package("exact-network-rule", &["network:intercept"]);
-    let gatekeeper_socket = clearing_gatekeeper("ext-network-rule-gk");
+    let gatekeeper_socket = clearing_gatekeeper("enrg");
     let _ = std::fs::remove_file(&core_socket);
     let _ = std::fs::remove_file(&extension_socket);
     let _ = std::fs::remove_dir_all(&frame_dir);
@@ -466,6 +466,24 @@ fn installed_extension_v2_network_rule_blocks_matching_navigation_before_http_fe
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let url = format!("http://{}/private", listener.local_addr().unwrap());
+    let redirect_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let redirect_url = format!("http://{}/before", redirect_listener.local_addr().unwrap());
+    let redirect_server = thread::spawn({
+        let url = url.clone();
+        move || {
+            let (mut stream, _) = redirect_listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 302 Found\r\nLocation: {url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+    });
 
     let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
         .args([
@@ -514,7 +532,7 @@ fn installed_extension_v2_network_rule_blocks_matching_navigation_before_http_fe
 
     blueice_ipc::write_client_message(
         &mut frontend,
-        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+        &blueice_ipc::ClientMessage::Navigate { url: redirect_url },
     )
     .unwrap();
     match blueice_ipc::read_server_message(&mut frontend).unwrap() {
@@ -529,6 +547,7 @@ fn installed_extension_v2_network_rule_blocks_matching_navigation_before_http_fe
         ErrorKind::WouldBlock,
         "the extension rule must prevent core from opening an HTTP connection"
     );
+    redirect_server.join().unwrap();
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();

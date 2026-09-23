@@ -53,7 +53,7 @@
 use crate::downloads_page::{DownloadsView, downloads_html, is_downloads_url};
 use crate::gatekeeper_client::{self, NavOutcome};
 use crate::script::ScriptScheduler;
-use crate::tabs::{HistoryDestination, HistoryDirection};
+use crate::tabs::{extension_navigation_rules_block_url, HistoryDestination, HistoryDirection};
 use crate::{GroupId, Page, TabGroup, TabId, TabManager};
 use blueice_dom::NodeId;
 use blueice_ipc::downloads::TransferInfo;
@@ -131,9 +131,10 @@ pub enum ExtensionPageRequest {
         node_id: u64,
         reply: mpsc::Sender<Result<(), String>>,
     },
-    /// Adds one core-validated, connection-scoped exact initial navigation
-    /// block rule. The opaque connection ID is allocated by `blueice-core`,
-    /// never supplied by an extension.
+    /// Adds one core-validated, connection-scoped exact navigation block rule
+    /// evaluated for the initial request and later redirect hops. The opaque
+    /// connection ID is allocated by `blueice-core`, never supplied by an
+    /// extension.
     RegisterNetworkBlockUrl {
         connection_id: u64,
         url: String,
@@ -1458,12 +1459,26 @@ fn begin_history_navigation<S: Write>(
             if let Err(e) = blueice_net::validate_url_scheme(&url) {
                 return write_error(stream, reply_tab, request_id, e.to_string());
             }
+            let navigation_rules = tabs.extension_navigation_block_rule_snapshot();
+            if extension_navigation_rules_block_url(&navigation_rules, &url) {
+                return write_error(
+                    stream,
+                    reply_tab,
+                    request_id,
+                    format!("navigation blocked by a declarative extension rule: {url}"),
+                );
+            }
 
             let seq = supersede_pending_navigation(pending_nav_seq, tab_id);
             let tx = completion_tx.clone();
             let socket = gatekeeper_socket.to_path_buf();
             thread::spawn(move || {
-                let outcome = gatekeeper_client::check_and_fetch(tab_id, url, &socket);
+                let outcome = gatekeeper_client::check_and_fetch_with_navigation_rules(
+                    tab_id,
+                    url,
+                    &socket,
+                    navigation_rules,
+                );
                 let _ = tx.send(Completion {
                     tab_id,
                     seq,
@@ -1536,11 +1551,11 @@ fn begin_gated_navigation<S: Write>(
     if let Err(e) = blueice_net::validate_url_scheme(&url) {
         return write_error(stream, reply_tab, request_id, e.to_string());
     }
-    if tabs.is_extension_navigation_blocked(&url) {
-        // The rule is evaluated before fetching or gatekeeper review. It is
-        // intentionally limited to this initial URL; the current HTTP fetch
-        // boundary follows redirects internally and does not expose a safe
-        // per-hop interception surface yet.
+    let navigation_rules = tabs.extension_navigation_block_rule_snapshot();
+    if extension_navigation_rules_block_url(&navigation_rules, &url) {
+        // The initial URL is evaluated synchronously before any gatekeeper
+        // review or fetch. The same immutable snapshot follows the background
+        // worker and is checked again before every redirect connection.
         return write_error(
             stream,
             reply_tab,
@@ -1554,7 +1569,12 @@ fn begin_gated_navigation<S: Write>(
     let tx = completion_tx.clone();
     let socket = gatekeeper_socket.to_path_buf();
     thread::spawn(move || {
-        let outcome = gatekeeper_client::check_and_fetch(tab_id, url, &socket);
+        let outcome = gatekeeper_client::check_and_fetch_with_navigation_rules(
+            tab_id,
+            url,
+            &socket,
+            navigation_rules,
+        );
         let _ = tx.send(Completion {
             tab_id,
             seq: this_seq,
@@ -1703,6 +1723,12 @@ fn apply_completion<S: Write>(
                 category,
                 url,
             },
+        ),
+        NavOutcome::ExtensionRuleBlocked { url } => write_error(
+            stream,
+            reply_tab,
+            request_id,
+            format!("navigation blocked by a declarative extension rule: {url}"),
         ),
         NavOutcome::FetchFailed { message } => write_error(stream, reply_tab, request_id, message),
     }
@@ -2151,6 +2177,86 @@ mod tests {
                 panic!("matching extension rule must stop navigation before fetch, got {other:?}")
             }
         }
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        handle.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(cleanup_dir);
+    }
+
+    #[test]
+    fn extension_network_rule_blocks_a_redirect_target_before_its_connection() {
+        let (mut client, mut server) = client_pair();
+        let (extension_tx, extension_rx) = mpsc::channel();
+        let dir = temp_frame_dir("extension-redirect-navigation-block-rule");
+        let cleanup_dir = dir.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        let target_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        target_listener.set_nonblocking(true).unwrap();
+        let blocked_url = format!("http://{}/blocked", target_listener.local_addr().unwrap());
+        let redirect_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let redirect_url = format!("http://{}/before", redirect_listener.local_addr().unwrap());
+        let redirect_server = thread::spawn({
+            let blocked_url = blocked_url.clone();
+            move || {
+                let (mut stream, _) = redirect_listener.accept().unwrap();
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                stream
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 302 Found\r\nLocation: {blocked_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        )
+                        .as_bytes(),
+                    )
+                    .unwrap();
+            }
+        });
+        let gatekeeper = clearing_gatekeeper("extension-redirect-rule");
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0;
+            run_session_with_extension_requests(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper,
+                &extension_rx,
+            )
+        });
+
+        blueice_ipc::client_handshake(&mut client).unwrap();
+        let (rule_reply_tx, rule_reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::RegisterNetworkBlockUrl {
+                connection_id: 78,
+                url: blocked_url.clone(),
+                reply: rule_reply_tx,
+            })
+            .unwrap();
+        rule_reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the live session must accept the redirect-target rule")
+            .expect("the target URL is a valid rule");
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate { url: redirect_url },
+        )
+        .unwrap();
+        match blueice_ipc::read_server_message(&mut client).unwrap() {
+            ServerMessage::Error { message } => {
+                assert!(message.contains("declarative extension rule"));
+                assert!(message.contains(&blocked_url));
+            }
+            other => panic!("the redirect target must be blocked, got {other:?}"),
+        }
+        redirect_server.join().unwrap();
+        std::thread::sleep(Duration::from_millis(25));
+        assert!(matches!(
+            target_listener.accept(),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+        ));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         handle.join().unwrap().unwrap();

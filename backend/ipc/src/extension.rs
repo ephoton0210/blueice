@@ -172,9 +172,10 @@ pub enum ExtensionRequest {
     /// part of this deliberately narrow first operation.
     SelectOption { tab_id: u64, node_id: u64 },
     /// Version 2 of `network:intercept`: install one declarative rule that
-    /// blocks a navigation only when its canonical initial HTTP(S) URL exactly
-    /// equals `url`. The rule is connection-scoped in core, so it disappears
-    /// when the extension disconnects. This is deliberately not a callback,
+    /// blocks a navigation only when an HTTP(S) URL at its initial request or
+    /// a later redirect hop canonically equals `url`. The rule is
+    /// connection-scoped in core, so it disappears for future navigations when
+    /// the extension disconnects. This is deliberately not a callback,
     /// redirector, header editor, or arbitrary request scripting API.
     RegisterNetworkBlockUrl { url: String },
     /// Registers a network interception rule -- requires the
