@@ -47,7 +47,7 @@ mod unix {
     //! tells "core genuinely died" apart from "we deliberately superseded
     //! it."
 
-    use super::bluejs_host::{BlueJsHostCoreConfig, SpawnedBlueJsHost};
+    use super::bluejs_host::{BlueJsHostCoreConfig, BlueJsHostRuntimeLimits, SpawnedBlueJsHost};
     use super::control;
 
     pub use super::control::default_control_socket_path;
@@ -81,6 +81,10 @@ mod unix {
     pub struct CoreLaunchOptions {
         gatekeeper_socket: Option<PathBuf>,
         supervise_out_of_process_bluejs: bool,
+        /// Immutable launcher-owner resource envelope forwarded only through
+        /// trusted child bootstrap. The public launcher CLI, core, page, and
+        /// page-host IPC cannot inspect or change it.
+        bluejs_host_runtime_limits: BlueJsHostRuntimeLimits,
         /// Requests the one fixed, compiled-in HTTP page-script profile from
         /// the core while retaining the normal launcher-owned child setup.
         /// This is deliberately a boolean fixture selector rather than a
@@ -114,6 +118,20 @@ mod unix {
         /// value through this API.
         pub fn supervise_out_of_process_bluejs(mut self) -> Self {
             self.supervise_out_of_process_bluejs = true;
+            self
+        }
+
+        /// Starts an isolated page host with the embedding owner's fixed
+        /// per-realm runtime limits. They bound realm/program/root-bytecode
+        /// admission and VM managed heap, but are not a child-process RSS or
+        /// aggregate memory limit. The ordinary `blueice-launcher` CLI has no
+        /// equivalent flags, and neither core nor page traffic can widen them.
+        pub fn supervise_out_of_process_bluejs_with_runtime_limits(
+            mut self,
+            limits: BlueJsHostRuntimeLimits,
+        ) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self.bluejs_host_runtime_limits = limits;
             self
         }
 
@@ -1390,7 +1408,9 @@ mod unix {
                 .transpose()?
                 .map(Arc::new);
             let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
-                let (host, config) = SpawnedBlueJsHost::spawn_for_core()?;
+                let (host, config) = SpawnedBlueJsHost::spawn_for_core_with_runtime_limits(
+                    options.bluejs_host_runtime_limits,
+                )?;
                 (Some(host), Some(config))
             } else {
                 (None, None)
@@ -1424,7 +1444,9 @@ mod unix {
             relays: RelaySet,
         ) -> io::Result<Self> {
             let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
-                let (host, config) = SpawnedBlueJsHost::spawn_for_core()?;
+                let (host, config) = SpawnedBlueJsHost::spawn_for_core_with_runtime_limits(
+                    options.bluejs_host_runtime_limits,
+                )?;
                 (Some(host), Some(config))
             } else {
                 (None, None)

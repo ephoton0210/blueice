@@ -9,7 +9,7 @@
 
 #[cfg(unix)]
 use blueice_launcher::bluejs_host::{
-    bind_bluejs_host_socket, serve_bluejs_host_listener, BlueJsChildHost,
+    bind_bluejs_host_socket, serve_bluejs_host_listener, BlueJsChildHost, BlueJsHostRuntimeLimits,
 };
 #[cfg(unix)]
 use std::path::PathBuf;
@@ -21,12 +21,17 @@ use std::process::ExitCode;
 struct Args {
     socket: PathBuf,
     session_token: String,
+    runtime_limits: BlueJsHostRuntimeLimits,
 }
 
 #[cfg(unix)]
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut socket = None;
     let mut session_token = None;
+    let mut max_realms = None;
+    let mut max_programs_per_realm = None;
+    let mut max_bytecode_bytes_per_realm = None;
+    let mut max_heap_bytes_per_realm = None;
     let mut args = args;
     while let Some(flag) = args.next() {
         let mut value = || {
@@ -36,6 +41,34 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         match flag.as_str() {
             "--socket" => socket = Some(PathBuf::from(value()?)),
             "--session-token" => session_token = Some(value()?),
+            "--max-realms" => {
+                if max_realms.is_some() {
+                    return Err("--max-realms may be supplied only once".to_string());
+                }
+                max_realms = Some(parse_limit("--max-realms", value()?)?);
+            }
+            "--max-programs-per-realm" => {
+                if max_programs_per_realm.is_some() {
+                    return Err("--max-programs-per-realm may be supplied only once".to_string());
+                }
+                max_programs_per_realm = Some(parse_limit("--max-programs-per-realm", value()?)?)
+            }
+            "--max-bytecode-bytes-per-realm" => {
+                if max_bytecode_bytes_per_realm.is_some() {
+                    return Err(
+                        "--max-bytecode-bytes-per-realm may be supplied only once".to_string()
+                    );
+                }
+                max_bytecode_bytes_per_realm =
+                    Some(parse_limit("--max-bytecode-bytes-per-realm", value()?)?)
+            }
+            "--max-heap-bytes-per-realm" => {
+                if max_heap_bytes_per_realm.is_some() {
+                    return Err("--max-heap-bytes-per-realm may be supplied only once".to_string());
+                }
+                max_heap_bytes_per_realm =
+                    Some(parse_limit("--max-heap-bytes-per-realm", value()?)?)
+            }
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
@@ -45,10 +78,45 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if session_token.len() < 32 || !session_token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("--session-token must be a non-short hexadecimal capability".to_string());
     }
+    let runtime_limits = match (
+        max_realms,
+        max_programs_per_realm,
+        max_bytecode_bytes_per_realm,
+        max_heap_bytes_per_realm,
+    ) {
+        (None, None, None, None) => BlueJsHostRuntimeLimits::default(),
+        (
+            Some(max_realms),
+            Some(max_programs_per_realm),
+            Some(max_bytecode_bytes_per_realm),
+            Some(max_heap_bytes_per_realm),
+        ) => BlueJsHostRuntimeLimits {
+            max_realms,
+            max_programs_per_realm,
+            max_bytecode_bytes_per_realm,
+            max_heap_bytes_per_realm,
+        },
+        _ => {
+            return Err("all BlueJS page-host runtime limits must be supplied together".to_string())
+        }
+    };
+    runtime_limits.runtime_config().map_err(str::to_string)?;
     Ok(Args {
         socket,
         session_token,
+        runtime_limits,
     })
+}
+
+#[cfg(unix)]
+fn parse_limit(flag: &str, value: String) -> Result<usize, String> {
+    let limit = value
+        .parse::<usize>()
+        .map_err(|_| format!("{flag} must be a non-zero unsigned integer"))?;
+    if limit == 0 {
+        return Err(format!("{flag} must be a non-zero unsigned integer"));
+    }
+    Ok(limit)
 }
 
 #[cfg(unix)]
@@ -57,6 +125,20 @@ fn main() -> ExitCode {
         Ok(args) => args,
         Err(message) => {
             eprintln!("blueice-bluejs-host: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let runtime_config = match args.runtime_limits.runtime_config() {
+        Ok(runtime_config) => runtime_config,
+        Err(message) => {
+            eprintln!("blueice-bluejs-host: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut host = match BlueJsChildHost::with_runtime_config(runtime_config) {
+        Ok(host) => host,
+        Err(error) => {
+            eprintln!("blueice-bluejs-host: invalid runtime configuration: {error}");
             return ExitCode::FAILURE;
         }
     };
@@ -70,7 +152,6 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut host = BlueJsChildHost::default();
     let result = serve_bluejs_host_listener(listener, args.session_token, &mut host);
     let _ = std::fs::remove_file(&args.socket);
     match result {
@@ -119,6 +200,70 @@ mod tests {
                 "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
             ]),
             Err("--session-token must be a non-short hexadecimal capability".to_string())
+        );
+    }
+
+    #[test]
+    fn child_accepts_only_one_complete_runtime_limit_envelope() {
+        let token = "0123456789abcdef0123456789abcdef";
+        let parsed = args(&[
+            "--socket",
+            "/tmp/host.sock",
+            "--session-token",
+            token,
+            "--max-realms",
+            "2",
+            "--max-programs-per-realm",
+            "3",
+            "--max-bytecode-bytes-per-realm",
+            "4096",
+            "--max-heap-bytes-per-realm",
+            "8192",
+        ])
+        .expect("a complete valid runtime envelope must parse");
+        assert_eq!(
+            parsed.runtime_limits,
+            BlueJsHostRuntimeLimits {
+                max_realms: 2,
+                max_programs_per_realm: 3,
+                max_bytecode_bytes_per_realm: 4096,
+                max_heap_bytes_per_realm: 8192,
+            }
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/host.sock",
+                "--session-token",
+                token,
+                "--max-realms",
+                "2",
+            ]),
+            Err("all BlueJS page-host runtime limits must be supplied together".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/host.sock",
+                "--session-token",
+                token,
+                "--max-realms",
+                "0",
+            ]),
+            Err("--max-realms must be a non-zero unsigned integer".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/host.sock",
+                "--session-token",
+                token,
+                "--max-realms",
+                "2",
+                "--max-realms",
+                "3",
+            ]),
+            Err("--max-realms may be supplied only once".to_string())
         );
     }
 }

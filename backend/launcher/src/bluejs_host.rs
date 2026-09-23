@@ -16,8 +16,8 @@
 use blueice_bluejs::{
     parse, parse_module, BlueJsPageDebuggerExecutionState, BlueJsPageOrigin, BlueJsPageRuntime,
     BlueJsPageRuntimeConfig, BlueJsPageRuntimeError, BlueJsProgramHandle, BlueJsProgramV1,
-    BlueJsSourceIdentity, CompileError, HostFunctionError, HostValue, Module, ParseError,
-    RuntimeError, Value,
+    BlueJsSourceIdentity, CompileError, HeapConfig, HostFunctionError, HostValue, Module,
+    ParseError, RuntimeError, Value, Vm, VmConfig,
 };
 use blueice_bluets::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
@@ -58,6 +58,73 @@ const MAX_MODULES_PER_GRAPH: usize = 8;
 const MAX_SOURCE_BYTES_PER_MODULE: usize = 1024 * 1024;
 const MAX_SOURCE_BYTES_PER_DOCUMENT: usize = 8 * 1024 * 1024;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Immutable launcher-owner limits for one isolated page-host child.
+///
+/// These are per-realm envelopes, not a child-process RSS or aggregate memory
+/// limit: VM managed-heap accounting deliberately excludes allocator, Rust,
+/// registry, source, and operating-system overhead. The launcher may select
+/// this value only while starting a core generation; page, frontend, and
+/// page-host IPC contain no operation that can inspect or modify it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlueJsHostRuntimeLimits {
+    pub max_realms: usize,
+    pub max_programs_per_realm: usize,
+    pub max_bytecode_bytes_per_realm: usize,
+    pub max_heap_bytes_per_realm: usize,
+}
+
+impl Default for BlueJsHostRuntimeLimits {
+    fn default() -> Self {
+        let runtime = BlueJsPageRuntimeConfig::default();
+        Self {
+            max_realms: runtime.max_realms,
+            max_programs_per_realm: runtime.max_programs_per_realm,
+            max_bytecode_bytes_per_realm: runtime.max_bytecode_bytes_per_realm,
+            max_heap_bytes_per_realm: runtime.vm.heap.max_heap_bytes,
+        }
+    }
+}
+
+impl BlueJsHostRuntimeLimits {
+    /// Rebuilds the one narrow policy surface into the full BlueJS runtime
+    /// configuration. All non-resource VM configuration remains the child
+    /// default rather than becoming an embedding/deployment API.
+    pub fn runtime_config(self) -> Result<BlueJsPageRuntimeConfig, &'static str> {
+        if self.max_realms == 0
+            || self.max_programs_per_realm == 0
+            || self.max_bytecode_bytes_per_realm == 0
+            || self.max_heap_bytes_per_realm == 0
+        {
+            return Err("BlueJS page-host runtime limits must be non-zero");
+        }
+        let defaults = BlueJsPageRuntimeConfig::default();
+        let heap = HeapConfig {
+            max_heap_bytes: self.max_heap_bytes_per_realm,
+            major_threshold_bytes: defaults
+                .vm
+                .heap
+                .major_threshold_bytes
+                .min(self.max_heap_bytes_per_realm),
+            ..defaults.vm.heap
+        };
+        let runtime = BlueJsPageRuntimeConfig {
+            vm: VmConfig {
+                heap,
+                ..defaults.vm
+            },
+            max_realms: self.max_realms,
+            max_programs_per_realm: self.max_programs_per_realm,
+            max_bytecode_bytes_per_realm: self.max_bytecode_bytes_per_realm,
+        };
+        // PageRuntime validates its own count and byte bounds, while a VM
+        // would otherwise defer malformed heap tuning until the first realm.
+        Vm::new(runtime.vm).map_err(|_| "BlueJS page-host heap limits are invalid")?;
+        BlueJsPageRuntime::new(runtime)
+            .map(|_| runtime)
+            .map_err(|_| "BlueJS page-host runtime limits are invalid")
+    }
+}
 
 struct LiveDocument {
     generation: u64,
@@ -1867,7 +1934,14 @@ impl SpawnedBlueJsHost {
     /// a usable handle. A startup failure always reaps the child and removes
     /// the private socket.
     pub fn spawn() -> io::Result<Self> {
-        let mut host = Self::spawn_unconnected()?;
+        Self::spawn_with_runtime_limits(BlueJsHostRuntimeLimits::default())
+    }
+
+    /// Spawns an isolated child under one owner-selected immutable per-realm
+    /// envelope. This is an embedding/launcher construction API, not a
+    /// page-host protocol capability and not a child-wide RSS limit.
+    pub fn spawn_with_runtime_limits(limits: BlueJsHostRuntimeLimits) -> io::Result<Self> {
+        let mut host = Self::spawn_unconnected(limits)?;
         if let Err(error) = host.connect_as_launcher() {
             host.reap_after_shutdown();
             return Err(error);
@@ -1884,7 +1958,17 @@ impl SpawnedBlueJsHost {
     /// the narrow lifecycle hand-off used by the explicitly opted-in core
     /// adapter; the caller retains this supervisor until core exits.
     pub fn spawn_for_core() -> io::Result<(Self, BlueJsHostCoreConfig)> {
-        let host = Self::spawn_unconnected()?;
+        Self::spawn_for_core_with_runtime_limits(BlueJsHostRuntimeLimits::default())
+    }
+
+    /// Equivalent to [`Self::spawn_for_core`], with an immutable launcher
+    /// owner-selected per-realm envelope supplied to this one child before it
+    /// binds its private socket. The delegated core receives neither the
+    /// limits nor an operation to change them.
+    pub fn spawn_for_core_with_runtime_limits(
+        limits: BlueJsHostRuntimeLimits,
+    ) -> io::Result<(Self, BlueJsHostCoreConfig)> {
+        let host = Self::spawn_unconnected(limits)?;
         let config = BlueJsHostCoreConfig {
             socket_path: host.socket_path.clone(),
             session_token: host.session_token.clone(),
@@ -1892,7 +1976,10 @@ impl SpawnedBlueJsHost {
         Ok((host, config))
     }
 
-    fn spawn_unconnected() -> io::Result<Self> {
+    fn spawn_unconnected(limits: BlueJsHostRuntimeLimits) -> io::Result<Self> {
+        limits
+            .runtime_config()
+            .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
         let this_exe = std::env::current_exe()?;
         let binary = sibling_bluejs_host_binary(&this_exe);
         let socket_path = unique_bluejs_host_socket_path();
@@ -1903,6 +1990,14 @@ impl SpawnedBlueJsHost {
             .arg(&socket_path)
             .arg("--session-token")
             .arg(&token)
+            .arg("--max-realms")
+            .arg(limits.max_realms.to_string())
+            .arg("--max-programs-per-realm")
+            .arg(limits.max_programs_per_realm.to_string())
+            .arg("--max-bytecode-bytes-per-realm")
+            .arg(limits.max_bytecode_bytes_per_realm.to_string())
+            .arg("--max-heap-bytes-per-realm")
+            .arg(limits.max_heap_bytes_per_realm.to_string())
             .spawn()?;
 
         let started = wait_for_child_socket(&mut child, &socket_path, STARTUP_TIMEOUT);

@@ -11,10 +11,10 @@
 
 use blueice_ipc::page_host::{
     PageHostDocument, PageHostDocumentSnapshot, PageHostModuleGraph, PageHostReply, PageHostScript,
-    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource,
-    PageHostStaticResolution,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
+    PageHostSource, PageHostStaticResolution,
 };
-use blueice_launcher::bluejs_host::SpawnedBlueJsHost;
+use blueice_launcher::bluejs_host::{BlueJsHostRuntimeLimits, SpawnedBlueJsHost};
 use std::os::unix::net::UnixStream;
 
 // Ensure Cargo builds the sibling child binary before `SpawnedBlueJsHost`
@@ -160,6 +160,59 @@ fn launcher_spawns_an_isolated_host_that_executes_closed_graphs_and_reaps_cleanl
         !private_socket.exists(),
         "launcher must clean the private child socket after a clean shutdown"
     );
+}
+
+#[test]
+fn launcher_owner_runtime_limits_reach_the_real_child_before_program_admission() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let limits = BlueJsHostRuntimeLimits {
+        max_realms: 1,
+        max_programs_per_realm: 1,
+        max_bytecode_bytes_per_realm: 1,
+        max_heap_bytes_per_realm: BlueJsHostRuntimeLimits::default().max_heap_bytes_per_realm,
+    };
+    let mut host = SpawnedBlueJsHost::spawn_with_runtime_limits(limits)
+        .expect("the launcher must bootstrap the child with owner limits");
+    let source_id = "blueice://page/over-bytecode-budget.js";
+    let reply = host
+        .synchronize_document(document(
+            1,
+            vec![PageHostScript {
+                ordinal: 0,
+                language: PageHostScriptLanguage::JavaScript,
+                kind: PageHostScriptKind::Classic,
+                graph: graph(
+                    source_id,
+                    vec![PageHostSource::new(source_id, "globalThis.answer = 42;")],
+                ),
+            }],
+        ))
+        .expect("the child must answer the bounded document request");
+    assert!(matches!(
+        reply,
+        PageHostReply::Synchronized { reports, .. }
+            if matches!(
+                reports.as_slice(),
+                [PageHostScriptReport {
+                    outcome: PageHostScriptOutcome::Rejected { .. },
+                    ..
+                }]
+            )
+    ));
+    assert!(matches!(
+        host.request(blueice_ipc::page_host::PageHostRequest::GetRealmStats {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .expect("the child must report its source-free accounting"),
+        PageHostReply::RealmStats(stats)
+            if stats.program_count == 0 && stats.bytecode_bytes == 0
+    ));
+    host.shutdown()
+        .expect("the owner must cleanly stop the bounded child");
 }
 
 #[test]
