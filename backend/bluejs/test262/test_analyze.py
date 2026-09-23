@@ -109,6 +109,31 @@ class AnalysisTests(unittest.TestCase):
             self.assertEqual(item["actual"], self.record()["actual"])
             self.assertTrue((root / "analysis/REPORT.md").is_file())
 
+    def test_reconciles_a_run_whose_records_are_stale_corpus_or_excluded(self):
+        # The runner records these without dispatching them to the adapter, and
+        # `analyze` re-derives every record's status from its reply kind: a kind
+        # `run.classify` does not know would come back as "fail" and reject the
+        # whole run, so a complete inventory containing either could not be
+        # analyzed at all.
+        replies = {
+            "stale_corpus": {"kind": "stale_corpus", "reason": "contradicts the spec"},
+            "excluded": {"kind": "excluded", "reason": "host [[CanBlock]] mismatch"},
+        }
+        for status, reply in replies.items():
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                corpus, results, summary = self.fixture(root)
+                record = json.loads(results.read_text())
+                record.update(status=status, actual=reply)
+                results.write_text(json.dumps(record) + "\n")
+                info = json.loads(summary.read_text())
+                info.update(results={status: 1}, groups={"language": {status: 1}})
+                summary.write_text(json.dumps(info))
+                report = analyze(results, summary, corpus, root / "analysis")
+                self.assertEqual(report["scheduled_modes"], 1)
+                self.assertEqual(report["targets"]["completion"][status], 1)
+                self.assertNotIn("fail", report["targets"]["completion"])
+
     def test_rejects_duplicate_missing_changed_or_mislabelled_results(self):
         for mutation in ("duplicate", "missing", "changed-source", "wrong-status", "wrong-mode", "partial-as-full", "snapshot"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temp:
