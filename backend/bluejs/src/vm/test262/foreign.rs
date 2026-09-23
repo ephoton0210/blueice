@@ -1004,23 +1004,40 @@ impl Vm {
             .iter()
             .map(|value| self.test262_export_foreign_value(realm_id, value))
             .collect::<Result<Vec<_>, _>>()?;
-        let result = {
+        // The native function runs *in* the child Realm and may itself call
+        // back into `self` through a reverse-membrane facade (e.g. a
+        // species constructor reached off `receiver.constructor`, per
+        // `typed_array_slice`) -- the same reentrancy concern
+        // `test262_foreign_call` documents and guards against. Mirror its
+        // raw-pointer/`register_active` discipline rather than holding a
+        // `self.test262_realms`-derived `realm` borrow across the call.
+        let child: *mut Vm = {
             let realm = self
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-            let result = realm
-                .vm
-                .native_call(function, Value::Object(target), args, construct);
+            &mut *realm.vm
+        };
+        let _guard = register_active(self);
+        // SAFETY: `child` was derived from a `&mut` borrow of
+        // `self.test262_realms` whose only use was to produce this pointer
+        // (the block above); that borrow has already ended, and nothing
+        // between there and here re-borrows `self.test262_realms`, so this
+        // dereference does not alias any reference `self` itself is
+        // holding. `self` is registered active (above) for exactly this
+        // call's dynamic extent, matching `test262_foreign_call`'s
+        // identical pattern.
+        let result = unsafe {
+            (*child).remaining_instructions = (*child).config.instruction_budget;
+            let result = (*child).native_call(function, Value::Object(target), args, construct);
             match result {
                 Ok(value) => Ok(value),
-                Err(error) => realm
-                    .vm
+                Err(error) => (*child)
                     .error_value(error)
                     .and_then(|error| Err(RuntimeError::Thrown(error))),
             }
         };
+        drop(_guard);
         self.test262_refresh_foreign_buffer_mirrors(realm_id, source_buffer)?;
         self.test262_import_foreign_result(realm_id, result)
     }
@@ -1061,23 +1078,31 @@ impl Vm {
             .iter()
             .map(|value| self.test262_export_foreign_value(realm_id, value))
             .collect::<Result<Vec<_>, _>>()?;
-        let result = {
+        // Same reentrancy concern as `test262_foreign_typed_array_native_
+        // call` above (a species constructor reached off the real receiver
+        // can itself be a reverse-membrane facade calling back into
+        // `self`): mirror its raw-pointer/`register_active` discipline.
+        let child: *mut Vm = {
             let realm = self
                 .test262_realms
                 .get_mut(&realm_id)
                 .expect("foreign realm remains live");
-            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-            let result = realm
-                .vm
-                .native_call(function, Value::Object(target), args, construct);
+            &mut *realm.vm
+        };
+        let _guard = register_active(self);
+        // SAFETY: see `test262_foreign_typed_array_native_call`'s identical
+        // reasoning above.
+        let result = unsafe {
+            (*child).remaining_instructions = (*child).config.instruction_budget;
+            let result = (*child).native_call(function, Value::Object(target), args, construct);
             match result {
                 Ok(value) => Ok(value),
-                Err(error) => realm
-                    .vm
+                Err(error) => (*child)
                     .error_value(error)
                     .and_then(|error| Err(RuntimeError::Thrown(error))),
             }
         };
+        drop(_guard);
         // None of this family mutates its source buffer's bytes (`slice`
         // and `sliceToImmutable` only read from `target` and allocate a new
         // buffer), so no local mirror ever goes stale here. Refreshing

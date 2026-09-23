@@ -367,3 +367,66 @@ fn wrapped_reverse_call_arguments_survive_collection_in_the_parent_realm_until_t
         Value::Bool(true)
     );
 }
+
+#[test]
+fn typed_array_species_slice_via_a_reverse_facade_constructor_does_not_panic() {
+    // Regression for `staging/sm/TypedArray/slice-bitwise-same.js`: `arr` is
+    // a *child*-owned TypedArray; setting `arr.constructor` to the
+    // *parent's* own `Float32Array` crosses that constructor into the
+    // child as a reverse facade. `arr.slice(0)` dispatches into the child
+    // (foreign receiver), where `%TypedArray%.prototype.slice`'s species
+    // lookup reads that reverse facade back off `arr.constructor`,
+    // forwards through it (`test262_reverse_get`) to the real parent
+    // `Float32Array[Symbol.species]` accessor (which returns `this`), and
+    // so constructs the result through the reverse facade itself
+    // (`test262_reverse_call`) -- this whole path was previously
+    // unreachable: before the reverse membrane existed, a parent value
+    // crossing into a child became a dead, non-constructible stand-in, so
+    // `Get(deadFacade, Symbol.species)` silently read `undefined` and
+    // `typed_array_species_constructor` fell back to the child's own local
+    // `%Float32Array%` instead -- an accidental pass, not a correct one.
+    //
+    // `typed_array_create_foreign_target` classified a species constructor
+    // as cross-realm by asking `test262_foreign_native_function` alone --
+    // which only recognizes *forward* facades -- so a reverse-facade
+    // constructor was misclassified as "local" and the slice panicked
+    // reading the constructed result's TypedArray info straight from
+    // `self.heap` (the result is actually a fresh local object belonging
+    // to *this* realm, per `test262_transport_value`'s ordinary TypedArray
+    // snapshot -- see below -- but that wasn't checked for either).
+    // Fixed by classifying both directions; `length`/`instanceof` are
+    // correct as a result.
+    //
+    // KNOWN REMAINING GAP, NOT fixed here and deliberately not asserted as
+    // passing below: the constructed result's *contents* are still wrong.
+    // `test262_reverse_call`'s result crosses back into this realm through
+    // `test262_transport_value`'s ordinary TypedArray snapshot -- which
+    // registers a *round-trip cache* entry (`realm.imported_values`,
+    // `foreign.rs`) so a value making a full round trip keeps its original
+    // identity. That cache is unconditional: when this facade crosses back
+    // OUT again (`test262_import_foreign_value`), the cache is checked
+    // first and returns the *original, pristine* parent object the
+    // snapshot stood in for -- silently discarding any mutation applied to
+    // the snapshot in between, bitwise or ordinary Get/Set alike. So even
+    // populating the snapshot correctly (verified directly: reading it back
+    // immediately after writing, *before* it crosses back out, shows the
+    // right values) has no effect on what the caller ultimately observes.
+    // A correct fix needs either constructing the result *with* its data
+    // already provided (nothing left to mutate afterward), or a reverse
+    // buffer-mirror mechanism symmetric to the forward one -- both are
+    // separate, real design work, not attempted here. This test therefore
+    // only asserts what today's fix actually guarantees: the call
+    // completes (no panic) and the result's shape is right.
+    assert_true(
+        "(() => { \
+           var other = $262.createRealm(); \
+           var arr = new other.global.Float32Array(3); \
+           arr[0] = 1.5; \
+           arr[1] = -2.25; \
+           arr[2] = 0; \
+           arr.constructor = Float32Array; \
+           var sliced = arr.slice(0); \
+           return sliced.length === 3 && sliced instanceof Float32Array; \
+         })()",
+    );
+}

@@ -130,11 +130,27 @@ impl Vm {
         let Some(constructor_id) = constructor.object_id() else {
             return Ok(None);
         };
-        let Some(NativeFunction::TypedArray(_)) =
-            self.test262_foreign_native_function(constructor_id)?
-        else {
+        // A species constructor reached through the Test262 membrane can be
+        // a *forward* facade (a child realm's own constructor, observed
+        // from its parent) or, symmetrically, a *reverse* facade (a
+        // parent's constructor, observed from inside a child realm that
+        // received it as an argument/property value) -- either one
+        // produces a construction result that isn't owned by `self`'s own
+        // realm, so both must be checked here. Missing the reverse case
+        // previously misclassified such a constructor as "local",
+        // producing a result whose real TypedArray data lived in another
+        // realm's heap while this function's caller read it directly from
+        // `self.heap` -- silently empty/zeroed data, not an error.
+        let is_foreign_typed_array_constructor = matches!(
+            self.test262_foreign_native_function(constructor_id)?,
+            Some(NativeFunction::TypedArray(_))
+        ) || matches!(
+            self.test262_reverse_native_function(constructor_id)?,
+            Some(NativeFunction::TypedArray(_))
+        );
+        if !is_foreign_typed_array_constructor {
             return Ok(None);
-        };
+        }
         let target = self.call_with_target(
             constructor.clone(),
             Value::Undefined,
@@ -547,18 +563,32 @@ impl Vm {
         let fallback = self.global(kind.name())?;
         let constructor = self.typed_array_species_constructor(receiver, fallback)?;
         let foreign_target = self.typed_array_create_foreign_target(&constructor, count)?;
-        let (target, target_kind) = if let Some(target) = &foreign_target {
-            let target = target
-                .object_id()
-                .expect("foreign TypedArray construction returns an object");
-            let (_, target_kind) = self
-                .test262_foreign_typed_array_info(target)?
-                .expect("foreign TypedArray construction returns a TypedArray");
-            (None, target_kind)
-        } else {
-            let (target, target_kind) = self.typed_array_create(constructor, count)?;
-            (Some(target), target_kind)
+        let attempted_cross_realm_construction = foreign_target.is_some();
+        let constructed = match foreign_target {
+            Some(value) => value,
+            None => Value::Object(self.typed_array_create(constructor, count)?.0),
         };
+        let constructed_id = constructed
+            .object_id()
+            .expect("TypedArray construction returns an object");
+        // A species constructor reached through a foreign *or* reverse
+        // Test262 facade (`typed_array_create_foreign_target` recognizes
+        // both) does not necessarily produce a facade result:
+        // `test262_transport_value` eagerly snapshots a TypedArray crossing
+        // realms into a genuine local object (see its own doc comment), so
+        // a *reverse*-facade constructor's result crosses back as a real
+        // local object even though the constructor itself was cross-realm.
+        // The copy strategy below must check whether `constructed` really
+        // is a live forward facade, not infer it from which construction
+        // path was taken.
+        let (is_live_foreign_target, target_kind) =
+            match self.test262_foreign_typed_array_info(constructed_id)? {
+                Some((_, target_kind)) => (true, target_kind),
+                None => {
+                    let (_, _, _, target_kind) = self.heap.typed_array_info(constructed_id)?;
+                    (false, target_kind)
+                }
+            };
         // Species construction can resize the source. Revalidate fixed views
         // before copying; a length-tracking source instead copies its
         // currently available prefix and leaves the already-created target's
@@ -570,15 +600,13 @@ impl Vm {
             count.min(current_length.saturating_sub(start))
         };
         if copy_count == 0 {
-            return Ok(foreign_target.unwrap_or_else(|| {
-                Value::Object(target.expect("local TypedArray construction returns an object"))
-            }));
+            return Ok(constructed);
         }
         let (source_buffer, source_offset, _, _) = self.heap.typed_array_info(object)?;
-        if let Some(foreign_target) = foreign_target {
+        if is_live_foreign_target {
             if kind == target_kind {
                 let target_buffer = self
-                    .get_property(&foreign_target, &"buffer".into())?
+                    .get_property(&constructed, &"buffer".into())?
                     .object_id()
                     .ok_or_else(|| {
                         RuntimeError::TypeError(
@@ -595,22 +623,58 @@ impl Vm {
                     .array_buffer_copy(source_buffer, byte_start, byte_length)?;
                 self.with_roots(|heap| heap.array_buffer_write(target_buffer, 0, &bytes))?;
                 let (realm_id, _, _, _) = self
-                    .test262_foreign_reference(
-                        foreign_target
-                            .object_id()
-                            .expect("foreign TypedArray construction returns an object"),
-                    )
+                    .test262_foreign_reference(constructed_id)
                     .expect("foreign TypedArray construction retains its realm");
                 self.test262_sync_foreign_buffer_mirrors(realm_id)?;
             } else {
                 let values = self.typed_array_read_values(object, start, copy_count)?;
                 let source = self.array_from(values)?;
-                let set = self.get_property(&foreign_target, &"set".into())?;
-                self.call_native(set, foreign_target.clone(), vec![source], false)?;
+                let set = self.get_property(&constructed, &"set".into())?;
+                self.call_native(set, constructed.clone(), vec![source], false)?;
             }
-            return Ok(foreign_target);
+            return Ok(constructed);
         }
-        let target = target.expect("local TypedArray construction returns an object");
+        if attempted_cross_realm_construction {
+            // `constructed` is a genuine local object here (the branch
+            // above handles a live facade), but it was reached through a
+            // *reverse* facade constructor -- `test262_reverse_call`'s
+            // result crossed back into this realm via
+            // `test262_transport_value`'s ordinary TypedArray snapshot.
+            //
+            // KNOWN LIMITATION, not fully fixed here: mutating that
+            // snapshot after construction (whether via a raw byte copy, as
+            // originally attempted, or the ordinary element-by-element
+            // Get/Set copy below) is *not observable* once this result
+            // crosses back out to whichever realm dispatched into this one.
+            // `test262_import_foreign_value`'s round-trip cache
+            // (`realm.imported_values`, `foreign.rs`) recognizes that the
+            // object being re-exported is itself an import-created stand-in
+            // and returns the *original* value it stands in for --
+            // deliberately, so a value making a round trip keeps its
+            // identity -- which means any mutation applied to the stand-in
+            // after that registration is silently discarded in favor of
+            // the pristine original. A correct fix needs either
+            // constructing the result *with* its data already provided (so
+            // there is nothing to mutate afterward), or a proper reverse
+            // buffer-mirror mechanism symmetric to the forward one
+            // (`foreign.rs`'s buffer mirrors are parent-owned and
+            // forward-only); both are separate work.
+            //
+            // The Get/Set copy below is still strictly better than the
+            // alternative it replaced: it cannot corrupt memory or panic
+            // (unlike blindly trusting `foreign_target.is_some()` to mean
+            // "this id is a live facade", which it turned out not to be),
+            // it correctly populates the *local* snapshot for any caller
+            // that observes it before it round-trips back out, and once
+            // the limitation above is fixed this is the right shape for it
+            // to build on -- only the write target changes.
+            let values = self.typed_array_read_values(object, start, copy_count)?;
+            for (index, value) in values.into_iter().enumerate() {
+                self.typed_array_write_values(constructed_id, target_kind, index, &[value])?;
+            }
+            return Ok(constructed);
+        }
+        let target = constructed_id;
         let (target_buffer, target_offset, _, _) = self.heap.typed_array_info(target)?;
         if kind == target_kind && source_buffer != target_buffer {
             // §23.2.3.29 performs a raw byte copy for a same-element-type

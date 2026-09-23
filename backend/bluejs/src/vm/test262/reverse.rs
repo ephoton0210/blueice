@@ -90,6 +90,33 @@ impl Vm {
         Ok(ptr)
     }
 
+    /// The reverse-membrane counterpart of
+    /// [`Vm::test262_foreign_native_function`] (`foreign.rs`): the
+    /// `NativeFunction` tag of a reverse facade's real (parent-owned)
+    /// target, or `None` if `wrapper` isn't a reverse facade. A pure heap
+    /// read (no JavaScript execution, so no reentrancy to guard against --
+    /// unlike every other function in this module, this one does not need
+    /// `register_active`), used by callers that need to classify a value
+    /// as "potentially not locally owned" symmetrically in both
+    /// directions -- e.g. `typed_array_create_foreign_target`, which
+    /// checks both this and the forward direction before deciding whether
+    /// a species constructor's result needs cross-realm buffer handling.
+    pub(in super::super) fn test262_reverse_native_function(
+        &self,
+        wrapper: ObjectId,
+    ) -> Result<Option<NativeFunction>, RuntimeError> {
+        let Some((home_heap, target, _, _)) = self.test262_reverse_reference(wrapper) else {
+            return Ok(None);
+        };
+        let ptr = self.resolve_reverse_parent(home_heap)?;
+        // SAFETY: read-only access to the parent's heap for the dynamic
+        // extent of this call only, mirroring `resolve_reverse_parent`'s
+        // own callers elsewhere in this module; `self` is not touched
+        // again afterward.
+        let parent = unsafe { &*ptr };
+        parent.heap.native_function(target).map_err(Into::into)
+    }
+
     /// `[[Get]]` on a reverse facade: forwards into the parent realm,
     /// mirroring `test262_foreign_get`.
     pub(in super::super) fn test262_reverse_get(
