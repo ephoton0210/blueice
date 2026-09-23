@@ -218,9 +218,11 @@ STRING_SUBSTR_NUMBER_MATRIX_INSTRUCTION_BUDGET = 6_000_000
 #   log2-approx.js                         325,000  (2,097 assertNear checks)
 #   es5ish-defineGetter-defineSetter.js    110,156  (about 60 descriptor checks)
 # A fixture that is too slow for that deadline even with fuel is deliberately
-# not listed (staging/sm/Array/toSpliced-dense.js needs 19.6M dispatches and
-# about 7 s; each staging/sm/Date/dst-offset-caching-N-of-8.js part needs
-# 100M-130M dispatches and runs for more than half a minute).
+# not listed here: it needs a wall-deadline allowance too, which only
+# `LARGE_FIXTURE_RESOURCES` below can express (staging/sm/Array/toSpliced-dense.js
+# needs 19.6M dispatches and about 7 s; each
+# staging/sm/Date/dst-offset-caching-N-of-8.js part needs 100M-130M dispatches
+# and runs for more than half a minute).
 FINITE_FIXTURE_INSTRUCTION_BUDGETS = {
     "staging/sm/Array/with-dense.js": 750_000,
     "staging/sm/JSON/parse-reviver-array-delete.js": 750_000,
@@ -1112,6 +1114,49 @@ LARGE_FIXTURE_RESOURCES = {
     # (see `RuntimeError::is_catchable`) but not a bigger ceiling.
     "staging/sm/String/replace-math.js": {
         "string_limit": 4 * 1024 * 1024,
+    },
+    # `runDSTOffsetCachingTestsFraction` sweeps the full representable Unix
+    # timestamp range (through 2037) in fixed steps, computing a DST offset
+    # at each one; each of the 8 parts independently needs 100-130 million
+    # dispatches and runs for more than half a minute in a debug-interpreter
+    # worker. Measured passing (both modes, all 8 parts) at a 200 million
+    # dispatch / 70 s envelope -- comfortable margin over the documented
+    # minimum, not a tight multiple of it, since the per-part cost already
+    # varies within that 100-130 million range.
+    **{
+        f"staging/sm/Date/dst-offset-caching-{part}-of-8.js": {
+            "instruction_budget": 200_000_000,
+            "timeout": 70,
+        }
+        for part in range(1, 9)
+    },
+    # 100 years x 12 months x 31 days of two/four-digit-year Date-parsing
+    # comparisons. Measured: fails at 5 million dispatches, passes at 8
+    # million (about 1.3 s); 30 million is roughly 4x that measured minimum.
+    "staging/sm/Date/two-digit-years.js": {
+        "instruction_budget": 30_000_000,
+        "timeout": 10,
+    },
+    # 13 start indices x 7 delete counts x 7 insert counts x several array
+    # shapes. Measured: 19.6 million dispatches, about 7 s; 80 million is
+    # roughly 4x that measured minimum.
+    "staging/sm/Array/toSpliced-dense.js": {
+        "instruction_budget": 80_000_000,
+        "timeout": 20,
+    },
+    # `TestGC2` chains 99,999 objects through a WeakMap (`m.set(key, new
+    # Object)` per link) before `$262.gc()`. The chain itself is cheap in
+    # dispatches but the live object count exceeds the default 16 MiB
+    # managed-heap ceiling well before instruction fuel is the limiting
+    # factor; 64 MiB (about 4x the default ceiling) gives headroom without
+    # granting an unbounded heap. Measured: fails at 5 million dispatches
+    # (two ~100,000-iteration loops, each iteration a native `WeakMap`
+    # `set`/`get` call plus loop bookkeeping), passes at 10 million (about
+    # 3.5 s); 30 million is roughly 4x that measured minimum.
+    "staging/sm/regress/regress-1507322-deep-weakmap.js": {
+        "instruction_budget": 30_000_000,
+        "heap_limit": 64 * 1024 * 1024,
+        "timeout": 15,
     },
 }
 
