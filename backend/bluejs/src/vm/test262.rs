@@ -10,6 +10,7 @@ mod assertions;
 mod cases;
 mod foreign;
 mod harness;
+mod reverse;
 /// The four numbering-system digit sets selected by the pinned precision
 /// matrix. These are the same `numberingSystemDigits` entries consumed by its
 /// upstream JavaScript helper.

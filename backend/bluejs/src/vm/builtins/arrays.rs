@@ -110,6 +110,7 @@ impl Vm {
         while let Some(prototype) = current {
             if self.heap.proxy(prototype)?.is_some()
                 || self.test262_foreign_reference(prototype).is_some()
+                || self.test262_reverse_reference(prototype).is_some()
                 || self.heap.is_module_namespace(prototype)?
             {
                 return Ok(false);

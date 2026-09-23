@@ -34,6 +34,7 @@ mod lifecycle;
 mod modules;
 mod operations;
 mod properties;
+mod realm_reentrancy;
 mod regexp;
 mod shadow_realm;
 mod temporal;
@@ -683,6 +684,38 @@ struct Test262ForeignValue {
     _target_root: RootId,
 }
 
+/// The reverse Test262 membrane's own per-facade record -- symmetric with
+/// [`Test262ForeignValue`], but keyed by the *parent's* own heap identity
+/// (`home_heap`, the same tag [`realm_reentrancy::register_active`]/
+/// [`realm_reentrancy::resolve_active`] use) rather than a `test262_realms`
+/// `ObjectId`, since a child realm has no map back to its own parent -- the
+/// parent is reachable only dynamically, through `ACTIVE`, while a call from
+/// this child is actually in flight.
+///
+/// Stored on the *child* `Vm` (`test262_reverse_values`, keyed by `wrapper`,
+/// the local facade object living in this child's own heap); `target` is the
+/// real object living in the parent's heap that `wrapper` stands in for.
+struct Test262ReverseValue {
+    home_heap: u64,
+    target: ObjectId,
+    callable: bool,
+    constructible: bool,
+    /// Mirrors [`Test262ForeignValue::prototype_override`]'s same purpose,
+    /// for a reverse facade's own [[Prototype]]. Never set by
+    /// `test262_transport_value` itself today (nothing yet needs it), kept
+    /// for structural symmetry and because `test262_reverse_get_prototype`
+    /// already has to check it exactly like its forward counterpart.
+    prototype_override: Option<ObjectId>,
+    /// Roots `wrapper` (the map key above) in *this* (the child's) own heap:
+    /// nothing else in this heap's own reachability graph necessarily still
+    /// references it.
+    _wrapper_root: RootId,
+    /// Roots `target` in the *parent's* heap, for the identical reason
+    /// `Test262ForeignValue::_target_root` roots its own target in the
+    /// foreign realm it belongs to.
+    _target_root: RootId,
+}
+
 /// A local ArrayBuffer and its equivalent backing buffer in a Test262 child
 /// Realm. The two heaps cannot store one another's object identities, so the
 /// bridge copies ordinary-buffer bytes at the boundary and synchronizes them
@@ -1005,12 +1038,6 @@ pub struct Vm {
     test262_realms: HashMap<ObjectId, Test262Realm>,
     test262_foreign_values: HashMap<ObjectId, Test262ForeignValue>,
     test262_foreign_buffer_mirrors: HashMap<(ObjectId, ObjectId), Test262ForeignBufferMirror>,
-    /// Object identities in this realm that stand in for a callable value
-    /// owned by the parent Test262 realm.  The ordinary imported-value
-    /// record remains owned by that parent (so it can keep both heaps alive),
-    /// but `ShadowRealm` needs the callable bit locally when it applies
-    /// `GetWrappedValue` before any call can cross its own boundary.
-    test262_imported_callables: HashSet<ObjectId>,
     /// Whether the most recent function [[Construct]] this realm finished
     /// failed one of the completion checks the specification performs after
     /// the callee's execution context has been removed (a derived
@@ -1024,6 +1051,17 @@ pub struct Vm {
     /// errors the function creates belong to that realm. Cleared while any
     /// nested call runs, so callbacks and getters are unaffected.
     acting_realm: Option<ObjectId>,
+    /// The reverse Test262 membrane: object identities in *this* realm that
+    /// stand in for a value owned by a Test262 *parent* realm (one that
+    /// created this `Vm` via `$262.createRealm()`), crossing in the opposite
+    /// direction from `test262_foreign_values`. Every `Vm` can play the
+    /// "child" role generically -- there is no reverse analog of
+    /// `test262_realms` here, since a child has no map back to its parent;
+    /// the live parent pointer is instead resolved dynamically through
+    /// [`realm_reentrancy::resolve_active`], keyed by `home_heap`. See
+    /// [`test262::reverse`] for the forwarding functions that dispatch
+    /// through this map.
+    test262_reverse_values: HashMap<ObjectId, Test262ReverseValue>,
     shadow_realm_prototype: Option<ObjectId>,
     shadow_realms: HashMap<ObjectId, ShadowRealmRecord>,
     /// Reverse index from a `ShadowRealm` child's own heap tag back to the
@@ -1566,6 +1604,11 @@ impl Vm {
         if let Value::Object(id) = callee {
             if self.test262_foreign_reference(id).is_some() {
                 return self.test262_foreign_call(id, receiver, args, construct);
+            }
+        }
+        if let Value::Object(id) = callee {
+            if self.test262_reverse_reference(id).is_some() {
+                return self.test262_reverse_call(id, receiver, args, construct);
             }
         }
         if let Value::Object(id) = callee {

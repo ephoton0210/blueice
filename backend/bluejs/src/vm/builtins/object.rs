@@ -66,6 +66,18 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_get_own_property(object, key);
         }
+        // A foreign/reverse facade is intentionally an empty local object
+        // (see `test262_transport_value`'s doc comment), so without this
+        // check every own-property query -- `Object.keys`/`getOwnProperty
+        // Descriptor`/`hasOwnProperty`/`in`/spread/`for-in`/JSON.stringify,
+        // all of which ultimately reach [[GetOwnProperty]] -- would report
+        // every real own property as absent.
+        if self.test262_foreign_reference(object).is_some() {
+            return self.test262_foreign_get_own_property(object, key);
+        }
+        if self.test262_reverse_reference(object).is_some() {
+            return self.test262_reverse_get_own_property(object, key);
+        }
         self.heap
             .get_own_property_descriptor(object, key)
             .map_err(Into::into)
@@ -182,6 +194,9 @@ impl Vm {
         if self.heap.proxy(object)?.is_none() && self.test262_foreign_reference(object).is_some() {
             return self.test262_foreign_own_property_keys(object);
         }
+        if self.heap.proxy(object)?.is_none() && self.test262_reverse_reference(object).is_some() {
+            return self.test262_reverse_own_property_keys(object);
+        }
         self.materialize_object_prototype_methods(object, None)?;
         // Global built-ins are initialized on demand to keep ordinary realms
         // compact. [[OwnPropertyKeys]] is nevertheless a reflective view of
@@ -226,6 +241,9 @@ impl Vm {
         if self.test262_foreign_reference(object).is_some() {
             return self.test262_foreign_get_prototype(object);
         }
+        if self.test262_reverse_reference(object).is_some() {
+            return self.test262_reverse_get_prototype(object);
+        }
         self.heap.prototype(object).map_err(Into::into)
     }
 
@@ -237,8 +255,17 @@ impl Vm {
         if self.heap.proxy(object)?.is_some() {
             return self.proxy_set_prototype(object, prototype);
         }
+        // A foreign/reverse facade's *local* heap record has no bearing on
+        // the real membrane target's own [[Prototype]] (see
+        // `test262_transport_value`'s doc comment on why it is
+        // intentionally empty): `self.heap.set_prototype` below would only
+        // ever mutate the facade's own, otherwise-unobserved local slot.
+        // Forward this to the real object's own [[SetPrototypeOf]] instead.
         if self.test262_foreign_reference(object).is_some() {
             return self.test262_foreign_set_prototype(object, prototype);
+        }
+        if self.test262_reverse_reference(object).is_some() {
+            return self.test262_reverse_set_prototype(object, prototype);
         }
         // OrdinarySetPrototypeOf's cycle check walks [[GetPrototypeOf]]
         // through every ordinary object, including the facades of other
@@ -323,6 +350,12 @@ impl Vm {
         if self.test262_foreign_reference(target).is_some() {
             return self.test262_foreign_set_with_receiver(target, receiver, key, value);
         }
+        // Symmetric case: a reverse facade is likewise an empty local
+        // object standing in for a real object owned by a Test262 *parent*
+        // realm. Its [[Set]] must run back in that parent.
+        if self.test262_reverse_reference(target).is_some() {
+            return self.test262_reverse_set_with_receiver(target, receiver, key, value);
+        }
         // Module Namespace Exotic Objects have a distinct [[Set]] internal
         // method: it returns false for every property key, including a
         // writable-looking live export whose assigned value is unchanged.
@@ -374,6 +407,18 @@ impl Vm {
         while let Some(object) = current {
             if self.heap.proxy(object)?.is_some() {
                 return self.proxy_set(object, receiver, key, value);
+            }
+            // The prototype-chain walk below stops early for a *local*
+            // proxy (above), but never previously stopped for an ancestor
+            // that is itself a reverse-membrane facade of a genuine parent
+            // Proxy -- that ancestor is a plain, empty local object, so the
+            // walk would otherwise silently skip past its real [[Set]]
+            // (including a parent Proxy trap) and keep walking as if it had
+            // no own properties at all. `OrdinarySet` always fully
+            // delegates once it reaches *any* exotic [[Set]], so mirror the
+            // proxy check immediately above with the reverse-facade one.
+            if self.test262_reverse_reference(object).is_some() {
+                return self.test262_reverse_set_with_receiver(object, receiver, key, value);
             }
             if object != target {
                 if let Some(numeric) = self.heap.typed_array_numeric_key(object, key)? {
@@ -474,6 +519,23 @@ impl Vm {
             self.materialize_iterator_helper_property(object, key)?;
             if self.heap.proxy(object)?.is_some() {
                 return self.proxy_get(object, receiver, key);
+            }
+            // A foreign/reverse facade is intentionally an empty local
+            // object (see `test262_transport_value`'s own doc comment), so
+            // without this check the loop below would silently treat it as
+            // having no own properties at all and walk straight past it --
+            // correct only when the *walk itself* continues into the real
+            // membrane target (`object_get_prototype`, below, already does
+            // that), but wrong the moment a property is genuinely an own
+            // property of that real target: this happens whenever `start`
+            // itself is a facade, notably `super_get`'s `base` (a foreign
+            // or reverse [[HomeObject]] prototype) reached without ever
+            // going through `get_object_property`'s own top-level check.
+            if self.test262_foreign_reference(object).is_some() {
+                return self.test262_foreign_get(object, receiver, key);
+            }
+            if self.test262_reverse_reference(object).is_some() {
+                return self.test262_reverse_get(object, receiver, key);
             }
             if let Some(numeric) = self.heap.typed_array_numeric_key(object, key)? {
                 return match numeric {
@@ -761,6 +823,9 @@ impl Vm {
             return Ok(false);
         };
         if let Some((_, _, _, constructible)) = self.test262_foreign_reference(*id) {
+            return Ok(constructible);
+        }
+        if let Some((_, _, _, constructible)) = self.test262_reverse_reference(*id) {
             return Ok(constructible);
         }
         if let Some((_, constructible)) = self.heap.proxy_capabilities(*id)? {

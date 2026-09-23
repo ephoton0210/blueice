@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::super::realm_reentrancy::register_active;
 use super::*;
 use crate::heap::TypedArrayKind;
 
@@ -460,7 +461,24 @@ impl Vm {
         // opaque, but it must retain this one observable capability locally
         // or ShadowRealm rejects it before it can create that wrapper.
         let callable = self.is_callable(&Value::Object(source))?;
+        // The reverse-membrane facade this function may allocate below (the
+        // opaque, property-forwarding case) needs its own constructible bit,
+        // exactly like the forward direction's `test262_import_foreign_value`
+        // already computes for its own facades.
+        let constructible = self.is_constructor(&Value::Object(source))?;
+        let home_heap = self.object_prototype.heap;
         let source_root = self.heap.root(source)?;
+        // A second, independent root for the same `source` object, held by
+        // the reverse-membrane record itself (see `Test262ReverseValue`).
+        // Only ever created for the opaque, property-forwarding case (the
+        // final `else` branch below): Arrays/TypedArrays/ArrayBuffers keep
+        // their existing eager-snapshot transport instead, so `property_
+        // forwarding`'s value -- already known here -- decides this before
+        // the closure below borrows `self` through `realm` and makes a
+        // second `self.heap.root` call impossible.
+        let reverse_target_root = property_forwarding
+            .then(|| self.heap.root(source))
+            .transpose()?;
         let result = (|| {
             let realm = self
                 .test262_realms
@@ -539,8 +557,30 @@ impl Vm {
                     .with_roots(|heap| heap.alloc_object(Some(prototype)))?
             };
             let target_root = realm.vm.heap.root(target)?;
-            if callable {
-                realm.vm.test262_imported_callables.insert(target);
+            if property_forwarding {
+                // The opaque, "everything else" case: rather than leaving
+                // `target` a permanently empty, non-callable stand-in (the
+                // old behavior), register it as a live reverse-membrane
+                // facade so property access, [[Call]]/[[Construct]], and
+                // prototype-chain walks reaching it from *this* (child)
+                // realm's own code dispatch back to the real `source`
+                // object in the parent -- see `test262::reverse` for the
+                // forwarding functions this makes reachable.
+                let wrapper_root = realm.vm.heap.root(target)?;
+                realm.vm.test262_reverse_values.insert(
+                    target,
+                    Test262ReverseValue {
+                        home_heap,
+                        target: source,
+                        callable,
+                        constructible,
+                        prototype_override: None,
+                        _wrapper_root: wrapper_root,
+                        _target_root: reverse_target_root.expect(
+                            "reverse_target_root is rooted whenever property_forwarding is true",
+                        ),
+                    },
+                );
             }
             realm.imported_sources.insert(source, target);
             realm.imported_values.insert(
@@ -557,6 +597,15 @@ impl Vm {
         match result.as_ref() {
             Err(_) => {
                 self.heap.unroot(source_root)?;
+                // `reverse_target_root` is `Copy` (`RootId` is `Copy`), so
+                // capturing it into the now-finished closure above did not
+                // move it away from this binding; if the closure never
+                // reached the `property_forwarding` branch that consumes
+                // it, it is still exactly this root and must be released
+                // here like `source_root` above.
+                if let Some(root) = reverse_target_root {
+                    self.heap.unroot(root)?;
+                }
             }
             Ok(value) if ordinary_buffer => {
                 let target = value
@@ -595,42 +644,6 @@ impl Vm {
         let result = realm.vm.get_object_property(target, &receiver, key);
         let value = self.test262_foreign_completion(realm_id, result)?;
         self.test262_import_foreign_value(realm_id, value)
-    }
-
-    /// Forwards a foreign facade's [[GetOwnProperty]] into its Realm and
-    /// imports the descriptor's value / accessor functions back across the
-    /// membrane, so the descriptor APIs see the properties of the facaded
-    /// object rather than those of its empty local stand-in.
-    pub(in super::super) fn test262_foreign_get_own_property(
-        &mut self,
-        wrapper: ObjectId,
-        key: &PropertyName,
-    ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
-        let (realm_id, target, _, _) = self
-            .test262_foreign_reference(wrapper)
-            .expect("foreign getOwnProperty has a membrane record");
-        let descriptor = {
-            let realm = self
-                .test262_realms
-                .get_mut(&realm_id)
-                .expect("foreign realm remains live");
-            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-            realm.vm.object_get_own_property(target, key)
-        };
-        let descriptor = self.test262_foreign_completion(realm_id, descriptor);
-        let Some(mut descriptor) = descriptor? else {
-            return Ok(None);
-        };
-        for field in [
-            &mut descriptor.value,
-            &mut descriptor.get,
-            &mut descriptor.set,
-        ] {
-            if let Some(value) = field.take() {
-                *field = Some(self.test262_import_foreign_value(realm_id, value)?);
-            }
-        }
-        Ok(Some(descriptor))
     }
 
     /// Forwards a foreign facade's [[DefineOwnProperty]] into its Realm, with
@@ -819,6 +832,50 @@ impl Vm {
                 .prototype_override = None;
         }
         Ok(succeeded)
+    }
+
+    /// Runs a foreign facade's [[GetOwnProperty]] in its owning Realm.
+    /// `Object.keys`/`getOwnPropertyDescriptor`/`hasOwnProperty`/`in`/
+    /// spread/`for-in`/`JSON.stringify` all ultimately reach this internal
+    /// method, so without it every one of those observes a foreign facade
+    /// as permanently empty regardless of `test262_foreign_own_property_
+    /// keys`' own already-correct key list.
+    pub(in super::super) fn test262_foreign_get_own_property(
+        &mut self,
+        wrapper: ObjectId,
+        key: &PropertyName,
+    ) -> Result<Option<PropertyDescriptor>, RuntimeError> {
+        let (realm_id, target, _, _) = self
+            .test262_foreign_reference(wrapper)
+            .expect("foreign own-property has a membrane record");
+        let descriptor = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
+            realm.vm.object_get_own_property(target, key)?
+        };
+        let Some(descriptor) = descriptor else {
+            return Ok(None);
+        };
+        Ok(Some(PropertyDescriptor {
+            value: descriptor
+                .value
+                .map(|value| self.test262_import_foreign_value(realm_id, value))
+                .transpose()?,
+            writable: descriptor.writable,
+            get: descriptor
+                .get
+                .map(|value| self.test262_import_foreign_value(realm_id, value))
+                .transpose()?,
+            set: descriptor
+                .set
+                .map(|value| self.test262_import_foreign_value(realm_id, value))
+                .transpose()?,
+            enumerable: descriptor.enumerable,
+            configurable: descriptor.configurable,
+        }))
     }
 
     /// Runs a foreign facade's [[Set]] in its owning Realm. `Reflect.set`
@@ -1406,7 +1463,18 @@ impl Vm {
             let imports = realm
                 .imported_values
                 .iter()
-                .filter(|(_, imported)| imported.property_forwarding)
+                .filter(|(target, imported)| {
+                    // A reverse-membrane facade (see `test262_transport_
+                    // value`/`Test262ReverseValue`) forwards every [[Set]]
+                    // live, directly onto the real parent object, the
+                    // moment it happens -- there is nothing left for this
+                    // manual sync-back pass to do, and running it anyway
+                    // would call back into the parent *outside* the
+                    // `register_active` window `test262_foreign_call`
+                    // establishes only for its own direct child call.
+                    imported.property_forwarding
+                        && !realm.vm.test262_reverse_values.contains_key(target)
+                })
                 .map(|(target, imported)| (*target, imported.value.clone()))
                 .collect::<Vec<_>>();
             let mut writes = Vec::new();
@@ -1770,25 +1838,56 @@ impl Vm {
             .iter()
             .map(|value| self.test262_export_foreign_value(realm_id, value))
             .collect::<Result<Vec<_>, _>>()?;
-        let realm = self
-            .test262_realms
-            .get_mut(&realm_id)
-            .expect("foreign realm remains live");
-        realm.vm.remaining_instructions = realm.vm.config.instruction_budget;
-        realm.vm.construct_completion_check_failed = false;
-        let result = realm
-            .vm
-            .call_native(Value::Object(target), receiver, args, construct);
+        // This call is where the child Realm actually *executes* -- the one
+        // place in the forward direction where child code can, through a
+        // reverse-membrane facade, call back into `self`. Do not hold a
+        // `self.test262_realms`-derived borrow (`realm`, as an ordinary safe
+        // reference) alive across it: `Test262Realm` owns its child directly
+        // (`Box<Vm>`, not `Rc<RefCell<Vm>>` the way `ShadowRealmRecord`
+        // does), so nothing here provides a runtime check against a second,
+        // overlapping mutable borrow of that map the way `shadow_call_
+        // wrapped`'s `RefCell::try_borrow_mut` does for `ShadowRealm`. If a
+        // reentrant call back into this exact child Realm happened while
+        // `realm` were still alive (even unused), it would conflict with
+        // that borrow.  Instead, extract a raw pointer to the child `Vm`
+        // and let the map borrow that produced it end immediately -- the
+        // same "cast to a raw pointer, dereference later" discipline
+        // `realm_reentrancy::register_active`/`resolve_active` already rely
+        // on for the exact same reason.
+        let child: *mut Vm = {
+            let realm = self
+                .test262_realms
+                .get_mut(&realm_id)
+                .expect("foreign realm remains live");
+            &mut *realm.vm
+        };
+        let _guard = register_active(self);
+        // SAFETY: `child` was derived from a `&mut` borrow of
+        // `self.test262_realms` whose only use was to produce this pointer
+        // (the block above); that borrow has already ended, and nothing
+        // between there and here re-borrows `self.test262_realms`, so this
+        // dereference does not alias any reference `self` itself is
+        // holding. `self` is registered active (above) for exactly this
+        // call's dynamic extent, and is not itself touched again until
+        // after it returns, matching `shadow_call_across`'s identical
+        // pattern.
+        let result = unsafe {
+            (*child).remaining_instructions = (*child).config.instruction_budget;
+            (*child).construct_completion_check_failed = false;
+            (*child).call_native(Value::Object(target), receiver, args, construct)
+        };
         let result = match result {
             Ok(value) => Ok(value),
             // [[Construct]]'s completion checks (a derived constructor's
             // return value and `this` binding) run after the callee's
             // execution context is removed, so their error is created in
             // this Realm: leave it unmaterialized for the caller.
+            // SAFETY: see above; `child` remains the sole live reference to
+            // the child Vm at this point.
             Err(error @ (RuntimeError::TypeError(_) | RuntimeError::ReferenceError(_)))
                 if construct
-                    && realm.vm.construct_completion_check_failed
-                    && matches!(realm.vm.heap.closure(target), Ok(Some(_))) =>
+                    && unsafe { (*child).construct_completion_check_failed }
+                    && matches!(unsafe { (*child).heap.closure(target) }, Ok(Some(_))) =>
             {
                 Err(error)
             }
@@ -1796,11 +1895,14 @@ impl Vm {
             // boundary. Materialize every ordinary abrupt completion in the
             // child before import so a foreign closure, Proxy, or builtin
             // exposes the Error object from the Realm that created it.
-            Err(error) => match realm.vm.error_value(error) {
+            // SAFETY: see above; `child` remains the sole live reference to
+            // the child Vm at this point.
+            Err(error) => match unsafe { (*child).error_value(error) } {
                 Ok(error) => Err(RuntimeError::Thrown(error)),
                 Err(error) => Err(error),
             },
         };
+        drop(_guard);
         self.test262_sync_imported_data_properties(realm_id)?;
         let result = self.test262_import_foreign_result(realm_id, result)?;
         // OrdinaryCreateFromConstructor consulted `newTarget` only through

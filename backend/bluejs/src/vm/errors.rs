@@ -79,6 +79,26 @@ impl Vm {
                     crate::heap::TypedArrayNumericKey::Invalid => Ok(false),
                 };
             }
+            // A foreign/reverse facade is not a Proxy (that has its own,
+            // already-handled, complete [[HasProperty]] trap above): the
+            // real membrane target's [[HasProperty]] is ordinary, so only
+            // its own-property check needs forwarding here -- an absent
+            // own property still falls through to `object_get_prototype`
+            // below, which already forwards *that* step correctly.
+            if self.test262_foreign_reference(id).is_some() {
+                if self.test262_foreign_get_own_property(id, key)?.is_some() {
+                    return Ok(true);
+                }
+                current = self.object_get_prototype(id)?;
+                continue;
+            }
+            if self.test262_reverse_reference(id).is_some() {
+                if self.test262_reverse_get_own_property(id, key)?.is_some() {
+                    return Ok(true);
+                }
+                current = self.object_get_prototype(id)?;
+                continue;
+            }
             match self.heap.get_own_property_descriptor(id, key) {
                 Ok(Some(_)) | Err(HeapError::UninitializedModuleExport) => {
                     // A namespace's [[HasProperty]] observes membership in

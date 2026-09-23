@@ -1899,9 +1899,9 @@ fn for_await_of_also_parses_in_a_plain_async_function_not_only_an_async_generato
             params: vec![],
             source_text: Default::default(),
             body: vec![Stmt::ForOf {
-                left: ForHead::Assignment(AssignmentPattern::Target(Box::new(
-                    Expr::Identifier("x".to_string())
-                ))),
+                left: ForHead::Assignment(AssignmentPattern::Target(Box::new(Expr::Identifier(
+                    "x".to_string()
+                )))),
                 right: Expr::Identifier("y".to_string()),
                 body: Box::new(Stmt::Block(vec![])),
                 is_await: true,
