@@ -1092,6 +1092,9 @@ impl Vm {
             // the job queue as an implementation error.
             RuntimeError::ModuleResolution(message) => self.error_object("SyntaxError", message),
             RuntimeError::Test262(message) => self.error_object("Test262Error", message),
+            RuntimeError::StringLimit { limit } => {
+                self.error_object("RangeError", format!("BlueJS string exceeds {limit} bytes"))
+            }
             error => Err(error),
         }
     }

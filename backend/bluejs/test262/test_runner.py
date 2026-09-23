@@ -241,6 +241,7 @@ class RunnerTests(unittest.TestCase):
                     "instruction_budget": 50_000_000,
                     "timeout": 20,
                 },
+                "staging/sm/String/replace-math.js": {"string_limit": 4 * mib},
             },
         )
         # Dispatch budget and wall deadline follow the table, and only for
@@ -268,6 +269,10 @@ class RunnerTests(unittest.TestCase):
         )
         self.assertEqual(instruction_budget({}, 100_000, huge_array), 50_000_000)
         self.assertEqual(case_timeout({}, 2, huge_array), 20)
+        replace_math = "staging/sm/String/replace-math.js"
+        self.assertEqual(large_fixture_limits(replace_math), {"string_limit": 4 * mib})
+        self.assertEqual(instruction_budget({}, 100_000, replace_math), 100_000)
+        self.assertEqual(case_timeout({}, 2, replace_math), 2)
         # A larger default is never reduced.
         self.assertEqual(instruction_budget({}, 200_000_000, long_running), 200_000_000)
         self.assertEqual(case_timeout({}, 120, long_running), 120)

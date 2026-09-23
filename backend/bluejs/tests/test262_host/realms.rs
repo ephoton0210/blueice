@@ -622,6 +622,15 @@ fn harness_compares_arrays_and_propagates_resource_errors() {
         "assert.throws(ReferenceError,()=>missing)",
         "assert.throws(SyntaxError,()=>new RegExp('['))",
         "assert.throws(Test262Error,()=>assert(false))",
+        // `StringLimit` is a catchable `RangeError` (see
+        // `RuntimeError::is_catchable`'s doc comment: unlike
+        // InstructionLimit/Heap/RegexTimeout, a string that merely hits
+        // BlueJS's own configured byte ceiling is not a sign anything is
+        // actually out of resources, and real engines throw a catchable
+        // RangeError here too), so `assert.throws`'s own try/catch now
+        // correctly intercepts it instead of it propagating past the whole
+        // script as a host abort.
+        "assert.throws(RangeError,()=>''.padStart(10000000))",
     ] {
         assert_eq!(
             vm.execute(&compile(&parse(source).unwrap()).unwrap())
@@ -643,13 +652,6 @@ fn harness_compares_arrays_and_propagates_resource_errors() {
             "{source}"
         );
     }
-    assert!(matches!(
-        vm.execute(
-            &compile(&parse("assert.throws(RangeError,()=>''.padStart(10000000))").unwrap())
-                .unwrap()
-        ),
-        Err(RuntimeError::StringLimit { .. })
-    ));
     assert_eq!(
         vm.execute(&compile(&parse("typeof Test262Error").unwrap()).unwrap())
             .unwrap(),

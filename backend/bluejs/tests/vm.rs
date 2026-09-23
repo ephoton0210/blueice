@@ -312,6 +312,37 @@ fn configuration_boundaries_and_error_messages_are_observable() {
             .unwrap(),
         Value::String("冰".into())
     );
+    // Unlike InstructionLimit/Heap/RegexTimeout, a string that merely hits
+    // BlueJS's own configured byte ceiling is catchable: the check runs
+    // before the over-sized allocation happens, so there is nothing to
+    // unwind and no risk of a partially-allocated string escaping as an
+    // apparent success (see `RuntimeError::is_catchable`'s doc comment).
+    let mut vm = Vm::new(VmConfig {
+        max_string_bytes: 100,
+        ..VmConfig::default()
+    })
+    .unwrap();
+    // `'x'.repeat(200)` is built at runtime (not a source literal), so it
+    // alone crosses the 100-byte ceiling; every literal in this source,
+    // including the catch body's own comparison strings, stays well under
+    // it.
+    let source = "var seen = false; \
+                  try { 'x'.repeat(200); } \
+                  catch (e) { seen = e instanceof RangeError \
+                              && e.message.indexOf('exceeds 100 bytes') !== -1; } \
+                  seen;";
+    assert_eq!(
+        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true),
+        "a string exceeding the configured byte limit is caught as a RangeError"
+    );
+    // With no enclosing try/catch, StringLimit still propagates raw and
+    // uncaught, same as before this changed which errors are catchable.
+    assert_eq!(
+        vm.execute(&compile(&parse("'x'.repeat(200);").unwrap()).unwrap()),
+        Err(RuntimeError::StringLimit { limit: 100 })
+    );
     for source in ["missing", "null.x", "String(Symbol())+Symbol()"] {
         let error = evaluate(source).unwrap_err();
         assert!(!error.to_string().is_empty());

@@ -1057,6 +1057,21 @@ LARGE_FIXTURE_RESOURCES = {
         "instruction_budget": 50_000_000,
         "timeout": 20,
     },
+    # `puff("1", 1 << 20)` builds x by doubling up to exactly 2**20 (1,048,576)
+    # chars -- 2,097,152 bytes as UTF-16, already past the default 1 MiB
+    # (1,048,576 byte) string ceiling, *before* the fixture's own try/catch
+    # even starts. This is not a catchability gap by itself: only enough
+    # headroom to let x (and the much smaller rep) finish building is
+    # needed. The fixture's actual `x.replace(/(.+)/g, rep)` deliberately
+    # tries to build a ~2**36-char result (rep is "$1" repeated ~32,768
+    # times, each substituting the whole ~2**20-char match) -- about 2**37
+    # bytes, i.e. 128 GiB, which must and will still exceed any reasonable
+    # limit here and throw. That throw is the fixture's own "OOM also
+    # acceptable" catch path, which needs `StringLimit` to be catchable
+    # (see `RuntimeError::is_catchable`) but not a bigger ceiling.
+    "staging/sm/String/replace-math.js": {
+        "string_limit": 4 * 1024 * 1024,
+    },
 }
 
 

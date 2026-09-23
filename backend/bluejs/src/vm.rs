@@ -231,9 +231,22 @@ impl From<HeapError> for RuntimeError {
 
 impl RuntimeError {
     /// Language exceptions participate in ECMAScript completion propagation.
-    /// Limits, allocation failures and failed isolated host workers remain
+    /// Allocation failures and failed isolated host workers remain
     /// uncatchable host aborts: user code must not turn a resource boundary
     /// into an apparent JavaScript success.
+    ///
+    /// `StringLimit` is the one resource boundary that IS catchable: real
+    /// engines (V8, SpiderMonkey, JSC) throw a catchable `RangeError` when a
+    /// string operation would exceed their own maximum string length, not an
+    /// uncatchable abort, and Test262 fixtures observe it that way (e.g.
+    /// `staging/sm/String/replace-math.js`'s `catch (e) { // OOM also
+    /// acceptable }`). Unlike `InstructionLimit`/`Heap`/`RegexTimeout`, a
+    /// string that has merely reached BlueJS's own configured byte ceiling
+    /// is not a sign that anything is actually out of resources; the check
+    /// runs *before* the over-sized allocation is attempted, so there is
+    /// nothing to unwind, no risk of a partially-allocated string escaping
+    /// into an apparent success, and no retry-until-genuinely-out-of-memory
+    /// concern for a fixed, deliberately-chosen ceiling.
     fn is_catchable(&self) -> bool {
         matches!(
             self,
@@ -243,6 +256,7 @@ impl RuntimeError {
                 | Self::SyntaxError(_)
                 | Self::Thrown(_)
                 | Self::Test262(_)
+                | Self::StringLimit { .. }
         )
     }
 }
