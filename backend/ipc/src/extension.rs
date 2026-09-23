@@ -41,13 +41,13 @@ pub enum ExtensionRequest {
     /// [`crate::gatekeeper`]'s handshake-less one-shot protocol, this
     /// one is long-lived, so it needs an explicit first-message
     /// handshake the same way [`crate::ClientMessage::Hello`] is for
-    /// the external client protocol. `extension_id` is, for this
-    /// minimal slice, an author-chosen string an extension declares
-    /// itself -- `phase-9-extension-protocol/PLAN.md`'s own "Wiring
-    /// design" flags that a real, non-spoofable identity (derived from
-    /// a hash of the manifest + WASM module) is still-open future work,
-    /// not solved here; see `blueice_extension_host::ExtensionRegistry`'s
-    /// own docs.
+    /// the external client protocol. `blueice-core`'s opt-in installed
+    /// extension path derives `extension_id` from the exact validated
+    /// manifest and WASM bytes; the standalone reference host retains a
+    /// fixed test identity. This string establishes a registry lookup, not
+    /// process authentication: a future core-spawned peer binding remains
+    /// necessary before an untrusted local process can be trusted to present
+    /// it.
     ///
     /// `capability_versions` declares only the capabilities this
     /// extension actually uses, per-capability, e.g. `{"dom:read": 1}`
@@ -60,11 +60,13 @@ pub enum ExtensionRequest {
         extension_id: String,
         capability_versions: BTreeMap<String, u32>,
     },
-    /// Query the (for this minimal slice, placeholder) AI-facing
-    /// representation, read-only -- requires the `dom:read` capability.
-    /// No fields: this minimal slice doesn't wire a real target/query
-    /// shape yet (see [`ExtensionReply::DomReadResult`]'s docs for why
-    /// its value is a placeholder, not real `Page` state).
+    /// Query the AI-facing representation, read-only -- requires the
+    /// `dom:read` capability. The standalone reference host returns a
+    /// placeholder. An installed extension served by `blueice-core` receives
+    /// JSON for the core-owned default tab's [`crate::AiSnapshot`]. No tab
+    /// field exists in this v1 request, so multi-tab targeting remains an
+    /// explicit future protocol extension rather than an implicit "active
+    /// tab" convention.
     DomRead,
     /// Mutate something DOM-shaped -- requires the `dom:write`
     /// capability, deliberately not granted to this minimal slice's one
@@ -173,6 +175,13 @@ pub enum ExtensionReply {
     /// Reply to a granted and gatekeeper-cleared
     /// [`ExtensionRequest::NetworkIntercept`] registration.
     NetworkInterceptAck,
+    /// Authorization (and, where applicable, gatekeeper review) succeeded,
+    /// but the host has no concrete implementation for this operation. This
+    /// is deliberately distinct from an acknowledgement: the standalone
+    /// reference host can use placeholder effects, while a core-backed host
+    /// must not claim that a DOM write or interception rule ran when the
+    /// current wire shape cannot represent one safely.
+    OperationUnavailable { capability: String, reason: String },
     /// A high-risk, otherwise-authorized extension action was rejected
     /// by the Phase 7 gatekeeper, or the gatekeeper was unavailable and
     /// the host therefore failed closed. Kept distinct from
@@ -305,6 +314,10 @@ mod tests {
             },
             ExtensionReply::DomWriteAck,
             ExtensionReply::NetworkInterceptAck,
+            ExtensionReply::OperationUnavailable {
+                capability: "network:intercept".to_string(),
+                reason: "no declarative rule format is available".to_string(),
+            },
             ExtensionReply::GatekeeperBlocked {
                 capability: "dom:write".to_string(),
                 reason: "review rejected the form action".to_string(),
@@ -365,14 +378,18 @@ mod tests {
     #[test]
     fn only_form_input_and_network_causing_writes_require_a_gatekeeper_review() {
         assert!(!DomWriteTarget::Document.requires_gatekeeper_review());
-        assert!(DomWriteTarget::FormInput {
-            input_type: "email".to_string()
-        }
-        .requires_gatekeeper_review());
-        assert!(DomWriteTarget::NetworkCausing {
-            action: "form-submit".to_string()
-        }
-        .requires_gatekeeper_review());
+        assert!(
+            DomWriteTarget::FormInput {
+                input_type: "email".to_string()
+            }
+            .requires_gatekeeper_review()
+        );
+        assert!(
+            DomWriteTarget::NetworkCausing {
+                action: "form-submit".to_string()
+            }
+            .requires_gatekeeper_review()
+        );
         assert_eq!(DomWriteTarget::Document.gatekeeper_detail(), None);
         assert_eq!(
             DomWriteTarget::FormInput {

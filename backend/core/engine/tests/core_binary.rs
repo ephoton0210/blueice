@@ -22,6 +22,7 @@ use std::net::TcpListener;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -71,6 +72,29 @@ fn sibling_bluejs_binary() -> PathBuf {
     core.parent().unwrap().join("bluejs")
 }
 
+fn extension_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let ordinal = NEXT.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "blueice-core-extension-package-{label}-{}-{ordinal}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest = root.join("extension.json");
+    std::fs::write(
+        &manifest,
+        r#"{"name":"Core bridge test","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read"]}}"#,
+    )
+    .unwrap();
+    std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
+    let extension_id = blueice_extension_host::load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
+    (root, manifest, extension_id)
+}
+
 #[test]
 fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
     let output = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
@@ -78,6 +102,39 @@ fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
         .expect("failed to run blueice-core");
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("--socket"));
+}
+
+#[test]
+fn an_invalid_installed_extension_never_publishes_core_or_extension_sockets() {
+    let core_socket = unique_socket_path("invalid-extension-core");
+    let extension_socket = unique_socket_path("invalid-extension-protocol");
+    let root = std::env::temp_dir().join(format!(
+        "blueice-core-invalid-extension-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest = root.join("extension.json");
+    std::fs::write(&manifest, "{not valid JSON").unwrap();
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to run core with a bad installed extension");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("could not install extension"));
+    assert!(!core_socket.exists());
+    assert!(!extension_socket.exists());
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -199,6 +256,96 @@ fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
         !frame_dir.exists(),
         "blueice-core must remove its own frame directory on exit"
     );
+}
+
+#[test]
+fn installed_extension_reads_a_real_core_owned_representation_over_private_sockets() {
+    use blueice_ipc::extension::{
+        ExtensionReply, ExtensionRequest, read_extension_reply, write_extension_request,
+    };
+    use std::collections::BTreeMap;
+
+    let core_socket = unique_socket_path("extension-core");
+    let extension_socket = unique_socket_path("extension-protocol");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-extension-frames-{}",
+        std::process::id()
+    ));
+    let (package_root, manifest, extension_id) = extension_manifest_package("real-read");
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .spawn()
+        .expect("failed to spawn core with an installed extension");
+
+    assert!(wait_for(&core_socket, Duration::from_secs(5)));
+    assert!(wait_for(&extension_socket, Duration::from_secs(5)));
+    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: "about:credits".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { .. }
+    ));
+    assert!(matches!(
+        blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+
+    let mut extension = UnixStream::connect(&extension_socket).unwrap();
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::Hello {
+            extension_id,
+            capability_versions: BTreeMap::from([("dom:read".to_string(), 1)]),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    write_extension_request(&mut extension, &ExtensionRequest::DomRead).unwrap();
+    let snapshot = match read_extension_reply(&mut extension).unwrap() {
+        ExtensionReply::DomReadResult { value } => {
+            serde_json::from_str::<blueice_ipc::AiSnapshot>(&value).unwrap()
+        }
+        other => panic!("expected a core-backed DomReadResult, got {other:?}"),
+    };
+    assert_eq!(snapshot.tab_id, 1);
+    assert_eq!(snapshot.url.as_deref(), Some("about:credits"));
+    assert!(
+        !snapshot.nodes.is_empty(),
+        "the extension must receive the navigated core page, not an empty initial snapshot"
+    );
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(core.wait().unwrap().success());
+    assert!(!core_socket.exists());
+    assert!(!extension_socket.exists());
+    assert!(!frame_dir.exists());
+    let _ = std::fs::remove_dir_all(package_root);
 }
 
 #[test]

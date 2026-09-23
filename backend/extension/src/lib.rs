@@ -12,33 +12,28 @@
 //! **Where this logic lives, and why.** The plan doc's "Wiring design"
 //! frames the enforcing side as living inside `core` itself (an
 //! `ExtensionRegistry` "a peer to `TabManager`, not a member of it").
-//! This minimal slice deliberately does *not* wire that into the real
-//! `blueice-core` binary/`blueice_engine::session::run_session` loop --
-//! see that fn's own docs, untouched by this crate -- because extension
-//! messages are a wholly separate wire protocol on a separate
-//! connection, and multiplexing a second listener into `core`'s
-//! existing single-client session loop is real future work, not this
-//! slice's. Instead, `blueice-extension-host` -- a crate literally
-//! named for the "host" role a WASM extension runtime eventually plays
-//! -- serves that protocol standalone: it owns [`ExtensionRegistry`]
-//! and [`handle_extension_connection`] itself, rather than depending on
-//! `blueice-engine` (which is `core`-specific `Page`/`TabManager`
-//! dispatch logic this crate has no business reaching into for a
-//! placeholder DOM value). When capability enforcement is eventually
-//! wired into the real `core` process, this module is what moves (or
-//! gets called from) there -- the mechanism doesn't change, only which
-//! process runs it.
+//! The standalone `blueice-extension-host` binary remains a protocol-only
+//! reference server. `blueice-core` can now opt in with an installed manifest
+//! and private extension socket: it owns the registry and calls
+//! [`handle_extension_connection_with_actions`] from a connection worker,
+//! delegating the one supported real operation back to its session thread.
+//! This crate still does not depend on `blueice-engine`; that preserves the
+//! protocol/engine boundary and keeps `Page`/`TabManager` single-thread-owned.
+//! The bridge is deliberately narrow until the wire protocol gains a tab
+//! target, stable write-node ID, and interception-rule representation.
 //!
 //! **What's real, what's a placeholder** (mirrors `blueice-ai-
 //! gatekeeper`'s own "mechanism real, content stub" scoping): the
 //! handshake, the registry lookup, and the allow/deny decision are all
-//! real and tested. [`ExtensionReply::DomReadResult`]'s value is a
-//! fixed placeholder string, not real `Page` state -- wiring a real DOM
-//! snapshot through is explicitly out of scope for this slice (it would
-//! require this crate to depend on `blueice-engine` and share a `Page`
-//! across a process boundary that doesn't exist yet); the point of this
-//! slice is proving the *authorization* mechanism, not the DOM-read
-//! capability's real payload.
+//! real and tested. The standalone binary retains a fixed
+//! [`ExtensionReply::DomReadResult`] value, but
+//! [`handle_extension_connection_with_actions`] lets `blueice-core`
+//! provide a core-owned `Page` representation without this crate taking
+//! an engine dependency. The current core bridge deliberately implements
+//! only that read path: the wire protocol has no stable target node for a
+//! real DOM write and no interception-rule representation, so those
+//! otherwise-authorized operations are reported as unavailable rather
+//! than being acknowledged without an effect.
 //!
 //! **Identity derivation versus peer authentication.**
 //! [`load_installed_extension`] derives a `sha256:` ID from exact manifest and
@@ -54,17 +49,17 @@
 mod manifest;
 
 pub use manifest::{
-    load_installed_extension, registry_for_installed_extension, ExtensionManifest,
-    InstalledExtension, ManifestCapabilities, ManifestError, MANIFEST_API_VERSION,
+    ExtensionManifest, InstalledExtension, MANIFEST_API_VERSION, ManifestCapabilities,
+    ManifestError, load_installed_extension, registry_for_installed_extension,
 };
 
 use blueice_ipc::extension::{
-    read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
-    UnsupportedCapabilityVersion,
+    ExtensionReply, ExtensionRequest, UnsupportedCapabilityVersion, read_extension_request,
+    write_extension_reply,
 };
 use blueice_ipc::gatekeeper::{
-    default_gatekeeper_socket_path, read_gatekeeper_reply, write_gatekeeper_request,
-    GatekeeperReply, GatekeeperRequest,
+    GatekeeperReply, GatekeeperRequest, default_gatekeeper_socket_path, read_gatekeeper_reply,
+    write_gatekeeper_request,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{self, Read, Write};
@@ -134,14 +129,12 @@ const PLACEHOLDER_DOM_READ_VALUE: &str =
 
 const GATEKEEPER_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Which capabilities each connected extension has been granted --
-/// `phase-9-extension-protocol/PLAN.md`'s "Wiring design" describes this
-/// as an in-memory `ExtensionRegistry` keyed by a *derived*
-/// (non-spoofable) `extension_id`; for this minimal slice it's a plain
-/// `extension_id -> granted capability names` map, seeded with one
-/// hardcoded entry ([`ExtensionRegistry::minimal_slice`]) rather than
-/// built from install-time manifest persistence -- both explicitly
-/// still-open future work per the plan doc, not solved here.
+/// Which capabilities each connected extension has been granted. The registry
+/// is keyed by an installed package's derived ID when used by
+/// `blueice-core`/`registry_for_installed_extension`; the hardcoded
+/// [`ExtensionRegistry::minimal_slice`] remains only a protocol-test fallback.
+/// A derived ID establishes exact package membership and grants, but it is not
+/// connection credentials: peer authentication remains a separate boundary.
 pub struct ExtensionRegistry {
     grants: HashMap<String, HashSet<String>>,
     supported_versions: HashMap<String, CapabilityVersionWindow>,
@@ -383,6 +376,41 @@ pub fn handle_extension_connection_with_gatekeeper<S: Read + Write>(
     gatekeeper_socket: &Path,
     stream: &mut S,
 ) -> io::Result<()> {
+    handle_extension_connection_with_actions(
+        registry,
+        gatekeeper_socket,
+        stream,
+        || Ok(PLACEHOLDER_DOM_READ_VALUE.to_string()),
+        |_, _| Ok(()),
+        || Ok(()),
+    )
+}
+
+/// Like [`handle_extension_connection_with_gatekeeper`], but delegates a
+/// capability-approved operation to the process that owns the actual page
+/// state. This preserves the authorization and, where required, gatekeeper
+/// checks in this host before any effect is requested. A delegate error is a
+/// structured [`ExtensionReply::OperationUnavailable`] response, not a false
+/// acknowledgement.
+///
+/// The standalone host supplies placeholder delegates through
+/// [`handle_extension_connection_with_gatekeeper`]. `blueice-core` supplies
+/// a synchronous channel-backed read delegate so its session thread remains
+/// the sole mutable owner of `TabManager`/`Page` state.
+pub fn handle_extension_connection_with_actions<S, R, W, N>(
+    registry: &ExtensionRegistry,
+    gatekeeper_socket: &Path,
+    stream: &mut S,
+    mut read_dom: R,
+    mut write_dom: W,
+    mut register_network_intercept: N,
+) -> io::Result<()>
+where
+    S: Read + Write,
+    R: FnMut() -> Result<String, String>,
+    W: FnMut(String, &blueice_ipc::extension::DomWriteTarget) -> Result<(), String>,
+    N: FnMut() -> Result<(), String>,
+{
     let mut identity = match read_extension_request(stream) {
         Ok(ExtensionRequest::Hello {
             extension_id,
@@ -423,15 +451,21 @@ pub fn handle_extension_connection_with_gatekeeper<S: Read + Write>(
                         },
                     )?;
                 } else {
-                    write_extension_reply(
-                        stream,
-                        &ExtensionReply::DomReadResult {
-                            value: PLACEHOLDER_DOM_READ_VALUE.to_string(),
-                        },
-                    )?;
+                    match read_dom() {
+                        Ok(value) => {
+                            write_extension_reply(stream, &ExtensionReply::DomReadResult { value })?
+                        }
+                        Err(reason) => write_extension_reply(
+                            stream,
+                            &ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_DOM_READ.to_string(),
+                                reason,
+                            },
+                        )?,
+                    }
                 }
             }
-            ExtensionRequest::DomWrite { value: _, target } => {
+            ExtensionRequest::DomWrite { value, target } => {
                 if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE)
                 {
@@ -451,9 +485,16 @@ pub fn handle_extension_connection_with_gatekeeper<S: Read + Write>(
                             "only gatekeeper-triggering targets reach extension action review",
                         ),
                     ) {
-                        Ok(GatekeeperReply::Cleared) => {
-                            write_extension_reply(stream, &ExtensionReply::DomWriteAck)?;
-                        }
+                        Ok(GatekeeperReply::Cleared) => match write_dom(value, &target) {
+                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
+                            Err(reason) => write_extension_reply(
+                                stream,
+                                &ExtensionReply::OperationUnavailable {
+                                    capability: CAPABILITY_DOM_WRITE.to_string(),
+                                    reason,
+                                },
+                            )?,
+                        },
                         Ok(GatekeeperReply::Rejected { reason, category }) => {
                             write_extension_reply(
                                 stream,
@@ -476,7 +517,16 @@ pub fn handle_extension_connection_with_gatekeeper<S: Read + Write>(
                         }
                     }
                 } else {
-                    write_extension_reply(stream, &ExtensionReply::DomWriteAck)?;
+                    match write_dom(value, &target) {
+                        Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
+                        Err(reason) => write_extension_reply(
+                            stream,
+                            &ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_DOM_WRITE.to_string(),
+                                reason,
+                            },
+                        )?,
+                    }
                 }
             }
             ExtensionRequest::NetworkIntercept => {
@@ -501,9 +551,18 @@ pub fn handle_extension_connection_with_gatekeeper<S: Read + Write>(
                         CAPABILITY_NETWORK_INTERCEPT,
                         "action=register-intercept".to_string(),
                     ) {
-                        Ok(GatekeeperReply::Cleared) => {
-                            write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?;
-                        }
+                        Ok(GatekeeperReply::Cleared) => match register_network_intercept() {
+                            Ok(()) => {
+                                write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?
+                            }
+                            Err(reason) => write_extension_reply(
+                                stream,
+                                &ExtensionReply::OperationUnavailable {
+                                    capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                    reason,
+                                },
+                            )?,
+                        },
                         Ok(GatekeeperReply::Rejected { reason, category }) => {
                             write_extension_reply(
                                 stream,
@@ -534,7 +593,7 @@ pub fn handle_extension_connection_with_gatekeeper<S: Read + Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_ipc::extension::{read_extension_reply, write_extension_request, DomWriteTarget};
+    use blueice_ipc::extension::{DomWriteTarget, read_extension_reply, write_extension_request};
     use blueice_ipc::gatekeeper::{read_gatekeeper_request, write_gatekeeper_reply};
     use std::collections::BTreeMap;
     use std::os::unix::net::{UnixListener, UnixStream};
@@ -761,6 +820,39 @@ mod tests {
             read_extension_reply(&mut client).unwrap(),
             ExtensionReply::DomReadResult {
                 value: PLACEHOLDER_DOM_READ_VALUE.to_string()
+            }
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn a_core_action_delegate_failure_is_reported_instead_of_acknowledged() {
+        let registry = ExtensionRegistry::minimal_slice();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                Path::new("/not-used-by-dom-read"),
+                &mut server,
+                || Err("the core session has ended".to_string()),
+                |_, _| Ok(()),
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::OperationUnavailable {
+                capability: CAPABILITY_DOM_READ.to_string(),
+                reason: "the core session has ended".to_string(),
             }
         );
 

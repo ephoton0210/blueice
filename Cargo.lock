@@ -198,6 +198,7 @@ dependencies = [
  "blueice-bluejs",
  "blueice-css",
  "blueice-dom",
+ "blueice-extension-host",
  "blueice-html",
  "blueice-i18n",
  "blueice-ipc",
@@ -206,6 +207,7 @@ dependencies = [
  "blueice-paint",
  "blueice-raster",
  "blueice-testing",
+ "serde_json",
  "url",
 ]
 

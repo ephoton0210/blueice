@@ -16,8 +16,7 @@
 //! pretending it has executed extension code.
 
 use crate::{
-    CAPABILITY_DOM_READ, CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT,
-    ExtensionRegistry,
+    CAPABILITY_DOM_READ, CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT, ExtensionRegistry,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};

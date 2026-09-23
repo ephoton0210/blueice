@@ -19,11 +19,18 @@
 
 use blueice_engine::downloads_page::DownloadsSource;
 use blueice_engine::script::ScriptSession;
-use blueice_engine::{session, HistorySnapshotMode, TabManager};
+use blueice_engine::session::ExtensionPageRequest;
+use blueice_engine::{HistorySnapshotMode, TabManager, session};
+use blueice_extension_host::{
+    ExtensionRegistry, handle_extension_connection_with_actions, load_installed_extension,
+    registry_for_installed_extension,
+};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
+use std::thread;
+use std::time::Duration;
 
 #[derive(Debug, PartialEq)]
 struct Args {
@@ -53,7 +60,25 @@ struct Args {
     /// URL-only entries. This is opt-in because normal Back/Forward behavior
     /// re-fetches the URL and should therefore observe updated web content.
     history_snapshots: bool,
+    /// Private extension-protocol listener. It is accepted only together
+    /// with `extension_manifest`, so core never exposes the standalone
+    /// hardcoded reference identity as a production-facing endpoint.
+    extension_socket: Option<PathBuf>,
+    /// Strict installed package manifest used to establish the server-side
+    /// extension identity/grants before the extension socket is published.
+    extension_manifest: Option<PathBuf>,
 }
+
+struct ExtensionService {
+    socket: PathBuf,
+    listener: UnixListener,
+    registry: Arc<ExtensionRegistry>,
+}
+
+/// A core-owned response must be prompt enough not to hold an extension
+/// connection forever if the frontend session has already ended, while still
+/// comfortably exceeding the session loop's 25ms poll interval.
+const EXTENSION_CORE_REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Takes an injectable argument iterator (rather than reading
 /// `std::env::args()` directly) so every flag-parsing branch is a
@@ -71,6 +96,8 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut downloads_socket = None;
     let mut script_socket = None;
     let mut history_snapshots = false;
+    let mut extension_socket = None;
+    let mut extension_manifest = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -92,11 +119,18 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--downloads-socket" => downloads_socket = Some(PathBuf::from(value()?)),
             "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
             "--history-snapshots" => history_snapshots = true,
+            "--extension-socket" => extension_socket = Some(PathBuf::from(value()?)),
+            "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
 
     let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
+    if extension_socket.is_some() != extension_manifest.is_some() {
+        return Err(
+            "--extension-socket and --extension-manifest must be supplied together".to_string(),
+        );
+    }
     Ok(Args {
         socket,
         width,
@@ -106,7 +140,59 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         downloads_socket,
         script_socket,
         history_snapshots,
+        extension_socket,
+        extension_manifest,
     })
+}
+
+fn request_default_tab_representation(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+) -> Result<String, String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::ReadDefaultTabRepresentation { reply: reply_tx })
+        .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
+/// Serves extension connections outside the session thread, but asks that
+/// thread for the one piece of real `Page` data Phase 9 currently supports.
+/// This keeps a `Page` single-thread-owned just like navigation and frontend
+/// IPC do; no mutable DOM state is shared with an extension handler.
+fn spawn_extension_listener(
+    service: ExtensionService,
+    gatekeeper_socket: PathBuf,
+    request_tx: mpsc::Sender<ExtensionPageRequest>,
+) {
+    thread::spawn(move || {
+        for incoming in service.listener.incoming() {
+            let Ok(mut stream) = incoming else { break };
+            let registry = Arc::clone(&service.registry);
+            let gatekeeper_socket = gatekeeper_socket.clone();
+            let request_tx = request_tx.clone();
+            thread::spawn(move || {
+                let _ = handle_extension_connection_with_actions(
+                    &registry,
+                    &gatekeeper_socket,
+                    &mut stream,
+                    || request_default_tab_representation(&request_tx),
+                    |_, _| {
+                        Err(
+                            "core-backed dom:write needs a stable target node; the current extension wire protocol does not carry one"
+                                .to_string(),
+                        )
+                    },
+                    || {
+                        Err(
+                            "core-backed network:intercept needs a declarative rule format; the current extension wire protocol does not carry one"
+                                .to_string(),
+                        )
+                    },
+                );
+            });
+        }
+    });
 }
 
 fn main() -> ExitCode {
@@ -126,12 +212,67 @@ fn main() -> ExitCode {
         .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
     let downloads_socket = args.downloads_socket;
 
+    // An installed extension is a core concern: validate its package and
+    // derive its registry identity before core publishes either socket. The
+    // manifest/socket pair is deliberately opt-in while the protocol lacks
+    // host-spawned-peer authentication and a WASM runtime.
+    let extension_service = match (
+        args.extension_socket.as_ref(),
+        args.extension_manifest.as_deref(),
+    ) {
+        (Some(socket), Some(manifest)) => {
+            let installed = match load_installed_extension(manifest) {
+                Ok(installed) => installed,
+                Err(error) => {
+                    eprintln!(
+                        "blueice-core: could not install extension {}: {error}",
+                        manifest.display()
+                    );
+                    return ExitCode::FAILURE;
+                }
+            };
+            if let Some(parent) = socket.parent() {
+                if let Err(error) = std::fs::create_dir_all(parent) {
+                    eprintln!(
+                        "blueice-core: failed to create extension socket directory {}: {error}",
+                        parent.display()
+                    );
+                    return ExitCode::FAILURE;
+                }
+            }
+            let _ = std::fs::remove_file(socket);
+            let listener = match UnixListener::bind(socket) {
+                Ok(listener) => listener,
+                Err(error) => {
+                    eprintln!(
+                        "blueice-core: failed to bind extension socket {}: {error}",
+                        socket.display()
+                    );
+                    return ExitCode::FAILURE;
+                }
+            };
+            Some(ExtensionService {
+                socket: socket.clone(),
+                listener,
+                registry: Arc::new(registry_for_installed_extension(&installed)),
+            })
+        }
+        (None, None) => None,
+        // `parse_args` enforces this before `main`; retain a total match so a
+        // future construction of `Args` cannot accidentally make an unsafe
+        // partial configuration reachable.
+        _ => unreachable!("extension options were validated during argument parsing"),
+    };
+
     // Bind the script listener before exposing core's frontend socket. The
     // launcher waits for the latter as its readiness signal, which guarantees
     // its BlueJS child never races this bind/connect sequence.
     let script_listener = if let Some(path) = args.script_socket.as_ref() {
         if let Some(parent) = path.parent() {
             if let Err(error) = std::fs::create_dir_all(parent) {
+                if let Some(extension_socket) = args.extension_socket.as_ref() {
+                    let _ = std::fs::remove_file(extension_socket);
+                }
                 eprintln!(
                     "blueice-core: failed to create script socket directory {}: {error}",
                     parent.display()
@@ -143,6 +284,9 @@ fn main() -> ExitCode {
         match UnixListener::bind(path) {
             Ok(listener) => Some(listener),
             Err(e) => {
+                if let Some(extension_socket) = args.extension_socket.as_ref() {
+                    let _ = std::fs::remove_file(extension_socket);
+                }
                 eprintln!(
                     "blueice-core: failed to bind script socket {}: {e}",
                     path.display()
@@ -162,6 +306,9 @@ fn main() -> ExitCode {
     let listener = match UnixListener::bind(&args.socket) {
         Ok(listener) => listener,
         Err(e) => {
+            if let Some(extension_socket) = args.extension_socket.as_ref() {
+                let _ = std::fs::remove_file(extension_socket);
+            }
             eprintln!(
                 "blueice-core: failed to bind {}: {e}",
                 args.socket.display()
@@ -169,6 +316,15 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+
+    let extension_socket = extension_service
+        .as_ref()
+        .map(|service| service.socket.clone());
+    let extension_requests = extension_service.map(|service| {
+        let (tx, rx) = mpsc::channel();
+        spawn_extension_listener(service, gatekeeper_socket.clone(), tx);
+        rx
+    });
 
     let result = (|| -> std::io::Result<()> {
         let mut script = match script_listener {
@@ -191,8 +347,19 @@ fn main() -> ExitCode {
             None => DownloadsSource::new(),
         }));
         let mut generation = 0u64;
-        let result = match script.as_mut() {
-            Some(script) => session::run_session_with_script(
+        let result = match (script.as_mut(), extension_requests.as_ref()) {
+            (Some(script), Some(extension_requests)) => {
+                session::run_session_with_script_and_extension_requests(
+                    &mut tabs,
+                    &mut stream,
+                    &frame_dir,
+                    &mut generation,
+                    &gatekeeper_socket,
+                    script,
+                    Some(extension_requests),
+                )
+            }
+            (Some(script), None) => session::run_session_with_script(
                 &mut tabs,
                 &mut stream,
                 &frame_dir,
@@ -200,7 +367,15 @@ fn main() -> ExitCode {
                 &gatekeeper_socket,
                 script,
             ),
-            None => session::run_session(
+            (None, Some(extension_requests)) => session::run_session_with_extension_requests(
+                &mut tabs,
+                &mut stream,
+                &frame_dir,
+                &mut generation,
+                &gatekeeper_socket,
+                extension_requests,
+            ),
+            (None, None) => session::run_session(
                 &mut tabs,
                 &mut stream,
                 &frame_dir,
@@ -216,6 +391,9 @@ fn main() -> ExitCode {
 
     let _ = std::fs::remove_file(&args.socket);
     if let Some(path) = args.script_socket.as_ref() {
+        let _ = std::fs::remove_file(path);
+    }
+    if let Some(path) = extension_socket.as_ref() {
         let _ = std::fs::remove_file(path);
     }
     let _ = std::fs::remove_dir_all(&frame_dir);
@@ -252,6 +430,8 @@ mod tests {
         assert_eq!(parsed.gatekeeper_socket, None);
         assert_eq!(parsed.script_socket, None);
         assert!(!parsed.history_snapshots);
+        assert_eq!(parsed.extension_socket, None);
+        assert_eq!(parsed.extension_manifest, None);
     }
 
     #[test]
@@ -285,7 +465,52 @@ mod tests {
                 downloads_socket: Some(PathBuf::from("/tmp/dl.sock")),
                 script_socket: Some(PathBuf::from("/tmp/js.sock")),
                 history_snapshots: true,
+                extension_socket: None,
+                extension_manifest: None,
             }
+        );
+    }
+
+    #[test]
+    fn extension_socket_and_manifest_are_an_atomic_configuration() {
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--extension-socket",
+                "/tmp/ext.sock"
+            ]),
+            Err(
+                "--extension-socket and --extension-manifest must be supplied together".to_string()
+            )
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--extension-manifest",
+                "/tmp/extension.json"
+            ]),
+            Err(
+                "--extension-socket and --extension-manifest must be supplied together".to_string()
+            )
+        );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--extension-socket",
+            "/tmp/ext.sock",
+            "--extension-manifest",
+            "/tmp/extension.json",
+        ])
+        .unwrap();
+        assert_eq!(
+            parsed.extension_socket,
+            Some(PathBuf::from("/tmp/ext.sock"))
+        );
+        assert_eq!(
+            parsed.extension_manifest,
+            Some(PathBuf::from("/tmp/extension.json"))
         );
     }
 

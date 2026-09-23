@@ -50,14 +50,14 @@
 //! around the loop again," never as a disconnect (every *other* read
 //! error still means disconnect, exactly as before gating existed).
 
-use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsView};
+use crate::downloads_page::{DownloadsView, downloads_html, is_downloads_url};
 use crate::gatekeeper_client::{self, NavOutcome};
 use crate::script::ScriptScheduler;
 use crate::tabs::{HistoryDestination, HistoryDirection};
 use crate::{GroupId, Page, TabGroup, TabId, TabManager};
 use blueice_dom::NodeId;
 use blueice_ipc::downloads::TransferInfo;
-use blueice_ipc::{shm, ClientMessage, NodeAction, ServerMessage, TabGroupSummary, TabSummary};
+use blueice_ipc::{ClientMessage, NodeAction, ServerMessage, TabGroupSummary, TabSummary, shm};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -80,6 +80,23 @@ const POLL_INTERVAL: Duration = Duration::from_millis(25);
 /// practice.
 pub trait ReadTimeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
+}
+
+/// A request from the extension-protocol listener into the one thread that
+/// owns `TabManager` and all live [`Page`] state. Keeping the reply channel
+/// with the request means an extension handler can wait for a bounded answer
+/// without ever sharing `Page` across threads or taking a mutable lock around
+/// the render pipeline.
+///
+/// This first core bridge intentionally exposes only the default tab's
+/// AI-facing representation. The current extension wire protocol has no tab
+/// target, stable write-node ID, or interception-rule form; accepting a
+/// request that cannot be applied faithfully would be less safe than leaving
+/// it unavailable at the host boundary.
+pub enum ExtensionPageRequest {
+    ReadDefaultTabRepresentation {
+        reply: mpsc::Sender<Result<String, String>>,
+    },
 }
 
 impl ReadTimeout for std::os::unix::net::UnixStream {
@@ -147,13 +164,38 @@ pub fn run_session<S: Read + Write + ReadTimeout>(
     gatekeeper_socket: &Path,
 ) -> io::Result<()> {
     let mut no_scripts = NoScriptScheduler;
-    run_session_with_script(
+    run_session_with_script_and_extension_requests(
         tabs,
         stream,
         frame_dir,
         generation,
         gatekeeper_socket,
         &mut no_scripts,
+        None,
+    )
+}
+
+/// Like [`run_session`], with an optional extension-to-core request channel.
+/// The ordinary frontend IPC loop and every existing test remain on the
+/// `None` path; `blueice-core --extension-socket --extension-manifest` passes
+/// its private extension listener's receiver here.
+pub fn run_session_with_extension_requests<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    extension_requests: &mpsc::Receiver<ExtensionPageRequest>,
+) -> io::Result<()> {
+    let mut no_scripts = NoScriptScheduler;
+    run_session_with_script_and_extension_requests(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        &mut no_scripts,
+        Some(extension_requests),
     )
 }
 
@@ -168,6 +210,29 @@ pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
     generation: &mut u64,
     gatekeeper_socket: &Path,
     script_scheduler: &mut dyn ScriptScheduler,
+) -> io::Result<()> {
+    run_session_with_script_and_extension_requests(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        script_scheduler,
+        None,
+    )
+}
+
+/// The production-capable session entry point with an optional private
+/// extension-request channel. See [`ExtensionPageRequest`] for the deliberate
+/// first-slice scope and ownership boundary.
+pub fn run_session_with_script_and_extension_requests<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    script_scheduler: &mut dyn ScriptScheduler,
+    extension_requests: Option<&mpsc::Receiver<ExtensionPageRequest>>,
 ) -> io::Result<()> {
     // Best-effort: on at least one real platform, setting a read
     // timeout on a Unix domain socket whose peer has *already*
@@ -696,6 +761,34 @@ pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
         downloads_refresher.tick(tabs, &listing_tx, Instant::now());
         while let Ok(listing) = listing_rx.try_recv() {
             downloads_refresher.apply(tabs, stream, frame_dir, generation, listing)?;
+        }
+
+        if let Some(extension_requests) = extension_requests {
+            while let Ok(request) = extension_requests.try_recv() {
+                handle_extension_page_request(tabs, request);
+            }
+        }
+    }
+}
+
+/// Applies a request received from the extension host. It has no access to a
+/// client stream and therefore cannot emit an unsolicited frontend reply;
+/// instead the typed one-shot response gives the extension connection exactly
+/// one answer while keeping this session loop the only owner of page state.
+fn handle_extension_page_request(tabs: &TabManager, request: ExtensionPageRequest) {
+    match request {
+        ExtensionPageRequest::ReadDefaultTabRepresentation { reply } => {
+            let tab_id = tabs.default_tab();
+            let result = tabs
+                .get(tab_id)
+                .ok_or_else(|| "the default tab is not open".to_string())
+                .and_then(|page| {
+                    serde_json::to_string(&page.snapshot(page.frame_generation(), tab_id.as_u64()))
+                        .map_err(|error| {
+                            format!("could not serialize the core representation: {error}")
+                        })
+                });
+            let _ = reply.send(result);
         }
     }
 }
@@ -1528,11 +1621,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(generation, 0);
-        assert!(tabs
-            .get(tab_id)
-            .unwrap()
-            .dom_dump()
-            .contains("last successful list"));
+        assert!(
+            tabs.get(tab_id)
+                .unwrap()
+                .dom_dump()
+                .contains("last successful list")
+        );
 
         refresher
             .apply(
@@ -1550,16 +1644,78 @@ mod tests {
             .unwrap();
 
         assert_eq!(generation, 1);
-        assert!(tabs
-            .get(tab_id)
-            .unwrap()
-            .dom_dump()
-            .contains("The downloads service is not running"));
+        assert!(
+            tabs.get(tab_id)
+                .unwrap()
+                .dom_dump()
+                .contains("The downloads service is not running")
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
     fn client_pair() -> (UnixStream, UnixStream) {
         UnixStream::pair().unwrap()
+    }
+
+    #[test]
+    fn extension_request_reads_the_default_tabs_real_ai_representation() {
+        let (mut client, mut server) = client_pair();
+        let (extension_tx, extension_rx) = mpsc::channel();
+        let dir = temp_frame_dir("extension-default-tab-read");
+        let cleanup_dir = dir.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        let gatekeeper = PathBuf::from("/not-used-for-built-in-navigation");
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0;
+            run_session_with_extension_requests(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper,
+                &extension_rx,
+            )
+        });
+
+        blueice_ipc::client_handshake(&mut client).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "about:credits".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated {
+                url: "about:credits".to_string(),
+            }
+        );
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+
+        let (reply_tx, reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::ReadDefaultTabRepresentation { reply: reply_tx })
+            .unwrap();
+        let encoded = reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the live session must answer the extension read")
+            .expect("a live default tab must serialize");
+        let snapshot: blueice_ipc::AiSnapshot = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(snapshot.tab_id, 1);
+        assert_eq!(snapshot.url.as_deref(), Some("about:credits"));
+        assert!(
+            !snapshot.nodes.is_empty(),
+            "the core-backed snapshot must be from the navigated credits page, not the empty initial tab"
+        );
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        handle.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(cleanup_dir);
     }
 
     /// A monotonic counter alongside the PID, so every call is unique
@@ -1945,10 +2101,12 @@ mod tests {
             panic!("expected Representation, got {reply:?}")
         };
         assert_eq!(snapshot.generation, frame_generation);
-        assert!(snapshot
-            .nodes
-            .iter()
-            .any(|n| n.name.as_deref() == Some("Go")));
+        assert!(
+            snapshot
+                .nodes
+                .iter()
+                .any(|n| n.name.as_deref() == Some("Go"))
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -2877,10 +3035,12 @@ mod tests {
         else {
             panic!("expected a representation after snapshot restoration")
         };
-        assert!(snapshot
-            .nodes
-            .iter()
-            .any(|node| node.name.as_deref() == Some("saved historical version")));
+        assert!(
+            snapshot
+                .nodes
+                .iter()
+                .any(|node| node.name.as_deref() == Some("saved historical version"))
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -3187,10 +3347,12 @@ mod tests {
             panic!("expected Representation, got {reply:?}")
         };
         assert_eq!(snapshot.tab_id, new_id);
-        assert!(snapshot
-            .nodes
-            .iter()
-            .any(|n| n.name.as_deref() == Some("opened via url")));
+        assert!(
+            snapshot
+                .nodes
+                .iter()
+                .any(|n| n.name.as_deref() == Some("opened via url"))
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -3296,10 +3458,11 @@ mod tests {
             snap.scroll_y, 0.0,
             "scrolling tab_two must not move tab_one's scroll position"
         );
-        assert!(snap
-            .nodes
-            .iter()
-            .any(|n| n.name.as_deref() == Some("tab one")));
+        assert!(
+            snap.nodes
+                .iter()
+                .any(|n| n.name.as_deref() == Some("tab one"))
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -3650,10 +3813,12 @@ mod tests {
         else {
             panic!("expected Representation")
         };
-        assert!(!snap
-            .nodes
-            .iter()
-            .any(|n| n.name.as_deref() == Some("malicious page")));
+        assert!(
+            !snap
+                .nodes
+                .iter()
+                .any(|n| n.name.as_deref() == Some("malicious page"))
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -3926,10 +4091,11 @@ mod tests {
         else {
             panic!("expected Representation")
         };
-        assert!(snap
-            .nodes
-            .iter()
-            .any(|n| n.name.as_deref() == Some("second page")));
+        assert!(
+            snap.nodes
+                .iter()
+                .any(|n| n.name.as_deref() == Some("second page"))
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -4110,10 +4276,11 @@ mod tests {
         else {
             panic!("expected Representation")
         };
-        assert!(snap
-            .nodes
-            .iter()
-            .any(|n| n.name.as_deref() == Some("still the old page")));
+        assert!(
+            snap.nodes
+                .iter()
+                .any(|n| n.name.as_deref() == Some("still the old page"))
+        );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -4122,11 +4289,11 @@ mod tests {
 
     // ---- about:downloads: navigation and live refresh -----------------------
 
-    use crate::downloads_page::test_support::{
-        fake_downloads_live, FakeState, Scratch as DownloadsScratch,
-    };
     use crate::downloads_page::DownloadsSource;
-    use blueice_ipc::downloads::{TransferInfo, TransferState, DOWNLOADS_PROTOCOL_VERSION};
+    use crate::downloads_page::test_support::{
+        FakeState, Scratch as DownloadsScratch, fake_downloads_live,
+    };
+    use blueice_ipc::downloads::{DOWNLOADS_PROTOCOL_VERSION, TransferInfo, TransferState};
     use std::sync::{Arc, Mutex};
 
     fn dl(id: u64, name: &str, state: TransferState, done: u64) -> TransferInfo {
