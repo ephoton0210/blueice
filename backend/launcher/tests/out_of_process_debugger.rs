@@ -9,8 +9,9 @@
 //! This test intentionally uses only the launcher's public browser, control,
 //! and debugger sockets.  It neither opens the launcher-created child socket
 //! nor supplies a child capability.  Two local HTTP navigations establish
-//! that the public debugger inventory is source-free and that every opaque
-//! realm, program, and safe-point identity expires with its document.
+//! that the public debugger inventory and execution control are source-free,
+//! and that every opaque realm, program, and safe-point identity expires with
+//! its document.
 
 use blueice_ipc::debugger::{
     read_debugger_reply, write_debugger_request, DebuggerErrorCode, DebuggerPageRealm,
@@ -266,7 +267,7 @@ fn serve_two_classic_documents(listener: TcpListener) -> thread::JoinHandle<()> 
 }
 
 #[test]
-fn launcher_supervised_child_debugger_inventory_is_opaque_and_expires_after_http_reload() {
+fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http_reload() {
     let gatekeeper_socket = clearing_gatekeeper();
     let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
     let url = format!("http://{}", listener.local_addr().unwrap());
@@ -322,6 +323,82 @@ fn launcher_supervised_child_debugger_inventory_is_opaque_and_expires_after_http
             safe_point: first_safe_point,
         }
     );
+    let root_safe_point = *first_safe_points
+        .iter()
+        .find(|safe_point| safe_point.code_unit_ordinal == 0 && safe_point.bytecode_offset != 0)
+        .expect("classic program must expose a resumable non-entry root safe point");
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState {
+                program: first_program,
+            },
+        ),
+        DebuggerReply::ExecutionState {
+            program: first_program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmRootSafePointBreakpoint {
+                safe_point: root_safe_point,
+            },
+        ),
+        DebuggerReply::RootSafePointBreakpointArmed {
+            safe_point: root_safe_point,
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState {
+                program: first_program,
+            },
+        ),
+        DebuggerReply::ExecutionState {
+            program: first_program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Paused {
+                safe_point: root_safe_point,
+            },
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResumeExecution {
+                program: first_program,
+            },
+        ),
+        DebuggerReply::ExecutionResumed {
+            program: first_program,
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState {
+                program: first_program,
+            },
+        ),
+        DebuggerReply::ExecutionState {
+            program: first_program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Resuming,
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState {
+                program: first_program,
+            },
+        ),
+        DebuggerReply::ExecutionState {
+            program: first_program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Completed,
+        }
+    );
 
     // Reload through the same public browser connection. The fixture accepts
     // exactly two requests so this is a real HTTP replacement, not a direct
@@ -338,6 +415,9 @@ fn launcher_supervised_child_debugger_inventory_is_opaque_and_expires_after_http
         },
         DebuggerRequest::ValidateSafePoint {
             safe_point: first_safe_point,
+        },
+        DebuggerRequest::ValidateSafePoint {
+            safe_point: root_safe_point,
         },
     ] {
         assert!(matches!(

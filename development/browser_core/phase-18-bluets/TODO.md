@@ -463,9 +463,11 @@ or second module resolver to bypass them.
   render transport. Stepping plus frame/value handles remain outside this
   capability and therefore have no acceptance claim yet.
   A separate launcher subprocess regression selects both
-  `--out-of-process-bluejs` and `--debugger-socket`, drives two local HTTP
-  classic-script documents through only public sockets, and proves that the
-  original realm/program/safe-point tuple rejects as `StaleRealm` after reload.
+  `--out-of-process-bluejs` and `--debugger-socket`, drives the public
+  debugger through `Pending` → non-entry-root-safe-point `Paused` →
+  `Resuming` → `Completed`, then performs two local HTTP classic-script
+  documents through only public sockets and proves that the original
+  realm/program/safe-point tuple rejects as `StaleRealm` after reload.
   The test neither receives nor configures the private child endpoint or its
   capability.
 
