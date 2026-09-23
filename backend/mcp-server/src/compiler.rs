@@ -73,7 +73,7 @@ impl<S: Read + Write> CompilerConnection<S> {
     }
 
     /// Returns the source-free core evidence minted for this exact accepted
-    /// transport stream. It is available only after a successful v4
+    /// transport stream. It is available only after a successful v5
     /// handshake, and it grants no authority beyond the stream itself.
     pub fn session_attestation(
         &self,
@@ -108,6 +108,24 @@ impl<S: Read + Write> CompilerConnection<S> {
     pub fn check(&mut self, project_id: u64) -> io::Result<blueice_ipc::compiler::CompilerReply> {
         self.request(blueice_ipc::compiler::CompilerRequest::Check {
             project: blueice_ipc::compiler::CompilerProject { id: project_id },
+        })
+    }
+
+    /// Lists one source-free page of retained diagnostics for exactly one
+    /// generation observed by a prior check. The cursor is core-minted and
+    /// one-shot; this client forwards it without interpreting it as a source
+    /// location or offset.
+    pub fn diagnostic_page(
+        &mut self,
+        project_id: u64,
+        generation: u64,
+        cursor: Option<u64>,
+        limit: Option<u32>,
+    ) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        self.request(blueice_ipc::compiler::CompilerRequest::ListDiagnostics {
+            generation: compiler_generation(project_id, generation),
+            cursor: cursor.map(|id| blueice_ipc::compiler::CompilerDiagnosticCursor { id }),
+            limit,
         })
     }
 

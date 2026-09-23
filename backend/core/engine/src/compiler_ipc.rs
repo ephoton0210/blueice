@@ -27,12 +27,12 @@ use blueice_bluets::{
 };
 use blueice_ipc::compiler::{
     CompilerCheck, CompilerContractValidation, CompilerContractValidationFailure,
-    CompilerContractValue, CompilerDiagnostic, CompilerDiagnosticSeverity, CompilerDiagnostics,
-    CompilerErrorCode, CompilerGeneration, CompilerModuleList, CompilerProject,
-    CompilerProjectIdentity, CompilerReply, CompilerRequest, CompilerStaticContract,
-    CompilerStaticMetadataCursor, CompilerStaticMetadataKind, CompilerStaticMetadataPage,
-    CompilerStaticMetadataSummary, CompilerStaticProvenance, CompilerStaticSymbol,
-    CompilerStaticType, CompilerSymbolKind,
+    CompilerContractValue, CompilerDiagnostic, CompilerDiagnosticCursor, CompilerDiagnosticPage,
+    CompilerDiagnosticSeverity, CompilerDiagnostics, CompilerErrorCode, CompilerGeneration,
+    CompilerModuleList, CompilerProject, CompilerProjectIdentity, CompilerReply, CompilerRequest,
+    CompilerStaticContract, CompilerStaticMetadataCursor, CompilerStaticMetadataKind,
+    CompilerStaticMetadataPage, CompilerStaticMetadataSummary, CompilerStaticProvenance,
+    CompilerStaticSymbol, CompilerStaticType, CompilerSymbolKind,
 };
 use std::collections::BTreeSet;
 use std::fmt;
@@ -55,6 +55,9 @@ pub struct CompilerServiceIpcLimits {
     /// Cap for diagnostics in a check result, independent of the service's
     /// own retention limit.
     pub max_diagnostics: usize,
+    /// Maximum diagnostics returned by one separately paginated diagnostic
+    /// reply. A request can only lower this core-selected cap.
+    pub max_diagnostic_page_entries: usize,
     /// Maximum opaque IDs returned in one static-metadata inventory page. A
     /// request may ask for fewer entries but cannot raise this core-selected
     /// cap or use a cursor as an offset.
@@ -68,6 +71,7 @@ impl Default for CompilerServiceIpcLimits {
             max_field_bytes: 16 * 1_024,
             max_modules_per_set: 1_024,
             max_diagnostics: 256,
+            max_diagnostic_page_entries: 128,
             max_static_metadata_page_entries: 128,
         }
     }
@@ -81,6 +85,7 @@ pub enum CompilerServiceIpcConfigurationError {
     ZeroResponseBytes,
     ResponseExceedsTransportLimit,
     ZeroFieldBytes,
+    ZeroDiagnosticPageEntries,
     ZeroStaticMetadataPageEntries,
 }
 
@@ -94,6 +99,9 @@ impl fmt::Display for CompilerServiceIpcConfigurationError {
                 .write_str("compiler IPC response budget exceeds the protocol transport limit"),
             Self::ZeroFieldBytes => {
                 formatter.write_str("compiler IPC field budget must be nonzero")
+            }
+            Self::ZeroDiagnosticPageEntries => {
+                formatter.write_str("compiler IPC diagnostic page cap must be nonzero")
             }
             Self::ZeroStaticMetadataPageEntries => {
                 formatter.write_str("compiler IPC static metadata page cap must be nonzero")
@@ -165,6 +173,11 @@ impl CompilerServiceIpcAdapter {
         match request {
             CompilerRequest::DescribeProject { project } => self.describe_project(project),
             CompilerRequest::Check { project } => self.check(project),
+            CompilerRequest::ListDiagnostics {
+                generation,
+                cursor,
+                limit,
+            } => self.diagnostic_page(generation, cursor, limit),
             CompilerRequest::GetStaticType {
                 generation,
                 type_id,
@@ -234,10 +247,104 @@ impl CompilerServiceIpcAdapter {
             Ok(check) => check,
             Err(error) => return service_error_reply(&error),
         };
+        // A successful check is the only public way an MCP receipt learns a
+        // generation. Validate every retained diagnostic field now, before
+        // any one-shot diagnostic cursor exists, so a later page cannot lose
+        // a cursor merely because an unseen later entry violates the fixed
+        // public field policy.
+        if !retained_diagnostics_fit_wire_policy(&check.retained_diagnostics, self.limits) {
+            return response_limit_reply();
+        }
         match self.check_to_wire(check) {
             Ok(check) => CompilerReply::Check(check),
             Err(()) => response_limit_reply(),
         }
+    }
+
+    /// Returns one source-free diagnostic page for an exact retained
+    /// generation. The adapter bounds a page using the same pessimistic JSON
+    /// accounting as ordinary check replies before it asks the service to
+    /// consume a one-shot cursor.
+    fn diagnostic_page(
+        &mut self,
+        generation: CompilerGeneration,
+        cursor: Option<CompilerDiagnosticCursor>,
+        requested_limit: Option<u32>,
+    ) -> CompilerReply {
+        let generation = match generation_from_wire(generation) {
+            Ok(generation) => generation,
+            Err(error) => return handle_error_reply(error),
+        };
+        if cursor.is_some_and(|cursor| !cursor.is_well_formed()) {
+            return CompilerReply::Error {
+                code: CompilerErrorCode::InvalidDiagnosticCursor,
+                message: "invalid compiler diagnostic cursor".to_string(),
+            };
+        }
+        let requested_limit = match requested_limit {
+            Some(0) => {
+                return CompilerReply::Error {
+                    code: CompilerErrorCode::InvalidDiagnosticPage,
+                    message: "compiler diagnostic page limit must be positive".to_string(),
+                };
+            }
+            Some(limit) => usize::try_from(limit).unwrap_or(usize::MAX),
+            None => self.limits.max_diagnostic_page_entries,
+        };
+        // A diagnostic always carries two project-controlled strings (module
+        // identity and prose). Reserve their worst-case JSON expansion before
+        // the service accepts a cursor, so an accepted page cannot overflow
+        // this adapter's response envelope merely because a field is dense in
+        // escapable bytes.
+        const PAGE_FIXED_BYTES: usize = 256;
+        const PAGE_ENTRY_FIXED_BYTES: usize = 192;
+        let max_entry_bytes = self
+            .limits
+            .max_field_bytes
+            .checked_mul(12)
+            .and_then(|bytes| {
+                MAX_COMPILER_DIAGNOSTIC_CODE_BYTES
+                    .checked_mul(6)
+                    .and_then(|code_bytes| bytes.checked_add(code_bytes))
+            })
+            .and_then(|bytes| bytes.checked_add(PAGE_ENTRY_FIXED_BYTES));
+        let Some(max_entry_bytes) = max_entry_bytes else {
+            return response_limit_reply();
+        };
+        let response_cap = self
+            .limits
+            .max_response_bytes
+            .saturating_sub(PAGE_FIXED_BYTES)
+            / max_entry_bytes;
+        let limit = requested_limit
+            .min(self.limits.max_diagnostic_page_entries)
+            .min(response_cap);
+        if limit == 0 {
+            return response_limit_reply();
+        }
+        let page = match self.service.diagnostic_inventory(
+            generation,
+            cursor.map(|cursor| cursor.id),
+            limit,
+        ) {
+            Ok(page) => page,
+            Err(error) => return service_error_reply(&error),
+        };
+        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
+        if !budget.reserve_fixed(PAGE_FIXED_BYTES) {
+            return response_limit_reply();
+        }
+        let entries = match diagnostic_page_entries_to_wire(&page.entries, self.limits, &mut budget)
+        {
+            Ok(entries) => entries,
+            Err(()) => return response_limit_reply(),
+        };
+        CompilerReply::DiagnosticPage(CompilerDiagnosticPage {
+            generation: generation_to_wire(generation),
+            entries,
+            next_cursor: page.next_cursor.map(|id| CompilerDiagnosticCursor { id }),
+            truncated: page.truncated,
+        })
     }
 
     fn static_type(&self, generation: CompilerGeneration, type_id: u32) -> CompilerReply {
@@ -664,6 +771,9 @@ fn validate_limits(
     if limits.max_field_bytes == 0 {
         return Err(CompilerServiceIpcConfigurationError::ZeroFieldBytes);
     }
+    if limits.max_diagnostic_page_entries == 0 {
+        return Err(CompilerServiceIpcConfigurationError::ZeroDiagnosticPageEntries);
+    }
     if limits.max_static_metadata_page_entries == 0 {
         return Err(CompilerServiceIpcConfigurationError::ZeroStaticMetadataPageEntries);
     }
@@ -755,14 +865,23 @@ fn service_error_reply(error: &CompilerServiceError) -> CompilerReply {
             CompilerErrorCode::InvalidMetadataCursor,
             "invalid, consumed, stale, or mismatched static metadata cursor",
         ),
+        CompilerServiceError::InvalidDiagnosticCursor { .. } => (
+            CompilerErrorCode::InvalidDiagnosticCursor,
+            "invalid, consumed, stale, or mismatched compiler diagnostic cursor",
+        ),
         CompilerServiceError::InvalidStaticMetadataPage { .. } => (
             CompilerErrorCode::InvalidMetadataPage,
             "invalid static metadata page request",
+        ),
+        CompilerServiceError::InvalidDiagnosticPage { .. } => (
+            CompilerErrorCode::InvalidDiagnosticPage,
+            "invalid compiler diagnostic page request",
         ),
         CompilerServiceError::ProjectLimit { .. }
         | CompilerServiceError::GenerationExhausted { .. }
         | CompilerServiceError::StaticMetadataLimit { .. }
         | CompilerServiceError::StaticMetadataCursorLimit { .. }
+        | CompilerServiceError::DiagnosticCursorLimit { .. }
         | CompilerServiceError::BuildOutputLimit { .. } => (
             CompilerErrorCode::ResourceLimit,
             "compiler service resource limit reached",
@@ -884,6 +1003,24 @@ fn module_list(
     Ok(CompilerModuleList { entries, truncated })
 }
 
+/// Compiler diagnostic codes are a fixed compiler vocabulary, not
+/// project-controlled prose. Keep their wire budget separately small so the
+/// diagnostic-page envelope can be proved before a one-shot cursor is used.
+const MAX_COMPILER_DIAGNOSTIC_CODE_BYTES: usize = 64;
+
+fn retained_diagnostics_fit_wire_policy(
+    diagnostics: &[Diagnostic],
+    limits: CompilerServiceIpcLimits,
+) -> bool {
+    diagnostics.iter().all(|diagnostic| {
+        diagnostic.code.to_string().len() <= MAX_COMPILER_DIAGNOSTIC_CODE_BYTES
+            && diagnostic.span.module.len() <= limits.max_field_bytes
+            && diagnostic.message.len() <= limits.max_field_bytes
+            && u64::try_from(diagnostic.span.start).is_ok()
+            && u64::try_from(diagnostic.span.end).is_ok()
+    })
+}
+
 fn diagnostics_to_wire(
     diagnostics: &[Diagnostic],
     service_truncated: bool,
@@ -897,7 +1034,10 @@ fn diagnostics_to_wire(
             truncated = true;
             break;
         }
-        if !budget.reserve_optional_string(&diagnostic.span.module, limits.max_field_bytes)?
+        let code = diagnostic.code.to_string();
+        if code.len() > MAX_COMPILER_DIAGNOSTIC_CODE_BYTES
+            || !budget.reserve_optional_string(&code, MAX_COMPILER_DIAGNOSTIC_CODE_BYTES)?
+            || !budget.reserve_optional_string(&diagnostic.span.module, limits.max_field_bytes)?
             || !budget.reserve_optional_string(&diagnostic.message, limits.max_field_bytes)?
             || !budget.reserve_optional_fixed(160)
         {
@@ -912,7 +1052,7 @@ fn diagnostics_to_wire(
             _ => return Err(()),
         };
         entries.push(CompilerDiagnostic {
-            code: diagnostic.code.to_string(),
+            code,
             severity: match diagnostic.severity {
                 Severity::Error => CompilerDiagnosticSeverity::Error,
                 Severity::Warning => CompilerDiagnosticSeverity::Warning,
@@ -925,6 +1065,46 @@ fn diagnostics_to_wire(
     }
     truncated |= entries.len() != diagnostics.len();
     Ok(CompilerDiagnostics { entries, truncated })
+}
+
+/// Converts an already fixed-size diagnostic page without silently dropping
+/// an entry. The caller selected its page cap from the worst-case envelope
+/// before the service consumed the one-shot cursor, so `Ok` means the public
+/// page is complete for that cursor rather than an unmarked partial page.
+fn diagnostic_page_entries_to_wire(
+    diagnostics: &[Diagnostic],
+    limits: CompilerServiceIpcLimits,
+    budget: &mut ResponseBudget,
+) -> Result<Vec<CompilerDiagnostic>, ()> {
+    diagnostics
+        .iter()
+        .map(|diagnostic| {
+            let code = diagnostic.code.to_string();
+            if code.len() > MAX_COMPILER_DIAGNOSTIC_CODE_BYTES
+                || !budget.reserve_required_string(&code, MAX_COMPILER_DIAGNOSTIC_CODE_BYTES)
+                || !budget.reserve_required_string(&diagnostic.span.module, limits.max_field_bytes)
+                || !budget.reserve_required_string(&diagnostic.message, limits.max_field_bytes)
+                || !budget.reserve_optional_fixed(192)
+            {
+                return Err(());
+            }
+            let (start, end) = (
+                u64::try_from(diagnostic.span.start).map_err(|_| ())?,
+                u64::try_from(diagnostic.span.end).map_err(|_| ())?,
+            );
+            Ok(CompilerDiagnostic {
+                code,
+                severity: match diagnostic.severity {
+                    Severity::Error => CompilerDiagnosticSeverity::Error,
+                    Severity::Warning => CompilerDiagnosticSeverity::Warning,
+                },
+                module: diagnostic.span.module.clone(),
+                start,
+                end,
+                message: diagnostic.message.clone(),
+            })
+        })
+        .collect()
 }
 
 fn symbol_kind_to_wire(kind: SymbolKind) -> CompilerSymbolKind {
@@ -1323,6 +1503,98 @@ mod tests {
     }
 
     #[test]
+    fn adapter_pages_diagnostics_with_one_shot_generation_bound_cursors() {
+        let mut adapter = CompilerServiceIpcAdapter::new(
+            RegisteredProjectCompilerService::new(CompilerServiceLimits {
+                max_retained_diagnostics: 4,
+                max_diagnostics: 1,
+                ..CompilerServiceLimits::default()
+            }),
+            CompilerServiceIpcLimits {
+                max_diagnostics: 0,
+                max_diagnostic_page_entries: 1,
+                ..CompilerServiceIpcLimits::default()
+            },
+        )
+        .unwrap();
+        let project = adapter
+            .register_core_project(registration(
+                "const first: number = 'one'; \
+                 const second: number = 'two'; \
+                 const third: number = 'three';",
+            ))
+            .unwrap();
+        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
+            panic!("registered invalid project must return a bounded check reply")
+        };
+        assert!(check.has_errors);
+        assert!(check.diagnostics.entries.is_empty());
+        assert!(check.diagnostics.truncated);
+        let CompilerReply::DiagnosticPage(first) =
+            adapter.handle(CompilerRequest::ListDiagnostics {
+                generation: check.generation,
+                cursor: None,
+                limit: Some(1),
+            })
+        else {
+            panic!("first diagnostic page must be returned for the exact check generation")
+        };
+        assert_eq!(first.generation, check.generation);
+        assert_eq!(first.entries.len(), 1);
+        assert!(
+            !format!("{first:?}").contains("const first"),
+            "paged diagnostic output must not contain the retained project source"
+        );
+        let cursor = first
+            .next_cursor
+            .expect("fixture must require a continuation cursor");
+        assert!(matches!(
+            adapter.handle(CompilerRequest::ListDiagnostics {
+                generation: check.generation,
+                cursor: Some(cursor),
+                limit: Some(0),
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidDiagnosticPage,
+                ..
+            }
+        ));
+        let CompilerReply::DiagnosticPage(_) = adapter.handle(CompilerRequest::ListDiagnostics {
+            generation: check.generation,
+            cursor: Some(cursor),
+            limit: Some(1),
+        }) else {
+            panic!("a rejected page-limit request must not consume its cursor")
+        };
+        assert!(matches!(
+            adapter.handle(CompilerRequest::ListDiagnostics {
+                generation: check.generation,
+                cursor: Some(cursor),
+                limit: Some(1),
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::InvalidDiagnosticCursor,
+                ..
+            }
+        ));
+        let CompilerReply::Check(later) = adapter.handle(CompilerRequest::Check { project }) else {
+            panic!("later check must create a successor generation")
+        };
+        assert!(matches!(
+            adapter.handle(CompilerRequest::ListDiagnostics {
+                generation: check.generation,
+                cursor: None,
+                limit: Some(1),
+            }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::StaleGeneration,
+                ..
+            }
+        ));
+        assert_ne!(later.generation, check.generation);
+    }
+
+    #[test]
     fn queued_requests_are_applied_only_by_the_adapter_owner() {
         let (mut adapter, project) = adapter();
         let (sender, receiver) = compiler_service_ipc_request_channel();
@@ -1385,6 +1657,17 @@ mod tests {
             )
             .unwrap_err(),
             CompilerServiceIpcConfigurationError::ResponseExceedsTransportLimit
+        );
+        assert_eq!(
+            CompilerServiceIpcAdapter::new(
+                RegisteredProjectCompilerService::default(),
+                CompilerServiceIpcLimits {
+                    max_diagnostic_page_entries: 0,
+                    ..CompilerServiceIpcLimits::default()
+                },
+            )
+            .unwrap_err(),
+            CompilerServiceIpcConfigurationError::ZeroDiagnosticPageEntries
         );
         assert_eq!(
             CompilerServiceIpcAdapter::new(

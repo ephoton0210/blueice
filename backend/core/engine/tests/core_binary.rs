@@ -334,7 +334,7 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
     ));
     drop(invalid);
 
-    // Obsolete compiler IPC versions cannot silently negotiate with the v4
+    // Obsolete compiler IPC versions cannot silently negotiate with the v5
     // core-minted stream attestation and fixed query-only manifest.
     let mut v1 = UnixStream::connect(&compiler_socket_path).unwrap();
     blueice_ipc::compiler::write_compiler_request(

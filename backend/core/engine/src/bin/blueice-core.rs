@@ -617,7 +617,7 @@ fn serve_compiler_connection(
 }
 
 /// Mints all handshake evidence for one accepted compiler stream. The core
-/// creates it only after the exact v4 `Hello`: an opaque per-stream
+/// creates it only after the exact v5 `Hello`: an opaque per-stream
 /// attestation and the canonical fixed query-only manifest. Neither is tied
 /// to a project, source graph, catalog, path, or any extra authority.
 #[cfg(unix)]

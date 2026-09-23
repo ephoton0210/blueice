@@ -102,7 +102,7 @@ fn compiler_session_id(result: &rmcp::model::CallToolResult) -> String {
         .get("operation_ids")
         .and_then(serde_json::Value::as_array)
         .expect("capability manifest must expose its complete query vocabulary");
-    assert_eq!(operation_ids.len(), 8);
+    assert_eq!(operation_ids.len(), 9);
     assert_eq!(
         operation_ids.first(),
         Some(&serde_json::json!("describe-project"))
@@ -111,6 +111,7 @@ fn compiler_session_id(result: &rmcp::model::CallToolResult) -> String {
         operation_ids.last(),
         Some(&serde_json::json!("validate-static-contract"))
     );
+    assert!(operation_ids.contains(&serde_json::json!("list-diagnostics")));
     assert!(
         !text.contains("coreRegisteredAnswer") && !text.contains("core-fixture-dist"),
         "capability result must remain source/output-free: {text}"
@@ -469,6 +470,68 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         .static_metadata
         .as_ref()
         .expect("successful check must retain source-free static metadata");
+
+    let diagnostic_page = compiler_tool!(
+        "bluetsc_list_diagnostics",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "limit": 1,
+        })
+    );
+    assert_eq!(diagnostic_page.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&diagnostic_page);
+    let blueice_ipc::compiler::CompilerReply::DiagnosticPage(diagnostic_page) =
+        compiler_tool_reply(&diagnostic_page)
+    else {
+        panic!("the checked core fixture must expose an exact diagnostic-page reply")
+    };
+    assert_eq!(diagnostic_page.generation, check.generation);
+    assert!(diagnostic_page.entries.is_empty());
+    assert!(diagnostic_page.next_cursor.is_none());
+
+    let unobserved_diagnostic_generation = compiler_tool!(
+        "bluetsc_list_diagnostics",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence + 1,
+            "limit": 1,
+        })
+    );
+    assert_eq!(unobserved_diagnostic_generation.is_error, Some(true));
+    assert_source_free_compiler_tool_result(&unobserved_diagnostic_generation);
+    assert!(matches!(
+        compiler_tool_reply(&unobserved_diagnostic_generation),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
+            ..
+        }
+    ));
+
+    let wrong_diagnostic_session = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_list_diagnostics").with_arguments(
+                serde_json::json!({
+                    "session_id": "f".repeat(64),
+                    "project_id": 1,
+                    "generation": check.generation.sequence,
+                    "limit": 1,
+                })
+                .as_object()
+                .expect("MCP diagnostic-page arguments must be an object")
+                .clone(),
+            ),
+        )
+        .await
+        .expect("mismatched diagnostic session must receive a structured MCP result");
+    assert_eq!(wrong_diagnostic_session.is_error, Some(true));
+    let wrong_diagnostic_session_text = wrong_diagnostic_session.content[0]
+        .as_text()
+        .expect("mismatched diagnostic session result must be text")
+        .text
+        .as_str();
+    assert!(wrong_diagnostic_session_text.contains("does not belong to this MCP adapter"));
+    assert!(!wrong_diagnostic_session_text.contains("coreRegisteredAnswer"));
 
     let wrong_session = client
         .call_tool(
@@ -864,6 +927,23 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         panic!("later core check must produce a new generation")
     };
     assert_ne!(later_check.generation, check.generation);
+    let stale_diagnostics = compiler_tool!(
+        "bluetsc_list_diagnostics",
+        serde_json::json!({
+            "project_id": 1,
+            "generation": check.generation.sequence,
+            "limit": 1,
+        })
+    );
+    assert_eq!(stale_diagnostics.is_error, Some(true));
+    assert_source_free_compiler_tool_result(&stale_diagnostics);
+    assert!(matches!(
+        compiler_tool_reply(&stale_diagnostics),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::StaleGeneration,
+            ..
+        }
+    ));
     let stale_result = compiler_tool!(
         "debug_list_static_metadata",
         serde_json::json!({

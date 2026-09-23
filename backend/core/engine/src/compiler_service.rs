@@ -29,6 +29,10 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompilerServiceLimits {
     pub max_projects: usize,
+    /// Maximum diagnostics retained for one latest check generation. The
+    /// immediate check reply remains separately capped; later diagnostic
+    /// pagination can inspect this larger, fixed core-owned retention set.
+    pub max_retained_diagnostics: usize,
     pub max_diagnostics: usize,
     pub max_static_sources: usize,
     pub max_static_types: usize,
@@ -38,6 +42,10 @@ pub struct CompilerServiceLimits {
     /// across every registered project. A later check for a project releases
     /// that project's cursors, so remote inventory cannot grow unbounded.
     pub max_static_metadata_cursors: usize,
+    /// Maximum one-shot diagnostic cursors retained across every registered
+    /// project. This is distinct from static metadata cursors so one family
+    /// cannot consume the other's fixed remote-pagination budget.
+    pub max_diagnostic_cursors: usize,
     /// Fixed core-selected limits for validation requests. Query callers never
     /// provide or relax these bounds.
     pub contract_validation: ValidationLimits,
@@ -49,12 +57,14 @@ impl Default for CompilerServiceLimits {
     fn default() -> Self {
         Self {
             max_projects: 128,
+            max_retained_diagnostics: 4_096,
             max_diagnostics: 256,
             max_static_sources: 4_096,
             max_static_types: 16_384,
             max_static_symbols: 65_536,
             max_static_contracts: 16_384,
             max_static_metadata_cursors: 1_024,
+            max_diagnostic_cursors: 1_024,
             contract_validation: ValidationLimits {
                 max_depth: 64,
                 max_collection_entries: 4_096,
@@ -158,6 +168,11 @@ pub struct CompilerServiceCheck {
     pub rechecked_modules: BTreeSet<String>,
     pub reused_checked_modules: BTreeSet<String>,
     pub diagnostics: CompilerServiceDiagnostics,
+    /// Core-internal full diagnostic retention for the exact generation.
+    /// This is intentionally not a wire field: the IPC adapter must expose it
+    /// only through bounded one-shot pages after it has applied its own field
+    /// and response policy.
+    pub(crate) retained_diagnostics: Vec<Diagnostic>,
     pub has_errors: bool,
     /// The compiler's graph/options fingerprint when artifact creation was
     /// successful. It is absent on a no-emit-on-error result.
@@ -193,6 +208,17 @@ pub enum StaticMetadataInventoryKind {
 pub struct StaticMetadataInventoryPage {
     pub ids: Vec<u32>,
     pub next_cursor: Option<u64>,
+}
+
+/// One bounded page of source-text-free diagnostics retained by an exact
+/// check generation. The cursor is an opaque one-shot service receipt, not a
+/// source location or user-controlled offset. `truncated` signals that the
+/// fixed retention limit omitted later compiler diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiagnosticInventoryPage {
+    pub entries: Vec<Diagnostic>,
+    pub next_cursor: Option<u64>,
+    pub truncated: bool,
 }
 
 /// Fail-closed compiler-service errors.
@@ -240,10 +266,19 @@ pub enum CompilerServiceError {
     InvalidStaticMetadataCursor {
         generation: RegisteredProjectGeneration,
     },
+    InvalidDiagnosticCursor {
+        generation: RegisteredProjectGeneration,
+    },
     InvalidStaticMetadataPage {
         limit: usize,
     },
+    InvalidDiagnosticPage {
+        limit: usize,
+    },
     StaticMetadataCursorLimit {
+        limit: usize,
+    },
+    DiagnosticCursorLimit {
         limit: usize,
     },
     StaticMetadataLimit {
@@ -349,12 +384,25 @@ impl fmt::Display for CompilerServiceError {
                 generation.sequence(),
                 generation.project_id().as_u64()
             ),
+            Self::InvalidDiagnosticCursor { generation } => write!(
+                formatter,
+                "invalid diagnostic cursor for generation {} in project {}",
+                generation.sequence(),
+                generation.project_id().as_u64()
+            ),
             Self::InvalidStaticMetadataPage { limit } => {
                 write!(formatter, "invalid static metadata page limit {limit}")
+            }
+            Self::InvalidDiagnosticPage { limit } => {
+                write!(formatter, "invalid diagnostic page limit {limit}")
             }
             Self::StaticMetadataCursorLimit { limit } => write!(
                 formatter,
                 "static metadata cursor limit {limit} has been reached"
+            ),
+            Self::DiagnosticCursorLimit { limit } => write!(
+                formatter,
+                "diagnostic cursor limit {limit} has been reached"
             ),
             Self::StaticMetadataLimit { resource, limit } => {
                 write!(
@@ -380,8 +428,10 @@ pub struct RegisteredProjectCompilerService {
     limits: CompilerServiceLimits,
     next_project_id: u64,
     next_static_metadata_cursor: u64,
+    next_diagnostic_cursor: u64,
     projects: BTreeMap<RegisteredProjectId, RegisteredProject>,
     static_metadata_cursors: BTreeMap<u64, StaticMetadataCursor>,
+    diagnostic_cursors: BTreeMap<u64, DiagnosticCursor>,
 }
 
 #[derive(Debug)]
@@ -396,6 +446,8 @@ struct RegisteredProject {
 struct RetainedCompilation {
     generation: RegisteredProjectGeneration,
     static_debug_info: Option<BlueTsDebugInfo>,
+    diagnostics: Vec<Diagnostic>,
+    diagnostics_truncated: bool,
 }
 
 /// A private cursor state cannot be reconstructed from its number: it binds
@@ -409,14 +461,24 @@ struct StaticMetadataCursor {
     next_index: usize,
 }
 
+/// An opaque diagnostic cursor is scoped only to one exact retained compiler
+/// generation. Its number does not expose a diagnostic index or source span.
+#[derive(Debug, Clone, Copy)]
+struct DiagnosticCursor {
+    generation: RegisteredProjectGeneration,
+    next_index: usize,
+}
+
 impl RegisteredProjectCompilerService {
     pub fn new(limits: CompilerServiceLimits) -> Self {
         Self {
             limits,
             next_project_id: 0,
             next_static_metadata_cursor: 0,
+            next_diagnostic_cursor: 0,
             projects: BTreeMap::new(),
             static_metadata_cursors: BTreeMap::new(),
+            diagnostic_cursors: BTreeMap::new(),
         }
     }
 
@@ -588,6 +650,64 @@ impl RegisteredProjectCompilerService {
         })
     }
 
+    /// Lists one source-free page of compiler diagnostics retained for an
+    /// exact latest check generation. Cursor IDs are opaque and one-shot:
+    /// a caller cannot treat them as offsets, replay them, or carry them into
+    /// a subsequent check generation.
+    pub fn diagnostic_inventory(
+        &mut self,
+        generation: RegisteredProjectGeneration,
+        cursor: Option<u64>,
+        limit: usize,
+    ) -> Result<DiagnosticInventoryPage, CompilerServiceError> {
+        if limit == 0 {
+            return Err(CompilerServiceError::InvalidDiagnosticPage { limit });
+        }
+        let (diagnostic_count, truncated) = {
+            let retained = self.retained_compilation(generation)?;
+            (retained.diagnostics.len(), retained.diagnostics_truncated)
+        };
+        let (start, consumed_cursor) = match cursor {
+            None => (0, None),
+            Some(0) => return Err(CompilerServiceError::InvalidDiagnosticCursor { generation }),
+            Some(cursor) => {
+                let state = self
+                    .diagnostic_cursors
+                    .get(&cursor)
+                    .copied()
+                    .filter(|state| state.generation == generation)
+                    .ok_or(CompilerServiceError::InvalidDiagnosticCursor { generation })?;
+                if state.next_index >= diagnostic_count {
+                    return Err(CompilerServiceError::InvalidDiagnosticCursor { generation });
+                }
+                (state.next_index, Some(cursor))
+            }
+        };
+        let end = start.saturating_add(limit).min(diagnostic_count);
+        if end < diagnostic_count && self.next_diagnostic_cursor == u64::MAX {
+            return Err(CompilerServiceError::DiagnosticCursorLimit {
+                limit: self.limits.max_diagnostic_cursors,
+            });
+        }
+        let entries = self.retained_compilation(generation)?.diagnostics[start..end].to_vec();
+        if let Some(cursor) = consumed_cursor {
+            self.diagnostic_cursors.remove(&cursor);
+        }
+        let next_cursor = if end < diagnostic_count {
+            Some(self.mint_diagnostic_cursor(DiagnosticCursor {
+                generation,
+                next_index: end,
+            })?)
+        } else {
+            None
+        };
+        Ok(DiagnosticInventoryPage {
+            entries,
+            next_cursor,
+            truncated,
+        })
+    }
+
     /// Looks up one static type by its compiler-minted ID. This never attempts
     /// to inspect a BlueJS runtime value.
     pub fn static_type(
@@ -703,8 +823,20 @@ impl RegisteredProjectCompilerService {
                 project_id,
                 sequence,
             };
-            let diagnostics =
-                capped_diagnostics(&result.compilation.diagnostics, limits.max_diagnostics);
+            let diagnostics_truncated =
+                result.compilation.diagnostics.len() > limits.max_retained_diagnostics;
+            let retained_diagnostics = result
+                .compilation
+                .diagnostics
+                .iter()
+                .take(limits.max_retained_diagnostics)
+                .cloned()
+                .collect::<Vec<_>>();
+            let diagnostics = capped_diagnostics(
+                &retained_diagnostics,
+                limits.max_diagnostics,
+                diagnostics_truncated,
+            );
             let artifact_fingerprint = result
                 .compilation
                 .output
@@ -718,6 +850,7 @@ impl RegisteredProjectCompilerService {
                 rechecked_modules: result.rechecked_modules,
                 reused_checked_modules: result.reused_checked_modules,
                 diagnostics,
+                retained_diagnostics: retained_diagnostics.clone(),
                 has_errors: result.compilation.has_errors(),
                 artifact_fingerprint,
                 static_debug_info: static_debug_info.clone(),
@@ -725,6 +858,8 @@ impl RegisteredProjectCompilerService {
             project.latest = Some(RetainedCompilation {
                 generation,
                 static_debug_info,
+                diagnostics: retained_diagnostics,
+                diagnostics_truncated,
             });
             (check, result.compilation.output)
         };
@@ -732,6 +867,8 @@ impl RegisteredProjectCompilerService {
         // that project, including one held by a disconnected or malicious
         // client. The token map is otherwise bounded by service policy.
         self.static_metadata_cursors
+            .retain(|_, cursor| cursor.generation.project_id() != project_id);
+        self.diagnostic_cursors
             .retain(|_, cursor| cursor.generation.project_id() != project_id);
         Ok(result)
     }
@@ -752,6 +889,25 @@ impl RegisteredProjectCompilerService {
         )?;
         self.next_static_metadata_cursor = id;
         self.static_metadata_cursors.insert(id, cursor);
+        Ok(id)
+    }
+
+    fn mint_diagnostic_cursor(
+        &mut self,
+        cursor: DiagnosticCursor,
+    ) -> Result<u64, CompilerServiceError> {
+        if self.diagnostic_cursors.len() >= self.limits.max_diagnostic_cursors {
+            return Err(CompilerServiceError::DiagnosticCursorLimit {
+                limit: self.limits.max_diagnostic_cursors,
+            });
+        }
+        let id = self.next_diagnostic_cursor.checked_add(1).ok_or(
+            CompilerServiceError::DiagnosticCursorLimit {
+                limit: self.limits.max_diagnostic_cursors,
+            },
+        )?;
+        self.next_diagnostic_cursor = id;
+        self.diagnostic_cursors.insert(id, cursor);
         Ok(id)
     }
 
@@ -777,16 +933,21 @@ impl RegisteredProjectCompilerService {
         &self,
         generation: RegisteredProjectGeneration,
     ) -> Result<&BlueTsDebugInfo, CompilerServiceError> {
-        let project = self.project(generation.project_id())?;
-        let retained = project
-            .latest
-            .as_ref()
-            .filter(|retained| retained.generation == generation)
-            .ok_or(CompilerServiceError::StaleGeneration { generation })?;
-        retained
+        self.retained_compilation(generation)?
             .static_debug_info
             .as_ref()
             .ok_or(CompilerServiceError::NoStaticMetadata { generation })
+    }
+
+    fn retained_compilation(
+        &self,
+        generation: RegisteredProjectGeneration,
+    ) -> Result<&RetainedCompilation, CompilerServiceError> {
+        self.project(generation.project_id())?
+            .latest
+            .as_ref()
+            .filter(|retained| retained.generation == generation)
+            .ok_or(CompilerServiceError::StaleGeneration { generation })
     }
 }
 
@@ -831,10 +992,14 @@ fn same_registration(
         && left.canonical_output_root == right.canonical_output_root
 }
 
-fn capped_diagnostics(diagnostics: &[Diagnostic], limit: usize) -> CompilerServiceDiagnostics {
+fn capped_diagnostics(
+    diagnostics: &[Diagnostic],
+    limit: usize,
+    retention_truncated: bool,
+) -> CompilerServiceDiagnostics {
     CompilerServiceDiagnostics {
         entries: diagnostics.iter().take(limit).cloned().collect(),
-        truncated: diagnostics.len() > limit,
+        truncated: retention_truncated || diagnostics.len() > limit,
     }
 }
 
@@ -1017,6 +1182,57 @@ mod tests {
         assert!(matches!(
             service.static_debug_info(first.generation),
             Err(CompilerServiceError::StaleGeneration { .. })
+        ));
+    }
+
+    #[test]
+    fn diagnostic_pages_are_one_shot_generation_bound_and_source_text_free() {
+        let mut service = RegisteredProjectCompilerService::new(CompilerServiceLimits {
+            max_retained_diagnostics: 4,
+            max_diagnostics: 1,
+            max_diagnostic_cursors: 4,
+            ..CompilerServiceLimits::default()
+        });
+        let id = service
+            .register(registration(
+                "const first: number = 'one'; \
+                 const second: number = 'two'; \
+                 const third: number = 'three';",
+            ))
+            .unwrap();
+        let check = service.check(id).unwrap();
+        assert!(check.has_errors);
+        assert_eq!(check.diagnostics.entries.len(), 1);
+        assert!(check.diagnostics.truncated);
+
+        let first = service
+            .diagnostic_inventory(check.generation, None, 1)
+            .unwrap();
+        assert_eq!(first.entries.len(), 1);
+        assert!(
+            !format!("{:?}", first.entries).contains("const first"),
+            "a diagnostic page carries range/prose only, never project source text"
+        );
+        let cursor = first
+            .next_cursor
+            .expect("three distinct type failures require a continuation cursor");
+        let second = service
+            .diagnostic_inventory(check.generation, Some(cursor), 1)
+            .unwrap();
+        assert_eq!(second.entries.len(), 1);
+        assert!(matches!(
+            service.diagnostic_inventory(check.generation, Some(cursor), 1),
+            Err(CompilerServiceError::InvalidDiagnosticCursor { .. })
+        ));
+
+        let later = service.check(id).unwrap();
+        assert!(matches!(
+            service.diagnostic_inventory(check.generation, second.next_cursor, 1),
+            Err(CompilerServiceError::StaleGeneration { .. })
+        ));
+        assert!(matches!(
+            service.diagnostic_inventory(later.generation, second.next_cursor, 1),
+            Err(CompilerServiceError::InvalidDiagnosticCursor { .. })
         ));
     }
 

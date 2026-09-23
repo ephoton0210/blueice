@@ -1004,7 +1004,7 @@ or second module resolver to bypass them.
   output root, or write flag from its command line or socket. Real-process
   coverage proves rejected pre-`Hello` traffic cannot reach the catalog and a
   handshaken opaque `DescribeProject`/`Check` receives source-free,
-  generation-bound metadata from the core-registered closed fixture. Its v4
+  generation-bound metadata from the core-registered closed fixture. Its v5
   process regression also proves v1/v2/v3 rejection, a fresh core-minted
   per-accepted-stream session attestation and exact fixed query-only capability
   manifest, plus exact source-hash
@@ -1030,7 +1030,7 @@ or second module resolver to bypass them.
   path attaches both adapters to one already-running core and never falls
   back to an unrelated browser process. After
   the separate compiler `Hello` negotiation, `bluetsc_describe_project`, `bluetsc_check`,
-  `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
+  `bluetsc_list_diagnostics`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
   `debug_get_provenance`, `debug_get_contract`, and
   `debug_validate_contract` forward only opaque project/generation/metadata
   handles to the core service. `bluetsc_describe_project` accepts only a
@@ -1052,7 +1052,7 @@ or second module resolver to bypass them.
   `bluetsc_session_capabilities` truthfully reports whether the compiler
   adapter is attached and, when it is, returns the exact opaque receipt minted
   by the core listener for that accepted relay stream together with the complete
-  core-authored v1 manifest of eight read-only operations. MCP accepts neither
+  core-authored v2 manifest of nine read-only operations. MCP accepts neither
   a missing, malformed, subset, reordered, nor locally derived manifest. Every
   compiler tool echoes and requires that receipt;
   static queries additionally require the exact generation first observed by
@@ -1061,6 +1061,18 @@ or second module resolver to bypass them.
   attestation, mismatched/unobserved generation, guessed/wrong-category ID,
   or exhausted receipt budget fails source-free, and receipt/session state is
   never retargeted on launcher cutover.
+  Compiler IPC v5 now adds `ListDiagnostics` and MCP's
+  `bluetsc_list_diagnostics` as a ninth read-only operation. A successful
+  `bluetsc_check` retains at most 4,096 source-free diagnostics for that exact
+  generation while its immediate reply remains capped; the MCP tool requires
+  the same session receipt and observed generation, then accepts only a
+  core-minted one-shot diagnostic cursor. A page contains only code, severity,
+  canonical module identity, byte range, and untrusted compiler prose. It
+  never returns source text or a source-read path, and malformed/replayed
+  cursors or a later check's stale generation fail closed. The real MCP/core
+  regression exercises receipt mismatch, unobserved generation, and stale
+  diagnostic-page rejection; service and adapter coverage exercise
+  continuation/replay and response bounds.
   There is still
   no general launcher-owned catalog distribution or authorization beyond the
   one fixed closed profile, no remote registration/update/source/filesystem/
@@ -1076,7 +1088,7 @@ or second module resolver to bypass them.
   capped, redacted where needed, and reject stale project state.
 
 - [ ] **Complete the negotiated MCP BlueTS/BlueTSC adapter (Phase 12).**
-  `bluetsc_describe_project`, `bluetsc_check`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
+  `bluetsc_describe_project`, `bluetsc_check`, `bluetsc_list_diagnostics`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
   `debug_get_provenance`, `debug_get_contract`, and
   `debug_validate_contract` now adapt the native query service, not shell
   endpoints or a second compiler. Still add `bluetsc_build` only alongside an

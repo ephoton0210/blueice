@@ -10,11 +10,12 @@
 //! path, or write capability. Callers can therefore only act on opaque
 //! project and generation handles minted by that owner.
 //!
-//! Version four adds a core-minted, fixed query-only capability manifest to
+//! Version five adds a core-minted, fixed query-only capability manifest to
 //! the per-accepted-stream session attestation, source-text-free identity,
 //! check, individual static type/symbol queries, compiler-minted provenance
 //! hashes, deliberately bounded reifiable static-contract
-//! inspection/validation, and generation-bound pages of opaque metadata IDs.
+//! inspection/validation, generation-bound pages of opaque metadata IDs, and
+//! source-free one-shot pages of retained compiler diagnostics.
 //! The attestation binds an MCP-side receipt to the core that accepted its
 //! relay stream; the manifest makes that receipt's exact fixed operation set
 //! independently verifiable. Neither grants additional authority. Build
@@ -29,7 +30,7 @@ use std::io::{self, Read, Write};
 
 /// Independent protocol version for registered-project compiler IPC. It does
 /// not share the browser frontend protocol's lifecycle.
-pub const COMPILER_PROTOCOL_VERSION: u32 = 4;
+pub const COMPILER_PROTOCOL_VERSION: u32 = 5;
 
 /// The maximum encoded request or reply accepted by this protocol. The engine
 /// adapter applies a smaller response budget before a reply reaches this
@@ -67,7 +68,7 @@ impl CompilerSessionAttestation {
 /// expose. Its version is independent of the transport version so a client
 /// can validate the fixed query-only operation set explicitly rather than
 /// inferring authority from a protocol number.
-pub const COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION: u32 = 1;
+pub const COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION: u32 = 2;
 
 /// Stable, source-free identifiers for the exact read-only compiler queries
 /// available over this transport. The protocol deliberately has no variants
@@ -78,6 +79,7 @@ pub const COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION: u32 = 1;
 pub enum CompilerQueryOperationId {
     DescribeProject,
     Check,
+    ListDiagnostics,
     GetStaticType,
     GetStaticSymbol,
     ListStaticMetadata,
@@ -119,6 +121,7 @@ impl CompilerSessionCapabilityManifest {
         const OPERATIONS: &[CompilerQueryOperationId] = &[
             CompilerQueryOperationId::DescribeProject,
             CompilerQueryOperationId::Check,
+            CompilerQueryOperationId::ListDiagnostics,
             CompilerQueryOperationId::GetStaticType,
             CompilerQueryOperationId::GetStaticSymbol,
             CompilerQueryOperationId::ListStaticMetadata,
@@ -210,6 +213,33 @@ pub struct CompilerDiagnostic {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompilerDiagnostics {
     pub entries: Vec<CompilerDiagnostic>,
+    pub truncated: bool,
+}
+
+/// An opaque, one-shot pagination cursor minted by the core service for the
+/// exact diagnostics retained by one compiler generation. It is neither an
+/// offset nor a source position, and cannot be repurposed for static metadata
+/// or a later check generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CompilerDiagnosticCursor {
+    pub id: u64,
+}
+
+impl CompilerDiagnosticCursor {
+    pub fn is_well_formed(self) -> bool {
+        self.id != 0
+    }
+}
+
+/// One bounded page of retained compiler diagnostics. The entries include no
+/// source text, path, resolver, compiler configuration, artifact, or output
+/// capability. `truncated` is true only when the core's fixed retention bound
+/// omitted later diagnostics; it is never a caller-selected page limit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerDiagnosticPage {
+    pub generation: CompilerGeneration,
+    pub entries: Vec<CompilerDiagnostic>,
+    pub next_cursor: Option<CompilerDiagnosticCursor>,
     pub truncated: bool,
 }
 
@@ -406,6 +436,15 @@ pub enum CompilerRequest {
     Check {
         project: CompilerProject,
     },
+    /// Lists one capped page of source-free diagnostics retained for an exact
+    /// check generation. A continuation cursor is core-minted and one-shot;
+    /// `None` begins a new inventory. The core clamps a positive requested
+    /// limit to fixed policy and response budgets.
+    ListDiagnostics {
+        generation: CompilerGeneration,
+        cursor: Option<CompilerDiagnosticCursor>,
+        limit: Option<u32>,
+    },
     GetStaticType {
         generation: CompilerGeneration,
         type_id: u32,
@@ -463,6 +502,8 @@ pub enum CompilerErrorCode {
     UnknownSource,
     UnknownContract,
     InvalidContractValue,
+    InvalidDiagnosticCursor,
+    InvalidDiagnosticPage,
     InvalidMetadataCursor,
     InvalidMetadataPage,
     /// The MCP adapter has not received this exact opaque metadata ID in an
@@ -484,6 +525,7 @@ pub enum CompilerReply {
     },
     Project(CompilerProjectIdentity),
     Check(CompilerCheck),
+    DiagnosticPage(CompilerDiagnosticPage),
     StaticType(CompilerStaticType),
     StaticSymbol(CompilerStaticSymbol),
     StaticMetadataPage(CompilerStaticMetadataPage),
@@ -532,6 +574,7 @@ pub fn negotiate(
         (
             CompilerRequest::DescribeProject { .. }
             | CompilerRequest::Check { .. }
+            | CompilerRequest::ListDiagnostics { .. }
             | CompilerRequest::GetStaticType { .. }
             | CompilerRequest::GetStaticSymbol { .. }
             | CompilerRequest::ListStaticMetadata { .. }
@@ -619,6 +662,11 @@ mod tests {
             },
             CompilerRequest::DescribeProject { project: project() },
             CompilerRequest::Check { project: project() },
+            CompilerRequest::ListDiagnostics {
+                generation: generation(),
+                cursor: Some(CompilerDiagnosticCursor { id: 6 }),
+                limit: Some(2),
+            },
             CompilerRequest::GetStaticType {
                 generation: generation(),
                 type_id: 2,
@@ -693,6 +741,23 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_compiler_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_compiler_reply(&mut receiver).unwrap(), reply);
+
+        let diagnostic_page = CompilerReply::DiagnosticPage(CompilerDiagnosticPage {
+            generation: generation(),
+            entries: vec![CompilerDiagnostic {
+                code: "BTS3003".to_string(),
+                severity: CompilerDiagnosticSeverity::Error,
+                module: "project:///app/main.ts".to_string(),
+                start: 3,
+                end: 7,
+                message: "fixture diagnostic".to_string(),
+            }],
+            next_cursor: Some(CompilerDiagnosticCursor { id: 6 }),
+            truncated: false,
+        });
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_compiler_reply(&mut sender, &diagnostic_page).unwrap();
+        assert_eq!(read_compiler_reply(&mut receiver).unwrap(), diagnostic_page);
 
         let hello_ack = CompilerReply::HelloAck {
             protocol_version: COMPILER_PROTOCOL_VERSION,
@@ -807,6 +872,7 @@ mod tests {
             vec![
                 CompilerQueryOperationId::DescribeProject,
                 CompilerQueryOperationId::Check,
+                CompilerQueryOperationId::ListDiagnostics,
                 CompilerQueryOperationId::GetStaticType,
                 CompilerQueryOperationId::GetStaticSymbol,
                 CompilerQueryOperationId::ListStaticMetadata,
@@ -863,6 +929,8 @@ mod tests {
         .is_well_formed());
         assert!(!CompilerStaticMetadataCursor { id: 0 }.is_well_formed());
         assert!(CompilerStaticMetadataCursor { id: 1 }.is_well_formed());
+        assert!(!CompilerDiagnosticCursor { id: 0 }.is_well_formed());
+        assert!(CompilerDiagnosticCursor { id: 1 }.is_well_formed());
         assert!(generation().is_well_formed());
     }
 }
