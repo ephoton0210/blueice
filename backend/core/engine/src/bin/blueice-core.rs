@@ -377,10 +377,10 @@ fn serve_compiler_connection(
             protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
         }
     );
-    let session_attestation = accepted
-        .then(mint_compiler_session_attestation)
+    let session_evidence = accepted
+        .then(mint_compiler_session_hello_evidence)
         .transpose()?;
-    let reply = blueice_ipc::compiler::negotiate(&first, session_attestation);
+    let reply = blueice_ipc::compiler::negotiate(&first, session_evidence);
     blueice_ipc::compiler::write_compiler_reply(&mut stream, &reply)?;
     if !accepted {
         return Ok(());
@@ -397,12 +397,13 @@ fn serve_compiler_connection(
     }
 }
 
-/// Mints opaque evidence for one accepted compiler stream. The value is
-/// generated only by the core listener after the exact v3 `Hello` and is not
-/// tied to a project, source graph, catalog, path, or any extra authority.
+/// Mints all handshake evidence for one accepted compiler stream. The core
+/// creates it only after the exact v4 `Hello`: an opaque per-stream
+/// attestation and the canonical fixed query-only manifest. Neither is tied
+/// to a project, source graph, catalog, path, or any extra authority.
 #[cfg(unix)]
-fn mint_compiler_session_attestation(
-) -> io::Result<blueice_ipc::compiler::CompilerSessionAttestation> {
+fn mint_compiler_session_hello_evidence(
+) -> io::Result<blueice_ipc::compiler::CompilerSessionHelloEvidence> {
     let mut bytes = [0u8; 32];
     std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
     let mut id = String::with_capacity(bytes.len() * 2);
@@ -412,7 +413,13 @@ fn mint_compiler_session_attestation(
     }
     let session_attestation = blueice_ipc::compiler::CompilerSessionAttestation { id };
     debug_assert!(session_attestation.is_well_formed());
-    Ok(session_attestation)
+    let capability_manifest =
+        blueice_ipc::compiler::CompilerSessionCapabilityManifest::fixed_query_only();
+    debug_assert!(capability_manifest.is_well_formed());
+    Ok(blueice_ipc::compiler::CompilerSessionHelloEvidence {
+        session_attestation,
+        capability_manifest,
+    })
 }
 
 /// Accepts successive compiler query peers. Bad handshakes and disconnected

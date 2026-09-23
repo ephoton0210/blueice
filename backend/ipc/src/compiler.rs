@@ -10,12 +10,14 @@
 //! path, or write capability. Callers can therefore only act on opaque
 //! project and generation handles minted by that owner.
 //!
-//! Version three adds a core-minted, per-accepted-stream session attestation
-//! to the source-text-free identity, check, individual static type/symbol
-//! queries, compiler-minted provenance hashes, deliberately bounded reifiable
-//! static-contract inspection/validation, and generation-bound pages of
-//! opaque metadata IDs. The attestation binds an MCP-side receipt to the core
-//! that accepted its relay stream; it grants no additional authority. Build
+//! Version four adds a core-minted, fixed query-only capability manifest to
+//! the per-accepted-stream session attestation, source-text-free identity,
+//! check, individual static type/symbol queries, compiler-minted provenance
+//! hashes, deliberately bounded reifiable static-contract
+//! inspection/validation, and generation-bound pages of opaque metadata IDs.
+//! The attestation binds an MCP-side receipt to the core that accepted its
+//! relay stream; the manifest makes that receipt's exact fixed operation set
+//! independently verifiable. Neither grants additional authority. Build
 //! artifacts, project registration/update, source reads, and output
 //! transactions remain separate capability-bearing operations. In particular,
 //! this module is not an MCP protocol and does not grant an MCP client any
@@ -27,7 +29,7 @@ use std::io::{self, Read, Write};
 
 /// Independent protocol version for registered-project compiler IPC. It does
 /// not share the browser frontend protocol's lifecycle.
-pub const COMPILER_PROTOCOL_VERSION: u32 = 3;
+pub const COMPILER_PROTOCOL_VERSION: u32 = 4;
 
 /// The maximum encoded request or reply accepted by this protocol. The engine
 /// adapter applies a smaller response budget before a reply reaches this
@@ -58,6 +60,90 @@ impl CompilerSessionAttestation {
                 .id
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    }
+}
+
+/// The identity of the sole compiler capability manifest this protocol can
+/// expose. Its version is independent of the transport version so a client
+/// can validate the fixed query-only operation set explicitly rather than
+/// inferring authority from a protocol number.
+pub const COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION: u32 = 1;
+
+/// Stable, source-free identifiers for the exact read-only compiler queries
+/// available over this transport. The protocol deliberately has no variants
+/// for project registration, source reads, option changes, builds, artifacts,
+/// paths, or output writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CompilerQueryOperationId {
+    DescribeProject,
+    Check,
+    GetStaticType,
+    GetStaticSymbol,
+    ListStaticMetadata,
+    GetStaticProvenance,
+    GetStaticContract,
+    ValidateStaticContract,
+}
+
+/// Core-authored declaration of the fixed query-only compiler surface for an
+/// accepted transport stream. It is source-free and contains no project,
+/// generation, path, source, resolver, option, build, artifact, or write
+/// authority. Its operation order is canonical so a receiver can reject
+/// subsets, supersets, duplicates, and reordered claims without guessing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerSessionCapabilityManifest {
+    pub version: u32,
+    pub operation_ids: Vec<CompilerQueryOperationId>,
+}
+
+impl CompilerSessionCapabilityManifest {
+    /// Returns the only capability manifest a core compiler listener may
+    /// mint. It is intentionally fixed rather than negotiated with a client.
+    pub fn fixed_query_only() -> Self {
+        Self {
+            version: COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION,
+            operation_ids: Self::fixed_query_operation_ids().to_vec(),
+        }
+    }
+
+    /// Checks both the manifest identity and its complete, canonical operation
+    /// inventory. This is suitable for an adapter that must fail closed before
+    /// presenting a core-issued receipt to another protocol.
+    pub fn is_well_formed(&self) -> bool {
+        self.version == COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION
+            && self.operation_ids.as_slice() == Self::fixed_query_operation_ids()
+    }
+
+    fn fixed_query_operation_ids() -> &'static [CompilerQueryOperationId] {
+        const OPERATIONS: &[CompilerQueryOperationId] = &[
+            CompilerQueryOperationId::DescribeProject,
+            CompilerQueryOperationId::Check,
+            CompilerQueryOperationId::GetStaticType,
+            CompilerQueryOperationId::GetStaticSymbol,
+            CompilerQueryOperationId::ListStaticMetadata,
+            CompilerQueryOperationId::GetStaticProvenance,
+            CompilerQueryOperationId::GetStaticContract,
+            CompilerQueryOperationId::ValidateStaticContract,
+        ];
+        OPERATIONS
+    }
+}
+
+/// All core-authored evidence attached to an accepted compiler handshake.
+/// A listener creates it only after it has accepted the exact protocol
+/// `Hello`; clients have no request field through which to select either
+/// component.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompilerSessionHelloEvidence {
+    pub session_attestation: CompilerSessionAttestation,
+    pub capability_manifest: CompilerSessionCapabilityManifest,
+}
+
+impl CompilerSessionHelloEvidence {
+    /// Rejects malformed stream evidence before it becomes a `HelloAck`.
+    pub fn is_well_formed(&self) -> bool {
+        self.session_attestation.is_well_formed() && self.capability_manifest.is_well_formed()
     }
 }
 
@@ -387,6 +473,7 @@ pub enum CompilerReply {
     HelloAck {
         protocol_version: u32,
         session_attestation: CompilerSessionAttestation,
+        capability_manifest: CompilerSessionCapabilityManifest,
     },
     Project(CompilerProjectIdentity),
     Check(CompilerCheck),
@@ -410,16 +497,17 @@ pub enum CompilerReply {
 /// transport owner must not dispatch any other request after a failed reply.
 pub fn negotiate(
     request: &CompilerRequest,
-    session_attestation: Option<CompilerSessionAttestation>,
+    session_evidence: Option<CompilerSessionHelloEvidence>,
 ) -> CompilerReply {
-    match (request, session_attestation) {
-        (CompilerRequest::Hello { protocol_version }, Some(session_attestation))
+    match (request, session_evidence) {
+        (CompilerRequest::Hello { protocol_version }, Some(session_evidence))
             if *protocol_version == COMPILER_PROTOCOL_VERSION
-                && session_attestation.is_well_formed() =>
+                && session_evidence.is_well_formed() =>
         {
             CompilerReply::HelloAck {
                 protocol_version: COMPILER_PROTOCOL_VERSION,
-                session_attestation,
+                session_attestation: session_evidence.session_attestation,
+                capability_manifest: session_evidence.capability_manifest,
             }
         }
         (CompilerRequest::Hello { protocol_version }, _)
@@ -427,7 +515,7 @@ pub fn negotiate(
         {
             CompilerReply::Error {
                 code: CompilerErrorCode::Unavailable,
-                message: "compiler listener did not mint a valid session attestation".to_string(),
+                message: "compiler listener did not mint valid session evidence".to_string(),
             }
         }
         (CompilerRequest::Hello { .. }, _) => CompilerReply::Error {
@@ -506,6 +594,13 @@ mod tests {
     fn session_attestation() -> CompilerSessionAttestation {
         CompilerSessionAttestation {
             id: "a1".repeat(32),
+        }
+    }
+
+    fn session_evidence() -> CompilerSessionHelloEvidence {
+        CompilerSessionHelloEvidence {
+            session_attestation: session_attestation(),
+            capability_manifest: CompilerSessionCapabilityManifest::fixed_query_only(),
         }
     }
 
@@ -592,6 +687,15 @@ mod tests {
         write_compiler_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_compiler_reply(&mut receiver).unwrap(), reply);
 
+        let hello_ack = CompilerReply::HelloAck {
+            protocol_version: COMPILER_PROTOCOL_VERSION,
+            session_attestation: session_attestation(),
+            capability_manifest: CompilerSessionCapabilityManifest::fixed_query_only(),
+        };
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_compiler_reply(&mut sender, &hello_ack).unwrap();
+        assert_eq!(read_compiler_reply(&mut receiver).unwrap(), hello_ack);
+
         let page = CompilerReply::StaticMetadataPage(CompilerStaticMetadataPage {
             generation: generation(),
             kind: CompilerStaticMetadataKind::Symbols,
@@ -610,11 +714,12 @@ mod tests {
                 &CompilerRequest::Hello {
                     protocol_version: COMPILER_PROTOCOL_VERSION,
                 },
-                Some(session_attestation()),
+                Some(session_evidence()),
             ),
             CompilerReply::HelloAck {
                 protocol_version: COMPILER_PROTOCOL_VERSION,
                 session_attestation: session_attestation(),
+                capability_manifest: CompilerSessionCapabilityManifest::fixed_query_only(),
             }
         );
         assert!(matches!(
@@ -622,7 +727,7 @@ mod tests {
                 &CompilerRequest::Hello {
                     protocol_version: COMPILER_PROTOCOL_VERSION + 1,
                 },
-                Some(session_attestation()),
+                Some(session_evidence()),
             ),
             CompilerReply::Error {
                 code: CompilerErrorCode::ProtocolVersion,
@@ -632,9 +737,27 @@ mod tests {
         assert!(matches!(
             negotiate(
                 &CompilerRequest::Hello {
+                    protocol_version: COMPILER_PROTOCOL_VERSION,
+                },
+                Some(CompilerSessionHelloEvidence {
+                    session_attestation: session_attestation(),
+                    capability_manifest: CompilerSessionCapabilityManifest {
+                        version: 0,
+                        operation_ids: Vec::new(),
+                    },
+                }),
+            ),
+            CompilerReply::Error {
+                code: CompilerErrorCode::Unavailable,
+                ..
+            }
+        ));
+        assert!(matches!(
+            negotiate(
+                &CompilerRequest::Hello {
                     protocol_version: 1,
                 },
-                Some(session_attestation()),
+                Some(session_evidence()),
             ),
             CompilerReply::Error {
                 code: CompilerErrorCode::ProtocolVersion,
@@ -653,8 +776,11 @@ mod tests {
                 &CompilerRequest::Hello {
                     protocol_version: COMPILER_PROTOCOL_VERSION,
                 },
-                Some(CompilerSessionAttestation {
-                    id: "not-a-core-attestation".to_string(),
+                Some(CompilerSessionHelloEvidence {
+                    session_attestation: CompilerSessionAttestation {
+                        id: "not-a-core-attestation".to_string(),
+                    },
+                    capability_manifest: CompilerSessionCapabilityManifest::fixed_query_only(),
                 }),
             ),
             CompilerReply::Error {
@@ -662,6 +788,44 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn capability_manifest_requires_the_complete_canonical_query_inventory() {
+        let manifest = CompilerSessionCapabilityManifest::fixed_query_only();
+        assert!(manifest.is_well_formed());
+        assert_eq!(manifest.version, COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION);
+        assert_eq!(
+            manifest.operation_ids,
+            vec![
+                CompilerQueryOperationId::DescribeProject,
+                CompilerQueryOperationId::Check,
+                CompilerQueryOperationId::GetStaticType,
+                CompilerQueryOperationId::GetStaticSymbol,
+                CompilerQueryOperationId::ListStaticMetadata,
+                CompilerQueryOperationId::GetStaticProvenance,
+                CompilerQueryOperationId::GetStaticContract,
+                CompilerQueryOperationId::ValidateStaticContract,
+            ]
+        );
+
+        let mut reordered = manifest.clone();
+        reordered.operation_ids.swap(0, 1);
+        assert!(!reordered.is_well_formed());
+
+        let mut subset = manifest.clone();
+        subset.operation_ids.pop();
+        assert!(!subset.is_well_formed());
+
+        let mut duplicate = manifest.clone();
+        duplicate
+            .operation_ids
+            .push(CompilerQueryOperationId::Check);
+        assert!(!duplicate.is_well_formed());
+
+        let mut unknown_version = manifest;
+        unknown_version.version += 1;
+        assert!(!unknown_version.is_well_formed());
     }
 
     #[test]
