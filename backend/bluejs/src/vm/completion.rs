@@ -121,8 +121,52 @@ pub(super) enum InterpreterExit {
     },
 }
 
-// Ordinary calls still nest the Rust interpreter. The public 32-frame bound
-// makes recursive JavaScript report a catchable RangeError on the normal
-// process stack; an embedding that executes BlueJS on a deliberately smaller
-// worker stack must provision enough host stack for that documented bound.
-pub(super) const MAX_RECURSIVE_CALL_DEPTH: usize = 32;
+// Ordinary calls nest the Rust interpreter, so how deep JavaScript may recurse
+// is a question about the native stack, and running out of it is a process
+// abort rather than a catchable error. `enter_call` therefore refuses to nest
+// another call, with a catchable RangeError, once fewer than
+// `CALL_STACK_RED_ZONE` bytes remain on the current thread's own stack
+// (`stacker::remaining_stack`, which asks the OS about the thread actually
+// running the VM: a normal process's main thread, a smaller worker, or a
+// deliberately tiny one all get the right budget without any per-platform
+// constant here). Cheap and expensive frames are not distinguished: an
+// interpreted call costs about the same native stack whatever the script
+// does, so depth follows the stack the host provisioned.
+//
+// The guard deliberately errors instead of calling `stacker::maybe_grow`,
+// which would run the recursion on a freshly allocated stack segment. The
+// stack is the runaway-recursion boundary: growing it would leave only
+// `instruction_budget` (time, not memory) between a hostile script and
+// hundreds of megabytes of native stack.
+//
+// Sizing, measured 2026-09-23 on a debug build (the profile the Test262
+// adapter and `cargo test` run): one interpreted call costs about 15.3 KB of
+// native stack, and across ~30 re-entrant host paths (plain, arrow,
+// `call`/`apply`/`bind`/`Reflect.*`, getters and coercions, Proxy traps,
+// `map`/`sort`/`replace` callbacks, generators, `super()` chains, direct
+// `eval`, ...) the most native stack between two consecutive `enter_call`
+// checks was about 25 KB (direct `eval`). The margin has to cover that one
+// segment, the leaf built-in that may then run at the deepest permitted level,
+// and unwinding the error, so it is 256 KiB: about ten times the worst
+// measured segment and well above the 100 KiB rustc itself reserves. The
+// margin is tested, not just reasoned: with `tests/call_stack_budget.rs`'s
+// runaway-recursion patterns, a margin of 24 KiB or less overflowed the real
+// stack and aborted the process, and 32 KiB was the smallest margin that
+// survived them all, so 256 KiB leaves eightfold headroom over the measured
+// minimum. On a normal 8 MiB stack it allows roughly 500 nested calls.
+pub(super) const CALL_STACK_RED_ZONE: usize = 256 * 1024;
+
+// Where the host cannot report the thread's stack (`stacker` has no backend
+// for an unknown OS, and under `miri` it reports nothing), fall back to the
+// conservative frame count the guard used before it measured bytes: 32 calls
+// at the measured cost fit inside 512 KiB.
+pub(super) const UNMEASURED_STACK_MAX_CALL_DEPTH: usize = 32;
+
+/// Whether one more nested call must be refused. `remaining_stack` is the
+/// byte count `stacker::remaining_stack` reported for the current thread.
+pub(super) fn call_stack_exhausted(remaining_stack: Option<usize>, call_depth: usize) -> bool {
+    match remaining_stack {
+        Some(remaining) => remaining < CALL_STACK_RED_ZONE,
+        None => call_depth >= UNMEASURED_STACK_MAX_CALL_DEPTH,
+    }
+}

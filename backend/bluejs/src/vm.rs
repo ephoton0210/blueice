@@ -41,8 +41,7 @@ mod temporal;
 mod test262;
 mod test262_agents;
 use completion::{
-    Completion, CompletionAction, HandlerFrame, HandlerState, InterpreterExit,
-    MAX_RECURSIVE_CALL_DEPTH,
+    call_stack_exhausted, Completion, CompletionAction, HandlerFrame, HandlerState, InterpreterExit,
 };
 use debugger::DebuggerContinuation;
 pub use debugger::VmDebuggerExecutionState;
@@ -1491,7 +1490,9 @@ impl Vm {
         construct: bool,
         target: Value,
     ) -> Result<Value, RuntimeError> {
-        if self.call_depth >= MAX_RECURSIVE_CALL_DEPTH {
+        // Nested calls recurse through the native stack; refuse before it can
+        // overflow (see `completion::CALL_STACK_RED_ZONE`).
+        if call_stack_exhausted(stacker::remaining_stack(), self.call_depth) {
             return Err(RuntimeError::RangeError(
                 "maximum call depth exceeded".into(),
             ));

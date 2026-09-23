@@ -25,3 +25,9 @@ jiff = { version = "=0.2.35", default-features = false, features = ["std", "tzdb
 jiff-tzdb = "=0.1.8"
 num-bigint = "=0.4.6"
 num-traits = "=0.2.19"
+# Byte-budget native-stack-depth guard for `Vm::enter_call` (see
+# `vm/completion.rs`'s `CALL_STACK_RED_ZONE` doc comment): every JS call
+# recurses through Rust's own call stack, so this measures the native stack
+# actually left on the running thread (`stacker::remaining_stack`) rather than
+# counting frames. Only that read-only query is used, never `maybe_grow`.
+stacker = "=0.1.25"

@@ -65,9 +65,11 @@ fn object_pattern_shorthand_applies_binding_identifier_early_errors() {
 
 #[test]
 fn recursive_call_depth_stays_a_catchable_resource_limit() {
-    // Each interpreted call currently occupies a substantial host frame. Run
-    // this exact-limit regression on the same 8 MiB stack a normal process
-    // receives, rather than Rust's smaller default test-worker stack.
+    // Call depth is bounded by the native stack actually left (see
+    // `tests/call_stack_budget.rs` for the byte-budget contract), so a
+    // shallow chain succeeds and one no stack could hold is a RangeError. Run
+    // it on the same 8 MiB stack a normal process receives, rather than
+    // Rust's smaller default test-worker stack.
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
         .spawn(|| {
@@ -76,7 +78,7 @@ fn recursive_call_depth_stays_a_catchable_resource_limit() {
                 Value::Bool(true)
             );
             let code = compile(
-                &parse("function depth(n){return n===0?0:1+depth(n-1);}depth(32)").unwrap(),
+                &parse("function depth(n){return n===0?0:1+depth(n-1);}depth(1000000)").unwrap(),
             )
             .unwrap();
             assert!(matches!(
