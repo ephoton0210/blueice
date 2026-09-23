@@ -30,7 +30,8 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
-    JavaScriptPageDebuggerStaticMetadataTypeId, JavaScriptPageExecutionReport,
+    JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
+    JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageExecutionReport,
     PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };
 use crate::script::page_source_authorizer::AuthorizedPageScriptGraph;
@@ -41,6 +42,7 @@ pub use crate::script::page_source_authorizer::{
 use crate::{Page, TabId, TabManager};
 use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_TYPES,
+    DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
     self, PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
@@ -206,6 +208,13 @@ pub trait PageHostClient {
         false
     }
 
+    /// Whether this peer implements a bounded display lookup for one exact
+    /// type ID. The core must still apply the independent public policy and
+    /// same-stream type-ID receipt before it may call this private operation.
+    fn debugger_bluets_metadata_type_display_available(&self) -> bool {
+        false
+    }
+
     /// Lists newly child-minted opaque handles only for a live direct-BlueTS
     /// attachment associated with one exact private program. The result has
     /// no source/module/name/type/span/contract payload, and a transport
@@ -276,6 +285,20 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement BlueTS debugger type inventories",
+        ))
+    }
+
+    fn debugger_bluets_metadata_type_display(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _type_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger type displays",
         ))
     }
 
@@ -435,6 +458,10 @@ impl PageHostClient for PageHostConnection {
         true
     }
 
+    fn debugger_bluets_metadata_type_display_available(&self) -> bool {
+        true
+    }
+
     fn debugger_realm_stats(
         &mut self,
         tab_id: u64,
@@ -529,6 +556,23 @@ impl PageHostClient for PageHostConnection {
             document_generation,
             program,
             metadata,
+        })
+    }
+
+    fn debugger_bluets_metadata_type_display(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        type_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsMetadataType {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            type_id,
         })
     }
 
@@ -1251,6 +1295,12 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             && self.child.debugger_bluets_metadata_types_available()
     }
 
+    fn debugger_static_metadata_type_display_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_types_available()
+            && self.child.debugger_bluets_metadata_type_display_available()
+    }
+
     fn debugger_programs(
         &mut self,
         tab_id: TabId,
@@ -1604,6 +1654,64 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                 type_id: static_type.type_id,
             })
             .collect())
+    }
+
+    fn debugger_static_metadata_type_display(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataTypeTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_type_display_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_type_display(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.type_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataType {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            static_type,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || static_type.type_id != target.type_id
+            || static_type.display.is_empty()
+            || static_type.display.len() > DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataTypeDisplay {
+            type_id: static_type.type_id,
+            display: static_type.display,
+        })
     }
 
     fn debugger_safe_points(

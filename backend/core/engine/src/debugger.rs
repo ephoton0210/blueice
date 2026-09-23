@@ -13,7 +13,8 @@
 use crate::{
     script::javascript::{
         JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
-        JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageExecutor,
+        JavaScriptPageDebuggerStaticMetadataSourceTarget,
+        JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageExecutor,
         PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
     },
     TabId, TabManager,
@@ -24,8 +25,9 @@ use blueice_ipc::debugger::{
     DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
     DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataHandle,
     DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSourceProvenance,
-    DebuggerStaticMetadataSummary, DebuggerStaticMetadataTypeId, DEBUGGER_PROTOCOL_VERSION,
-    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_TYPES,
+    DebuggerStaticMetadataSummary, DebuggerStaticMetadataTypeDisplay, DebuggerStaticMetadataTypeId,
+    DEBUGGER_PROTOCOL_VERSION, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
+    DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
 use std::io;
 use std::sync::mpsc;
@@ -248,6 +250,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::ListStaticMetadataTypes { .. } => {
             unavailable_static_metadata_type_inventory()
         }
+        DebuggerRequest::DescribeStaticMetadataType { .. } => {
+            unavailable_static_metadata_type_display()
+        }
         DebuggerRequest::DescribeStaticMetadataSource { .. } => {
             unavailable_static_metadata_source_provenance()
         }
@@ -355,6 +360,9 @@ fn handle_debugger_request_with_child_locations(
         }
         DebuggerRequest::ListStaticMetadataTypes { metadata } => {
             list_child_static_metadata_types(tabs, locations, metadata_session, metadata)
+        }
+        DebuggerRequest::DescribeStaticMetadataType { static_type } => {
+            describe_child_static_metadata_type(tabs, locations, metadata_session, static_type)
         }
         DebuggerRequest::DescribeStaticMetadataSource { source } => {
             describe_child_static_metadata_source_provenance(
@@ -472,6 +480,10 @@ fn describe_child_location_capabilities(
             session.permits(DebuggerMetadataCapability::OpaqueTypeInventory)
         })
         && locations.debugger_static_metadata_type_inventory_available();
+    let static_metadata_type_display_available = static_metadata_type_inventory_available
+        && metadata_session
+            .is_some_and(|session| session.permits(DebuggerMetadataCapability::OpaqueTypeDisplay))
+        && locations.debugger_static_metadata_type_display_available();
     let max_breakpoints_per_realm = if breakpoint_configuration_available {
         locations.max_debugger_breakpoints_per_realm()
     } else {
@@ -489,6 +501,7 @@ fn describe_child_location_capabilities(
             static_metadata_source_inventory_available,
             static_metadata_source_provenance_available,
             static_metadata_type_inventory_available,
+            static_metadata_type_display_available,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -847,6 +860,84 @@ fn list_child_static_metadata_types(
             code: DebuggerErrorCode::ResourceLimit,
             message: "debugger static metadata type inventory exceeds its fixed limit".to_string(),
         },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+/// Discloses one bounded compiler-produced display only after the exact type
+/// ID crossed this stream's type-inventory receipt boundary. The target keeps
+/// the opaque parent and all generations, so a caller-supplied number cannot
+/// probe a child type table by itself.
+fn describe_child_static_metadata_type(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    static_type: DebuggerStaticMetadataTypeId,
+) -> DebuggerReply {
+    if !static_type.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static metadata type display target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_type_display();
+    };
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.permits(DebuggerMetadataCapability::OpaqueTypeInventory)
+        || !metadata_session.observed_type(static_type)
+    {
+        return unavailable_static_metadata_type_display();
+    }
+    let capabilities = describe_child_location_capabilities(
+        tabs,
+        locations,
+        Some(metadata_session),
+        static_type.metadata.program.realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueTypeDisplay,
+    ) else {
+        return unavailable_static_metadata_type_display();
+    };
+    if !authorization.permits(
+        static_type.metadata.program.realm,
+        DebuggerMetadataCapability::OpaqueTypeDisplay,
+    ) {
+        return unavailable_static_metadata_type_display();
+    }
+    let tab_id = match resolve_live_realm(tabs, static_type.metadata.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    match locations.debugger_static_metadata_type_display(
+        tab_id,
+        static_type.metadata.program.realm.realm_generation,
+        JavaScriptPageDebuggerStaticMetadataTypeTarget {
+            program_handle: static_type.metadata.program.program_handle,
+            program_generation: static_type.metadata.program.program_generation,
+            metadata_handle: static_type.metadata.metadata_handle,
+            metadata_generation: static_type.metadata.metadata_generation,
+            type_id: static_type.type_id,
+        },
+    ) {
+        Ok(type_display) => {
+            let type_display = DebuggerStaticMetadataTypeDisplay {
+                static_type,
+                display: type_display.display,
+            };
+            if !type_display.is_well_formed() {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    message: "invalid debugger static metadata type display".to_string(),
+                };
+            }
+            DebuggerReply::StaticMetadataType(type_display)
+        }
         Err(error) => debugger_program_error(error),
     }
 }
@@ -1262,6 +1353,7 @@ fn describe_capabilities(
             static_metadata_source_inventory_available: false,
             static_metadata_source_provenance_available: false,
             static_metadata_type_inventory_available: false,
+            static_metadata_type_display_available: false,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -1687,6 +1779,14 @@ fn unavailable_static_metadata_type_inventory() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_type_display() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "opaque debugger static metadata type display is not authorized for this session and live realm"
+            .to_string(),
+    }
+}
+
 fn unavailable_static_metadata_source_provenance() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -1781,6 +1881,7 @@ struct DebuggerCapabilityAvailability {
     static_metadata_source_inventory_available: bool,
     static_metadata_source_provenance_available: bool,
     static_metadata_type_inventory_available: bool,
+    static_metadata_type_display_available: bool,
 }
 
 fn capability_reports(
@@ -1793,6 +1894,7 @@ fn capability_reports(
         static_metadata_source_inventory_available,
         static_metadata_source_provenance_available,
         static_metadata_type_inventory_available,
+        static_metadata_type_display_available,
     }: DebuggerCapabilityAvailability,
 ) -> Vec<DebuggerCapabilityReport> {
     [
@@ -1936,6 +2038,19 @@ fn capability_reports(
                 "bounded opaque static-metadata type identities are installed; type displays remain unreadable"
             } else {
                 "static metadata type identities require explicit inventory and type-inventory session grants plus a live BlueTS child program"
+            },
+        ),
+        (
+            DebuggerCapability::StaticMetadataTypeDisplay,
+            if static_metadata_type_display_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_type_display_available {
+                "bounded compiler-produced static type displays are installed for prior type-ID receipts"
+            } else {
+                "static metadata type displays require explicit inventory, type-inventory, and type-display session grants plus a live BlueTS child program"
             },
         ),
     ]

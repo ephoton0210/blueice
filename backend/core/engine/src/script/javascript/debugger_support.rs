@@ -59,6 +59,15 @@ pub struct JavaScriptPageDebuggerStaticMetadataTypeId {
     pub type_id: u32,
 }
 
+/// One child-validated compiler-produced display for an exact static type
+/// identity. It carries no source text, span, symbol, contract, bytecode, VM
+/// object, value, or arbitrary metadata record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataTypeDisplay {
+    pub type_id: u32,
+    pub display: String,
+}
+
 /// One child-validated source-text-free provenance description. The caller
 /// supplies the parent metadata handle and compiler-minted source ID; this
 /// internal transport value never carries a source read capability.
@@ -78,6 +87,17 @@ pub struct JavaScriptPageDebuggerStaticMetadataSourceTarget {
     pub metadata_handle: u64,
     pub metadata_generation: u64,
     pub source_id: u32,
+}
+
+/// One exact opaque parent and compiler-minted type-ID target for the
+/// separately authorized type-display operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataTypeTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub type_id: u32,
 }
 
 /// One compiler-verified instruction boundary represented without source or

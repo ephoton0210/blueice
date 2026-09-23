@@ -121,6 +121,10 @@ mod unix {
         /// Owner-only policy for compiler-minted type-record IDs bound to an
         /// opaque metadata handle. Type displays remain default-denied.
         debugger_static_metadata_type_inventory: bool,
+        /// Owner-only policy for one bounded compiler-produced type display
+        /// under a previously inventoried type ID. Displays can contain
+        /// project-authored names and therefore remain independently denied.
+        debugger_static_metadata_type_display: bool,
     }
 
     impl CoreLaunchOptions {
@@ -248,6 +252,17 @@ mod unix {
         pub fn with_debugger_static_metadata_type_inventory(mut self) -> Self {
             self.debugger_static_metadata_inventory = true;
             self.debugger_static_metadata_type_inventory = true;
+            self
+        }
+
+        /// Enables one bounded compiler-produced type display for a type ID
+        /// returned by the exact debugger stream's type inventory. This also
+        /// selects the necessary opaque parent and type-ID inventory policy;
+        /// a client must still negotiate all three capabilities.
+        pub fn with_debugger_static_metadata_type_display(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_type_inventory = true;
+            self.debugger_static_metadata_type_display = true;
             self
         }
     }
@@ -1605,6 +1620,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_type_inventory {
                     command.arg("--debugger-static-metadata-type-inventory");
+                }
+                if options.debugger_static_metadata_type_display {
+                    command.arg("--debugger-static-metadata-type-display");
                 }
             }
             let mut child = command.spawn()?;

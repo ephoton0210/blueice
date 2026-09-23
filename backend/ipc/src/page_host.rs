@@ -42,15 +42,14 @@
 //! of those IDs: canonical module identity and a labeled SHA-256 digest only,
 //! never source text or a general static-record read.
 //! Version 11 adds only a parent-handle-bound compiler type-ID inventory.
-//! Type IDs carry no display or static-record payload and remain unusable for
-//! a future display operation until that operation has an independent public
-//! authorization and same-stream receipt boundary.
+//! Version 12 adds one exact type-ID display lookup; it remains an explicit
+//! core-proxied operation, not a general static-record read or source access.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 11;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 12;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -144,6 +143,16 @@ pub struct PageHostDebuggerBlueTsMetadataSourceId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PageHostDebuggerBlueTsMetadataTypeId {
     pub type_id: u32,
+}
+
+/// One child-local compiler-produced type display for an exact type ID under
+/// an opaque metadata attachment. The enclosing request/reply carries the
+/// child program and metadata identities; this value never grants a generic
+/// static-record read or source access.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataTypeDisplay {
+    pub type_id: u32,
+    pub display: String,
 }
 
 /// One child-local, source-text-free provenance description for a source ID
@@ -407,6 +416,17 @@ pub enum PageHostRequest {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
     },
+    /// Describes one compiler-minted type ID under a prior exact private
+    /// metadata handle. It returns one bounded display only; source text,
+    /// spans, symbols, contracts, bytecode, VM objects, and values remain in
+    /// the child.
+    DescribeDebuggerBlueTsMetadataType {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        type_id: u32,
+    },
     /// Describes exactly one prior compiler-minted source ID. This private
     /// request returns module identity and a digest only, never source text.
     DescribeDebuggerBlueTsMetadataSource {
@@ -546,6 +566,15 @@ pub enum PageHostReply {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
         types: Vec<PageHostDebuggerBlueTsMetadataTypeId>,
+    },
+    /// One bounded child-local compiler-produced type display under the exact
+    /// opaque metadata attachment.
+    DebuggerBlueTsMetadataType {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        static_type: PageHostDebuggerBlueTsMetadataTypeDisplay,
     },
     DebuggerBlueTsMetadataSourceProvenance {
         tab_id: u64,

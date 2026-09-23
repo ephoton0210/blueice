@@ -32,15 +32,17 @@ use blueice_bluets_bluejs::{
 };
 use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_TYPES,
+    DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
     self, PageHostDebuggerBlueTsMetadataSourceId, PageHostDebuggerBlueTsMetadataSourceProvenance,
-    PageHostDebuggerBlueTsMetadataSummary, PageHostDebuggerBlueTsMetadataTypeId,
-    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
-    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
-    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
-    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
-    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PageHostDebuggerBlueTsMetadataSummary, PageHostDebuggerBlueTsMetadataTypeDisplay,
+    PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerExecutionState,
+    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
+    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
+    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
+    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -300,6 +302,19 @@ impl BlueJsChildHost {
             } => {
                 self.debugger_bluets_metadata_types(tab_id, document_generation, program, metadata)
             }
+            PageHostRequest::DescribeDebuggerBlueTsMetadataType {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                type_id,
+            } => self.debugger_bluets_metadata_type_display(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                type_id,
+            ),
             PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
                 tab_id,
                 document_generation,
@@ -1147,6 +1162,79 @@ impl BlueJsChildHost {
             program,
             metadata,
             types,
+        }
+    }
+
+    /// Returns one bounded compiler-produced type display after the caller
+    /// supplies an exact child program and metadata attachment. This private
+    /// endpoint never accepts a standalone numeric type target, and returns
+    /// no source, span, symbol, contract, bytecode, VM object, or value.
+    fn debugger_bluets_metadata_type_display(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        type_id: u32,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let static_type = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let Some(static_type) = retained
+                    .static_info()
+                    .types
+                    .iter()
+                    .find(|static_type| static_type.id.0 == type_id)
+                else {
+                    return invalid_request();
+                };
+                if static_type.display.is_empty()
+                    || static_type.display.len() > DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES
+                {
+                    return resource_limit();
+                }
+                PageHostDebuggerBlueTsMetadataTypeDisplay {
+                    type_id,
+                    display: static_type.display.clone(),
+                }
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataType {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            static_type,
         }
     }
 

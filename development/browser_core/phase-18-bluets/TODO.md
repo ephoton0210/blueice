@@ -753,7 +753,19 @@ or second module resolver to bypass them.
   `--debugger-static-metadata-type-inventory` owner flag. IDs are bounded,
   parent-handle-bound, same-stream-receipted, and source/type-display-free;
   a later type-display operation must require those exact receipts rather
-  than accepting a caller-guessed ID. Core now rejects page-host realm
+  than accepting a caller-guessed ID.
+  Page-host v12/debugger v11 now exposes that next type-display layer through
+  independently default-denied `OpaqueTypeDisplay` and the owner-only
+  `--debugger-static-metadata-type-display` flag. It requires the parent
+  inventory, type-ID inventory, exact same-stream type-ID receipt, live realm
+  tuple, and child capability report before one bounded compiler-produced
+  display may cross the public debugger socket. The fixed 4 KiB display cap
+  rejects malformed child replies; displays can contain project-authored type
+  identifiers but carry no source text, span, source/module/hash, symbol,
+  contract, bytecode, VM object, value, or general record read. The real
+  launcher-supervised integration test proves the complete opt-in flow and
+  reload invalidates a prior type target.
+  Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope
   before it can enter either the core accounting cache or debugger liveness

@@ -84,6 +84,9 @@ struct Args {
     /// Core-owner opt-in for opaque compiler-minted type-record IDs under an
     /// already inventoried metadata handle. Type displays remain unavailable.
     debugger_static_metadata_type_inventory: bool,
+    /// Core-owner opt-in for one bounded compiler-produced display under a
+    /// type ID previously emitted by the separate type inventory.
+    debugger_static_metadata_type_display: bool,
     /// Optional listener for queries over projects a trusted core owner
     /// registered during startup. Its protocol does not accept registration,
     /// source, path, resolver, compiler-option, build, or write requests.
@@ -135,6 +138,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_source_inventory = false;
     let mut debugger_static_metadata_source_provenance = false;
     let mut debugger_static_metadata_type_inventory = false;
+    let mut debugger_static_metadata_type_display = false;
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
     let mut inline_bluets_profile = None;
@@ -172,6 +176,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--debugger-static-metadata-type-inventory" => {
                 debugger_static_metadata_type_inventory = true
+            }
+            "--debugger-static-metadata-type-display" => {
+                debugger_static_metadata_type_display = true
             }
             "--compiler-socket" => compiler_socket = Some(PathBuf::from(value()?)),
             "--compiler-project-profile" => compiler_project_profile = Some(value()?),
@@ -271,6 +278,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if debugger_static_metadata_type_display && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-type-display requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_type_display && !debugger_static_metadata_type_inventory {
+        return Err(
+            "--debugger-static-metadata-type-display requires --debugger-static-metadata-type-inventory"
+                .to_string(),
+        );
+    }
     if compiler_socket.is_some() != compiler_project_profile.is_some() {
         return Err(
             "--compiler-socket and --compiler-project-profile must be provided together"
@@ -290,6 +308,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_source_inventory,
         debugger_static_metadata_source_provenance,
         debugger_static_metadata_type_inventory,
+        debugger_static_metadata_type_display,
         compiler_socket,
         compiler_project_profile,
         inline_bluets_profile,
@@ -598,6 +617,7 @@ fn main() -> ExitCode {
             args.debugger_static_metadata_source_inventory,
             args.debugger_static_metadata_source_provenance,
             args.debugger_static_metadata_type_inventory,
+            args.debugger_static_metadata_type_display,
         )
     } else {
         blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty()
@@ -969,6 +989,7 @@ mod tests {
                 debugger_static_metadata_source_inventory: false,
                 debugger_static_metadata_source_provenance: false,
                 debugger_static_metadata_type_inventory: false,
+                debugger_static_metadata_type_display: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),

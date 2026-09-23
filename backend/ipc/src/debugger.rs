@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 10;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 11;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -134,6 +134,9 @@ pub const DEBUGGER_STATIC_METADATA_MAX_SOURCES: u32 = 4_096;
 pub const DEBUGGER_STATIC_METADATA_MAX_TYPES: u32 = 4_096;
 pub const DEBUGGER_STATIC_METADATA_MAX_SYMBOLS: u32 = 65_536;
 pub const DEBUGGER_STATIC_METADATA_MAX_CONTRACTS: u32 = 65_536;
+/// Maximum UTF-8 byte length for one explicitly authorized static type
+/// display. This is a fixed protocol budget, not a caller-provided limit.
+pub const DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES: usize = 4_096;
 /// Maximum compiler-canonical module identity exposed by the distinct,
 /// owner-authorized provenance surface.
 pub const DEBUGGER_STATIC_METADATA_MODULE_MAX_BYTES: usize = 4_096;
@@ -166,6 +169,30 @@ pub struct DebuggerStaticMetadataTypeId {
 impl DebuggerStaticMetadataTypeId {
     pub fn is_well_formed(self) -> bool {
         self.metadata.is_well_formed()
+    }
+}
+
+/// One owner-authorized, bounded display for a compiler-minted type ID that
+/// was previously returned by the exact stream's type inventory. A display is
+/// source-text-free but can contain project-authored identifiers, so it is a
+/// distinct default-deny disclosure rather than an implication of type-ID
+/// inventory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataTypeDisplay {
+    /// The parent-bound, generation-bound type identity this display names.
+    pub static_type: DebuggerStaticMetadataTypeId,
+    /// A compiler-produced type rendering, never source text or a general
+    /// static-record payload.
+    pub display: String,
+}
+
+impl DebuggerStaticMetadataTypeDisplay {
+    /// Rejects malformed and oversized child-proxied displays before a
+    /// debugger client observes them.
+    pub fn is_well_formed(&self) -> bool {
+        self.static_type.is_well_formed()
+            && !self.display.is_empty()
+            && self.display.len() <= DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES
     }
 }
 
@@ -265,6 +292,11 @@ pub enum DebuggerCapability {
     /// exact opaque metadata attachment. It does not disclose type displays
     /// or other static records.
     StaticMetadataTypeInventory,
+    /// One bounded compiler-produced display for a type ID previously
+    /// returned by the exact stream's type inventory. This does not expose a
+    /// source span, symbol, contract, bytecode, runtime value, or general
+    /// metadata-record read.
+    StaticMetadataTypeDisplay,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -301,6 +333,11 @@ pub enum DebuggerMetadataCapability {
     /// metadata handle. Type displays and static-record reads are distinct,
     /// future default-deny capabilities.
     OpaqueTypeInventory,
+    /// Describes one compiler-minted type ID previously returned by
+    /// [`Self::OpaqueTypeInventory`]. Type displays are source-text-free but
+    /// can include project-authored identifiers, so this is independently
+    /// default-denied and remains bounded to one prior receipt.
+    OpaqueTypeDisplay,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -317,6 +354,7 @@ impl DebuggerMetadataCapability {
                 Some(DebuggerCapability::StaticMetadataSourceProvenance)
             }
             Self::OpaqueTypeInventory => Some(DebuggerCapability::StaticMetadataTypeInventory),
+            Self::OpaqueTypeDisplay => Some(DebuggerCapability::StaticMetadataTypeDisplay),
             Self::Unknown => None,
         }
     }
@@ -328,6 +366,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSourceInventory => Some(2),
             Self::OpaqueSourceProvenance => Some(3),
             Self::OpaqueTypeInventory => Some(4),
+            Self::OpaqueTypeDisplay => Some(5),
             Self::Unknown => None,
         }
     }
@@ -438,6 +477,21 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants a compiler-produced type display only together with its
+    /// required opaque parent and prior type-ID inventory. A display request
+    /// must still prove its exact type ID crossed this stream's receipt
+    /// boundary before core reaches the child.
+    pub fn opaque_type_display() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueTypeInventory,
+                DebuggerMetadataCapability::OpaqueTypeDisplay,
+            ],
+        }
+    }
+
     /// Builds the exact canonical manifest selected by a trusted owner after
     /// it independently validated each prerequisite flag. Keeping this
     /// operation here avoids a caller hand-assembling a reordered manifest.
@@ -446,8 +500,10 @@ impl DebuggerMetadataCapabilityManifest {
         source_inventory: bool,
         source_provenance: bool,
         type_inventory: bool,
+        type_display: bool,
     ) -> Self {
-        let any = summary || source_inventory || source_provenance || type_inventory;
+        let any =
+            summary || source_inventory || source_provenance || type_inventory || type_display;
         let mut capabilities = Vec::new();
         if any {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
@@ -461,8 +517,11 @@ impl DebuggerMetadataCapabilityManifest {
         if source_provenance {
             capabilities.push(DebuggerMetadataCapability::OpaqueSourceProvenance);
         }
-        if type_inventory {
+        if type_inventory || type_display {
             capabilities.push(DebuggerMetadataCapability::OpaqueTypeInventory);
+        }
+        if type_display {
+            capabilities.push(DebuggerMetadataCapability::OpaqueTypeDisplay);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -529,6 +588,15 @@ impl DebuggerMetadataCapabilityManifest {
                 || self
                     .capabilities
                     .contains(&DebuggerMetadataCapability::OpaqueInventory))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueTypeDisplay)
+                || (self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueTypeInventory)))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -996,6 +1064,12 @@ pub enum DebuggerRequest {
     ListStaticMetadataTypes {
         metadata: DebuggerStaticMetadataHandle,
     },
+    /// Describes one type ID previously returned by
+    /// [`Self::ListStaticMetadataTypes`]. This separately authorized
+    /// operation returns only a bounded compiler-produced type display.
+    DescribeStaticMetadataType {
+        static_type: DebuggerStaticMetadataTypeId,
+    },
     /// Describes one source ID previously returned by
     /// [`Self::ListStaticMetadataSources`]. This separately authorized
     /// operation returns compiler-canonical module identity and a labeled
@@ -1086,6 +1160,9 @@ pub enum DebuggerReply {
     /// Reply to [`DebuggerRequest::ListStaticMetadataTypes`]. IDs remain
     /// parent-handle-bound and contain no type display or record payload.
     StaticMetadataTypes(Vec<DebuggerStaticMetadataTypeId>),
+    /// Reply to [`DebuggerRequest::DescribeStaticMetadataType`]. The type
+    /// display remains parent-bound and source-text-free.
+    StaticMetadataType(DebuggerStaticMetadataTypeDisplay),
     /// Reply to [`DebuggerRequest::DescribeStaticMetadataSource`]. This is a
     /// bounded owner-authorized provenance disclosure, never source text.
     StaticMetadataSourceProvenance(DebuggerStaticMetadataSourceProvenance),
@@ -1178,6 +1255,7 @@ pub fn negotiate(
         | DebuggerRequest::DescribeStaticMetadata { .. }
         | DebuggerRequest::ListStaticMetadataSources { .. }
         | DebuggerRequest::ListStaticMetadataTypes { .. }
+        | DebuggerRequest::DescribeStaticMetadataType { .. }
         | DebuggerRequest::DescribeStaticMetadataSource { .. }
         | DebuggerRequest::ListSafePoints { .. }
         | DebuggerRequest::ValidateSafePoint { .. }
@@ -1301,6 +1379,20 @@ mod tests {
                     },
                     metadata_handle: 24,
                     metadata_generation: 7,
+                },
+            },
+            DebuggerRequest::DescribeStaticMetadataType {
+                static_type: DebuggerStaticMetadataTypeId {
+                    metadata: DebuggerStaticMetadataHandle {
+                        program: DebuggerProgram {
+                            realm: realm(),
+                            program_handle: 12,
+                            program_generation: 5,
+                        },
+                        metadata_handle: 24,
+                        metadata_generation: 7,
+                    },
+                    type_id: 0,
                 },
             },
             DebuggerRequest::ListSafePoints {
@@ -1449,6 +1541,25 @@ mod tests {
                 },
                 source_id: 0,
             }]),
+            DebuggerReply::StaticMetadataTypes(vec![DebuggerStaticMetadataTypeId {
+                metadata: DebuggerStaticMetadataHandle {
+                    program,
+                    metadata_handle: 24,
+                    metadata_generation: 7,
+                },
+                type_id: 0,
+            }]),
+            DebuggerReply::StaticMetadataType(DebuggerStaticMetadataTypeDisplay {
+                static_type: DebuggerStaticMetadataTypeId {
+                    metadata: DebuggerStaticMetadataHandle {
+                        program,
+                        metadata_handle: 24,
+                        metadata_generation: 7,
+                    },
+                    type_id: 0,
+                },
+                display: "number".to_string(),
+            }),
             DebuggerReply::SafePoints(vec![safe_point]),
             DebuggerReply::SafePointValidated { safe_point },
             DebuggerReply::BreakpointSet { safe_point },
@@ -2049,6 +2160,7 @@ mod tests {
         );
         let session = metadata_session_authorization(&request, &reply).unwrap();
         assert!(session.permits(DebuggerMetadataCapability::OpaqueTypeInventory));
+        assert!(!session.permits(DebuggerMetadataCapability::OpaqueTypeDisplay));
         assert!(!session.observed_type(static_type));
         assert!(session.observe_types(&[static_type]));
         assert!(session.observed_type(static_type));
@@ -2075,6 +2187,57 @@ mod tests {
                 "type_id": 0,
             })
         );
+    }
+
+    #[test]
+    fn type_display_requires_type_inventory_and_respects_its_fixed_budget() {
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 5,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let static_type = DebuggerStaticMetadataTypeId {
+            metadata,
+            type_id: 0,
+        };
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_type_display());
+        let reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_type_display(),
+        );
+        let session = metadata_session_authorization(&request, &reply).unwrap();
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueInventory));
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueTypeInventory));
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueTypeDisplay));
+        assert!(!session.observed_type(static_type));
+        assert!(session.observe_types(&[static_type]));
+        assert!(session.observed_type(static_type));
+
+        let display = DebuggerStaticMetadataTypeDisplay {
+            static_type,
+            display: "ProjectControlledName".to_string(),
+        };
+        assert!(display.is_well_formed());
+        assert!(!DebuggerStaticMetadataTypeDisplay {
+            display: String::new(),
+            ..display.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticMetadataTypeDisplay {
+            display: "x".repeat(DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES + 1),
+            ..display
+        }
+        .is_well_formed());
+
+        let malformed = DebuggerMetadataCapabilityManifest {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![DebuggerMetadataCapability::OpaqueTypeDisplay],
+        };
+        assert!(!malformed.is_well_formed());
     }
 
     #[test]
