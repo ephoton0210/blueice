@@ -580,6 +580,16 @@ fn config_target_and_runtime_policy_are_validated_and_applied() {
         "bluetsc.json",
         r#"{"entries": ["src/main.ts"], "outDir": "strict-dist", "runtimePolicy": "strict-runtime"}"#,
     );
+    // This declaration yields a real, reifiable static contract plan. A
+    // successful strict check must still not be mistaken for evidence that
+    // standalone emitted JavaScript has installed a live boundary helper.
+    scratch.write(
+        "src/main.ts",
+        "export interface Model { id: string }\nexport const model: Model = { id: 'ok' };\n",
+    );
+    scratch
+        .run(&["check", "--config", "bluetsc.json"])
+        .assert_success();
     scratch
         .run(&["build", "--config", "bluetsc.json"])
         .assert_failure(
