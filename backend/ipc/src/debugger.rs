@@ -533,10 +533,39 @@ pub struct DebuggerCapabilities {
 #[derive(Debug, Clone)]
 pub struct DebuggerMetadataSessionAuthorization {
     granted: DebuggerMetadataCapabilityManifest,
+    /// Bounded per-stream receipts for opaque metadata handles emitted by the
+    /// public inventory operation. A handle must not become a summary or
+    /// source-inventory target merely because its numeric fields are guessed.
+    observed_metadata_identities: Arc<Mutex<BTreeSet<DebuggerMetadataIdentity>>>,
     /// Bounded per-stream receipts for source IDs emitted by the public
     /// source-inventory operation. This prevents provenance from accepting a
     /// guessed numeric ID as an independent content-oracle target.
     observed_source_identities: Arc<Mutex<BTreeSet<DebuggerMetadataSourceIdentity>>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct DebuggerMetadataIdentity {
+    browser_context_id: u64,
+    tab_id: u64,
+    realm_generation: u64,
+    program_handle: u64,
+    program_generation: u64,
+    metadata_handle: u64,
+    metadata_generation: u64,
+}
+
+impl From<DebuggerStaticMetadataHandle> for DebuggerMetadataIdentity {
+    fn from(metadata: DebuggerStaticMetadataHandle) -> Self {
+        Self {
+            browser_context_id: metadata.program.realm.browser_context_id,
+            tab_id: metadata.program.realm.tab_id,
+            realm_generation: metadata.program.realm.realm_generation,
+            program_handle: metadata.program.program_handle,
+            program_generation: metadata.program.program_generation,
+            metadata_handle: metadata.metadata_handle,
+            metadata_generation: metadata.metadata_generation,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -566,6 +595,12 @@ impl From<DebuggerStaticMetadataSourceId> for DebuggerMetadataSourceIdentity {
     }
 }
 
+/// One metadata session may remember at most 4,096 opaque parent handles.
+/// This fixed cap avoids turning a long-lived debugger stream into an
+/// unbounded metadata-receipt cache; a caller can reconnect after it consumes
+/// the budget.
+pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_METADATA_IDENTITIES: usize = 4_096;
+
 /// One metadata session may remember at most one full source-ID page. This
 /// fixed cap avoids turning a long-lived debugger stream into an unbounded
 /// receipt cache; a caller can reconnect after it consumes the budget.
@@ -577,6 +612,37 @@ impl DebuggerMetadataSessionAuthorization {
     /// negotiation alone does not prove a realm can currently supply data.
     pub fn permits(&self, capability: DebuggerMetadataCapability) -> bool {
         self.granted.contains(capability)
+    }
+
+    /// Records the exact handles that static metadata inventory actually
+    /// returned on this stream. The insertion is atomic with respect to the
+    /// fixed session budget and stores no metadata payload.
+    pub fn observe_metadata(&self, metadata: &[DebuggerStaticMetadataHandle]) -> bool {
+        let Ok(mut observed) = self.observed_metadata_identities.lock() else {
+            return false;
+        };
+        let new_count = metadata
+            .iter()
+            .map(|metadata| DebuggerMetadataIdentity::from(*metadata))
+            .filter(|metadata| !observed.contains(metadata))
+            .collect::<BTreeSet<_>>()
+            .len();
+        if observed.len().saturating_add(new_count)
+            > DEBUGGER_METADATA_SESSION_MAX_OBSERVED_METADATA_IDENTITIES
+        {
+            return false;
+        }
+        observed.extend(metadata.iter().copied().map(DebuggerMetadataIdentity::from));
+        true
+    }
+
+    /// Whether this exact parent handle was emitted by static metadata
+    /// inventory on this session. Failure to access the local receipt store
+    /// fails closed.
+    pub fn observed_metadata(&self, metadata: DebuggerStaticMetadataHandle) -> bool {
+        self.observed_metadata_identities
+            .lock()
+            .is_ok_and(|observed| observed.contains(&metadata.into()))
     }
 
     /// Records the exact IDs that the inventory operation actually returned
@@ -648,6 +714,7 @@ pub fn metadata_session_authorization(
 
     Some(DebuggerMetadataSessionAuthorization {
         granted: granted_metadata_capabilities.clone(),
+        observed_metadata_identities: Arc::new(Mutex::new(BTreeSet::new())),
         observed_source_identities: Arc::new(Mutex::new(BTreeSet::new())),
     })
 }
@@ -1491,6 +1558,71 @@ mod tests {
             },
             inventory,
         ));
+    }
+
+    #[test]
+    fn metadata_inventory_receipts_are_exact_and_stream_local() {
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_summary());
+        let reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_summary(),
+        );
+        let session = metadata_session_authorization(&request, &reply)
+            .expect("the canonical summary grant must create a session receipt ledger");
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 4,
+            },
+            metadata_handle: 24,
+            metadata_generation: 7,
+        };
+        assert!(
+            !session.observed_metadata(metadata),
+            "a numerically well-formed handle is not a receipt before inventory"
+        );
+        assert!(session.observe_metadata(&[metadata]));
+        assert!(session.observed_metadata(metadata));
+        assert!(
+            !session.observed_metadata(DebuggerStaticMetadataHandle {
+                metadata_generation: metadata.metadata_generation + 1,
+                ..metadata
+            }),
+            "a changed generation cannot borrow a prior receipt"
+        );
+
+        let other_session = metadata_session_authorization(&request, &reply)
+            .expect("a second handshake has its own receipt ledger");
+        assert!(
+            !other_session.observed_metadata(metadata),
+            "a metadata receipt must not cross debugger streams"
+        );
+
+        let budget_session = metadata_session_authorization(&request, &reply)
+            .expect("a new stream must start with an empty receipt ledger");
+        let full_budget = (1..=DEBUGGER_METADATA_SESSION_MAX_OBSERVED_METADATA_IDENTITIES)
+            .map(|metadata_handle| DebuggerStaticMetadataHandle {
+                metadata_handle: u64::try_from(metadata_handle).unwrap(),
+                ..metadata
+            })
+            .collect::<Vec<_>>();
+        assert!(budget_session.observe_metadata(&full_budget));
+        let overflow = DebuggerStaticMetadataHandle {
+            metadata_handle: u64::try_from(
+                DEBUGGER_METADATA_SESSION_MAX_OBSERVED_METADATA_IDENTITIES + 1,
+            )
+            .unwrap(),
+            ..metadata
+        };
+        assert!(
+            !budget_session.observe_metadata(&[overflow]),
+            "the bounded insertion must reject rather than partially grow the receipt ledger"
+        );
+        assert!(
+            !budget_session.observed_metadata(overflow),
+            "a rejected batch must not mint its overflow handle"
+        );
     }
 
     #[test]

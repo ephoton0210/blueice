@@ -741,7 +741,13 @@ or second module resolver to bypass them.
   non-filesystem canonical module identity and compiler labeled SHA-256
   digest; it never carries source text, spans, names, types, symbols,
   contracts, bytecode, VM objects, values, or a source-read operation. The
-  page host still must route
+  debugger now also stores a bounded per-stream receipt for each opaque parent
+  handle returned by `ListStaticMetadata`: `DescribeStaticMetadata` and
+  `ListStaticMetadataSources` fail closed until that exact handle was actually
+  returned under the stream's negotiated session. This prevents a guessed
+  handle from becoming either a summary or source-ID target-probing oracle;
+  source provenance remains indirectly bound by its source receipt. The page
+  host still must route
   cache/hibernation events through the same invariant and add source policy,
   diagnostics/contracts, stack locations, and runtime-value inspection before
   this item can close.

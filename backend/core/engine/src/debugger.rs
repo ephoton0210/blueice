@@ -550,6 +550,19 @@ fn list_child_static_metadata(
                     metadata_generation: metadata.metadata_generation,
                 });
             }
+            // The inventory is the only operation that can mint a parent
+            // handle into this stream's local receipt ledger. Summary and
+            // source inventory are independently authorized, but neither may
+            // turn a guessed numeric handle into a child query target.
+            if (metadata_session.permits(DebuggerMetadataCapability::OpaqueSummary)
+                || metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceInventory))
+                && !metadata_session.observe_metadata(&handles)
+            {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::ResourceLimit,
+                    message: "debugger static metadata receipt budget is exhausted".to_string(),
+                };
+            }
             DebuggerReply::StaticMetadata(handles)
         }
         Ok(_) => DebuggerReply::Error {
@@ -575,10 +588,13 @@ fn describe_child_static_metadata(
     let Some(metadata_session) = metadata_session else {
         return unavailable_static_metadata_summary();
     };
-    // A summary can only be associated with a handle minted by inventory. A
-    // malformed/partial session can never turn the dependent summary grant
-    // into a standalone target-probing capability.
-    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory) {
+    // A summary can only be associated with a handle minted by inventory on
+    // this same stream. A malformed/partial session or guessed numeric handle
+    // can never turn the dependent summary grant into a target-probing
+    // capability.
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.observed_metadata(metadata)
+    {
         return unavailable_static_metadata_summary();
     }
     let capabilities = describe_child_location_capabilities(
@@ -651,7 +667,11 @@ fn list_child_static_metadata_sources(
     let Some(metadata_session) = metadata_session else {
         return unavailable_static_metadata_source_inventory();
     };
-    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory) {
+    // Source inventory has the same parent receipt boundary as summary: it
+    // does not admit a caller-invented metadata handle as a source-ID oracle.
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.observed_metadata(metadata)
+    {
         return unavailable_static_metadata_source_inventory();
     }
     let capabilities = describe_child_location_capabilities(
@@ -2170,6 +2190,25 @@ mod tests {
                 Some(&source_inventory_session),
                 DebuggerRequest::ListStaticMetadataSources { metadata },
             ),
+            unavailable_static_metadata_source_inventory(),
+            "source inventory requires a parent handle emitted to this stream"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&source_inventory_session),
+                DebuggerRequest::ListStaticMetadata { program },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&source_inventory_session),
+                DebuggerRequest::ListStaticMetadataSources { metadata },
+            ),
             DebuggerReply::StaticMetadataSources(vec![DebuggerStaticMetadataSourceId {
                 metadata,
                 source_id: 0,
@@ -2203,6 +2242,25 @@ mod tests {
             report.capability == DebuggerCapability::StaticMetadataSummary
                 && report.state == DebuggerCapabilityState::Available
         }));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&summary_session),
+                DebuggerRequest::DescribeStaticMetadata { metadata },
+            ),
+            unavailable_static_metadata_summary(),
+            "summary requires a parent handle emitted to this stream"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&summary_session),
+                DebuggerRequest::ListStaticMetadata { program },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
+        );
         assert_eq!(
             handle_debugger_request_with_child_locations(
                 &tabs,
@@ -2249,6 +2307,17 @@ mod tests {
             malformed_summary: true,
             malformed_provenance: false,
         };
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadata {
+                    program: metadata.program,
+                },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
+        );
         assert!(matches!(
             handle_debugger_request_with_child_locations(
                 &tabs,
@@ -2345,6 +2414,27 @@ mod tests {
             ),
             unavailable_static_metadata_source_provenance(),
             "a provenance target must have been emitted by this stream's source inventory"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&provenance_session),
+                DebuggerRequest::ListStaticMetadataSources { metadata },
+            ),
+            unavailable_static_metadata_source_inventory(),
+            "source inventory cannot dereference a parent handle guessed before inventory"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&provenance_session),
+                DebuggerRequest::ListStaticMetadata {
+                    program: metadata.program,
+                },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
         );
         assert_eq!(
             handle_debugger_request_with_child_locations(
