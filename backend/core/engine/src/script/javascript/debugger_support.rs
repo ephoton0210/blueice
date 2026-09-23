@@ -75,6 +75,26 @@ pub struct JavaScriptPageDebuggerStaticMetadataContractId {
     pub contract_id: u32,
 }
 
+/// One child-validated compiler-produced display for an exact symbol identity.
+/// It carries no source span, static type, contract, bytecode, VM object,
+/// value, or arbitrary metadata record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolDisplay {
+    pub symbol_id: u32,
+    pub display: String,
+}
+
+/// One exact opaque parent and compiler-minted symbol-ID target for the
+/// separately authorized symbol-display operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub symbol_id: u32,
+}
+
 /// One child-validated compiler-produced display for an exact static type
 /// identity. It carries no source text, span, symbol, contract, bytecode, VM
 /// object, value, or arbitrary metadata record.

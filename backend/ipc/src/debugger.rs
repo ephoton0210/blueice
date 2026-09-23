@@ -9,8 +9,8 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version thirteen adds the
-//! default-deny payload-free contract-ID inventory for a prior opaque metadata
+//! and an opt-in root-code-unit pause/resume seam. Version fourteen adds the
+//! default-deny bounded symbol-display lookup for a prior opaque symbol ID
 //! handle: `Hello` grants only the canonical intersection of a requested
 //! manifest and the core policy, and a metadata operation may be dispatched
 //! only after the exact target's capability report also grants its specific
@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 13;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 14;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -137,6 +137,9 @@ pub const DEBUGGER_STATIC_METADATA_MAX_CONTRACTS: u32 = 65_536;
 /// Maximum UTF-8 byte length for one explicitly authorized static type
 /// display. This is a fixed protocol budget, not a caller-provided limit.
 pub const DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES: usize = 4_096;
+/// Maximum UTF-8 byte length for one explicitly authorized static symbol
+/// display. This is a fixed protocol budget, not a caller-provided limit.
+pub const DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES: usize = 4_096;
 /// Maximum compiler-canonical module identity exposed by the distinct,
 /// owner-authorized provenance surface.
 pub const DEBUGGER_STATIC_METADATA_MODULE_MAX_BYTES: usize = 4_096;
@@ -193,6 +196,24 @@ pub struct DebuggerStaticMetadataContractId {
 impl DebuggerStaticMetadataContractId {
     pub fn is_well_formed(self) -> bool {
         self.metadata.is_well_formed()
+    }
+}
+
+/// One owner-authorized display for a compiler-minted symbol ID previously
+/// returned by the exact stream's symbol inventory. A display can contain a
+/// project-authored identifier, so it is independently default-denied and
+/// carries no source span, type, contract, bytecode, or static record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataSymbolDisplay {
+    pub symbol: DebuggerStaticMetadataSymbolId,
+    pub display: String,
+}
+
+impl DebuggerStaticMetadataSymbolDisplay {
+    pub fn is_well_formed(&self) -> bool {
+        self.symbol.is_well_formed()
+            && !self.display.is_empty()
+            && self.display.len() <= DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES
     }
 }
 
@@ -335,6 +356,10 @@ pub enum DebuggerCapability {
     /// exact opaque metadata attachment. It does not disclose contract
     /// names, source spans, plans, or validation behavior.
     StaticMetadataContractInventory,
+    /// One bounded compiler-produced display for a symbol ID previously
+    /// returned by the exact stream's symbol inventory. It does not expose a
+    /// source span, type, contract, bytecode, or general static-record read.
+    StaticMetadataSymbolDisplay,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -384,6 +409,10 @@ pub enum DebuggerMetadataCapability {
     /// one metadata handle. Contract name/span/plan/validation reads remain
     /// distinct, future default-deny capabilities.
     OpaqueContractInventory,
+    /// Describes one compiler-minted symbol ID previously returned by
+    /// [`Self::OpaqueSymbolInventory`]. Project-authored identifiers require
+    /// an independent default-deny grant and exact receipt.
+    OpaqueSymbolDisplay,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -405,6 +434,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueContractInventory => {
                 Some(DebuggerCapability::StaticMetadataContractInventory)
             }
+            Self::OpaqueSymbolDisplay => Some(DebuggerCapability::StaticMetadataSymbolDisplay),
             Self::Unknown => None,
         }
     }
@@ -419,6 +449,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueTypeDisplay => Some(5),
             Self::OpaqueSymbolInventory => Some(6),
             Self::OpaqueContractInventory => Some(7),
+            Self::OpaqueSymbolDisplay => Some(8),
             Self::Unknown => None,
         }
     }
@@ -442,6 +473,22 @@ pub const DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION: u32 = 1;
 pub struct DebuggerMetadataCapabilityManifest {
     pub version: u32,
     pub capabilities: Vec<DebuggerMetadataCapability>,
+}
+
+/// Named owner-selected metadata surfaces used to construct the exact
+/// canonical manifest. Keeping these choices named prevents an added
+/// default-deny capability from turning call sites into unsafe positional
+/// boolean lists.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DebuggerMetadataCapabilitySelection {
+    pub summary: bool,
+    pub source_inventory: bool,
+    pub source_provenance: bool,
+    pub type_inventory: bool,
+    pub type_display: bool,
+    pub symbol_inventory: bool,
+    pub contract_inventory: bool,
+    pub symbol_display: bool,
 }
 
 impl DebuggerMetadataCapabilityManifest {
@@ -570,25 +617,43 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants a compiler-produced symbol display only together with its
+    /// required opaque parent and prior symbol-ID inventory. A display request
+    /// must still prove its exact symbol ID crossed this stream's receipt
+    /// boundary before core reaches the child.
+    pub fn opaque_symbol_display() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSymbolInventory,
+                DebuggerMetadataCapability::OpaqueSymbolDisplay,
+            ],
+        }
+    }
+
     /// Builds the exact canonical manifest selected by a trusted owner after
     /// it independently validated each prerequisite flag. Keeping this
     /// operation here avoids a caller hand-assembling a reordered manifest.
-    pub fn opaque_selected(
-        summary: bool,
-        source_inventory: bool,
-        source_provenance: bool,
-        type_inventory: bool,
-        type_display: bool,
-        symbol_inventory: bool,
-        contract_inventory: bool,
-    ) -> Self {
+    pub fn opaque_selected(selection: DebuggerMetadataCapabilitySelection) -> Self {
+        let DebuggerMetadataCapabilitySelection {
+            summary,
+            source_inventory,
+            source_provenance,
+            type_inventory,
+            type_display,
+            symbol_inventory,
+            contract_inventory,
+            symbol_display,
+        } = selection;
         let any = summary
             || source_inventory
             || source_provenance
             || type_inventory
             || type_display
             || symbol_inventory
-            || contract_inventory;
+            || contract_inventory
+            || symbol_display;
         let mut capabilities = Vec::new();
         if any {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
@@ -608,11 +673,14 @@ impl DebuggerMetadataCapabilityManifest {
         if type_display {
             capabilities.push(DebuggerMetadataCapability::OpaqueTypeDisplay);
         }
-        if symbol_inventory {
+        if symbol_inventory || symbol_display {
             capabilities.push(DebuggerMetadataCapability::OpaqueSymbolInventory);
         }
         if contract_inventory {
             capabilities.push(DebuggerMetadataCapability::OpaqueContractInventory);
+        }
+        if symbol_display {
+            capabilities.push(DebuggerMetadataCapability::OpaqueSymbolDisplay);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -700,6 +768,15 @@ impl DebuggerMetadataCapabilityManifest {
                 || self
                     .capabilities
                     .contains(&DebuggerMetadataCapability::OpaqueInventory))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueSymbolDisplay)
+                || (self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueSymbolInventory)))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -1322,6 +1399,12 @@ pub enum DebuggerRequest {
     ListStaticMetadataSymbols {
         metadata: DebuggerStaticMetadataHandle,
     },
+    /// Describes one symbol ID previously returned by
+    /// [`Self::ListStaticMetadataSymbols`]. This separately authorized
+    /// operation returns only a bounded compiler-produced symbol display.
+    DescribeStaticMetadataSymbol {
+        symbol: DebuggerStaticMetadataSymbolId,
+    },
     /// Lists only compiler-minted contract identities for one exact metadata
     /// attachment. It is not a contract name/span/plan/validation read.
     ListStaticMetadataContracts {
@@ -1423,6 +1506,9 @@ pub enum DebuggerReply {
     /// Reply to [`DebuggerRequest::ListStaticMetadataSymbols`]. IDs remain
     /// parent-bound and contain no symbol name, span, type, or record payload.
     StaticMetadataSymbols(Vec<DebuggerStaticMetadataSymbolId>),
+    /// Reply to [`DebuggerRequest::DescribeStaticMetadataSymbol`]. The symbol
+    /// display remains parent-bound, receipted, and source-text-free.
+    StaticMetadataSymbol(DebuggerStaticMetadataSymbolDisplay),
     /// Reply to [`DebuggerRequest::ListStaticMetadataContracts`]. IDs remain
     /// parent-bound and contain no contract name, span, plan, or validation
     /// payload.
@@ -1521,6 +1607,7 @@ pub fn negotiate(
         | DebuggerRequest::ListStaticMetadataTypes { .. }
         | DebuggerRequest::DescribeStaticMetadataType { .. }
         | DebuggerRequest::ListStaticMetadataSymbols { .. }
+        | DebuggerRequest::DescribeStaticMetadataSymbol { .. }
         | DebuggerRequest::ListStaticMetadataContracts { .. }
         | DebuggerRequest::DescribeStaticMetadataSource { .. }
         | DebuggerRequest::ListSafePoints { .. }
@@ -1670,6 +1757,20 @@ mod tests {
                     },
                     metadata_handle: 24,
                     metadata_generation: 7,
+                },
+            },
+            DebuggerRequest::DescribeStaticMetadataSymbol {
+                symbol: DebuggerStaticMetadataSymbolId {
+                    metadata: DebuggerStaticMetadataHandle {
+                        program: DebuggerProgram {
+                            realm: realm(),
+                            program_handle: 12,
+                            program_generation: 5,
+                        },
+                        metadata_handle: 24,
+                        metadata_generation: 7,
+                    },
+                    symbol_id: 0,
                 },
             },
             DebuggerRequest::ListStaticMetadataContracts {
@@ -1856,6 +1957,17 @@ mod tests {
                 },
                 symbol_id: 0,
             }]),
+            DebuggerReply::StaticMetadataSymbol(DebuggerStaticMetadataSymbolDisplay {
+                symbol: DebuggerStaticMetadataSymbolId {
+                    metadata: DebuggerStaticMetadataHandle {
+                        program,
+                        metadata_handle: 24,
+                        metadata_generation: 7,
+                    },
+                    symbol_id: 0,
+                },
+                display: "ProjectControlledName".to_string(),
+            }),
             DebuggerReply::StaticMetadataContracts(vec![DebuggerStaticMetadataContractId {
                 metadata: DebuggerStaticMetadataHandle {
                     program,
@@ -2618,6 +2730,57 @@ mod tests {
         let malformed = DebuggerMetadataCapabilityManifest {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
             capabilities: vec![DebuggerMetadataCapability::OpaqueContractInventory],
+        };
+        assert!(!malformed.is_well_formed());
+    }
+
+    #[test]
+    fn symbol_display_requires_symbol_inventory_and_respects_its_fixed_budget() {
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 5,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let symbol = DebuggerStaticMetadataSymbolId {
+            metadata,
+            symbol_id: 0,
+        };
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_symbol_display());
+        let reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_symbol_display(),
+        );
+        let session = metadata_session_authorization(&request, &reply).unwrap();
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueInventory));
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueSymbolInventory));
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueSymbolDisplay));
+        assert!(!session.observed_symbol(symbol));
+        assert!(session.observe_symbols(&[symbol]));
+        assert!(session.observed_symbol(symbol));
+
+        let display = DebuggerStaticMetadataSymbolDisplay {
+            symbol,
+            display: "ProjectControlledName".to_string(),
+        };
+        assert!(display.is_well_formed());
+        assert!(!DebuggerStaticMetadataSymbolDisplay {
+            display: String::new(),
+            ..display.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticMetadataSymbolDisplay {
+            display: "x".repeat(DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES + 1),
+            ..display
+        }
+        .is_well_formed());
+
+        let malformed = DebuggerMetadataCapabilityManifest {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![DebuggerMetadataCapability::OpaqueSymbolDisplay],
         };
         assert!(!malformed.is_well_formed());
     }

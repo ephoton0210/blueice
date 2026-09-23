@@ -15,8 +15,8 @@
 
 use blueice_ipc::debugger::{
     read_debugger_reply, write_debugger_request, DebuggerErrorCode,
-    DebuggerMetadataCapabilityManifest, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
-    DebuggerRequest, DebuggerSafePoint, DEBUGGER_PROTOCOL_VERSION,
+    DebuggerMetadataCapabilityManifest, DebuggerMetadataCapabilitySelection, DebuggerPageRealm,
+    DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint, DEBUGGER_PROTOCOL_VERSION,
 };
 use blueice_ipc::{read_server_message, write_client_message, ClientMessage, ServerMessage};
 use std::io::{Read, Write};
@@ -77,6 +77,7 @@ struct StaticMetadataPolicy {
     type_display: bool,
     symbol_inventory: bool,
     contract_inventory: bool,
+    symbol_display: bool,
 }
 
 struct LauncherProcess {
@@ -146,6 +147,9 @@ impl LauncherProcess {
         }
         if policy.contract_inventory {
             command.arg("--debugger-static-metadata-contract-inventory");
+        }
+        if policy.symbol_display {
+            command.arg("--debugger-static-metadata-symbol-display");
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
@@ -570,6 +574,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             type_display: true,
             symbol_inventory: true,
             contract_inventory: true,
+            symbol_display: true,
         },
     );
 
@@ -586,14 +591,32 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
                 requested_metadata_capabilities:
                     DebuggerMetadataCapabilityManifest::opaque_selected(
-                        true, true, true, true, true, true, true
+                        DebuggerMetadataCapabilitySelection {
+                            summary: true,
+                            source_inventory: true,
+                            source_provenance: true,
+                            type_inventory: true,
+                            type_display: true,
+                            symbol_inventory: true,
+                            contract_inventory: true,
+                            symbol_display: true,
+                        },
                     ),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
             granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_selected(
-                true, true, true, true, true, true, true
+                DebuggerMetadataCapabilitySelection {
+                    summary: true,
+                    source_inventory: true,
+                    source_provenance: true,
+                    type_inventory: true,
+                    type_display: true,
+                    symbol_inventory: true,
+                    contract_inventory: true,
+                    symbol_display: true,
+                },
             ),
         }
     );
@@ -609,6 +632,10 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     };
     assert!(capabilities.reports.iter().any(|report| {
         report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataInventory
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSymbolDisplay
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
     assert!(capabilities.reports.iter().any(|report| {
@@ -710,6 +737,21 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             ..
         }
     ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbol {
+                symbol: blueice_ipc::debugger::DebuggerStaticMetadataSymbolId {
+                    metadata: typed_metadata,
+                    symbol_id: 0,
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::CapabilityUnavailable,
+            ..
+        }
+    ));
     let type_inventory_reply = debugger_request(
         &mut debugger,
         DebuggerRequest::ListStaticMetadataTypes {
@@ -766,6 +808,24 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             && !format!("{symbols:?}").contains("number"),
         "symbol IDs must not contain names, type displays, or compiler-record payload"
     );
+    for symbol in &symbols {
+        let symbol_display_reply = debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbol { symbol: *symbol },
+        );
+        let DebuggerReply::StaticMetadataSymbol(symbol_display) = symbol_display_reply else {
+            panic!("expected bounded public static metadata symbol display")
+        };
+        assert_eq!(symbol_display.symbol, *symbol);
+        assert!(!symbol_display.display.is_empty());
+        assert!(
+            !symbol_display.display.contains("const ")
+                && !symbol_display.display.contains(": number")
+                && !symbol_display.display.contains("= 42")
+                && !symbol_display.display.contains("inline-0.ts"),
+            "symbol display may expose its authorized name, never declaration source, type, initializer, or module identity"
+        );
+    }
     let contract_inventory_reply = debugger_request(
         &mut debugger,
         DebuggerRequest::ListStaticMetadataContracts {
@@ -848,6 +908,16 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             DebuggerRequest::ListStaticMetadata {
                 program: typed_metadata.program,
             },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbol { symbol: symbols[0] },
         ),
         DebuggerReply::Error {
             code: DebuggerErrorCode::StaleRealm,

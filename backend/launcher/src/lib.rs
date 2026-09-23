@@ -131,6 +131,9 @@ mod unix {
         /// Owner-only policy for compiler-minted contract IDs bound to an
         /// opaque metadata handle. Contract detail remains default-denied.
         debugger_static_metadata_contract_inventory: bool,
+        /// Owner-only policy for compiler-produced symbol displays bound to a
+        /// prior opaque symbol receipt. Source/static records remain denied.
+        debugger_static_metadata_symbol_display: bool,
     }
 
     impl CoreLaunchOptions {
@@ -287,6 +290,16 @@ mod unix {
         pub fn with_debugger_static_metadata_contract_inventory(mut self) -> Self {
             self.debugger_static_metadata_inventory = true;
             self.debugger_static_metadata_contract_inventory = true;
+            self
+        }
+
+        /// Enables a bounded compiler-produced display for an already
+        /// inventoried symbol ID. This also selects parent and symbol
+        /// inventories, while source spans, types, contracts, and records stay denied.
+        pub fn with_debugger_static_metadata_symbol_display(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_symbol_inventory = true;
+            self.debugger_static_metadata_symbol_display = true;
             self
         }
     }
@@ -1653,6 +1666,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_contract_inventory {
                     command.arg("--debugger-static-metadata-contract-inventory");
+                }
+                if options.debugger_static_metadata_symbol_display {
+                    command.arg("--debugger-static-metadata-symbol-display");
                 }
             }
             let mut child = command.spawn()?;

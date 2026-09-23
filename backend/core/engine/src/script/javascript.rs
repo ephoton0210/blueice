@@ -40,8 +40,10 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataContractId, JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
-    JavaScriptPageDebuggerStaticMetadataSymbolId, JavaScriptPageDebuggerStaticMetadataTypeDisplay,
-    JavaScriptPageDebuggerStaticMetadataTypeId, JavaScriptPageDebuggerStaticMetadataTypeTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolDisplay,
+    JavaScriptPageDebuggerStaticMetadataSymbolId, JavaScriptPageDebuggerStaticMetadataSymbolTarget,
+    JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
+    JavaScriptPageDebuggerStaticMetadataTypeTarget,
 };
 
 /// Source-free debugger location operations owned by an explicitly selected
@@ -128,6 +130,12 @@ pub trait PageJavaScriptDebuggerLocations {
     /// under an exact opaque metadata parent. Contract record reads remain
     /// separately default-denied.
     fn debugger_static_metadata_contract_inventory_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can describe a bounded display for a prior exact
+    /// symbol ID. Symbol names remain an independently default-denied surface.
+    fn debugger_static_metadata_symbol_display_available(&self) -> bool {
         false
     }
 
@@ -252,6 +260,19 @@ pub trait PageJavaScriptDebuggerLocations {
         _metadata_handle: u64,
         _metadata_generation: u64,
     ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataContractId>, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes one compiler-minted symbol ID only after the caller presented
+    /// that exact metadata attachment and ID. Implementations must not expose
+    /// source spans, types, contracts, or synthesize static records.
+    fn debugger_static_metadata_symbol_display(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSymbolTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolDisplay, JavaScriptPageDebuggerError>
     {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }

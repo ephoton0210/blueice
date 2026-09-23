@@ -46,12 +46,14 @@
 //! core-proxied operation, not a general static-record read or source access.
 //! Version 13 adds a payload-free parent-handle-bound symbol-ID inventory.
 //! Version 14 adds a payload-free parent-handle-bound contract-ID inventory.
+//! Version 15 adds one exact symbol-ID display lookup; it remains an explicit
+//! core-proxied operation, not a general static-record read or source access.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 14;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 15;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -161,6 +163,16 @@ pub struct PageHostDebuggerBlueTsMetadataSymbolId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PageHostDebuggerBlueTsMetadataContractId {
     pub contract_id: u32,
+}
+
+/// One child-local compiler-produced symbol display for an exact symbol ID
+/// under an opaque metadata attachment. The enclosing request/reply carries
+/// the child program and metadata identities; this value never grants a
+/// generic static-record read or source access.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSymbolDisplay {
+    pub symbol_id: u32,
+    pub display: String,
 }
 
 /// One child-local compiler-produced type display for an exact type ID under
@@ -461,6 +473,15 @@ pub enum PageHostRequest {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
     },
+    /// Describes a compiler-minted symbol ID under a prior exact private
+    /// metadata handle. This is not a symbol span/type/contract or record read.
+    DescribeDebuggerBlueTsMetadataSymbol {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+    },
     /// Describes exactly one prior compiler-minted source ID. This private
     /// request returns module identity and a digest only, never source text.
     DescribeDebuggerBlueTsMetadataSource {
@@ -627,6 +648,15 @@ pub enum PageHostReply {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
         contracts: Vec<PageHostDebuggerBlueTsMetadataContractId>,
+    },
+    /// One bounded compiler-produced symbol display. The enclosing tuple keeps
+    /// it bound to an exact child program and metadata attachment.
+    DebuggerBlueTsMetadataSymbol {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol: PageHostDebuggerBlueTsMetadataSymbolDisplay,
     },
     DebuggerBlueTsMetadataSourceProvenance {
         tab_id: u64,
@@ -907,6 +937,19 @@ mod tests {
                     metadata_generation: 19,
                 },
             },
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbol {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                symbol_id: 0,
+            },
             PageHostRequest::ListDebuggerSafePoints {
                 tab_id: 7,
                 document_generation: 3,
@@ -1116,6 +1159,26 @@ mod tests {
                 metadata_generation: 19,
             },
             symbols: vec![PageHostDebuggerBlueTsMetadataSymbolId { symbol_id: 0 }],
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataSymbol {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            symbol: PageHostDebuggerBlueTsMetadataSymbolDisplay {
+                symbol_id: 0,
+                display: "ProjectControlledName".to_string(),
+            },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();

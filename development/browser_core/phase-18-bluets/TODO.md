@@ -785,6 +785,18 @@ or second module resolver to bypass them.
   or validation operation cannot turn a caller-guessed ID into a child
   probing target. No contract name, source span, plan, validation result,
   bytecode, VM object, value, or general metadata record crosses this layer.
+  Page-host v15/debugger v14 now add independently default-denied
+  `OpaqueSymbolDisplay` and the owner-only
+  `--debugger-static-metadata-symbol-display` flag. It requires the parent
+  inventory, symbol-ID inventory, exact same-stream symbol-ID receipt, live
+  realm tuple, and child capability report before returning one
+  compiler-produced display capped at 4 KiB. The core verifies that the child
+  echoed the exact requested symbol ID before re-minting the public reply.
+  A display may contain a project-authored identifier, but it carries no
+  source text, source/module identity, span, type, contract, bytecode, VM
+  object, value, or general static-record read. Named
+  `DebuggerMetadataCapabilitySelection` now constructs the canonical owner
+  manifest, so new capabilities no longer extend a positional boolean list.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope
