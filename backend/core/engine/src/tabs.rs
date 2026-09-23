@@ -18,8 +18,14 @@
 
 use crate::downloads_page::DownloadsSource;
 use crate::Page;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use url::Url;
+
+/// A single extension connection cannot install an unbounded number of
+/// navigation rules. The small cap keeps this deliberately declarative slice
+/// from becoming a general purpose core-side routing database.
+const MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION: usize = 64;
 
 /// Stable identity for a tab, assigned once at [`TabManager::open_tab`]
 /// (or at [`TabManager::new`] for the initial tab) and never reused --
@@ -208,6 +214,11 @@ pub struct TabManager {
     /// Whether leaving an entry retains a locally displayable page snapshot,
     /// rather than the default URL-only history record.
     history_snapshot_mode: HistorySnapshotMode,
+    /// Exact canonical initial HTTP(S) URLs an extension connection asked
+    /// core to block. The key is an opaque connection ID allocated by the
+    /// core binary, never an extension-supplied identity. Rules are removed
+    /// when that connection ends.
+    extension_navigation_block_rules: HashMap<u64, HashSet<String>>,
 }
 
 impl TabManager {
@@ -253,7 +264,52 @@ impl TabManager {
             viewport_height,
             downloads: None,
             history_snapshot_mode,
+            extension_navigation_block_rules: HashMap::new(),
         }
+    }
+
+    /// Adds a connection-scoped rule for a canonical initial HTTP(S)
+    /// navigation URL. This first declarative rule has no redirect, header,
+    /// callback, or request-body semantics: it only prevents beginning a
+    /// matching navigation in this core session.
+    pub(crate) fn add_extension_navigation_block_rule(
+        &mut self,
+        connection_id: u64,
+        url: String,
+    ) -> Result<(), String> {
+        let canonical_url = canonical_http_navigation_url(&url)?;
+        let rules = self
+            .extension_navigation_block_rules
+            .entry(connection_id)
+            .or_default();
+        if !rules.contains(&canonical_url)
+            && rules.len() >= MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION
+        {
+            return Err(format!(
+                "an extension connection may register at most {MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION} exact navigation-block URLs"
+            ));
+        }
+        rules.insert(canonical_url);
+        Ok(())
+    }
+
+    /// Removes every declarative navigation-block rule owned by one extension
+    /// connection. A disconnect always calls this, so a stale package cannot
+    /// leave navigation policy behind after its host is gone.
+    pub(crate) fn clear_extension_navigation_block_rules(&mut self, connection_id: u64) {
+        self.extension_navigation_block_rules.remove(&connection_id);
+    }
+
+    /// Tests the exact canonical initial navigation URL against every live
+    /// connection's declarative block rules. Invalid/non-network URLs are not
+    /// matches; their normal built-in/scheme validation paths still apply.
+    pub(crate) fn is_extension_navigation_blocked(&self, url: &str) -> bool {
+        let Ok(canonical_url) = canonical_http_navigation_url(url) else {
+            return false;
+        };
+        self.extension_navigation_block_rules
+            .values()
+            .any(|rules| rules.contains(&canonical_url))
     }
 
     pub fn history_snapshot_mode(&self) -> HistorySnapshotMode {
@@ -638,6 +694,22 @@ impl TabManager {
     }
 }
 
+/// Produces the sole representation used in declarative navigation rules.
+/// Fragments never cross HTTP, so they cannot make a different network rule;
+/// credentials are forbidden rather than retained in long-lived core state.
+fn canonical_http_navigation_url(input: &str) -> Result<String, String> {
+    let mut url =
+        Url::parse(input).map_err(|error| format!("navigation-block URL is invalid: {error}"))?;
+    if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
+        return Err("navigation-block URLs must be absolute HTTP(S) URLs".to_string());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("navigation-block URLs must not contain credentials".to_string());
+    }
+    url.set_fragment(None);
+    Ok(url.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -647,6 +719,36 @@ mod tests {
         let tabs = TabManager::new(320.0, 200.0);
         assert_eq!(tabs.ids().collect::<Vec<_>>(), vec![tabs.default_tab()]);
         assert!(tabs.get(tabs.default_tab()).is_some());
+    }
+
+    #[test]
+    fn extension_navigation_block_rules_match_canonical_urls_and_clear_per_connection() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        tabs.add_extension_navigation_block_rule(
+            41,
+            "HTTPS://EXAMPLE.test/private#client-fragment".to_string(),
+        )
+        .unwrap();
+        assert!(tabs.is_extension_navigation_blocked("https://example.test/private"));
+        assert!(tabs.is_extension_navigation_blocked("https://example.test/private#another"));
+        assert!(!tabs.is_extension_navigation_blocked("https://example.test/other"));
+
+        tabs.clear_extension_navigation_block_rules(40);
+        assert!(tabs.is_extension_navigation_blocked("https://example.test/private"));
+        tabs.clear_extension_navigation_block_rules(41);
+        assert!(!tabs.is_extension_navigation_blocked("https://example.test/private"));
+    }
+
+    #[test]
+    fn extension_navigation_block_rules_reject_non_http_and_credentialed_urls() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        assert!(tabs
+            .add_extension_navigation_block_rule(1, "about:blank".to_string())
+            .is_err());
+        assert!(tabs
+            .add_extension_navigation_block_rule(1, "https://user:secret@example.test/".to_string())
+            .is_err());
+        assert!(!tabs.is_extension_navigation_blocked("about:blank"));
     }
 
     #[test]

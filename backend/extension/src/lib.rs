@@ -21,8 +21,9 @@
 //! This crate still does not depend on `blueice-engine`; that preserves the
 //! protocol/engine boundary and keeps `Page`/`TabManager` single-thread-owned.
 //! The bridge remains deliberately narrow: it has explicit tab/node targets
-//! for text and checkbox writes, but no generic DOM mutation or declarative
-//! interception-rule representation.
+//! for form-control writes and one connection-scoped exact initial-navigation
+//! block rule, but no generic DOM mutation, request callback, redirect, or
+//! header/body interception surface.
 //!
 //! **What's real, what's a placeholder** (mirrors `blueice-ai-
 //! gatekeeper`'s own "mechanism real, content stub" scoping): the
@@ -30,10 +31,11 @@
 //! real and tested. The standalone binary retains a fixed
 //! [`ExtensionReply::DomReadResult`] value, but
 //! [`handle_extension_connection_with_actions`] lets `blueice-core`
-//! provide core-owned representation reads plus explicit text/checkbox writes
-//! without this crate taking an engine dependency. Generic `DomWrite` and
-//! `NetworkIntercept` still lack safe core operation shapes, so they are
-//! reported as unavailable rather than acknowledged without an effect.
+//! provide core-owned representation reads plus explicit form-control writes
+//! and a v2 declarative navigation-block delegate without this crate taking an
+//! engine dependency. Generic `DomWrite` and legacy v1 `NetworkIntercept`
+//! still lack safe core operation shapes, so they are reported as unavailable
+//! rather than acknowledged without an effect.
 //!
 //! **Identity derivation versus peer authentication.**
 //! [`load_installed_extension`] derives a `sha256:` ID from exact manifest and
@@ -167,12 +169,11 @@ impl ExtensionRegistry {
     /// capability in its manifest or handshake.
     pub fn with_supported_capabilities() -> Self {
         let mut registry = Self::new();
-        let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
         let v1_to_v4 = CapabilityVersionWindow::new(1, 4).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v4);
-        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1);
+        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v2);
         registry
     }
 
@@ -549,9 +550,9 @@ pub fn handle_extension_connection_with_actions_and_authentication<S, R, W, N>(
     gatekeeper_socket: &Path,
     stream: &mut S,
     authentication: ExtensionConnectionAuthentication<'_>,
-    mut read_dom: R,
-    mut write_dom: W,
-    mut register_network_intercept: N,
+    read_dom: R,
+    write_dom: W,
+    register_network_intercept: N,
 ) -> io::Result<()>
 where
     S: Read + Write,
@@ -562,6 +563,54 @@ where
         &blueice_ipc::extension::DomWriteTarget,
     ) -> Result<(), String>,
     N: FnMut() -> Result<(), String>,
+{
+    handle_extension_connection_with_actions_and_authentication_and_network_rules(
+        registry,
+        gatekeeper_socket,
+        stream,
+        authentication,
+        read_dom,
+        write_dom,
+        register_network_intercept,
+        |_| {
+            Err(
+                "network:intercept version 2 needs a core-backed declarative rule handler"
+                    .to_string(),
+            )
+        },
+    )
+}
+
+/// Like [`handle_extension_connection_with_actions_and_authentication`], with
+/// a separate delegate for the version-2 exact navigation-block rule. Keeping
+/// it distinct from the legacy v1 acknowledgement preserves the latter's
+/// isolated protocol-test behavior while making a core-backed effect explicit.
+pub fn handle_extension_connection_with_actions_and_authentication_and_network_rules<
+    S,
+    R,
+    W,
+    N,
+    B,
+>(
+    registry: &ExtensionRegistry,
+    gatekeeper_socket: &Path,
+    stream: &mut S,
+    authentication: ExtensionConnectionAuthentication<'_>,
+    mut read_dom: R,
+    mut write_dom: W,
+    mut register_network_intercept: N,
+    mut register_network_block_url: B,
+) -> io::Result<()>
+where
+    S: Read + Write,
+    R: FnMut(Option<u64>) -> Result<String, String>,
+    W: FnMut(
+        Option<(u64, u64)>,
+        String,
+        &blueice_ipc::extension::DomWriteTarget,
+    ) -> Result<(), String>,
+    N: FnMut() -> Result<(), String>,
+    B: FnMut(String) -> Result<(), String>,
 {
     let mut identity = match read_extension_request(stream) {
         Ok(request) => match authenticated_hello(authentication.expected(), request) {
@@ -996,6 +1045,75 @@ where
                     }
                 }
             }
+            ExtensionRequest::RegisterNetworkBlockUrl { url } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 2)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                            reason,
+                        },
+                    )?;
+                    continue;
+                }
+                if url.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                            reason: format!(
+                                "exact navigation-block URLs cannot exceed {} bytes",
+                                blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES
+                            ),
+                        },
+                    )?;
+                    continue;
+                }
+                // The reviewer receives a fixed operation class rather than
+                // the extension-controlled URL. The URL is parsed and
+                // canonicalized only in the core-owned rule store.
+                match check_extension_action(
+                    gatekeeper_socket,
+                    &identity.extension_id,
+                    CAPABILITY_NETWORK_INTERCEPT,
+                    "action=register-exact-navigation-block".to_string(),
+                ) {
+                    Ok(GatekeeperReply::Cleared) => match register_network_block_url(url) {
+                        Ok(()) => {
+                            write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?
+                        }
+                        Err(reason) => write_extension_reply(
+                            stream,
+                            &ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                            },
+                        )?,
+                    },
+                    Ok(GatekeeperReply::Rejected { reason, category }) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                                category,
+                            },
+                        )?;
+                    }
+                    Err(reason) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                                category: "gatekeeper-unavailable".to_string(),
+                            },
+                        )?;
+                    }
+                }
+            }
             ExtensionRequest::NetworkIntercept => {
                 if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 1)
@@ -1008,9 +1126,8 @@ where
                         },
                     )?;
                 } else {
-                    // This protocol's minimal slice deliberately does not
-                    // carry an extension-defined interception rule yet.
-                    // Fixed metadata proves the review boundary without
+                    // Legacy v1 deliberately has no extension-defined rule.
+                    // Fixed metadata proves its review boundary without
                     // opening an unbounded extension-to-reviewer text path.
                     match check_extension_action(
                         gatekeeper_socket,
@@ -1951,6 +2068,167 @@ mod tests {
             }
         );
         let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v2_network_block_url_is_reviewed_then_delegated_without_exposing_the_url_to_review() {
+        let registry = registry_with_network_intercept_granted();
+        let (gatekeeper_socket, gatekeeper) =
+            start_gatekeeper("clear-exact-navigation-block", GatekeeperReply::Cleared);
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                &socket_for_handler,
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                |_| Ok("unused in this test".to_string()),
+                |_, _, _| Ok(()),
+                || Ok(()),
+                move |url| {
+                    seen_tx.send(url).unwrap();
+                    Ok(())
+                },
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 2)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::RegisterNetworkBlockUrl {
+                url: "https://example.test/private".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::NetworkInterceptAck
+        );
+        assert_eq!(
+            seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "https://example.test/private"
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                detail: "action=register-exact-navigation-block".to_string(),
+            }
+        );
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v2_network_block_url_requires_a_v2_handshake_before_review_or_delegate() {
+        let registry = registry_with_network_intercept_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                Path::new("/not-reached-for-v1-network-block-version-denial.sock"),
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                |_| Ok("unused in this test".to_string()),
+                |_, _, _| Ok(()),
+                || Ok(()),
+                |_| panic!("a v1 connection must not install a v2 network rule"),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 1)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::RegisterNetworkBlockUrl {
+                url: "https://example.test/private".to_string(),
+            },
+        )
+        .unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, reason } => {
+                assert_eq!(capability, CAPABILITY_NETWORK_INTERCEPT);
+                assert!(reason.contains("requires version 2"));
+            }
+            other => panic!("expected a v2 version denial, got {other:?}"),
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn oversized_v2_network_block_url_is_rejected_before_review_or_delegate() {
+        let registry = registry_with_network_intercept_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                Path::new("/not-reached-for-oversized-network-rule.sock"),
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                |_| Ok("unused in this test".to_string()),
+                |_, _, _| Ok(()),
+                || Ok(()),
+                |_| panic!("an oversized network rule must not reach core"),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 2)],
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::RegisterNetworkBlockUrl {
+                url: "x".repeat(blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES + 1),
+            },
+        )
+        .unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::OperationUnavailable { capability, reason } => {
+                assert_eq!(capability, CAPABILITY_NETWORK_INTERCEPT);
+                assert!(reason.contains("2048 bytes"));
+            }
+            other => panic!("expected an oversized-rule rejection, got {other:?}"),
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
     }
 
     #[test]

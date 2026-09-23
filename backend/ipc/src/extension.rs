@@ -39,6 +39,12 @@ use std::path::PathBuf;
 /// changing a live page.
 pub const MAX_TEXT_WRITE_BYTES: usize = 4 * 1024;
 
+/// Maximum UTF-8 URL accepted by the first declarative network rule. Keeping
+/// a distinct, small bound means a rule cannot turn the extension socket into
+/// a route for large arbitrary payloads. Core also parses and canonicalizes it
+/// before it becomes active.
+pub const MAX_NETWORK_BLOCK_URL_BYTES: usize = 2 * 1024;
+
 /// One message an extension process sends to the capability-enforcing
 /// side of this protocol.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -153,6 +159,12 @@ pub enum ExtensionRequest {
         node_id: u64,
         value: String,
     },
+    /// Version 2 of `network:intercept`: install one declarative rule that
+    /// blocks a navigation only when its canonical initial HTTP(S) URL exactly
+    /// equals `url`. The rule is connection-scoped in core, so it disappears
+    /// when the extension disconnects. This is deliberately not a callback,
+    /// redirector, header editor, or arbitrary request scripting API.
+    RegisterNetworkBlockUrl { url: String },
     /// Registers a network interception rule -- requires the
     /// `network:intercept` capability. Registering interception at all
     /// is high-risk, so the host always routes this request through the
@@ -398,6 +410,9 @@ mod tests {
                 tab_id: 42,
                 node_id: 101,
                 value: "multi-line shared value".to_string(),
+            },
+            ExtensionRequest::RegisterNetworkBlockUrl {
+                url: "https://example.test/private".to_string(),
             },
             ExtensionRequest::NetworkIntercept,
         ] {

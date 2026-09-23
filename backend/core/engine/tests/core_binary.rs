@@ -443,6 +443,104 @@ fn installed_extension_reads_a_real_core_owned_representation_over_private_socke
 }
 
 #[test]
+fn installed_extension_v2_network_rule_blocks_matching_navigation_before_http_fetch() {
+    use blueice_ipc::extension::{
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    };
+    use std::collections::BTreeMap;
+    use std::io::ErrorKind;
+
+    let core_socket = unique_socket_path("ext-network-rule");
+    let extension_socket = unique_private_extension_socket_path("network-rule");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-extension-network-rule-frames-{}",
+        std::process::id()
+    ));
+    let (package_root, manifest, extension_id) =
+        extension_manifest_package("exact-network-rule", &["network:intercept"]);
+    let gatekeeper_socket = clearing_gatekeeper("ext-network-rule-gk");
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}/private", listener.local_addr().unwrap());
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .spawn()
+        .expect("failed to spawn core with a v2 network-rule extension");
+
+    assert!(wait_for(&core_socket, Duration::from_secs(5)));
+    assert!(wait_for(&extension_socket, Duration::from_secs(5)));
+    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    let mut extension = UnixStream::connect(&extension_socket).unwrap();
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::Hello {
+            extension_id,
+            capability_versions: BTreeMap::from([("network:intercept".to_string(), 2)]),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::RegisterNetworkBlockUrl { url: url.clone() },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::NetworkInterceptAck
+    );
+
+    blueice_ipc::write_client_message(
+        &mut frontend,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    match blueice_ipc::read_server_message(&mut frontend).unwrap() {
+        blueice_ipc::ServerMessage::Error { message } => {
+            assert!(message.contains("declarative extension rule"));
+            assert!(message.contains(&url));
+        }
+        other => panic!("matching network rule must reject the navigation, got {other:?}"),
+    }
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        ErrorKind::WouldBlock,
+        "the extension rule must prevent core from opening an HTTP connection"
+    );
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(core.wait().unwrap().success());
+    assert!(!core_socket.exists());
+    assert!(!extension_socket.exists());
+    assert!(!frame_dir.exists());
+    let _ = std::fs::remove_dir_all(package_root);
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
 fn core_waits_for_its_spawned_extension_host_and_rejects_a_bearer_claim_peer() {
     use blueice_ipc::extension::{read_extension_reply, write_extension_request, ExtensionRequest};
     use std::collections::BTreeMap;

@@ -20,7 +20,7 @@
 use crate::InstalledExtension;
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
-    MAX_TEXT_WRITE_BYTES,
+    MAX_NETWORK_BLOCK_URL_BYTES, MAX_TEXT_WRITE_BYTES,
 };
 use std::os::unix::net::UnixStream;
 use wasmtime::{
@@ -210,6 +210,17 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
     linker
         .func_wrap(
             "blueice",
+            "register_network_block_url",
+            |mut caller: Caller<'_, RuntimeState>, url_ptr: i32, url_len: i32| {
+                register_network_block_url(&mut caller, url_ptr, url_len)
+            },
+        )
+        .map_err(|error| {
+            format!("could not define the register_network_block_url ABI import: {error}")
+        })?;
+    linker
+        .func_wrap(
+            "blueice",
             "runtime_event_kind",
             |caller: Caller<'_, RuntimeState>| runtime_event_kind(&caller),
         )
@@ -347,6 +358,30 @@ fn set_textarea_value(
         },
     ) {
         Ok(ExtensionReply::DomWriteAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+/// Asks core to install one version-2 `network:intercept` declarative rule.
+/// The guest receives no interception callback or ambient networking handle;
+/// it can only submit one bounded UTF-8 URL for the host's normal capability
+/// and gatekeeper review.
+fn register_network_block_url(
+    caller: &mut Caller<'_, RuntimeState>,
+    url_ptr: i32,
+    url_len: i32,
+) -> i32 {
+    let Ok((url_ptr, url_len)) = guest_range(url_ptr, url_len, MAX_NETWORK_BLOCK_URL_BYTES) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(url) = read_guest_bytes(caller, url_ptr, url_len) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(url) = String::from_utf8(url) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(caller, ExtensionRequest::RegisterNetworkBlockUrl { url }) {
+        Ok(ExtensionReply::NetworkInterceptAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
 }
@@ -504,6 +539,43 @@ mod tests {
             );
             blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::DomWriteAck)
                 .unwrap();
+        });
+
+        execute_installed_extension(&extension, guest).unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reactor_forwards_a_bounded_declarative_navigation_block_url_to_core() {
+        let url = "https://example.test/private";
+        let (root, extension) = installed_extension(
+            "network-block-rule",
+            r#"(module
+                (import "blueice" "register_network_block_url" (func $block (param i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "https://example.test/private")
+                (func (export "blueice_start")
+                    i32.const 0
+                    i32.const 28
+                    call $block
+                    i32.const 0
+                    i32.ne
+                    if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::RegisterNetworkBlockUrl {
+                    url: url.to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core,
+                &ExtensionReply::NetworkInterceptAck,
+            )
+            .unwrap();
         });
 
         execute_installed_extension(&extension, guest).unwrap();

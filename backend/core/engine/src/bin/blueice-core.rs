@@ -22,15 +22,19 @@ use blueice_engine::script::ScriptSession;
 use blueice_engine::session::ExtensionPageRequest;
 use blueice_engine::{session, HistorySnapshotMode, TabManager};
 use blueice_extension_host::{
-    handle_extension_connection_with_actions_and_authentication, load_installed_extension,
-    registry_for_installed_extension, ExtensionConnectionAuthentication, ExtensionRegistry,
+    handle_extension_connection_with_actions_and_authentication_and_network_rules,
+    load_installed_extension, registry_for_installed_extension, ExtensionConnectionAuthentication,
+    ExtensionRegistry,
 };
 use blueice_ipc::extension::ExtensionRuntimeEvent;
 use std::io::Read;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    mpsc, Arc, Mutex,
+};
 use std::thread;
 use std::time::Duration;
 
@@ -88,6 +92,11 @@ struct ExtensionService {
 /// connection forever if the frontend session has already ended, while still
 /// comfortably exceeding the session loop's 25ms poll interval.
 const EXTENSION_CORE_REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// An extension cannot select or reuse this identifier. It connects a private
+/// socket's short-lived declarative network rules to precisely that socket's
+/// cleanup path, independent of the package's public extension identity.
+static NEXT_EXTENSION_CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Core gives each host child a fresh 256-bit credential. This binary is Unix
 /// only (it already uses Unix-domain sockets), so the kernel CSPRNG is the
@@ -293,6 +302,36 @@ fn request_textarea_value(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
 }
 
+fn request_network_block_url(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    connection_id: u64,
+    url: String,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::RegisterNetworkBlockUrl {
+        connection_id,
+        url,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
+fn clear_network_block_urls(tx: &mpsc::Sender<ExtensionPageRequest>, connection_id: u64) {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    if tx
+        .send(ExtensionPageRequest::ClearNetworkBlockUrls {
+            connection_id,
+            reply: reply_tx,
+        })
+        .is_ok()
+    {
+        let _ = reply_rx.recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT);
+    }
+}
+
 /// Serves extension connections outside the session thread, but asks that
 /// thread for the one piece of real `Page` data Phase 9 currently supports.
 /// This keeps a `Page` single-thread-owned just like navigation and frontend
@@ -314,6 +353,7 @@ fn spawn_extension_listener(
             let runtime_start = service.runtime_start.clone();
             let runtime_events = service.runtime_events.clone();
             thread::spawn(move || {
+                let connection_id = NEXT_EXTENSION_CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
                 let authentication = match required_authentication.as_deref() {
                     Some(expected) => ExtensionConnectionAuthentication::required(expected),
                     None => ExtensionConnectionAuthentication::unauthenticated(),
@@ -330,20 +370,24 @@ fn spawn_extension_listener(
                     Some(receiver) => authentication.with_runtime_event_receiver(receiver),
                     None => authentication,
                 };
-                let _ = handle_extension_connection_with_actions_and_authentication(
-                    &registry,
-                    &gatekeeper_socket,
-                    &mut stream,
-                    authentication,
-                    |tab_id| request_tab_representation(&request_tx, tab_id),
-                    |target, value, write_target| {
-                        match target {
+                let read_tx = request_tx.clone();
+                let write_tx = request_tx.clone();
+                let rule_tx = request_tx.clone();
+                let _ =
+                    handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                        &registry,
+                        &gatekeeper_socket,
+                        &mut stream,
+                        authentication,
+                        move |tab_id| request_tab_representation(&read_tx, tab_id),
+                        move |target, value, write_target| {
+                            match target {
                         Some((tab_id, node_id)) => match write_target {
                             blueice_ipc::extension::DomWriteTarget::FormInput { input_type }
                                 if input_type.eq_ignore_ascii_case("checkbox") =>
                             {
                                 request_checkbox_checked(
-                                    &request_tx,
+                                    &write_tx,
                                     tab_id,
                                     node_id,
                                     value == "true",
@@ -352,23 +396,25 @@ fn spawn_extension_listener(
                             blueice_ipc::extension::DomWriteTarget::FormInput { input_type }
                                 if input_type.eq_ignore_ascii_case("textarea") =>
                             {
-                                request_textarea_value(&request_tx, tab_id, node_id, value)
+                                request_textarea_value(&write_tx, tab_id, node_id, value)
                             }
-                            _ => request_text_input_value(&request_tx, tab_id, node_id, value),
+                            _ => request_text_input_value(&write_tx, tab_id, node_id, value),
                         },
                         None => Err(
                             "core-backed legacy dom:write has no stable target node; negotiate dom:write version 2 or 3 and use an explicit control operation"
                                 .to_string(),
                         ),
                     }
-                    },
-                    || {
-                        Err(
+                        },
+                        || {
+                            Err(
                             "core-backed network:intercept needs a declarative rule format; the current extension wire protocol does not carry one"
                                 .to_string(),
                         )
-                    },
-                );
+                        },
+                        move |url| request_network_block_url(&rule_tx, connection_id, url),
+                    );
+                clear_network_block_urls(&request_tx, connection_id);
             });
         }
     });

@@ -89,10 +89,11 @@ pub trait ReadTimeout {
 /// without ever sharing `Page` across threads or taking a mutable lock around
 /// the render pipeline.
 ///
-/// Version 1 requests leave `tab_id` absent and therefore preserve the
-/// default-tab behavior. Versions 2 through 4 carry an explicit tab and a stable
-/// control node ID for their narrow write operations. The session validates
-/// both against its live `TabManager`/`Page` before changing anything.
+/// DOM version 1 requests leave `tab_id` absent and therefore preserve the
+/// default-tab behavior. DOM versions 2 through 4 carry an explicit tab and a
+/// stable control node ID for their narrow write operations. The separately
+/// versioned network rule carries no page target. The session validates each
+/// operation against its live `TabManager`/`Page` state before changing it.
 pub enum ExtensionPageRequest {
     ReadRepresentation {
         tab_id: Option<u64>,
@@ -115,6 +116,21 @@ pub enum ExtensionPageRequest {
         node_id: u64,
         value: String,
         reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Adds one core-validated, connection-scoped exact initial navigation
+    /// block rule. The opaque connection ID is allocated by `blueice-core`,
+    /// never supplied by an extension.
+    RegisterNetworkBlockUrl {
+        connection_id: u64,
+        url: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Clears the rule set when the associated extension socket disconnects.
+    /// The acknowledgement makes disconnect cleanup ordered with respect to
+    /// subsequent frontend navigation work on this session thread.
+    ClearNetworkBlockUrls {
+        connection_id: u64,
+        reply: mpsc::Sender<()>,
     },
 }
 
@@ -992,6 +1008,20 @@ fn handle_extension_page_request<S: Write>(
             }
             let _ = reply.send(result);
         }
+        ExtensionPageRequest::RegisterNetworkBlockUrl {
+            connection_id,
+            url,
+            reply,
+        } => {
+            let _ = reply.send(tabs.add_extension_navigation_block_rule(connection_id, url));
+        }
+        ExtensionPageRequest::ClearNetworkBlockUrls {
+            connection_id,
+            reply,
+        } => {
+            tabs.clear_extension_navigation_block_rules(connection_id);
+            let _ = reply.send(());
+        }
     }
     Ok(())
 }
@@ -1429,6 +1459,18 @@ fn begin_gated_navigation<S: Write>(
     }
     if let Err(e) = blueice_net::validate_url_scheme(&url) {
         return write_error(stream, reply_tab, request_id, e.to_string());
+    }
+    if tabs.is_extension_navigation_blocked(&url) {
+        // The rule is evaluated before fetching or gatekeeper review. It is
+        // intentionally limited to this initial URL; the current HTTP fetch
+        // boundary follows redirects internally and does not expose a safe
+        // per-hop interception surface yet.
+        return write_error(
+            stream,
+            reply_tab,
+            request_id,
+            format!("navigation blocked by a declarative extension rule: {url}"),
+        );
     }
 
     let this_seq = supersede_pending_navigation(pending_nav_seq, tab_id);
@@ -1973,6 +2015,66 @@ mod tests {
             !snapshot.nodes.is_empty(),
             "the core-backed snapshot must be from the navigated credits page, not the empty initial tab"
         );
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        handle.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(cleanup_dir);
+    }
+
+    #[test]
+    fn extension_network_rule_blocks_a_matching_navigation_before_gatekeeper_or_fetch() {
+        let (mut client, mut server) = client_pair();
+        let (extension_tx, extension_rx) = mpsc::channel();
+        let dir = temp_frame_dir("extension-navigation-block-rule");
+        let cleanup_dir = dir.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        // This path has no listener. A matching navigation must still produce
+        // the synchronous declarative-rule error rather than attempting the
+        // ordinary gatekeeper/fetch background path.
+        let gatekeeper = PathBuf::from("/not-reached-for-extension-navigation-rule.sock");
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0;
+            run_session_with_extension_requests(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper,
+                &extension_rx,
+            )
+        });
+
+        blueice_ipc::client_handshake(&mut client).unwrap();
+        let (rule_reply_tx, rule_reply_rx) = mpsc::channel();
+        extension_tx
+            .send(ExtensionPageRequest::RegisterNetworkBlockUrl {
+                connection_id: 77,
+                url: "https://example.test/private#fragment".to_string(),
+                reply: rule_reply_tx,
+            })
+            .unwrap();
+        rule_reply_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("the live session must answer the extension rule request")
+            .expect("a valid HTTPS rule must be installed");
+
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "https://example.test/private".to_string(),
+            },
+        )
+        .unwrap();
+        match blueice_ipc::read_server_message(&mut client).unwrap() {
+            ServerMessage::Error { message } => {
+                assert!(message.contains("declarative extension rule"));
+                assert!(message.contains("https://example.test/private"));
+            }
+            other => {
+                panic!("matching extension rule must stop navigation before fetch, got {other:?}")
+            }
+        }
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         handle.join().unwrap().unwrap();
