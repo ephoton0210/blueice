@@ -92,6 +92,14 @@ fn main() -> ExitCode {
         eprintln!("bluetsc: build requires --out-dir <directory> or config outDir");
         return ExitCode::FAILURE;
     }
+    if args.command == Command::Build
+        && invocation.options.runtime_policy == RuntimePolicy::StrictRuntime
+    {
+        eprintln!(
+            "bluetsc: strict-runtime build requires the versioned runtime boundary helper, which standalone BlueTSC does not install"
+        );
+        return ExitCode::FAILURE;
+    }
     let loader = FileLoader {
         root: invocation.root.clone(),
         imports: invocation.imports.clone(),

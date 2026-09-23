@@ -757,6 +757,15 @@ or second module resolver to bypass them.
   build, record its identity in output metadata, and reject targets that would
   erase a required validation.
 
+  Safety foundation delivered: standalone `bluetsc build` now fails closed for
+  `strict-runtime` rather than publishing an artifact/manifest that merely
+  names a stronger policy without its versioned runtime boundary helper.
+  `bluetsc check` may still validate the static policy, but cannot claim an
+  emitted enforcement boundary. Direct-page contracts remain a separately
+  core-owned route. The helper, its output identity, and equivalent direct-page
+  / emitted-ESM malformed-boundary behavior are still required before this item
+  can close.
+
   Acceptance: direct-page and emitted-ESM executions reject the same malformed
   fixture at the same declared boundary; an artifact built with a weaker policy
   cannot be presented as strict-runtime output.
