@@ -36,7 +36,7 @@ use debugger_support::{
 pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerProgram,
-    JavaScriptPageDebuggerSafePoint,
+    JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
 };
 
 /// Source-free debugger location operations owned by an explicitly selected
@@ -70,12 +70,33 @@ pub trait PageJavaScriptDebuggerLocations {
         0
     }
 
+    /// Whether this selected route can list source-free static BlueTS metadata
+    /// handles. A capability report and the per-stream core authorization must
+    /// both grant the public operation before this inventory is called.
+    fn debugger_static_metadata_inventory_available(&self) -> bool {
+        false
+    }
+
     /// Lists only opaque public-facing program IDs for one live realm.
     fn debugger_programs(
         &mut self,
         tab_id: TabId,
         document_generation: u64,
     ) -> Result<Vec<JavaScriptPageDebuggerProgram>, JavaScriptPageDebuggerError>;
+
+    /// Lists only core-minted opaque metadata identities for one exact public
+    /// program generation. It exposes no static metadata payload; source,
+    /// module identity, symbol/type/span/contract, bytecode, VM object, and
+    /// runtime value all remain unavailable.
+    fn debugger_static_metadata(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadata>, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
 
     /// Lists exact compiler-recorded instruction boundaries for one program.
     fn debugger_safe_points(

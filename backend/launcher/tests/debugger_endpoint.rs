@@ -13,8 +13,8 @@
 //! silently retargeted to the replacement core generation.
 
 use blueice_ipc::debugger::{
-    read_debugger_reply, write_debugger_request, DebuggerReply, DebuggerRequest,
-    DEBUGGER_PROTOCOL_VERSION,
+    read_debugger_reply, write_debugger_request, DebuggerMetadataCapabilityManifest, DebuggerReply,
+    DebuggerRequest, DEBUGGER_PROTOCOL_VERSION,
 };
 use blueice_launcher::control::{
     read_control_reply, write_control_request, ControlReply, ControlRequest,
@@ -160,6 +160,7 @@ fn open_debugger_session(
         &mut stream,
         &DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         },
     )
     .unwrap();
@@ -167,6 +168,7 @@ fn open_debugger_session(
         read_debugger_reply(&mut stream).unwrap(),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         },
         "the fixed core profile must negotiate the native debugger protocol"
     );

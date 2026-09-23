@@ -64,6 +64,10 @@ struct Args {
     /// supplies each core generation a fresh private listener. Debugger
     /// protocol authorization remains in `blueice-core`.
     debugger_socket: Option<PathBuf>,
+    /// Owner opt-in for the debugger's source-free opaque static-metadata
+    /// inventory. It requires the separate debugger endpoint and does not
+    /// grant metadata reads or source/runtime inspection.
+    debugger_static_metadata_inventory: bool,
     /// Test/debug-only: use a [`memory_pressure::FixedMemorySource`]
     /// reporting zero availability instead of real host memory, so the
     /// memory-pressure-response path can be exercised deterministically
@@ -91,6 +95,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut out_of_process_bluejs = false;
     let mut compiler_mcp_socket = None;
     let mut debugger_socket = None;
+    let mut debugger_static_metadata_inventory = false;
     let mut simulate_low_memory = false;
     let mut memory_poll_interval = memory_pressure::DEFAULT_POLL_INTERVAL;
 
@@ -115,6 +120,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--out-of-process-bluejs" => out_of_process_bluejs = true,
             "--compiler-mcp-socket" => compiler_mcp_socket = Some(PathBuf::from(value()?)),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
+            "--debugger-static-metadata-inventory" => debugger_static_metadata_inventory = true,
             "--simulate-low-memory" => simulate_low_memory = true,
             "--memory-poll-interval-ms" => {
                 let ms: u64 = value()?
@@ -128,6 +134,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
 
     let rendezvous_socket = rendezvous_socket.unwrap_or_else(default_rendezvous_socket_path);
     let control_socket = control_socket.unwrap_or_else(default_control_socket_path);
+    if debugger_static_metadata_inventory && debugger_socket.is_none() {
+        return Err("--debugger-static-metadata-inventory requires --debugger-socket".to_string());
+    }
     Ok(Args {
         rendezvous_socket,
         control_socket,
@@ -138,6 +147,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         out_of_process_bluejs,
         compiler_mcp_socket,
         debugger_socket,
+        debugger_static_metadata_inventory,
         simulate_low_memory,
         memory_poll_interval,
     })
@@ -169,6 +179,9 @@ fn main() -> ExitCode {
     }
     if let Some(debugger_socket) = args.debugger_socket.clone() {
         core_options = core_options.with_debugger_endpoint(debugger_socket);
+    }
+    if args.debugger_static_metadata_inventory {
+        core_options = core_options.with_debugger_static_metadata_inventory();
     }
     let core =
         match SpawnedCore::spawn_with_options(args.width, args.height, &frame_dir, core_options) {
@@ -295,6 +308,7 @@ mod tests {
         assert!(!parsed.out_of_process_bluejs);
         assert_eq!(parsed.compiler_mcp_socket, None);
         assert_eq!(parsed.debugger_socket, None);
+        assert!(!parsed.debugger_static_metadata_inventory);
         assert!(!parsed.simulate_low_memory);
         assert_eq!(
             parsed.memory_poll_interval,
@@ -322,6 +336,7 @@ mod tests {
             "/tmp/compiler-mcp.sock",
             "--debugger-socket",
             "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
             "--simulate-low-memory",
             "--memory-poll-interval-ms",
             "50",
@@ -339,6 +354,7 @@ mod tests {
                 out_of_process_bluejs: true,
                 compiler_mcp_socket: Some(PathBuf::from("/tmp/compiler-mcp.sock")),
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
+                debugger_static_metadata_inventory: true,
                 simulate_low_memory: true,
                 memory_poll_interval: Duration::from_millis(50),
             }

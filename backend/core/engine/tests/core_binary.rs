@@ -669,6 +669,8 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         &mut debugger,
         &blueice_ipc::debugger::DebuggerRequest::Hello {
             protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         },
     )
     .unwrap();
@@ -676,6 +678,8 @@ fn real_subprocess_routes_exact_debugger_locations_through_the_live_core_session
         blueice_ipc::debugger::read_debugger_reply(&mut debugger).unwrap(),
         blueice_ipc::debugger::DebuggerReply::HelloAck {
             protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         }
     );
     blueice_ipc::debugger::write_debugger_request(
@@ -1090,11 +1094,15 @@ fn real_subprocess_pauses_and_resumes_a_non_entry_root_safe_point_without_debugg
             &mut debugger,
             &blueice_ipc::debugger::DebuggerRequest::Hello {
                 protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities:
+                    blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
             },
             PAGE_SECRET,
         ),
         blueice_ipc::debugger::DebuggerReply::HelloAck {
             protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         }
     );
     let realm = match debugger_request(
@@ -2134,11 +2142,15 @@ fn real_subprocess_routes_the_bounded_oop_root_safe_point_lifecycle() {
             &mut debugger,
             &blueice_ipc::debugger::DebuggerRequest::Hello {
                 protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities:
+                    blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
             },
             PAGE_SECRET,
         ),
         blueice_ipc::debugger::DebuggerReply::HelloAck {
             protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty(),
         }
     );
     let realm = match debugger_request(

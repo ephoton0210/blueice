@@ -371,7 +371,7 @@ or second module resolver to bypass them.
   page realm and remain separate from script/DOM and network IPC.
 
   Foundation delivered: `blueice_ipc::debugger` now owns an independently
-  framed v5 handshake, capability, bounded program-location vocabulary, and
+  framed v6 handshake, capability, bounded program-location vocabulary, and
   source-free root-frame execution-control vocabulary.
   Its page-realm, program, and safe-point identities include
   browser-context/tab/realm and program generations, reject zero placeholder
@@ -381,7 +381,7 @@ or second module resolver to bypass them.
   return only core-minted opaque program IDs and bounded `(code-unit, offset)`
   tuples, never canonical source IDs, source text, bytecode bytes, VM objects,
   or completion values. These additive request/reply and capability shapes
-  advance the independent debugger protocol to v5, so a v1/v2/v3/v4 peer fails its
+  advance the independent debugger protocol to v6, so a v1/v2/v3/v4/v5 peer fails its
   `Hello` negotiation rather than attempting to deserialize an incompatible
   capability report. `blueice_engine::debugger` routes post-handshake
   requests from a socket worker to the one session thread that owns live tabs;
@@ -699,11 +699,17 @@ or second module resolver to bypass them.
   handle is in a namespace distinct from the child program ID and carries no
   source/module/name/type/span/contract/count/value payload; JavaScript,
   missing attachments, stale generations, replacement, and close produce no
-  usable handle. No static record itself crosses page-host IPC, and no public
-  debugger protocol yet reuses that child handle. The page host still must
-  route cache/hibernation events through the same invariant and add source
-  policy, diagnostics/contracts, negotiated debugger exposure, stack
-  locations, and runtime-value inspection before this item can close.
+  usable handle. No static record itself crosses page-host IPC. Debugger v6
+  now has a separately negotiated `OpaqueInventory` manifest capability: core
+  policy defaults to an empty grant, an owner must opt in with
+  `--debugger-static-metadata-inventory`, the socket peer must request it in
+  `Hello`, and the exact live child realm must advertise it before core remints
+  at most one public opaque handle for that program. The public handle is
+  generation-bound and numerically disjoint from both child and public-program
+  IDs; it has no dereference/read operation. The page host still must route
+  cache/hibernation events through the same invariant and add source policy,
+  diagnostics/contracts, stack locations, and runtime-value inspection before
+  this item can close.
 
   Acceptance: TS breakpoints, stack locations, scopes, symbol navigation, and
   static type display point to original source; navigation, reload, cache

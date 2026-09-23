@@ -532,9 +532,13 @@ impl BlueJsChildHost {
     }
 
     /// Retains an explicitly core-selected document in child-owned document
-    /// order. Only already-authorized classic programs are admitted before
-    /// the first advance, because core needs their opaque identity and exact
-    /// safe-point inventory before it can arm the single root continuation.
+    /// order. Only already-authorized JavaScript classic programs are admitted
+    /// before the first advance, because core needs their opaque identity and
+    /// exact safe-point inventory before it can arm the single root
+    /// continuation. A leading direct BlueTS declaration has no installed
+    /// root-continuation pause surface, so it executes immediately while the
+    /// document has no earlier deferred work; that preserves document order
+    /// and lets its separately gated static-metadata inventory be discovered.
     fn defer_debugger_execution_document(
         &mut self,
         tab_id: u64,
@@ -543,6 +547,7 @@ impl BlueJsChildHost {
         prepared: Vec<PreparedScript>,
     ) -> PageHostReply {
         let mut reports = Vec::new();
+        let mut may_execute_bluets_immediately = true;
         for prepared in prepared {
             match prepared {
                 PreparedScript::Rejected {
@@ -601,6 +606,7 @@ impl BlueJsChildHost {
                     let Some(document) = self.documents.get_mut(&tab_id) else {
                         return self.fail_debugger_execution_document(tab_id);
                     };
+                    may_execute_bluets_immediately = false;
                     document
                         .debugger_execution_states
                         .insert(program, ChildDebuggerExecutionStatus::Pending);
@@ -621,38 +627,81 @@ impl BlueJsChildHost {
                     ordinal,
                     graph,
                     programs,
-                } => self.enqueue_debugger_execution(
-                    tab_id,
-                    PendingDebuggerExecution {
-                        ordinal,
-                        language: PageHostScriptLanguage::JavaScript,
-                        kind: PageHostScriptKind::Module,
-                        program: None,
-                        execution: DeferredChildExecution::JavaScriptModule { graph, programs },
-                    },
-                ),
-                PreparedScript::BlueTsClassic { ordinal, script } => self
-                    .enqueue_debugger_execution(
+                } => {
+                    may_execute_bluets_immediately = false;
+                    self.enqueue_debugger_execution(
                         tab_id,
                         PendingDebuggerExecution {
                             ordinal,
-                            language: PageHostScriptLanguage::BlueTs,
-                            kind: PageHostScriptKind::Classic,
+                            language: PageHostScriptLanguage::JavaScript,
+                            kind: PageHostScriptKind::Module,
                             program: None,
-                            execution: DeferredChildExecution::BlueTsClassic { script },
+                            execution: DeferredChildExecution::JavaScriptModule { graph, programs },
                         },
-                    ),
-                PreparedScript::BlueTsModule { ordinal, graph } => self.enqueue_debugger_execution(
-                    tab_id,
-                    PendingDebuggerExecution {
-                        ordinal,
-                        language: PageHostScriptLanguage::BlueTs,
-                        kind: PageHostScriptKind::Module,
-                        program: None,
-                        execution: DeferredChildExecution::BlueTsModule { graph },
-                    },
-                ),
+                    );
+                }
+                PreparedScript::BlueTsClassic { ordinal, script } => {
+                    if may_execute_bluets_immediately {
+                        reports.push(script_report(
+                            tab_id,
+                            document_generation,
+                            ordinal,
+                            PageHostScriptLanguage::BlueTs,
+                            PageHostScriptKind::Classic,
+                            execute_bluets_classic(
+                                &mut self.runtime,
+                                &mut self.debug_registry,
+                                tab_id,
+                                origin,
+                                &script,
+                            ),
+                        ));
+                    } else {
+                        self.enqueue_debugger_execution(
+                            tab_id,
+                            PendingDebuggerExecution {
+                                ordinal,
+                                language: PageHostScriptLanguage::BlueTs,
+                                kind: PageHostScriptKind::Classic,
+                                program: None,
+                                execution: DeferredChildExecution::BlueTsClassic { script },
+                            },
+                        );
+                    }
+                }
+                PreparedScript::BlueTsModule { ordinal, graph } => {
+                    if may_execute_bluets_immediately {
+                        reports.push(script_report(
+                            tab_id,
+                            document_generation,
+                            ordinal,
+                            PageHostScriptLanguage::BlueTs,
+                            PageHostScriptKind::Module,
+                            execute_bluets_module_graph(
+                                &mut self.runtime,
+                                &mut self.debug_registry,
+                                tab_id,
+                                origin,
+                                &graph,
+                            ),
+                        ));
+                    } else {
+                        self.enqueue_debugger_execution(
+                            tab_id,
+                            PendingDebuggerExecution {
+                                ordinal,
+                                language: PageHostScriptLanguage::BlueTs,
+                                kind: PageHostScriptKind::Module,
+                                program: None,
+                                execution: DeferredChildExecution::BlueTsModule { graph },
+                            },
+                        );
+                    }
+                }
             }
+        }
+        if self.refresh_debugger_programs(tab_id).is_err() {
+            return self.fail_debugger_execution_document(tab_id);
         }
         PageHostReply::Synchronized {
             tab_id,
@@ -3235,7 +3284,7 @@ mod tests {
     }
 
     #[test]
-    fn deferred_bluets_attaches_static_metadata_only_when_the_document_executes() {
+    fn leading_bluets_attaches_static_metadata_without_an_unavailable_pause_surface() {
         let mut host = BlueJsChildHost::default();
         assert!(matches!(
             host.handle_request(PageHostRequest::SynchronizeDocument {
@@ -3244,16 +3293,7 @@ mod tests {
                     vec![blue_ts_classic(0, "const deferredAnswer: number = 42;")],
                 ),
             }),
-            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
-        ));
-        assert!(host.debug_registry.is_empty());
-
-        assert!(matches!(
-            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
-                tab_id: 7,
-                document_generation: 1,
-            }),
-            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+            PageHostReply::Synchronized { reports, .. }
                 if reports == vec![script_report(
                     7,
                     1,
@@ -3264,6 +3304,14 @@ mod tests {
                 )]
         ));
         assert_eq!(host.debug_registry.len(), 1);
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. }
+                if reports.is_empty()
+        ));
         assert!(matches!(
             host.handle_request(PageHostRequest::CloseRealm {
                 tab_id: 7,

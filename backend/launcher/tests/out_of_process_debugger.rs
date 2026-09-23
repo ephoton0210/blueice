@@ -14,8 +14,9 @@
 //! its document.
 
 use blueice_ipc::debugger::{
-    read_debugger_reply, write_debugger_request, DebuggerErrorCode, DebuggerPageRealm,
-    DebuggerProgram, DebuggerReply, DebuggerRequest, DebuggerSafePoint, DEBUGGER_PROTOCOL_VERSION,
+    read_debugger_reply, write_debugger_request, DebuggerErrorCode,
+    DebuggerMetadataCapabilityManifest, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
+    DebuggerRequest, DebuggerSafePoint, DEBUGGER_PROTOCOL_VERSION,
 };
 use blueice_ipc::{read_server_message, write_client_message, ClientMessage, ServerMessage};
 use std::io::{Read, Write};
@@ -73,6 +74,13 @@ struct LauncherProcess {
 
 impl LauncherProcess {
     fn spawn(gatekeeper_socket: &Path) -> Self {
+        Self::spawn_with_static_metadata_inventory(gatekeeper_socket, false)
+    }
+
+    fn spawn_with_static_metadata_inventory(
+        gatekeeper_socket: &Path,
+        static_metadata_inventory: bool,
+    ) -> Self {
         let rendezvous_socket = unique_path("rendezvous");
         let control_socket = unique_path("control");
         let debugger_socket = unique_path("debugger");
@@ -82,26 +90,28 @@ impl LauncherProcess {
         let _ = std::fs::remove_file(&debugger_socket);
         let _ = std::fs::remove_dir_all(&frame_dir);
 
-        let child = Command::new(env!("CARGO_BIN_EXE_blueice-launcher"))
-            .args([
-                "--socket",
-                rendezvous_socket.to_str().unwrap(),
-                "--control-socket",
-                control_socket.to_str().unwrap(),
-                "--debugger-socket",
-                debugger_socket.to_str().unwrap(),
-                "--gatekeeper-socket",
-                gatekeeper_socket.to_str().unwrap(),
-                "--out-of-process-bluejs",
-                "--width",
-                "320",
-                "--height",
-                "200",
-                "--frame-dir",
-                frame_dir.to_str().unwrap(),
-            ])
-            .spawn()
-            .expect("blueice-launcher must spawn");
+        let mut command = Command::new(env!("CARGO_BIN_EXE_blueice-launcher"));
+        command.args([
+            "--socket",
+            rendezvous_socket.to_str().unwrap(),
+            "--control-socket",
+            control_socket.to_str().unwrap(),
+            "--debugger-socket",
+            debugger_socket.to_str().unwrap(),
+            "--gatekeeper-socket",
+            gatekeeper_socket.to_str().unwrap(),
+            "--out-of-process-bluejs",
+            "--width",
+            "320",
+            "--height",
+            "200",
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ]);
+        if static_metadata_inventory {
+            command.arg("--debugger-static-metadata-inventory");
+        }
+        let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
             child,
             rendezvous_socket,
@@ -266,6 +276,38 @@ fn serve_two_classic_documents(listener: TcpListener) -> thread::JoinHandle<()> 
     })
 }
 
+fn serve_two_bluets_documents(listener: TcpListener) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        for (ordinal, source) in [
+            ("first", "const privateBlueTsMetadata: number = 42;"),
+            ("second", "const successorBlueTsMetadata: number = 43;"),
+        ] {
+            let (mut stream, _) = listener
+                .accept()
+                .expect("fixture must receive local HTTP navigation");
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = format!(
+                concat!(
+                    "<main>launcher-supervised-metadata-{ordinal}</main>",
+                    "<script type=\"application/x-blueice-typescript\">{source}</script>"
+                ),
+                ordinal = ordinal,
+                source = source,
+            );
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .expect("fixture must reply with a local typed document");
+        }
+    })
+}
+
 #[test]
 fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http_reload() {
     let gatekeeper_socket = clearing_gatekeeper();
@@ -285,10 +327,12 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
         }
     );
     let first_realm = one_realm(debugger_request(
@@ -470,5 +514,108 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
         !launcher.frame_dir.exists(),
         "launcher shutdown must remove its generation frame state"
     );
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_owner_policy_remints_one_opaque_bluets_handle_after_client_negotiation() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = serve_two_bluets_documents(listener);
+    let mut launcher =
+        LauncherProcess::spawn_with_static_metadata_inventory(&gatekeeper_socket, true);
+
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
+    navigate(&mut browser, &url);
+
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket)
+        .expect("launcher public debugger endpoint must accept a peer");
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities:
+                    DebuggerMetadataCapabilityManifest::opaque_inventory(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_inventory(),
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let DebuggerReply::Capabilities(capabilities) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeCapabilities { realm },
+    ) else {
+        panic!("typed fixture must expose debugger capabilities")
+    };
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataInventory
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    let DebuggerReply::Programs(programs) =
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm })
+    else {
+        panic!("typed fixture must expose its opaque program inventory")
+    };
+    assert!(
+        !programs.is_empty(),
+        "typed fixture must retain at least one opaque program identity"
+    );
+
+    let mut typed_program = None;
+    for program in programs {
+        let reply = debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadata { program },
+        );
+        assert!(
+            !format!("{reply:?}").contains("privateBlueTsMetadata")
+                && !format!("{reply:?}").contains("number"),
+            "public reply must contain no BlueTS metadata payload"
+        );
+        match reply {
+            DebuggerReply::StaticMetadata(handles) if handles.is_empty() => {}
+            DebuggerReply::StaticMetadata(handles) => {
+                assert_eq!(
+                    handles.len(),
+                    1,
+                    "only the direct BlueTS program is eligible"
+                );
+                let handle = handles[0];
+                assert_eq!(handle.program, program);
+                assert!(handle.is_well_formed());
+                typed_program = Some(program);
+            }
+            other => panic!("expected a bounded opaque metadata inventory, got {other:?}"),
+        }
+    }
+    let typed_program = typed_program.expect("fixture must include one direct BlueTS program");
+
+    navigate(&mut browser, &url);
+    fixture
+        .join()
+        .expect("local HTTP fixture must serve both documents");
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ListStaticMetadata {
+                program: typed_program,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+
+    launcher.shutdown();
     let _ = std::fs::remove_file(gatekeeper_socket);
 }

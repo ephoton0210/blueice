@@ -101,6 +101,10 @@ mod unix {
         /// protocol versioning and every target-bound operation remain
         /// enforced by the trusted core.
         debugger_socket: Option<PathBuf>,
+        /// Owner-only policy for the sole v6 static-metadata surface. It
+        /// permits only source-free opaque-handle inventory after a client
+        /// requests it in `Hello`; it never grants metadata reads.
+        debugger_static_metadata_inventory: bool,
     }
 
     impl CoreLaunchOptions {
@@ -181,6 +185,15 @@ mod unix {
         /// never retargeted across a cutover.
         pub fn with_debugger_endpoint(mut self, path: PathBuf) -> Self {
             self.debugger_socket = Some(path);
+            self
+        }
+
+        /// Enables the bounded opaque static-metadata inventory for this
+        /// launch profile. A debugger endpoint must also be selected before
+        /// this policy can take effect. It never enables source, type, symbol,
+        /// span, contract, bytecode, or runtime-value access.
+        pub fn with_debugger_static_metadata_inventory(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
             self
         }
     }
@@ -1524,6 +1537,9 @@ mod unix {
             }
             if let Some(debugger_socket) = &debugger_private_socket_path {
                 command.arg("--debugger-socket").arg(debugger_socket);
+                if options.debugger_static_metadata_inventory {
+                    command.arg("--debugger-static-metadata-inventory");
+                }
             }
             let mut child = command.spawn()?;
 

@@ -65,6 +65,10 @@ struct Args {
     /// separate from both frontend and DOM-script IPC; the session thread
     /// validates each requested tab/document generation before replying.
     debugger_socket: Option<PathBuf>,
+    /// Core-owner opt-in for the sole v6 debugger metadata surface: a bounded
+    /// opaque inventory handle. It never exposes BlueTS metadata itself and
+    /// still requires a client request plus a live child-side capability.
+    debugger_static_metadata_inventory: bool,
     /// Optional listener for queries over projects a trusted core owner
     /// registered during startup. Its protocol does not accept registration,
     /// source, path, resolver, compiler-option, build, or write requests.
@@ -111,6 +115,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut gatekeeper_socket = None;
     let mut script_socket = None;
     let mut debugger_socket = None;
+    let mut debugger_static_metadata_inventory = false;
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
     let mut inline_bluets_profile = None;
@@ -138,6 +143,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
+            "--debugger-static-metadata-inventory" => debugger_static_metadata_inventory = true,
             "--compiler-socket" => compiler_socket = Some(PathBuf::from(value()?)),
             "--compiler-project-profile" => compiler_project_profile = Some(value()?),
             "--inline-bluets-profile" => inline_bluets_profile = Some(value()?),
@@ -191,6 +197,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if debugger_static_metadata_inventory && debugger_socket.is_none() {
+        return Err("--debugger-static-metadata-inventory requires --debugger-socket".to_string());
+    }
     if compiler_socket.is_some() != compiler_project_profile.is_some() {
         return Err(
             "--compiler-socket and --compiler-project-profile must be provided together"
@@ -205,6 +214,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         gatekeeper_socket,
         script_socket,
         debugger_socket,
+        debugger_static_metadata_inventory,
         compiler_socket,
         compiler_project_profile,
         inline_bluets_profile,
@@ -320,19 +330,16 @@ fn serve_script_listener(listener: UnixListener, sender: script::ScriptRequestSe
 fn serve_debugger_connection(
     mut stream: UnixStream,
     sender: blueice_engine::debugger::DebuggerRequestSender,
+    allowed_metadata_capabilities: &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest,
 ) -> io::Result<()> {
     let first = blueice_ipc::debugger::read_debugger_request(&mut stream)?;
-    let accepted = matches!(
-        first,
-        blueice_ipc::debugger::DebuggerRequest::Hello {
-            protocol_version: blueice_ipc::debugger::DEBUGGER_PROTOCOL_VERSION,
-        }
-    );
-    let reply = blueice_ipc::debugger::negotiate(&first);
+    let reply = blueice_ipc::debugger::negotiate(&first, allowed_metadata_capabilities);
     blueice_ipc::debugger::write_debugger_reply(&mut stream, &reply)?;
-    if !accepted {
+    let Some(metadata_session) =
+        blueice_ipc::debugger::metadata_session_authorization(&first, &reply)
+    else {
         return Ok(());
-    }
+    };
 
     loop {
         let request = match blueice_ipc::debugger::read_debugger_request(&mut stream) {
@@ -340,7 +347,8 @@ fn serve_debugger_connection(
             Err(error) if matches!(error.kind(), io::ErrorKind::UnexpectedEof) => return Ok(()),
             Err(error) => return Err(error),
         };
-        let reply = sender.request(request)?;
+        let reply = sender
+            .request_with_metadata_session_authorization(request, metadata_session.clone())?;
         blueice_ipc::debugger::write_debugger_reply(&mut stream, &reply)?;
     }
 }
@@ -351,12 +359,13 @@ fn serve_debugger_connection(
 fn serve_debugger_listener(
     listener: UnixListener,
     sender: blueice_engine::debugger::DebuggerRequestSender,
+    allowed_metadata_capabilities: blueice_ipc::debugger::DebuggerMetadataCapabilityManifest,
 ) {
     for stream in listener.incoming() {
         let Ok(stream) = stream else {
             break;
         };
-        let _ = serve_debugger_connection(stream, sender.clone());
+        let _ = serve_debugger_connection(stream, sender.clone(), &allowed_metadata_capabilities);
     }
 }
 
@@ -508,6 +517,11 @@ fn main() -> ExitCode {
         .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
     let script_socket = args.script_socket.clone();
     let debugger_socket = args.debugger_socket.clone();
+    let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_inventory {
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_inventory()
+    } else {
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::empty()
+    };
     let compiler_socket = args.compiler_socket.clone();
     let inline_bluets_profile = args.inline_bluets_profile.clone();
     let inline_bluejs = args.inline_bluejs;
@@ -622,7 +636,13 @@ fn main() -> ExitCode {
             thread::spawn(move || serve_script_listener(listener, script_sender));
         }
         if let Some(listener) = debugger_listener {
-            thread::spawn(move || serve_debugger_listener(listener, debugger_sender));
+            thread::spawn(move || {
+                serve_debugger_listener(
+                    listener,
+                    debugger_sender,
+                    debugger_allowed_metadata_capabilities,
+                )
+            });
         }
         if let Some(listener) = compiler_listener {
             thread::spawn(move || serve_compiler_listener(listener, compiler_sender));
@@ -816,6 +836,7 @@ mod tests {
         assert_eq!(parsed.gatekeeper_socket, None);
         assert_eq!(parsed.script_socket, None);
         assert_eq!(parsed.debugger_socket, None);
+        assert!(!parsed.debugger_static_metadata_inventory);
         assert_eq!(parsed.compiler_socket, None);
         assert_eq!(parsed.compiler_project_profile, None);
         assert_eq!(parsed.inline_bluets_profile, None);
@@ -860,6 +881,7 @@ mod tests {
                 gatekeeper_socket: Some(PathBuf::from("/tmp/gk.sock")),
                 script_socket: Some(PathBuf::from("/tmp/script.sock")),
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
+                debugger_static_metadata_inventory: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
@@ -887,6 +909,29 @@ mod tests {
                 "core-script-document-text-v1",
             ]),
             Err("--inline-bluejs cannot be combined with --inline-bluets-profile".to_string())
+        );
+    }
+
+    #[test]
+    fn static_metadata_inventory_is_an_explicit_debugger_owner_opt_in() {
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-static-metadata-inventory",
+            ]),
+            Err("--debugger-static-metadata-inventory requires --debugger-socket".to_string())
+        );
+        assert!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+            ])
+            .unwrap()
+            .debugger_static_metadata_inventory
         );
     }
 

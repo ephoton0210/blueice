@@ -21,6 +21,16 @@ pub struct JavaScriptPageDebuggerProgram {
     pub program_generation: u64,
 }
 
+/// One source-free static-metadata inventory identity for an exact live
+/// program. The core remints it from a child-private handle, so neither the
+/// child handle nor any compiler source/type/symbol/span/contract data crosses
+/// the page-executor boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadata {
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+}
+
 /// One compiler-verified instruction boundary represented without source or
 /// bytecode contents for the native debugger path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

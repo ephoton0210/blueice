@@ -19,8 +19,9 @@ use crate::{
 };
 use blueice_ipc::debugger::{
     DebuggerCapabilities, DebuggerCapability, DebuggerCapabilityReport, DebuggerCapabilityState,
-    DebuggerErrorCode, DebuggerExecutionState, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
-    DebuggerRequest, DebuggerSafePoint, DEBUGGER_PROTOCOL_VERSION,
+    DebuggerErrorCode, DebuggerExecutionState, DebuggerMetadataCapability,
+    DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
+    DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataHandle, DEBUGGER_PROTOCOL_VERSION,
 };
 use std::io;
 use std::sync::mpsc;
@@ -53,6 +54,10 @@ const DEFAULT_MAX_SAFE_POINTS_PER_PROGRAM: usize = 4_096;
 /// executor is present to report its core-selected limit.
 const DEFAULT_MAX_BREAKPOINTS_PER_REALM: usize = 256;
 
+/// A direct BlueTS program has one compiler debug record at most. Keep the
+/// public socket reply bounded independently of the child transport.
+const MAX_STATIC_METADATA_HANDLES_PER_PROGRAM: usize = 1;
+
 /// Sender owned by a debugger-socket worker. It forwards one decoded request
 /// to the session thread and waits for that thread's target-checked reply.
 #[derive(Clone)]
@@ -63,6 +68,7 @@ pub struct DebuggerRequestReceiver(mpsc::Receiver<DebuggerRequestEnvelope>);
 
 struct DebuggerRequestEnvelope {
     request: DebuggerRequest,
+    metadata_session: Option<DebuggerMetadataSessionAuthorization>,
     reply: mpsc::SyncSender<DebuggerReply>,
 }
 
@@ -85,6 +91,30 @@ impl DebuggerRequestSender {
         self.0
             .send(DebuggerRequestEnvelope {
                 request,
+                metadata_session: None,
+                reply: reply_sender,
+            })
+            .map_err(|_| {
+                io::Error::new(io::ErrorKind::BrokenPipe, "core debugger session ended")
+            })?;
+        reply_receiver.recv().map_err(|_| {
+            io::Error::new(io::ErrorKind::BrokenPipe, "core debugger reply unavailable")
+        })
+    }
+
+    /// Routes a request carrying only the core-local authorization recreated
+    /// from this socket stream's successful `Hello` exchange. Callers cannot
+    /// serialize or forge this value; a missing value is an explicit deny.
+    pub fn request_with_metadata_session_authorization(
+        &self,
+        request: DebuggerRequest,
+        metadata_session: DebuggerMetadataSessionAuthorization,
+    ) -> io::Result<DebuggerReply> {
+        let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+        self.0
+            .send(DebuggerRequestEnvelope {
+                request,
+                metadata_session: Some(metadata_session),
                 reply: reply_sender,
             })
             .map_err(|_| {
@@ -119,9 +149,10 @@ impl DebuggerRequestReceiver {
                     | DebuggerRequest::ArmRootSafePointBreakpoint { .. }
                     | DebuggerRequest::ResumeExecution { .. }
             );
-            let reply = handle_debugger_request_with_page_javascript_executor(
+            let reply = handle_debugger_request_with_page_javascript_executor_and_metadata_session(
                 tabs,
                 javascript_executor.as_deref_mut(),
+                envelope.metadata_session.as_ref(),
                 envelope.request,
             );
             // A rejected arm/resume request must not consume the pending
@@ -205,6 +236,7 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::ListPrograms { realm } => {
             list_programs(tabs, javascript_executor.as_deref(), realm)
         }
+        DebuggerRequest::ListStaticMetadata { .. } => unavailable_static_metadata_inventory(),
         DebuggerRequest::ListSafePoints { program } => {
             list_safe_points(tabs, javascript_executor.as_deref(), program)
         }
@@ -256,6 +288,24 @@ pub fn handle_debugger_request_with_page_javascript_executor(
     javascript_executor: Option<&mut (dyn PageJavaScriptExecutor + '_)>,
     request: DebuggerRequest,
 ) -> DebuggerReply {
+    handle_debugger_request_with_page_javascript_executor_and_metadata_session(
+        tabs,
+        javascript_executor,
+        None,
+        request,
+    )
+}
+
+/// Resolves one request with a transport-scoped metadata authorization. This
+/// stays private to the core request queue so ordinary callers cannot route a
+/// manually constructed session into the metadata operation; absent
+/// authorization is always denied.
+fn handle_debugger_request_with_page_javascript_executor_and_metadata_session(
+    tabs: &TabManager,
+    javascript_executor: Option<&mut (dyn PageJavaScriptExecutor + '_)>,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    request: DebuggerRequest,
+) -> DebuggerReply {
     let Some(executor) = javascript_executor else {
         return handle_debugger_request_with_javascript_executor(tabs, None, request);
     };
@@ -265,20 +315,24 @@ pub fn handle_debugger_request_with_page_javascript_executor(
     let Some(locations) = executor.debugger_locations() else {
         return handle_debugger_request_with_javascript_executor(tabs, None, request);
     };
-    handle_debugger_request_with_child_locations(tabs, locations, request)
+    handle_debugger_request_with_child_locations(tabs, locations, metadata_session, request)
 }
 
 fn handle_debugger_request_with_child_locations(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
     request: DebuggerRequest,
 ) -> DebuggerReply {
     match request {
         DebuggerRequest::ListPageRealms => list_page_realms(tabs),
         DebuggerRequest::DescribeCapabilities { realm } => {
-            describe_child_location_capabilities(tabs, locations, realm)
+            describe_child_location_capabilities(tabs, locations, metadata_session, realm)
         }
         DebuggerRequest::ListPrograms { realm } => list_child_programs(tabs, locations, realm),
+        DebuggerRequest::ListStaticMetadata { program } => {
+            list_child_static_metadata(tabs, locations, metadata_session, program)
+        }
         DebuggerRequest::ListSafePoints { program } => {
             list_child_safe_points(tabs, locations, program)
         }
@@ -337,6 +391,7 @@ fn list_page_realms(tabs: &TabManager) -> DebuggerReply {
 fn describe_child_location_capabilities(
     tabs: &TabManager,
     locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
     realm: DebuggerPageRealm,
 ) -> DebuggerReply {
     if let Err(reply) = resolve_live_realm(tabs, realm) {
@@ -356,6 +411,14 @@ fn describe_child_location_capabilities(
         locations_available && locations.debugger_breakpoint_configuration_available();
     let execution_control_available =
         locations_available && locations.debugger_execution_control_available();
+    // Do not advertise an installed private inventory to a peer that has no
+    // negotiated grant. This makes the public capability view fail closed as
+    // well as the eventual operation; a successful `Hello` still needs this
+    // exact live realm to supply the inventory.
+    let static_metadata_inventory_available = locations_available
+        && metadata_session
+            .is_some_and(|session| session.permits(DebuggerMetadataCapability::OpaqueInventory))
+        && locations.debugger_static_metadata_inventory_available();
     let max_breakpoints_per_realm = if breakpoint_configuration_available {
         locations.max_debugger_breakpoints_per_realm()
     } else {
@@ -368,6 +431,7 @@ fn describe_child_location_capabilities(
             locations_available,
             breakpoint_configuration_available,
             execution_control_available,
+            static_metadata_inventory_available,
         ),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -377,6 +441,79 @@ fn describe_child_location_capabilities(
         max_breakpoints_per_realm: u32::try_from(max_breakpoints_per_realm)
             .expect("child debugger breakpoint reply cap fits the wire type"),
     })
+}
+
+fn list_child_static_metadata(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    program: DebuggerProgram,
+) -> DebuggerReply {
+    if !program.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger program target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_inventory();
+    };
+    let capabilities = describe_child_location_capabilities(
+        tabs,
+        locations,
+        Some(metadata_session),
+        program.realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueInventory,
+    ) else {
+        return unavailable_static_metadata_inventory();
+    };
+    if !authorization.permits(program.realm, DebuggerMetadataCapability::OpaqueInventory) {
+        return unavailable_static_metadata_inventory();
+    }
+
+    let tab_id = match resolve_live_realm(tabs, program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    match locations.debugger_static_metadata(
+        tab_id,
+        program.realm.realm_generation,
+        program.program_handle,
+        program.program_generation,
+    ) {
+        Ok(metadata) if metadata.len() <= MAX_STATIC_METADATA_HANDLES_PER_PROGRAM => {
+            let mut identities = std::collections::BTreeSet::new();
+            let mut handles = Vec::with_capacity(metadata.len());
+            for metadata in metadata {
+                if metadata.metadata_handle == 0
+                    || metadata.metadata_generation == 0
+                    || !identities.insert((metadata.metadata_handle, metadata.metadata_generation))
+                {
+                    return DebuggerReply::Error {
+                        code: DebuggerErrorCode::InvalidTarget,
+                        message: "invalid opaque debugger static metadata inventory".to_string(),
+                    };
+                }
+                handles.push(DebuggerStaticMetadataHandle {
+                    program,
+                    metadata_handle: metadata.metadata_handle,
+                    metadata_generation: metadata.metadata_generation,
+                });
+            }
+            DebuggerReply::StaticMetadata(handles)
+        }
+        Ok(_) => DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            message: "debugger static metadata inventory exceeds its fixed limit".to_string(),
+        },
+        Err(error) => debugger_program_error(error),
+    }
 }
 
 fn list_child_programs(
@@ -707,6 +844,7 @@ fn describe_capabilities(
             program_locations_available,
             program_locations_available,
             entry_execution_control_available,
+            false,
         ),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -1100,6 +1238,14 @@ fn unavailable_breakpoint_configuration() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_inventory() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "opaque debugger static metadata inventory is not authorized for this session and live realm"
+            .to_string(),
+    }
+}
+
 fn unavailable_execution_control() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -1181,6 +1327,7 @@ fn capability_reports(
     program_locations_available: bool,
     breakpoint_configuration_available: bool,
     entry_execution_control_available: bool,
+    static_metadata_inventory_available: bool,
 ) -> Vec<DebuggerCapabilityReport> {
     [
         (
@@ -1260,6 +1407,19 @@ fn capability_reports(
             DebuggerCapabilityState::Planned,
             "native value inspection is not installed",
         ),
+        (
+            DebuggerCapability::StaticMetadataInventory,
+            if static_metadata_inventory_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_inventory_available {
+                "bounded opaque static-metadata handle inventory is installed; metadata remains unreadable"
+            } else {
+                "static metadata inventory requires an explicitly negotiated session grant and a live BlueTS child program"
+            },
+        ),
     ]
     .into_iter()
     .map(|(capability, state, detail)| DebuggerCapabilityReport {
@@ -1273,6 +1433,76 @@ fn capability_reports(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct MetadataLocations;
+
+    impl PageJavaScriptDebuggerLocations for MetadataLocations {
+        fn debugger_has_live_realm(&mut self, _tab_id: TabId, _document_generation: u64) -> bool {
+            true
+        }
+
+        fn max_debugger_safe_points_per_program(&self) -> usize {
+            1
+        }
+
+        fn debugger_static_metadata_inventory_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_programs(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+        ) -> Result<
+            Vec<crate::script::javascript::JavaScriptPageDebuggerProgram>,
+            JavaScriptPageDebuggerError,
+        > {
+            Ok(Vec::new())
+        }
+
+        fn debugger_static_metadata(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+        ) -> Result<
+            Vec<crate::script::javascript::JavaScriptPageDebuggerStaticMetadata>,
+            JavaScriptPageDebuggerError,
+        > {
+            Ok(vec![
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadata {
+                    metadata_handle: 41,
+                    metadata_generation: 9,
+                },
+            ])
+        }
+
+        fn debugger_safe_points(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+        ) -> Result<
+            Vec<crate::script::javascript::JavaScriptPageDebuggerSafePoint>,
+            JavaScriptPageDebuggerError,
+        > {
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        }
+
+        fn validate_debugger_safe_point(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+            _code_unit_ordinal: u32,
+            _bytecode_offset: u32,
+        ) -> Result<(), JavaScriptPageDebuggerError> {
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        }
+    }
 
     fn loaded_tabs() -> (TabManager, DebuggerPageRealm) {
         let mut tabs = TabManager::new(320.0, 200.0);
@@ -1327,6 +1557,80 @@ mod tests {
             DebuggerReply::PageRealms(vec![DebuggerPageRealm {
                 realm_generation: 2,
                 ..realm
+            }])
+        );
+    }
+
+    #[test]
+    fn static_metadata_inventory_requires_a_session_grant_and_returns_only_opaque_handles() {
+        let (tabs, realm) = loaded_tabs();
+        let program = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let mut locations = MetadataLocations;
+
+        let denied_capabilities = handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            None,
+            DebuggerRequest::DescribeCapabilities { realm },
+        );
+        let DebuggerReply::Capabilities(denied_capabilities) = denied_capabilities else {
+            panic!("live realm capability discovery must succeed")
+        };
+        assert!(denied_capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataInventory
+                && report.state == DebuggerCapabilityState::Planned
+        }));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                None,
+                DebuggerRequest::ListStaticMetadata { program },
+            ),
+            unavailable_static_metadata_inventory()
+        );
+
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_inventory(),
+        };
+        let hello_reply = blueice_ipc::debugger::negotiate(
+            &hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_inventory(),
+        );
+        let metadata_session =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &hello_reply)
+                .expect("matching core policy must create a core-local session authorization");
+
+        let allowed_capabilities = handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&metadata_session),
+            DebuggerRequest::DescribeCapabilities { realm },
+        );
+        let DebuggerReply::Capabilities(allowed_capabilities) = allowed_capabilities else {
+            panic!("live realm capability discovery must succeed")
+        };
+        assert!(allowed_capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataInventory
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&metadata_session),
+                DebuggerRequest::ListStaticMetadata { program },
+            ),
+            DebuggerReply::StaticMetadata(vec![DebuggerStaticMetadataHandle {
+                program,
+                metadata_handle: 41,
+                metadata_generation: 9,
             }])
         );
     }
@@ -1814,6 +2118,7 @@ mod tests {
             .0
             .send(DebuggerRequestEnvelope {
                 request: DebuggerRequest::DescribeCapabilities { realm },
+                metadata_session: None,
                 reply: reply_sender,
             })
             .unwrap();

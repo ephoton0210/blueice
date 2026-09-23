@@ -26,7 +26,8 @@ use super::{
 use crate::script::javascript::{
     AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerBreakpoint,
     JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
-    JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint, JavaScriptPageExecutionReport,
+    JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
+    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageExecutionReport,
     PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };
 use crate::script::page_source_authorizer::AuthorizedPageScriptGraph;
@@ -36,11 +37,12 @@ pub use crate::script::page_source_authorizer::{
 };
 use crate::{Page, TabId, TabManager};
 use blueice_ipc::page_host::{
-    self, PageHostDebuggerExecutionState, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
-    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
-    PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+    self, PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
+    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource,
+    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
 };
 use blueice_net::canonical_http_origin;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -60,6 +62,16 @@ const INLINE_CHILD_RESOLVER_FINGERPRINT: &str = "core-inline-page-host-v1";
 /// Keeping it disjoint from the child counter makes it mechanically apparent
 /// that a private child identifier cannot become a public protocol identity.
 const CORE_CHILD_DEBUGGER_ID_NAMESPACE_START: u64 = 1 << 63;
+
+/// Core-reminted public static-metadata identities remain numerically disjoint
+/// from public debugger program IDs and every child-private namespace. The
+/// distinct Rust types enforce the boundary; this range is defense in depth.
+const CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START: u64 = 1 << 62;
+
+/// A direct BlueTS program has at most one attached compiler debug record.
+/// Keep the public inventory bounded even if an untrusted child returns a
+/// malformed larger reply.
+const MAX_CHILD_DEBUGGER_STATIC_METADATA_PER_PROGRAM: usize = 1;
 
 /// A socket peer may need several session turns to discover a newly admitted
 /// program and arm its one root safe point, but it cannot turn that discovery
@@ -507,6 +519,13 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     debugger_programs: BTreeMap<TabId, BTreeMap<PageHostDebuggerProgram, CoreDebuggerProgram>>,
     next_debugger_program_handle: u64,
     next_debugger_program_generation: u64,
+    /// Public inventory identities keyed by child-private metadata handles.
+    /// The map is discarded with every document replacement or close and a
+    /// public debugger peer never receives the child key.
+    debugger_static_metadata:
+        BTreeMap<TabId, BTreeMap<PageHostDebuggerMetadataHandle, CoreDebuggerStaticMetadata>>,
+    next_debugger_metadata_handle: u64,
+    next_debugger_metadata_generation: u64,
     reports: VecDeque<JavaScriptPageExecutionReport>,
     blue_ts_reports: VecDeque<BlueTsPageExecutionReport>,
 }
@@ -515,6 +534,13 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
 struct CoreDebuggerProgram {
     program_handle: u64,
     program_generation: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CoreDebuggerStaticMetadata {
+    program: PageHostDebuggerProgram,
+    metadata_handle: u64,
+    metadata_generation: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -578,6 +604,9 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             debugger_programs: BTreeMap::new(),
             next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
             next_debugger_program_generation: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
+            debugger_static_metadata: BTreeMap::new(),
+            next_debugger_metadata_handle: CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
+            next_debugger_metadata_generation: CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
             reports: VecDeque::new(),
             blue_ts_reports: VecDeque::new(),
         }
@@ -622,6 +651,9 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             debugger_programs: BTreeMap::new(),
             next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
             next_debugger_program_generation: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
+            debugger_static_metadata: BTreeMap::new(),
+            next_debugger_metadata_handle: CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
+            next_debugger_metadata_generation: CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
             reports: VecDeque::new(),
             blue_ts_reports: VecDeque::new(),
         }
@@ -733,12 +765,14 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         self.debugger_execution_deferrals.remove(&tab_id);
         self.realm_stats.remove(&tab_id);
         self.debugger_programs.remove(&tab_id);
+        self.debugger_static_metadata.remove(&tab_id);
     }
 
     fn synchronize_document(&mut self, tab_id: TabId, page: &Page, identity: LiveDocument) {
         // A successor can never inherit accounting from its predecessor while
         // its child acknowledgement is still in flight.
         self.realm_stats.remove(&tab_id);
+        self.debugger_static_metadata.remove(&tab_id);
         let declarations = page.combined_page_script_declarations();
         let snapshot = match core_document_snapshot(page, &identity) {
             Ok(snapshot) => snapshot,
@@ -757,6 +791,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                     self.push_blue_ts_report(report);
                 }
                 self.debugger_programs.remove(&tab_id);
+                self.debugger_static_metadata.remove(&tab_id);
                 self.live_documents.insert(tab_id, identity);
                 return;
             }
@@ -864,6 +899,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             self.debugger_execution_deferrals.remove(&tab_id);
         }
         self.debugger_programs.remove(&tab_id);
+        self.debugger_static_metadata.remove(&tab_id);
         self.live_documents.insert(tab_id, identity);
     }
 
@@ -1019,6 +1055,10 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             .expect("page-host debugger breakpoint cap fits usize")
     }
 
+    fn debugger_static_metadata_inventory_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+    }
+
     fn debugger_programs(
         &mut self,
         tab_id: TabId,
@@ -1048,6 +1088,11 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         }
 
         let previous = self.debugger_programs.remove(&tab_id).unwrap_or_default();
+        // Metadata identities are only valid together with the exact current
+        // child-to-core program mapping. A fresh program discovery invalidates
+        // all prior inventory IDs before a subsequent source-free lookup can
+        // remint them, even when the child happened to retain a numeric ID.
+        self.debugger_static_metadata.remove(&tab_id);
         let mut current = BTreeMap::new();
         for child_program in programs {
             let public = match previous.get(&child_program).copied() {
@@ -1065,6 +1110,66 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             .collect();
         self.debugger_programs.insert(tab_id, current);
         Ok(programs)
+    }
+
+    fn debugger_static_metadata(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadata>, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_inventory_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata(tab_id.as_u64(), document_generation, child_program)
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadata {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata.len() > MAX_CHILD_DEBUGGER_STATIC_METADATA_PER_PROGRAM
+            || metadata.iter().any(|metadata| !metadata.is_well_formed())
+            || has_duplicate_child_static_metadata(&metadata)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+
+        let previous = self
+            .debugger_static_metadata
+            .remove(&tab_id)
+            .unwrap_or_default();
+        let mut current = BTreeMap::new();
+        let mut public_metadata = Vec::with_capacity(metadata.len());
+        for child_metadata in metadata {
+            let public = match previous.get(&child_metadata).copied() {
+                Some(public) if public.program == child_program => public,
+                _ => self.mint_core_debugger_static_metadata(child_program)?,
+            };
+            current.insert(child_metadata, public);
+            public_metadata.push(JavaScriptPageDebuggerStaticMetadata {
+                metadata_handle: public.metadata_handle,
+                metadata_generation: public.metadata_generation,
+            });
+        }
+        self.debugger_static_metadata.insert(tab_id, current);
+        Ok(public_metadata)
     }
 
     fn debugger_safe_points(
@@ -1458,6 +1563,33 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
         })
     }
 
+    fn mint_core_debugger_static_metadata(
+        &mut self,
+        program: PageHostDebuggerProgram,
+    ) -> Result<CoreDebuggerStaticMetadata, JavaScriptPageDebuggerError> {
+        let metadata_handle = self.next_debugger_metadata_handle;
+        let metadata_generation = self.next_debugger_metadata_generation;
+        // Never allow an exhausted metadata counter to cross into the public
+        // program namespace; a wrap must fail closed instead of aliasing an
+        // unrelated public identifier.
+        if metadata_handle >= CORE_CHILD_DEBUGGER_ID_NAMESPACE_START
+            || metadata_generation >= CORE_CHILD_DEBUGGER_ID_NAMESPACE_START
+        {
+            return Err(JavaScriptPageDebuggerError::ResourceLimit);
+        }
+        self.next_debugger_metadata_handle = metadata_handle
+            .checked_add(1)
+            .ok_or(JavaScriptPageDebuggerError::ResourceLimit)?;
+        self.next_debugger_metadata_generation = metadata_generation
+            .checked_add(1)
+            .ok_or(JavaScriptPageDebuggerError::ResourceLimit)?;
+        Ok(CoreDebuggerStaticMetadata {
+            program,
+            metadata_handle,
+            metadata_generation,
+        })
+    }
+
     fn child_program_for_core(
         &self,
         tab_id: TabId,
@@ -1509,6 +1641,11 @@ fn has_duplicate_child_safe_points(safe_points: &[PageHostDebuggerSafePoint]) ->
     safe_points
         .iter()
         .any(|safe_point| !safe_point.is_well_formed() || !seen.insert(*safe_point))
+}
+
+fn has_duplicate_child_static_metadata(metadata: &[PageHostDebuggerMetadataHandle]) -> bool {
+    let mut seen = BTreeSet::new();
+    metadata.iter().any(|metadata| !seen.insert(*metadata))
 }
 
 fn validate_child_safe_point_reply<C: PageHostClient>(
@@ -3444,6 +3581,74 @@ mod tests {
                 code: DebuggerErrorCode::StaleRealm,
                 ..
             }
+        ));
+
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn core_remints_real_child_bluets_metadata_handles_and_discards_them_on_navigation() {
+        let (path, token, child) = spawn_child();
+        let (mut tabs, tab_id) = loaded_tabs(
+            concat!(
+                "<script>globalThis.javaScriptOnly = true;</script>",
+                "<script type=\"application/x-blueice-typescript\">",
+                "const opaqueCompilerMetadata: number = 42;",
+                "</script>"
+            ),
+            "https://example.test/opaque-metadata.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::connect(&path, &token).unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        let programs = executor.debugger_programs(tab_id, 1).unwrap();
+        assert_eq!(programs.len(), 2);
+        let mut metadata = None;
+        for program in programs {
+            let handles = executor
+                .debugger_static_metadata(
+                    tab_id,
+                    1,
+                    program.program_handle,
+                    program.program_generation,
+                )
+                .unwrap();
+            if let [handle] = handles.as_slice() {
+                assert!(
+                    handle.metadata_handle >= CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START
+                        && handle.metadata_handle < CORE_CHILD_DEBUGGER_ID_NAMESPACE_START
+                        && handle.metadata_generation
+                            >= CORE_CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START
+                        && handle.metadata_generation < CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
+                    "core must remint metadata IDs outside both child and public program namespaces"
+                );
+                metadata = Some((program, *handle));
+            } else {
+                assert!(handles.is_empty(), "the JavaScript program is ineligible");
+            }
+        }
+        let (typed_program, metadata) = metadata.expect("direct BlueTS has one private attachment");
+        assert!(
+            !format!("{metadata:?}").contains("opaqueCompilerMetadata"),
+            "the core-facing handle must contain no compiler metadata payload"
+        );
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script type=\"application/x-blueice-typescript\">const successor: number = 1;</script>",
+            Some("https://example.test/opaque-metadata-successor.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert!(matches!(
+            executor.debugger_static_metadata(
+                tab_id,
+                1,
+                typed_program.program_handle,
+                typed_program.program_generation,
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
         ));
 
         drop(executor);

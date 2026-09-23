@@ -131,9 +131,9 @@ pub enum DebuggerCapability {
 ///
 /// This deliberately has no broad `StaticMetadata` or `All` variant. Every
 /// future metadata surface must add a distinct variant and map it to a
-/// distinct [`DebuggerCapability`] before it can be requested. At version six
-/// no request or reply exposes even the opaque inventory; this type establishes
-/// the policy boundary before that surface is added.
+/// distinct [`DebuggerCapability`] before it can be requested. Version six
+/// exposes only the bounded opaque inventory; it deliberately provides no
+/// metadata read or inspection operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DebuggerMetadataCapability {
@@ -453,6 +453,13 @@ pub enum DebuggerRequest {
     ListPrograms {
         realm: DebuggerPageRealm,
     },
+    /// Lists a bounded source-free inventory of core-minted static-metadata
+    /// handles for one exact live program. It exposes neither metadata nor a
+    /// way to dereference a handle. Dispatch requires both the session grant
+    /// negotiated in `Hello` and the exact realm's advertised capability.
+    ListStaticMetadata {
+        program: DebuggerProgram,
+    },
     /// Lists bounded, compiler-verified instruction boundaries for one exact
     /// live program generation. A caller must not infer or substitute offsets.
     ListSafePoints {
@@ -523,6 +530,10 @@ pub enum DebuggerReply {
     PageRealms(Vec<DebuggerPageRealm>),
     Capabilities(DebuggerCapabilities),
     Programs(Vec<DebuggerProgram>),
+    /// Reply to [`DebuggerRequest::ListStaticMetadata`]. Every handle is
+    /// opaque and bound to the exact program generation supplied by the
+    /// request; this is not a metadata payload or a read capability.
+    StaticMetadata(Vec<DebuggerStaticMetadataHandle>),
     SafePoints(Vec<DebuggerSafePoint>),
     SafePointValidated {
         safe_point: DebuggerSafePoint,
@@ -608,6 +619,7 @@ pub fn negotiate(
         DebuggerRequest::ListPageRealms
         | DebuggerRequest::DescribeCapabilities { .. }
         | DebuggerRequest::ListPrograms { .. }
+        | DebuggerRequest::ListStaticMetadata { .. }
         | DebuggerRequest::ListSafePoints { .. }
         | DebuggerRequest::ValidateSafePoint { .. }
         | DebuggerRequest::SetBreakpoint { .. }
@@ -692,6 +704,13 @@ mod tests {
             DebuggerRequest::ListPageRealms,
             DebuggerRequest::DescribeCapabilities { realm: realm() },
             DebuggerRequest::ListPrograms { realm: realm() },
+            DebuggerRequest::ListStaticMetadata {
+                program: DebuggerProgram {
+                    realm: realm(),
+                    program_handle: 12,
+                    program_generation: 5,
+                },
+            },
             DebuggerRequest::ListSafePoints {
                 program: DebuggerProgram {
                     realm: realm(),
@@ -808,6 +827,11 @@ mod tests {
         };
         for reply in [
             DebuggerReply::Programs(vec![program]),
+            DebuggerReply::StaticMetadata(vec![DebuggerStaticMetadataHandle {
+                program,
+                metadata_handle: 24,
+                metadata_generation: 7,
+            }]),
             DebuggerReply::SafePoints(vec![safe_point]),
             DebuggerReply::SafePointValidated { safe_point },
             DebuggerReply::BreakpointSet { safe_point },
