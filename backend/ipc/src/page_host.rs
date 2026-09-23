@@ -75,6 +75,11 @@ pub const PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM: u32 = 4_096;
 /// debugger nor page code can grow the child table without bound.
 pub const PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM: u32 = 256;
 
+/// A document accepts at most 256 declarations and each declaration can
+/// carry at most eight closed graph modules. The accounting reply cannot name
+/// more live BlueJS programs than that fixed document envelope permits.
+pub const PAGE_HOST_REALM_STATS_MAX_PROGRAMS: u32 = 2_048;
+
 /// An opaque debugger program identity minted by the isolated child. It is
 /// valid only with the exact tab/document generation supplied by the request;
 /// it deliberately contains no source identity, BlueJS registry handle, or
@@ -319,6 +324,20 @@ pub struct PageHostRealmStats {
     pub program_count: u32,
     pub bytecode_bytes: u64,
     pub heap_bytes: u64,
+}
+
+impl PageHostRealmStats {
+    /// Checks the fixed, source-free accounting envelope before core caches a
+    /// child report. `u32::MAX`/`u64::MAX` are conversion-failure sentinels in
+    /// the child adapter, never credible live accounting values. This does
+    /// not disclose the launcher's private resource limits.
+    pub fn is_well_formed(&self) -> bool {
+        self.tab_id != 0
+            && self.document_generation != 0
+            && self.program_count <= PAGE_HOST_REALM_STATS_MAX_PROGRAMS
+            && self.bytecode_bytes != u64::MAX
+            && self.heap_bytes != u64::MAX
+    }
 }
 
 /// Launcher/core requests to the private host. `Hello` carries the per-spawn
@@ -1063,6 +1082,38 @@ mod tests {
         let source = PageHostSource::new("blueice://page/main.js", "let answer = 42;");
         assert_eq!(source.source_hash, source_hash(&source.source));
         assert_ne!(source.source_hash, source_hash("let answer = 43;"));
+    }
+
+    #[test]
+    fn realm_stats_reject_conversion_sentinels_and_program_overflow() {
+        let stats = PageHostRealmStats {
+            tab_id: 7,
+            document_generation: 3,
+            program_count: 2,
+            bytecode_bytes: 64,
+            heap_bytes: 128,
+        };
+        assert!(stats.is_well_formed());
+        assert!(!PageHostRealmStats {
+            tab_id: 0,
+            ..stats.clone()
+        }
+        .is_well_formed());
+        assert!(!PageHostRealmStats {
+            program_count: PAGE_HOST_REALM_STATS_MAX_PROGRAMS + 1,
+            ..stats.clone()
+        }
+        .is_well_formed());
+        assert!(!PageHostRealmStats {
+            bytecode_bytes: u64::MAX,
+            ..stats.clone()
+        }
+        .is_well_formed());
+        assert!(!PageHostRealmStats {
+            heap_bytes: u64::MAX,
+            ..stats
+        }
+        .is_well_formed());
     }
 
     #[test]

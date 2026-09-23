@@ -1082,7 +1082,8 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         {
             Ok(PageHostReply::RealmStats(stats))
                 if stats.tab_id == tab_id.as_u64()
-                    && stats.document_generation == identity.document_generation =>
+                    && stats.document_generation == identity.document_generation
+                    && stats.is_well_formed() =>
             {
                 self.realm_stats.insert(tab_id, stats);
                 true
@@ -1197,6 +1198,7 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             Ok(PageHostReply::RealmStats(stats))
                 if stats.tab_id == tab_id.as_u64()
                     && stats.document_generation == document_generation
+                    && stats.is_well_formed()
         );
         if !child_has_live_realm {
             // A later transport/error response is not proof that the cached
@@ -3186,12 +3188,22 @@ mod tests {
         assert_eq!(executor.into_child().closes, vec![(tab_id.as_u64(), 2)]);
     }
 
-    #[derive(Default)]
-    struct MismatchedStatsChild {
-        closes: Vec<(u64, u64)>,
+    #[derive(Clone, Copy, Default)]
+    enum InvalidRealmStats {
+        #[default]
+        MismatchedTuple,
+        ExcessPrograms,
+        SaturatedBytecode,
+        SaturatedHeap,
     }
 
-    impl PageHostClient for MismatchedStatsChild {
+    #[derive(Default)]
+    struct InvalidStatsChild {
+        closes: Vec<(u64, u64)>,
+        invalid_stats: InvalidRealmStats,
+    }
+
+    impl PageHostClient for InvalidStatsChild {
         fn synchronize_document(
             &mut self,
             document: PageHostDocument,
@@ -3221,31 +3233,69 @@ mod tests {
             tab_id: u64,
             document_generation: u64,
         ) -> io::Result<PageHostReply> {
-            Ok(PageHostReply::RealmStats(page_host::PageHostRealmStats {
-                tab_id: tab_id.saturating_add(1),
-                document_generation,
-                program_count: 1,
-                bytecode_bytes: 64,
-                heap_bytes: 128,
-            }))
+            let stats = match self.invalid_stats {
+                InvalidRealmStats::MismatchedTuple => page_host::PageHostRealmStats {
+                    tab_id: tab_id.saturating_add(1),
+                    document_generation,
+                    program_count: 1,
+                    bytecode_bytes: 64,
+                    heap_bytes: 128,
+                },
+                InvalidRealmStats::ExcessPrograms => page_host::PageHostRealmStats {
+                    tab_id,
+                    document_generation,
+                    program_count: page_host::PAGE_HOST_REALM_STATS_MAX_PROGRAMS + 1,
+                    bytecode_bytes: 64,
+                    heap_bytes: 128,
+                },
+                InvalidRealmStats::SaturatedBytecode => page_host::PageHostRealmStats {
+                    tab_id,
+                    document_generation,
+                    program_count: 1,
+                    bytecode_bytes: u64::MAX,
+                    heap_bytes: 128,
+                },
+                InvalidRealmStats::SaturatedHeap => page_host::PageHostRealmStats {
+                    tab_id,
+                    document_generation,
+                    program_count: 1,
+                    bytecode_bytes: 64,
+                    heap_bytes: u64::MAX,
+                },
+            };
+            Ok(PageHostReply::RealmStats(stats))
         }
     }
 
     #[test]
-    fn mismatched_child_realm_accounting_is_never_cached() {
+    fn malformed_child_realm_accounting_is_never_cached() {
         let (tabs, tab_id) = loaded_tabs(
             "<script>let untrustedAccounting = 1;</script>",
             "https://example.test/mismatched-accounting.html",
         );
-        let mut executor = OutOfProcessJavaScriptPageExecutor::new(MismatchedStatsChild::default());
-        executor.synchronize_and_execute(&tabs).unwrap();
+        for invalid_stats in [
+            InvalidRealmStats::MismatchedTuple,
+            InvalidRealmStats::ExcessPrograms,
+            InvalidRealmStats::SaturatedBytecode,
+            InvalidRealmStats::SaturatedHeap,
+        ] {
+            let mut executor = OutOfProcessJavaScriptPageExecutor::new(InvalidStatsChild {
+                invalid_stats,
+                ..InvalidStatsChild::default()
+            });
+            executor.synchronize_and_execute(&tabs).unwrap();
 
-        assert_eq!(executor.realm_stats(tab_id), None);
-        assert_eq!(
-            executor.into_child().closes,
-            vec![(tab_id.as_u64(), 1)],
-            "a mismatched record must close the newly acknowledged realm"
-        );
+            assert_eq!(executor.realm_stats(tab_id), None);
+            assert!(
+                !executor.debugger_has_live_realm(tab_id, 1),
+                "malformed accounting must not be accepted as debugger liveness"
+            );
+            assert_eq!(
+                executor.into_child().closes,
+                vec![(tab_id.as_u64(), 1)],
+                "an untrustworthy accounting record must close the newly acknowledged realm"
+            );
+        }
     }
 
     /// Records only the lifecycle advance requests needed to prove that a

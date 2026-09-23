@@ -753,7 +753,11 @@ or second module resolver to bypass them.
   `--debugger-static-metadata-type-inventory` owner flag. IDs are bounded,
   parent-handle-bound, same-stream-receipted, and source/type-display-free;
   a later type-display operation must require those exact receipts rather
-  than accepting a caller-guessed ID. The page host still must route
+  than accepting a caller-guessed ID. Core now rejects page-host realm
+  accounting with zero ownership fields, the child conversion sentinels, or
+  more programs than the fixed 256-declaration × 8-module document envelope
+  before it can enter either the core accounting cache or debugger liveness
+  path. The page host still must route
   cache/hibernation events through the same invariant and add source policy,
   diagnostics/contracts, stack locations, and runtime-value inspection before
   this item can close.

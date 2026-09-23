@@ -800,13 +800,19 @@ impl BlueJsChildHost {
             return stale_document();
         }
         match self.runtime.realm_stats(tab_id) {
-            Ok(stats) => PageHostReply::RealmStats(PageHostRealmStats {
-                tab_id,
-                document_generation,
-                program_count: u32::try_from(stats.program_count).unwrap_or(u32::MAX),
-                bytecode_bytes: u64::try_from(stats.bytecode_bytes).unwrap_or(u64::MAX),
-                heap_bytes: u64::try_from(stats.heap.managed_bytes).unwrap_or(u64::MAX),
-            }),
+            Ok(stats) => {
+                let reply = PageHostRealmStats {
+                    tab_id,
+                    document_generation,
+                    program_count: u32::try_from(stats.program_count).unwrap_or(u32::MAX),
+                    bytecode_bytes: u64::try_from(stats.bytecode_bytes).unwrap_or(u64::MAX),
+                    heap_bytes: u64::try_from(stats.heap.managed_bytes).unwrap_or(u64::MAX),
+                };
+                if !reply.is_well_formed() {
+                    return host_failure();
+                }
+                PageHostReply::RealmStats(reply)
+            }
             Err(_) => host_failure(),
         }
     }
