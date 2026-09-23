@@ -822,6 +822,19 @@ or second module resolver to bypass them.
   VM object, runtime value, and static-record read remain unavailable. The
   public supervised-child regression proves receipt rejection, valid/invalid
   results without detail reflection, and reload staleness.
+  Page-host v18/debugger v17 add the eleventh independently default-denied
+  `OpaqueLoweringSummary` capability and the owner-only
+  `--debugger-static-metadata-lowering-summary` flag. It requires the exact
+  same-stream parent metadata receipt, a live realm/program/metadata tuple,
+  and a child capability report before it returns only the canonical direct
+  safe-point-map ABI, canonical BlueJS program ABI, an aggregate lower-case
+  source-set fingerprint, and a bounded safe-point count. Core rejects a
+  child-controlled ABI label, malformed fingerprint, over-limit count, or any
+  stale/mismatched child tuple before reminting the public reply. No source or
+  module identity, source span, map entry, AST node, code-unit identity,
+  bytecode offset, VM object, value, or general metadata read crosses this
+  layer. The real launcher-supervised regression proves default denial,
+  receipt rejection, canonical disclosure, and reload staleness.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

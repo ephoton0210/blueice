@@ -44,7 +44,8 @@ use blueice_ipc::debugger::{
 };
 use blueice_ipc::page_host::{
     self, PageHostDebuggerBlueTsMetadataContractDisplay, PageHostDebuggerBlueTsMetadataContractId,
-    PageHostDebuggerBlueTsMetadataContractValidation, PageHostDebuggerBlueTsMetadataSourceId,
+    PageHostDebuggerBlueTsMetadataContractValidation,
+    PageHostDebuggerBlueTsMetadataLoweringSummary, PageHostDebuggerBlueTsMetadataSourceId,
     PageHostDebuggerBlueTsMetadataSourceProvenance, PageHostDebuggerBlueTsMetadataSummary,
     PageHostDebuggerBlueTsMetadataSymbolDisplay, PageHostDebuggerBlueTsMetadataSymbolId,
     PageHostDebuggerBlueTsMetadataTypeDisplay, PageHostDebuggerBlueTsMetadataTypeId,
@@ -288,6 +289,17 @@ impl BlueJsChildHost {
                 program,
                 metadata,
             } => self.debugger_bluets_metadata_summary(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+            ),
+            PageHostRequest::DescribeDebuggerBlueTsMetadataLoweringSummary {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+            } => self.debugger_bluets_metadata_lowering_summary(
                 tab_id,
                 document_generation,
                 program,
@@ -1093,6 +1105,73 @@ impl BlueJsChildHost {
             program,
             metadata,
             summary,
+        }
+    }
+
+    /// Returns aggregate evidence for the exact child-retained direct-lowering
+    /// map. Source spans, map entries, AST nodes, code-unit IDs, and bytecode
+    /// offsets remain in the child; this operation is not a map dereference.
+    fn debugger_bluets_metadata_lowering_summary(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let summary = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let map = retained.safe_point_map();
+                let Ok(bound_safe_point_count) = u32::try_from(map.entries.len()) else {
+                    return host_failure();
+                };
+                if bound_safe_point_count > PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM {
+                    return resource_limit();
+                }
+                PageHostDebuggerBlueTsMetadataLoweringSummary {
+                    safe_point_map_abi: map.format.to_string(),
+                    program_abi: map.program_abi.to_string(),
+                    source_set_hash: map.source_set_hash.clone(),
+                    bound_safe_point_count,
+                }
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataLoweringSummary {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            summary: Box::new(summary),
         }
     }
 

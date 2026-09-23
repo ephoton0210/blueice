@@ -42,6 +42,7 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataContractId,
     JavaScriptPageDebuggerStaticMetadataContractTarget,
     JavaScriptPageDebuggerStaticMetadataContractValidation,
+    JavaScriptPageDebuggerStaticMetadataLoweringSummary,
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
@@ -93,6 +94,13 @@ pub trait PageJavaScriptDebuggerLocations {
     /// handle with a bounded source-free summary. This remains a distinct
     /// capability from handle inventory and is default-deny for every route.
     fn debugger_static_metadata_summary_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can return a source-free aggregate summary of the
+    /// verified direct lowering map for an exact opaque metadata attachment.
+    /// Per-entry source spans and bytecode positions remain unavailable.
+    fn debugger_static_metadata_lowering_summary_available(&self) -> bool {
         false
     }
 
@@ -192,6 +200,22 @@ pub trait PageJavaScriptDebuggerLocations {
         _metadata_handle: u64,
         _metadata_generation: u64,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataSummary, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Returns one verified direct-lowering-map aggregate only after the
+    /// caller presented the exact opaque parent metadata attachment. This is
+    /// not a source-map/bytecode entry lookup or a general static-record read.
+    fn debugger_static_metadata_lowering_summary(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataLoweringSummary, JavaScriptPageDebuggerError>
+    {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
 

@@ -28,10 +28,11 @@ use blueice_ipc::debugger::{
     DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
     DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataContractDisplay,
     DebuggerStaticMetadataContractId, DebuggerStaticMetadataContractValidation,
-    DebuggerStaticMetadataHandle, DebuggerStaticMetadataSourceId,
-    DebuggerStaticMetadataSourceProvenance, DebuggerStaticMetadataSummary,
-    DebuggerStaticMetadataSymbolDisplay, DebuggerStaticMetadataSymbolId,
-    DebuggerStaticMetadataTypeDisplay, DebuggerStaticMetadataTypeId, DEBUGGER_PROTOCOL_VERSION,
+    DebuggerStaticMetadataHandle, DebuggerStaticMetadataLoweringSummary,
+    DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSourceProvenance,
+    DebuggerStaticMetadataSummary, DebuggerStaticMetadataSymbolDisplay,
+    DebuggerStaticMetadataSymbolId, DebuggerStaticMetadataTypeDisplay,
+    DebuggerStaticMetadataTypeId, DEBUGGER_PROTOCOL_VERSION,
     DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
     DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
@@ -250,6 +251,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         }
         DebuggerRequest::ListStaticMetadata { .. } => unavailable_static_metadata_inventory(),
         DebuggerRequest::DescribeStaticMetadata { .. } => unavailable_static_metadata_summary(),
+        DebuggerRequest::DescribeStaticMetadataLoweringSummary { .. } => {
+            unavailable_static_metadata_lowering_summary()
+        }
         DebuggerRequest::ListStaticMetadataSources { .. } => {
             unavailable_static_metadata_source_inventory()
         }
@@ -375,6 +379,14 @@ fn handle_debugger_request_with_child_locations(
         }
         DebuggerRequest::DescribeStaticMetadata { metadata } => {
             describe_child_static_metadata(tabs, locations, metadata_session, metadata)
+        }
+        DebuggerRequest::DescribeStaticMetadataLoweringSummary { metadata } => {
+            describe_child_static_metadata_lowering_summary(
+                tabs,
+                locations,
+                metadata_session,
+                metadata,
+            )
         }
         DebuggerRequest::ListStaticMetadataSources { metadata } => {
             list_child_static_metadata_sources(tabs, locations, metadata_session, metadata)
@@ -507,6 +519,11 @@ fn describe_child_location_capabilities(
         && metadata_session
             .is_some_and(|session| session.permits(DebuggerMetadataCapability::OpaqueSummary))
         && locations.debugger_static_metadata_summary_available();
+    let static_metadata_lowering_summary_available = static_metadata_inventory_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueLoweringSummary)
+        })
+        && locations.debugger_static_metadata_lowering_summary_available();
     let static_metadata_source_inventory_available = static_metadata_inventory_available
         && metadata_session.is_some_and(|session| {
             session.permits(DebuggerMetadataCapability::OpaqueSourceInventory)
@@ -565,6 +582,7 @@ fn describe_child_location_capabilities(
             entry_execution_control_available: execution_control_available,
             static_metadata_inventory_available,
             static_metadata_summary_available,
+            static_metadata_lowering_summary_available,
             static_metadata_source_inventory_available,
             static_metadata_source_provenance_available,
             static_metadata_type_inventory_available,
@@ -656,7 +674,8 @@ fn list_child_static_metadata(
                 || metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceInventory)
                 || metadata_session.permits(DebuggerMetadataCapability::OpaqueTypeInventory)
                 || metadata_session.permits(DebuggerMetadataCapability::OpaqueSymbolInventory)
-                || metadata_session.permits(DebuggerMetadataCapability::OpaqueContractInventory))
+                || metadata_session.permits(DebuggerMetadataCapability::OpaqueContractInventory)
+                || metadata_session.permits(DebuggerMetadataCapability::OpaqueLoweringSummary))
                 && !metadata_session.observe_metadata(&handles)
             {
                 return DebuggerReply::Error {
@@ -748,6 +767,83 @@ fn describe_child_static_metadata(
                 };
             }
             DebuggerReply::StaticMetadataSummary(summary)
+        }
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+/// Returns only aggregate evidence for an exact prior opaque metadata receipt.
+/// This path intentionally has no per-entry source-map, source-span, AST, or
+/// bytecode lookup operation; it exposes only the verified direct-map ABI and
+/// aggregate count after the complete live tuple has been revalidated.
+fn describe_child_static_metadata_lowering_summary(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    metadata: DebuggerStaticMetadataHandle,
+) -> DebuggerReply {
+    if !metadata.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static metadata lowering summary target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_lowering_summary();
+    };
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.observed_metadata(metadata)
+    {
+        return unavailable_static_metadata_lowering_summary();
+    }
+    let capabilities = describe_child_location_capabilities(
+        tabs,
+        locations,
+        Some(metadata_session),
+        metadata.program.realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueLoweringSummary,
+    ) else {
+        return unavailable_static_metadata_lowering_summary();
+    };
+    if !authorization.permits(
+        metadata.program.realm,
+        DebuggerMetadataCapability::OpaqueLoweringSummary,
+    ) {
+        return unavailable_static_metadata_lowering_summary();
+    }
+    let tab_id = match resolve_live_realm(tabs, metadata.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    match locations.debugger_static_metadata_lowering_summary(
+        tab_id,
+        metadata.program.realm.realm_generation,
+        metadata.program.program_handle,
+        metadata.program.program_generation,
+        metadata.metadata_handle,
+        metadata.metadata_generation,
+    ) {
+        Ok(summary) => {
+            let summary = DebuggerStaticMetadataLoweringSummary {
+                metadata,
+                safe_point_map_abi: summary.safe_point_map_abi,
+                program_abi: summary.program_abi,
+                source_set_hash: summary.source_set_hash,
+                bound_safe_point_count: summary.bound_safe_point_count,
+            };
+            if !summary.is_well_formed() {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    message: "invalid debugger static metadata lowering summary".to_string(),
+                };
+            }
+            DebuggerReply::StaticMetadataLoweringSummary(Box::new(summary))
         }
         Err(error) => debugger_program_error(error),
     }
@@ -1927,6 +2023,7 @@ fn describe_capabilities(
             entry_execution_control_available,
             static_metadata_inventory_available: false,
             static_metadata_summary_available: false,
+            static_metadata_lowering_summary_available: false,
             static_metadata_source_inventory_available: false,
             static_metadata_source_provenance_available: false,
             static_metadata_type_inventory_available: false,
@@ -2401,6 +2498,14 @@ fn unavailable_static_metadata_contract_validation() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_lowering_summary() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "opaque debugger static metadata lowering summary is not authorized for this session and live realm"
+            .to_string(),
+    }
+}
+
 fn unavailable_static_metadata_symbol_display() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -2500,6 +2605,7 @@ struct DebuggerCapabilityAvailability {
     entry_execution_control_available: bool,
     static_metadata_inventory_available: bool,
     static_metadata_summary_available: bool,
+    static_metadata_lowering_summary_available: bool,
     static_metadata_source_inventory_available: bool,
     static_metadata_source_provenance_available: bool,
     static_metadata_type_inventory_available: bool,
@@ -2518,6 +2624,7 @@ fn capability_reports(
         entry_execution_control_available,
         static_metadata_inventory_available,
         static_metadata_summary_available,
+        static_metadata_lowering_summary_available,
         static_metadata_source_inventory_available,
         static_metadata_source_provenance_available,
         static_metadata_type_inventory_available,
@@ -2631,6 +2738,19 @@ fn capability_reports(
                 "bounded source-free static-metadata summaries are installed; records remain unreadable"
             } else {
                 "static metadata summaries require explicit inventory and summary session grants plus a live BlueTS child program"
+            },
+        ),
+        (
+            DebuggerCapability::StaticMetadataLoweringSummary,
+            if static_metadata_lowering_summary_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_lowering_summary_available {
+                "verified direct-lowering-map ABI and aggregate evidence is installed; map entries remain unreadable"
+            } else {
+                "static metadata lowering summaries require explicit inventory and lowering-summary session grants plus a live BlueTS child program"
             },
         ),
         (
@@ -2767,6 +2887,7 @@ mod tests {
     struct MetadataLocations {
         malformed_summary: bool,
         malformed_provenance: bool,
+        malformed_lowering_summary: bool,
         mismatched_symbol_display: bool,
         mismatched_contract_display: bool,
         mismatched_contract_validation: bool,
@@ -2786,6 +2907,10 @@ mod tests {
         }
 
         fn debugger_static_metadata_summary_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_lowering_summary_available(&self) -> bool {
             true
         }
 
@@ -2876,6 +3001,37 @@ mod tests {
                     type_count: 2,
                     symbol_count: 3,
                     contract_count: 4,
+                },
+            )
+        }
+
+        fn debugger_static_metadata_lowering_summary(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+            metadata_handle: u64,
+            metadata_generation: u64,
+        ) -> Result<
+            crate::script::javascript::JavaScriptPageDebuggerStaticMetadataLoweringSummary,
+            JavaScriptPageDebuggerError,
+        > {
+            if metadata_handle != 41 || metadata_generation != 9 {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            Ok(
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataLoweringSummary {
+                    safe_point_map_abi: if self.malformed_lowering_summary {
+                        "unexpected-child-label".to_string()
+                    } else {
+                        blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_SAFE_POINT_MAP_ABI_V1
+                            .to_string()
+                    },
+                    program_abi: blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_PROGRAM_ABI_V1
+                        .to_string(),
+                    source_set_hash: "bts-source-set-0123456789abcdef".to_string(),
+                    bound_safe_point_count: 1,
                 },
             )
         }
@@ -3159,6 +3315,7 @@ mod tests {
         let mut locations = MetadataLocations {
             malformed_summary: false,
             malformed_provenance: false,
+            malformed_lowering_summary: false,
             mismatched_symbol_display: false,
             mismatched_contract_display: false,
             mismatched_contract_validation: false,
@@ -3797,6 +3954,7 @@ mod tests {
         let mut locations = MetadataLocations {
             malformed_summary: true,
             malformed_provenance: false,
+            malformed_lowering_summary: false,
             mismatched_symbol_display: false,
             mismatched_contract_display: false,
             mismatched_contract_validation: false,
@@ -3818,6 +3976,116 @@ mod tests {
                 &mut locations,
                 Some(&session),
                 DebuggerRequest::DescribeStaticMetadata { metadata },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn static_metadata_lowering_summary_requires_a_receipt_and_rejects_noncanonical_child_data() {
+        let (tabs, realm) = loaded_tabs();
+        let program = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let metadata = DebuggerStaticMetadataHandle {
+            program,
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_lowering_summary(),
+        };
+        let hello_reply = blueice_ipc::debugger::negotiate(
+            &hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_lowering_summary(),
+        );
+        let session = blueice_ipc::debugger::metadata_session_authorization(&hello, &hello_reply)
+            .expect(
+                "dependent lowering-summary policy must create a core-local session authorization",
+            );
+        let mut locations = MetadataLocations {
+            malformed_summary: false,
+            malformed_provenance: false,
+            malformed_lowering_summary: false,
+            mismatched_symbol_display: false,
+            mismatched_contract_display: false,
+            mismatched_contract_validation: false,
+        };
+        let capabilities = handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&session),
+            DebuggerRequest::DescribeCapabilities { realm },
+        );
+        let DebuggerReply::Capabilities(capabilities) = capabilities else {
+            panic!("live realm lowering-summary capability discovery must succeed")
+        };
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataLoweringSummary
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeStaticMetadataLoweringSummary { metadata },
+            ),
+            unavailable_static_metadata_lowering_summary(),
+            "a guessed metadata handle must fail before core reaches the child"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadata { program },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
+        );
+        let reply = handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&session),
+            DebuggerRequest::DescribeStaticMetadataLoweringSummary { metadata },
+        );
+        let DebuggerReply::StaticMetadataLoweringSummary(summary) = reply else {
+            panic!("an inventoried metadata handle must expose its bounded lowering summary")
+        };
+        assert_eq!(summary.metadata, metadata);
+        assert_eq!(
+            summary.safe_point_map_abi,
+            blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_SAFE_POINT_MAP_ABI_V1
+        );
+        assert_eq!(
+            summary.program_abi,
+            blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_PROGRAM_ABI_V1
+        );
+        assert_eq!(summary.source_set_hash, "bts-source-set-0123456789abcdef");
+        assert_eq!(summary.bound_safe_point_count, 1);
+        let disclosure = format!("{summary:?}");
+        assert!(
+            !disclosure.contains("page://")
+                && !disclosure.contains("main.ts")
+                && !disclosure.contains("bytecode")
+                && !disclosure.contains("privateBlueTsMetadata"),
+            "lowering summary must exclude source identities, map entries, offsets, and static-record payloads"
+        );
+
+        locations.malformed_lowering_summary = true;
+        assert!(matches!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeStaticMetadataLoweringSummary { metadata },
             ),
             DebuggerReply::Error {
                 code: DebuggerErrorCode::InvalidTarget,
@@ -3858,6 +4126,7 @@ mod tests {
         let mut locations = MetadataLocations {
             malformed_summary: false,
             malformed_provenance: false,
+            malformed_lowering_summary: false,
             mismatched_symbol_display: true,
             mismatched_contract_display: false,
             mismatched_contract_validation: false,
@@ -3928,6 +4197,7 @@ mod tests {
         let mut locations = MetadataLocations {
             malformed_summary: false,
             malformed_provenance: false,
+            malformed_lowering_summary: false,
             mismatched_symbol_display: false,
             mismatched_contract_display: true,
             mismatched_contract_validation: false,
@@ -4000,6 +4270,7 @@ mod tests {
         let mut locations = MetadataLocations {
             malformed_summary: false,
             malformed_provenance: false,
+            malformed_lowering_summary: false,
             mismatched_symbol_display: false,
             mismatched_contract_display: false,
             mismatched_contract_validation: false,
@@ -4145,6 +4416,7 @@ mod tests {
         let mut locations = MetadataLocations {
             malformed_summary: false,
             malformed_provenance: false,
+            malformed_lowering_summary: false,
             mismatched_symbol_display: false,
             mismatched_contract_display: false,
             mismatched_contract_validation: false,

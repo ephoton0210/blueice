@@ -81,6 +81,7 @@ struct StaticMetadataPolicy {
     symbol_display: bool,
     contract_display: bool,
     contract_validation: bool,
+    lowering_summary: bool,
 }
 
 struct LauncherProcess {
@@ -159,6 +160,9 @@ impl LauncherProcess {
         }
         if policy.contract_validation {
             command.arg("--debugger-static-metadata-contract-validation");
+        }
+        if policy.lowering_summary {
+            command.arg("--debugger-static-metadata-lowering-summary");
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
@@ -592,6 +596,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             symbol_display: true,
             contract_display: true,
             contract_validation: true,
+            lowering_summary: true,
         },
     );
 
@@ -619,6 +624,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                             symbol_display: true,
                             contract_display: true,
                             contract_validation: true,
+                            lowering_summary: true,
                         },
                     ),
             },
@@ -637,6 +643,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     symbol_display: true,
                     contract_display: true,
                     contract_validation: true,
+                    lowering_summary: true,
                 },
             ),
         }
@@ -667,6 +674,11 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     assert!(capabilities.reports.iter().any(|report| {
         report.capability
             == blueice_ipc::debugger::DebuggerCapability::StaticMetadataContractValidation
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability
+            == blueice_ipc::debugger::DebuggerCapability::StaticMetadataLoweringSummary
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
     assert!(capabilities.reports.iter().any(|report| {
@@ -739,6 +751,51 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         }
     }
     let typed_metadata = typed_metadata.expect("fixture must include one direct BlueTS program");
+    let guessed_metadata = blueice_ipc::debugger::DebuggerStaticMetadataHandle {
+        metadata_handle: typed_metadata.metadata_handle + 1,
+        ..typed_metadata
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataLoweringSummary {
+                metadata: guessed_metadata,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::CapabilityUnavailable,
+            ..
+        }
+    ));
+    let lowering_summary_reply = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadataLoweringSummary {
+            metadata: typed_metadata,
+        },
+    );
+    let DebuggerReply::StaticMetadataLoweringSummary(lowering_summary) = lowering_summary_reply
+    else {
+        panic!("expected a bounded direct BlueTS-to-BlueJS lowering summary")
+    };
+    assert_eq!(lowering_summary.metadata, typed_metadata);
+    assert_eq!(
+        lowering_summary.safe_point_map_abi,
+        blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_SAFE_POINT_MAP_ABI_V1
+    );
+    assert_eq!(
+        lowering_summary.program_abi,
+        blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_PROGRAM_ABI_V1
+    );
+    assert!(lowering_summary
+        .source_set_hash
+        .starts_with(blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_SOURCE_SET_HASH_PREFIX));
+    assert!(lowering_summary.bound_safe_point_count > 0);
+    assert!(
+        !format!("{lowering_summary:?}").contains("inline-0.ts")
+            && !format!("{lowering_summary:?}").contains("bytecode_offset")
+            && !format!("{lowering_summary:?}").contains("privateBlueTsMetadata"),
+        "the public lowering summary must not expose source identities, map entries, bytecode offsets, or static records"
+    );
     let summary_reply = debugger_request(
         &mut debugger,
         DebuggerRequest::DescribeStaticMetadata {
@@ -1149,6 +1206,18 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         debugger_request(
             &mut debugger,
             DebuggerRequest::DescribeStaticMetadata {
+                metadata: typed_metadata,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataLoweringSummary {
                 metadata: typed_metadata,
             },
         ),

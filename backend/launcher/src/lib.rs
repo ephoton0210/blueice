@@ -138,6 +138,9 @@ mod unix {
         /// contract receipt. The public result is only a boolean; plan and
         /// structural failure data remain denied.
         debugger_static_metadata_contract_validation: bool,
+        /// Owner-only policy for aggregate evidence about a verified direct
+        /// BlueTS-to-BlueJS lowering map. Map entries and bytecode stay denied.
+        debugger_static_metadata_lowering_summary: bool,
         /// Owner-only policy for compiler-produced symbol displays bound to a
         /// prior opaque symbol receipt. Source/static records remain denied.
         debugger_static_metadata_symbol_display: bool,
@@ -317,6 +320,15 @@ mod unix {
             self.debugger_static_metadata_inventory = true;
             self.debugger_static_metadata_contract_inventory = true;
             self.debugger_static_metadata_contract_validation = true;
+            self
+        }
+
+        /// Enables an aggregate verified direct-lowering-map summary for a
+        /// prior opaque metadata handle. This selects only the parent
+        /// inventory; source spans, map entries, and bytecode stay denied.
+        pub fn with_debugger_static_metadata_lowering_summary(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_lowering_summary = true;
             self
         }
 
@@ -1699,6 +1711,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_contract_validation {
                     command.arg("--debugger-static-metadata-contract-validation");
+                }
+                if options.debugger_static_metadata_lowering_summary {
+                    command.arg("--debugger-static-metadata-lowering-summary");
                 }
                 if options.debugger_static_metadata_symbol_display {
                     command.arg("--debugger-static-metadata-symbol-display");

@@ -50,7 +50,11 @@
 //! core-proxied operation, not a general static-record read or source access.
 //! Version 16 adds one exact contract-ID display lookup; it remains an explicit
 //! core-proxied operation, not a general static-record read or source access.
-//! Version 17 adds a separately requested, data-only validation against one
+//! Version 18 adds a separately requested, opaque-handle-bound summary of the
+//! verified BlueTS-to-BlueJS lowering map. It carries only fixed ABI labels,
+//! a source-set fingerprint, and an aggregate bound-entry count; source
+//! identities/spans, map entries, AST nodes, and bytecode offsets remain
+//! private. Version 17 adds a separately requested, data-only validation against one
 //! exact prior contract ID. Its reply is only a boolean, never the input,
 //! contract plan, or structural failure detail.
 
@@ -59,7 +63,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 17;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 18;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -137,6 +141,19 @@ pub struct PageHostDebuggerBlueTsMetadataSummary {
     pub type_count: u32,
     pub symbol_count: u32,
     pub contract_count: u32,
+}
+
+/// Source-free aggregate evidence for the exact retained direct-lowering map
+/// under one opaque metadata handle. The enclosing request/reply binds this
+/// to a child-private program and metadata identity. It deliberately contains
+/// no source/module identity, source span, map entry, AST node, code-unit ID,
+/// bytecode offset, VM object/value, or static-record payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataLoweringSummary {
+    pub safe_point_map_abi: String,
+    pub program_abi: String,
+    pub source_set_hash: String,
+    pub bound_safe_point_count: u32,
 }
 
 /// One compiler-minted source-record ID for an exact private BlueTS metadata
@@ -456,6 +473,15 @@ pub enum PageHostRequest {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
     },
+    /// Returns only aggregate ABI/fingerprint evidence for the verified direct
+    /// lowering map paired with one exact opaque metadata handle. This is not
+    /// an entry, source span, AST-node, or bytecode inspection operation.
+    DescribeDebuggerBlueTsMetadataLoweringSummary {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    },
     /// Lists compiler-minted source-record IDs for a prior exact private
     /// metadata handle. This is not a source/provenance record read.
     ListDebuggerBlueTsMetadataSources {
@@ -650,6 +676,16 @@ pub enum PageHostReply {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
         summary: PageHostDebuggerBlueTsMetadataSummary,
+    },
+    /// Aggregate ABI/fingerprint evidence for the exact verified direct
+    /// lowering map retained under this opaque metadata handle. It carries no
+    /// map entries, source spans, AST nodes, or bytecode offsets.
+    DebuggerBlueTsMetadataLoweringSummary {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        summary: Box<PageHostDebuggerBlueTsMetadataLoweringSummary>,
     },
     DebuggerBlueTsMetadataSources {
         tab_id: u64,
@@ -940,6 +976,18 @@ mod tests {
                     metadata_generation: 19,
                 },
             },
+            PageHostRequest::DescribeDebuggerBlueTsMetadataLoweringSummary {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+            },
             PageHostRequest::ListDebuggerBlueTsMetadataSources {
                 tab_id: 7,
                 document_generation: 3,
@@ -1203,6 +1251,28 @@ mod tests {
                 symbol_count: 3,
                 contract_count: 4,
             },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataLoweringSummary {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            summary: Box::new(PageHostDebuggerBlueTsMetadataLoweringSummary {
+                safe_point_map_abi: "bluejs-safe-point-map-v1".to_string(),
+                program_abi: "bluejs-program-v1".to_string(),
+                source_set_hash: "bts-source-set-0123456789abcdef".to_string(),
+                bound_safe_point_count: 1,
+            }),
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();

@@ -31,6 +31,7 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerStaticMetadataContractId,
     JavaScriptPageDebuggerStaticMetadataContractTarget,
     JavaScriptPageDebuggerStaticMetadataContractValidation,
+    JavaScriptPageDebuggerStaticMetadataLoweringSummary,
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
@@ -199,6 +200,13 @@ pub trait PageHostClient {
         false
     }
 
+    /// Whether this peer supports the opaque-handle-bound aggregate summary
+    /// of a verified direct-lowering map. Per-entry source and bytecode data
+    /// remain private to the child.
+    fn debugger_bluets_metadata_lowering_summary_available(&self) -> bool {
+        false
+    }
+
     /// Whether this peer supports the metadata-handle-bound inventory of
     /// compiler-minted source IDs. The inventory has no source detail.
     fn debugger_bluets_metadata_sources_available(&self) -> bool {
@@ -287,6 +295,19 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement BlueTS debugger metadata summaries",
+        ))
+    }
+
+    fn debugger_bluets_metadata_lowering_summary(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger lowering summaries",
         ))
     }
 
@@ -557,6 +578,10 @@ impl PageHostClient for PageHostConnection {
         true
     }
 
+    fn debugger_bluets_metadata_lowering_summary_available(&self) -> bool {
+        true
+    }
+
     fn debugger_bluets_metadata_sources_available(&self) -> bool {
         true
     }
@@ -641,6 +666,23 @@ impl PageHostClient for PageHostConnection {
             program,
             metadata,
         })
+    }
+
+    fn debugger_bluets_metadata_lowering_summary(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        self.request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataLoweringSummary {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+            },
+        )
     }
 
     fn debugger_bluets_metadata_sources(
@@ -1491,6 +1533,13 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             && self.child.debugger_bluets_metadata_summary_available()
     }
 
+    fn debugger_static_metadata_lowering_summary_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self
+                .child
+                .debugger_bluets_metadata_lowering_summary_available()
+    }
+
     fn debugger_static_metadata_source_inventory_available(&self) -> bool {
         self.child.debugger_bluets_metadata_available()
             && self.child.debugger_bluets_metadata_sources_available()
@@ -1720,6 +1769,77 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             type_count: summary.type_count,
             symbol_count: summary.symbol_count,
             contract_count: summary.contract_count,
+        })
+    }
+
+    fn debugger_static_metadata_lowering_summary(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        metadata_handle: u64,
+        metadata_generation: u64,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataLoweringSummary, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_lowering_summary_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            metadata_handle,
+            metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_lowering_summary(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataLoweringSummary {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            summary,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || summary.safe_point_map_abi.is_empty()
+            || summary.program_abi.is_empty()
+            || summary.source_set_hash.is_empty()
+            || summary.safe_point_map_abi.len()
+                > blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_LOWERING_ABI_MAX_BYTES
+            || summary.program_abi.len()
+                > blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_LOWERING_ABI_MAX_BYTES
+            || summary.source_set_hash.len()
+                > blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_LOWERING_SOURCE_SET_HASH_MAX_BYTES
+            || summary.bound_safe_point_count
+                > blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_MAX_BOUND_SAFE_POINTS
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataLoweringSummary {
+            safe_point_map_abi: summary.safe_point_map_abi,
+            program_abi: summary.program_abi,
+            source_set_hash: summary.source_set_hash,
+            bound_safe_point_count: summary.bound_safe_point_count,
         })
     }
 

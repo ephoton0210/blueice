@@ -98,6 +98,9 @@ struct Args {
     /// Owner opt-in for a bounded data-only validation under an already
     /// inventoried contract ID. It returns only a boolean, never plan/error detail.
     debugger_static_metadata_contract_validation: bool,
+    /// Owner opt-in for aggregate verified direct-lowering-map evidence under
+    /// a prior opaque metadata handle; map entries and bytecode stay denied.
+    debugger_static_metadata_lowering_summary: bool,
     /// Owner opt-in for a bounded compiler-produced display under an already
     /// inventoried symbol ID. It does not expose a symbol record or source span.
     debugger_static_metadata_symbol_display: bool,
@@ -138,6 +141,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_contract_inventory = false;
     let mut debugger_static_metadata_contract_display = false;
     let mut debugger_static_metadata_contract_validation = false;
+    let mut debugger_static_metadata_lowering_summary = false;
     let mut debugger_static_metadata_symbol_display = false;
     let mut simulate_low_memory = false;
     let mut memory_poll_interval = memory_pressure::DEFAULT_POLL_INTERVAL;
@@ -188,6 +192,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--debugger-static-metadata-contract-validation" => {
                 debugger_static_metadata_contract_validation = true
+            }
+            "--debugger-static-metadata-lowering-summary" => {
+                debugger_static_metadata_lowering_summary = true
             }
             "--debugger-static-metadata-symbol-display" => {
                 debugger_static_metadata_symbol_display = true
@@ -305,6 +312,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if debugger_static_metadata_lowering_summary && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-lowering-summary requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_lowering_summary && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-lowering-summary requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
     if debugger_static_metadata_symbol_display && debugger_socket.is_none() {
         return Err(
             "--debugger-static-metadata-symbol-display requires --debugger-socket".to_string(),
@@ -336,6 +354,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_contract_inventory,
         debugger_static_metadata_contract_display,
         debugger_static_metadata_contract_validation,
+        debugger_static_metadata_lowering_summary,
         debugger_static_metadata_symbol_display,
         simulate_low_memory,
         memory_poll_interval,
@@ -398,6 +417,9 @@ fn main() -> ExitCode {
     }
     if args.debugger_static_metadata_contract_validation {
         core_options = core_options.with_debugger_static_metadata_contract_validation();
+    }
+    if args.debugger_static_metadata_lowering_summary {
+        core_options = core_options.with_debugger_static_metadata_lowering_summary();
     }
     if args.debugger_static_metadata_symbol_display {
         core_options = core_options.with_debugger_static_metadata_symbol_display();
@@ -537,6 +559,7 @@ mod tests {
         assert!(!parsed.debugger_static_metadata_contract_inventory);
         assert!(!parsed.debugger_static_metadata_contract_display);
         assert!(!parsed.debugger_static_metadata_contract_validation);
+        assert!(!parsed.debugger_static_metadata_lowering_summary);
         assert!(!parsed.debugger_static_metadata_symbol_display);
         assert!(!parsed.simulate_low_memory);
         assert_eq!(
@@ -575,6 +598,7 @@ mod tests {
             "--debugger-static-metadata-contract-inventory",
             "--debugger-static-metadata-contract-display",
             "--debugger-static-metadata-contract-validation",
+            "--debugger-static-metadata-lowering-summary",
             "--debugger-static-metadata-symbol-display",
             "--simulate-low-memory",
             "--memory-poll-interval-ms",
@@ -603,6 +627,7 @@ mod tests {
                 debugger_static_metadata_contract_inventory: true,
                 debugger_static_metadata_contract_display: true,
                 debugger_static_metadata_contract_validation: true,
+                debugger_static_metadata_lowering_summary: true,
                 debugger_static_metadata_symbol_display: true,
                 simulate_low_memory: true,
                 memory_poll_interval: Duration::from_millis(50),

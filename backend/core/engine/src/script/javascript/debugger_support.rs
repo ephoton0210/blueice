@@ -45,6 +45,19 @@ pub struct JavaScriptPageDebuggerStaticMetadataSummary {
     pub contract_count: u32,
 }
 
+/// A source-free aggregate summary of the verified direct BlueTS-to-BlueJS
+/// lowering map under one exact opaque metadata attachment. It carries only
+/// fixed ABI labels, a source-set fingerprint, and a count; source spans, map
+/// entries, AST nodes, code-unit identities, and bytecode offsets stay in the
+/// private child.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataLoweringSummary {
+    pub safe_point_map_abi: String,
+    pub program_abi: String,
+    pub source_set_hash: String,
+    pub bound_safe_point_count: u32,
+}
+
 /// One compiler-minted source-record identity for an exact static metadata
 /// attachment. It has no module, hash, text, span, or record payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

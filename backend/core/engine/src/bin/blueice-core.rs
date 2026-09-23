@@ -100,6 +100,10 @@ struct Args {
     /// previously emitted by the separate contract inventory. The reply is
     /// only a boolean; plans and structural failure detail stay private.
     debugger_static_metadata_contract_validation: bool,
+    /// Core-owner opt-in for an aggregate direct-lowering-map summary under a
+    /// prior opaque metadata receipt. It contains no map entries, spans, or
+    /// bytecode locations.
+    debugger_static_metadata_lowering_summary: bool,
     /// Core-owner opt-in for one bounded compiler-produced display under a
     /// symbol ID previously emitted by the separate symbol inventory.
     debugger_static_metadata_symbol_display: bool,
@@ -159,6 +163,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_contract_inventory = false;
     let mut debugger_static_metadata_contract_display = false;
     let mut debugger_static_metadata_contract_validation = false;
+    let mut debugger_static_metadata_lowering_summary = false;
     let mut debugger_static_metadata_symbol_display = false;
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
@@ -212,6 +217,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--debugger-static-metadata-contract-validation" => {
                 debugger_static_metadata_contract_validation = true
+            }
+            "--debugger-static-metadata-lowering-summary" => {
+                debugger_static_metadata_lowering_summary = true
             }
             "--debugger-static-metadata-symbol-display" => {
                 debugger_static_metadata_symbol_display = true
@@ -369,6 +377,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if debugger_static_metadata_lowering_summary && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-lowering-summary requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_lowering_summary && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-lowering-summary requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
     if debugger_static_metadata_symbol_display && debugger_socket.is_none() {
         return Err(
             "--debugger-static-metadata-symbol-display requires --debugger-socket".to_string(),
@@ -404,6 +423,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_contract_inventory,
         debugger_static_metadata_contract_display,
         debugger_static_metadata_contract_validation,
+        debugger_static_metadata_lowering_summary,
         debugger_static_metadata_symbol_display,
         compiler_socket,
         compiler_project_profile,
@@ -720,6 +740,7 @@ fn main() -> ExitCode {
                 symbol_display: args.debugger_static_metadata_symbol_display,
                 contract_display: args.debugger_static_metadata_contract_display,
                 contract_validation: args.debugger_static_metadata_contract_validation,
+                lowering_summary: args.debugger_static_metadata_lowering_summary,
             },
         )
     } else {
@@ -1097,6 +1118,7 @@ mod tests {
                 debugger_static_metadata_contract_inventory: false,
                 debugger_static_metadata_contract_display: false,
                 debugger_static_metadata_contract_validation: false,
+                debugger_static_metadata_lowering_summary: false,
                 debugger_static_metadata_symbol_display: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
@@ -1246,6 +1268,29 @@ mod tests {
         ])
         .unwrap();
         assert!(contract_validation.debugger_static_metadata_contract_validation);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-lowering-summary",
+            ]),
+            Err(
+                "--debugger-static-metadata-lowering-summary requires --debugger-static-metadata-inventory"
+                    .to_string()
+            )
+        );
+        let lowering_summary = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-lowering-summary",
+        ])
+        .unwrap();
+        assert!(lowering_summary.debugger_static_metadata_lowering_summary);
     }
 
     #[test]

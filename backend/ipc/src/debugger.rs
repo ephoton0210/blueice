@@ -9,8 +9,10 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version sixteen adds the
-//! default-deny data-only contract-validation operation for a prior opaque
+//! and an opt-in root-code-unit pause/resume seam. Version seventeen adds the
+//! independently default-deny lowering-map summary operation for a prior
+//! opaque metadata handle. Version sixteen added the default-deny data-only
+//! contract-validation operation for a prior opaque
 //! contract ID
 //! handle: `Hello` grants only the canonical intersection of a requested
 //! manifest and the core policy, and a metadata operation may be dispatched
@@ -29,7 +31,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 16;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 17;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -152,6 +154,24 @@ pub const DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_DEPTH: usize = 64;
 pub const DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_COLLECTION_ENTRIES: usize = 4_096;
 pub const DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_NODES: usize = 32_768;
 pub const DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_STRING_BYTES: usize = 256 * 1_024;
+/// Maximum byte length for one fixed, compiler-owned lowering-map ABI label.
+pub const DEBUGGER_STATIC_METADATA_LOWERING_ABI_MAX_BYTES: usize = 128;
+/// The only safe-point-map ABI emitted by the currently supported direct
+/// BlueTS-to-BlueJS bridge. A child cannot substitute an arbitrary label to
+/// smuggle compiler diagnostics or source-derived data through this field.
+pub const DEBUGGER_STATIC_METADATA_SAFE_POINT_MAP_ABI_V1: &str = "bluejs-safe-point-map-v1";
+/// The only executable-program ABI paired with the supported direct bridge.
+pub const DEBUGGER_STATIC_METADATA_PROGRAM_ABI_V1: &str = "bluejs-program-v1";
+/// Maximum byte length for one deterministic source-set fingerprint. This
+/// identifies a verified map input set, never an individual source or text.
+pub const DEBUGGER_STATIC_METADATA_LOWERING_SOURCE_SET_HASH_MAX_BYTES: usize = 128;
+/// Prefix and exact opaque digest width for a direct bridge source-set
+/// fingerprint. The digest is an aggregate receipt, never a module identity.
+pub const DEBUGGER_STATIC_METADATA_SOURCE_SET_HASH_PREFIX: &str = "bts-source-set-";
+pub const DEBUGGER_STATIC_METADATA_SOURCE_SET_HASH_HEX_BYTES: usize = 16;
+/// The public lowering summary reports only the count of verified bound map
+/// entries. It never carries the entries' source spans or bytecode offsets.
+pub const DEBUGGER_STATIC_METADATA_MAX_BOUND_SAFE_POINTS: u32 = 4_096;
 /// Maximum compiler-canonical module identity exposed by the distinct,
 /// owner-authorized provenance surface.
 pub const DEBUGGER_STATIC_METADATA_MODULE_MAX_BYTES: usize = 4_096;
@@ -244,6 +264,43 @@ pub struct DebuggerStaticMetadataContractValidation {
 impl DebuggerStaticMetadataContractValidation {
     pub fn is_well_formed(&self) -> bool {
         self.contract.is_well_formed()
+    }
+}
+
+/// One owner-authorized, source-free summary of the verified direct
+/// BlueTS-to-BlueJS lowering map paired with an exact opaque metadata handle.
+/// It contains fixed ABI labels, a deterministic source-set fingerprint, and
+/// only an aggregate entry count. It does not expose any source identity,
+/// source span, AST node, code-unit identity, bytecode offset, map entry,
+/// BlueJS object/value, or general static-record read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataLoweringSummary {
+    pub metadata: DebuggerStaticMetadataHandle,
+    pub safe_point_map_abi: String,
+    pub program_abi: String,
+    pub source_set_hash: String,
+    pub bound_safe_point_count: u32,
+}
+
+impl DebuggerStaticMetadataLoweringSummary {
+    pub fn is_well_formed(&self) -> bool {
+        self.metadata.is_well_formed()
+            && self.safe_point_map_abi == DEBUGGER_STATIC_METADATA_SAFE_POINT_MAP_ABI_V1
+            && self.safe_point_map_abi.len() <= DEBUGGER_STATIC_METADATA_LOWERING_ABI_MAX_BYTES
+            && self.program_abi == DEBUGGER_STATIC_METADATA_PROGRAM_ABI_V1
+            && self.program_abi.len() <= DEBUGGER_STATIC_METADATA_LOWERING_ABI_MAX_BYTES
+            && self
+                .source_set_hash
+                .strip_prefix(DEBUGGER_STATIC_METADATA_SOURCE_SET_HASH_PREFIX)
+                .is_some_and(|digest| {
+                    digest.len() == DEBUGGER_STATIC_METADATA_SOURCE_SET_HASH_HEX_BYTES
+                        && digest
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                })
+            && self.source_set_hash.len()
+                <= DEBUGGER_STATIC_METADATA_LOWERING_SOURCE_SET_HASH_MAX_BYTES
+            && self.bound_safe_point_count <= DEBUGGER_STATIC_METADATA_MAX_BOUND_SAFE_POINTS
     }
 }
 
@@ -417,6 +474,10 @@ pub enum DebuggerCapability {
     /// exact debugger stream previously inventoried. It returns no plan or
     /// structural failure detail.
     StaticMetadataContractValidation,
+    /// One source-free aggregate summary of the verified direct
+    /// BlueTS-to-BlueJS lowering map. It carries no map entry, source span,
+    /// AST node, code-unit identity, or bytecode offset.
+    StaticMetadataLoweringSummary,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -479,6 +540,10 @@ pub enum DebuggerMetadataCapability {
     /// previously returned by [`Self::OpaqueContractInventory`]. The outcome
     /// is only a boolean; plan and failure detail stay independently denied.
     OpaqueContractValidation,
+    /// Describes only fixed ABI labels, a deterministic source-set fingerprint,
+    /// and an aggregate verified-entry count for the exact opaque metadata
+    /// handle. Map entries, spans, AST nodes, and bytecode remain unavailable.
+    OpaqueLoweringSummary,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -505,6 +570,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueContractValidation => {
                 Some(DebuggerCapability::StaticMetadataContractValidation)
             }
+            Self::OpaqueLoweringSummary => Some(DebuggerCapability::StaticMetadataLoweringSummary),
             Self::Unknown => None,
         }
     }
@@ -522,6 +588,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSymbolDisplay => Some(8),
             Self::OpaqueContractDisplay => Some(9),
             Self::OpaqueContractValidation => Some(10),
+            Self::OpaqueLoweringSummary => Some(11),
             Self::Unknown => None,
         }
     }
@@ -563,6 +630,7 @@ pub struct DebuggerMetadataCapabilitySelection {
     pub symbol_display: bool,
     pub contract_display: bool,
     pub contract_validation: bool,
+    pub lowering_summary: bool,
 }
 
 impl DebuggerMetadataCapabilityManifest {
@@ -737,6 +805,18 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants a verified direct-lowering-map summary only with its required
+    /// opaque parent inventory. The summary has no per-entry dereference.
+    pub fn opaque_lowering_summary() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueLoweringSummary,
+            ],
+        }
+    }
+
     /// Builds the exact canonical manifest selected by a trusted owner after
     /// it independently validated each prerequisite flag. Keeping this
     /// operation here avoids a caller hand-assembling a reordered manifest.
@@ -752,6 +832,7 @@ impl DebuggerMetadataCapabilityManifest {
             symbol_display,
             contract_display,
             contract_validation,
+            lowering_summary,
         } = selection;
         let any = summary
             || source_inventory
@@ -762,7 +843,8 @@ impl DebuggerMetadataCapabilityManifest {
             || contract_inventory
             || symbol_display
             || contract_display
-            || contract_validation;
+            || contract_validation
+            || lowering_summary;
         let mut capabilities = Vec::new();
         if any {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
@@ -796,6 +878,9 @@ impl DebuggerMetadataCapabilityManifest {
         }
         if contract_validation {
             capabilities.push(DebuggerMetadataCapability::OpaqueContractValidation);
+        }
+        if lowering_summary {
+            capabilities.push(DebuggerMetadataCapability::OpaqueLoweringSummary);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -910,6 +995,12 @@ impl DebuggerMetadataCapabilityManifest {
                     && self
                         .capabilities
                         .contains(&DebuggerMetadataCapability::OpaqueContractInventory)))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueLoweringSummary)
+                || self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -1511,6 +1602,13 @@ pub enum DebuggerRequest {
     DescribeStaticMetadata {
         metadata: DebuggerStaticMetadataHandle,
     },
+    /// Returns one separately authorized, aggregate summary of the verified
+    /// direct BlueTS-to-BlueJS lowering map for an exact inventory handle.
+    /// It never exposes source spans, map entries, AST nodes, code-unit IDs,
+    /// bytecode offsets, or a generic map-read operation.
+    DescribeStaticMetadataLoweringSummary {
+        metadata: DebuggerStaticMetadataHandle,
+    },
     /// Lists bounded compiler-minted source-record identities for one exact
     /// metadata attachment. It is not a source/provenance read operation.
     ListStaticMetadataSources {
@@ -1641,6 +1739,10 @@ pub enum DebuggerReply {
     /// Reply to [`DebuggerRequest::DescribeStaticMetadata`]. The summary is
     /// bounded and source-free; individual metadata records remain private.
     StaticMetadataSummary(DebuggerStaticMetadataSummary),
+    /// Reply to [`DebuggerRequest::DescribeStaticMetadataLoweringSummary`].
+    /// The result is parent-bound and contains only fixed ABI/fingerprint
+    /// evidence and an aggregate verified-entry count.
+    StaticMetadataLoweringSummary(Box<DebuggerStaticMetadataLoweringSummary>),
     /// Reply to [`DebuggerRequest::ListStaticMetadataSources`]. IDs are
     /// parent-handle-bound and contain no source/provenance payload.
     StaticMetadataSources(Vec<DebuggerStaticMetadataSourceId>),
@@ -1757,6 +1859,7 @@ pub fn negotiate(
         | DebuggerRequest::ListPrograms { .. }
         | DebuggerRequest::ListStaticMetadata { .. }
         | DebuggerRequest::DescribeStaticMetadata { .. }
+        | DebuggerRequest::DescribeStaticMetadataLoweringSummary { .. }
         | DebuggerRequest::ListStaticMetadataSources { .. }
         | DebuggerRequest::ListStaticMetadataTypes { .. }
         | DebuggerRequest::DescribeStaticMetadataType { .. }
@@ -1858,6 +1961,17 @@ mod tests {
                 },
             },
             DebuggerRequest::DescribeStaticMetadata {
+                metadata: DebuggerStaticMetadataHandle {
+                    program: DebuggerProgram {
+                        realm: realm(),
+                        program_handle: 12,
+                        program_generation: 5,
+                    },
+                    metadata_handle: 24,
+                    metadata_generation: 7,
+                },
+            },
+            DebuggerRequest::DescribeStaticMetadataLoweringSummary {
                 metadata: DebuggerStaticMetadataHandle {
                     program: DebuggerProgram {
                         realm: realm(),
@@ -2111,6 +2225,19 @@ mod tests {
                 symbol_count: 3,
                 contract_count: 4,
             }),
+            DebuggerReply::StaticMetadataLoweringSummary(Box::new(
+                DebuggerStaticMetadataLoweringSummary {
+                    metadata: DebuggerStaticMetadataHandle {
+                        program,
+                        metadata_handle: 24,
+                        metadata_generation: 7,
+                    },
+                    safe_point_map_abi: "bluejs-safe-point-map-v1".to_string(),
+                    program_abi: "bluejs-program-v1".to_string(),
+                    source_set_hash: "bts-source-set-0123456789abcdef".to_string(),
+                    bound_safe_point_count: 1,
+                },
+            )),
             DebuggerReply::StaticMetadataSources(vec![DebuggerStaticMetadataSourceId {
                 metadata: DebuggerStaticMetadataHandle {
                     program,
@@ -3086,6 +3213,63 @@ mod tests {
         let malformed = DebuggerMetadataCapabilityManifest {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
             capabilities: vec![DebuggerMetadataCapability::OpaqueContractValidation],
+        };
+        assert!(!malformed.is_well_formed());
+    }
+
+    #[test]
+    fn lowering_summary_requires_inventory_and_contains_no_map_entries() {
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 5,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_lowering_summary());
+        let reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_lowering_summary(),
+        );
+        let session = metadata_session_authorization(&request, &reply).unwrap();
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueInventory));
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueLoweringSummary));
+        assert!(DebuggerStaticMetadataLoweringSummary {
+            metadata,
+            safe_point_map_abi: DEBUGGER_STATIC_METADATA_SAFE_POINT_MAP_ABI_V1.to_string(),
+            program_abi: DEBUGGER_STATIC_METADATA_PROGRAM_ABI_V1.to_string(),
+            source_set_hash: "bts-source-set-0123456789abcdef".to_string(),
+            bound_safe_point_count: 1,
+        }
+        .is_well_formed());
+        assert!(
+            !DebuggerStaticMetadataLoweringSummary {
+                metadata,
+                safe_point_map_abi: "child-controlled-label".to_string(),
+                program_abi: DEBUGGER_STATIC_METADATA_PROGRAM_ABI_V1.to_string(),
+                source_set_hash: "bts-source-set-0123456789abcdef".to_string(),
+                bound_safe_point_count: 1,
+            }
+            .is_well_formed(),
+            "ABI labels are a fixed protocol vocabulary, never child-controlled text"
+        );
+        assert!(
+            !DebuggerStaticMetadataLoweringSummary {
+                metadata,
+                safe_point_map_abi: DEBUGGER_STATIC_METADATA_SAFE_POINT_MAP_ABI_V1.to_string(),
+                program_abi: DEBUGGER_STATIC_METADATA_PROGRAM_ABI_V1.to_string(),
+                source_set_hash: "bts-source-set-0123456789ABCDEf".to_string(),
+                bound_safe_point_count: 1,
+            }
+            .is_well_formed(),
+            "source-set receipts must remain canonical lowercase opaque digests"
+        );
+
+        let malformed = DebuggerMetadataCapabilityManifest {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![DebuggerMetadataCapability::OpaqueLoweringSummary],
         };
         assert!(!malformed.is_well_formed());
     }
