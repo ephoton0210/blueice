@@ -11,11 +11,39 @@
 //! `frontend-reference/src/main.rs` is (see `CLAUDE.md`).
 
 use blueice_mcp_server::BlueIceMcpServer;
-use rmcp::{ServiceExt, transport::stdio};
+use rmcp::{transport::stdio, ServiceExt};
+use std::path::PathBuf;
+
+fn parse_args(args: impl Iterator<Item = String>) -> Result<Option<PathBuf>, String> {
+    let mut launcher_socket = None;
+    let mut args = args;
+    while let Some(flag) = args.next() {
+        match flag.as_str() {
+            "--launcher-socket" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--launcher-socket requires a path".to_string())?;
+                if launcher_socket.replace(PathBuf::from(value)).is_some() {
+                    return Err("--launcher-socket may be supplied only once".to_string());
+                }
+            }
+            "--help" | "-h" => {
+                return Err(
+                    "usage: blueice-mcp-server [--launcher-socket <rendezvous.sock>]".to_string(),
+                );
+            }
+            _ => return Err(format!("unknown argument {flag:?}")),
+        }
+    }
+    Ok(launcher_socket)
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let server = BlueIceMcpServer::spawn(800, 600);
+    let server = match parse_args(std::env::args().skip(1))? {
+        Some(socket) => BlueIceMcpServer::attach_to_launcher(socket, 800, 600),
+        None => BlueIceMcpServer::spawn(800, 600),
+    };
     let service = server.serve(stdio()).await?;
     service.waiting().await?;
     Ok(())

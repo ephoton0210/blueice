@@ -31,3 +31,48 @@ and let `blueice-mcp-server` attach to the same default rendezvous socket. The
 frontend's shared mode never sends `Shutdown` or removes that socket on exit.
 The final evidence must retain the agent's MCP transcript, the frontend view
 while the highlight is active, and matching frame/snapshot generation numbers.
+
+## Live-model runbook
+
+This is intentionally an operator-run proof, not a replacement by a scripted
+client. Build the three binaries, serve the project-owned fixture only on
+loopback, and choose a fresh scratch directory for the run artifacts:
+
+```sh
+cargo build -p blueice-launcher -p blueice-frontend-reference -p blueice-mcp-server
+RUN_DIR="$(mktemp -d)"
+SOCKET="$RUN_DIR/launcher.sock"
+python3 -m http.server 4312 --bind 127.0.0.1 --directory development/browser_core/phase-6-ai-agent-integration-demo/demo-site
+```
+
+In a second terminal, start the shared core. In a third, start the human
+frontend against that exact socket; it must remain visible through the
+post-highlight pause.
+
+```sh
+target/debug/blueice-launcher --socket "$SOCKET"
+target/debug/blueice-frontend-reference --socket "$SOCKET" --url http://127.0.0.1:4312/index.html
+```
+
+Finally, in a fourth terminal with `OPENAI_API_KEY` already supplied by the
+operator's secret manager or shell environment, run an account-authorized,
+vision- and function-calling-capable Responses model. Do not place a key in
+the command, transcript, source tree, or commit.
+
+```sh
+target/debug/blueice-phase6-agent \
+  --model "<operator-selected-model>" \
+  --demo-url http://127.0.0.1:4312/index.html \
+  --launcher-socket "$SOCKET" \
+  --transcript "$RUN_DIR/agent.jsonl" \
+  --evidence-dir "$RUN_DIR/evidence"
+```
+
+The runner refuses a non-loopback start URL, a missing launcher, model-supplied
+function arguments, a missing highlight-time screenshot, an incomplete
+scenario, or a missing final report. It holds the shared highlight for ten
+seconds by default (`--highlight-hold-seconds 0` disables that pause only when
+no human capture is required). Preserve the JSONL transcript, retained PNGs,
+and a human-window screenshot taken during that hold. The corresponding MCP
+action results contain the core snapshots/generations required to compare with
+the observer's frame; record both values in the final result note.

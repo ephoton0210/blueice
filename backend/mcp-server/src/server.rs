@@ -34,6 +34,7 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler};
 use serde::Deserialize;
 use std::io;
 use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -208,6 +209,9 @@ struct BluejsCodeParams {
 struct CoreHandle {
     width: u32,
     height: u32,
+    /// A Phase 6 driver can require this exact shared core rather than the
+    /// usual best-effort attachment that may fall back to a private process.
+    required_launcher_socket: Option<PathBuf>,
     process: Mutex<Option<CoreProcess>>,
 }
 
@@ -216,6 +220,16 @@ impl CoreHandle {
         Self {
             width,
             height,
+            required_launcher_socket: None,
+            process: Mutex::new(None),
+        }
+    }
+
+    fn attached_to(rendezvous_socket: PathBuf, width: u32, height: u32) -> Self {
+        Self {
+            width,
+            height,
+            required_launcher_socket: Some(rendezvous_socket),
             process: Mutex::new(None),
         }
     }
@@ -226,7 +240,12 @@ impl CoreHandle {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if process.is_none() {
-            *process = Some(CoreProcess::connect(self.width, self.height)?);
+            *process = Some(match &self.required_launcher_socket {
+                Some(rendezvous_socket) => {
+                    CoreProcess::attach_to(rendezvous_socket, self.width, self.height)?
+                }
+                None => CoreProcess::connect(self.width, self.height)?,
+            });
         }
         Ok(process
             .as_ref()
@@ -363,6 +382,16 @@ impl BlueIceMcpServer {
     pub fn spawn(width: u32, height: u32) -> Self {
         BlueIceMcpServer {
             core: Arc::new(CoreHandle::new(width, height)),
+            downloads: Arc::new(DownloadsHandle::new()),
+        }
+    }
+
+    /// Creates a service whose browser tools can attach only to the supplied
+    /// launcher session. An unavailable launcher is surfaced to the MCP
+    /// caller rather than causing an unobserved private core to be started.
+    pub fn attach_to_launcher(rendezvous_socket: PathBuf, width: u32, height: u32) -> Self {
+        BlueIceMcpServer {
+            core: Arc::new(CoreHandle::attached_to(rendezvous_socket, width, height)),
             downloads: Arc::new(DownloadsHandle::new()),
         }
     }

@@ -1046,6 +1046,20 @@ impl CoreProcess {
         )
     }
 
+    /// Attaches to one exact launcher rendezvous socket without ever spawning
+    /// a private replacement core. Phase 6 uses this stricter form so a
+    /// missing shared session cannot silently invalidate the human-and-agent
+    /// same-render-pass proof.
+    pub fn attach_to(rendezvous_socket: &Path, _width: u32, _height: u32) -> io::Result<Self> {
+        let stream = std::os::unix::net::UnixStream::connect(rendezvous_socket)?;
+        let mut conn = CoreConnection::new(stream);
+        conn.handshake()?;
+        Ok(CoreProcess {
+            ownership: CoreOwnership::Shared,
+            conn: Arc::new(Mutex::new(conn)),
+        })
+    }
+
     /// The testable half of [`CoreProcess::connect`], taking the
     /// rendezvous path as a parameter instead of always resolving
     /// [`blueice_launcher::default_rendezvous_socket_path`] -- lets a
@@ -1746,6 +1760,20 @@ mod tests {
             "an unreachable rendezvous socket must fall back to a private spawn"
         );
         drop(core); // tears down the real spawned subprocess
+    }
+
+    #[test]
+    fn attach_to_never_falls_back_to_a_private_core() {
+        let rendezvous_path = std::env::temp_dir().join(format!(
+            "blueice-mcp-test-required-rendezvous-missing-{}.sock",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&rendezvous_path);
+
+        assert!(
+            CoreProcess::attach_to(&rendezvous_path, 320, 200).is_err(),
+            "a required launcher attachment must fail rather than spawn an unobserved core"
+        );
     }
 
     #[test]
