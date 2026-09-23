@@ -358,3 +358,323 @@ fn an_unmeasurable_stack_falls_back_to_the_conservative_frame_count() {
     assert!(call_stack_exhausted(None, UNMEASURED_STACK_MAX_CALL_DEPTH));
     assert!(call_stack_exhausted(None, usize::MAX));
 }
+
+#[test]
+fn host_values_convert_both_ways_for_every_primitive_and_refuse_objects() {
+    let primitives = [
+        (Value::Undefined, HostValue::Undefined),
+        (Value::Null, HostValue::Null),
+        (Value::Bool(true), HostValue::Bool(true)),
+        (Value::Number(1.5), HostValue::Number(1.5)),
+        (
+            Value::String("host".into()),
+            HostValue::String("host".into()),
+        ),
+    ];
+    for (value, host) in primitives {
+        assert_eq!(HostValue::try_from(&value).unwrap(), host);
+        assert_eq!(Value::from(host), value);
+    }
+    let mut vm = Vm::default();
+    let object = vm.with_roots(|heap| heap.alloc_object(None)).unwrap();
+    assert_eq!(
+        HostValue::try_from(&Value::Object(object))
+            .unwrap_err()
+            .to_string(),
+        "host functions accept primitive values only"
+    );
+}
+
+#[test]
+fn every_runtime_error_renders_and_only_a_heap_error_has_a_source() {
+    let rendered = [
+        (
+            RuntimeError::ReferenceError("x".into()),
+            "ReferenceError: x is not defined",
+        ),
+        (RuntimeError::TypeError("t".into()), "TypeError: t"),
+        (RuntimeError::RangeError("r".into()), "RangeError: r"),
+        (RuntimeError::SyntaxError("s".into()), "SyntaxError: s"),
+        (
+            RuntimeError::Thrown(Value::Null),
+            "uncaught JavaScript value: Null",
+        ),
+        (
+            RuntimeError::Heap(HeapError::InvalidConfig),
+            "invalid BlueJS heap configuration",
+        ),
+        (
+            RuntimeError::InstructionLimit,
+            "BlueJS instruction budget exhausted",
+        ),
+        (
+            RuntimeError::StringLimit { limit: 7 },
+            "BlueJS string exceeds 7 bytes",
+        ),
+        (RuntimeError::Test262("t".into()), "Test262Error: t"),
+        (RuntimeError::RegexTimeout, "BlueJS regex deadline exceeded"),
+        (
+            RuntimeError::RegexWorker("w".into()),
+            "BlueJS regex worker failed: w",
+        ),
+        (
+            RuntimeError::ModuleResolution("no such module".into()),
+            "module resolution error: no such module",
+        ),
+        (
+            RuntimeError::Unsupported("a missing feature"),
+            "BlueJS unsupported: a missing feature",
+        ),
+    ];
+    for (error, text) in rendered {
+        assert_eq!(error.to_string(), text);
+        let source = std::error::Error::source(&error);
+        assert_eq!(source.is_some(), matches!(error, RuntimeError::Heap(_)));
+    }
+}
+
+#[test]
+fn heap_errors_map_to_the_language_error_they_stand_for() {
+    let object = ObjectId { heap: 0, serial: 0 };
+    assert!(matches!(
+        RuntimeError::from(HeapError::InvalidArrayLength),
+        RuntimeError::RangeError(message) if message == "invalid array length"
+    ));
+    assert!(matches!(
+        RuntimeError::from(HeapError::InvalidBufferRange),
+        RuntimeError::RangeError(message) if message == "invalid ArrayBuffer view range"
+    ));
+    for error in [
+        HeapError::DetachedArrayBuffer,
+        HeapError::ImmutableArrayBuffer,
+        HeapError::InvalidWeakTarget,
+        HeapError::InvalidInternalSlot(object),
+        HeapError::RevokedProxy,
+    ] {
+        let message = error.to_string();
+        assert_eq!(RuntimeError::from(error), RuntimeError::TypeError(message));
+    }
+    assert!(matches!(
+        RuntimeError::from(HeapError::UninitializedModuleExport),
+        RuntimeError::ReferenceError(message) if message == "module export is uninitialized"
+    ));
+    // Every other heap error is carried through unchanged.
+    assert_eq!(
+        RuntimeError::from(HeapError::PrototypeCycle),
+        RuntimeError::Heap(HeapError::PrototypeCycle)
+    );
+}
+
+#[test]
+fn host_function_installation_walks_every_branch_with_one_callback_type() {
+    let mut vm = Vm::default();
+    // One callback type for every call, so each installer's single
+    // monomorphised instance takes every branch below.
+    let noop = |_args: &[HostValue]| Ok(HostValue::Undefined);
+
+    vm.install_host_function("taken", 0, noop).unwrap();
+    for name in ["", "has space", "1leading", "taken"] {
+        assert!(
+            matches!(
+                vm.install_host_function(name, 0, noop),
+                Err(RuntimeError::TypeError(message))
+                    if message == "host global name is invalid or already defined"
+            ),
+            "{name:?}"
+        );
+    }
+
+    let own = vm.install_host_object("here").unwrap();
+    let foreign = Vm::default().install_host_object("elsewhere").unwrap();
+    vm.install_host_method(own, "method", 0, noop).unwrap();
+    for (owner, name, reason) in [
+        (foreign, "method", "host object or method name is invalid"),
+        (own, "bad name", "host object or method name is invalid"),
+        (own, "method", "host method is already defined"),
+    ] {
+        assert!(
+            matches!(
+                vm.install_host_method(owner, name, 0, noop),
+                Err(RuntimeError::TypeError(message)) if message == reason
+            ),
+            "{name:?}: {reason}"
+        );
+    }
+    assert!(matches!(
+        vm.install_host_object("here"),
+        Err(RuntimeError::TypeError(_))
+    ));
+    assert!(matches!(
+        vm.install_host_object("no good"),
+        Err(RuntimeError::TypeError(_))
+    ));
+}
+
+#[test]
+fn a_host_function_reached_directly_refuses_construction_and_unknown_indexes() {
+    let mut vm = Vm::default();
+    vm.install_host_function("callable", 0, |_args: &[HostValue]| Ok(HostValue::Null))
+        .unwrap();
+    // JavaScript never gets past `IsConstructor` first, or past a valid index.
+    assert!(matches!(
+        vm.host_function_call(0, Value::Undefined, &[], true),
+        Err(RuntimeError::TypeError(message)) if message == "host functions are not constructors"
+    ));
+    assert!(matches!(
+        vm.host_function_call(99, Value::Undefined, &[], false),
+        Err(RuntimeError::TypeError(message)) if message == "host function is unavailable"
+    ));
+    assert_eq!(
+        vm.host_function_call(0, Value::Undefined, &[], false),
+        Ok(Value::Null)
+    );
+}
+
+#[test]
+fn the_function_prototype_is_reported_missing_when_string_lost_its_prototype() {
+    let mut vm = Vm::default();
+    let script = crate::compile(&crate::parse("Object.setPrototypeOf(String, null);").unwrap());
+    vm.execute_script(&script.unwrap()).unwrap();
+    assert!(matches!(
+        vm.function_prototype(),
+        Err(RuntimeError::TypeError(message)) if message == "Function prototype is unavailable"
+    ));
+}
+
+#[test]
+fn the_lazy_object_prototype_methods_are_left_alone_when_a_script_defined_them() {
+    let mut vm = Vm::default();
+    // Touching either name already installs the built-in (and records that),
+    // and only then does the assignment replace it.
+    let script = crate::compile(
+        &crate::parse(
+            "Object.prototype.propertyIsEnumerable = 1; Object.prototype.hasOwnProperty = 2;",
+        )
+        .unwrap(),
+    );
+    vm.execute_script(&script.unwrap()).unwrap();
+    // With the record cleared, the script's own values are what is found.
+    vm.property_is_enumerable_installed = false;
+    vm.has_own_property_installed = false;
+    // The second call finds the work already recorded as done.
+    for _ in 0..2 {
+        vm.property_is_enumerable_intrinsic().unwrap();
+        vm.has_own_property_intrinsic().unwrap();
+    }
+    let after = crate::compile(&crate::parse("Object.prototype.hasOwnProperty").unwrap());
+    assert_eq!(vm.execute_script(&after.unwrap()), Ok(Value::Number(2.0)));
+}
+
+/// A VM, with the function prototype and `globalThis` already built, whose
+/// heap ceiling leaves only `extra` bytes over what that took; `None` when
+/// even that does not fit. Building those lazily is what an operation under
+/// test must not be charged for, or every run would fail before reaching it.
+fn vm_with_heap_headroom(extra: usize) -> Option<Vm> {
+    fn warm_up(vm: &mut Vm) -> Result<(), RuntimeError> {
+        vm.function_prototype()?;
+        vm.global("globalThis")?;
+        Ok(())
+    }
+    let mut probe = Vm::default();
+    warm_up(&mut probe).unwrap();
+    let limit = probe.heap().stats().managed_bytes + extra;
+    let mut vm = Vm::new(VmConfig {
+        heap: HeapConfig {
+            major_threshold_bytes: limit.min(HeapConfig::default().major_threshold_bytes),
+            max_heap_bytes: limit,
+            ..HeapConfig::default()
+        },
+        ..VmConfig::default()
+    })
+    .ok()?;
+    warm_up(&mut vm).ok()?;
+    Some(vm)
+}
+
+/// Runs `operation` on VMs with ever more heap headroom, so that each
+/// allocation it makes fails in turn. Every outcome must be either success or
+/// the heap-limit error, never a panic or some other error; returns how many
+/// runs hit the limit.
+fn heap_limit_failures(mut operation: impl FnMut(&mut Vm) -> Result<(), RuntimeError>) -> usize {
+    let mut failures = 0;
+    for extra in (0..6144).step_by(8) {
+        let Some(mut vm) = vm_with_heap_headroom(extra) else {
+            continue;
+        };
+        match operation(&mut vm) {
+            Ok(()) => {}
+            Err(RuntimeError::Heap(HeapError::HeapLimitExceeded { .. })) => failures += 1,
+            Err(other) => panic!("headroom {extra}: {other:?}"),
+        }
+    }
+    failures
+}
+
+#[test]
+fn installing_a_host_function_survives_running_out_of_heap_at_each_step() {
+    let failures = heap_limit_failures(|vm| {
+        vm.install_host_function("probe", 2, |_args: &[HostValue]| Ok(HostValue::Undefined))
+    });
+    assert!(failures > 3, "only {failures} failing points were reached");
+}
+
+#[test]
+fn installing_native_getters_and_accessors_survives_running_out_of_heap() {
+    let object_method = || NativeFunction::ObjectMethod(native::ObjectMethod::HasOwn);
+    for (label, failures) in [
+        (
+            "getter",
+            heap_limit_failures(|vm| {
+                let prototype = vm.function_prototype()?;
+                let owner = vm.object_prototype;
+                vm.install_native_getter(owner, prototype, "probe", object_method())
+            }),
+        ),
+        (
+            "symbol getter",
+            heap_limit_failures(|vm| {
+                let prototype = vm.function_prototype()?;
+                let owner = vm.object_prototype;
+                vm.install_symbol_native_getter(owner, prototype, "toStringTag", object_method())
+            }),
+        ),
+        (
+            "accessor",
+            heap_limit_failures(|vm| {
+                let prototype = vm.function_prototype()?;
+                let owner = vm.object_prototype;
+                vm.install_native_accessor(
+                    owner,
+                    prototype,
+                    "probe",
+                    object_method(),
+                    object_method(),
+                )
+            }),
+        ),
+    ] {
+        assert!(failures > 3, "{label}: only {failures} failing points");
+    }
+}
+
+#[test]
+fn installing_the_lazy_object_prototype_methods_survives_running_out_of_heap() {
+    let failures = heap_limit_failures(|vm| vm.property_is_enumerable_intrinsic());
+    assert!(failures > 0, "propertyIsEnumerable: {failures}");
+    let failures = heap_limit_failures(|vm| vm.has_own_property_intrinsic());
+    assert!(failures > 0, "hasOwnProperty: {failures}");
+}
+
+#[test]
+fn a_native_accessor_cannot_replace_a_non_configurable_property() {
+    let mut vm = Vm::default();
+    let prototype = vm.function_prototype().unwrap();
+    let owner = vm.object_prototype;
+    vm.define_data(owner, "locked", Value::Number(1.0), false, false, false)
+        .unwrap();
+    let native = NativeFunction::ObjectMethod(native::ObjectMethod::HasOwn);
+    assert!(matches!(
+        vm.install_native_accessor(owner, prototype, "locked", native, native),
+        Err(RuntimeError::TypeError(message)) if message == "cannot install native accessor"
+    ));
+}

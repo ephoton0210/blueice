@@ -845,3 +845,33 @@ fn array_buffer_slice_resolves_a_cross_realm_species_result_to_a_synced_local_mi
         Value::Bool(true)
     );
 }
+
+#[test]
+fn an_error_raised_by_a_callback_belongs_to_the_callbacks_realm_not_the_native_actings() {
+    // `other`'s `Array.prototype.forEach` runs here on this Realm's array and
+    // calls this Realm's callback. What the callback throws (each of the four
+    // language error kinds, raised by the interpreter itself) is created in
+    // the callback's own Realm, not in the acting native's.
+    let mut vm = Vm::default();
+    vm.install_test262_harness().unwrap();
+    let source = r#"
+        let other = $262.createRealm().global;
+        let forEach = other.Array.prototype.forEach;
+        let kinds = [
+            [TypeError, other.TypeError, function () { null.property; }],
+            [ReferenceError, other.ReferenceError, function () { undeclared; }],
+            [RangeError, other.RangeError, function () { [].length = -1; }],
+            [SyntaxError, other.SyntaxError, function () { eval('('); }],
+        ];
+        kinds.every(([own, foreign, callback]) => {
+            let caught;
+            try { forEach.call([1], callback); } catch (error) { caught = error; }
+            return caught instanceof own && !(caught instanceof foreign);
+        })
+    "#;
+    assert_eq!(
+        vm.execute_script(&compile(&parse(source).unwrap()).unwrap())
+            .unwrap(),
+        Value::Bool(true)
+    );
+}

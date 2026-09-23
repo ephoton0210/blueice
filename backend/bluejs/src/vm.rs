@@ -1158,22 +1158,21 @@ impl Vm {
         function: impl HostFunction,
     ) -> Result<(), RuntimeError> {
         let index = u32::try_from(self.host_functions.len())
-            .map_err(|_| RuntimeError::RangeError("too many host functions".into()))?;
+            .ok()
+            .ok_or(RuntimeError::RangeError("too many host functions".into()))?;
         let prototype = self.function_prototype()?;
         let id = self.with_roots(|heap| {
             heap.alloc_native_function(NativeFunction::Host(index), name, prototype)
         })?;
         self.stack.push(Value::Object(id));
         let result = (|| {
-            self.define_data(
-                id,
-                "length",
-                Value::Number(f64::from(length)),
-                false,
-                false,
-                true,
-            )?;
-            self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
+            let metadata = [
+                ("length", Value::Number(f64::from(length))),
+                ("name", Value::String(name.into())),
+            ];
+            for (key, value) in metadata {
+                self.define_data(id, key, value, false, false, true)?;
+            }
             self.define_data(owner, name, Value::Object(id), true, false, true)
         })();
         self.stack.pop();

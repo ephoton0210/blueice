@@ -490,13 +490,16 @@ pub(crate) fn validate(
 /// Entry point for the separately installed matcher executable.
 #[doc(hidden)]
 pub fn serve() -> io::Result<()> {
-    let (mut input, mut output) = (io::stdin().lock(), io::stdout().lock());
-    frame_write(&mut output, READY)?;
+    serve_on(&mut io::stdin().lock(), &mut io::stdout().lock())
+}
+
+fn serve_on(stream_in: &mut dyn Read, stream_out: &mut dyn Write) -> io::Result<()> {
+    frame_write(stream_out, READY)?;
     let mut cached: Option<Compiled> = None;
     let mut cached_input: Option<Vec<u16>> = None;
     let mut canonical_input: Option<Vec<u16>> = None;
     loop {
-        let bytes = match frame_read(&mut input) {
+        let bytes = match frame_read(stream_in) {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
             Err(error) => return Err(error),
@@ -540,7 +543,7 @@ pub fn serve() -> io::Result<()> {
                     })?;
                     if let Err(message) = cache_pattern(&mut cached, source, flags) {
                         frame_write(
-                            &mut output,
+                            stream_out,
                             &serde_json::to_vec(&Reply::SyntaxError(message))?,
                         )?;
                         continue;
@@ -592,7 +595,7 @@ pub fn serve() -> io::Result<()> {
                     .collect(),
             ),
         };
-        frame_write(&mut output, &serde_json::to_vec(&reply)?)?;
+        frame_write(stream_out, &serde_json::to_vec(&reply)?)?;
     }
 }
 

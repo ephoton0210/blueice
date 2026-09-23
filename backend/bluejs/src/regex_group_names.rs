@@ -361,6 +361,35 @@ mod tests {
     }
 
     #[test]
+    fn classes_nest_only_under_the_unicode_sets_flag() {
+        let scan_of = |source: &str, unicode_sets: bool| {
+            let points: Vec<u32> = source.encode_utf16().map(u32::from).collect();
+            scan(&points, unicode_sets).groups.len()
+        };
+        // With `v`, `[[]()]` is one class holding an empty class and `()`;
+        // without it the first `]` ends the class and `()` is a real group.
+        assert_eq!(scan_of("[[]()]", true), 0);
+        assert_eq!(scan_of("[[]()]", false), 1);
+    }
+
+    #[test]
+    fn escapes_in_a_group_name_decode_only_when_they_are_well_formed() {
+        let decoded = |source: &str| {
+            let points: Vec<u32> = source.chars().map(u32::from).collect();
+            decode_name(&points)
+        };
+        assert_eq!(decoded(r"\u0041b"), "Ab");
+        assert_eq!(decoded(r"\u{1d453}"), "\u{1d453}");
+        assert_eq!(decoded(r"\uD835\uDC53"), "\u{1d453}");
+        // Anything malformed stands for its own points.
+        assert_eq!(decoded(r"\u{41"), r"\u{41");
+        assert_eq!(decoded(r"\u{zz}"), r"\u{zz}");
+        assert_eq!(decoded(r"\u00"), r"\u00");
+        // A lead surrogate with no trail after it is not a scalar value.
+        assert_eq!(decoded(r"\uD835\u0041"), "\u{FFFD}A");
+    }
+
+    #[test]
     fn astral_names_are_joined_only_where_they_are_names() {
         let joined = points("(?<\u{1d453}>x)\\k<\u{1d453}>", "");
         assert_eq!(
