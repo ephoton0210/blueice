@@ -248,10 +248,13 @@ or second module resolver to bypass them.
   core-owned implementation is the direct BlueTS external-source authorizer,
   not a duplicate loader. Its child process and direct core-session loopback
   regressions cover cache/integrity/MIME/redirect/cross-origin boundaries
-  without source reflection. Owner deployment configuration, host-wide
-  memory accounting, native debugger
-  attachment, and general JavaScript DOM-object/event binding remain open, so
-  the prerequisite remains open.
+  without source reflection. Core now caches each accepted child realm's
+  source-free `(tab, document_generation)` program/bytecode/heap totals, then
+  drops that record on replacement, tab removal, child error, transport loss,
+  or a malformed/mismatched reply; it is never reflected to a page, frontend,
+  debugger, or MCP client. Owner deployment configuration, host-wide memory
+  accounting, native debugger attachment, and general JavaScript DOM-object/
+  event binding remain open, so the prerequisite remains open.
 
   Acceptance: a page fixture can run a supported JavaScript classic script and
   module in its own realm; navigation/reload invalidates old program handles;

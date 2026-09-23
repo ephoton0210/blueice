@@ -38,8 +38,8 @@ use crate::{Page, TabId, TabManager};
 use blueice_ipc::page_host::{
     self, PageHostDebuggerExecutionState, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
     PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
-    PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
+    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
     PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
 };
 use blueice_net::canonical_http_origin;
@@ -132,6 +132,14 @@ pub trait PageHostClient {
             io::ErrorKind::Unsupported,
             "page-host child does not implement debugger locations",
         ))
+    }
+
+    /// Returns one source-free aggregate accounting record for the exact
+    /// child-owned realm. The default reuses the legacy debugger liveness
+    /// query so focused transport doubles do not accidentally gain a new
+    /// capability; production's authenticated child always implements it.
+    fn realm_stats(&mut self, tab_id: u64, document_generation: u64) -> io::Result<PageHostReply> {
+        self.debugger_realm_stats(tab_id, document_generation)
     }
 
     /// Lists private child program IDs for one exact realm.
@@ -448,6 +456,10 @@ pub struct OutOfProcessJavaScriptPageExecutor<C> {
     /// budget with every other OOP debugger lifetime record.
     debugger_execution_deferrals: BTreeMap<TabId, DebuggerExecutionDeferral>,
     live_documents: BTreeMap<TabId, LiveDocument>,
+    /// Source-free child accounting retained only by the core for the exact
+    /// live realm. A page, frontend, debugger, and MCP client receive neither
+    /// this record nor a handle that could request it.
+    realm_stats: BTreeMap<TabId, PageHostRealmStats>,
     /// Core-minted public debugger identities keyed by the child-private
     /// program IDs they represent. Child IDs are transport keys only and can
     /// never accidentally become public protocol IDs.
@@ -521,6 +533,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             hold_pending_debugger_execution_once: false,
             debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
+            realm_stats: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
             next_debugger_program_generation: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
@@ -564,6 +577,7 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
             hold_pending_debugger_execution_once: false,
             debugger_execution_deferrals: BTreeMap::new(),
             live_documents: BTreeMap::new(),
+            realm_stats: BTreeMap::new(),
             debugger_programs: BTreeMap::new(),
             next_debugger_program_handle: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
             next_debugger_program_generation: CORE_CHILD_DEBUGGER_ID_NAMESPACE_START,
@@ -613,6 +627,16 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
     /// stored in the child.
     pub fn into_child(self) -> C {
         self.child
+    }
+
+    /// Returns the aggregate accounting cached for this tab's exact current
+    /// child realm. The record is core-only and is discarded before a caller
+    /// can observe it after document replacement, tab close, or a malformed
+    /// child response.
+    pub fn realm_stats(&self, tab_id: TabId) -> Option<&PageHostRealmStats> {
+        let live_document = self.live_documents.get(&tab_id)?;
+        let stats = self.realm_stats.get(&tab_id)?;
+        (stats.document_generation == live_document.document_generation).then_some(stats)
     }
 }
 
@@ -666,10 +690,14 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 .close_realm(tab_id.as_u64(), document.document_generation);
         }
         self.debugger_execution_deferrals.remove(&tab_id);
+        self.realm_stats.remove(&tab_id);
         self.debugger_programs.remove(&tab_id);
     }
 
     fn synchronize_document(&mut self, tab_id: TabId, page: &Page, identity: LiveDocument) {
+        // A successor can never inherit accounting from its predecessor while
+        // its child acknowledgement is still in flight.
+        self.realm_stats.remove(&tab_id);
         let declarations = page.combined_page_script_declarations();
         let snapshot = match core_document_snapshot(page, &identity) {
             Ok(snapshot) => snapshot,
@@ -766,6 +794,15 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
                 }
             }
         }
+        if child_synchronized && !self.cache_realm_stats(tab_id, &identity) {
+            // A successful document acknowledgement without a matching
+            // aggregate record is not a core-owned live realm. Best-effort
+            // close names the newly acknowledged tuple, never its predecessor.
+            let _ = self
+                .child
+                .close_realm(tab_id.as_u64(), identity.document_generation);
+            child_synchronized = false;
+        }
         local_reports.sort_by_key(report_ordinal);
         local_blue_ts_reports.sort_by_key(blue_ts_report_ordinal);
         for report in local_reports {
@@ -787,6 +824,31 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         }
         self.debugger_programs.remove(&tab_id);
         self.live_documents.insert(tab_id, identity);
+    }
+
+    /// Queries and validates only the aggregate record for the exact realm
+    /// just acknowledged by the child. A test transport that does not opt in
+    /// to stats remains usable, but any production reply/error other than that
+    /// explicit unsupported default clears the cache and causes the new realm
+    /// to be closed rather than retaining unverified accounting.
+    fn cache_realm_stats(&mut self, tab_id: TabId, identity: &LiveDocument) -> bool {
+        match self
+            .child
+            .realm_stats(tab_id.as_u64(), identity.document_generation)
+        {
+            Ok(PageHostReply::RealmStats(stats))
+                if stats.tab_id == tab_id.as_u64()
+                    && stats.document_generation == identity.document_generation =>
+            {
+                self.realm_stats.insert(tab_id, stats);
+                true
+            }
+            Err(error) if error.kind() == io::ErrorKind::Unsupported => true,
+            Ok(_) | Err(_) => {
+                self.realm_stats.remove(&tab_id);
+                false
+            }
+        }
     }
 
     fn push_report(&mut self, report: JavaScriptPageExecutionReport) {
@@ -885,13 +947,21 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         if !self.has_core_live_document(tab_id, document_generation) {
             return false;
         }
-        matches!(
+        let child_has_live_realm = matches!(
             self.child
                 .debugger_realm_stats(tab_id.as_u64(), document_generation),
             Ok(PageHostReply::RealmStats(stats))
                 if stats.tab_id == tab_id.as_u64()
                     && stats.document_generation == document_generation
-        )
+        );
+        if !child_has_live_realm {
+            // A later transport/error response is not proof that the cached
+            // accounting still names a child-owned realm. Drop it immediately;
+            // the ordinary lifecycle owner will close the realm if it gets a
+            // later synchronization or execution-control failure.
+            self.realm_stats.remove(&tab_id);
+        }
+        child_has_live_realm
     }
 
     fn max_debugger_safe_points_per_program(&self) -> usize {
@@ -2412,6 +2482,120 @@ mod tests {
                 document_generation,
             })
         }
+
+        fn debugger_realm_stats(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmStats(page_host::PageHostRealmStats {
+                tab_id,
+                document_generation,
+                program_count: 1,
+                bytecode_bytes: 64,
+                heap_bytes: 128,
+            }))
+        }
+    }
+
+    #[test]
+    fn core_caches_child_realm_accounting_only_for_the_live_generation() {
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<script>let accounting = 1;</script>",
+            "https://example.test/accounting-first.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(RecordingChild::default());
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor.realm_stats(tab_id),
+            Some(&PageHostRealmStats {
+                tab_id: tab_id.as_u64(),
+                document_generation: 1,
+                program_count: 1,
+                bytecode_bytes: 64,
+                heap_bytes: 128,
+            })
+        );
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script>let accounting = 2;</script>",
+            Some("https://example.test/accounting-successor.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(
+            executor
+                .realm_stats(tab_id)
+                .map(|stats| stats.document_generation),
+            Some(2),
+            "a replacement must not retain the predecessor accounting record"
+        );
+
+        assert!(tabs.close_tab(tab_id));
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert_eq!(executor.realm_stats(tab_id), None);
+        assert_eq!(executor.into_child().closes, vec![(tab_id.as_u64(), 2)]);
+    }
+
+    #[derive(Default)]
+    struct MismatchedStatsChild {
+        closes: Vec<(u64, u64)>,
+    }
+
+    impl PageHostClient for MismatchedStatsChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::Synchronized {
+                tab_id: document.tab_id,
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            })
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.closes.push((tab_id, document_generation));
+            Ok(PageHostReply::RealmClosed {
+                tab_id,
+                document_generation,
+            })
+        }
+
+        fn debugger_realm_stats(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            Ok(PageHostReply::RealmStats(page_host::PageHostRealmStats {
+                tab_id: tab_id.saturating_add(1),
+                document_generation,
+                program_count: 1,
+                bytecode_bytes: 64,
+                heap_bytes: 128,
+            }))
+        }
+    }
+
+    #[test]
+    fn mismatched_child_realm_accounting_is_never_cached() {
+        let (tabs, tab_id) = loaded_tabs(
+            "<script>let untrustedAccounting = 1;</script>",
+            "https://example.test/mismatched-accounting.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::new(MismatchedStatsChild::default());
+        executor.synchronize_and_execute(&tabs).unwrap();
+
+        assert_eq!(executor.realm_stats(tab_id), None);
+        assert_eq!(
+            executor.into_child().closes,
+            vec![(tab_id.as_u64(), 1)],
+            "a mismatched record must close the newly acknowledged realm"
+        );
     }
 
     /// Records only the lifecycle advance requests needed to prove that a
@@ -2957,6 +3141,16 @@ mod tests {
         );
         let mut executor = OutOfProcessJavaScriptPageExecutor::connect(&path, &token).unwrap();
         executor.synchronize_and_execute(&tabs).unwrap();
+        let stats = executor
+            .realm_stats(tab_id)
+            .expect("the real child must supply core-owned realm accounting");
+        assert_eq!(stats.tab_id, tab_id.as_u64());
+        assert_eq!(stats.document_generation, 1);
+        assert_eq!(stats.program_count, 2);
+        assert!(
+            stats.bytecode_bytes > 0,
+            "the aggregate record must charge the admitted classic and module programs"
+        );
         assert_eq!(
             executor.drain_reports_for_tab(tab_id),
             vec![
