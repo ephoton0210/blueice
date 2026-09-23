@@ -1028,8 +1028,12 @@ or second module resolver to bypass them.
   `BlueIceMcpServer::connect_with_compiler_socket` and paired
   `connect_with_core_and_compiler_sockets` construction paths. The paired
   path attaches both adapters to one already-running core and never falls
-  back to an unrelated browser process. After
-  the separate compiler `Hello` negotiation, `bluetsc_describe_project`, `bluetsc_check`,
+  back to an unrelated browser process. The MCP tool router is split into a
+  browser-facing router plus dedicated compiler capability/session and
+  ECMA-402 report modules, keeping the former below the 1,500-line maintenance
+  boundary without widening any internal or public capability surface. After
+  the separate compiler `Hello` negotiation,
+  `bluetsc_describe_project`, `bluetsc_check`,
   `bluetsc_list_diagnostics`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
   `debug_get_provenance`, `debug_get_contract`, and
   `debug_validate_contract` forward only opaque project/generation/metadata
