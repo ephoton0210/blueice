@@ -25,6 +25,7 @@ use blueice_extension_host::{
     handle_extension_connection_with_actions_and_authentication, load_installed_extension,
     registry_for_installed_extension, ExtensionConnectionAuthentication, ExtensionRegistry,
 };
+use blueice_ipc::extension::ExtensionRuntimeEvent;
 use std::io::Read;
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
@@ -80,6 +81,7 @@ struct ExtensionService {
     registry: Arc<ExtensionRegistry>,
     required_authentication: Option<String>,
     runtime_start: Option<Arc<Mutex<mpsc::Receiver<()>>>>,
+    runtime_events: Option<Arc<Mutex<mpsc::Receiver<ExtensionRuntimeEvent>>>>,
 }
 
 /// A core-owned response must be prompt enough not to hold an extension
@@ -132,9 +134,17 @@ fn spawn_extension_host(
 }
 
 fn stop_extension_host(mut child: Child) {
-    if matches!(child.try_wait(), Ok(None)) {
-        let _ = child.kill();
+    // A normal session close first drops the lifecycle-event sender, letting a
+    // host blocked in NextRuntimeEvent receive RuntimeEventStreamClosed and
+    // exit on its own. Give that bounded shutdown path a brief chance before
+    // falling back to process containment for a misbehaving host.
+    for _ in 0..10 {
+        match child.try_wait() {
+            Ok(Some(_)) | Err(_) => return,
+            Ok(None) => thread::sleep(Duration::from_millis(10)),
+        }
     }
+    let _ = child.kill();
     let _ = child.wait();
 }
 
@@ -283,6 +293,7 @@ fn spawn_extension_listener(
             let required_authentication = service.required_authentication.clone();
             let authenticated_ready = authenticated_ready.clone();
             let runtime_start = service.runtime_start.clone();
+            let runtime_events = service.runtime_events.clone();
             thread::spawn(move || {
                 let authentication = match required_authentication.as_deref() {
                     Some(expected) => ExtensionConnectionAuthentication::required(expected),
@@ -294,6 +305,10 @@ fn spawn_extension_listener(
                 };
                 let authentication = match runtime_start {
                     Some(receiver) => authentication.with_runtime_start_receiver(receiver),
+                    None => authentication,
+                };
+                let authentication = match runtime_events {
+                    Some(receiver) => authentication.with_runtime_event_receiver(receiver),
                     None => authentication,
                 };
                 let _ = handle_extension_connection_with_actions_and_authentication(
@@ -356,7 +371,7 @@ fn main() -> ExitCode {
     // derive its registry identity before core publishes either socket. When
     // `--extension-host` is supplied, the listener additionally requires the
     // freshly generated credential from exactly that core-spawned child.
-    let (extension_service, extension_runtime_start) = match (
+    let (extension_service, extension_runtime_start, extension_runtime_events) = match (
         args.extension_socket.as_ref(),
         args.extension_manifest.as_deref(),
     ) {
@@ -402,12 +417,19 @@ fn main() -> ExitCode {
                 },
                 None => None,
             };
-            let (runtime_start, runtime_start_receiver) = if args.extension_host.is_some() {
-                let (sender, receiver) = mpsc::channel();
-                (Some(sender), Some(Arc::new(Mutex::new(receiver))))
-            } else {
-                (None, None)
-            };
+            let (runtime_start, runtime_start_receiver, runtime_events, runtime_event_receiver) =
+                if args.extension_host.is_some() {
+                    let (sender, receiver) = mpsc::channel();
+                    let (event_sender, event_receiver) = mpsc::sync_channel(16);
+                    (
+                        Some(sender),
+                        Some(Arc::new(Mutex::new(receiver))),
+                        Some(event_sender),
+                        Some(Arc::new(Mutex::new(event_receiver))),
+                    )
+                } else {
+                    (None, None, None, None)
+                };
             (
                 Some(ExtensionService {
                     socket: socket.clone(),
@@ -415,11 +437,13 @@ fn main() -> ExitCode {
                     registry: Arc::new(registry_for_installed_extension(&installed)),
                     required_authentication,
                     runtime_start: runtime_start_receiver,
+                    runtime_events: runtime_event_receiver,
                 }),
                 runtime_start,
+                runtime_events,
             )
         }
-        (None, None) => (None, None),
+        (None, None) => (None, None, None),
         // `parse_args` enforces this before `main`; retain a total match so a
         // future construction of `Args` cannot accidentally make an unsafe
         // partial configuration reachable.
@@ -573,7 +597,7 @@ fn main() -> ExitCode {
         let mut generation = 0u64;
         let result = match (script.as_mut(), extension_requests.as_ref()) {
             (Some(script), Some(extension_requests)) => {
-                session::run_session_with_script_and_extension_requests(
+                session::run_session_with_script_and_extension_requests_and_events(
                     &mut tabs,
                     &mut stream,
                     &frame_dir,
@@ -581,6 +605,7 @@ fn main() -> ExitCode {
                     &gatekeeper_socket,
                     script,
                     Some(extension_requests),
+                    extension_runtime_events.as_ref(),
                 )
             }
             (Some(script), None) => session::run_session_with_script(
@@ -591,14 +616,17 @@ fn main() -> ExitCode {
                 &gatekeeper_socket,
                 script,
             ),
-            (None, Some(extension_requests)) => session::run_session_with_extension_requests(
-                &mut tabs,
-                &mut stream,
-                &frame_dir,
-                &mut generation,
-                &gatekeeper_socket,
-                extension_requests,
-            ),
+            (None, Some(extension_requests)) => {
+                session::run_session_with_extension_requests_and_events(
+                    &mut tabs,
+                    &mut stream,
+                    &frame_dir,
+                    &mut generation,
+                    &gatekeeper_socket,
+                    extension_requests,
+                    extension_runtime_events.as_ref(),
+                )
+            }
             (None, None) => session::run_session(
                 &mut tabs,
                 &mut stream,
@@ -613,6 +641,10 @@ fn main() -> ExitCode {
         result
     })();
 
+    // Closing the bounded producer is the normal lifecycle shutdown signal.
+    // The authenticated handler turns it into RuntimeEventStreamClosed before
+    // the child receives the containment fallback below.
+    drop(extension_runtime_events);
     if let Some(child) = extension_host_child.take() {
         stop_extension_host(child);
     }

@@ -142,13 +142,24 @@ fn manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
         wat::parse_str(
             r#"(module
                 (import "blueice" "dom_read_utf8" (func $read (param i64 i32 i32) (result i32)))
+                (import "blueice" "runtime_event_kind" (func $event_kind (result i32)))
+                (import "blueice" "runtime_event_tab_id" (func $event_tab_id (result i64)))
                 (memory (export "memory") 1)
                 (func (export "blueice_start")
-                    i64.const 1
-                    i32.const 0
-                    i32.const 1024
-                    call $read
-                    drop))"#,
+                    call $event_kind
+                    i32.const 1
+                    i32.eq
+                    if
+                        call $event_tab_id
+                        i64.const 1
+                        i64.ne
+                        if unreachable end
+                        i64.const 1
+                        i32.const 0
+                        i32.const 1024
+                        call $read
+                        drop
+                    end))"#,
         )
         .unwrap(),
     )
@@ -268,7 +279,7 @@ fn a_manifest_derived_identity_is_required_over_a_real_process_boundary() {
 }
 
 #[test]
-fn core_connection_mode_authenticates_then_runs_the_wasm_reactor_over_real_ipc() {
+fn core_connection_mode_authenticates_then_runs_a_navigation_event_reactor_over_real_ipc() {
     let (root, manifest, extension_id) = manifest_package("core-connect");
     let socket = unique_socket_path("core-connect");
     let _ = std::fs::remove_file(&socket);
@@ -309,6 +320,17 @@ fn core_connection_mode_authenticates_then_runs_the_wasm_reactor_over_real_ipc()
         .unwrap();
     assert_eq!(
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::RuntimeEvent(
+            blueice_ipc::extension::ExtensionRuntimeEvent::NavigationCommitted { tab_id: 1 },
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
         ExtensionRequest::DomReadTab { tab_id: 1 }
     );
     blueice_ipc::extension::write_extension_reply(
@@ -318,7 +340,15 @@ fn core_connection_mode_authenticates_then_runs_the_wasm_reactor_over_real_ipc()
         },
     )
     .unwrap();
-    drop(stream);
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::RuntimeEventStreamClosed,
+    )
+    .unwrap();
     drop(listener);
     assert!(host.wait().unwrap().success());
     let _ = std::fs::remove_file(socket);

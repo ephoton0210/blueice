@@ -53,11 +53,13 @@ pub use manifest::{
     load_installed_extension, registry_for_installed_extension, ExtensionManifest,
     InstalledExtension, ManifestCapabilities, ManifestError, MANIFEST_API_VERSION,
 };
-pub use runtime::execute_installed_extension;
+pub use runtime::{
+    execute_installed_extension, execute_installed_extension_for_invocation, RuntimeInvocation,
+};
 
 use blueice_ipc::extension::{
     read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
-    UnsupportedCapabilityVersion,
+    ExtensionRuntimeEvent, UnsupportedCapabilityVersion,
 };
 use blueice_ipc::gatekeeper::{
     default_gatekeeper_socket_path, read_gatekeeper_reply, write_gatekeeper_request,
@@ -449,6 +451,7 @@ pub struct ExtensionConnectionAuthentication<'a> {
     expected: Option<&'a str>,
     authenticated_ready: Option<mpsc::Sender<()>>,
     runtime_start: Option<Arc<Mutex<mpsc::Receiver<()>>>>,
+    runtime_events: Option<Arc<Mutex<mpsc::Receiver<ExtensionRuntimeEvent>>>>,
 }
 
 impl<'a> ExtensionConnectionAuthentication<'a> {
@@ -458,6 +461,7 @@ impl<'a> ExtensionConnectionAuthentication<'a> {
             expected: None,
             authenticated_ready: None,
             runtime_start: None,
+            runtime_events: None,
         }
     }
 
@@ -467,6 +471,7 @@ impl<'a> ExtensionConnectionAuthentication<'a> {
             expected: Some(expected),
             authenticated_ready: None,
             runtime_start: None,
+            runtime_events: None,
         }
     }
 
@@ -489,6 +494,17 @@ impl<'a> ExtensionConnectionAuthentication<'a> {
         self
     }
 
+    /// Installs the bounded, core-owned event stream for the authenticated
+    /// child. Events are pulled one at a time only after `RuntimeStart`, so a
+    /// fresh Wasm invocation has completed before another event can arrive.
+    pub fn with_runtime_event_receiver(
+        mut self,
+        runtime_events: Arc<Mutex<mpsc::Receiver<ExtensionRuntimeEvent>>>,
+    ) -> Self {
+        self.runtime_events = Some(runtime_events);
+        self
+    }
+
     fn expected(&self) -> Option<&str> {
         self.expected
     }
@@ -508,6 +524,19 @@ impl<'a> ExtensionConnectionAuthentication<'a> {
             .map_err(|_| "the core runtime-start barrier was poisoned".to_string())?
             .recv()
             .map_err(|_| "the core ended before its extension runtime could start".to_string())
+    }
+
+    /// Returns `Ok(None)` when core has deliberately ended its lifecycle
+    /// stream, which is a normal host-shutdown condition rather than a
+    /// recoverable extension operation failure.
+    fn wait_for_runtime_event(&self) -> Result<Option<ExtensionRuntimeEvent>, String> {
+        let receiver = self.runtime_events.as_ref().ok_or_else(|| {
+            "the core has no lifecycle event stream for this extension connection".to_string()
+        })?;
+        let receiver = receiver
+            .lock()
+            .map_err(|_| "the core lifecycle event stream was poisoned".to_string())?;
+        Ok(receiver.recv().ok())
     }
 }
 
@@ -597,6 +626,33 @@ where
                     Ok(()) => {
                         runtime_started = true;
                         write_extension_reply(stream, &ExtensionReply::RuntimeStart)?;
+                    }
+                    Err(reason) => write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: "runtime".to_string(),
+                            reason,
+                        },
+                    )?,
+                }
+            }
+            ExtensionRequest::NextRuntimeEvent => {
+                let result = if !runtime_started {
+                    Err("the extension runtime has not started on this connection".to_string())
+                } else if authentication.expected().is_none() {
+                    Err(
+                        "NextRuntimeEvent is reserved for a core-spawned authenticated host"
+                            .to_string(),
+                    )
+                } else {
+                    authentication.wait_for_runtime_event()
+                };
+                match result {
+                    Ok(Some(event)) => {
+                        write_extension_reply(stream, &ExtensionReply::RuntimeEvent(event))?
+                    }
+                    Ok(None) => {
+                        write_extension_reply(stream, &ExtensionReply::RuntimeEventStreamClosed)?
                     }
                     Err(reason) => write_extension_reply(
                         stream,
@@ -1879,13 +1935,16 @@ mod tests {
         let expected = "a-core-generated-runtime-credential".to_string();
         let (runtime_start_tx, runtime_start_rx) = std::sync::mpsc::channel();
         let runtime_start_rx = Arc::new(Mutex::new(runtime_start_rx));
+        let (runtime_event_tx, runtime_event_rx) = std::sync::mpsc::channel();
+        let runtime_event_rx = Arc::new(Mutex::new(runtime_event_rx));
         let handle = thread::spawn(move || {
             handle_extension_connection_with_actions_and_authentication(
                 &registry,
                 Path::new("/not-used-before-a-dom-action.sock"),
                 &mut server,
                 ExtensionConnectionAuthentication::required(&expected)
-                    .with_runtime_start_receiver(runtime_start_rx),
+                    .with_runtime_start_receiver(runtime_start_rx)
+                    .with_runtime_event_receiver(runtime_event_rx),
                 |_| Ok(PLACEHOLDER_DOM_READ_VALUE.to_string()),
                 |_, _, _| Ok(()),
                 || Ok(()),
@@ -1913,6 +1972,15 @@ mod tests {
         assert_eq!(
             read_extension_reply(&mut client).unwrap(),
             ExtensionReply::RuntimeStart
+        );
+
+        write_extension_request(&mut client, &ExtensionRequest::NextRuntimeEvent).unwrap();
+        runtime_event_tx
+            .send(ExtensionRuntimeEvent::NavigationCommitted { tab_id: 17 })
+            .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::NavigationCommitted { tab_id: 17 })
         );
 
         drop(client);

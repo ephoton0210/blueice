@@ -57,6 +57,7 @@ use crate::tabs::{HistoryDestination, HistoryDirection};
 use crate::{GroupId, Page, TabGroup, TabId, TabManager};
 use blueice_dom::NodeId;
 use blueice_ipc::downloads::TransferInfo;
+use blueice_ipc::extension::ExtensionRuntimeEvent;
 use blueice_ipc::{ClientMessage, NodeAction, ServerMessage, TabGroupSummary, TabSummary, shm};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
@@ -199,8 +200,31 @@ pub fn run_session_with_extension_requests<S: Read + Write + ReadTimeout>(
     gatekeeper_socket: &Path,
     extension_requests: &mpsc::Receiver<ExtensionPageRequest>,
 ) -> io::Result<()> {
+    run_session_with_extension_requests_and_events(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        extension_requests,
+        None,
+    )
+}
+
+/// Like [`run_session_with_extension_requests`], with an optional bounded
+/// sender for core-defined extension lifecycle events. The session uses
+/// `try_send`, so a delayed extension can never stall page ownership.
+pub fn run_session_with_extension_requests_and_events<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    extension_requests: &mpsc::Receiver<ExtensionPageRequest>,
+    extension_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
+) -> io::Result<()> {
     let mut no_scripts = NoScriptScheduler;
-    run_session_with_script_and_extension_requests(
+    run_session_with_script_and_extension_requests_and_events(
         tabs,
         stream,
         frame_dir,
@@ -208,6 +232,7 @@ pub fn run_session_with_extension_requests<S: Read + Write + ReadTimeout>(
         gatekeeper_socket,
         &mut no_scripts,
         Some(extension_requests),
+        extension_events,
     )
 }
 
@@ -223,13 +248,14 @@ pub fn run_session_with_script<S: Read + Write + ReadTimeout>(
     gatekeeper_socket: &Path,
     script_scheduler: &mut dyn ScriptScheduler,
 ) -> io::Result<()> {
-    run_session_with_script_and_extension_requests(
+    run_session_with_script_and_extension_requests_and_events(
         tabs,
         stream,
         frame_dir,
         generation,
         gatekeeper_socket,
         script_scheduler,
+        None,
         None,
     )
 }
@@ -245,6 +271,33 @@ pub fn run_session_with_script_and_extension_requests<S: Read + Write + ReadTime
     gatekeeper_socket: &Path,
     script_scheduler: &mut dyn ScriptScheduler,
     extension_requests: Option<&mpsc::Receiver<ExtensionPageRequest>>,
+) -> io::Result<()> {
+    run_session_with_script_and_extension_requests_and_events(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        script_scheduler,
+        extension_requests,
+        None,
+    )
+}
+
+/// The production-capable session entry point with optional private extension
+/// request and lifecycle-event channels. Navigation events are advisory and
+/// bounded: a full queue is deliberately not allowed to block the frontend's
+/// sole `TabManager` owner.
+#[allow(clippy::too_many_arguments)] // keeps the established session entrypoint parameters explicit
+pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    script_scheduler: &mut dyn ScriptScheduler,
+    extension_requests: Option<&mpsc::Receiver<ExtensionPageRequest>>,
+    extension_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
 ) -> io::Result<()> {
     // Best-effort: on at least one real platform, setting a read
     // timeout on a Unix domain socket whose peer has *already*
@@ -308,6 +361,7 @@ pub fn run_session_with_script_and_extension_requests<S: Read + Write + ReadTime
                                 &mut downloads_refresher,
                                 &completion_tx,
                                 gatekeeper_socket,
+                                extension_events,
                             )?;
                         }
                     }
@@ -334,6 +388,7 @@ pub fn run_session_with_script_and_extension_requests<S: Read + Write + ReadTime
                             &mut downloads_refresher,
                             &completion_tx,
                             gatekeeper_socket,
+                            extension_events,
                         )?;
                     }
                     ClientMessage::GetHistoryState => {
@@ -409,6 +464,7 @@ pub fn run_session_with_script_and_extension_requests<S: Read + Write + ReadTime
                                     &mut downloads_refresher,
                                     &completion_tx,
                                     gatekeeper_socket,
+                                    extension_events,
                                 )?;
                                 continue;
                             }
@@ -489,6 +545,7 @@ pub fn run_session_with_script_and_extension_requests<S: Read + Write + ReadTime
                                         &mut downloads_refresher,
                                         &completion_tx,
                                         gatekeeper_socket,
+                                        extension_events,
                                     )?;
                                     continue;
                                 }
@@ -532,6 +589,7 @@ pub fn run_session_with_script_and_extension_requests<S: Read + Write + ReadTime
                         &mut downloads_refresher,
                         &completion_tx,
                         gatekeeper_socket,
+                        extension_events,
                     )?,
                     ClientMessage::CloseTab => {
                         if tabs.close_tab(target) {
@@ -742,6 +800,7 @@ pub fn run_session_with_script_and_extension_requests<S: Read + Write + ReadTime
                 completion,
                 &mut downloads_refresher,
                 script_scheduler,
+                extension_events,
             )?;
         }
 
@@ -1163,6 +1222,7 @@ fn begin_history_navigation<S: Write>(
     downloads_refresher: &mut DownloadsRefresher,
     completion_tx: &mpsc::Sender<Completion>,
     gatekeeper_socket: &Path,
+    extension_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
 ) -> io::Result<()> {
     let direction_name = match direction {
         HistoryDirection::Back => "back",
@@ -1192,7 +1252,15 @@ fn begin_history_navigation<S: Write>(
                 downloads_refresher.begin_visit(tab_id);
             }
             reply_success(
-                tabs, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id,
+                tabs,
+                stream,
+                frame_dir,
+                generation,
+                reply_tab,
+                request_id,
+                &kind,
+                tab_id,
+                extension_events,
             )
         }
         HistoryDestination::Reload(None) => {
@@ -1201,7 +1269,15 @@ fn begin_history_navigation<S: Write>(
             assert!(tabs.navigate_history_to_blank(tab_id, direction));
             supersede_pending_navigation(pending_nav_seq, tab_id);
             reply_success(
-                tabs, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id,
+                tabs,
+                stream,
+                frame_dir,
+                generation,
+                reply_tab,
+                request_id,
+                &kind,
+                tab_id,
+                extension_events,
             )
         }
         HistoryDestination::Reload(Some(url)) => {
@@ -1211,7 +1287,15 @@ fn begin_history_navigation<S: Write>(
                     downloads_refresher.begin_visit(tab_id);
                 }
                 return reply_success(
-                    tabs, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id,
+                    tabs,
+                    stream,
+                    frame_dir,
+                    generation,
+                    reply_tab,
+                    request_id,
+                    &kind,
+                    tab_id,
+                    extension_events,
                 );
             }
             if let Err(e) = blueice_net::validate_url_scheme(&url) {
@@ -1271,6 +1355,7 @@ fn begin_gated_navigation<S: Write>(
     downloads_refresher: &mut DownloadsRefresher,
     completion_tx: &mpsc::Sender<Completion>,
     gatekeeper_socket: &Path,
+    extension_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
 ) -> io::Result<()> {
     if tabs.navigate_to_built_in(tab_id, &url) {
         // A synchronous trusted navigation can still supersede a network
@@ -1280,7 +1365,15 @@ fn begin_gated_navigation<S: Write>(
             downloads_refresher.begin_visit(tab_id);
         }
         return reply_success(
-            tabs, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id,
+            tabs,
+            stream,
+            frame_dir,
+            generation,
+            reply_tab,
+            request_id,
+            &kind,
+            tab_id,
+            extension_events,
         );
     }
     if let Err(e) = blueice_net::validate_url_scheme(&url) {
@@ -1320,6 +1413,7 @@ fn reply_success<S: Write>(
     request_id: Option<u64>,
     kind: &PendingKind,
     tab_id: TabId,
+    extension_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
 ) -> io::Result<()> {
     let page = tabs
         .get_mut(tab_id)
@@ -1338,7 +1432,15 @@ fn reply_success<S: Write>(
             },
         )?,
     }
-    send_frame(page, stream, frame_dir, generation, reply_tab, request_id)
+    send_frame(page, stream, frame_dir, generation, reply_tab, request_id)?;
+    if let Some(events) = extension_events {
+        // Navigation events are advisory. A stalled extension has at most 16
+        // queued notifications and never blocks the session's render owner.
+        let _ = events.try_send(ExtensionRuntimeEvent::NavigationCommitted {
+            tab_id: tab_id.as_u64(),
+        });
+    }
+    Ok(())
 }
 
 /// Applies one background gated-navigation's [`Completion`], if it's
@@ -1361,6 +1463,7 @@ fn apply_completion<S: Write>(
     completion: Completion,
     downloads_refresher: &mut DownloadsRefresher,
     script_scheduler: &mut dyn ScriptScheduler,
+    extension_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
 ) -> io::Result<()> {
     let Completion {
         tab_id,
@@ -1407,7 +1510,15 @@ fn apply_completion<S: Write>(
             // containment rule in the ordinary runtime-error case too.
             let _ = script_scheduler.run_document_scripts(tabs, tab_id);
             reply_success(
-                tabs, stream, frame_dir, generation, reply_tab, request_id, &kind, tab_id,
+                tabs,
+                stream,
+                frame_dir,
+                generation,
+                reply_tab,
+                request_id,
+                &kind,
+                tab_id,
+                extension_events,
             )
         }
         NavOutcome::GatekeeperBlocked {
@@ -1450,6 +1561,7 @@ fn handle_open_tab<S: Write>(
     downloads_refresher: &mut DownloadsRefresher,
     completion_tx: &mpsc::Sender<Completion>,
     gatekeeper_socket: &Path,
+    extension_events: Option<&mpsc::SyncSender<ExtensionRuntimeEvent>>,
 ) -> io::Result<()> {
     let new_id = tabs.open_tab();
     let Some(url) = url else {
@@ -1477,6 +1589,7 @@ fn handle_open_tab<S: Write>(
         downloads_refresher,
         completion_tx,
         gatekeeper_socket,
+        extension_events,
     )
 }
 
@@ -1669,6 +1782,7 @@ mod tests {
             &mut refresher,
             &tx,
             Path::new("/unused"),
+            None,
         )
         .unwrap();
 
@@ -1807,6 +1921,55 @@ mod tests {
         assert!(
             !snapshot.nodes.is_empty(),
             "the core-backed snapshot must be from the navigated credits page, not the empty initial tab"
+        );
+
+        blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+        handle.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(cleanup_dir);
+    }
+
+    #[test]
+    fn committed_navigation_emits_a_bounded_core_defined_extension_event() {
+        let (mut client, mut server) = client_pair();
+        let (_extension_tx, extension_rx) = mpsc::channel();
+        let (events_tx, events_rx) = mpsc::sync_channel(1);
+        let dir = temp_frame_dir("extension-navigation-event");
+        let cleanup_dir = dir.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        let gatekeeper = PathBuf::from("/not-used-for-built-in-navigation");
+        let handle = thread::spawn(move || {
+            let mut tabs = TabManager::new(320.0, 200.0);
+            let mut generation = 0;
+            run_session_with_extension_requests_and_events(
+                &mut tabs,
+                &mut server,
+                &dir,
+                &mut generation,
+                &gatekeeper,
+                &extension_rx,
+                Some(&events_tx),
+            )
+        });
+
+        blueice_ipc::client_handshake(&mut client).unwrap();
+        blueice_ipc::write_client_message(
+            &mut client,
+            &ClientMessage::Navigate {
+                url: "about:credits".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::Navigated { .. }
+        ));
+        assert!(matches!(
+            blueice_ipc::read_server_message(&mut client).unwrap(),
+            ServerMessage::FrameReady { .. }
+        ));
+        assert_eq!(
+            events_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            ExtensionRuntimeEvent::NavigationCommitted { tab_id: 1 }
         );
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();

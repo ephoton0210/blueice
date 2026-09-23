@@ -83,6 +83,12 @@ pub enum ExtensionRequest {
     /// a frontend and initialized the session that owns live page state. This
     /// is not an extension capability and does not grant any new authority.
     RuntimeReady,
+    /// Waits for the next core-defined lifecycle event after an authenticated
+    /// runtime has started. This is a pull rather than an unsolicited message:
+    /// the host finishes one bounded Wasm invocation before it can receive and
+    /// instantiate the next one, so the extension socket has one reader and
+    /// one request/reply turn at all times. It is not a capability grant.
+    NextRuntimeEvent,
     /// Query the AI-facing representation, read-only -- requires the
     /// `dom:read` capability. The standalone reference host returns a
     /// placeholder. An installed extension served by `blueice-core` receives
@@ -222,6 +228,15 @@ pub enum ExtensionReply {
     /// a live `TabManager`, so bounded extension requests can reach it rather
     /// than timing out during pre-frontend process startup.
     RuntimeStart,
+    /// One event dequeued in reply to [`ExtensionRequest::NextRuntimeEvent`].
+    /// The event payload is core-defined and deliberately contains only an
+    /// opaque live tab ID; an extension must use its separately granted
+    /// `dom:read` operation to inspect page content.
+    RuntimeEvent(ExtensionRuntimeEvent),
+    /// Core is ending the private event stream, normally because its frontend
+    /// session ended. The host should exit cleanly rather than retrying or
+    /// inventing a background lifecycle of its own.
+    RuntimeEventStreamClosed,
     /// Reply to a granted [`ExtensionRequest::DomRead`].
     DomReadResult { value: String },
     /// Reply to a granted [`ExtensionRequest::DomWrite`].
@@ -251,6 +266,16 @@ pub enum ExtensionReply {
     /// mirroring [`crate::gatekeeper::GatekeeperReply::Rejected`]'s
     /// "structured, not a silent no-op" precedent.
     CapabilityDenied { capability: String, reason: String },
+}
+
+/// A core-owned lifecycle notification for one fresh, bounded Wasm reactor
+/// invocation. This protocol intentionally starts with just an after-commit
+/// navigation event; it does not expose arbitrary frontend or network hooks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExtensionRuntimeEvent {
+    /// A navigation has cleared gatekeeper review, committed to the live tab,
+    /// and published its frame. `tab_id` addresses that resulting live tab.
+    NavigationCommitted { tab_id: u64 },
 }
 
 /// A capability declaration the host could not negotiate during an
@@ -329,6 +354,7 @@ mod tests {
                 authentication: "not-a-real-secret-in-this-round-trip-test".to_string(),
             },
             ExtensionRequest::RuntimeReady,
+            ExtensionRequest::NextRuntimeEvent,
             ExtensionRequest::DomRead,
             ExtensionRequest::DomReadTab { tab_id: 42 },
             ExtensionRequest::DomWrite {
@@ -381,6 +407,8 @@ mod tests {
                 ]),
             },
             ExtensionReply::RuntimeStart,
+            ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::NavigationCommitted { tab_id: 42 }),
+            ExtensionReply::RuntimeEventStreamClosed,
             ExtensionReply::DomReadResult {
                 value: "placeholder".to_string(),
             },

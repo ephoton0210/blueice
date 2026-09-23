@@ -22,12 +22,14 @@
 //! `blueice_start` reactor without WASI or ambient OS authority.
 
 use blueice_extension_host::{
-    execute_installed_extension, handle_extension_connection_with_gatekeeper,
-    load_installed_extension, registry_for_installed_extension, ExtensionRegistry,
-    CAPABILITY_DOM_READ, CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT,
+    execute_installed_extension, execute_installed_extension_for_invocation,
+    handle_extension_connection_with_gatekeeper, load_installed_extension,
+    registry_for_installed_extension, ExtensionRegistry, RuntimeInvocation, CAPABILITY_DOM_READ,
+    CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT,
 };
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    ExtensionRuntimeEvent,
 };
 use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
 use std::collections::BTreeMap;
@@ -235,8 +237,44 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
         }
     }
 
-    execute_installed_extension(&installed, stream)
-        .map_err(|error| format!("could not run the installed WASM extension: {error}"))
+    // Each core-defined event receives an entirely fresh resource-bounded
+    // Wasm instance. Clone the authenticated socket only for the duration of
+    // that invocation, preserving a single request/reply reader afterward.
+    execute_installed_extension(
+        &installed,
+        stream.try_clone().map_err(|error| {
+            format!("could not clone the authenticated extension stream for startup: {error}")
+        })?,
+    )
+    .map_err(|error| format!("could not run the installed WASM extension at startup: {error}"))?;
+
+    loop {
+        write_extension_request(&mut stream, &ExtensionRequest::NextRuntimeEvent).map_err(
+            |error| format!("could not wait for the next core lifecycle event: {error}"),
+        )?;
+        match read_extension_reply(&mut stream)
+            .map_err(|error| format!("core did not provide the next lifecycle event: {error}"))?
+        {
+            ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::NavigationCommitted { tab_id }) => {
+                let invocation = RuntimeInvocation::NavigationCommitted { tab_id };
+                let event_stream = stream.try_clone().map_err(|error| {
+                    format!(
+                        "could not clone the authenticated extension stream for an event: {error}"
+                    )
+                })?;
+                execute_installed_extension_for_invocation(&installed, event_stream, invocation)
+                    .map_err(|error| {
+                        format!("could not run the installed WASM extension for navigation event: {error}")
+                    })?;
+            }
+            ExtensionReply::RuntimeEventStreamClosed => return Ok(()),
+            reply => {
+                return Err(format!(
+                    "core returned an unexpected lifecycle event reply: {reply:?}"
+                ));
+            }
+        }
+    }
 }
 
 fn main() -> ExitCode {

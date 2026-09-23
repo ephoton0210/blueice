@@ -10,11 +10,12 @@
 //! onto the already-authenticated extension connection, so `core` remains the
 //! sole capability and gatekeeper enforcement point.
 //!
-//! This is a one-shot reactor ABI, not a service-worker lifecycle: an
-//! extension exports `blueice_start: () -> ()`, which runs once after the
-//! host's authenticated `Hello` and core's internal runtime-start barrier.
-//! A later event model can start a fresh bounded instance for each core-defined
-//! event without widening this ABI or granting ambient process authority.
+//! This is a one-shot reactor ABI, not a resident service worker: an extension
+//! exports `blueice_start: () -> ()`, which runs once after the host's
+//! authenticated `Hello` and core's internal runtime-start barrier, then once
+//! again for each core-defined lifecycle event. Every event gets a fresh,
+//! bounded instance; guest code can query its small, host-defined context but
+//! never receives ambient process authority.
 
 use crate::InstalledExtension;
 use blueice_ipc::extension::{
@@ -46,9 +47,35 @@ const RESULT_ERROR: i32 = -1;
 const RESULT_BUFFER_TOO_SMALL: i32 = -2;
 const RESULT_INVALID_ARGUMENT: i32 = -3;
 
+/// The core-defined context for one fresh `blueice_start` invocation. The
+/// integer values exposed through the ABI are stable: `0` is startup and `1`
+/// is a successfully committed navigation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeInvocation {
+    Startup,
+    NavigationCommitted { tab_id: u64 },
+}
+
+impl RuntimeInvocation {
+    fn kind(self) -> i32 {
+        match self {
+            Self::Startup => 0,
+            Self::NavigationCommitted { .. } => 1,
+        }
+    }
+
+    fn tab_id(self) -> i64 {
+        match self {
+            Self::Startup => -1,
+            Self::NavigationCommitted { tab_id } => i64::try_from(tab_id).unwrap_or(-1),
+        }
+    }
+}
+
 struct RuntimeState {
     stream: UnixStream,
     limits: StoreLimits,
+    invocation: RuntimeInvocation,
 }
 
 /// Executes the single required `blueice_start: () -> ()` export from an
@@ -61,6 +88,18 @@ struct RuntimeState {
 pub fn execute_installed_extension(
     extension: &InstalledExtension,
     stream: UnixStream,
+) -> Result<(), String> {
+    execute_installed_extension_for_invocation(extension, stream, RuntimeInvocation::Startup)
+}
+
+/// Executes the required entrypoint in a fresh resource-bounded instance for
+/// one core-defined lifecycle invocation. The socket is a clone of the host's
+/// authenticated stream; it is dropped when this invocation finishes before
+/// the host waits for another event.
+pub fn execute_installed_extension_for_invocation(
+    extension: &InstalledExtension,
+    stream: UnixStream,
+    invocation: RuntimeInvocation,
 ) -> Result<(), String> {
     let mut config = Config::new();
     config.consume_fuel(true);
@@ -82,7 +121,14 @@ pub fn execute_installed_extension(
         .tables(1)
         .memories(1)
         .build();
-    let mut store = Store::new(&engine, RuntimeState { stream, limits });
+    let mut store = Store::new(
+        &engine,
+        RuntimeState {
+            stream,
+            limits,
+            invocation,
+        },
+    );
     store.limiter(|state| &mut state.limits);
     store
         .set_fuel(MAX_FUEL)
@@ -151,7 +197,31 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
         .map_err(|error| {
             format!("could not define the set_checkbox_checked ABI import: {error}")
         })?;
+    linker
+        .func_wrap(
+            "blueice",
+            "runtime_event_kind",
+            |caller: Caller<'_, RuntimeState>| runtime_event_kind(&caller),
+        )
+        .map_err(|error| format!("could not define the runtime_event_kind ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
+            "runtime_event_tab_id",
+            |caller: Caller<'_, RuntimeState>| runtime_event_tab_id(&caller),
+        )
+        .map_err(|error| {
+            format!("could not define the runtime_event_tab_id ABI import: {error}")
+        })?;
     Ok(())
+}
+
+fn runtime_event_kind(caller: &Caller<'_, RuntimeState>) -> i32 {
+    caller.data().invocation.kind()
+}
+
+fn runtime_event_tab_id(caller: &Caller<'_, RuntimeState>) -> i64 {
+    caller.data().invocation.tab_id()
 }
 
 fn dom_read_utf8(
@@ -396,5 +466,32 @@ mod tests {
         let (guest, _) = UnixStream::pair().unwrap();
         assert!(execute_installed_extension(&looping, guest).is_err());
         let _ = fs::remove_dir_all(loop_root);
+    }
+
+    #[test]
+    fn reactor_exposes_only_the_core_defined_navigation_event_context() {
+        let (root, extension) = installed_extension(
+            "event-context",
+            r#"(module
+                (import "blueice" "runtime_event_kind" (func $kind (result i32)))
+                (import "blueice" "runtime_event_tab_id" (func $tab (result i64)))
+                (func (export "blueice_start")
+                    call $kind
+                    i32.const 1
+                    i32.ne
+                    if unreachable end
+                    call $tab
+                    i64.const 77
+                    i64.ne
+                    if unreachable end))"#,
+        );
+        let (guest, _) = UnixStream::pair().unwrap();
+        execute_installed_extension_for_invocation(
+            &extension,
+            guest,
+            RuntimeInvocation::NavigationCommitted { tab_id: 77 },
+        )
+        .unwrap();
+        let _ = fs::remove_dir_all(root);
     }
 }

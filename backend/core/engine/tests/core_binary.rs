@@ -144,6 +144,15 @@ fn extension_host_probe_child_authenticates_to_core() {
         blueice_ipc::extension::read_extension_reply(&mut stream).unwrap(),
         blueice_ipc::extension::ExtensionReply::RuntimeStart
     );
+    blueice_ipc::extension::write_extension_request(
+        &mut stream,
+        &blueice_ipc::extension::ExtensionRequest::NextRuntimeEvent,
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_reply(&mut stream).unwrap(),
+        blueice_ipc::extension::ExtensionReply::RuntimeEventStreamClosed
+    );
 }
 
 fn extension_manifest_package(
