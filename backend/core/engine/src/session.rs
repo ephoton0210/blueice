@@ -50,7 +50,7 @@
 //! around the loop again," never as a disconnect (every *other* read
 //! error still means disconnect, exactly as before gating existed).
 
-use crate::downloads_page::{DownloadsView, downloads_html, is_downloads_url};
+use crate::downloads_page::{downloads_html, is_downloads_url, DownloadsView};
 use crate::gatekeeper_client::{self, NavOutcome};
 use crate::script::ScriptScheduler;
 use crate::tabs::{extension_navigation_rules_block_url, HistoryDestination, HistoryDirection};
@@ -58,7 +58,7 @@ use crate::{GroupId, Page, TabGroup, TabId, TabManager};
 use blueice_dom::NodeId;
 use blueice_ipc::downloads::TransferInfo;
 use blueice_ipc::extension::ExtensionRuntimeEvent;
-use blueice_ipc::{ClientMessage, NodeAction, ServerMessage, TabGroupSummary, TabSummary, shm};
+use blueice_ipc::{shm, ClientMessage, NodeAction, ServerMessage, TabGroupSummary, TabSummary};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -115,6 +115,14 @@ pub enum ExtensionPageRequest {
         tab_id: u64,
         node_id: u64,
         value: String,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
+    /// Sets one integer value on an explicit range input after core derives
+    /// and validates that control's live constraints.
+    SetRangeInputValue {
+        tab_id: u64,
+        node_id: u64,
+        value: i64,
         reply: mpsc::Sender<Result<(), String>>,
     },
     /// Selects one explicit radio while core owns the group-membership and
@@ -1007,6 +1015,37 @@ fn handle_extension_page_request<S: Write>(
             if result.is_ok() {
                 // Match the other constrained form writes: event handlers
                 // see the core-owned value before observers receive a frame.
+                let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "input");
+                let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "change");
+                let page = tabs
+                    .get_mut(tab_id)
+                    .expect("a checked extension target tab remains live");
+                send_frame(
+                    page,
+                    stream,
+                    frame_dir,
+                    generation,
+                    Some(tab_id.as_u64()),
+                    None,
+                )?;
+            }
+            let _ = reply.send(result);
+        }
+        ExtensionPageRequest::SetRangeInputValue {
+            tab_id,
+            node_id,
+            value,
+            reply,
+        } => {
+            let tab_id = TabId::from_u64(tab_id);
+            let node_id = NodeId::from_u64(node_id);
+            let result = match tabs.get_mut(tab_id) {
+                Some(page) => page.set_range_input_value(node_id, value),
+                None => Err(format!("unknown tab {}", tab_id.as_u64())),
+            };
+            if result.is_ok() {
+                // A range is one constrained form control, so listeners see
+                // its committed core state before the shared observer frame.
                 let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "input");
                 let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "change");
                 let page = tabs
@@ -2023,12 +2062,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(generation, 0);
-        assert!(
-            tabs.get(tab_id)
-                .unwrap()
-                .dom_dump()
-                .contains("last successful list")
-        );
+        assert!(tabs
+            .get(tab_id)
+            .unwrap()
+            .dom_dump()
+            .contains("last successful list"));
 
         refresher
             .apply(
@@ -2046,12 +2084,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(generation, 1);
-        assert!(
-            tabs.get(tab_id)
-                .unwrap()
-                .dom_dump()
-                .contains("The downloads service is not running")
-        );
+        assert!(tabs
+            .get(tab_id)
+            .unwrap()
+            .dom_dump()
+            .contains("The downloads service is not running"));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -3009,12 +3046,10 @@ mod tests {
             panic!("expected Representation, got {reply:?}")
         };
         assert_eq!(snapshot.generation, frame_generation);
-        assert!(
-            snapshot
-                .nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("Go"))
-        );
+        assert!(snapshot
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("Go")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -3943,12 +3978,10 @@ mod tests {
         else {
             panic!("expected a representation after snapshot restoration")
         };
-        assert!(
-            snapshot
-                .nodes
-                .iter()
-                .any(|node| node.name.as_deref() == Some("saved historical version"))
-        );
+        assert!(snapshot
+            .nodes
+            .iter()
+            .any(|node| node.name.as_deref() == Some("saved historical version")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -4255,12 +4288,10 @@ mod tests {
             panic!("expected Representation, got {reply:?}")
         };
         assert_eq!(snapshot.tab_id, new_id);
-        assert!(
-            snapshot
-                .nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("opened via url"))
-        );
+        assert!(snapshot
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("opened via url")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -4366,11 +4397,10 @@ mod tests {
             snap.scroll_y, 0.0,
             "scrolling tab_two must not move tab_one's scroll position"
         );
-        assert!(
-            snap.nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("tab one"))
-        );
+        assert!(snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("tab one")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -4721,12 +4751,10 @@ mod tests {
         else {
             panic!("expected Representation")
         };
-        assert!(
-            !snap
-                .nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("malicious page"))
-        );
+        assert!(!snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("malicious page")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -4999,11 +5027,10 @@ mod tests {
         else {
             panic!("expected Representation")
         };
-        assert!(
-            snap.nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("second page"))
-        );
+        assert!(snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("second page")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -5184,11 +5211,10 @@ mod tests {
         else {
             panic!("expected Representation")
         };
-        assert!(
-            snap.nodes
-                .iter()
-                .any(|n| n.name.as_deref() == Some("still the old page"))
-        );
+        assert!(snap
+            .nodes
+            .iter()
+            .any(|n| n.name.as_deref() == Some("still the old page")));
 
         blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
         let dir = handle.join().unwrap();
@@ -5197,11 +5223,11 @@ mod tests {
 
     // ---- about:downloads: navigation and live refresh -----------------------
 
-    use crate::downloads_page::DownloadsSource;
     use crate::downloads_page::test_support::{
-        FakeState, Scratch as DownloadsScratch, fake_downloads_live,
+        fake_downloads_live, FakeState, Scratch as DownloadsScratch,
     };
-    use blueice_ipc::downloads::{DOWNLOADS_PROTOCOL_VERSION, TransferInfo, TransferState};
+    use crate::downloads_page::DownloadsSource;
+    use blueice_ipc::downloads::{TransferInfo, TransferState, DOWNLOADS_PROTOCOL_VERSION};
     use std::sync::{Arc, Mutex};
 
     fn dl(id: u64, name: &str, state: TransferState, done: u64) -> TransferInfo {

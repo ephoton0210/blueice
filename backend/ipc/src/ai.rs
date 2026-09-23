@@ -94,11 +94,17 @@ pub struct NodeState {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Role {
-    Heading { level: u8 },
+    Heading {
+        level: u8,
+    },
     Link,
     Button,
     TextBox,
     CheckBox,
+    /// A native numeric range input. Its `NodeState::value` is the current
+    /// core-owned value, allowing a constrained extension write to remain
+    /// visible through the same representation it addressed.
+    Slider,
     /// A native single- or multiple-choice select control. Its visible
     /// options are represented as [`Self::Option`] children when they have
     /// layout fragments, so a capability-constrained extension can address a

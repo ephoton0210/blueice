@@ -230,6 +230,17 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
     linker
         .func_wrap(
             "blueice",
+            "set_range_input_value",
+            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, node_id: i64, value: i64| {
+                set_range_input_value(&mut caller, tab_id, node_id, value)
+            },
+        )
+        .map_err(|error| {
+            format!("could not define the set_range_input_value ABI import: {error}")
+        })?;
+    linker
+        .func_wrap(
+            "blueice",
             "register_network_block_url",
             |mut caller: Caller<'_, RuntimeState>, url_ptr: i32, url_len: i32| {
                 register_network_block_url(&mut caller, url_ptr, url_len)
@@ -259,9 +270,7 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
                 storage_get_utf8(&mut caller, key_ptr, key_len, destination, capacity)
             },
         )
-        .map_err(|error| {
-            format!("could not define the storage_get_utf8 ABI import: {error}")
-        })?;
+        .map_err(|error| format!("could not define the storage_get_utf8 ABI import: {error}"))?;
     linker
         .func_wrap(
             "blueice",
@@ -274,9 +283,7 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
                 storage_set_utf8(&mut caller, key_ptr, key_len, value_ptr, value_len)
             },
         )
-        .map_err(|error| {
-            format!("could not define the storage_set_utf8 ABI import: {error}")
-        })?;
+        .map_err(|error| format!("could not define the storage_set_utf8 ABI import: {error}"))?;
     linker
         .func_wrap(
             "blueice",
@@ -285,9 +292,7 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
                 storage_remove_utf8(&mut caller, key_ptr, key_len)
             },
         )
-        .map_err(|error| {
-            format!("could not define the storage_remove_utf8 ABI import: {error}")
-        })?;
+        .map_err(|error| format!("could not define the storage_remove_utf8 ABI import: {error}"))?;
     linker
         .func_wrap(
             "blueice",
@@ -461,6 +466,28 @@ fn set_textarea_value(
     }
 }
 
+fn set_range_input_value(
+    caller: &mut Caller<'_, RuntimeState>,
+    tab_id: i64,
+    node_id: i64,
+    value: i64,
+) -> i32 {
+    let (Ok(tab_id), Ok(node_id)) = (stable_id(tab_id), stable_id(node_id)) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(
+        caller,
+        ExtensionRequest::SetRangeInputValue {
+            tab_id,
+            node_id,
+            value,
+        },
+    ) {
+        Ok(ExtensionReply::DomWriteAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
 /// Asks core to install one version-2 `network:intercept` declarative rule.
 /// The guest receives no interception callback or ambient networking handle;
 /// it can only submit one bounded UTF-8 URL for the host's normal capability
@@ -559,11 +586,7 @@ fn storage_set_utf8(
 /// Removes one key from only the caller's isolated storage bucket. Returns
 /// `1` when a value existed, `0` when it was already absent, and a negative
 /// ABI error for malformed input or an unavailable core operation.
-fn storage_remove_utf8(
-    caller: &mut Caller<'_, RuntimeState>,
-    key_ptr: i32,
-    key_len: i32,
-) -> i32 {
+fn storage_remove_utf8(caller: &mut Caller<'_, RuntimeState>, key_ptr: i32, key_len: i32) -> i32 {
     let Ok(key) = read_storage_key(caller, key_ptr, key_len) else {
         return RESULT_INVALID_ARGUMENT;
     };
@@ -670,6 +693,7 @@ mod tests {
                 (import "blueice" "set_radio_checked" (func $radio (param i64 i64) (result i32)))
                 (import "blueice" "select_option" (func $select (param i64 i64) (result i32)))
                 (import "blueice" "set_textarea_value" (func $textarea (param i64 i64 i32 i32) (result i32)))
+                (import "blueice" "set_range_input_value" (func $range (param i64 i64 i64) (result i32)))
                 (memory (export "memory") 1)
                 (data (i32.const 0) "BlueIce")
                 (func (export "blueice_start")
@@ -702,6 +726,11 @@ mod tests {
                     i32.const 0
                     i32.const 7
                     call $textarea
+                    drop
+                    i64.const 7
+                    i64.const 17
+                    i64.const -3
+                    call $range
                     drop))"#,
         );
         let (guest, mut core) = UnixStream::pair().unwrap();
@@ -761,6 +790,16 @@ mod tests {
                     tab_id: 7,
                     node_id: 14,
                     value: "BlueIce".to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::DomWriteAck)
+                .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::SetRangeInputValue {
+                    tab_id: 7,
+                    node_id: 17,
+                    value: -3,
                 }
             );
             blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::DomWriteAck)
@@ -896,8 +935,11 @@ mod tests {
                     value: "complete".to_string(),
                 }
             );
-            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::StorageSetAck)
-                .unwrap();
+            blueice_ipc::extension::write_extension_reply(
+                &mut core,
+                &ExtensionReply::StorageSetAck,
+            )
+            .unwrap();
             assert_eq!(
                 blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
                 ExtensionRequest::StorageGet {

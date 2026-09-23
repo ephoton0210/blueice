@@ -174,7 +174,7 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
     }
 
     // A package declares only the APIs it needs. The one-shot Wasm ABI uses
-    // explicit tab reads (v2), every currently bounded DOM write (v6), and
+    // explicit tab reads (v2), every currently bounded DOM write (v7), and
     // declarative rule registration/clearing (v3), and scoped storage (v1).
     // Negotiate the highest safe version per declared capability before guest
     // code can invoke an import. Core remains free to reject an unsupported
@@ -187,7 +187,7 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
         .map(|capability| {
             let version = match capability.as_str() {
                 CAPABILITY_DOM_READ => 2,
-                CAPABILITY_DOM_WRITE => 6,
+                CAPABILITY_DOM_WRITE => 7,
                 CAPABILITY_NETWORK_INTERCEPT => 3,
                 CAPABILITY_STORAGE => 1,
                 _ => 1,

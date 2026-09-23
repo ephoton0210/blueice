@@ -169,6 +169,15 @@ pub enum ExtensionRequest {
         node_id: u64,
         value: String,
     },
+    /// Version 7 of `dom:write`: sets one integer value on an enabled native
+    /// range input. Core derives and validates the live min/max/step
+    /// constraints; no guest-supplied attribute name or range metadata is
+    /// accepted.
+    SetRangeInputValue {
+        tab_id: u64,
+        node_id: u64,
+        value: i64,
+    },
     /// Version 5 of `dom:write`: selects one enabled native radio input.
     /// This is intentionally selection-only, never a generic `checked`
     /// setter: core identifies the radio's local group and clears its other
@@ -461,6 +470,11 @@ mod tests {
                 tab_id: 42,
                 node_id: 101,
                 value: "multi-line shared value".to_string(),
+            },
+            ExtensionRequest::SetRangeInputValue {
+                tab_id: 42,
+                node_id: 104,
+                value: 50,
             },
             ExtensionRequest::SetRadioChecked {
                 tab_id: 42,

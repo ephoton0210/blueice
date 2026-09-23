@@ -812,7 +812,7 @@ fn installed_extension_v6_writes_explicit_form_controls_after_gatekeeper_review(
         let (mut stream, _) = listener.accept().unwrap();
         let mut buf = [0u8; 1024];
         let _ = stream.read(&mut buf);
-        let body = r#"<label for="shared">Shared value</label><input id="shared" type="text" value="before"><label for="agree">Agree</label><input id="agree" type="checkbox"><label for="notes">Notes</label><textarea id="notes">before</textarea><label for="first-priority">First priority</label><input id="first-priority" type="radio" name="priority" checked><label for="second-priority">Second priority</label><input id="second-priority" type="radio" name="priority"><label for="urgency">Urgency</label><select id="urgency"><option id="first-option" selected>First option</option><option id="second-option">Second option</option></select>"#;
+        let body = r#"<label for="shared">Shared value</label><input id="shared" type="text" value="before"><label for="agree">Agree</label><input id="agree" type="checkbox"><label for="notes">Notes</label><textarea id="notes">before</textarea><label for="volume">Volume</label><input id="volume" type="range" min="0" max="10" step="2" value="0"><label for="first-priority">First priority</label><input id="first-priority" type="radio" name="priority" checked><label for="second-priority">Second priority</label><input id="second-priority" type="radio" name="priority"><label for="urgency">Urgency</label><select id="urgency"><option id="first-option" selected>First option</option><option id="second-option">Second option</option></select>"#;
         stream
             .write_all(
                 format!(
@@ -872,6 +872,7 @@ fn installed_extension_v6_writes_explicit_form_controls_after_gatekeeper_review(
         second_radio_id,
         first_option_id,
         second_option_id,
+        range_id,
     ) = match blueice_ipc::read_server_message(&mut frontend).unwrap() {
         blueice_ipc::ServerMessage::Representation(snapshot) => {
             let input_id = snapshot
@@ -925,6 +926,15 @@ fn installed_extension_v6_writes_explicit_form_controls_after_gatekeeper_review(
                 })
                 .expect("the navigated form must expose its second select option")
                 .id;
+            let range_id = snapshot
+                .nodes
+                .iter()
+                .find(|node| {
+                    matches!(node.role, blueice_ipc::Role::Slider)
+                        && node.name.as_deref() == Some("Volume")
+                })
+                .expect("the navigated form must expose its integer range input")
+                .id;
             (
                 input_id,
                 checkbox_id,
@@ -933,6 +943,7 @@ fn installed_extension_v6_writes_explicit_form_controls_after_gatekeeper_review(
                 second_radio_id,
                 first_option_id,
                 second_option_id,
+                range_id,
             )
         }
         other => panic!("expected the input representation, got {other:?}"),
@@ -945,7 +956,7 @@ fn installed_extension_v6_writes_explicit_form_controls_after_gatekeeper_review(
             extension_id,
             capability_versions: BTreeMap::from([
                 ("dom:read".to_string(), 2),
-                ("dom:write".to_string(), 6),
+                ("dom:write".to_string(), 7),
             ]),
         },
     )
@@ -962,6 +973,28 @@ fn installed_extension_v6_writes_explicit_form_controls_after_gatekeeper_review(
             tab_id: 1,
             node_id: input_id,
             value: "from extension v2".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::DomWriteAck
+    );
+    let (reply_tab, request_id, frame) =
+        blueice_ipc::read_server_message_with_ids(&mut frontend).unwrap();
+    assert_eq!(reply_tab, Some(1));
+    assert_eq!(request_id, None);
+    assert!(matches!(
+        frame,
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::SetRangeInputValue {
+            tab_id: 1,
+            node_id: range_id,
+            value: 6,
         },
     )
     .unwrap();
@@ -1111,6 +1144,14 @@ fn installed_extension_v6_writes_explicit_form_controls_after_gatekeeper_review(
             .find(|node| node.id == textarea_id)
             .and_then(|node| node.state.value.as_deref()),
         Some("from extension v4 with detail")
+    );
+    assert_eq!(
+        snapshot
+            .nodes
+            .iter()
+            .find(|node| node.id == range_id)
+            .and_then(|node| node.state.value.as_deref()),
+        Some("6")
     );
     assert_eq!(
         snapshot

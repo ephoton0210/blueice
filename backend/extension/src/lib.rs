@@ -295,9 +295,9 @@ impl ExtensionRegistry {
         let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
         let v1_to_v3 = CapabilityVersionWindow::new(1, 3).expect("literal version window is valid");
-        let v1_to_v6 = CapabilityVersionWindow::new(1, 6).expect("literal version window is valid");
+        let v1_to_v7 = CapabilityVersionWindow::new(1, 7).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
-        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v6);
+        registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v7);
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v3);
         registry.register_capability_version_window(CAPABILITY_STORAGE, v1);
         registry
@@ -739,16 +739,23 @@ where
         gatekeeper_socket,
         stream,
         authentication,
-        ExtensionActionDelegates::new(read_dom, write_dom, register_network_intercept, |_| {
-            Err(
-                "network:intercept version 2 needs a core-backed declarative rule handler"
-                    .to_string(),
-            )
-        }, || {
-            Err(
-                "network:intercept version 3 needs a core-backed rule-clear handler".to_string(),
-            )
-        }),
+        ExtensionActionDelegates::new(
+            read_dom,
+            write_dom,
+            register_network_intercept,
+            |_| {
+                Err(
+                    "network:intercept version 2 needs a core-backed declarative rule handler"
+                        .to_string(),
+                )
+            },
+            || {
+                Err(
+                    "network:intercept version 3 needs a core-backed rule-clear handler"
+                        .to_string(),
+                )
+            },
+        ),
     )
 }
 
@@ -1224,6 +1231,70 @@ where
                     }
                 }
             }
+            ExtensionRequest::SetRangeInputValue {
+                tab_id,
+                node_id,
+                value,
+            } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE, 7)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_DOM_WRITE.to_string(),
+                            reason,
+                        },
+                    )?;
+                    continue;
+                }
+                // The v7 operation carries only a signed integer. Core owns
+                // the target's live type, disabled state, min/max/step, and
+                // resulting value; the extension cannot provide a numeric
+                // constraint or arbitrary attribute to weaken that boundary.
+                match check_extension_action(
+                    gatekeeper_socket,
+                    &identity.extension_id,
+                    CAPABILITY_DOM_WRITE,
+                    "action=set-range-input-value".to_string(),
+                ) {
+                    Ok(GatekeeperReply::Cleared) => {
+                        let target = blueice_ipc::extension::DomWriteTarget::FormInput {
+                            input_type: "range".to_string(),
+                        };
+                        match write_dom(Some((tab_id, node_id)), value.to_string(), &target) {
+                            Ok(()) => write_extension_reply(stream, &ExtensionReply::DomWriteAck)?,
+                            Err(reason) => write_extension_reply(
+                                stream,
+                                &ExtensionReply::OperationUnavailable {
+                                    capability: CAPABILITY_DOM_WRITE.to_string(),
+                                    reason,
+                                },
+                            )?,
+                        }
+                    }
+                    Ok(GatekeeperReply::Rejected { reason, category }) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_DOM_WRITE.to_string(),
+                                reason,
+                                category,
+                            },
+                        )?;
+                    }
+                    Err(reason) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_DOM_WRITE.to_string(),
+                                reason,
+                                category: "gatekeeper-unavailable".to_string(),
+                            },
+                        )?;
+                    }
+                }
+            }
             ExtensionRequest::SetRadioChecked { tab_id, node_id } => {
                 if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_DOM_WRITE, 5)
@@ -1430,9 +1501,7 @@ where
                 // payload and creates no new privileged network effect, so
                 // ordinary capability/version enforcement is sufficient.
                 match clear_network_block_urls() {
-                    Ok(()) => {
-                        write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?
-                    }
+                    Ok(()) => write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?,
                     Err(reason) => write_extension_reply(
                         stream,
                         &ExtensionReply::OperationUnavailable {
@@ -1456,10 +1525,9 @@ where
                     continue;
                 }
                 match storage.get(&identity.extension_id, &key) {
-                    Ok(value) => write_extension_reply(
-                        stream,
-                        &ExtensionReply::StorageGetResult { value },
-                    )?,
+                    Ok(value) => {
+                        write_extension_reply(stream, &ExtensionReply::StorageGetResult { value })?
+                    }
                     Err(reason) => write_extension_reply(
                         stream,
                         &ExtensionReply::OperationUnavailable {
@@ -1738,7 +1806,11 @@ mod tests {
     fn extension_storage_is_bounded_and_isolated_by_extension_identity() {
         let storage = ExtensionStorage::default();
         storage
-            .set("sha256:first", "task-state".to_string(), "complete".to_string())
+            .set(
+                "sha256:first",
+                "task-state".to_string(),
+                "complete".to_string(),
+            )
             .unwrap();
         assert_eq!(
             storage.get("sha256:first", "task-state").unwrap(),
@@ -1746,7 +1818,11 @@ mod tests {
         );
         assert_eq!(storage.get("sha256:second", "task-state").unwrap(), None);
         assert!(storage
-            .set("sha256:first", "not a valid key".to_string(), "x".to_string())
+            .set(
+                "sha256:first",
+                "not a valid key".to_string(),
+                "x".to_string()
+            )
             .is_err());
         assert!(storage
             .set(
@@ -2278,6 +2354,119 @@ mod tests {
             }
         );
         let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v7_range_write_is_reviewed_and_delegated_without_range_metadata() {
+        let registry = registry_with_dom_write_granted();
+        let (gatekeeper_socket, gatekeeper) =
+            start_gatekeeper("clear-v7-range", GatekeeperReply::Cleared);
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                &socket_for_handler,
+                &mut server,
+                |_| Ok("unused in this test".to_string()),
+                move |target, value, write_target| {
+                    seen_tx.send((target, value, write_target.clone())).unwrap();
+                    Ok(())
+                },
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 7)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetRangeInputValue {
+                tab_id: 7,
+                node_id: 17,
+                value: -3,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::DomWriteAck
+        );
+        assert_eq!(
+            seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            (
+                Some((7, 17)),
+                "-3".to_string(),
+                DomWriteTarget::FormInput {
+                    input_type: "range".to_string()
+                }
+            )
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(
+            gatekeeper.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability: CAPABILITY_DOM_WRITE.to_string(),
+                detail: "action=set-range-input-value".to_string(),
+            }
+        );
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v7_range_write_is_denied_after_a_v6_handshake_before_review_or_delegate() {
+        let registry = registry_with_dom_write_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions(
+                &registry,
+                Path::new("/not-reached-for-v6-range-version-denial.sock"),
+                &mut server,
+                |_| Ok("unused in this test".to_string()),
+                |_, _, _| panic!("a v6 connection must not delegate a v7 range request"),
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_DOM_WRITE, 6)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::SetRangeInputValue {
+                tab_id: 1,
+                node_id: 2,
+                value: 50,
+            },
+        )
+        .unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, reason } => {
+                assert_eq!(capability, CAPABILITY_DOM_WRITE);
+                assert!(reason.contains("requires version 7"));
+            }
+            other => panic!("expected a v7 version denial, got {other:?}"),
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
     }
 
     #[test]

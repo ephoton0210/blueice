@@ -337,6 +337,25 @@ fn request_textarea_value(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
 }
 
+fn request_range_input_value(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: u64,
+    node_id: u64,
+    value: i64,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::SetRangeInputValue {
+        tab_id,
+        node_id,
+        value,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
 fn request_network_block_url(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     connection_id: u64,
@@ -359,12 +378,11 @@ fn clear_network_block_urls(
     connection_id: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
-    tx
-        .send(ExtensionPageRequest::ClearNetworkBlockUrls {
-            connection_id,
-            reply: reply_tx,
-        })
-        .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    tx.send(ExtensionPageRequest::ClearNetworkBlockUrls {
+        connection_id,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
     reply_rx
         .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())
@@ -450,6 +468,15 @@ fn spawn_extension_listener(
                                         input_type,
                                     } if input_type.eq_ignore_ascii_case("textarea") => {
                                         request_textarea_value(&write_tx, tab_id, node_id, value)
+                                    }
+                                    blueice_ipc::extension::DomWriteTarget::FormInput {
+                                        input_type,
+                                    } if input_type.eq_ignore_ascii_case("range") => {
+                                        let value = value.parse::<i64>().map_err(|_| {
+                                            "core-backed range input values must be integers"
+                                                .to_string()
+                                        })?;
+                                        request_range_input_value(&write_tx, tab_id, node_id, value)
                                     }
                                     _ => request_text_input_value(&write_tx, tab_id, node_id, value),
                                 },

@@ -248,6 +248,44 @@ fn storage_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
     (root, manifest, extension_id)
 }
 
+fn range_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "blueice-extension-host-range-package-{label}-{}-{id}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest = root.join("extension.json");
+    std::fs::write(
+        &manifest,
+        r#"{"name":"Range","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:write"]}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("extension.wasm"),
+        wat::parse_str(
+            r#"(module
+                (import "blueice" "set_range_input_value" (func $set (param i64 i64 i64) (result i32)))
+                (func (export "blueice_start")
+                    i64.const 7
+                    i64.const 17
+                    i64.const -3
+                    call $set
+                    i32.const 0
+                    i32.ne
+                    if unreachable end))"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let extension_id = load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
+    (root, manifest, extension_id)
+}
+
 #[test]
 fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
     let output = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
@@ -544,6 +582,71 @@ fn core_connection_mode_negotiates_storage_v1_and_runs_a_bounded_write_over_real
         }
     );
     blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::StorageSetAck)
+        .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::RuntimeEventStreamClosed,
+    )
+    .unwrap();
+    drop(listener);
+    assert!(host.wait().unwrap().success());
+    let _ = std::fs::remove_file(socket);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn core_connection_mode_negotiates_dom_write_v7_and_runs_an_integer_range_write() {
+    let (root, manifest, extension_id) = range_manifest_package("core-connect");
+    let socket = unique_socket_path("core-range");
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
+    let authentication = "test-only-range-credential";
+    let mut host = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
+        .args([
+            "--connect",
+            socket.to_str().unwrap(),
+            "--manifest",
+            manifest.to_str().unwrap(),
+        ])
+        .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
+        .spawn()
+        .expect("failed to launch blueice-extension-host for a range write");
+
+    let (mut stream, _) = listener.accept().unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::HelloAuthenticated {
+            extension_id,
+            capability_versions: BTreeMap::from([("dom:write".to_string(), 7)]),
+            authentication: authentication.to_string(),
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::RuntimeReady
+    );
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart)
+        .unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::SetRangeInputValue {
+            tab_id: 7,
+            node_id: 17,
+            value: -3,
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::DomWriteAck)
         .unwrap();
     assert_eq!(
         blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),

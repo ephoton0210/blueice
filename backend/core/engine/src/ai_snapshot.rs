@@ -37,7 +37,7 @@
 //! real browser would stacking-promote above later normal-flow
 //! siblings isn't modeled specially, for the same reason.
 
-use crate::page::{Page, find_fragment_bounds};
+use crate::page::{find_fragment_bounds, Page};
 use blueice_dom::{Document, NodeData, NodeId};
 use blueice_ipc::{AiNode, AiSnapshot, NameFrom, NodeState, Role};
 use std::collections::HashMap;
@@ -145,6 +145,7 @@ fn infer_role(tag: &str, attributes: &[(String, String)]) -> Option<Role> {
         "button" => Some(Role::Button),
         "input" => Some(match attr(attributes, "type") {
             Some("checkbox") | Some("radio") => Role::CheckBox,
+            Some("range") => Role::Slider,
             Some("submit") | Some("button") | Some("reset") => Role::Button,
             _ => Role::TextBox,
         }),
@@ -272,9 +273,9 @@ fn compute_state(
     .then(|| has_attr(attributes, "checked"));
     NodeState {
         value: if tag == "input"
-            && attr(attributes, "type")
-                .is_none_or(|input_type| input_type.eq_ignore_ascii_case("text"))
-        {
+            && attr(attributes, "type").is_none_or(|input_type| {
+                input_type.eq_ignore_ascii_case("text") || input_type.eq_ignore_ascii_case("range")
+            }) {
             attr(attributes, "value").map(str::to_string)
         } else if tag == "textarea" {
             Some(text_content(page.doc(), node))
@@ -469,6 +470,17 @@ mod tests {
         let node = find(&snap.nodes, "Agree");
         assert_eq!(node.role, Role::CheckBox);
         assert_eq!(node.state.checked, Some(true));
+    }
+
+    #[test]
+    fn a_native_range_is_a_slider_with_its_core_owned_value() {
+        let page = page_with(
+            r#"<label for="volume">Volume</label><input id="volume" type="range" min="0" max="10" value="4">"#,
+        );
+        let snap = build(&page, 0, 1);
+        let node = find(&snap.nodes, "Volume");
+        assert_eq!(node.role, Role::Slider);
+        assert_eq!(node.state.value.as_deref(), Some("4"));
     }
 
     #[test]

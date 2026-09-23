@@ -397,6 +397,89 @@ impl Page {
         self.script_set_text_content(id, value)
     }
 
+    /// Sets an integer value on one real, enabled native range input for the
+    /// extension protocol's version-7 `dom:write` operation. This is not a
+    /// generic numeric attribute setter: core owns the live `min`, `max`, and
+    /// `step` checks before it changes the one `value` attribute. The first
+    /// increment deliberately accepts only integer range constraints (or the
+    /// native 0..=100/step-1 defaults); decimal and `step=any` controls need a
+    /// later, separately specified numeric representation.
+    pub(crate) fn set_range_input_value(&mut self, id: NodeId, value: i64) -> Result<(), String> {
+        if !self.doc.contains(id) {
+            return Err(format!("unknown range input node {}", id.as_u64()));
+        }
+        let (min, max, step) = match self.doc.data(id) {
+            NodeData::Element {
+                tag_name,
+                attributes,
+            } if tag_name.eq_ignore_ascii_case("input")
+                && attributes.iter().any(|(name, input_type)| {
+                    name.eq_ignore_ascii_case("type") && input_type.eq_ignore_ascii_case("range")
+                })
+                && !attributes
+                    .iter()
+                    .any(|(name, _)| name.eq_ignore_ascii_case("disabled")) =>
+            {
+                let integer_attribute = |name: &str, default: i64| {
+                    attributes
+                        .iter()
+                        .find(|(attribute, _)| attribute.eq_ignore_ascii_case(name))
+                        .map_or(Ok(default), |(_, raw)| raw.parse::<i64>().map_err(|_| ()))
+                };
+                let min = integer_attribute("min", 0).map_err(|_| {
+                    format!("range input node {} has a non-integer min", id.as_u64())
+                })?;
+                let max = integer_attribute("max", 100).map_err(|_| {
+                    format!("range input node {} has a non-integer max", id.as_u64())
+                })?;
+                let step = integer_attribute("step", 1).map_err(|_| {
+                    format!("range input node {} has a non-integer step", id.as_u64())
+                })?;
+                (min, max, step)
+            }
+            _ => {
+                return Err(format!(
+                    "node {} is not an enabled integer range input",
+                    id.as_u64()
+                ));
+            }
+        };
+        if min > max {
+            return Err(format!(
+                "range input node {} has min above max",
+                id.as_u64()
+            ));
+        }
+        if step <= 0 {
+            return Err(format!(
+                "range input node {} has a non-positive step",
+                id.as_u64()
+            ));
+        }
+        // Do the offset arithmetic in i128: a valid i64 range can span
+        // across zero, making `value - min` overflow even though both values
+        // are individually valid protocol integers.
+        let step_aligned = (i128::from(value) - i128::from(min)) % i128::from(step) == 0;
+        if !(min..=max).contains(&value) || !step_aligned {
+            return Err(format!(
+                "value {value} is outside the integer range constraints for node {}",
+                id.as_u64()
+            ));
+        }
+        let NodeData::Element { attributes, .. } = self.doc.data_mut(id) else {
+            unreachable!("a checked range input remains an element");
+        };
+        match attributes
+            .iter_mut()
+            .find(|(name, _)| name.eq_ignore_ascii_case("value"))
+        {
+            Some((_, existing)) => *existing = value.to_string(),
+            None => attributes.push(("value".to_string(), value.to_string())),
+        }
+        self.relayout();
+        Ok(())
+    }
+
     /// Sets the checked state of a real, enabled native checkbox for the
     /// extension protocol's version-3 `dom:write` operation. This remains a
     /// bounded semantic operation rather than a generic attribute setter:
@@ -1536,18 +1619,15 @@ mod tests {
                 .and_then(|node| node.state.value.as_deref()),
             Some("from extension")
         );
-        assert!(
-            page.set_text_input_value(password, "must not write".to_string())
-                .is_err()
-        );
-        assert!(
-            page.set_text_input_value(other, "must not write".to_string())
-                .is_err()
-        );
-        assert!(
-            page.set_text_input_value(NodeId::from_u64(9_999), "stale".to_string())
-                .is_err()
-        );
+        assert!(page
+            .set_text_input_value(password, "must not write".to_string())
+            .is_err());
+        assert!(page
+            .set_text_input_value(other, "must not write".to_string())
+            .is_err());
+        assert!(page
+            .set_text_input_value(NodeId::from_u64(9_999), "stale".to_string())
+            .is_err());
     }
 
     #[test]
@@ -1571,18 +1651,64 @@ mod tests {
                 .and_then(|node| node.state.value.as_deref()),
             Some("after with detail")
         );
-        assert!(
-            page.set_textarea_value(disabled, "must not write".to_string())
-                .is_err()
+        assert!(page
+            .set_textarea_value(disabled, "must not write".to_string())
+            .is_err());
+        assert!(page
+            .set_textarea_value(other, "must not write".to_string())
+            .is_err());
+        assert!(page
+            .set_textarea_value(NodeId::from_u64(9_999), "stale".to_string())
+            .is_err());
+    }
+
+    #[test]
+    fn extension_range_write_only_changes_live_enabled_integer_ranges() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"
+                <input id="volume" type="range" min="-5" max="5" step="2" value="-5">
+                <input id="default" type="range">
+                <input id="disabled" type="range" disabled>
+                <input id="fractional" type="range" min="0.5" max="2">
+                <input id="any" type="range" step="any">
+                <input id="wide" type="range" min="-1" max="9223372036854775807">
+                <input id="text" type="text">
+            "#,
+            None,
         );
-        assert!(
-            page.set_textarea_value(other, "must not write".to_string())
-                .is_err()
-        );
-        assert!(
-            page.set_textarea_value(NodeId::from_u64(9_999), "stale".to_string())
-                .is_err()
-        );
+        let volume = page.script_get_element_by_id("volume").unwrap();
+        let default = page.script_get_element_by_id("default").unwrap();
+        let disabled = page.script_get_element_by_id("disabled").unwrap();
+        let fractional = page.script_get_element_by_id("fractional").unwrap();
+        let any = page.script_get_element_by_id("any").unwrap();
+        let wide = page.script_get_element_by_id("wide").unwrap();
+        let text = page.script_get_element_by_id("text").unwrap();
+
+        page.set_range_input_value(volume, 3).unwrap();
+        page.set_range_input_value(default, 42).unwrap();
+        page.set_range_input_value(wide, i64::MAX).unwrap();
+        let snapshot = page.snapshot(1, 1);
+        let value = |id: NodeId| {
+            snapshot
+                .nodes
+                .iter()
+                .find(|node| node.id == id.as_u64())
+                .and_then(|node| node.state.value.as_deref())
+        };
+        assert_eq!(value(volume), Some("3"));
+        assert_eq!(value(default), Some("42"));
+        assert_eq!(value(wide), Some("9223372036854775807"));
+
+        assert!(page.set_range_input_value(volume, 2).is_err());
+        assert!(page.set_range_input_value(volume, 7).is_err());
+        assert!(page.set_range_input_value(disabled, 1).is_err());
+        assert!(page.set_range_input_value(fractional, 1).is_err());
+        assert!(page.set_range_input_value(any, 1).is_err());
+        assert!(page.set_range_input_value(text, 1).is_err());
+        assert!(page
+            .set_range_input_value(NodeId::from_u64(9_999), 1)
+            .is_err());
     }
 
     #[test]
