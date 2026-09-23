@@ -746,8 +746,14 @@ or second module resolver to bypass them.
   `ListStaticMetadataSources` fail closed until that exact handle was actually
   returned under the stream's negotiated session. This prevents a guessed
   handle from becoming either a summary or source-ID target-probing oracle;
-  source provenance remains indirectly bound by its source receipt. The page
-  host still must route
+  source provenance remains indirectly bound by its source receipt.
+  Page-host v11/debugger v10 additionally expose only compiler-minted
+  type-record IDs through the independently default-denied
+  `OpaqueTypeInventory` capability and
+  `--debugger-static-metadata-type-inventory` owner flag. IDs are bounded,
+  parent-handle-bound, same-stream-receipted, and source/type-display-free;
+  a later type-display operation must require those exact receipts rather
+  than accepting a caller-guessed ID. The page host still must route
   cache/hibernation events through the same invariant and add source policy,
   diagnostics/contracts, stack locations, and runtime-value inspection before
   this item can close.

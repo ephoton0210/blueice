@@ -30,7 +30,8 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
-    JavaScriptPageExecutionReport, PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
+    JavaScriptPageDebuggerStaticMetadataTypeId, JavaScriptPageExecutionReport,
+    PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };
 use crate::script::page_source_authorizer::AuthorizedPageScriptGraph;
 pub use crate::script::page_source_authorizer::{
@@ -38,7 +39,9 @@ pub use crate::script::page_source_authorizer::{
     OutOfProcessPageScriptSourceAuthorizer, OutOfProcessPageScriptSourceRequest,
 };
 use crate::{Page, TabId, TabManager};
-use blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_MAX_SOURCES;
+use blueice_ipc::debugger::{
+    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_TYPES,
+};
 use blueice_ipc::page_host::{
     self, PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
     PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
@@ -197,6 +200,12 @@ pub trait PageHostClient {
         false
     }
 
+    /// Whether this peer supports the metadata-handle-bound inventory of
+    /// compiler-minted type IDs. Type display remains a later operation.
+    fn debugger_bluets_metadata_types_available(&self) -> bool {
+        false
+    }
+
     /// Lists newly child-minted opaque handles only for a live direct-BlueTS
     /// attachment associated with one exact private program. The result has
     /// no source/module/name/type/span/contract payload, and a transport
@@ -254,6 +263,19 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement BlueTS debugger source provenance",
+        ))
+    }
+
+    fn debugger_bluets_metadata_types(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger type inventories",
         ))
     }
 
@@ -409,6 +431,10 @@ impl PageHostClient for PageHostConnection {
         true
     }
 
+    fn debugger_bluets_metadata_types_available(&self) -> bool {
+        true
+    }
+
     fn debugger_realm_stats(
         &mut self,
         tab_id: u64,
@@ -488,6 +514,21 @@ impl PageHostClient for PageHostConnection {
             program,
             metadata,
             source_id,
+        })
+    }
+
+    fn debugger_bluets_metadata_types(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ListDebuggerBlueTsMetadataTypes {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
         })
     }
 
@@ -1203,6 +1244,11 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                 .debugger_bluets_metadata_source_provenance_available()
     }
 
+    fn debugger_static_metadata_type_inventory_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_types_available()
+    }
+
     fn debugger_programs(
         &mut self,
         tab_id: TabId,
@@ -1495,6 +1541,67 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             module: provenance.module,
             content_hash: provenance.content_hash,
         })
+    }
+
+    fn debugger_static_metadata_types(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        metadata_handle: u64,
+        metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataTypeId>, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_type_inventory_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            metadata_handle,
+            metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_types(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataTypes {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            types,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || types.len() > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_TYPES).unwrap()
+            || has_duplicate_child_static_metadata_type_ids(&types)
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(types
+            .into_iter()
+            .map(|static_type| JavaScriptPageDebuggerStaticMetadataTypeId {
+                type_id: static_type.type_id,
+            })
+            .collect())
     }
 
     fn debugger_safe_points(
@@ -2002,6 +2109,15 @@ fn has_duplicate_child_static_metadata_source_ids(
 ) -> bool {
     let mut seen = BTreeSet::new();
     sources.iter().any(|source| !seen.insert(source.source_id))
+}
+
+fn has_duplicate_child_static_metadata_type_ids(
+    types: &[blueice_ipc::page_host::PageHostDebuggerBlueTsMetadataTypeId],
+) -> bool {
+    let mut seen = BTreeSet::new();
+    types
+        .iter()
+        .any(|static_type| !seen.insert(static_type.type_id))
 }
 
 fn validate_child_safe_point_reply<C: PageHostClient>(

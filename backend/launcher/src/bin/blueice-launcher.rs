@@ -80,6 +80,9 @@ struct Args {
     /// provenance for a previously inventoried source ID. It requires the
     /// parent source inventory and does not grant source text or record reads.
     debugger_static_metadata_source_provenance: bool,
+    /// Owner opt-in for opaque compiler-minted type-record IDs under a prior
+    /// metadata handle. It does not expose type labels or static records.
+    debugger_static_metadata_type_inventory: bool,
     /// Test/debug-only: use a [`memory_pressure::FixedMemorySource`]
     /// reporting zero availability instead of real host memory, so the
     /// memory-pressure-response path can be exercised deterministically
@@ -111,6 +114,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_summary = false;
     let mut debugger_static_metadata_source_inventory = false;
     let mut debugger_static_metadata_source_provenance = false;
+    let mut debugger_static_metadata_type_inventory = false;
     let mut simulate_low_memory = false;
     let mut memory_poll_interval = memory_pressure::DEFAULT_POLL_INTERVAL;
 
@@ -142,6 +146,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--debugger-static-metadata-source-provenance" => {
                 debugger_static_metadata_source_provenance = true
+            }
+            "--debugger-static-metadata-type-inventory" => {
+                debugger_static_metadata_type_inventory = true
             }
             "--simulate-low-memory" => simulate_low_memory = true,
             "--memory-poll-interval-ms" => {
@@ -190,6 +197,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if debugger_static_metadata_type_inventory && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-type-inventory requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_type_inventory && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-type-inventory requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
     Ok(Args {
         rendezvous_socket,
         control_socket,
@@ -204,6 +222,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_summary,
         debugger_static_metadata_source_inventory,
         debugger_static_metadata_source_provenance,
+        debugger_static_metadata_type_inventory,
         simulate_low_memory,
         memory_poll_interval,
     })
@@ -247,6 +266,9 @@ fn main() -> ExitCode {
     }
     if args.debugger_static_metadata_source_provenance {
         core_options = core_options.with_debugger_static_metadata_source_provenance();
+    }
+    if args.debugger_static_metadata_type_inventory {
+        core_options = core_options.with_debugger_static_metadata_type_inventory();
     }
     let core =
         match SpawnedCore::spawn_with_options(args.width, args.height, &frame_dir, core_options) {
@@ -408,6 +430,7 @@ mod tests {
             "--debugger-static-metadata-summary",
             "--debugger-static-metadata-source-inventory",
             "--debugger-static-metadata-source-provenance",
+            "--debugger-static-metadata-type-inventory",
             "--simulate-low-memory",
             "--memory-poll-interval-ms",
             "50",
@@ -429,6 +452,7 @@ mod tests {
                 debugger_static_metadata_summary: true,
                 debugger_static_metadata_source_inventory: true,
                 debugger_static_metadata_source_provenance: true,
+                debugger_static_metadata_type_inventory: true,
                 simulate_low_memory: true,
                 memory_poll_interval: Duration::from_millis(50),
             }

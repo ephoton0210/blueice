@@ -52,6 +52,13 @@ pub struct JavaScriptPageDebuggerStaticMetadataSourceId {
     pub source_id: u32,
 }
 
+/// One compiler-minted type-record identity for an exact static metadata
+/// attachment. It contains no type display or static-record payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataTypeId {
+    pub type_id: u32,
+}
+
 /// One child-validated source-text-free provenance description. The caller
 /// supplies the parent metadata handle and compiler-minted source ID; this
 /// internal transport value never carries a source read capability.

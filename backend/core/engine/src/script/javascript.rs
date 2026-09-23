@@ -40,6 +40,7 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
+    JavaScriptPageDebuggerStaticMetadataTypeId,
 };
 
 /// Source-free debugger location operations owned by an explicitly selected
@@ -98,6 +99,13 @@ pub trait PageJavaScriptDebuggerLocations {
     /// labeled SHA-256 digest for an ID returned by the distinct inventory.
     /// Source text and all other metadata records remain unavailable.
     fn debugger_static_metadata_source_provenance_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can list only compiler-minted type-record IDs for
+    /// one exact opaque metadata attachment. Type displays and static-record
+    /// reads remain separately default-denied.
+    fn debugger_static_metadata_type_inventory_available(&self) -> bool {
         false
     }
 
@@ -164,6 +172,21 @@ pub trait PageJavaScriptDebuggerLocations {
         _target: JavaScriptPageDebuggerStaticMetadataSourceTarget,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataSourceProvenance, JavaScriptPageDebuggerError>
     {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Lists type-record identities only after the caller presented an exact
+    /// metadata attachment. Implementations must not expose type displays or
+    /// synthesize static records from the numeric IDs.
+    fn debugger_static_metadata_types(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataTypeId>, JavaScriptPageDebuggerError> {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
 

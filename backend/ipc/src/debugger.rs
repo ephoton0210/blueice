@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 9;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 10;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -154,6 +154,21 @@ pub struct DebuggerStaticMetadataSourceId {
     pub source_id: u32,
 }
 
+/// One compiler-minted static type identity for an exact opaque metadata
+/// attachment. It exposes neither a type display nor a source, span, symbol,
+/// contract, bytecode, VM object, value, or arbitrary metadata read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataTypeId {
+    pub metadata: DebuggerStaticMetadataHandle,
+    pub type_id: u32,
+}
+
+impl DebuggerStaticMetadataTypeId {
+    pub fn is_well_formed(self) -> bool {
+        self.metadata.is_well_formed()
+    }
+}
+
 impl DebuggerStaticMetadataSourceId {
     pub fn is_well_formed(self) -> bool {
         self.metadata.is_well_formed()
@@ -246,6 +261,10 @@ pub enum DebuggerCapability {
     /// by the separately negotiated inventory. Module identity and a digest
     /// need a distinct default-deny policy even though neither is source text.
     StaticMetadataSourceProvenance,
+    /// A bounded inventory of compiler-minted type-record identities for one
+    /// exact opaque metadata attachment. It does not disclose type displays
+    /// or other static records.
+    StaticMetadataTypeInventory,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -278,6 +297,10 @@ pub enum DebuggerMetadataCapability {
     /// identity and labeled SHA-256 digest. This is not source text or a
     /// source-read endpoint and needs an independent authorization.
     OpaqueSourceProvenance,
+    /// Lists only compiler-minted type-record IDs that remain bound to one
+    /// metadata handle. Type displays and static-record reads are distinct,
+    /// future default-deny capabilities.
+    OpaqueTypeInventory,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -293,6 +316,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSourceProvenance => {
                 Some(DebuggerCapability::StaticMetadataSourceProvenance)
             }
+            Self::OpaqueTypeInventory => Some(DebuggerCapability::StaticMetadataTypeInventory),
             Self::Unknown => None,
         }
     }
@@ -303,6 +327,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSummary => Some(1),
             Self::OpaqueSourceInventory => Some(2),
             Self::OpaqueSourceProvenance => Some(3),
+            Self::OpaqueTypeInventory => Some(4),
             Self::Unknown => None,
         }
     }
@@ -400,6 +425,53 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants the opaque parent-handle inventory plus compiler-minted type
+    /// record identities. The IDs are not type displays or static-record
+    /// reads; those require their own later capability.
+    pub fn opaque_type_inventory() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueTypeInventory,
+            ],
+        }
+    }
+
+    /// Builds the exact canonical manifest selected by a trusted owner after
+    /// it independently validated each prerequisite flag. Keeping this
+    /// operation here avoids a caller hand-assembling a reordered manifest.
+    pub fn opaque_selected(
+        summary: bool,
+        source_inventory: bool,
+        source_provenance: bool,
+        type_inventory: bool,
+    ) -> Self {
+        let any = summary || source_inventory || source_provenance || type_inventory;
+        let mut capabilities = Vec::new();
+        if any {
+            capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
+        }
+        if summary {
+            capabilities.push(DebuggerMetadataCapability::OpaqueSummary);
+        }
+        if source_inventory {
+            capabilities.push(DebuggerMetadataCapability::OpaqueSourceInventory);
+        }
+        if source_provenance {
+            capabilities.push(DebuggerMetadataCapability::OpaqueSourceProvenance);
+        }
+        if type_inventory {
+            capabilities.push(DebuggerMetadataCapability::OpaqueTypeInventory);
+        }
+        let manifest = Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities,
+        };
+        debug_assert!(manifest.is_well_formed());
+        manifest
+    }
+
     /// Grants every currently implemented opaque static-metadata surface.
     pub fn opaque_summary_source_inventory_and_provenance() -> Self {
         Self {
@@ -451,6 +523,12 @@ impl DebuggerMetadataCapabilityManifest {
                     && self
                         .capabilities
                         .contains(&DebuggerMetadataCapability::OpaqueSourceInventory)))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueTypeInventory)
+                || self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -541,6 +619,10 @@ pub struct DebuggerMetadataSessionAuthorization {
     /// source-inventory operation. This prevents provenance from accepting a
     /// guessed numeric ID as an independent content-oracle target.
     observed_source_identities: Arc<Mutex<BTreeSet<DebuggerMetadataSourceIdentity>>>,
+    /// Bounded per-stream receipts for type IDs emitted by type inventory.
+    /// This remains local and source-free so a future type display operation
+    /// cannot turn a guessed ID into a child metadata probe.
+    observed_type_identities: Arc<Mutex<BTreeSet<DebuggerMetadataTypeIdentity>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -580,6 +662,33 @@ struct DebuggerMetadataSourceIdentity {
     source_id: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct DebuggerMetadataTypeIdentity {
+    browser_context_id: u64,
+    tab_id: u64,
+    realm_generation: u64,
+    program_handle: u64,
+    program_generation: u64,
+    metadata_handle: u64,
+    metadata_generation: u64,
+    type_id: u32,
+}
+
+impl From<DebuggerStaticMetadataTypeId> for DebuggerMetadataTypeIdentity {
+    fn from(static_type: DebuggerStaticMetadataTypeId) -> Self {
+        Self {
+            browser_context_id: static_type.metadata.program.realm.browser_context_id,
+            tab_id: static_type.metadata.program.realm.tab_id,
+            realm_generation: static_type.metadata.program.realm.realm_generation,
+            program_handle: static_type.metadata.program.program_handle,
+            program_generation: static_type.metadata.program.program_generation,
+            metadata_handle: static_type.metadata.metadata_handle,
+            metadata_generation: static_type.metadata.metadata_generation,
+            type_id: static_type.type_id,
+        }
+    }
+}
+
 impl From<DebuggerStaticMetadataSourceId> for DebuggerMetadataSourceIdentity {
     fn from(source: DebuggerStaticMetadataSourceId) -> Self {
         Self {
@@ -605,6 +714,11 @@ pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_METADATA_IDENTITIES: usize = 4_
 /// fixed cap avoids turning a long-lived debugger stream into an unbounded
 /// receipt cache; a caller can reconnect after it consumes the budget.
 pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_SOURCE_IDENTITIES: usize = 4_096;
+
+/// One metadata session may remember at most one full type-ID page. This is
+/// separate from source receipts so a future type-display capability cannot
+/// obtain an unbounded guessed-ID oracle from a long-lived stream.
+pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_TYPE_IDENTITIES: usize = 4_096;
 
 impl DebuggerMetadataSessionAuthorization {
     /// Whether this session negotiated one exact metadata capability. A
@@ -679,6 +793,40 @@ impl DebuggerMetadataSessionAuthorization {
             .lock()
             .is_ok_and(|observed| observed.contains(&source.into()))
     }
+
+    /// Records exact type IDs emitted by type inventory on this stream.
+    pub fn observe_types(&self, types: &[DebuggerStaticMetadataTypeId]) -> bool {
+        let Ok(mut observed) = self.observed_type_identities.lock() else {
+            return false;
+        };
+        let new_count = types
+            .iter()
+            .copied()
+            .map(DebuggerMetadataTypeIdentity::from)
+            .filter(|static_type| !observed.contains(static_type))
+            .collect::<BTreeSet<_>>()
+            .len();
+        if observed.len().saturating_add(new_count)
+            > DEBUGGER_METADATA_SESSION_MAX_OBSERVED_TYPE_IDENTITIES
+        {
+            return false;
+        }
+        observed.extend(
+            types
+                .iter()
+                .copied()
+                .map(DebuggerMetadataTypeIdentity::from),
+        );
+        true
+    }
+
+    /// Whether this exact type ID was emitted by type inventory on this
+    /// session. Kept now as the future static type display's receipt boundary.
+    pub fn observed_type(&self, static_type: DebuggerStaticMetadataTypeId) -> bool {
+        self.observed_type_identities
+            .lock()
+            .is_ok_and(|observed| observed.contains(&static_type.into()))
+    }
 }
 
 /// Reconstructs the core-local session authorization from the exact `Hello`
@@ -716,6 +864,7 @@ pub fn metadata_session_authorization(
         granted: granted_metadata_capabilities.clone(),
         observed_metadata_identities: Arc::new(Mutex::new(BTreeSet::new())),
         observed_source_identities: Arc::new(Mutex::new(BTreeSet::new())),
+        observed_type_identities: Arc::new(Mutex::new(BTreeSet::new())),
     })
 }
 
@@ -842,6 +991,11 @@ pub enum DebuggerRequest {
     ListStaticMetadataSources {
         metadata: DebuggerStaticMetadataHandle,
     },
+    /// Lists only compiler-minted type-record identities for one exact
+    /// metadata attachment. It is not a type display or metadata-record read.
+    ListStaticMetadataTypes {
+        metadata: DebuggerStaticMetadataHandle,
+    },
     /// Describes one source ID previously returned by
     /// [`Self::ListStaticMetadataSources`]. This separately authorized
     /// operation returns compiler-canonical module identity and a labeled
@@ -929,6 +1083,9 @@ pub enum DebuggerReply {
     /// Reply to [`DebuggerRequest::ListStaticMetadataSources`]. IDs are
     /// parent-handle-bound and contain no source/provenance payload.
     StaticMetadataSources(Vec<DebuggerStaticMetadataSourceId>),
+    /// Reply to [`DebuggerRequest::ListStaticMetadataTypes`]. IDs remain
+    /// parent-handle-bound and contain no type display or record payload.
+    StaticMetadataTypes(Vec<DebuggerStaticMetadataTypeId>),
     /// Reply to [`DebuggerRequest::DescribeStaticMetadataSource`]. This is a
     /// bounded owner-authorized provenance disclosure, never source text.
     StaticMetadataSourceProvenance(DebuggerStaticMetadataSourceProvenance),
@@ -1020,6 +1177,7 @@ pub fn negotiate(
         | DebuggerRequest::ListStaticMetadata { .. }
         | DebuggerRequest::DescribeStaticMetadata { .. }
         | DebuggerRequest::ListStaticMetadataSources { .. }
+        | DebuggerRequest::ListStaticMetadataTypes { .. }
         | DebuggerRequest::DescribeStaticMetadataSource { .. }
         | DebuggerRequest::ListSafePoints { .. }
         | DebuggerRequest::ValidateSafePoint { .. }
@@ -1124,6 +1282,17 @@ mod tests {
                 },
             },
             DebuggerRequest::ListStaticMetadataSources {
+                metadata: DebuggerStaticMetadataHandle {
+                    program: DebuggerProgram {
+                        realm: realm(),
+                        program_handle: 12,
+                        program_generation: 5,
+                    },
+                    metadata_handle: 24,
+                    metadata_generation: 7,
+                },
+            },
+            DebuggerRequest::ListStaticMetadataTypes {
                 metadata: DebuggerStaticMetadataHandle {
                     program: DebuggerProgram {
                         realm: realm(),
@@ -1855,6 +2024,57 @@ mod tests {
             ..summary
         }
         .is_well_formed());
+    }
+
+    #[test]
+    fn type_inventory_is_parent_bound_and_receipted_without_a_type_display() {
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 5,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let static_type = DebuggerStaticMetadataTypeId {
+            metadata,
+            type_id: 0,
+        };
+        assert!(static_type.is_well_formed());
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_type_inventory());
+        let reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_type_inventory(),
+        );
+        let session = metadata_session_authorization(&request, &reply).unwrap();
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueTypeInventory));
+        assert!(!session.observed_type(static_type));
+        assert!(session.observe_types(&[static_type]));
+        assert!(session.observed_type(static_type));
+        assert!(!session.observed_type(DebuggerStaticMetadataTypeId {
+            type_id: 1,
+            ..static_type
+        }));
+        assert_eq!(
+            serde_json::to_value(static_type).unwrap(),
+            serde_json::json!({
+                "metadata": {
+                    "program": {
+                        "realm": {
+                            "browser_context_id": 1,
+                            "tab_id": 7,
+                            "realm_generation": 3,
+                        },
+                        "program_handle": 12,
+                        "program_generation": 5,
+                    },
+                    "metadata_handle": 41,
+                    "metadata_generation": 9,
+                },
+                "type_id": 0,
+            })
+        );
     }
 
     #[test]

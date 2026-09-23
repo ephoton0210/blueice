@@ -13,7 +13,7 @@
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
 //!
-//! Version 10 retains the two fixed, core-derived document snapshots consumed
+//! Version 11 retains the two fixed, core-derived document snapshots consumed
 //! by the child-owned JavaScript bindings, the location-only debugger
 //! inventory, a bounded exact-breakpoint configuration table, and an opt-in
 //! root-classic continuation seam. The
@@ -41,12 +41,16 @@
 //! Version 10 adds the separately authorized source-provenance reply for one
 //! of those IDs: canonical module identity and a labeled SHA-256 digest only,
 //! never source text or a general static-record read.
+//! Version 11 adds only a parent-handle-bound compiler type-ID inventory.
+//! Type IDs carry no display or static-record payload and remain unusable for
+//! a future display operation until that operation has an independent public
+//! authorization and same-stream receipt boundary.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 10;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 11;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -127,6 +131,14 @@ pub struct PageHostDebuggerBlueTsMetadataSummary {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PageHostDebuggerBlueTsMetadataSourceId {
     pub source_id: u32,
+}
+
+/// One compiler-minted type-record ID for an exact private BlueTS metadata
+/// attachment. It deliberately carries no display string, source identity,
+/// span, symbol, contract, bytecode, VM object, or value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataTypeId {
+    pub type_id: u32,
 }
 
 /// One child-local, source-text-free provenance description for a source ID
@@ -368,6 +380,14 @@ pub enum PageHostRequest {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
     },
+    /// Lists compiler-minted type-record IDs for a prior exact private
+    /// metadata handle. This is not a type display or static-record read.
+    ListDebuggerBlueTsMetadataTypes {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    },
     /// Describes exactly one prior compiler-minted source ID. This private
     /// request returns module identity and a digest only, never source text.
     DescribeDebuggerBlueTsMetadataSource {
@@ -497,6 +517,16 @@ pub enum PageHostReply {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
         sources: Vec<PageHostDebuggerBlueTsMetadataSourceId>,
+    },
+    /// Bounded compiler-minted static type identities. The IDs are local to
+    /// the exact metadata attachment and carry no type display or record
+    /// payload.
+    DebuggerBlueTsMetadataTypes {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        types: Vec<PageHostDebuggerBlueTsMetadataTypeId>,
     },
     DebuggerBlueTsMetadataSourceProvenance {
         tab_id: u64,
@@ -728,6 +758,18 @@ mod tests {
                     metadata_generation: 19,
                 },
             },
+            PageHostRequest::ListDebuggerBlueTsMetadataTypes {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+            },
             PageHostRequest::ListDebuggerSafePoints {
                 tab_id: 7,
                 document_generation: 3,
@@ -903,6 +945,23 @@ mod tests {
                 metadata_generation: 19,
             },
             sources: vec![PageHostDebuggerBlueTsMetadataSourceId { source_id: 0 }],
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataTypes {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            types: vec![PageHostDebuggerBlueTsMetadataTypeId { type_id: 0 }],
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();

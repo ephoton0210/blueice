@@ -24,7 +24,8 @@ use blueice_ipc::debugger::{
     DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
     DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataHandle,
     DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSourceProvenance,
-    DebuggerStaticMetadataSummary, DEBUGGER_PROTOCOL_VERSION, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
+    DebuggerStaticMetadataSummary, DebuggerStaticMetadataTypeId, DEBUGGER_PROTOCOL_VERSION,
+    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_TYPES,
 };
 use std::io;
 use std::sync::mpsc;
@@ -244,6 +245,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::ListStaticMetadataSources { .. } => {
             unavailable_static_metadata_source_inventory()
         }
+        DebuggerRequest::ListStaticMetadataTypes { .. } => {
+            unavailable_static_metadata_type_inventory()
+        }
         DebuggerRequest::DescribeStaticMetadataSource { .. } => {
             unavailable_static_metadata_source_provenance()
         }
@@ -348,6 +352,9 @@ fn handle_debugger_request_with_child_locations(
         }
         DebuggerRequest::ListStaticMetadataSources { metadata } => {
             list_child_static_metadata_sources(tabs, locations, metadata_session, metadata)
+        }
+        DebuggerRequest::ListStaticMetadataTypes { metadata } => {
+            list_child_static_metadata_types(tabs, locations, metadata_session, metadata)
         }
         DebuggerRequest::DescribeStaticMetadataSource { source } => {
             describe_child_static_metadata_source_provenance(
@@ -460,6 +467,11 @@ fn describe_child_location_capabilities(
             session.permits(DebuggerMetadataCapability::OpaqueSourceProvenance)
         })
         && locations.debugger_static_metadata_source_provenance_available();
+    let static_metadata_type_inventory_available = static_metadata_inventory_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueTypeInventory)
+        })
+        && locations.debugger_static_metadata_type_inventory_available();
     let max_breakpoints_per_realm = if breakpoint_configuration_available {
         locations.max_debugger_breakpoints_per_realm()
     } else {
@@ -468,15 +480,16 @@ fn describe_child_location_capabilities(
     DebuggerReply::Capabilities(DebuggerCapabilities {
         protocol_version: DEBUGGER_PROTOCOL_VERSION,
         realm,
-        reports: capability_reports(
-            locations_available,
+        reports: capability_reports(DebuggerCapabilityAvailability {
+            program_locations_available: locations_available,
             breakpoint_configuration_available,
-            execution_control_available,
+            entry_execution_control_available: execution_control_available,
             static_metadata_inventory_available,
             static_metadata_summary_available,
             static_metadata_source_inventory_available,
             static_metadata_source_provenance_available,
-        ),
+            static_metadata_type_inventory_available,
+        }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
         max_value_preview_bytes: MAX_VALUE_PREVIEW_BYTES,
@@ -741,6 +754,98 @@ fn list_child_static_metadata_sources(
             code: DebuggerErrorCode::ResourceLimit,
             message: "debugger static metadata source inventory exceeds its fixed limit"
                 .to_string(),
+        },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+/// Lists compiler-minted type IDs under one opaque metadata parent. The
+/// inventory is default-deny and payload-free: it is deliberately not a type
+/// display or a static-record dereference operation.
+fn list_child_static_metadata_types(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    metadata: DebuggerStaticMetadataHandle,
+) -> DebuggerReply {
+    if !metadata.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static metadata type inventory target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_type_inventory();
+    };
+    // No guessed parent may query a child type table. The public handle must
+    // have crossed this exact stream's inventory receipt boundary first.
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.observed_metadata(metadata)
+    {
+        return unavailable_static_metadata_type_inventory();
+    }
+    let capabilities = describe_child_location_capabilities(
+        tabs,
+        locations,
+        Some(metadata_session),
+        metadata.program.realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueTypeInventory,
+    ) else {
+        return unavailable_static_metadata_type_inventory();
+    };
+    if !authorization.permits(
+        metadata.program.realm,
+        DebuggerMetadataCapability::OpaqueTypeInventory,
+    ) {
+        return unavailable_static_metadata_type_inventory();
+    }
+    let tab_id = match resolve_live_realm(tabs, metadata.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    match locations.debugger_static_metadata_types(
+        tab_id,
+        metadata.program.realm.realm_generation,
+        metadata.program.program_handle,
+        metadata.program.program_generation,
+        metadata.metadata_handle,
+        metadata.metadata_generation,
+    ) {
+        Ok(types)
+            if types.len() <= usize::try_from(DEBUGGER_STATIC_METADATA_MAX_TYPES).unwrap() =>
+        {
+            let mut seen = std::collections::BTreeSet::new();
+            let mut result = Vec::with_capacity(types.len());
+            for static_type in types {
+                if !seen.insert(static_type.type_id) {
+                    return DebuggerReply::Error {
+                        code: DebuggerErrorCode::InvalidTarget,
+                        message: "duplicate debugger static metadata type identity".to_string(),
+                    };
+                }
+                result.push(DebuggerStaticMetadataTypeId {
+                    metadata,
+                    type_id: static_type.type_id,
+                });
+            }
+            if !metadata_session.observe_types(&result) {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::ResourceLimit,
+                    message: "debugger static metadata type receipt budget is exhausted"
+                        .to_string(),
+                };
+            }
+            DebuggerReply::StaticMetadataTypes(result)
+        }
+        Ok(_) => DebuggerReply::Error {
+            code: DebuggerErrorCode::ResourceLimit,
+            message: "debugger static metadata type inventory exceeds its fixed limit".to_string(),
         },
         Err(error) => debugger_program_error(error),
     }
@@ -1148,15 +1253,16 @@ fn describe_capabilities(
     DebuggerReply::Capabilities(DebuggerCapabilities {
         protocol_version: DEBUGGER_PROTOCOL_VERSION,
         realm,
-        reports: capability_reports(
+        reports: capability_reports(DebuggerCapabilityAvailability {
             program_locations_available,
-            program_locations_available,
+            breakpoint_configuration_available: program_locations_available,
             entry_execution_control_available,
-            false,
-            false,
-            false,
-            false,
-        ),
+            static_metadata_inventory_available: false,
+            static_metadata_summary_available: false,
+            static_metadata_source_inventory_available: false,
+            static_metadata_source_provenance_available: false,
+            static_metadata_type_inventory_available: false,
+        }),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
         max_value_preview_bytes: MAX_VALUE_PREVIEW_BYTES,
@@ -1573,6 +1679,14 @@ fn unavailable_static_metadata_source_inventory() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_type_inventory() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "opaque debugger static metadata type inventory is not authorized for this session and live realm"
+            .to_string(),
+    }
+}
+
 fn unavailable_static_metadata_source_provenance() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -1658,7 +1772,7 @@ fn debugger_execution_state(
     }
 }
 
-fn capability_reports(
+struct DebuggerCapabilityAvailability {
     program_locations_available: bool,
     breakpoint_configuration_available: bool,
     entry_execution_control_available: bool,
@@ -1666,6 +1780,20 @@ fn capability_reports(
     static_metadata_summary_available: bool,
     static_metadata_source_inventory_available: bool,
     static_metadata_source_provenance_available: bool,
+    static_metadata_type_inventory_available: bool,
+}
+
+fn capability_reports(
+    DebuggerCapabilityAvailability {
+        program_locations_available,
+        breakpoint_configuration_available,
+        entry_execution_control_available,
+        static_metadata_inventory_available,
+        static_metadata_summary_available,
+        static_metadata_source_inventory_available,
+        static_metadata_source_provenance_available,
+        static_metadata_type_inventory_available,
+    }: DebuggerCapabilityAvailability,
 ) -> Vec<DebuggerCapabilityReport> {
     [
         (
@@ -1795,6 +1923,19 @@ fn capability_reports(
                 "owner-authorized source-free module identity and SHA-256 provenance are installed"
             } else {
                 "source provenance requires explicit inventory, source-inventory, and provenance session grants plus a live BlueTS child program"
+            },
+        ),
+        (
+            DebuggerCapability::StaticMetadataTypeInventory,
+            if static_metadata_type_inventory_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_type_inventory_available {
+                "bounded opaque static-metadata type identities are installed; type displays remain unreadable"
+            } else {
+                "static metadata type identities require explicit inventory and type-inventory session grants plus a live BlueTS child program"
             },
         ),
     ]

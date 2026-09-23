@@ -118,6 +118,9 @@ mod unix {
         /// prior source ID. It requires source inventory and exposes only a
         /// canonical module identity plus labeled SHA-256 digest.
         debugger_static_metadata_source_provenance: bool,
+        /// Owner-only policy for compiler-minted type-record IDs bound to an
+        /// opaque metadata handle. Type displays remain default-denied.
+        debugger_static_metadata_type_inventory: bool,
     }
 
     impl CoreLaunchOptions {
@@ -236,6 +239,15 @@ mod unix {
             self.debugger_static_metadata_inventory = true;
             self.debugger_static_metadata_source_inventory = true;
             self.debugger_static_metadata_source_provenance = true;
+            self
+        }
+
+        /// Enables only compiler-minted type-record IDs for one exact static
+        /// metadata handle. The parent inventory remains the required opaque
+        /// authority; type displays and records are not exposed.
+        pub fn with_debugger_static_metadata_type_inventory(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_type_inventory = true;
             self
         }
     }
@@ -1590,6 +1602,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_source_provenance {
                     command.arg("--debugger-static-metadata-source-provenance");
+                }
+                if options.debugger_static_metadata_type_inventory {
+                    command.arg("--debugger-static-metadata-type-inventory");
                 }
             }
             let mut child = command.spawn()?;

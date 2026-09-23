@@ -30,15 +30,17 @@ use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
     DirectModuleGraph, DirectScript,
 };
-use blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_MAX_SOURCES;
+use blueice_ipc::debugger::{
+    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_TYPES,
+};
 use blueice_ipc::page_host::{
     self, PageHostDebuggerBlueTsMetadataSourceId, PageHostDebuggerBlueTsMetadataSourceProvenance,
-    PageHostDebuggerBlueTsMetadataSummary, PageHostDebuggerExecutionState,
-    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
-    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
-    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PageHostDebuggerBlueTsMetadataSummary, PageHostDebuggerBlueTsMetadataTypeId,
+    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
+    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
+    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -290,6 +292,14 @@ impl BlueJsChildHost {
                 program,
                 metadata,
             ),
+            PageHostRequest::ListDebuggerBlueTsMetadataTypes {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+            } => {
+                self.debugger_bluets_metadata_types(tab_id, document_generation, program, metadata)
+            }
             PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
                 tab_id,
                 document_generation,
@@ -1061,6 +1071,76 @@ impl BlueJsChildHost {
             program,
             metadata,
             sources,
+        }
+    }
+
+    /// Lists only compiler-minted type-record IDs for an already inventoried
+    /// metadata attachment. The IDs carry no type display, source identity,
+    /// span, symbol, contract, bytecode, VM object, or value.
+    fn debugger_bluets_metadata_types(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let types = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let static_types = &retained.static_info().types;
+                if static_types.len() > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_TYPES).unwrap()
+                {
+                    return resource_limit();
+                }
+                let mut identities = BTreeSet::new();
+                let mut types = Vec::with_capacity(static_types.len());
+                for static_type in static_types {
+                    if !identities.insert(static_type.id.0) {
+                        return invalid_request();
+                    }
+                    types.push(PageHostDebuggerBlueTsMetadataTypeId {
+                        type_id: static_type.id.0,
+                    });
+                }
+                types
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataTypes {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            types,
         }
     }
 
@@ -3293,6 +3373,37 @@ mod tests {
         assert!(!format!("{sources:?}").contains("typedAnswer"));
         assert!(!format!("{sources:?}").contains("inline-1.ts"));
         assert!(!format!("{sources:?}").contains("number"));
+        let type_inventory_reply =
+            host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataTypes {
+                tab_id: 7,
+                document_generation: 1,
+                program: typed_program,
+                metadata: first_metadata,
+            });
+        let PageHostReply::DebuggerBlueTsMetadataTypes {
+            program,
+            metadata,
+            types,
+            ..
+        } = type_inventory_reply
+        else {
+            panic!("expected bounded private BlueTS type-record identity inventory")
+        };
+        assert_eq!(program, typed_program);
+        assert_eq!(metadata, first_metadata);
+        assert_eq!(types.len(), usize::try_from(summary.type_count).unwrap());
+        assert_eq!(
+            types
+                .iter()
+                .map(|static_type| static_type.type_id)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            types.len(),
+            "one metadata attachment cannot repeat a compiler type-record ID"
+        );
+        assert!(!format!("{types:?}").contains("typedAnswer"));
+        assert!(!format!("{types:?}").contains("inline-1.ts"));
+        assert!(!format!("{types:?}").contains("number"));
         assert!(matches!(
             host.handle_request(PageHostRequest::DescribeDebuggerBlueTsMetadata {
                 tab_id: 7,
@@ -3310,6 +3421,21 @@ mod tests {
         ));
         assert!(matches!(
             host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataSources {
+                tab_id: 7,
+                document_generation: 1,
+                program: typed_program,
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: first_metadata.metadata_handle,
+                    metadata_generation: first_metadata.metadata_generation + 1,
+                },
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataTypes {
                 tab_id: 7,
                 document_generation: 1,
                 program: typed_program,
@@ -3368,6 +3494,18 @@ mod tests {
         ));
         assert!(matches!(
             host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataSources {
+                tab_id: 7,
+                document_generation: 1,
+                program: typed_program,
+                metadata: first_metadata,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataTypes {
                 tab_id: 7,
                 document_generation: 1,
                 program: typed_program,
