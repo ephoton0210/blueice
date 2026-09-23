@@ -31,6 +31,20 @@ pub struct JavaScriptPageDebuggerStaticMetadata {
     pub metadata_generation: u64,
 }
 
+/// A bounded source-free summary for one exact static-metadata inventory
+/// identity. It deliberately contains no source identity/text, span, name,
+/// type display, symbol, contract, bytecode, VM object, or runtime value.
+/// The debugger dispatcher binds it back to the public opaque handle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSummary {
+    pub language_version: String,
+    pub compiler_options_hash: String,
+    pub source_count: u32,
+    pub type_count: u32,
+    pub symbol_count: u32,
+    pub contract_count: u32,
+}
+
 /// One compiler-verified instruction boundary represented without source or
 /// bytecode contents for the native debugger path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

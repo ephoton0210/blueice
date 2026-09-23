@@ -101,10 +101,15 @@ mod unix {
         /// protocol versioning and every target-bound operation remain
         /// enforced by the trusted core.
         debugger_socket: Option<PathBuf>,
-        /// Owner-only policy for the sole v6 static-metadata surface. It
-        /// permits only source-free opaque-handle inventory after a client
-        /// requests it in `Hello`; it never grants metadata reads.
+        /// Owner-only policy for source-free opaque-handle inventory after a
+        /// client requests it in `Hello`; it never grants a metadata record
+        /// read.
         debugger_static_metadata_inventory: bool,
+        /// Owner-only policy for the dependent bounded static-metadata
+        /// summary. It requires the inventory policy and never grants source
+        /// identity/text, spans, names, type displays, symbols, contracts,
+        /// bytecode, or runtime values.
+        debugger_static_metadata_summary: bool,
     }
 
     impl CoreLaunchOptions {
@@ -194,6 +199,16 @@ mod unix {
         /// span, contract, bytecode, or runtime-value access.
         pub fn with_debugger_static_metadata_inventory(mut self) -> Self {
             self.debugger_static_metadata_inventory = true;
+            self
+        }
+
+        /// Enables bounded source-free summaries for handles from the
+        /// explicitly selected static-metadata inventory. The method also
+        /// enables that prerequisite inventory, but a client must still
+        /// negotiate both distinct capabilities on its debugger stream.
+        pub fn with_debugger_static_metadata_summary(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_summary = true;
             self
         }
     }
@@ -1539,6 +1554,9 @@ mod unix {
                 command.arg("--debugger-socket").arg(debugger_socket);
                 if options.debugger_static_metadata_inventory {
                     command.arg("--debugger-static-metadata-inventory");
+                }
+                if options.debugger_static_metadata_summary {
+                    command.arg("--debugger-static-metadata-summary");
                 }
             }
             let mut child = command.spawn()?;

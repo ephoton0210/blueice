@@ -31,11 +31,12 @@ use blueice_bluets_bluejs::{
     DirectModuleGraph, DirectScript,
 };
 use blueice_ipc::page_host::{
-    self, PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
-    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
-    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
-    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
-    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    self, PageHostDebuggerBlueTsMetadataSummary, PageHostDebuggerExecutionState,
+    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
+    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
+    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
+    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -265,6 +266,17 @@ impl BlueJsChildHost {
                 document_generation,
                 program,
             } => self.debugger_bluets_metadata(tab_id, document_generation, program),
+            PageHostRequest::DescribeDebuggerBlueTsMetadata {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+            } => self.debugger_bluets_metadata_summary(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+            ),
             PageHostRequest::ListDebuggerSafePoints {
                 tab_id,
                 document_generation,
@@ -873,6 +885,84 @@ impl BlueJsChildHost {
             document_generation,
             program,
             metadata: vec![metadata],
+        }
+    }
+
+    /// Returns the first deliberately narrow read surface for a previously
+    /// inventoried BlueTS debug attachment. The handle must still be owned by
+    /// this exact live program, so neither an arbitrary child-private ID nor
+    /// a handle from a sibling program can probe the registry. The response
+    /// contains fixed fingerprints and aggregate counts only; source text and
+    /// identity, spans, names, type displays, symbols, contracts, bytecode,
+    /// VM objects, and values remain inside this child.
+    fn debugger_bluets_metadata_summary(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+
+        let summary = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let info = retained.static_info();
+                let (Ok(source_count), Ok(type_count), Ok(symbol_count), Ok(contract_count)) = (
+                    u32::try_from(info.sources.len()),
+                    u32::try_from(info.types.len()),
+                    u32::try_from(info.symbols.len()),
+                    u32::try_from(info.contracts.len()),
+                ) else {
+                    return host_failure();
+                };
+                PageHostDebuggerBlueTsMetadataSummary {
+                    language_version: info.language_version.clone(),
+                    compiler_options_hash: info.compiler_options_hash.clone(),
+                    source_count,
+                    type_count,
+                    symbol_count,
+                    contract_count,
+                }
+            }
+            Err(_) => {
+                // A registry pruning race invalidates the private inventory
+                // identity before reporting anything about the old record.
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataSummary {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            summary,
         }
     }
 
@@ -2977,6 +3067,44 @@ mod tests {
             first_metadata.metadata_handle >= CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
             "metadata IDs have a child-private namespace separate from program IDs"
         );
+        let summary_reply = host.handle_request(PageHostRequest::DescribeDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program: typed_program,
+            metadata: first_metadata,
+        });
+        let PageHostReply::DebuggerBlueTsMetadataSummary {
+            metadata, summary, ..
+        } = summary_reply
+        else {
+            panic!("expected bounded private BlueTS metadata summary")
+        };
+        assert_eq!(metadata, first_metadata);
+        assert_eq!(summary.language_version, "blue-ts-0.1");
+        assert!(summary.source_count > 0);
+        assert!(summary.type_count > 0);
+        assert!(summary.symbol_count > 0);
+        // The summary intentionally reveals no source/module/name/type/span/
+        // contract record. A separate future capability would be needed for
+        // every individual record family.
+        assert!(!format!("{summary:?}").contains("typedAnswer"));
+        assert!(!format!("{summary:?}").contains("inline-1.ts"));
+        assert!(!format!("{summary:?}").contains("number"));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::DescribeDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 1,
+                program: typed_program,
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: first_metadata.metadata_handle,
+                    metadata_generation: first_metadata.metadata_generation + 1,
+                },
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
 
         assert!(matches!(
             host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
@@ -3002,6 +3130,18 @@ mod tests {
                 tab_id: 7,
                 document_generation: 1,
                 program: typed_program,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::DescribeDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 1,
+                program: typed_program,
+                metadata: first_metadata,
             }),
             PageHostReply::Error {
                 code: PageHostErrorCode::StaleDocument,

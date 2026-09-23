@@ -21,7 +21,8 @@ use blueice_ipc::debugger::{
     DebuggerCapabilities, DebuggerCapability, DebuggerCapabilityReport, DebuggerCapabilityState,
     DebuggerErrorCode, DebuggerExecutionState, DebuggerMetadataCapability,
     DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
-    DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataHandle, DEBUGGER_PROTOCOL_VERSION,
+    DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataHandle,
+    DebuggerStaticMetadataSummary, DEBUGGER_PROTOCOL_VERSION,
 };
 use std::io;
 use std::sync::mpsc;
@@ -237,6 +238,7 @@ pub fn handle_debugger_request_with_javascript_executor(
             list_programs(tabs, javascript_executor.as_deref(), realm)
         }
         DebuggerRequest::ListStaticMetadata { .. } => unavailable_static_metadata_inventory(),
+        DebuggerRequest::DescribeStaticMetadata { .. } => unavailable_static_metadata_summary(),
         DebuggerRequest::ListSafePoints { program } => {
             list_safe_points(tabs, javascript_executor.as_deref(), program)
         }
@@ -333,6 +335,9 @@ fn handle_debugger_request_with_child_locations(
         DebuggerRequest::ListStaticMetadata { program } => {
             list_child_static_metadata(tabs, locations, metadata_session, program)
         }
+        DebuggerRequest::DescribeStaticMetadata { metadata } => {
+            describe_child_static_metadata(tabs, locations, metadata_session, metadata)
+        }
         DebuggerRequest::ListSafePoints { program } => {
             list_child_safe_points(tabs, locations, program)
         }
@@ -419,6 +424,13 @@ fn describe_child_location_capabilities(
         && metadata_session
             .is_some_and(|session| session.permits(DebuggerMetadataCapability::OpaqueInventory))
         && locations.debugger_static_metadata_inventory_available();
+    // A summary has no target without a successful inventory request, so it
+    // additionally requires that same session grant. Do not publish either
+    // availability bit to an ungranted peer.
+    let static_metadata_summary_available = static_metadata_inventory_available
+        && metadata_session
+            .is_some_and(|session| session.permits(DebuggerMetadataCapability::OpaqueSummary))
+        && locations.debugger_static_metadata_summary_available();
     let max_breakpoints_per_realm = if breakpoint_configuration_available {
         locations.max_debugger_breakpoints_per_realm()
     } else {
@@ -432,6 +444,7 @@ fn describe_child_location_capabilities(
             breakpoint_configuration_available,
             execution_control_available,
             static_metadata_inventory_available,
+            static_metadata_summary_available,
         ),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -512,6 +525,82 @@ fn list_child_static_metadata(
             code: DebuggerErrorCode::ResourceLimit,
             message: "debugger static metadata inventory exceeds its fixed limit".to_string(),
         },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn describe_child_static_metadata(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    metadata: DebuggerStaticMetadataHandle,
+) -> DebuggerReply {
+    if !metadata.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static metadata target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_summary();
+    };
+    // A summary can only be associated with a handle minted by inventory. A
+    // malformed/partial session can never turn the dependent summary grant
+    // into a standalone target-probing capability.
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory) {
+        return unavailable_static_metadata_summary();
+    }
+    let capabilities = describe_child_location_capabilities(
+        tabs,
+        locations,
+        Some(metadata_session),
+        metadata.program.realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities
+        .authorize_metadata(metadata_session, DebuggerMetadataCapability::OpaqueSummary)
+    else {
+        return unavailable_static_metadata_summary();
+    };
+    if !authorization.permits(
+        metadata.program.realm,
+        DebuggerMetadataCapability::OpaqueSummary,
+    ) {
+        return unavailable_static_metadata_summary();
+    }
+
+    let tab_id = match resolve_live_realm(tabs, metadata.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    match locations.debugger_static_metadata_summary(
+        tab_id,
+        metadata.program.realm.realm_generation,
+        metadata.program.program_handle,
+        metadata.program.program_generation,
+        metadata.metadata_handle,
+        metadata.metadata_generation,
+    ) {
+        Ok(summary) => {
+            let summary = DebuggerStaticMetadataSummary {
+                metadata,
+                language_version: summary.language_version,
+                compiler_options_hash: summary.compiler_options_hash,
+                source_count: summary.source_count,
+                type_count: summary.type_count,
+                symbol_count: summary.symbol_count,
+                contract_count: summary.contract_count,
+            };
+            if !summary.is_well_formed() {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    message: "invalid bounded debugger static metadata summary".to_string(),
+                };
+            }
+            DebuggerReply::StaticMetadataSummary(summary)
+        }
         Err(error) => debugger_program_error(error),
     }
 }
@@ -844,6 +933,7 @@ fn describe_capabilities(
             program_locations_available,
             program_locations_available,
             entry_execution_control_available,
+            false,
             false,
         ),
         max_stack_frames: MAX_STACK_FRAMES,
@@ -1246,6 +1336,14 @@ fn unavailable_static_metadata_inventory() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_summary() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "bounded debugger static metadata summaries are not authorized for this session and live realm"
+            .to_string(),
+    }
+}
+
 fn unavailable_execution_control() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -1328,6 +1426,7 @@ fn capability_reports(
     breakpoint_configuration_available: bool,
     entry_execution_control_available: bool,
     static_metadata_inventory_available: bool,
+    static_metadata_summary_available: bool,
 ) -> Vec<DebuggerCapabilityReport> {
     [
         (
@@ -1420,6 +1519,19 @@ fn capability_reports(
                 "static metadata inventory requires an explicitly negotiated session grant and a live BlueTS child program"
             },
         ),
+        (
+            DebuggerCapability::StaticMetadataSummary,
+            if static_metadata_summary_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_summary_available {
+                "bounded source-free static-metadata summaries are installed; records remain unreadable"
+            } else {
+                "static metadata summaries require explicit inventory and summary session grants plus a live BlueTS child program"
+            },
+        ),
     ]
     .into_iter()
     .map(|(capability, state, detail)| DebuggerCapabilityReport {
@@ -1434,7 +1546,9 @@ fn capability_reports(
 mod tests {
     use super::*;
 
-    struct MetadataLocations;
+    struct MetadataLocations {
+        malformed_summary: bool,
+    }
 
     impl PageJavaScriptDebuggerLocations for MetadataLocations {
         fn debugger_has_live_realm(&mut self, _tab_id: TabId, _document_generation: u64) -> bool {
@@ -1446,6 +1560,10 @@ mod tests {
         }
 
         fn debugger_static_metadata_inventory_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_summary_available(&self) -> bool {
             true
         }
 
@@ -1476,6 +1594,40 @@ mod tests {
                     metadata_generation: 9,
                 },
             ])
+        }
+
+        fn debugger_static_metadata_summary(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            _program_handle: u64,
+            _program_generation: u64,
+            metadata_handle: u64,
+            metadata_generation: u64,
+        ) -> Result<
+            crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSummary,
+            JavaScriptPageDebuggerError,
+        > {
+            if metadata_handle != 41 || metadata_generation != 9 {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            Ok(
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSummary {
+                    language_version: if self.malformed_summary {
+                        "x".repeat(
+                            blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_LANGUAGE_VERSION_MAX_BYTES
+                                + 1,
+                        )
+                    } else {
+                        "blue-ts-0.1".to_string()
+                    },
+                    compiler_options_hash: "0123456789abcdef".to_string(),
+                    source_count: 1,
+                    type_count: 2,
+                    symbol_count: 3,
+                    contract_count: 4,
+                },
+            )
         }
 
         fn debugger_safe_points(
@@ -1562,14 +1714,16 @@ mod tests {
     }
 
     #[test]
-    fn static_metadata_inventory_requires_a_session_grant_and_returns_only_opaque_handles() {
+    fn static_metadata_summary_requires_a_dependent_session_grant_and_exact_handle() {
         let (tabs, realm) = loaded_tabs();
         let program = DebuggerProgram {
             realm,
             program_handle: 7,
             program_generation: 3,
         };
-        let mut locations = MetadataLocations;
+        let mut locations = MetadataLocations {
+            malformed_summary: false,
+        };
 
         let denied_capabilities = handle_debugger_request_with_child_locations(
             &tabs,
@@ -1584,6 +1738,10 @@ mod tests {
             report.capability == DebuggerCapability::StaticMetadataInventory
                 && report.state == DebuggerCapabilityState::Planned
         }));
+        assert!(denied_capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataSummary
+                && report.state == DebuggerCapabilityState::Planned
+        }));
         assert_eq!(
             handle_debugger_request_with_child_locations(
                 &tabs,
@@ -1592,6 +1750,20 @@ mod tests {
                 DebuggerRequest::ListStaticMetadata { program },
             ),
             unavailable_static_metadata_inventory()
+        );
+        let metadata = DebuggerStaticMetadataHandle {
+            program,
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                None,
+                DebuggerRequest::DescribeStaticMetadata { metadata },
+            ),
+            unavailable_static_metadata_summary()
         );
 
         let hello = DebuggerRequest::Hello {
@@ -1620,6 +1792,10 @@ mod tests {
             report.capability == DebuggerCapability::StaticMetadataInventory
                 && report.state == DebuggerCapabilityState::Available
         }));
+        assert!(allowed_capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataSummary
+                && report.state == DebuggerCapabilityState::Planned
+        }));
         assert_eq!(
             handle_debugger_request_with_child_locations(
                 &tabs,
@@ -1633,6 +1809,100 @@ mod tests {
                 metadata_generation: 9,
             }])
         );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&metadata_session),
+                DebuggerRequest::DescribeStaticMetadata { metadata },
+            ),
+            unavailable_static_metadata_summary()
+        );
+
+        let summary_hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_summary(),
+        };
+        let summary_hello_reply = blueice_ipc::debugger::negotiate(
+            &summary_hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_summary(),
+        );
+        let summary_session = blueice_ipc::debugger::metadata_session_authorization(
+            &summary_hello,
+            &summary_hello_reply,
+        )
+        .expect("dependent summary policy must create a core-local session authorization");
+        let summary_capabilities = handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&summary_session),
+            DebuggerRequest::DescribeCapabilities { realm },
+        );
+        let DebuggerReply::Capabilities(summary_capabilities) = summary_capabilities else {
+            panic!("live realm summary capability discovery must succeed")
+        };
+        assert!(summary_capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataSummary
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&summary_session),
+                DebuggerRequest::DescribeStaticMetadata { metadata },
+            ),
+            DebuggerReply::StaticMetadataSummary(DebuggerStaticMetadataSummary {
+                metadata,
+                language_version: "blue-ts-0.1".to_string(),
+                compiler_options_hash: "0123456789abcdef".to_string(),
+                source_count: 1,
+                type_count: 2,
+                symbol_count: 3,
+                contract_count: 4,
+            })
+        );
+    }
+
+    #[test]
+    fn static_metadata_summary_rejects_an_over_budget_child_reply() {
+        let (tabs, realm) = loaded_tabs();
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm,
+                program_handle: 7,
+                program_generation: 3,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_summary(),
+        };
+        let hello_reply = blueice_ipc::debugger::negotiate(
+            &hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_summary(),
+        );
+        let session = blueice_ipc::debugger::metadata_session_authorization(&hello, &hello_reply)
+            .expect("dependent summary policy must create a core-local session authorization");
+        let mut locations = MetadataLocations {
+            malformed_summary: true,
+        };
+        assert!(matches!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeStaticMetadata { metadata },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
     }
 
     #[test]

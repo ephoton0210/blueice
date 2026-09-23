@@ -37,6 +37,7 @@ pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerProgram,
     JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
+    JavaScriptPageDebuggerStaticMetadataSummary,
 };
 
 /// Source-free debugger location operations owned by an explicitly selected
@@ -77,6 +78,13 @@ pub trait PageJavaScriptDebuggerLocations {
         false
     }
 
+    /// Whether this selected route can describe one existing static-metadata
+    /// handle with a bounded source-free summary. This remains a distinct
+    /// capability from handle inventory and is default-deny for every route.
+    fn debugger_static_metadata_summary_available(&self) -> bool {
+        false
+    }
+
     /// Lists only opaque public-facing program IDs for one live realm.
     fn debugger_programs(
         &mut self,
@@ -95,6 +103,22 @@ pub trait PageJavaScriptDebuggerLocations {
         _program_handle: u64,
         _program_generation: u64,
     ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadata>, JavaScriptPageDebuggerError> {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes one already inventoried opaque metadata identity. The owner
+    /// must verify the exact program and metadata generations before exposing
+    /// the bounded summary; it must never use these numbers to synthesize a
+    /// source/type/symbol/contract record read.
+    fn debugger_static_metadata_summary(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _program_handle: u64,
+        _program_generation: u64,
+        _metadata_handle: u64,
+        _metadata_generation: u64,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSummary, JavaScriptPageDebuggerError> {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
 

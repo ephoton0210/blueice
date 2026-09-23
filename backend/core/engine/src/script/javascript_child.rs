@@ -27,8 +27,8 @@ use crate::script::javascript::{
     AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerBreakpoint,
     JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
     JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
-    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageExecutionReport,
-    PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
+    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataSummary,
+    JavaScriptPageExecutionReport, PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };
 use crate::script::page_source_authorizer::AuthorizedPageScriptGraph;
 pub use crate::script::page_source_authorizer::{
@@ -174,6 +174,14 @@ pub trait PageHostClient {
         false
     }
 
+    /// Whether this authenticated private peer supports a bounded summary for
+    /// an existing BlueTS metadata handle. It is deliberately separate from
+    /// the inventory signal so a transport double cannot gain a read surface
+    /// merely by implementing handle enumeration.
+    fn debugger_bluets_metadata_summary_available(&self) -> bool {
+        false
+    }
+
     /// Lists newly child-minted opaque handles only for a live direct-BlueTS
     /// attachment associated with one exact private program. The result has
     /// no source/module/name/type/span/contract payload, and a transport
@@ -187,6 +195,23 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement BlueTS debugger metadata inventory",
+        ))
+    }
+
+    /// Describes one already issued child-private metadata handle. The child
+    /// must bind it to the exact program supplied here and return no record
+    /// contents, source identity/text, span, symbol, type, contract, VM
+    /// object, or value.
+    fn debugger_bluets_metadata_summary(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger metadata summaries",
         ))
     }
 
@@ -330,6 +355,10 @@ impl PageHostClient for PageHostConnection {
         true
     }
 
+    fn debugger_bluets_metadata_summary_available(&self) -> bool {
+        true
+    }
+
     fn debugger_realm_stats(
         &mut self,
         tab_id: u64,
@@ -362,6 +391,21 @@ impl PageHostClient for PageHostConnection {
             tab_id,
             document_generation,
             program,
+        })
+    }
+
+    fn debugger_bluets_metadata_summary(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsMetadata {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
         })
     }
 
@@ -1059,6 +1103,11 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         self.child.debugger_bluets_metadata_available()
     }
 
+    fn debugger_static_metadata_summary_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_summary_available()
+    }
+
     fn debugger_programs(
         &mut self,
         tab_id: TabId,
@@ -1170,6 +1219,67 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         }
         self.debugger_static_metadata.insert(tab_id, current);
         Ok(public_metadata)
+    }
+
+    fn debugger_static_metadata_summary(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        program_handle: u64,
+        program_generation: u64,
+        metadata_handle: u64,
+        metadata_generation: u64,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSummary, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_summary_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            program_handle,
+            program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            metadata_handle,
+            metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_summary(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSummary {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            summary,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSummary {
+            language_version: summary.language_version,
+            compiler_options_hash: summary.compiler_options_hash,
+            source_count: summary.source_count,
+            type_count: summary.type_count,
+            symbol_count: summary.symbol_count,
+            contract_count: summary.contract_count,
+        })
     }
 
     fn debugger_safe_points(
@@ -1607,6 +1717,30 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
                     (public.program_handle == program_handle
                         && public.program_generation == program_generation)
                         .then_some(*child)
+                })
+            })
+            .ok_or(JavaScriptPageDebuggerError::UnknownProgram)
+    }
+
+    fn child_static_metadata_for_core(
+        &self,
+        tab_id: TabId,
+        document_generation: u64,
+        child_program: PageHostDebuggerProgram,
+        metadata_handle: u64,
+        metadata_generation: u64,
+    ) -> Result<PageHostDebuggerMetadataHandle, JavaScriptPageDebuggerError> {
+        if !self.has_core_live_document(tab_id, document_generation) {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        self.debugger_static_metadata
+            .get(&tab_id)
+            .and_then(|metadata| {
+                metadata.iter().find_map(|(child_metadata, public)| {
+                    (public.program == child_program
+                        && public.metadata_handle == metadata_handle
+                        && public.metadata_generation == metadata_generation)
+                        .then_some(*child_metadata)
                 })
             })
             .ok_or(JavaScriptPageDebuggerError::UnknownProgram)
@@ -3635,6 +3769,35 @@ mod tests {
             !format!("{metadata:?}").contains("opaqueCompilerMetadata"),
             "the core-facing handle must contain no compiler metadata payload"
         );
+        let summary = executor
+            .debugger_static_metadata_summary(
+                tab_id,
+                1,
+                typed_program.program_handle,
+                typed_program.program_generation,
+                metadata.metadata_handle,
+                metadata.metadata_generation,
+            )
+            .expect("the exact core-reminted metadata identity resolves a bounded summary");
+        assert_eq!(summary.language_version, "blue-ts-0.1");
+        assert!(summary.source_count > 0);
+        assert!(summary.type_count > 0);
+        assert!(summary.symbol_count > 0);
+        assert!(
+            !format!("{summary:?}").contains("opaqueCompilerMetadata"),
+            "the core-facing summary must contain no compiler record payload"
+        );
+        assert!(matches!(
+            executor.debugger_static_metadata_summary(
+                tab_id,
+                1,
+                typed_program.program_handle,
+                typed_program.program_generation,
+                metadata.metadata_handle,
+                metadata.metadata_generation + 1,
+            ),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        ));
 
         tabs.get_mut(tab_id).unwrap().load_html_str(
             "<script type=\"application/x-blueice-typescript\">const successor: number = 1;</script>",
@@ -3647,6 +3810,17 @@ mod tests {
                 1,
                 typed_program.program_handle,
                 typed_program.program_generation,
+            ),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        ));
+        assert!(matches!(
+            executor.debugger_static_metadata_summary(
+                tab_id,
+                1,
+                typed_program.program_handle,
+                typed_program.program_generation,
+                metadata.metadata_handle,
+                metadata.metadata_generation,
             ),
             Err(JavaScriptPageDebuggerError::NoLiveRealm)
         ));

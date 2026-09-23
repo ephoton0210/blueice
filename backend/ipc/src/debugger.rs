@@ -9,7 +9,7 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version six also reserves a
+//! and an opt-in root-code-unit pause/resume seam. Version seven reserves a
 //! fail-closed session and per-realm capability boundary for future static
 //! metadata: `Hello` grants only the canonical intersection of a requested
 //! manifest and the core policy, and a metadata operation may be dispatched
@@ -25,7 +25,7 @@ use std::io::{self, Read, Write};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 6;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 7;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -82,6 +82,57 @@ impl DebuggerStaticMetadataHandle {
     }
 }
 
+/// A bounded, source-free description of one static BlueTS metadata record.
+///
+/// This summary is deliberately distinct from the record itself. It exposes
+/// only the compiler/language fingerprints and aggregate collection sizes
+/// needed to identify a compilation; it contains no source identity or text,
+/// span, name, type display, symbol, contract, bytecode, runtime value, or
+/// dereferenceable child handle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataSummary {
+    /// The exact opaque record this description names.
+    pub metadata: DebuggerStaticMetadataHandle,
+    /// Fixed compiler language vocabulary, bounded by the protocol owner.
+    pub language_version: String,
+    /// A compiler-selected options fingerprint. It is an identifier, not an
+    /// options/configuration dump.
+    pub compiler_options_hash: String,
+    pub source_count: u32,
+    pub type_count: u32,
+    pub symbol_count: u32,
+    pub contract_count: u32,
+}
+
+impl DebuggerStaticMetadataSummary {
+    /// Rejects malformed or over-budget child-proxied summaries before one
+    /// reaches a debugger client. These are fixed protocol limits, never
+    /// caller-selected pagination or allocation parameters.
+    pub fn is_well_formed(&self) -> bool {
+        self.metadata.is_well_formed()
+            && !self.language_version.is_empty()
+            && self.language_version.len() <= DEBUGGER_STATIC_METADATA_LANGUAGE_VERSION_MAX_BYTES
+            && !self.compiler_options_hash.is_empty()
+            && self.compiler_options_hash.len()
+                <= DEBUGGER_STATIC_METADATA_COMPILER_OPTIONS_HASH_MAX_BYTES
+            && self.source_count <= DEBUGGER_STATIC_METADATA_MAX_SOURCES
+            && self.type_count <= DEBUGGER_STATIC_METADATA_MAX_TYPES
+            && self.symbol_count <= DEBUGGER_STATIC_METADATA_MAX_SYMBOLS
+            && self.contract_count <= DEBUGGER_STATIC_METADATA_MAX_CONTRACTS
+    }
+}
+
+/// Maximum length of the fixed BlueTS language-version label exposed by the
+/// summary surface.
+pub const DEBUGGER_STATIC_METADATA_LANGUAGE_VERSION_MAX_BYTES: usize = 64;
+/// Maximum length of the compiler-owned options fingerprint in a summary.
+pub const DEBUGGER_STATIC_METADATA_COMPILER_OPTIONS_HASH_MAX_BYTES: usize = 128;
+/// Retention-derived upper bounds for the summary's aggregate counts.
+pub const DEBUGGER_STATIC_METADATA_MAX_SOURCES: u32 = 4_096;
+pub const DEBUGGER_STATIC_METADATA_MAX_TYPES: u32 = 4_096;
+pub const DEBUGGER_STATIC_METADATA_MAX_SYMBOLS: u32 = 65_536;
+pub const DEBUGGER_STATIC_METADATA_MAX_CONTRACTS: u32 = 65_536;
+
 /// A compiler-recorded executable bytecode boundary for one exact program.
 /// Hosts MUST validate this tuple against BlueJS's program registry rather
 /// than translating a nearest source offset heuristically.
@@ -124,6 +175,10 @@ pub enum DebuggerCapability {
     /// symbols, types, contracts, bytecode, runtime values, or a general
     /// metadata dump. Those each need their own later capability and request.
     StaticMetadataInventory,
+    /// One bounded, source-free summary for an opaque static-metadata handle.
+    /// It is separate from inventory so a client cannot infer a read grant
+    /// merely because it may enumerate handles.
+    StaticMetadataSummary,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -131,15 +186,21 @@ pub enum DebuggerCapability {
 ///
 /// This deliberately has no broad `StaticMetadata` or `All` variant. Every
 /// future metadata surface must add a distinct variant and map it to a
-/// distinct [`DebuggerCapability`] before it can be requested. Version six
-/// exposes only the bounded opaque inventory; it deliberately provides no
-/// metadata read or inspection operation.
+/// distinct [`DebuggerCapability`] before it can be requested. Version seven
+/// adds the bounded summary capability. It depends on inventory because it
+/// accepts an exact opaque handle; neither variant exposes metadata records
+/// or a general inspection operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DebuggerMetadataCapability {
     /// Enumerate only bounded [`DebuggerStaticMetadataHandle`] values for one
     /// exact realm. The handles themselves carry no static metadata.
     OpaqueInventory,
+    /// Describe one exact inventory handle with compiler fingerprints and
+    /// fixed aggregate counts only. This never exposes source text or
+    /// identity, spans, names, type displays, symbols, contracts, bytecode,
+    /// runtime values, or a metadata-record dereference.
+    OpaqueSummary,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -150,6 +211,7 @@ impl DebuggerMetadataCapability {
     const fn debugger_capability(self) -> Option<DebuggerCapability> {
         match self {
             Self::OpaqueInventory => Some(DebuggerCapability::StaticMetadataInventory),
+            Self::OpaqueSummary => Some(DebuggerCapability::StaticMetadataSummary),
             Self::Unknown => None,
         }
     }
@@ -157,6 +219,7 @@ impl DebuggerMetadataCapability {
     const fn canonical_index(self) -> Option<u8> {
         match self {
             Self::OpaqueInventory => Some(0),
+            Self::OpaqueSummary => Some(1),
             Self::Unknown => None,
         }
     }
@@ -191,13 +254,26 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
-    /// The only non-empty manifest shape currently known to version six.
+    /// Grants the first inventory-only metadata surface.
     /// Calling this does not enable any metadata request: a core still needs a
     /// matching live-realm capability report before dispatch.
     pub fn opaque_inventory() -> Self {
         Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
             capabilities: vec![DebuggerMetadataCapability::OpaqueInventory],
+        }
+    }
+
+    /// Grants the inventory plus its dependent, bounded summary surface.
+    /// A summary cannot be requested alone: its only target is an exact
+    /// handle returned by the inventory operation in this same session.
+    pub fn opaque_summary() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSummary,
+            ],
         }
     }
 
@@ -218,7 +294,12 @@ impl DebuggerMetadataCapabilityManifest {
             }
             previous = Some(index);
         }
-        true
+        !self
+            .capabilities
+            .contains(&DebuggerMetadataCapability::OpaqueSummary)
+            || self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueInventory)
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -460,6 +541,12 @@ pub enum DebuggerRequest {
     ListStaticMetadata {
         program: DebuggerProgram,
     },
+    /// Returns a bounded source-free summary for one exact opaque handle
+    /// obtained from [`Self::ListStaticMetadata`]. This is not a metadata
+    /// record read or dereference operation.
+    DescribeStaticMetadata {
+        metadata: DebuggerStaticMetadataHandle,
+    },
     /// Lists bounded, compiler-verified instruction boundaries for one exact
     /// live program generation. A caller must not infer or substitute offsets.
     ListSafePoints {
@@ -534,6 +621,9 @@ pub enum DebuggerReply {
     /// opaque and bound to the exact program generation supplied by the
     /// request; this is not a metadata payload or a read capability.
     StaticMetadata(Vec<DebuggerStaticMetadataHandle>),
+    /// Reply to [`DebuggerRequest::DescribeStaticMetadata`]. The summary is
+    /// bounded and source-free; individual metadata records remain private.
+    StaticMetadataSummary(DebuggerStaticMetadataSummary),
     SafePoints(Vec<DebuggerSafePoint>),
     SafePointValidated {
         safe_point: DebuggerSafePoint,
@@ -620,6 +710,7 @@ pub fn negotiate(
         | DebuggerRequest::DescribeCapabilities { .. }
         | DebuggerRequest::ListPrograms { .. }
         | DebuggerRequest::ListStaticMetadata { .. }
+        | DebuggerRequest::DescribeStaticMetadata { .. }
         | DebuggerRequest::ListSafePoints { .. }
         | DebuggerRequest::ValidateSafePoint { .. }
         | DebuggerRequest::SetBreakpoint { .. }
@@ -709,6 +800,17 @@ mod tests {
                     realm: realm(),
                     program_handle: 12,
                     program_generation: 5,
+                },
+            },
+            DebuggerRequest::DescribeStaticMetadata {
+                metadata: DebuggerStaticMetadataHandle {
+                    program: DebuggerProgram {
+                        realm: realm(),
+                        program_handle: 12,
+                        program_generation: 5,
+                    },
+                    metadata_handle: 24,
+                    metadata_generation: 7,
                 },
             },
             DebuggerRequest::ListSafePoints {
@@ -805,6 +907,10 @@ mod tests {
                 DebuggerCapability::StaticMetadataInventory,
                 DebuggerCapabilityState::Planned,
             ),
+            capability_report(
+                DebuggerCapability::StaticMetadataSummary,
+                DebuggerCapabilityState::Planned,
+            ),
         ]));
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
@@ -832,6 +938,19 @@ mod tests {
                 metadata_handle: 24,
                 metadata_generation: 7,
             }]),
+            DebuggerReply::StaticMetadataSummary(DebuggerStaticMetadataSummary {
+                metadata: DebuggerStaticMetadataHandle {
+                    program,
+                    metadata_handle: 24,
+                    metadata_generation: 7,
+                },
+                language_version: "blue-ts-0.1".to_string(),
+                compiler_options_hash: "0123456789abcdef".to_string(),
+                source_count: 1,
+                type_count: 2,
+                symbol_count: 3,
+                contract_count: 4,
+            }),
             DebuggerReply::SafePoints(vec![safe_point]),
             DebuggerReply::SafePointValidated { safe_point },
             DebuggerReply::BreakpointSet { safe_point },
@@ -975,6 +1094,10 @@ mod tests {
                 version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
                 capabilities: vec![DebuggerMetadataCapability::Unknown],
             },
+            DebuggerMetadataCapabilityManifest {
+                version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+                capabilities: vec![DebuggerMetadataCapability::OpaqueSummary],
+            },
         ] {
             assert!(matches!(
                 negotiate(
@@ -1105,6 +1228,40 @@ mod tests {
     }
 
     #[test]
+    fn static_metadata_summary_requires_its_own_dependent_capability_grant() {
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_summary());
+        let reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_summary(),
+        );
+        let session = metadata_session_authorization(&request, &reply)
+            .expect("the canonical dependent metadata grant must negotiate");
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueInventory));
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueSummary));
+
+        let inventory_only_request = hello(DebuggerMetadataCapabilityManifest::opaque_inventory());
+        let inventory_only_reply = negotiate(
+            &inventory_only_request,
+            &DebuggerMetadataCapabilityManifest::opaque_summary(),
+        );
+        let inventory_only =
+            metadata_session_authorization(&inventory_only_request, &inventory_only_reply).unwrap();
+        assert!(!inventory_only.permits(DebuggerMetadataCapability::OpaqueSummary));
+
+        let summary_available = capabilities(vec![capability_report(
+            DebuggerCapability::StaticMetadataSummary,
+            DebuggerCapabilityState::Available,
+        )]);
+        let authorization = summary_available
+            .authorize_metadata(&session, DebuggerMetadataCapability::OpaqueSummary)
+            .expect("summary requires its exact available report and session grant");
+        assert!(authorization.permits(realm(), DebuggerMetadataCapability::OpaqueSummary));
+        assert!(summary_available
+            .authorize_metadata(&inventory_only, DebuggerMetadataCapability::OpaqueSummary)
+            .is_none());
+    }
+
+    #[test]
     fn static_metadata_handles_are_opaque_and_generation_bound() {
         let handle = DebuggerStaticMetadataHandle {
             program: DebuggerProgram {
@@ -1140,6 +1297,39 @@ mod tests {
         assert!(!DebuggerStaticMetadataHandle {
             metadata_generation: 0,
             ..handle
+        }
+        .is_well_formed());
+    }
+
+    #[test]
+    fn static_metadata_summary_is_bounded_and_source_free() {
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 5,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let summary = DebuggerStaticMetadataSummary {
+            metadata,
+            language_version: "blue-ts-0.1".to_string(),
+            compiler_options_hash: "0123456789abcdef".to_string(),
+            source_count: 1,
+            type_count: 2,
+            symbol_count: 3,
+            contract_count: 4,
+        };
+        assert!(summary.is_well_formed());
+        assert!(!DebuggerStaticMetadataSummary {
+            compiler_options_hash: String::new(),
+            ..summary.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticMetadataSummary {
+            symbol_count: DEBUGGER_STATIC_METADATA_MAX_SYMBOLS + 1,
+            ..summary
         }
         .is_well_formed());
     }

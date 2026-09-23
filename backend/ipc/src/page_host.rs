@@ -13,7 +13,7 @@
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
 //!
-//! Version 7 retains the two fixed, core-derived document snapshots consumed
+//! Version 8 retains the two fixed, core-derived document snapshots consumed
 //! by the child-owned JavaScript bindings, the location-only debugger
 //! inventory, a bounded exact-breakpoint configuration table, and an opt-in
 //! root-classic continuation seam. The
@@ -23,7 +23,7 @@
 //! BlueTS stays a child-fixed, direct-lowering profile with no ambient host
 //! typings, compiler option, resolver, or emitted JavaScript crossing this
 //! channel. Apart from the two fixed JavaScript primitive snapshot callbacks,
-//! version 7 exposes only a core-proxied, source-free debugger location
+//! version 8 exposes only a core-proxied, source-free debugger location
 //! inventory and configuration records. A core-selected document may opt in
 //! to the one-shot root-classic arm/state/resume lifecycle; the child admits
 //! no generic interruption, stepping, nested continuation, stack, scope,
@@ -32,13 +32,16 @@
 //! authenticated core enumerate one separately minted opaque static-metadata
 //! handle for an exact BlueTS program. The handle discloses neither static
 //! metadata nor a child program identity and is unusable after its realm is
-//! replaced or closed.
+//! replaced or closed. Version 8 adds only an explicitly requested,
+//! handle-bound static summary: fixed compiler fingerprints and aggregate
+//! counts, never a source identity/text, span, name, type display, symbol,
+//! contract, bytecode, runtime value, or dereferenceable metadata record.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 7;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 8;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -96,6 +99,21 @@ impl PageHostDebuggerMetadataHandle {
     pub fn is_well_formed(self) -> bool {
         self.metadata_handle != 0 && self.metadata_generation != 0
     }
+}
+
+/// A bounded source-free description of a live BlueTS debug attachment.
+/// This private transport structure intentionally has no child program or
+/// metadata handle: the enclosing request/reply supplies those opaque
+/// identities and core verifies every component before reminting the public
+/// summary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSummary {
+    pub language_version: String,
+    pub compiler_options_hash: String,
+    pub source_count: u32,
+    pub type_count: u32,
+    pub symbol_count: u32,
+    pub contract_count: u32,
 }
 
 /// One exact compiler-verified instruction boundary returned without source
@@ -309,6 +327,16 @@ pub enum PageHostRequest {
         document_generation: u64,
         program: PageHostDebuggerProgram,
     },
+    /// Describes one previously minted private BlueTS metadata handle. The
+    /// request repeats its owning program so the child can reject a handle
+    /// from another live program without probing its registry. It returns
+    /// only a bounded fingerprint/count summary, never a metadata record.
+    DescribeDebuggerBlueTsMetadata {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+    },
     /// Lists the child's bounded compiler-verified safe points for one exact
     /// opaque program. No source, bytecode, VM, or value crosses this channel.
     ListDebuggerSafePoints {
@@ -412,6 +440,16 @@ pub enum PageHostReply {
         document_generation: u64,
         program: PageHostDebuggerProgram,
         metadata: Vec<PageHostDebuggerMetadataHandle>,
+    },
+    /// Bounded source-free summary for one exact private metadata handle.
+    /// It is valid only while the matching child realm, program, and retained
+    /// BlueTS registry attachment remain live.
+    DebuggerBlueTsMetadataSummary {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        summary: PageHostDebuggerBlueTsMetadataSummary,
     },
     DebuggerSafePoints {
         tab_id: u64,
@@ -612,6 +650,18 @@ mod tests {
                     program_generation: 13,
                 },
             },
+            PageHostRequest::DescribeDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+            },
             PageHostRequest::ListDebuggerSafePoints {
                 tab_id: 7,
                 document_generation: 3,
@@ -746,6 +796,30 @@ mod tests {
                 metadata_handle: 1 << 63,
                 metadata_generation: 1 << 63,
             }],
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadataSummary {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            summary: PageHostDebuggerBlueTsMetadataSummary {
+                language_version: "blue-ts-0.1".to_string(),
+                compiler_options_hash: "0123456789abcdef".to_string(),
+                source_count: 1,
+                type_count: 2,
+                symbol_count: 3,
+                contract_count: 4,
+            },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();

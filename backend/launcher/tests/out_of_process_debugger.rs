@@ -74,12 +74,13 @@ struct LauncherProcess {
 
 impl LauncherProcess {
     fn spawn(gatekeeper_socket: &Path) -> Self {
-        Self::spawn_with_static_metadata_inventory(gatekeeper_socket, false)
+        Self::spawn_with_static_metadata_policy(gatekeeper_socket, false, false)
     }
 
-    fn spawn_with_static_metadata_inventory(
+    fn spawn_with_static_metadata_policy(
         gatekeeper_socket: &Path,
         static_metadata_inventory: bool,
+        static_metadata_summary: bool,
     ) -> Self {
         let rendezvous_socket = unique_path("rendezvous");
         let control_socket = unique_path("control");
@@ -110,6 +111,9 @@ impl LauncherProcess {
         ]);
         if static_metadata_inventory {
             command.arg("--debugger-static-metadata-inventory");
+        }
+        if static_metadata_summary {
+            command.arg("--debugger-static-metadata-summary");
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
@@ -518,13 +522,13 @@ fn launcher_supervised_child_debugger_execution_is_opaque_and_expires_after_http
 }
 
 #[test]
-fn launcher_owner_policy_remints_one_opaque_bluets_handle_after_client_negotiation() {
+fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_summary_after_negotiation() {
     let gatekeeper_socket = clearing_gatekeeper();
     let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
     let url = format!("http://{}", listener.local_addr().unwrap());
     let fixture = serve_two_bluets_documents(listener);
     let mut launcher =
-        LauncherProcess::spawn_with_static_metadata_inventory(&gatekeeper_socket, true);
+        LauncherProcess::spawn_with_static_metadata_policy(&gatekeeper_socket, true, true);
 
     let mut browser = launcher.connect_browser();
     blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
@@ -537,13 +541,13 @@ fn launcher_owner_policy_remints_one_opaque_bluets_handle_after_client_negotiati
             &mut debugger,
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
-                requested_metadata_capabilities:
-                    DebuggerMetadataCapabilityManifest::opaque_inventory(),
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_summary(
+                ),
             },
         ),
         DebuggerReply::HelloAck {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
-            granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_inventory(),
+            granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_summary(),
         }
     );
     let realm = one_realm(debugger_request(
@@ -560,6 +564,10 @@ fn launcher_owner_policy_remints_one_opaque_bluets_handle_after_client_negotiati
         report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataInventory
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSummary
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
     let DebuggerReply::Programs(programs) =
         debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm })
     else {
@@ -570,7 +578,7 @@ fn launcher_owner_policy_remints_one_opaque_bluets_handle_after_client_negotiati
         "typed fixture must retain at least one opaque program identity"
     );
 
-    let mut typed_program = None;
+    let mut typed_metadata = None;
     for program in programs {
         let reply = debugger_request(
             &mut debugger,
@@ -592,12 +600,32 @@ fn launcher_owner_policy_remints_one_opaque_bluets_handle_after_client_negotiati
                 let handle = handles[0];
                 assert_eq!(handle.program, program);
                 assert!(handle.is_well_formed());
-                typed_program = Some(program);
+                typed_metadata = Some(handle);
             }
             other => panic!("expected a bounded opaque metadata inventory, got {other:?}"),
         }
     }
-    let typed_program = typed_program.expect("fixture must include one direct BlueTS program");
+    let typed_metadata = typed_metadata.expect("fixture must include one direct BlueTS program");
+    let summary_reply = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadata {
+            metadata: typed_metadata,
+        },
+    );
+    let DebuggerReply::StaticMetadataSummary(summary) = summary_reply else {
+        panic!("expected one bounded public static metadata summary")
+    };
+    assert_eq!(summary.metadata, typed_metadata);
+    assert_eq!(summary.language_version, "blue-ts-0.1");
+    assert!(summary.source_count > 0);
+    assert!(summary.type_count > 0);
+    assert!(summary.symbol_count > 0);
+    assert!(
+        !format!("{summary:?}").contains("privateBlueTsMetadata")
+            && !format!("{summary:?}").contains("inline-0.ts")
+            && !format!("{summary:?}").contains("number"),
+        "public summary must not contain a BlueTS metadata record payload"
+    );
 
     navigate(&mut browser, &url);
     fixture
@@ -607,7 +635,19 @@ fn launcher_owner_policy_remints_one_opaque_bluets_handle_after_client_negotiati
         debugger_request(
             &mut debugger,
             DebuggerRequest::ListStaticMetadata {
-                program: typed_program,
+                program: typed_metadata.program,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadata {
+                metadata: typed_metadata,
             },
         ),
         DebuggerReply::Error {
