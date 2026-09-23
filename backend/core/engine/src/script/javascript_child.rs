@@ -27,7 +27,9 @@ use crate::script::javascript::{
     AuthorizedJavaScriptModuleGraph, BlueTsPageExecutionReport, JavaScriptPageDebuggerBreakpoint,
     JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
     JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
-    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataContractId,
+    JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataContractDisplay,
+    JavaScriptPageDebuggerStaticMetadataContractId,
+    JavaScriptPageDebuggerStaticMetadataContractTarget,
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
@@ -44,9 +46,9 @@ pub use crate::script::page_source_authorizer::{
 };
 use crate::{Page, TabId, TabManager};
 use blueice_ipc::debugger::{
-    DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
-    DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
-    DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES,
+    DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES, DEBUGGER_STATIC_METADATA_MAX_CONTRACTS,
+    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
+    DEBUGGER_STATIC_METADATA_MAX_TYPES, DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES,
     DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
@@ -233,6 +235,13 @@ pub trait PageHostClient {
     }
 
     /// Whether this peer implements a bounded display lookup for one exact
+    /// contract ID. The core must still apply independent public policy and
+    /// the same-stream contract-ID receipt before this private operation.
+    fn debugger_bluets_metadata_contract_display_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this peer implements a bounded display lookup for one exact
     /// symbol ID. The core must still apply independent public policy and the
     /// same-stream symbol-ID receipt before this private operation is called.
     fn debugger_bluets_metadata_symbol_display_available(&self) -> bool {
@@ -349,6 +358,20 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement BlueTS debugger contract inventories",
+        ))
+    }
+
+    fn debugger_bluets_metadata_contract_display(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger contract displays",
         ))
     }
 
@@ -534,6 +557,10 @@ impl PageHostClient for PageHostConnection {
         true
     }
 
+    fn debugger_bluets_metadata_contract_display_available(&self) -> bool {
+        true
+    }
+
     fn debugger_bluets_metadata_symbol_display_available(&self) -> bool {
         true
     }
@@ -679,6 +706,23 @@ impl PageHostClient for PageHostConnection {
             document_generation,
             program,
             metadata,
+        })
+    }
+
+    fn debugger_bluets_metadata_contract_display(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsMetadataContract {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            contract_id,
         })
     }
 
@@ -1434,6 +1478,14 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             && self.child.debugger_bluets_metadata_contracts_available()
     }
 
+    fn debugger_static_metadata_contract_display_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_contracts_available()
+            && self
+                .child
+                .debugger_bluets_metadata_contract_display_available()
+    }
+
     fn debugger_static_metadata_symbol_display_available(&self) -> bool {
         self.child.debugger_bluets_metadata_available()
             && self.child.debugger_bluets_metadata_symbols_available()
@@ -1977,6 +2029,65 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                 contract_id: contract.contract_id,
             })
             .collect())
+    }
+
+    fn debugger_static_metadata_contract_display(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataContractTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractDisplay, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_contract_display_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_contract_display(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.contract_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataContract {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            contract,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || contract.contract_id != target.contract_id
+            || contract.display.is_empty()
+            || contract.display.len() > DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataContractDisplay {
+            contract_id: contract.contract_id,
+            display: contract.display,
+        })
     }
 
     fn debugger_static_metadata_symbol_display(

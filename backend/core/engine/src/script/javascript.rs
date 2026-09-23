@@ -37,7 +37,10 @@ pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerProgram,
     JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
-    JavaScriptPageDebuggerStaticMetadataContractId, JavaScriptPageDebuggerStaticMetadataSourceId,
+    JavaScriptPageDebuggerStaticMetadataContractDisplay,
+    JavaScriptPageDebuggerStaticMetadataContractId,
+    JavaScriptPageDebuggerStaticMetadataContractTarget,
+    JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
     JavaScriptPageDebuggerStaticMetadataSymbolDisplay,
@@ -130,6 +133,13 @@ pub trait PageJavaScriptDebuggerLocations {
     /// under an exact opaque metadata parent. Contract record reads remain
     /// separately default-denied.
     fn debugger_static_metadata_contract_inventory_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can describe a bounded display for a prior exact
+    /// contract ID. Contract names remain an independently default-denied
+    /// surface; plans and validation behavior do not cross this boundary.
+    fn debugger_static_metadata_contract_display_available(&self) -> bool {
         false
     }
 
@@ -260,6 +270,19 @@ pub trait PageJavaScriptDebuggerLocations {
         _metadata_handle: u64,
         _metadata_generation: u64,
     ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataContractId>, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes one compiler-minted contract ID only after the caller
+    /// presented that exact metadata attachment and ID. Implementations must
+    /// not expose source spans, plans, validation behavior, or static records.
+    fn debugger_static_metadata_contract_display(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataContractTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractDisplay, JavaScriptPageDebuggerError>
     {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }

@@ -13,6 +13,7 @@
 use crate::{
     script::javascript::{
         JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
+        JavaScriptPageDebuggerStaticMetadataContractTarget,
         JavaScriptPageDebuggerStaticMetadataSourceTarget,
         JavaScriptPageDebuggerStaticMetadataSymbolTarget,
         JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageExecutor,
@@ -24,8 +25,8 @@ use blueice_ipc::debugger::{
     DebuggerCapabilities, DebuggerCapability, DebuggerCapabilityReport, DebuggerCapabilityState,
     DebuggerErrorCode, DebuggerExecutionState, DebuggerMetadataCapability,
     DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
-    DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataContractId,
-    DebuggerStaticMetadataHandle, DebuggerStaticMetadataSourceId,
+    DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataContractDisplay,
+    DebuggerStaticMetadataContractId, DebuggerStaticMetadataHandle, DebuggerStaticMetadataSourceId,
     DebuggerStaticMetadataSourceProvenance, DebuggerStaticMetadataSummary,
     DebuggerStaticMetadataSymbolDisplay, DebuggerStaticMetadataSymbolId,
     DebuggerStaticMetadataTypeDisplay, DebuggerStaticMetadataTypeId, DEBUGGER_PROTOCOL_VERSION,
@@ -262,6 +263,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::ListStaticMetadataContracts { .. } => {
             unavailable_static_metadata_contract_inventory()
         }
+        DebuggerRequest::DescribeStaticMetadataContract { .. } => {
+            unavailable_static_metadata_contract_display()
+        }
         DebuggerRequest::DescribeStaticMetadataSymbol { .. } => {
             unavailable_static_metadata_symbol_display()
         }
@@ -381,6 +385,9 @@ fn handle_debugger_request_with_child_locations(
         }
         DebuggerRequest::ListStaticMetadataContracts { metadata } => {
             list_child_static_metadata_contracts(tabs, locations, metadata_session, metadata)
+        }
+        DebuggerRequest::DescribeStaticMetadataContract { contract } => {
+            describe_child_static_metadata_contract(tabs, locations, metadata_session, contract)
         }
         DebuggerRequest::DescribeStaticMetadataSymbol { symbol } => {
             describe_child_static_metadata_symbol(tabs, locations, metadata_session, symbol)
@@ -515,6 +522,11 @@ fn describe_child_location_capabilities(
             session.permits(DebuggerMetadataCapability::OpaqueContractInventory)
         })
         && locations.debugger_static_metadata_contract_inventory_available();
+    let static_metadata_contract_display_available = static_metadata_contract_inventory_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueContractDisplay)
+        })
+        && locations.debugger_static_metadata_contract_display_available();
     let static_metadata_symbol_display_available = static_metadata_symbol_inventory_available
         && metadata_session.is_some_and(|session| {
             session.permits(DebuggerMetadataCapability::OpaqueSymbolDisplay)
@@ -540,6 +552,7 @@ fn describe_child_location_capabilities(
             static_metadata_type_display_available,
             static_metadata_symbol_inventory_available,
             static_metadata_contract_inventory_available,
+            static_metadata_contract_display_available,
             static_metadata_symbol_display_available,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
@@ -1085,6 +1098,91 @@ fn list_child_static_metadata_contracts(
             message: "debugger static metadata contract inventory exceeds its fixed limit"
                 .to_string(),
         },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+/// Discloses one bounded compiler-produced contract display only after the
+/// exact contract ID crossed this stream's contract-inventory receipt boundary.
+/// The target keeps its opaque parent and all generations, so a caller-supplied
+/// number cannot probe a child contract table by itself.
+fn describe_child_static_metadata_contract(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    contract: DebuggerStaticMetadataContractId,
+) -> DebuggerReply {
+    if !contract.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static metadata contract display target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_contract_display();
+    };
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.permits(DebuggerMetadataCapability::OpaqueContractInventory)
+        || !metadata_session.observed_contract(contract)
+    {
+        return unavailable_static_metadata_contract_display();
+    }
+    let capabilities = describe_child_location_capabilities(
+        tabs,
+        locations,
+        Some(metadata_session),
+        contract.metadata.program.realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueContractDisplay,
+    ) else {
+        return unavailable_static_metadata_contract_display();
+    };
+    if !authorization.permits(
+        contract.metadata.program.realm,
+        DebuggerMetadataCapability::OpaqueContractDisplay,
+    ) {
+        return unavailable_static_metadata_contract_display();
+    }
+    let tab_id = match resolve_live_realm(tabs, contract.metadata.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    match locations.debugger_static_metadata_contract_display(
+        tab_id,
+        contract.metadata.program.realm.realm_generation,
+        JavaScriptPageDebuggerStaticMetadataContractTarget {
+            program_handle: contract.metadata.program.program_handle,
+            program_generation: contract.metadata.program.program_generation,
+            metadata_handle: contract.metadata.metadata_handle,
+            metadata_generation: contract.metadata.metadata_generation,
+            contract_id: contract.contract_id,
+        },
+    ) {
+        Ok(contract_display) => {
+            if contract_display.contract_id != contract.contract_id {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    message: "mismatched debugger static metadata contract display identity"
+                        .to_string(),
+                };
+            }
+            let contract_display = DebuggerStaticMetadataContractDisplay {
+                contract,
+                display: contract_display.display,
+            };
+            if !contract_display.is_well_formed() {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    message: "invalid debugger static metadata contract display".to_string(),
+                };
+            }
+            DebuggerReply::StaticMetadataContract(contract_display)
+        }
         Err(error) => debugger_program_error(error),
     }
 }
@@ -1666,6 +1764,7 @@ fn describe_capabilities(
             static_metadata_type_display_available: false,
             static_metadata_symbol_inventory_available: false,
             static_metadata_contract_inventory_available: false,
+            static_metadata_contract_display_available: false,
             static_metadata_symbol_display_available: false,
         }),
         max_stack_frames: MAX_STACK_FRAMES,
@@ -2116,6 +2215,14 @@ fn unavailable_static_metadata_contract_inventory() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_contract_display() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "opaque debugger static metadata contract display is not authorized for this session and live realm"
+            .to_string(),
+    }
+}
+
 fn unavailable_static_metadata_symbol_display() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -2221,6 +2328,7 @@ struct DebuggerCapabilityAvailability {
     static_metadata_type_display_available: bool,
     static_metadata_symbol_inventory_available: bool,
     static_metadata_contract_inventory_available: bool,
+    static_metadata_contract_display_available: bool,
     static_metadata_symbol_display_available: bool,
 }
 
@@ -2237,6 +2345,7 @@ fn capability_reports(
         static_metadata_type_display_available,
         static_metadata_symbol_inventory_available,
         static_metadata_contract_inventory_available,
+        static_metadata_contract_display_available,
         static_metadata_symbol_display_available,
     }: DebuggerCapabilityAvailability,
 ) -> Vec<DebuggerCapabilityReport> {
@@ -2423,6 +2532,19 @@ fn capability_reports(
             },
         ),
         (
+            DebuggerCapability::StaticMetadataContractDisplay,
+            if static_metadata_contract_display_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_contract_display_available {
+                "bounded compiler-produced static contract displays are installed for prior contract-ID receipts"
+            } else {
+                "static metadata contract displays require explicit inventory, contract-inventory, and contract-display session grants plus a live BlueTS child program"
+            },
+        ),
+        (
             DebuggerCapability::StaticMetadataSymbolDisplay,
             if static_metadata_symbol_display_available {
                 DebuggerCapabilityState::Available
@@ -2453,6 +2575,7 @@ mod tests {
         malformed_summary: bool,
         malformed_provenance: bool,
         mismatched_symbol_display: bool,
+        mismatched_contract_display: bool,
     }
 
     impl PageJavaScriptDebuggerLocations for MetadataLocations {
@@ -2489,6 +2612,10 @@ mod tests {
         }
 
         fn debugger_static_metadata_contract_inventory_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_contract_display_available(&self) -> bool {
             true
         }
 
@@ -2685,6 +2812,33 @@ mod tests {
             ])
         }
 
+        fn debugger_static_metadata_contract_display(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            target: crate::script::javascript::JavaScriptPageDebuggerStaticMetadataContractTarget,
+        ) -> Result<
+            crate::script::javascript::JavaScriptPageDebuggerStaticMetadataContractDisplay,
+            JavaScriptPageDebuggerError,
+        > {
+            if target.metadata_handle != 41
+                || target.metadata_generation != 9
+                || target.contract_id != 0
+            {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            Ok(
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataContractDisplay {
+                    contract_id: if self.mismatched_contract_display {
+                        target.contract_id + 1
+                    } else {
+                        target.contract_id
+                    },
+                    display: "ProjectControlledContract".to_string(),
+                },
+            )
+        }
+
         fn debugger_safe_points(
             &mut self,
             _tab_id: TabId,
@@ -2780,6 +2934,7 @@ mod tests {
             malformed_summary: false,
             malformed_provenance: false,
             mismatched_symbol_display: false,
+            mismatched_contract_display: false,
         };
 
         let denied_capabilities = handle_debugger_request_with_child_locations(
@@ -2805,6 +2960,10 @@ mod tests {
         }));
         assert!(denied_capabilities.reports.iter().any(|report| {
             report.capability == DebuggerCapability::StaticMetadataContractInventory
+                && report.state == DebuggerCapabilityState::Planned
+        }));
+        assert!(denied_capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataContractDisplay
                 && report.state == DebuggerCapabilityState::Planned
         }));
         assert_eq!(
@@ -2927,6 +3086,21 @@ mod tests {
             ),
             unavailable_static_metadata_contract_inventory(),
             "contract inventory remains default-denied under a parent-only grant"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&metadata_session),
+                DebuggerRequest::DescribeStaticMetadataContract {
+                    contract: DebuggerStaticMetadataContractId {
+                        metadata,
+                        contract_id: 0,
+                    },
+                },
+            ),
+            unavailable_static_metadata_contract_display(),
+            "contract display remains default-denied under a parent-only grant"
         );
 
         let symbol_inventory_hello = DebuggerRequest::Hello {
@@ -3160,6 +3334,90 @@ mod tests {
             ])
         );
 
+        let contract_display_hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_contract_display(),
+        };
+        let contract_display_hello_reply = blueice_ipc::debugger::negotiate(
+            &contract_display_hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_contract_display(),
+        );
+        let contract_display_session = blueice_ipc::debugger::metadata_session_authorization(
+            &contract_display_hello,
+            &contract_display_hello_reply,
+        )
+        .expect("dependent contract display policy must create a core-local session authorization");
+        let contract_display_capabilities = handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&contract_display_session),
+            DebuggerRequest::DescribeCapabilities { realm },
+        );
+        let DebuggerReply::Capabilities(contract_display_capabilities) =
+            contract_display_capabilities
+        else {
+            panic!("live realm contract display capability discovery must succeed")
+        };
+        assert!(contract_display_capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataContractDisplay
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        let displayed_contract = DebuggerStaticMetadataContractId {
+            metadata,
+            contract_id: 0,
+        };
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&contract_display_session),
+                DebuggerRequest::DescribeStaticMetadataContract {
+                    contract: displayed_contract,
+                },
+            ),
+            unavailable_static_metadata_contract_display(),
+            "contract display cannot dereference an ID guessed before its inventory receipt"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&contract_display_session),
+                DebuggerRequest::ListStaticMetadata { program },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&contract_display_session),
+                DebuggerRequest::ListStaticMetadataContracts { metadata },
+            ),
+            DebuggerReply::StaticMetadataContracts(vec![
+                displayed_contract,
+                DebuggerStaticMetadataContractId {
+                    metadata,
+                    contract_id: 1,
+                },
+            ])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&contract_display_session),
+                DebuggerRequest::DescribeStaticMetadataContract {
+                    contract: displayed_contract,
+                },
+            ),
+            DebuggerReply::StaticMetadataContract(DebuggerStaticMetadataContractDisplay {
+                contract: displayed_contract,
+                display: "ProjectControlledContract".to_string(),
+            })
+        );
+
         let source_inventory_hello = DebuggerRequest::Hello {
             protocol_version: DEBUGGER_PROTOCOL_VERSION,
             requested_metadata_capabilities:
@@ -3313,6 +3571,7 @@ mod tests {
             malformed_summary: true,
             malformed_provenance: false,
             mismatched_symbol_display: false,
+            mismatched_contract_display: false,
         };
         assert_eq!(
             handle_debugger_request_with_child_locations(
@@ -3372,6 +3631,7 @@ mod tests {
             malformed_summary: false,
             malformed_provenance: false,
             mismatched_symbol_display: true,
+            mismatched_contract_display: false,
         };
         assert_eq!(
             handle_debugger_request_with_child_locations(
@@ -3408,6 +3668,75 @@ mod tests {
     }
 
     #[test]
+    fn static_metadata_contract_display_rejects_a_mismatched_child_identity() {
+        let (tabs, realm) = loaded_tabs();
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm,
+                program_handle: 7,
+                program_generation: 3,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let contract = DebuggerStaticMetadataContractId {
+            metadata,
+            contract_id: 0,
+        };
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_contract_display(),
+        };
+        let hello_reply = blueice_ipc::debugger::negotiate(
+            &hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_contract_display(),
+        );
+        let session = blueice_ipc::debugger::metadata_session_authorization(&hello, &hello_reply)
+            .expect(
+                "dependent contract display policy must create a core-local session authorization",
+            );
+        let mut locations = MetadataLocations {
+            malformed_summary: false,
+            malformed_provenance: false,
+            mismatched_symbol_display: false,
+            mismatched_contract_display: true,
+        };
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadata {
+                    program: metadata.program,
+                },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
+        );
+        assert!(matches!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadataContracts { metadata },
+            ),
+            DebuggerReply::StaticMetadataContracts(_)
+        ));
+        assert!(matches!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeStaticMetadataContract { contract },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn source_provenance_requires_its_own_dependent_grant_and_exact_source_id() {
         let (tabs, realm) = loaded_tabs();
         let metadata = DebuggerStaticMetadataHandle {
@@ -3427,6 +3756,7 @@ mod tests {
             malformed_summary: false,
             malformed_provenance: false,
             mismatched_symbol_display: false,
+            mismatched_contract_display: false,
         };
 
         let source_inventory_hello = DebuggerRequest::Hello {

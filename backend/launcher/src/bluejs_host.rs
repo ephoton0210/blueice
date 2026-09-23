@@ -31,21 +31,22 @@ use blueice_bluets_bluejs::{
     DirectModuleGraph, DirectScript,
 };
 use blueice_ipc::debugger::{
-    DEBUGGER_STATIC_METADATA_MAX_CONTRACTS, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
-    DEBUGGER_STATIC_METADATA_MAX_SYMBOLS, DEBUGGER_STATIC_METADATA_MAX_TYPES,
-    DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES,
+    DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES, DEBUGGER_STATIC_METADATA_MAX_CONTRACTS,
+    DEBUGGER_STATIC_METADATA_MAX_SOURCES, DEBUGGER_STATIC_METADATA_MAX_SYMBOLS,
+    DEBUGGER_STATIC_METADATA_MAX_TYPES, DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES,
     DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
-    self, PageHostDebuggerBlueTsMetadataContractId, PageHostDebuggerBlueTsMetadataSourceId,
-    PageHostDebuggerBlueTsMetadataSourceProvenance, PageHostDebuggerBlueTsMetadataSummary,
-    PageHostDebuggerBlueTsMetadataSymbolDisplay, PageHostDebuggerBlueTsMetadataSymbolId,
-    PageHostDebuggerBlueTsMetadataTypeDisplay, PageHostDebuggerBlueTsMetadataTypeId,
-    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
-    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
-    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
-    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
-    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    self, PageHostDebuggerBlueTsMetadataContractDisplay, PageHostDebuggerBlueTsMetadataContractId,
+    PageHostDebuggerBlueTsMetadataSourceId, PageHostDebuggerBlueTsMetadataSourceProvenance,
+    PageHostDebuggerBlueTsMetadataSummary, PageHostDebuggerBlueTsMetadataSymbolDisplay,
+    PageHostDebuggerBlueTsMetadataSymbolId, PageHostDebuggerBlueTsMetadataTypeDisplay,
+    PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerExecutionState,
+    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
+    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
+    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
+    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -339,6 +340,19 @@ impl BlueJsChildHost {
                 document_generation,
                 program,
                 metadata,
+            ),
+            PageHostRequest::DescribeDebuggerBlueTsMetadataContract {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                contract_id,
+            } => self.debugger_bluets_metadata_contract_display(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                contract_id,
             ),
             PageHostRequest::DescribeDebuggerBlueTsMetadataSymbol {
                 tab_id,
@@ -1488,6 +1502,79 @@ impl BlueJsChildHost {
             program,
             metadata,
             contracts,
+        }
+    }
+
+    /// Returns one bounded compiler-produced contract display after the caller
+    /// supplies an exact child program and metadata attachment. This private
+    /// endpoint never accepts a standalone numeric contract target, and returns
+    /// no source span, plan, validation behavior, bytecode, VM object, or value.
+    fn debugger_bluets_metadata_contract_display(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let contract = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let Some(contract) = retained
+                    .static_info()
+                    .contracts
+                    .iter()
+                    .find(|contract| contract.id.0 == contract_id)
+                else {
+                    return invalid_request();
+                };
+                if contract.name.is_empty()
+                    || contract.name.len() > DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES
+                {
+                    return resource_limit();
+                }
+                PageHostDebuggerBlueTsMetadataContractDisplay {
+                    contract_id,
+                    display: contract.name.clone(),
+                }
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataContract {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            contract,
         }
     }
 

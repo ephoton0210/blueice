@@ -78,6 +78,7 @@ struct StaticMetadataPolicy {
     symbol_inventory: bool,
     contract_inventory: bool,
     symbol_display: bool,
+    contract_display: bool,
 }
 
 struct LauncherProcess {
@@ -150,6 +151,9 @@ impl LauncherProcess {
         }
         if policy.symbol_display {
             command.arg("--debugger-static-metadata-symbol-display");
+        }
+        if policy.contract_display {
+            command.arg("--debugger-static-metadata-contract-display");
         }
         let child = command.spawn().expect("blueice-launcher must spawn");
         let mut process = Self {
@@ -319,8 +323,14 @@ fn serve_two_classic_documents(listener: TcpListener) -> thread::JoinHandle<()> 
 fn serve_two_bluets_documents(listener: TcpListener) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         for (ordinal, source) in [
-            ("first", "const privateBlueTsMetadata: number = 42;"),
-            ("second", "const successorBlueTsMetadata: number = 43;"),
+            (
+                "first",
+                "interface PrivateContract { enabled: boolean; } const privateBlueTsMetadata: number = 42;",
+            ),
+            (
+                "second",
+                "interface SuccessorContract { enabled: boolean; } const successorBlueTsMetadata: number = 43;",
+            ),
         ] {
             let (mut stream, _) = listener
                 .accept()
@@ -575,6 +585,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             symbol_inventory: true,
             contract_inventory: true,
             symbol_display: true,
+            contract_display: true,
         },
     );
 
@@ -600,6 +611,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                             symbol_inventory: true,
                             contract_inventory: true,
                             symbol_display: true,
+                            contract_display: true,
                         },
                     ),
             },
@@ -616,6 +628,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     symbol_inventory: true,
                     contract_inventory: true,
                     symbol_display: true,
+                    contract_display: true,
                 },
             ),
         }
@@ -636,6 +649,11 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     }));
     assert!(capabilities.reports.iter().any(|report| {
         report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSymbolDisplay
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability
+            == blueice_ipc::debugger::DebuggerCapability::StaticMetadataContractDisplay
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
     assert!(capabilities.reports.iter().any(|report| {
@@ -729,6 +747,21 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                 static_type: blueice_ipc::debugger::DebuggerStaticMetadataTypeId {
                     metadata: typed_metadata,
                     type_id: 0,
+                },
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::CapabilityUnavailable,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataContract {
+                contract: blueice_ipc::debugger::DebuggerStaticMetadataContractId {
+                    metadata: typed_metadata,
+                    contract_id: 0,
                 },
             },
         ),
@@ -847,6 +880,26 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             && !format!("{contracts:?}").contains("number"),
         "contract IDs must not contain names, plans, validation, or compiler-record payload"
     );
+    for contract in &contracts {
+        let contract_display_reply = debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataContract {
+                contract: *contract,
+            },
+        );
+        let DebuggerReply::StaticMetadataContract(contract_display) = contract_display_reply else {
+            panic!("expected bounded public static metadata contract display")
+        };
+        assert_eq!(contract_display.contract, *contract);
+        assert!(!contract_display.display.is_empty());
+        assert!(
+            !contract_display.display.contains("interface ")
+                && !contract_display.display.contains("enabled")
+                && !contract_display.display.contains("boolean")
+                && !contract_display.display.contains("inline-0.ts"),
+            "contract display may expose its authorized name, never declaration source, field, type, or module identity"
+        );
+    }
     assert!(
         !format!("{summary:?}").contains("privateBlueTsMetadata")
             && !format!("{summary:?}").contains("inline-0.ts")
@@ -907,6 +960,18 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             &mut debugger,
             DebuggerRequest::ListStaticMetadata {
                 program: typed_metadata.program,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataContract {
+                contract: contracts[0],
             },
         ),
         DebuggerReply::Error {

@@ -9,8 +9,8 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version fourteen adds the
-//! default-deny bounded symbol-display lookup for a prior opaque symbol ID
+//! and an opt-in root-code-unit pause/resume seam. Version fifteen adds the
+//! default-deny bounded contract-display lookup for a prior opaque contract ID
 //! handle: `Hello` grants only the canonical intersection of a requested
 //! manifest and the core policy, and a metadata operation may be dispatched
 //! only after the exact target's capability report also grants its specific
@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 14;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 15;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -140,6 +140,9 @@ pub const DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES: usize = 4_096;
 /// Maximum UTF-8 byte length for one explicitly authorized static symbol
 /// display. This is a fixed protocol budget, not a caller-provided limit.
 pub const DEBUGGER_STATIC_METADATA_SYMBOL_DISPLAY_MAX_BYTES: usize = 4_096;
+/// Maximum UTF-8 byte length for one explicitly authorized static contract
+/// display. This is a fixed protocol budget, not a caller-provided limit.
+pub const DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES: usize = 4_096;
 /// Maximum compiler-canonical module identity exposed by the distinct,
 /// owner-authorized provenance surface.
 pub const DEBUGGER_STATIC_METADATA_MODULE_MAX_BYTES: usize = 4_096;
@@ -196,6 +199,25 @@ pub struct DebuggerStaticMetadataContractId {
 impl DebuggerStaticMetadataContractId {
     pub fn is_well_formed(self) -> bool {
         self.metadata.is_well_formed()
+    }
+}
+
+/// One owner-authorized display for a compiler-minted contract ID previously
+/// returned by the exact stream's contract inventory. A display can contain a
+/// project-authored identifier, so it is independently default-denied and
+/// carries no source span, plan, validation behavior, bytecode, or static
+/// record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataContractDisplay {
+    pub contract: DebuggerStaticMetadataContractId,
+    pub display: String,
+}
+
+impl DebuggerStaticMetadataContractDisplay {
+    pub fn is_well_formed(&self) -> bool {
+        self.contract.is_well_formed()
+            && !self.display.is_empty()
+            && self.display.len() <= DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES
     }
 }
 
@@ -360,6 +382,11 @@ pub enum DebuggerCapability {
     /// returned by the exact stream's symbol inventory. It does not expose a
     /// source span, type, contract, bytecode, or general static-record read.
     StaticMetadataSymbolDisplay,
+    /// One bounded compiler-produced display for a contract ID previously
+    /// returned by the exact stream's contract inventory. It does not expose a
+    /// source span, plan, validation behavior, bytecode, or general
+    /// static-record read.
+    StaticMetadataContractDisplay,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -413,6 +440,11 @@ pub enum DebuggerMetadataCapability {
     /// [`Self::OpaqueSymbolInventory`]. Project-authored identifiers require
     /// an independent default-deny grant and exact receipt.
     OpaqueSymbolDisplay,
+    /// Describes one compiler-minted contract ID previously returned by
+    /// [`Self::OpaqueContractInventory`]. Project-authored identifiers require
+    /// an independent default-deny grant and exact receipt; the contract plan
+    /// and validation behavior remain unavailable.
+    OpaqueContractDisplay,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -435,6 +467,7 @@ impl DebuggerMetadataCapability {
                 Some(DebuggerCapability::StaticMetadataContractInventory)
             }
             Self::OpaqueSymbolDisplay => Some(DebuggerCapability::StaticMetadataSymbolDisplay),
+            Self::OpaqueContractDisplay => Some(DebuggerCapability::StaticMetadataContractDisplay),
             Self::Unknown => None,
         }
     }
@@ -450,6 +483,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSymbolInventory => Some(6),
             Self::OpaqueContractInventory => Some(7),
             Self::OpaqueSymbolDisplay => Some(8),
+            Self::OpaqueContractDisplay => Some(9),
             Self::Unknown => None,
         }
     }
@@ -489,6 +523,7 @@ pub struct DebuggerMetadataCapabilitySelection {
     pub symbol_inventory: bool,
     pub contract_inventory: bool,
     pub symbol_display: bool,
+    pub contract_display: bool,
 }
 
 impl DebuggerMetadataCapabilityManifest {
@@ -632,6 +667,21 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants a compiler-produced contract display only together with its
+    /// required opaque parent and prior contract-ID inventory. A display
+    /// request must still prove its exact contract ID crossed this stream's
+    /// receipt boundary before core reaches the child.
+    pub fn opaque_contract_display() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueContractInventory,
+                DebuggerMetadataCapability::OpaqueContractDisplay,
+            ],
+        }
+    }
+
     /// Builds the exact canonical manifest selected by a trusted owner after
     /// it independently validated each prerequisite flag. Keeping this
     /// operation here avoids a caller hand-assembling a reordered manifest.
@@ -645,6 +695,7 @@ impl DebuggerMetadataCapabilityManifest {
             symbol_inventory,
             contract_inventory,
             symbol_display,
+            contract_display,
         } = selection;
         let any = summary
             || source_inventory
@@ -653,7 +704,8 @@ impl DebuggerMetadataCapabilityManifest {
             || type_display
             || symbol_inventory
             || contract_inventory
-            || symbol_display;
+            || symbol_display
+            || contract_display;
         let mut capabilities = Vec::new();
         if any {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
@@ -676,11 +728,14 @@ impl DebuggerMetadataCapabilityManifest {
         if symbol_inventory || symbol_display {
             capabilities.push(DebuggerMetadataCapability::OpaqueSymbolInventory);
         }
-        if contract_inventory {
+        if contract_inventory || contract_display {
             capabilities.push(DebuggerMetadataCapability::OpaqueContractInventory);
         }
         if symbol_display {
             capabilities.push(DebuggerMetadataCapability::OpaqueSymbolDisplay);
+        }
+        if contract_display {
+            capabilities.push(DebuggerMetadataCapability::OpaqueContractDisplay);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -777,6 +832,15 @@ impl DebuggerMetadataCapabilityManifest {
                     && self
                         .capabilities
                         .contains(&DebuggerMetadataCapability::OpaqueSymbolInventory)))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueContractDisplay)
+                || (self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueContractInventory)))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -1410,6 +1474,12 @@ pub enum DebuggerRequest {
     ListStaticMetadataContracts {
         metadata: DebuggerStaticMetadataHandle,
     },
+    /// Describes one contract ID previously returned by
+    /// [`Self::ListStaticMetadataContracts`]. This separately authorized
+    /// operation returns only a bounded compiler-produced contract display.
+    DescribeStaticMetadataContract {
+        contract: DebuggerStaticMetadataContractId,
+    },
     /// Describes one source ID previously returned by
     /// [`Self::ListStaticMetadataSources`]. This separately authorized
     /// operation returns compiler-canonical module identity and a labeled
@@ -1513,6 +1583,9 @@ pub enum DebuggerReply {
     /// parent-bound and contain no contract name, span, plan, or validation
     /// payload.
     StaticMetadataContracts(Vec<DebuggerStaticMetadataContractId>),
+    /// Reply to [`DebuggerRequest::DescribeStaticMetadataContract`]. The
+    /// contract display remains parent-bound, receipted, and source-text-free.
+    StaticMetadataContract(DebuggerStaticMetadataContractDisplay),
     /// Reply to [`DebuggerRequest::DescribeStaticMetadataSource`]. This is a
     /// bounded owner-authorized provenance disclosure, never source text.
     StaticMetadataSourceProvenance(DebuggerStaticMetadataSourceProvenance),
@@ -1609,6 +1682,7 @@ pub fn negotiate(
         | DebuggerRequest::ListStaticMetadataSymbols { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbol { .. }
         | DebuggerRequest::ListStaticMetadataContracts { .. }
+        | DebuggerRequest::DescribeStaticMetadataContract { .. }
         | DebuggerRequest::DescribeStaticMetadataSource { .. }
         | DebuggerRequest::ListSafePoints { .. }
         | DebuggerRequest::ValidateSafePoint { .. }
@@ -1782,6 +1856,20 @@ mod tests {
                     },
                     metadata_handle: 24,
                     metadata_generation: 7,
+                },
+            },
+            DebuggerRequest::DescribeStaticMetadataContract {
+                contract: DebuggerStaticMetadataContractId {
+                    metadata: DebuggerStaticMetadataHandle {
+                        program: DebuggerProgram {
+                            realm: realm(),
+                            program_handle: 12,
+                            program_generation: 5,
+                        },
+                        metadata_handle: 24,
+                        metadata_generation: 7,
+                    },
+                    contract_id: 0,
                 },
             },
             DebuggerRequest::ListSafePoints {
@@ -1976,6 +2064,17 @@ mod tests {
                 },
                 contract_id: 0,
             }]),
+            DebuggerReply::StaticMetadataContract(DebuggerStaticMetadataContractDisplay {
+                contract: DebuggerStaticMetadataContractId {
+                    metadata: DebuggerStaticMetadataHandle {
+                        program,
+                        metadata_handle: 24,
+                        metadata_generation: 7,
+                    },
+                    contract_id: 0,
+                },
+                display: "ProjectControlledContract".to_string(),
+            }),
             DebuggerReply::SafePoints(vec![safe_point]),
             DebuggerReply::SafePointValidated { safe_point },
             DebuggerReply::BreakpointSet { safe_point },
@@ -2781,6 +2880,57 @@ mod tests {
         let malformed = DebuggerMetadataCapabilityManifest {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
             capabilities: vec![DebuggerMetadataCapability::OpaqueSymbolDisplay],
+        };
+        assert!(!malformed.is_well_formed());
+    }
+
+    #[test]
+    fn contract_display_requires_contract_inventory_and_respects_its_fixed_budget() {
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 5,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let contract = DebuggerStaticMetadataContractId {
+            metadata,
+            contract_id: 0,
+        };
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_contract_display());
+        let reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_contract_display(),
+        );
+        let session = metadata_session_authorization(&request, &reply).unwrap();
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueInventory));
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueContractInventory));
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueContractDisplay));
+        assert!(!session.observed_contract(contract));
+        assert!(session.observe_contracts(&[contract]));
+        assert!(session.observed_contract(contract));
+
+        let display = DebuggerStaticMetadataContractDisplay {
+            contract,
+            display: "ProjectControlledContract".to_string(),
+        };
+        assert!(display.is_well_formed());
+        assert!(!DebuggerStaticMetadataContractDisplay {
+            display: String::new(),
+            ..display.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticMetadataContractDisplay {
+            display: "x".repeat(DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES + 1),
+            ..display
+        }
+        .is_well_formed());
+
+        let malformed = DebuggerMetadataCapabilityManifest {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![DebuggerMetadataCapability::OpaqueContractDisplay],
         };
         assert!(!malformed.is_well_formed());
     }

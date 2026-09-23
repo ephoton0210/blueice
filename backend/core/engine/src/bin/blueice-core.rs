@@ -94,6 +94,9 @@ struct Args {
     /// already inventoried metadata handle. Contract detail remains denied.
     debugger_static_metadata_contract_inventory: bool,
     /// Core-owner opt-in for one bounded compiler-produced display under a
+    /// contract ID previously emitted by the separate contract inventory.
+    debugger_static_metadata_contract_display: bool,
+    /// Core-owner opt-in for one bounded compiler-produced display under a
     /// symbol ID previously emitted by the separate symbol inventory.
     debugger_static_metadata_symbol_display: bool,
     /// Optional listener for queries over projects a trusted core owner
@@ -150,6 +153,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_type_display = false;
     let mut debugger_static_metadata_symbol_inventory = false;
     let mut debugger_static_metadata_contract_inventory = false;
+    let mut debugger_static_metadata_contract_display = false;
     let mut debugger_static_metadata_symbol_display = false;
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
@@ -197,6 +201,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--debugger-static-metadata-contract-inventory" => {
                 debugger_static_metadata_contract_inventory = true
+            }
+            "--debugger-static-metadata-contract-display" => {
+                debugger_static_metadata_contract_display = true
             }
             "--debugger-static-metadata-symbol-display" => {
                 debugger_static_metadata_symbol_display = true
@@ -332,6 +339,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if debugger_static_metadata_contract_display && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-contract-display requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_contract_display && !debugger_static_metadata_inventory {
+        return Err(
+            "--debugger-static-metadata-contract-display requires --debugger-static-metadata-inventory"
+                .to_string(),
+        );
+    }
     if debugger_static_metadata_symbol_display && debugger_socket.is_none() {
         return Err(
             "--debugger-static-metadata-symbol-display requires --debugger-socket".to_string(),
@@ -365,6 +383,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_type_display,
         debugger_static_metadata_symbol_inventory,
         debugger_static_metadata_contract_inventory,
+        debugger_static_metadata_contract_display,
         debugger_static_metadata_symbol_display,
         compiler_socket,
         compiler_project_profile,
@@ -679,6 +698,7 @@ fn main() -> ExitCode {
                 symbol_inventory: args.debugger_static_metadata_symbol_inventory,
                 contract_inventory: args.debugger_static_metadata_contract_inventory,
                 symbol_display: args.debugger_static_metadata_symbol_display,
+                contract_display: args.debugger_static_metadata_contract_display,
             },
         )
     } else {
@@ -1054,6 +1074,7 @@ mod tests {
                 debugger_static_metadata_type_display: false,
                 debugger_static_metadata_symbol_inventory: false,
                 debugger_static_metadata_contract_inventory: false,
+                debugger_static_metadata_contract_display: false,
                 debugger_static_metadata_symbol_display: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),

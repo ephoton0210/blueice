@@ -797,6 +797,18 @@ or second module resolver to bypass them.
   object, value, or general static-record read. Named
   `DebuggerMetadataCapabilitySelection` now constructs the canonical owner
   manifest, so new capabilities no longer extend a positional boolean list.
+  Page-host v16/debugger v15 now add independently default-denied
+  `OpaqueContractDisplay` and the owner-only
+  `--debugger-static-metadata-contract-display` flag. It requires the parent
+  inventory, contract-ID inventory, exact same-stream contract-ID receipt,
+  live realm tuple, and child capability report before returning one
+  compiler-produced contract name capped at 4 KiB. Core verifies the child
+  echoed the exact requested contract ID before re-minting the public reply.
+  The display may contain a project-authored contract identifier, but carries
+  no source text, source/module identity, span, contract plan, validation
+  behavior/result, type, bytecode, VM object, value, or general static-record
+  read. The real supervised-child test now retains an actual reifiable
+  interface contract and proves negotiated disclosure plus reload staleness.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope
