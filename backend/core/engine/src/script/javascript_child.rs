@@ -76,7 +76,7 @@ pub struct PageHostConnection {
 
 impl PageHostConnection {
     /// Connects to a launcher-created private child socket and completes the
-    /// v1 capability handshake. The caller must obtain both values from its
+    /// versioned capability handshake. The caller must obtain both values from its
     /// launcher owner; a page, frontend client, or script never receives this
     /// configuration.
     pub fn connect(socket_path: &Path, session_token: &str) -> io::Result<Self> {
@@ -151,6 +151,30 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement debugger locations",
+        ))
+    }
+
+    /// Whether this authenticated private peer implements the v7 BlueTS
+    /// static-metadata handle inventory. This says only that the child can
+    /// return source-free opaque handles; public debugger policy must still
+    /// separately authorize and re-mint any metadata-facing capability.
+    fn debugger_bluets_metadata_available(&self) -> bool {
+        false
+    }
+
+    /// Lists newly child-minted opaque handles only for a live direct-BlueTS
+    /// attachment associated with one exact private program. The result has
+    /// no source/module/name/type/span/contract payload, and a transport
+    /// double must opt in rather than accidentally fabricating that inventory.
+    fn debugger_bluets_metadata(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger metadata inventory",
         ))
     }
 
@@ -290,6 +314,10 @@ impl PageHostClient for PageHostConnection {
         true
     }
 
+    fn debugger_bluets_metadata_available(&self) -> bool {
+        true
+    }
+
     fn debugger_realm_stats(
         &mut self,
         tab_id: u64,
@@ -309,6 +337,19 @@ impl PageHostClient for PageHostConnection {
         self.request(PageHostRequest::ListDebuggerPrograms {
             tab_id,
             document_generation,
+        })
+    }
+
+    fn debugger_bluets_metadata(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id,
+            document_generation,
+            program,
         })
     }
 

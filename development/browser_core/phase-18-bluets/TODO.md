@@ -693,11 +693,17 @@ or second module resolver to bypass them.
   registry directly to its BlueTS classic and ESM graph admission, retaining
   only the exact child-local BlueJS program generation; replacement, binding
   setup failure, debugger inventory failure, and explicit close prune it
-  before a successor can be observed. It exposes none of those records over
-  page-host IPC. The page host still must route cache/hibernation events
-  through the same invariant and add source policy, diagnostics/contracts,
-  debugger IPC, stack locations, and runtime-value inspection before this
-  item can close.
+  before a successor can be observed. Private page-host protocol v7 may now
+  enumerate at most one freshly child-minted opaque metadata handle for one
+  exact live BlueTS program after its authenticated core requests it. That
+  handle is in a namespace distinct from the child program ID and carries no
+  source/module/name/type/span/contract/count/value payload; JavaScript,
+  missing attachments, stale generations, replacement, and close produce no
+  usable handle. No static record itself crosses page-host IPC, and no public
+  debugger protocol yet reuses that child handle. The page host still must
+  route cache/hibernation events through the same invariant and add source
+  policy, diagnostics/contracts, negotiated debugger exposure, stack
+  locations, and runtime-value inspection before this item can close.
 
   Acceptance: TS breakpoints, stack locations, scopes, symbol navigation, and
   static type display point to original source; navigation, reload, cache

@@ -10,9 +10,9 @@
 //! document generation lifecycle, source-free responses, and cleanup path.
 
 use blueice_ipc::page_host::{
-    PageHostDocument, PageHostDocumentSnapshot, PageHostModuleGraph, PageHostReply, PageHostScript,
-    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
-    PageHostSource, PageHostStaticResolution,
+    PageHostDocument, PageHostDocumentSnapshot, PageHostModuleGraph, PageHostReply,
+    PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
+    PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
 };
 use blueice_launcher::bluejs_host::{BlueJsHostRuntimeLimits, SpawnedBlueJsHost};
 use std::os::unix::net::UnixStream;
@@ -413,6 +413,107 @@ fn launcher_child_types_only_the_verified_snapshot_callbacks_for_bluets() {
         !format!("{reply:?}").contains("test document snapshot"),
         "source-free reports must not disclose typed callback results"
     );
+    host.shutdown()
+        .expect("launcher must obtain child shutdown acknowledgement");
+}
+
+#[test]
+fn launcher_child_mints_source_free_bluets_metadata_handles_only_for_live_typed_programs() {
+    assert!(
+        std::path::Path::new(CHILD_BINARY).exists(),
+        "Cargo must build the actual sibling BlueJS child host"
+    );
+    let mut host = SpawnedBlueJsHost::spawn()
+        .expect("launcher must start and authenticate an isolated BlueJS child");
+    let javascript_id = "blueice://page/private-metadata.js";
+    let reply = host
+        .synchronize_document(document(
+            1,
+            vec![
+                PageHostScript {
+                    ordinal: 0,
+                    language: PageHostScriptLanguage::JavaScript,
+                    kind: PageHostScriptKind::Classic,
+                    graph: graph(
+                        javascript_id,
+                        vec![PageHostSource::new(
+                            javascript_id,
+                            "globalThis.javaScriptOnly = true;",
+                        )],
+                    ),
+                },
+                blue_ts_classic(1, "const processTypedAnswer: number = 42;"),
+            ],
+        ))
+        .expect("the child must execute the authorized document");
+    assert!(matches!(
+        reply,
+        PageHostReply::Synchronized { reports, .. }
+            if reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
+    ));
+    let programs = match host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .expect("the child must return private program IDs")
+    {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs,
+        reply => panic!("expected private program inventory, got {reply:?}"),
+    };
+    assert_eq!(programs.len(), 2);
+
+    let mut metadata_handle = None;
+    for program in programs {
+        let reply = host
+            .request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+            })
+            .expect("the child must answer the private metadata inventory");
+        let PageHostReply::DebuggerBlueTsMetadata { metadata, .. } = &reply else {
+            panic!("expected private BlueTS metadata inventory, got {reply:?}");
+        };
+        assert!(
+            !format!("{reply:?}").contains("processTypedAnswer")
+                && !format!("{reply:?}").contains("private-metadata")
+                && !format!("{reply:?}").contains("number"),
+            "the subprocess reply must carry only opaque metadata handles"
+        );
+        if let [metadata] = metadata.as_slice() {
+            assert_ne!(metadata.metadata_handle, program.program_handle);
+            metadata_handle = Some((program, *metadata));
+        } else {
+            assert!(metadata.is_empty(), "the JavaScript program is ineligible");
+        }
+    }
+    let (typed_program, metadata_handle) =
+        metadata_handle.expect("the direct BlueTS program must have a live attachment");
+    assert!(metadata_handle.is_well_formed());
+
+    let replacement = host
+        .synchronize_document(document(
+            2,
+            vec![blue_ts_classic(
+                0,
+                "const successorTypedAnswer: number = 43;",
+            )],
+        ))
+        .expect("the child must replace the first realm");
+    assert!(matches!(replacement, PageHostReply::Synchronized { .. }));
+    assert!(matches!(
+        host.request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 41,
+            document_generation: 1,
+            program: typed_program,
+        })
+        .expect("the child must reject a stale metadata request"),
+        PageHostReply::Error {
+            code: blueice_ipc::page_host::PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
     host.shutdown()
         .expect("launcher must obtain child shutdown acknowledgement");
 }

@@ -13,7 +13,7 @@
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
 //!
-//! Version 6 retains the two fixed, core-derived document snapshots consumed
+//! Version 7 retains the two fixed, core-derived document snapshots consumed
 //! by the child-owned JavaScript bindings, the location-only debugger
 //! inventory, a bounded exact-breakpoint configuration table, and an opt-in
 //! root-classic continuation seam. The
@@ -23,18 +23,22 @@
 //! BlueTS stays a child-fixed, direct-lowering profile with no ambient host
 //! typings, compiler option, resolver, or emitted JavaScript crossing this
 //! channel. Apart from the two fixed JavaScript primitive snapshot callbacks,
-//! version 6 exposes only a core-proxied, source-free debugger location
+//! version 7 exposes only a core-proxied, source-free debugger location
 //! inventory and configuration records. A core-selected document may opt in
 //! to the one-shot root-classic arm/state/resume lifecycle; the child admits
 //! no generic interruption, stepping, nested continuation, stack, scope,
 //! bytecode, source, runtime value transport, general host callback,
-//! fetch/cache, or client-facing API.
+//! fetch/cache, or client-facing API. Version 7 additionally lets that
+//! authenticated core enumerate one separately minted opaque static-metadata
+//! handle for an exact BlueTS program. The handle discloses neither static
+//! metadata nor a child program identity and is unusable after its realm is
+//! replaced or closed.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 6;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 7;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -73,6 +77,24 @@ impl PageHostDebuggerProgram {
     /// Private debugger identities never use zero placeholders.
     pub fn is_well_formed(self) -> bool {
         self.program_handle != 0 && self.program_generation != 0
+    }
+}
+
+/// A child-minted opaque association with static BlueTS metadata for one
+/// exact live direct-program generation. It is deliberately a different
+/// identity namespace from [`PageHostDebuggerProgram`]: callers cannot reuse
+/// a program ID as a metadata ID, nor derive source/module/type/span/contract
+/// information from either field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PageHostDebuggerMetadataHandle {
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+}
+
+impl PageHostDebuggerMetadataHandle {
+    /// Private metadata identities never use zero placeholders.
+    pub fn is_well_formed(self) -> bool {
+        self.metadata_handle != 0 && self.metadata_generation != 0
     }
 }
 
@@ -277,6 +299,16 @@ pub enum PageHostRequest {
         tab_id: u64,
         document_generation: u64,
     },
+    /// Lists separately minted opaque static-metadata handles for one exact
+    /// private program. A JavaScript program, a BlueTS program without a live
+    /// registry attachment, or an invalidated attachment returns no handles.
+    /// The reply contains no static metadata, source/module/name/type/span,
+    /// contract, aggregate count, runtime handle, or VM object.
+    ListDebuggerBlueTsMetadata {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    },
     /// Lists the child's bounded compiler-verified safe points for one exact
     /// opaque program. No source, bytecode, VM, or value crosses this channel.
     ListDebuggerSafePoints {
@@ -371,6 +403,15 @@ pub enum PageHostReply {
         tab_id: u64,
         document_generation: u64,
         programs: Vec<PageHostDebuggerProgram>,
+    },
+    /// A bounded inventory of child-minted opaque static BlueTS metadata
+    /// associations for one exact private program. This is a handle-discovery
+    /// operation only; the handle itself carries no metadata payload.
+    DebuggerBlueTsMetadata {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: Vec<PageHostDebuggerMetadataHandle>,
     },
     DebuggerSafePoints {
         tab_id: u64,
@@ -563,6 +604,14 @@ mod tests {
                 tab_id: 7,
                 document_generation: 3,
             },
+            PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+            },
             PageHostRequest::ListDebuggerSafePoints {
                 tab_id: 7,
                 document_generation: 3,
@@ -681,6 +730,22 @@ mod tests {
                 bytecode_offset: 4,
             },
             was_present: true,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: vec![PageHostDebuggerMetadataHandle {
+                metadata_handle: 1 << 63,
+                metadata_generation: 1 << 63,
+            }],
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();

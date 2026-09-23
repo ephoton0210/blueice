@@ -31,11 +31,11 @@ use blueice_bluets_bluejs::{
     DirectModuleGraph, DirectScript,
 };
 use blueice_ipc::page_host::{
-    self, PageHostDebuggerExecutionState, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
-    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
-    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    self, PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
+    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
+    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -58,6 +58,13 @@ const MAX_MODULES_PER_GRAPH: usize = 8;
 const MAX_SOURCE_BYTES_PER_MODULE: usize = 1024 * 1024;
 const MAX_SOURCE_BYTES_PER_DOCUMENT: usize = 8 * 1024 * 1024;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Static metadata inventory IDs are private to the child but intentionally
+/// start in a separate range from child debugger-program IDs. The type-level
+/// distinction remains the primary boundary; this disjoint start additionally
+/// prevents a plausible-looking numeric program ID from being replayed as a
+/// metadata handle by a buggy core adapter.
+const CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START: u64 = 1 << 63;
 
 /// Immutable launcher-owner limits for one isolated page-host child.
 ///
@@ -145,6 +152,10 @@ struct LiveDocument {
 struct ChildDebuggerProgram {
     program_generation: u64,
     runtime_handle: BlueJsProgramHandle,
+    /// Created only on the first authenticated metadata-inventory request
+    /// while the matching BlueTS registry attachment is still live. A plain
+    /// JavaScript program never receives one.
+    metadata: Option<PageHostDebuggerMetadataHandle>,
 }
 
 /// Child-private execution state for the narrow root-classic continuation.
@@ -203,6 +214,8 @@ pub struct BlueJsChildHost {
     documents: BTreeMap<u64, LiveDocument>,
     next_debugger_program_handle: u64,
     next_debugger_program_generation: u64,
+    next_debugger_metadata_handle: u64,
+    next_debugger_metadata_generation: u64,
 }
 
 impl BlueJsChildHost {
@@ -224,6 +237,8 @@ impl BlueJsChildHost {
             documents: BTreeMap::new(),
             next_debugger_program_handle: 1,
             next_debugger_program_generation: 1,
+            next_debugger_metadata_handle: CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
+            next_debugger_metadata_generation: CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
         })
     }
 
@@ -245,6 +260,11 @@ impl BlueJsChildHost {
                 tab_id,
                 document_generation,
             } => self.debugger_programs(tab_id, document_generation),
+            PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id,
+                document_generation,
+                program,
+            } => self.debugger_bluets_metadata(tab_id, document_generation, program),
             PageHostRequest::ListDebuggerSafePoints {
                 tab_id,
                 document_generation,
@@ -712,6 +732,98 @@ impl BlueJsChildHost {
                     program_generation: record.program_generation,
                 })
                 .collect(),
+        }
+    }
+
+    /// Enumerates the child-private static-BlueTS association for one exact
+    /// currently live program. The association is intentionally minted lazily
+    /// on this authenticated inventory request: program discovery itself does
+    /// not imply static-metadata authority. The reply is a bounded handle list
+    /// rather than a metadata payload, and it uses an identity namespace that
+    /// is distinct from the child debugger program IDs.
+    fn debugger_bluets_metadata(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+    ) -> PageHostReply {
+        if !program.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+
+        // A normal JavaScript program and a BlueTS program whose attachment
+        // has been pruned both have no metadata inventory. Do not mint a
+        // negative-result handle; an empty bounded list reveals no static
+        // count or compiler detail beyond this program's ineligibility.
+        if self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+            .is_err()
+        {
+            let document = self
+                .documents
+                .get_mut(&tab_id)
+                .expect("the exact child document remains live after registry validation");
+            document
+                .debugger_programs
+                .get_mut(&program.program_handle)
+                .expect("the exact child program remains registered")
+                .metadata = None;
+            return PageHostReply::DebuggerBlueTsMetadata {
+                tab_id,
+                document_generation,
+                program,
+                metadata: Vec::new(),
+            };
+        }
+
+        let metadata = {
+            let existing = self
+                .documents
+                .get(&tab_id)
+                .expect("the exact child document remains live after registry validation")
+                .debugger_programs
+                .get(&program.program_handle)
+                .expect("the exact child program remains registered")
+                .metadata;
+            match existing {
+                Some(metadata) => metadata,
+                None => {
+                    let metadata = match self.mint_debugger_metadata_handle() {
+                        Ok(metadata) => metadata,
+                        Err(()) => return host_failure(),
+                    };
+                    self.documents
+                        .get_mut(&tab_id)
+                        .expect("the exact child document remains live while metadata is minted")
+                        .debugger_programs
+                        .get_mut(&program.program_handle)
+                        .expect(
+                            "the exact child program remains registered while metadata is minted",
+                        )
+                        .metadata = Some(metadata);
+                    metadata
+                }
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadata {
+            tab_id,
+            document_generation,
+            program,
+            metadata: vec![metadata],
         }
     }
 
@@ -1204,6 +1316,15 @@ impl BlueJsChildHost {
         }
         let program_handle = self.next_debugger_program_handle;
         let program_generation = self.next_debugger_program_generation;
+        // Keep the numerical ranges disjoint for the process lifetime as a
+        // defense in depth beyond the distinct wire types. A pathological
+        // child that exhausts the lower program-ID space fails closed rather
+        // than minting a value that could resemble a metadata handle.
+        if program_handle >= CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START
+            || program_generation >= CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START
+        {
+            return Err(());
+        }
         self.next_debugger_program_handle = program_handle.checked_add(1).ok_or(())?;
         self.next_debugger_program_generation = program_generation.checked_add(1).ok_or(())?;
         self.documents
@@ -1215,11 +1336,26 @@ impl BlueJsChildHost {
                 ChildDebuggerProgram {
                     program_generation,
                     runtime_handle,
+                    metadata: None,
                 },
             );
         Ok(PageHostDebuggerProgram {
             program_handle,
             program_generation,
+        })
+    }
+
+    /// Mints an inventory-only child metadata identity. Callers must first
+    /// prove the matching registry attachment remains live; this helper never
+    /// receives or derives compiler metadata.
+    fn mint_debugger_metadata_handle(&mut self) -> Result<PageHostDebuggerMetadataHandle, ()> {
+        let metadata_handle = self.next_debugger_metadata_handle;
+        let metadata_generation = self.next_debugger_metadata_generation;
+        self.next_debugger_metadata_handle = metadata_handle.checked_add(1).ok_or(())?;
+        self.next_debugger_metadata_generation = metadata_generation.checked_add(1).ok_or(())?;
+        Ok(PageHostDebuggerMetadataHandle {
+            metadata_handle,
+            metadata_generation,
         })
     }
 }
@@ -2731,6 +2867,138 @@ mod tests {
             }
         ));
         assert!(host.debug_registry.is_empty());
+    }
+
+    #[test]
+    fn child_bluets_metadata_inventory_mints_only_opaque_live_attachment_handles() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(
+                    1,
+                    vec![
+                        classic(0, "globalThis.javaScriptOnly = true;"),
+                        blue_ts_classic(1, "const typedAnswer: number = 42;"),
+                    ],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. }
+                if reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
+        ));
+        let programs = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs,
+            reply => panic!("expected private program inventory, got {reply:?}"),
+        };
+        assert_eq!(programs.len(), 2);
+
+        let mut blue_ts = None;
+        for program in programs {
+            let reply = host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            });
+            let PageHostReply::DebuggerBlueTsMetadata { metadata, .. } = &reply else {
+                panic!("expected private BlueTS metadata inventory, got {reply:?}");
+            };
+            // The child exposes no source/module/name/type/span/contract data:
+            // only the bounded list's length and its opaque values are visible.
+            assert!(!format!("{reply:?}").contains("typedAnswer"));
+            assert!(!format!("{reply:?}").contains("inline-1.ts"));
+            assert!(!format!("{reply:?}").contains("number"));
+            if let [metadata] = metadata.as_slice() {
+                blue_ts = Some((program, *metadata));
+            } else {
+                assert!(
+                    metadata.is_empty(),
+                    "only the JavaScript program is ineligible"
+                );
+            }
+        }
+        let (typed_program, first_metadata) = blue_ts.expect("the live BlueTS attachment exists");
+        assert!(first_metadata.is_well_formed());
+        assert_ne!(
+            first_metadata.metadata_handle, typed_program.program_handle,
+            "metadata IDs must not reuse the child program namespace"
+        );
+        assert!(
+            first_metadata.metadata_handle >= CHILD_DEBUGGER_METADATA_ID_NAMESPACE_START,
+            "metadata IDs have a child-private namespace separate from program IDs"
+        );
+
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 1,
+                program: typed_program,
+            }),
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. }
+                if metadata == vec![first_metadata]
+        ));
+
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(
+                    2,
+                    vec![blue_ts_classic(0, "const replacement: string = 'next';")]
+                ),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 1,
+                program: typed_program,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+        let replacement_program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 2,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => *programs
+                .first()
+                .expect("the replacement BlueTS program remains live"),
+            reply => panic!("expected replacement private program inventory, got {reply:?}"),
+        };
+        let replacement_metadata =
+            match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 2,
+                program: replacement_program,
+            }) {
+                PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => *metadata
+                    .first()
+                    .expect("the replacement live BlueTS attachment remains eligible"),
+                reply => panic!("expected replacement metadata inventory, got {reply:?}"),
+            };
+        assert_ne!(replacement_metadata, first_metadata);
+
+        assert!(matches!(
+            host.handle_request(PageHostRequest::CloseRealm {
+                tab_id: 7,
+                document_generation: 2,
+            }),
+            PageHostReply::RealmClosed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+                tab_id: 7,
+                document_generation: 2,
+                program: replacement_program,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::UnknownRealm,
+                ..
+            }
+        ));
     }
 
     #[test]
