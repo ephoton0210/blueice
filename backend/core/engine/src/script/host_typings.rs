@@ -12,6 +12,7 @@
 //! globals by themselves.
 
 use blueice_bluets::ModuleSource;
+use blueice_bluets_bluejs::page_host_typings::page_host_document_context_bindings_v1;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -21,9 +22,18 @@ pub const BLUEICE_HOST_TYPINGS_ABI_V1: &str = "blueice-host-typings-v1";
 /// The BlueTS language matrix targeted by the initial core host profile.
 pub const BLUEICE_HOST_TYPINGS_LANGUAGE_VERSION_V1: &str = "blue-ts-0.1";
 
-/// Core's initial profile has no JavaScript globals until the out-of-process
-/// BlueJS host installs matching runtime bindings.
+/// Core's initial profile has no JavaScript globals until the BlueJS page host
+/// installs matching runtime bindings.
 pub const CORE_SCRIPT_EMPTY_PROFILE_V1: &str = "core-script-empty-v1";
+
+/// The first truthful core page profile: one read-only document-text global.
+pub const CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1: &str = "core-script-document-text-v1";
+
+/// A read-only page-context profile. It exposes only the canonical origin and
+/// a copied document-text snapshot; it is not a general `document` object.
+/// The profile identity and binding schema are shared with the isolated child
+/// so BlueTS cannot be typed against a different callback inventory there.
+pub use blueice_bluets_bluejs::page_host_typings::PAGE_HOST_DOCUMENT_CONTEXT_PROFILE_V1 as CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1;
 
 /// Core host API version associated with [`CORE_SCRIPT_EMPTY_PROFILE_V1`].
 pub const CORE_SCRIPT_HOST_API_VERSION_V1: &str = "blueice-core-script-v1";
@@ -259,12 +269,47 @@ impl HostTypeSurfaceCatalogV1 {
 /// operations, but no BlueJS object exposes them yet, so emitting an empty
 /// declaration root prevents TypeScript from claiming an unavailable DOM API.
 pub fn core_script_host_type_catalog() -> HostTypeSurfaceCatalogV1 {
-    HostTypeSurfaceCatalogV1::new([HostTypeSurfaceV1::new(
-        BLUEICE_HOST_TYPINGS_LANGUAGE_VERSION_V1,
-        CORE_SCRIPT_HOST_API_VERSION_V1,
-        CORE_SCRIPT_EMPTY_PROFILE_V1,
-        Vec::new(),
-    )])
+    HostTypeSurfaceCatalogV1::new([
+        HostTypeSurfaceV1::new(
+            BLUEICE_HOST_TYPINGS_LANGUAGE_VERSION_V1,
+            CORE_SCRIPT_HOST_API_VERSION_V1,
+            CORE_SCRIPT_EMPTY_PROFILE_V1,
+            Vec::new(),
+        ),
+        HostTypeSurfaceV1::new(
+            BLUEICE_HOST_TYPINGS_LANGUAGE_VERSION_V1,
+            CORE_SCRIPT_HOST_API_VERSION_V1,
+            CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1,
+            vec![HostTypeBindingV1::new(
+                "dom.document-text",
+                "declare function blueiceDocumentText(): string;",
+                HostBindingRoleV1::Value,
+                "global.blueiceDocumentText",
+                "dom-read",
+                "document-text",
+                CORE_SCRIPT_HOST_API_VERSION_V1,
+            )],
+        ),
+        HostTypeSurfaceV1::new(
+            BLUEICE_HOST_TYPINGS_LANGUAGE_VERSION_V1,
+            CORE_SCRIPT_HOST_API_VERSION_V1,
+            CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1,
+            page_host_document_context_bindings_v1()
+                .iter()
+                .map(|binding| {
+                    HostTypeBindingV1::new(
+                        binding.stable_id,
+                        binding.declaration,
+                        HostBindingRoleV1::Value,
+                        binding.runtime_binding_id,
+                        binding.capability,
+                        binding.feature_flag,
+                        binding.first_host_api_version,
+                    )
+                })
+                .collect(),
+        ),
+    ])
     .expect("the built-in core script host profile is valid")
 }
 
@@ -663,6 +708,80 @@ mod tests {
         assert!(artifact.runtime_bindings.is_empty());
         assert_eq!(artifact.validate_runtime_bindings(&[]), Ok(()));
         assert!(!artifact.declaration_source.contains("document"));
+    }
+
+    #[test]
+    fn document_text_profile_declares_exactly_its_installed_global() {
+        let artifact = core_script_host_type_catalog()
+            .generate(CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1)
+            .unwrap();
+        assert_eq!(
+            artifact.declaration_source,
+            include_str!(
+                "../../tests/fixtures/host_typings/core-script-document-text/lib.blueice.d.ts"
+            )
+        );
+        assert_eq!(
+            artifact.manifest_json,
+            include_str!(
+                "../../tests/fixtures/host_typings/core-script-document-text/lib.blueice.manifest.json"
+            )
+        );
+        assert_eq!(artifact.manifest.binding_ids, ["dom.document-text"]);
+        assert_eq!(artifact.runtime_bindings.len(), 1);
+        assert_eq!(
+            artifact.runtime_bindings[0].runtime_binding_id,
+            "global.blueiceDocumentText"
+        );
+    }
+
+    #[test]
+    fn document_context_profile_declares_only_copied_page_context() {
+        let artifact = core_script_host_type_catalog()
+            .generate(CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1)
+            .unwrap();
+        let child_artifact =
+            blueice_bluets_bluejs::page_host_typings::PageHostDocumentTypingsV1::generate();
+        assert_eq!(
+            artifact.declaration_source,
+            include_str!(
+                "../../tests/fixtures/host_typings/core-script-document-context/lib.blueice.d.ts"
+            )
+        );
+        assert_eq!(
+            artifact.manifest_json,
+            include_str!(
+                "../../tests/fixtures/host_typings/core-script-document-context/lib.blueice.manifest.json"
+            )
+        );
+        assert_eq!(
+            artifact.manifest.binding_ids,
+            ["dom.document-origin", "dom.document-text"]
+        );
+        assert_eq!(
+            artifact
+                .runtime_bindings
+                .iter()
+                .map(|binding| binding.runtime_binding_id.as_str())
+                .collect::<Vec<_>>(),
+            ["global.blueiceDocumentOrigin", "global.blueiceDocumentText"]
+        );
+        assert_eq!(
+            artifact.declaration_source,
+            child_artifact.declaration_source
+        );
+        assert_eq!(
+            artifact
+                .runtime_bindings
+                .iter()
+                .map(|binding| binding.runtime_binding_id.as_str())
+                .collect::<Vec<_>>(),
+            child_artifact
+                .runtime_bindings
+                .iter()
+                .map(|binding| binding.runtime_binding_id)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

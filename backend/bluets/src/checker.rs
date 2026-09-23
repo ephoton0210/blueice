@@ -115,6 +115,7 @@ impl TypeExpansionBudget {
 pub(crate) fn check_incremental(
     project: &Project,
     enforce_types: bool,
+    require_declared_global_calls: bool,
     previous: Option<&CheckedProject>,
     rechecked: &BTreeSet<String>,
     max_type_expansions: usize,
@@ -138,6 +139,7 @@ pub(crate) fn check_incremental(
             &exported_types,
             (!project.ambient_declaration_modules.contains(module_id)).then_some(&ambient),
             enforce_types,
+            require_declared_global_calls,
             max_type_expansions,
         );
         checker.bind();

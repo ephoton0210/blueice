@@ -40,6 +40,7 @@ impl Vm {
             typed_array_intrinsics: None,
             regexp_legacy: crate::regexp::LegacyStatics::default(),
             result_root: None,
+            debugger_continuation: None,
             stack: Vec::new(),
             bindings: Vec::new(),
             binding_metadata: Vec::new(),
@@ -97,6 +98,7 @@ impl Vm {
             call_depth: 0,
             top_level_module: false,
             globals: HashMap::new(),
+            host_functions: Vec::new(),
             global_bindings: HashMap::new(),
             symbol_registry: Rc::new(RefCell::new(HashMap::new())),
             intl_legacy_constructed_symbol: None,
@@ -261,6 +263,7 @@ impl Vm {
         entry: &str,
         modules: &HashMap<String, Bytecode>,
     ) -> Result<Value, RuntimeError> {
+        self.ensure_no_debugger_continuation()?;
         self.execute_module_graph_inner(entry, modules, true, false, ImportPhase::Evaluation)
     }
 }

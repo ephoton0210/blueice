@@ -108,6 +108,8 @@ pub(super) enum InterpreterExit {
     },
     Suspend {
         pc: usize,
+        iterators: Vec<Value>,
+        handlers: Vec<HandlerFrame>,
     },
     /// An async execution context reaches an Await expression. Its execution
     /// context is moved into a continuation before the next Promise job turn

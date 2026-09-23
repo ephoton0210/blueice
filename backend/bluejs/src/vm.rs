@@ -22,6 +22,7 @@ use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 mod builtins;
 mod completion;
+mod debugger;
 mod errors;
 mod execution;
 mod functions;
@@ -42,7 +43,100 @@ use completion::{
     Completion, CompletionAction, HandlerFrame, HandlerState, InterpreterExit,
     MAX_RECURSIVE_CALL_DEPTH,
 };
+use debugger::DebuggerContinuation;
+pub use debugger::VmDebuggerExecutionState;
 use std::fmt;
+
+/// An opaque object created by [`Vm::install_host_object`]. It can only be
+/// populated through the VM that created it, preventing an embedder from
+/// accidentally attaching a host method to an object from another realm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostObject(ObjectId);
+
+/// A primitive value permitted to cross the synchronous host callback
+/// boundary. JavaScript object identities intentionally cannot cross this
+/// boundary: retaining one in Rust would evade the VM collector.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HostValue {
+    Undefined,
+    Null,
+    Bool(bool),
+    Number(f64),
+    String(JsString),
+}
+
+impl TryFrom<&Value> for HostValue {
+    type Error = HostFunctionError;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Undefined => Ok(Self::Undefined),
+            Value::Null => Ok(Self::Null),
+            Value::Bool(value) => Ok(Self::Bool(*value)),
+            Value::Number(value) => Ok(Self::Number(*value)),
+            Value::String(value) => Ok(Self::String(value.clone())),
+            Value::BigInt(_) | Value::Symbol(_) | Value::Object(_) => Err(HostFunctionError::new(
+                "host functions accept primitive values only",
+            )),
+        }
+    }
+}
+
+impl From<HostValue> for Value {
+    fn from(value: HostValue) -> Self {
+        match value {
+            HostValue::Undefined => Self::Undefined,
+            HostValue::Null => Self::Null,
+            HostValue::Bool(value) => Self::Bool(value),
+            HostValue::Number(value) => Self::Number(value),
+            HostValue::String(value) => Self::String(value),
+        }
+    }
+}
+
+/// A synchronous capability supplied by the embedding host.
+///
+/// The callback receives primitive [`HostValue`] arguments but no heap, VM, or
+/// JavaScript object identity. Constructors are never dispatched to host
+/// functions.
+pub trait HostFunction: 'static {
+    fn call(&mut self, args: &[HostValue]) -> Result<HostValue, HostFunctionError>;
+}
+
+impl<F> HostFunction for F
+where
+    F: for<'args> FnMut(&'args [HostValue]) -> Result<HostValue, HostFunctionError> + 'static,
+{
+    fn call(&mut self, args: &[HostValue]) -> Result<HostValue, HostFunctionError> {
+        self(args)
+    }
+}
+
+/// A host callback failure that becomes a JavaScript `TypeError` at the call
+/// boundary. The message is host-controlled; page data must not be reflected
+/// into it without the embedding host's own policy check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostFunctionError(String);
+
+impl HostFunctionError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self(message.into())
+    }
+}
+
+impl fmt::Display for HostFunctionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for HostFunctionError {}
+
+fn host_property_name_is_valid(name: &str) -> bool {
+    let mut chars = name.bytes();
+    matches!(chars.next(), Some(b'a'..=b'z' | b'A'..=b'Z' | b'_' | b'$'))
+        && chars.all(|byte| matches!(byte, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'$'))
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct VmConfig {
@@ -645,6 +739,11 @@ pub struct Vm {
     /// Annex B legacy static properties of this realm's `%RegExp%`.
     regexp_legacy: crate::regexp::LegacyStatics,
     result_root: Option<RootId>,
+    /// A deliberately narrow debugger-owned root-script continuation. It is
+    /// installed only at a compiler-verified root-code-unit instruction
+    /// boundary and keeps the active frame out of every ordinary execution
+    /// entry point until it is resumed or the VM is dropped.
+    debugger_continuation: Option<DebuggerContinuation>,
     stack: Vec<Value>,
     // None is a lexical binding's uninitialized state, never JS undefined.
     bindings: Vec<Option<Value>>,
@@ -772,6 +871,9 @@ pub struct Vm {
     // substitute the realm global when `this` is first observed.
     top_level_module: bool,
     globals: HashMap<String, ObjectId>,
+    /// Host callbacks are private to this realm. Native function objects hold
+    /// only an index into this vector, so GC sees no Rust references.
+    host_functions: Vec<Box<dyn HostFunction>>,
     global_bindings: HashMap<String, GlobalBinding>,
     /// The GlobalSymbolRegistry belongs to an ECMAScript agent, not to an
     /// individual Realm. Test262 child realms share this handle; independent
@@ -927,6 +1029,134 @@ pub struct Vm {
     /// scope it was created in (the rest were entered by its own `with`).
     inherited_with_depth: usize,
     joining: Vec<ObjectId>,
+}
+
+impl Vm {
+    /// Installs one non-constructable host function as an own property of
+    /// `globalThis`. The name is rejected when a global property already
+    /// exists, so an embedder cannot silently replace an ECMAScript global.
+    pub fn install_host_function(
+        &mut self,
+        name: &str,
+        length: u32,
+        function: impl HostFunction,
+    ) -> Result<(), RuntimeError> {
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is always an object");
+        if !host_property_name_is_valid(name) || self.heap.get_own(global, name)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "host global name is invalid or already defined".into(),
+            ));
+        }
+        self.install_host_callable(global, name, length, function)
+    }
+
+    /// Installs one non-callable host object as an own property of
+    /// `globalThis`. The name is rejected when a property already exists, so
+    /// an embedder cannot silently replace an ECMAScript global.
+    pub fn install_host_object(&mut self, name: &str) -> Result<HostObject, RuntimeError> {
+        let global = self
+            .global("globalThis")?
+            .object_id()
+            .expect("globalThis is always an object");
+        if !host_property_name_is_valid(name) || self.heap.get_own(global, name)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "host global name is invalid or already defined".into(),
+            ));
+        }
+        let prototype = self.object_prototype;
+        let object = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
+        self.stack.push(Value::Object(object));
+        let result = self.define_data(global, name, Value::Object(object), false, false, false);
+        self.stack.pop();
+        result?;
+        Ok(HostObject(object))
+    }
+
+    /// Installs one non-constructable host callback on a host object returned
+    /// by [`Self::install_host_object`]. Method names and collisions are
+    /// rejected before the callback is retained.
+    pub fn install_host_method(
+        &mut self,
+        owner: HostObject,
+        name: &str,
+        length: u32,
+        function: impl HostFunction,
+    ) -> Result<(), RuntimeError> {
+        if owner.0.heap != self.object_prototype.heap || !host_property_name_is_valid(name) {
+            return Err(RuntimeError::TypeError(
+                "host object or method name is invalid".into(),
+            ));
+        }
+        if self.heap.get_own(owner.0, name)?.is_some() {
+            return Err(RuntimeError::TypeError(
+                "host method is already defined".into(),
+            ));
+        }
+        self.install_host_callable(owner.0, name, length, function)
+    }
+
+    fn install_host_callable(
+        &mut self,
+        owner: ObjectId,
+        name: &str,
+        length: u32,
+        function: impl HostFunction,
+    ) -> Result<(), RuntimeError> {
+        let index = u32::try_from(self.host_functions.len())
+            .map_err(|_| RuntimeError::RangeError("too many host functions".into()))?;
+        let prototype = self.function_prototype()?;
+        let id = self.with_roots(|heap| {
+            heap.alloc_native_function(NativeFunction::Host(index), name, prototype)
+        })?;
+        self.stack.push(Value::Object(id));
+        let result = (|| {
+            self.define_data(
+                id,
+                "length",
+                Value::Number(f64::from(length)),
+                false,
+                false,
+                true,
+            )?;
+            self.define_data(id, "name", Value::String(name.into()), false, false, true)?;
+            self.define_data(owner, name, Value::Object(id), true, false, true)
+        })();
+        self.stack.pop();
+        result?;
+        self.host_functions.push(Box::new(function));
+        Ok(())
+    }
+
+    fn host_function_call(
+        &mut self,
+        index: u32,
+        _receiver: Value,
+        args: &[Value],
+        construct: bool,
+    ) -> Result<Value, RuntimeError> {
+        if construct {
+            return Err(RuntimeError::TypeError(
+                "host functions are not constructors".into(),
+            ));
+        }
+        let args = args
+            .iter()
+            .map(HostValue::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| RuntimeError::TypeError(error.to_string()))?;
+        let result = self
+            .host_functions
+            .get_mut(index as usize)
+            .ok_or_else(|| RuntimeError::TypeError("host function is unavailable".into()))?
+            .call(&args)
+            .map_err(|error| RuntimeError::TypeError(error.to_string()))?
+            .into();
+        self.check_string(&result)?;
+        Ok(result)
+    }
 }
 
 impl Vm {

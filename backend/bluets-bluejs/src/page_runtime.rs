@@ -81,6 +81,21 @@ impl DirectPageRealmOwner {
         closed
     }
 
+    /// Installs caller-owned callbacks through BlueJS's restricted page-realm
+    /// registrar. The callback receives no VM, heap, source, or runtime object
+    /// access and therefore cannot bypass this owner's program admission.
+    pub fn configure_realm_bindings(
+        &mut self,
+        tab_id: u64,
+        configure: impl FnOnce(
+            &mut bluejs::BlueJsHostBindingRegistrar<'_>,
+        ) -> Result<(), bluejs::RuntimeError>,
+    ) -> Result<(), BridgeError> {
+        self.runtime
+            .configure_realm_bindings(tab_id, configure)
+            .map_err(BridgeError::PageRuntime)
+    }
+
     /// Admits one checked classic script and its static metadata together.
     pub fn attach_script(
         &mut self,

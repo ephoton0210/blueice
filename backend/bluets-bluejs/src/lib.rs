@@ -21,6 +21,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
 mod debug_attachment;
+pub mod page_host_typings;
 mod page_runtime;
 pub use debug_attachment::{
     DirectDebugAttachmentError, DirectDebugRegistry, DirectDebugRetentionLimits,
@@ -113,6 +114,35 @@ pub struct DirectProgramAttachment {
     pub provenance: Vec<AttachedLoweringProvenance>,
     /// Deterministic, validated safe-point entries for bound lowering spans.
     pub safe_point_map: BlueTsSafePointMapV1,
+}
+
+impl DirectProgramAttachment {
+    /// Resolves a TypeScript UTF-8 byte position to the nearest following
+    /// lowered statement in this exact program generation. If the position is
+    /// inside a statement whose generated root has no instruction, or there is
+    /// no later statement in this canonical source, the result is explicitly
+    /// unbound. This never guesses a bytecode offset.
+    pub fn breakpoint_at_or_after(
+        &self,
+        source: &str,
+        source_byte: usize,
+    ) -> DirectSafePointBinding {
+        self.provenance
+            .iter()
+            .filter(|provenance| {
+                provenance.source.module == source && provenance.source.end > source_byte
+            })
+            .min_by_key(|provenance| {
+                (
+                    provenance.source.start.saturating_sub(source_byte),
+                    provenance.source.start,
+                    provenance.source.end,
+                )
+            })
+            .map_or(DirectSafePointBinding::Unbound, |provenance| {
+                provenance.safe_point
+            })
+    }
 }
 
 /// One source-level lowering span attached to a generated BlueJS AST node.
@@ -635,6 +665,10 @@ fn debug_info_for_module(debug_info: &BlueTsDebugInfo, module_id: &str) -> BlueT
         .iter()
         .filter_map(|symbol| symbol.static_type)
         .collect::<BTreeSet<_>>();
+    let contract_ids = symbols
+        .iter()
+        .filter_map(|symbol| symbol.contract)
+        .collect::<BTreeSet<_>>();
     BlueTsDebugInfo {
         language_version: debug_info.language_version.clone(),
         compiler_options_hash: debug_info.compiler_options_hash.clone(),
@@ -651,6 +685,12 @@ fn debug_info_for_module(debug_info: &BlueTsDebugInfo, module_id: &str) -> BlueT
             .cloned()
             .collect(),
         symbols,
+        contracts: debug_info
+            .contracts
+            .iter()
+            .filter(|contract| contract_ids.contains(&contract.id))
+            .cloned()
+            .collect(),
     }
 }
 
@@ -772,6 +812,31 @@ fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> b
 }
 
 impl BlueTsSafePointMapV1 {
+    /// Finds the nearest bound entry at or after one TypeScript UTF-8 byte
+    /// position. This bound-only view is useful when a caller has retained the
+    /// map independently; [`DirectProgramAttachment::breakpoint_at_or_after`]
+    /// additionally preserves an explicitly unbound lowering span.
+    pub fn nearest_bound_safe_point_at_or_after(
+        &self,
+        source: &str,
+        source_byte: usize,
+    ) -> Option<bluejs::BlueJsSafePoint> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.source == source && entry.end_byte > source_byte)
+            .min_by_key(|entry| {
+                (
+                    entry.start_byte.saturating_sub(source_byte),
+                    entry.start_byte,
+                    entry.end_byte,
+                )
+            })
+            .map(|entry| bluejs::BlueJsSafePoint {
+                code_unit: entry.code_unit,
+                bytecode_offset: entry.bytecode_offset,
+            })
+    }
+
     /// Verifies this map against its exact live BlueJS generation. The caller
     /// must separately compare the retained compiler/source fingerprints with
     /// its authorized page-load request before exposing the map.

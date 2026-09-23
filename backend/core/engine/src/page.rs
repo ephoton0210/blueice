@@ -35,6 +35,10 @@ pub struct Page {
     viewport_height: f64,
     scroll_y: f64,
     url: Option<String>,
+    /// Monotonically changes whenever this navigable context receives a
+    /// replacement document. Page-script realms use it to distinguish a
+    /// same-origin navigation from the document that preceded it.
+    document_generation: u64,
     hovered: Option<NodeId>,
     focused: Option<NodeId>,
     highlighted: Option<NodeId>,
@@ -51,6 +55,7 @@ impl Page {
             viewport_height,
             scroll_y: 0.0,
             url: None,
+            document_generation: 0,
             hovered: None,
             focused: None,
             highlighted: None,
@@ -67,6 +72,7 @@ impl Page {
         // an unrelated node that happens to have been assigned the same
         // recycled ID (plan §1's stable-ID-across-mutations requirement).
         self.doc = blueice_html::parse_continuing_from(html, self.doc.next_node_id());
+        self.document_generation = self.document_generation.wrapping_add(1);
         let author = crate::stylesheet::extract_inline_stylesheets(&self.doc);
         self.styles = cascade(
             &self.doc,
@@ -305,6 +311,14 @@ impl Page {
         Ok(node_text_content(&self.doc, self.script_node(node)?))
     }
 
+    /// Returns a snapshot of the current document's recursive text content for
+    /// the first read-only BlueJS page binding. The value is copied into the
+    /// realm callback at binding installation, so it grants neither a DOM
+    /// reference nor a cross-document handle to the VM.
+    pub(crate) fn script_document_text_content(&self) -> String {
+        node_text_content(&self.doc, self.doc.root())
+    }
+
     /// Implements the narrow page-script `textContent` setter. Existing child
     /// subtrees are removed before a non-empty replacement text node is
     /// attached, matching the DOM operation's observable tree replacement.
@@ -360,6 +374,40 @@ impl Page {
 
     pub fn url(&self) -> Option<&str> {
         self.url.as_deref()
+    }
+
+    /// Returns this document's explicitly opted-in BlueTS script declarations
+    /// in source order. The result has no loader, origin, capability, or
+    /// execution authority; an external `src` remains only a declaration for
+    /// a future authorized page-script loader.
+    pub fn blue_ts_script_declarations(&self) -> Vec<crate::script::BlueTsPageScriptDeclaration> {
+        crate::script::discover_blue_ts_page_scripts(&self.doc)
+    }
+
+    /// Returns supported standard JavaScript declarations in source order.
+    /// Like the BlueTS accessor, this is observation only: an external `src`
+    /// remains inert until a core-owned host authorizes a closed source graph.
+    pub fn blue_js_script_declarations(&self) -> Vec<crate::script::BlueJsPageScriptDeclaration> {
+        crate::script::discover_blue_js_page_scripts(&self.doc)
+    }
+
+    /// Returns every supported page-script declaration under one document-order
+    /// sequence. Only the launcher-supervised shared BlueTS/JavaScript host
+    /// consumes this inventory; it remains an observation API with no source
+    /// loader, compiler-profile, DOM, or execution authority.
+    pub fn combined_page_script_declarations(
+        &self,
+    ) -> Vec<crate::script::CombinedPageScriptDeclaration> {
+        crate::script::discover_combined_page_scripts(&self.doc)
+    }
+
+    /// The identity of the currently loaded document within this page.
+    ///
+    /// This is intentionally crate-visible: it is a core lifecycle token, not
+    /// web-observable state. It lets the script host invalidate a realm even
+    /// when a navigation keeps the same origin.
+    pub(crate) fn document_generation(&self) -> u64 {
+        self.document_generation
     }
 
     pub fn viewport_size(&self) -> (f64, f64) {
@@ -615,6 +663,64 @@ mod tests {
             .commands
             .iter()
             .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "hi")));
+    }
+
+    #[test]
+    fn page_exposes_only_explicit_blue_ts_script_declarations() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"
+                <script>const javascript = true;</script>
+                <script type="application/x-blueice-typescript">const typed: number = 42;</script>
+                <script type="application/x-blueice-typescript-module" src="/module.ts"></script>
+            "#,
+            Some("https://example.test/".to_string()),
+        );
+
+        assert_eq!(
+            page.blue_ts_script_declarations(),
+            vec![
+                crate::script::BlueTsPageScriptDeclaration::Inline {
+                    ordinal: 0,
+                    kind: crate::script::direct_page::DirectPageScriptKind::Classic,
+                    source: "const typed: number = 42;".to_string(),
+                },
+                crate::script::BlueTsPageScriptDeclaration::External {
+                    ordinal: 1,
+                    kind: crate::script::direct_page::DirectPageScriptKind::Module,
+                    src: "/module.ts".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn page_exposes_standard_javascript_declarations_separately_from_bluets() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"
+                <script>const javascript = true;</script>
+                <script type="module">export const module = true;</script>
+                <script type="application/x-blueice-typescript">const typed: number = 42;</script>
+            "#,
+            Some("https://example.test/".to_string()),
+        );
+
+        assert_eq!(
+            page.blue_js_script_declarations(),
+            vec![
+                crate::script::BlueJsPageScriptDeclaration::Inline {
+                    ordinal: 0,
+                    kind: crate::script::BlueJsPageScriptKind::Classic,
+                    source: "const javascript = true;".to_string(),
+                },
+                crate::script::BlueJsPageScriptDeclaration::Inline {
+                    ordinal: 1,
+                    kind: crate::script::BlueJsPageScriptKind::Module,
+                    source: "export const module = true;".to_string(),
+                },
+            ]
+        );
     }
 
     #[test]

@@ -51,9 +51,27 @@
 //! error still means disconnect, exactly as before gating existed).
 
 use crate::gatekeeper_client::{self, NavOutcome};
-use crate::{script::ScriptRequestReceiver, Page, TabId, TabManager};
+#[cfg(unix)]
+use crate::script::javascript_child::{OutOfProcessJavaScriptPageExecutor, PageHostConnection};
+use crate::{
+    compiler_ipc::{CompilerServiceIpcRequestReceiver, CoreCompilerServiceSession},
+    debugger::DebuggerRequestReceiver,
+    script::{
+        direct_page::{DirectPageScriptHost, DirectPageScriptKind},
+        inline_runner::{DirectPageInlineExecutor, DirectPageScriptExecutionReport},
+        javascript::{
+            BlueTsPageExecutionReport, JavaScriptPageExecutionReport, PageJavaScriptExecutor,
+        },
+        ScriptRequestReceiver,
+    },
+    Page, TabId, TabManager,
+};
 use blueice_dom::NodeId;
-use blueice_ipc::{shm, ClientMessage, NodeAction, ServerMessage, TabSummary};
+use blueice_ipc::{
+    shm, BlueJsScriptExecutionOutcome, BlueJsScriptExecutionReport, BlueJsScriptKind,
+    BlueTsScriptExecutionOutcome, BlueTsScriptExecutionReport, BlueTsScriptKind, ClientMessage,
+    NodeAction, ServerMessage, TabSummary,
+};
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -76,6 +94,37 @@ const POLL_INTERVAL: Duration = Duration::from_millis(25);
 /// practice.
 pub trait ReadTimeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
+}
+
+/// Optional worker-to-session request channels for one core connection. The
+/// workers own decoded transport only; the session owns all live tab/document
+/// resolution. Grouping them keeps the composite lifecycle API explicit
+/// without growing an unbounded list of transport parameters.
+#[derive(Default)]
+pub struct CoreSessionRequests<'a> {
+    pub script: Option<&'a ScriptRequestReceiver>,
+    pub debugger: Option<&'a DebuggerRequestReceiver>,
+    /// The compiler listener's worker-to-session hand-off plus the sealed
+    /// core-owned catalog. Neither field is present in the ordinary browser
+    /// session, and the listener never receives the catalog itself.
+    pub compiler: Option<CoreCompilerSessionRequests<'a>>,
+}
+
+/// Compiler-specific half of [`CoreSessionRequests`]. Keeping the mutable
+/// sealed catalog paired with its receiver prevents a socket worker from
+/// observing or mutating compiler cache state directly.
+pub struct CoreCompilerSessionRequests<'a> {
+    pub receiver: &'a CompilerServiceIpcRequestReceiver,
+    pub service: &'a mut CoreCompilerServiceSession,
+}
+
+/// The mutually exclusive core-owned page-script lifecycle owners for one
+/// session. Keeping their relation explicit avoids an ever-growing internal
+/// session function signature and preserves the one-realm-owner invariant.
+struct PageScriptRuntime<'a> {
+    direct_page_host: Option<&'a mut DirectPageScriptHost>,
+    inline_page_executor: Option<&'a mut DirectPageInlineExecutor>,
+    javascript_executor: Option<&'a mut dyn PageJavaScriptExecutor>,
 }
 
 #[cfg(unix)]
@@ -124,7 +173,8 @@ fn is_timeout(err: &io::Error) -> bool {
 /// **Multi-tab addressing** (`phase-16-multi-tab-and-tab-groups/
 /// PLAN.md`'s minimal first slice): every per-tab-scoped message
 /// (`Navigate`, `Resize`, `Click`, `Hover`, `Scroll`,
-/// `GetRepresentation`, `ActOn`, `Highlight`, `GetDom`, `CloseTab`) is
+/// `GetRepresentation`, `ActOn`, `Highlight`, `GetDom`,
+/// `GetBlueTsScriptReports`, `CloseTab`) is
 /// addressed by the envelope's `tab_id` -- `None` resolves to
 /// [`TabManager::default_tab`], reproducing pre-Phase-16 single-`Page`
 /// behavior byte-for-byte for a client that never sends `OpenTab`. A
@@ -156,6 +206,265 @@ pub fn run_session_with_script_requests<S: Read + Write + ReadTimeout>(
     gatekeeper_socket: &Path,
     script_requests: Option<&ScriptRequestReceiver>,
 ) -> io::Result<()> {
+    run_session_with_script_requests_and_direct_page_host(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        script_requests,
+        None,
+    )
+}
+
+/// Like [`run_session_with_script_requests`], while an optional core-owned
+/// direct BlueTS host observes document/tab lifecycle boundaries. The host
+/// only synchronizes realms that previously admitted a direct script; ordinary
+/// pages never allocate a BlueJS realm merely because the session observed
+/// them. This is an in-process lifecycle seam, not an HTML script loader or
+/// out-of-process BlueJS supervisor.
+pub fn run_session_with_script_requests_and_direct_page_host<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    script_requests: Option<&ScriptRequestReceiver>,
+    direct_page_host: Option<&mut DirectPageScriptHost>,
+) -> io::Result<()> {
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        CoreSessionRequests {
+            script: script_requests,
+            debugger: None,
+            compiler: None,
+        },
+        PageScriptRuntime {
+            direct_page_host,
+            inline_page_executor: None,
+            javascript_executor: None,
+        },
+    )
+}
+
+/// Like [`run_session_with_script_requests_and_direct_page_host`], but with
+/// an explicitly configured inline BlueTS executor. Unlike the observer-only
+/// host seam, this runs the current document's opted-in inline declarations
+/// after each lifecycle batch. The default [`run_session`] does not enable it;
+/// callers must select a verified host profile when constructing the executor.
+pub fn run_session_with_script_requests_and_inline_page_executor<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    script_requests: Option<&ScriptRequestReceiver>,
+    inline_page_executor: Option<&mut DirectPageInlineExecutor>,
+) -> io::Result<()> {
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        CoreSessionRequests {
+            script: script_requests,
+            debugger: None,
+            compiler: None,
+        },
+        PageScriptRuntime {
+            direct_page_host: None,
+            inline_page_executor,
+            javascript_executor: None,
+        },
+    )
+}
+
+/// Like [`run_session_with_script_requests`], while routing debugger discovery
+/// requests through the owning session thread. The debugger receiver is a
+/// separate transport from the page-script receiver and can only inspect the
+/// live tab/document identity; it cannot borrow page or VM state.
+pub fn run_session_with_script_and_debugger_requests<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    script_requests: Option<&ScriptRequestReceiver>,
+    debugger_requests: Option<&DebuggerRequestReceiver>,
+) -> io::Result<()> {
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        CoreSessionRequests {
+            script: script_requests,
+            debugger: debugger_requests,
+            compiler: None,
+        },
+        PageScriptRuntime {
+            direct_page_host: None,
+            inline_page_executor: None,
+            javascript_executor: None,
+        },
+    )
+}
+
+/// Like [`run_session_with_script_and_debugger_requests`], with an optional
+/// sealed registered-project compiler session. This is the composite core
+/// startup seam used by the process binary when a trusted owner explicitly
+/// enabled its compiler listener; normal callers can continue using the
+/// narrower helper above and therefore have no compiler authority at all.
+pub fn run_session_with_core_session_requests<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    requests: CoreSessionRequests<'_>,
+) -> io::Result<()> {
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        requests,
+        PageScriptRuntime {
+            direct_page_host: None,
+            inline_page_executor: None,
+            javascript_executor: None,
+        },
+    )
+}
+
+/// Like [`run_session_with_script_and_debugger_requests`], while also running
+/// one explicitly configured inline BlueTS executor. This is the composite
+/// production seam used only when core selected both optional socket/profile
+/// features at startup.
+pub fn run_session_with_script_and_debugger_requests_and_inline_page_executor<
+    S: Read + Write + ReadTimeout,
+>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    requests: CoreSessionRequests<'_>,
+    inline_page_executor: Option<&mut DirectPageInlineExecutor>,
+) -> io::Result<()> {
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        requests,
+        PageScriptRuntime {
+            direct_page_host: None,
+            inline_page_executor,
+            javascript_executor: None,
+        },
+    )
+}
+
+/// Like [`run_session_with_script_and_debugger_requests`], while running one
+/// explicitly selected standard-JavaScript page executor. The executor may be
+/// the bounded in-process host or a separately configured launcher-supervised
+/// child connection; either way it has no DOM bindings and may not be paired
+/// with the separate BlueTS executor, which would otherwise allocate a second
+/// realm for the same page.
+pub fn run_session_with_script_and_debugger_requests_and_inline_javascript_executor<
+    S: Read + Write + ReadTimeout,
+>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    requests: CoreSessionRequests<'_>,
+    javascript_executor: Option<&mut dyn PageJavaScriptExecutor>,
+) -> io::Result<()> {
+    run_session_with_script_runtime(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        requests,
+        PageScriptRuntime {
+            direct_page_host: None,
+            inline_page_executor: None,
+            javascript_executor,
+        },
+    )
+}
+
+/// Like [`run_session_with_script_and_debugger_requests`], while routing page
+/// declarations through the explicitly configured launcher-supervised BlueJS
+/// child host. The caller must have obtained its socket and per-spawn
+/// capability through a trusted launcher boundary; normal sessions never
+/// construct this executor themselves.
+#[cfg(unix)]
+pub fn run_session_with_script_and_debugger_requests_and_out_of_process_javascript_executor<
+    S: Read + Write + ReadTimeout,
+>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    requests: CoreSessionRequests<'_>,
+    out_of_process_javascript_executor: Option<
+        &mut OutOfProcessJavaScriptPageExecutor<PageHostConnection>,
+    >,
+) -> io::Result<()> {
+    run_session_with_script_and_debugger_requests_and_inline_javascript_executor(
+        tabs,
+        stream,
+        frame_dir,
+        generation,
+        gatekeeper_socket,
+        requests,
+        out_of_process_javascript_executor
+            .map(|executor| executor as &mut dyn PageJavaScriptExecutor),
+    )
+}
+
+/// Shared session implementation for the observer-only direct host and the
+/// explicitly enabled inline runners. [`PageScriptRuntime`] rejects multiple
+/// hosts at once: independent hosts would allocate separate page realms for
+/// one page.
+fn run_session_with_script_runtime<S: Read + Write + ReadTimeout>(
+    tabs: &mut TabManager,
+    stream: &mut S,
+    frame_dir: &Path,
+    generation: &mut u64,
+    gatekeeper_socket: &Path,
+    requests: CoreSessionRequests<'_>,
+    mut page_script_runtime: PageScriptRuntime<'_>,
+) -> io::Result<()> {
+    if [
+        page_script_runtime.direct_page_host.is_some(),
+        page_script_runtime.inline_page_executor.is_some(),
+        page_script_runtime.javascript_executor.is_some(),
+    ]
+    .into_iter()
+    .filter(|enabled| *enabled)
+    .count()
+        > 1
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "page-script runtime owners cannot share one session",
+        ));
+    }
     // Best-effort: on at least one real platform, setting a read
     // timeout on a Unix domain socket whose peer has *already*
     // disconnected (a client that connects and drops the connection
@@ -174,10 +483,12 @@ pub fn run_session_with_script_requests<S: Read + Write + ReadTimeout>(
     if !perform_handshake(stream)? {
         return Ok(());
     }
+    synchronize_page_script_runtime(&mut page_script_runtime, tabs)?;
 
     let (completion_tx, completion_rx) = mpsc::channel::<Completion>();
     let mut pending_nav_seq: HashMap<TabId, u64> = HashMap::new();
 
+    let mut requests = requests;
     loop {
         match blueice_ipc::read_client_message_with_ids(stream) {
             Ok((tab_id, request_id, msg)) => {
@@ -283,6 +594,73 @@ pub fn run_session_with_script_requests<S: Read + Write + ReadTimeout>(
                         )?,
                         None => write_unknown_tab_error(stream, request_id, target)?,
                     },
+                    ClientMessage::GetBlueTsScriptReports => match tabs.get(target) {
+                        Some(_) => {
+                            if let Some(executor) =
+                                page_script_runtime.inline_page_executor.as_deref_mut()
+                            {
+                                blueice_ipc::write_server_message_with_ids(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    &ServerMessage::BlueTsScriptReports(inline_execution_reports(
+                                        executor.drain_reports_for_tab(target),
+                                    )),
+                                )?;
+                            } else if let Some(executor) =
+                                page_script_runtime.javascript_executor.as_deref_mut()
+                            {
+                                if executor.supports_blue_ts_page_execution() {
+                                    blueice_ipc::write_server_message_with_ids(
+                                        stream,
+                                        reply_tab,
+                                        request_id,
+                                        &ServerMessage::BlueTsScriptReports(
+                                            child_blue_ts_execution_reports(
+                                                executor.drain_blue_ts_reports_for_tab(target),
+                                            ),
+                                        ),
+                                    )?;
+                                } else {
+                                    write_error(
+                                        stream,
+                                        reply_tab,
+                                        request_id,
+                                        "inline BlueTS execution is not enabled".to_string(),
+                                    )?;
+                                }
+                            } else {
+                                write_error(
+                                    stream,
+                                    reply_tab,
+                                    request_id,
+                                    "inline BlueTS execution is not enabled".to_string(),
+                                )?;
+                            }
+                        }
+                        None => write_unknown_tab_error(stream, request_id, target)?,
+                    },
+                    ClientMessage::GetBlueJsScriptReports => match tabs.get(target) {
+                        Some(_) => match page_script_runtime.javascript_executor.as_deref_mut() {
+                            Some(executor) => blueice_ipc::write_server_message_with_ids(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                &ServerMessage::BlueJsScriptReports(
+                                    inline_javascript_execution_reports(
+                                        executor.drain_reports_for_tab(target),
+                                    ),
+                                ),
+                            )?,
+                            None => write_error(
+                                stream,
+                                reply_tab,
+                                request_id,
+                                "inline JavaScript execution is not enabled".to_string(),
+                            )?,
+                        },
+                        None => write_unknown_tab_error(stream, request_id, target)?,
+                    },
                     ClientMessage::ActOn { id, action } => match tabs.get_mut(target) {
                         Some(page) => {
                             let is_click = matches!(action, NodeAction::Click);
@@ -373,20 +751,217 @@ pub fn run_session_with_script_requests<S: Read + Write + ReadTimeout>(
             Err(_) => return Ok(()),       // client disconnected without an explicit Shutdown
         }
 
+        let mut synchronized_after_completion = false;
         while let Ok(completion) = completion_rx.try_recv() {
-            apply_completion(
+            synchronized_after_completion |= apply_completion(
                 tabs,
                 stream,
                 frame_dir,
                 generation,
                 &pending_nav_seq,
                 completion,
+                &mut page_script_runtime,
             )?;
         }
-        if let Some(script_requests) = script_requests {
+        if let Some(script_requests) = requests.script {
             script_requests.dispatch_pending(tabs);
         }
+        if let Some(debugger_requests) = requests.debugger {
+            let debugger_executor = page_script_runtime.javascript_executor.as_deref_mut();
+            debugger_requests.dispatch_pending(tabs, debugger_executor);
+        }
+        if let Some(compiler_requests) = requests.compiler.as_mut() {
+            compiler_requests
+                .service
+                .dispatch_pending(compiler_requests.receiver);
+        }
+        // `apply_completion` already synchronized the just-admitted document
+        // before publishing its navigation reply. Do not immediately run a
+        // second lifecycle turn here: that would make a newly admitted
+        // root-entry debugger program execute before its peer can even ask
+        // for the opaque location needed to arm it.
+        if !synchronized_after_completion {
+            synchronize_page_script_runtime(&mut page_script_runtime, tabs)?;
+        }
     }
+}
+
+/// Converts core-owned direct-page execution records into the public IPC
+/// observation format. Deliberately map only the fixed report category: page
+/// source, compiler diagnostics, and runtime values never cross this boundary.
+fn inline_execution_reports(
+    reports: Vec<DirectPageScriptExecutionReport>,
+) -> Vec<BlueTsScriptExecutionReport> {
+    reports
+        .into_iter()
+        .map(|report| match report {
+            DirectPageScriptExecutionReport::Executed {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+            } => BlueTsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: inline_script_kind(kind),
+                outcome: BlueTsScriptExecutionOutcome::Executed,
+            },
+            DirectPageScriptExecutionReport::Rejected {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+                message,
+            } => BlueTsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: inline_script_kind(kind),
+                outcome: BlueTsScriptExecutionOutcome::Rejected { category: message },
+            },
+        })
+        .collect()
+}
+
+fn inline_script_kind(kind: DirectPageScriptKind) -> BlueTsScriptKind {
+    match kind {
+        DirectPageScriptKind::Classic => BlueTsScriptKind::Classic,
+        DirectPageScriptKind::Module => BlueTsScriptKind::Module,
+    }
+}
+
+/// Converts core-owned standard JavaScript execution records into the public
+/// source-free observation format. As with BlueTS reports, no source,
+/// diagnostic, bytecode, program identity, or completion value can cross this
+/// control-plane query.
+fn inline_javascript_execution_reports(
+    reports: Vec<JavaScriptPageExecutionReport>,
+) -> Vec<BlueJsScriptExecutionReport> {
+    reports
+        .into_iter()
+        .map(|report| match report {
+            JavaScriptPageExecutionReport::Executed {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+            } => BlueJsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: inline_javascript_kind(kind),
+                outcome: BlueJsScriptExecutionOutcome::Executed,
+            },
+            JavaScriptPageExecutionReport::Rejected {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+                category,
+            } => BlueJsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: inline_javascript_kind(kind),
+                outcome: BlueJsScriptExecutionOutcome::Rejected {
+                    category: category.to_string(),
+                },
+            },
+        })
+        .collect()
+}
+
+fn inline_javascript_kind(kind: crate::script::BlueJsPageScriptKind) -> BlueJsScriptKind {
+    match kind {
+        crate::script::BlueJsPageScriptKind::Classic => BlueJsScriptKind::Classic,
+        crate::script::BlueJsPageScriptKind::Module => BlueJsScriptKind::Module,
+    }
+}
+
+/// Converts the private child-host BlueTS outcomes into the existing
+/// language-specific, source-free control-plane report shape. The direct
+/// child remains the owner of compiler artifacts and runtime state.
+fn child_blue_ts_execution_reports(
+    reports: Vec<BlueTsPageExecutionReport>,
+) -> Vec<BlueTsScriptExecutionReport> {
+    reports
+        .into_iter()
+        .map(|report| match report {
+            BlueTsPageExecutionReport::Executed {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+            } => BlueTsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: child_blue_ts_kind(kind),
+                outcome: BlueTsScriptExecutionOutcome::Executed,
+            },
+            BlueTsPageExecutionReport::Rejected {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind,
+                category,
+            } => BlueTsScriptExecutionReport {
+                tab_id,
+                document_generation,
+                ordinal,
+                kind: child_blue_ts_kind(kind),
+                outcome: BlueTsScriptExecutionOutcome::Rejected {
+                    category: category.to_string(),
+                },
+            },
+        })
+        .collect()
+}
+
+fn child_blue_ts_kind(kind: crate::script::direct_page::DirectPageScriptKind) -> BlueTsScriptKind {
+    match kind {
+        crate::script::direct_page::DirectPageScriptKind::Classic => BlueTsScriptKind::Classic,
+        crate::script::direct_page::DirectPageScriptKind::Module => BlueTsScriptKind::Module,
+    }
+}
+
+fn synchronize_page_script_runtime(
+    page_script_runtime: &mut PageScriptRuntime<'_>,
+    tabs: &TabManager,
+) -> io::Result<()> {
+    if let Some(direct_page_host) = page_script_runtime.direct_page_host.as_deref_mut() {
+        direct_page_host.synchronize_tabs(tabs).map_err(|error| {
+            io::Error::other(format!(
+                "direct page lifecycle synchronization failed: {error}"
+            ))
+        })?;
+    }
+    synchronize_inline_page_executor(&mut page_script_runtime.inline_page_executor, tabs)?;
+    synchronize_javascript_executor(&mut page_script_runtime.javascript_executor, tabs)?;
+    Ok(())
+}
+
+fn synchronize_javascript_executor(
+    javascript_executor: &mut Option<&mut dyn PageJavaScriptExecutor>,
+    tabs: &TabManager,
+) -> io::Result<()> {
+    if let Some(javascript_executor) = javascript_executor.as_deref_mut() {
+        javascript_executor.synchronize_and_execute(tabs)?;
+    }
+    Ok(())
+}
+
+fn synchronize_inline_page_executor(
+    inline_page_executor: &mut Option<&mut DirectPageInlineExecutor>,
+    tabs: &TabManager,
+) -> io::Result<()> {
+    if let Some(inline_page_executor) = inline_page_executor.as_deref_mut() {
+        inline_page_executor
+            .synchronize_and_execute(tabs)
+            .map_err(|error| io::Error::other(format!("inline page execution failed: {error}")))?;
+    }
+    Ok(())
 }
 
 /// Which reply variant a background gated navigation's eventual
@@ -534,7 +1109,8 @@ fn apply_completion<S: Write>(
     generation: &mut u64,
     pending_nav_seq: &HashMap<TabId, u64>,
     completion: Completion,
-) -> io::Result<()> {
+    page_script_runtime: &mut PageScriptRuntime<'_>,
+) -> io::Result<bool> {
     let Completion {
         tab_id,
         seq,
@@ -543,11 +1119,11 @@ fn apply_completion<S: Write>(
         outcome,
     } = completion;
     if pending_nav_seq.get(&tab_id) != Some(&seq) {
-        return Ok(()); // superseded by a later navigation to this tab
+        return Ok(false); // superseded by a later navigation to this tab
     }
-    let Some(page) = tabs.get_mut(tab_id) else {
-        return Ok(()); // the tab closed while this navigation was pending
-    };
+    if tabs.get(tab_id).is_none() {
+        return Ok(false); // the tab closed while this navigation was pending
+    }
     let reply_tab = Some(tab_id.as_u64());
     match outcome {
         NavOutcome::Cleared {
@@ -555,7 +1131,16 @@ fn apply_completion<S: Write>(
             final_url,
             html,
         } => {
-            page.apply_fetched(clearance, &final_url, &html);
+            tabs.get_mut(tab_id)
+                .expect("the checked live tab must remain available on this session thread")
+                .apply_fetched(clearance, &final_url, &html);
+            // A configured runner observes the loaded document before its
+            // first success reply/frame. This preserves future DOM script
+            // semantics while the default session has no runner at all.
+            synchronize_page_script_runtime(page_script_runtime, tabs)?;
+            let page = tabs
+                .get(tab_id)
+                .expect("the session thread exclusively owns the checked tab");
             reply_success(
                 page,
                 stream,
@@ -565,7 +1150,8 @@ fn apply_completion<S: Write>(
                 request_id,
                 &kind,
                 tab_id.as_u64(),
-            )
+            )?;
+            Ok(true)
         }
         NavOutcome::GatekeeperBlocked {
             reason,
@@ -580,8 +1166,11 @@ fn apply_completion<S: Write>(
                 category,
                 url,
             },
-        ),
-        NavOutcome::FetchFailed { message } => write_error(stream, reply_tab, request_id, message),
+        )
+        .map(|()| false),
+        NavOutcome::FetchFailed { message } => {
+            write_error(stream, reply_tab, request_id, message).map(|()| false)
+        }
     }
 }
 

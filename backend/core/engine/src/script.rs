@@ -18,11 +18,32 @@ use std::sync::mpsc;
 /// navigation completions in one session-loop turn.
 const MAX_SCRIPT_REQUESTS_PER_SESSION_TICK: usize = 64;
 
+/// First live host-to-script contract inventory for direct BlueTS page
+/// bindings. It contains only bindings that this core host actually installs.
+pub mod contracts;
+mod declarations;
 pub mod direct_page;
 /// Deterministic host typing artifacts derived from the core-owned binding
-/// surface. The initial profile deliberately exposes no JavaScript globals:
-/// core's narrow IPC dispatcher is not itself a BlueJS DOM binding.
+/// surface. The empty profile deliberately exposes no JavaScript globals;
+/// `core-script-document-text-v1` is the one checked-in profile with a
+/// matching direct-page runtime binding.
 pub mod host_typings;
+/// Immutable startup-configured HTTP(S) resource authority for the optional
+/// launcher-supervised page host. It returns closed graphs only and exposes no
+/// network or resolver capability to page code.
+#[cfg(unix)]
+pub mod http_resource_authorizer;
+pub mod inline_runner;
+pub mod javascript;
+#[cfg(unix)]
+pub mod javascript_child;
+pub mod page_source_authorizer;
+pub use declarations::{
+    discover_blue_js_page_scripts, discover_blue_ts_page_scripts, discover_combined_page_scripts,
+    BlueJsPageScriptDeclaration, BlueJsPageScriptKind, BlueTsPageScriptDeclaration,
+    CombinedPageScriptDeclaration, CombinedPageScriptLanguage, BLUE_TS_CLASSIC_SCRIPT_TYPE,
+    BLUE_TS_MODULE_SCRIPT_TYPE,
+};
 
 /// Sender owned by a script-socket worker. Sending a request blocks until the
 /// core session has applied it to the currently live [`TabManager`] and

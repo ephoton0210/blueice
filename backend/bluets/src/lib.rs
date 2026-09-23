@@ -39,13 +39,16 @@ pub use compiler::{
 pub use contracts::{
     Contract, ContractError, ContractPlan, ContractValue, ValidationError, ValidationLimits,
 };
-pub use debug_info::{BlueTsDebugInfo, DebugSource, DebugSymbol, DebugType, SymbolId, TypeId};
+pub use debug_info::{
+    BlueTsDebugInfo, ContractId, DebugContract, DebugSource, DebugSymbol, DebugType, SourceId,
+    SymbolId, TypeId,
+};
 pub use diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
 pub use emitter::{BuildArtifact, BuildOutput, SourceMap};
 pub use parser::{
-    Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch, FunctionIfStatement,
-    ImportDeclaration, InterfaceDeclaration, Module, Parameter, ParserLimits, RawDeclaration,
-    TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, ValueExportBinding,
+    parse_module, Declaration, FunctionBodyItem, FunctionDeclaration, FunctionElseBranch,
+    FunctionIfStatement, ImportDeclaration, InterfaceDeclaration, Module, Parameter, ParserLimits,
+    RawDeclaration, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, ValueExportBinding,
     ValueExportDeclaration, VariableDeclaration, VariableKind,
 };
 pub use syntax::{lex, Token, TokenKind};

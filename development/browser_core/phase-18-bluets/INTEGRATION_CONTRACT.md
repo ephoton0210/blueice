@@ -70,6 +70,100 @@ after its navigation/reload and close operations. It has no page discovery,
 DOM binding, transport, cache, or hibernation authority; a real host must
 route those lifecycle events through this owner or enforce the same rule.
 
+`blueice_engine::script::direct_page::DirectPageScriptHost` is the first
+core-side adapter for that lifecycle rule. A direct request carries a typed
+`TabId`; it MUST NOT carry a caller-selected origin. Before an attachment, the
+adapter resolves the live `Page` from `TabManager`, accepts only a loaded
+HTTP(S) URL, and derives the network layer's canonical tuple origin. It records
+the page's core-private document generation alongside that origin. A changed
+generation MUST call realm navigation even if the tuple origin is unchanged,
+so a same-origin document replacement cannot retain the preceding document's
+programs or static metadata. A missing tab, URL-less page, or unsupported
+scheme closes any tracked realm for that tab and fails the request. A direct
+admission attempt performs this synchronization before examining any
+caller-controlled compiler/profile input or whether an inline declaration uses
+an external `src`, so a rejected request cannot preserve the preceding
+document's realm. A lifecycle owner MAY call `synchronize_tabs` to release
+realms for closed tabs;
+the optional
+`run_session_with_script_requests_and_direct_page_host` entry point invokes it
+after each session batch. The default session and default production startup
+path do not construct this direct host. The separate, explicitly selected
+inline-executor binary mode described below is not an automatic JavaScript
+page-script loader or launcher-managed process wiring. A core owner may
+construct the host with a previously validated `DirectPageRealmOwner`; its VM, realm,
+program-count, bytecode, and static-debug retention limits are then fixed
+outside each script request. An over-budget attachment is rejected before
+execution and leaves no retained direct program or static debug record.
+
+The parsed core `Page` exposes `BlueTsPageScriptDeclaration` values in document
+order for exactly `application/x-blueice-typescript` (classic) and
+`application/x-blueice-typescript-module` (module). A declaration retains
+either inline source or its raw external `src`; it MUST NOT cause a fetch,
+filesystem read, canonical module-ID minting, resolver construction, profile
+selection, or program admission by itself. A page loader must perform those
+policy steps and submit an `AuthorizedModuleLoader` to the host before any
+declaration can execute. Plain JavaScript and `text/typescript` are not an
+implicit BlueTS opt-in.
+
+The core `DirectPageScriptHost::execute_inline` helper is the bounded exception
+for one inline declaration: it derives a `blueice://page/` source identity from
+the typed tab ID, private replacement-document generation, and declaration
+ordinal; constructs exactly one `AuthorizedModule` with no resolution edges;
+then passes it through the same verified-profile admission path. The source ID
+contains no caller-controlled URL component, and a new document receives a new
+identity. It MUST reject an external `src` rather than loading it. A runtime
+import in that one-module graph remains an ordinary closed-loader resolution
+failure; external scripts and module graphs still require a page loader to
+authorize canonical records and exact edges.
+
+For every admitted in-process realm, `DirectPageScriptHost::realm_stats` and
+`DirectPageInlineExecutor::realm_stats` expose only the tab identity, canonical
+origin, retained program count, root-bytecode charge, and BlueJS heap totals.
+They MUST NOT expose a VM, source text, bytecode, object ID, or runtime value.
+Replacing or closing a document releases its prior realm's program and bytecode
+charge before statistics for the successor realm are observed.
+
+`DirectPageInlineExecutor` is the sole shipped automatic caller of that inline
+helper. A core owner MUST construct it with a known host-profile catalog,
+selected profile, and compiler options; it may also supply a validated
+`DirectPageRealmOwner`, fixing VM, realm, program-count, bytecode, and
+static-debug retention limits before a declaration is observed. It generates
+the matching typing artifact itself and rejects caller-supplied ambient declarations and
+`transpile-only`. At each session lifecycle observation it synchronizes prior
+realms, then runs a document's inline opted-in declarations at most once in
+document order. On a successful fetched navigation this happens after the new
+document is applied but before its success reply and first frame, so a future
+DOM binding cannot make the initial frame stale. A rejection of one declaration MUST NOT prevent a later
+declaration from being considered. By default, external declarations produce a
+bounded, source-free rejection report and MUST NOT fetch, resolve, or reflect
+their page-controlled `src`.
+
+`PageScriptSourceAuthorizer` is the only exception for an external declaration.
+It is core-owned and receives the document/tab/generation/ordinal context plus
+the raw page URL and `src`; before returning, it MUST apply its own origin,
+policy, integrity, fetch/cache, and resource rules. It returns an
+`AuthorizedPageScriptGraph` containing a closed `AuthorizedModuleLoader`, one
+canonical entry ID, and a non-empty resolver fingerprint. The executor passes
+only those records to direct admission and overwrites its compiler resolver
+fingerprint with the supplied value; it performs no URL resolution, fetch, or
+fallback lookup. Authorizer failures remain source-free in execution reports.
+Reports contain neither source text nor a BlueJS runtime value.
+`run_session_with_script_requests_and_inline_page_executor` is an explicit
+opt-in; `run_session` and the default `blueice-core` startup path do not
+construct an executor. `blueice-core --inline-bluets-profile <known-profile>`
+is the sole shipped process-level opt-in: the executable selects the profile
+and its fixed default compiler policy before accepting a page, while page
+content has no profile/policy control. Once it is enabled, the frontend
+`GetBlueTsScriptReports` request MAY drain records only for its addressed live
+tab. The reply carries a tab ID, private document generation, declaration
+ordinal, classic/module kind, and either `Executed` or a bounded rejection
+category. It MUST NOT carry source text, source spans, compiler diagnostics,
+bytecode, VM/object handles, or runtime values; requesting it MUST NOT enable
+the executor, and an unconfigured core rejects the request. This seam does not
+implement a real fetch/cache/integrity provider, DOM bindings, debugger
+transport, or an out-of-process BlueJS host.
+
 One page realm owns at most one live or previously linked program for each
 canonical ESM module ID. BlueJS retains module cells by that ID, so a second
 artifact with the same identity is rejected even after its original handle was
@@ -183,9 +277,67 @@ SafePointEntryV1 {
 
 The tuple `(code_unit, bytecode_offset)` names a BlueJS-defined instruction boundary at which execution may safely pause. Entries MUST be sorted by `(code_unit, bytecode_offset, source, start_byte, end_byte)`, be unique for an identical tuple, and be validated by BlueJS against the generated code unit. `program_generation` is opaque and changes whenever that program is replaced; safe-point identifiers are not persisted across reloads or cache eviction.
 
-Only source spans that explain a reachable instruction may be attached. An erased annotation can be recorded as nearby provenance, but MUST NOT become a standalone breakpoint target. The current direct attachment maps only a verified top-level AST statement to its compiler-recorded root instruction; if it emitted none, it retains an explicit unbound result. A future source-breakpoint resolver may select the nearest following permitted safe point under a declared same-module/range policy; if none exists, the debugger reports an unbound breakpoint. A stale request—wrong generation, ABI, fingerprint, source-set hash, code unit, or instruction boundary—MUST be rejected, never remapped heuristically.
+Only source spans that explain a reachable instruction may be attached. An erased annotation can be recorded as nearby provenance, but MUST NOT become a standalone breakpoint target. The current direct attachment maps only a verified top-level AST statement to its compiler-recorded root instruction; if it emitted none, it retains an explicit unbound result. `DirectProgramAttachment::breakpoint_at_or_after` now applies the declared same-canonical-module, UTF-8-byte policy: it chooses the containing top-level span, or the nearest following span, and returns that span's verified safe point or explicit `Unbound`. It never substitutes a later statement for an unbound span. `BlueTsSafePointMapV1::nearest_bound_safe_point_at_or_after` is the retained-map counterpart when no unbound provenance is available. A caller MUST validate a map against its exact live registry handle before exposing either result. A stale request—wrong generation, ABI, fingerprint, source-set hash, code unit, or instruction boundary—MUST be rejected, never remapped heuristically.
 
 Source locations use UTF-8 byte offsets at this boundary. BlueTSC's Source Map v3 conversion continues to use UTF-16 generated/original columns, including a single line transition for CRLF. Consumers must convert explicitly at the display boundary and must not mix these two coordinate systems.
+
+## BlueJS host callback boundary
+
+`blueice_bluejs::Vm` supplies the low-level, realm-local callback mechanism
+used to install bindings. `install_host_function` creates a non-constructable
+global callback; `install_host_object` creates an opaque global host object;
+and `install_host_method` adds a non-constructable callback to that object.
+The VM retains callbacks privately; native function objects retain only a
+registry index. An object handle from a different realm, an invalid name, or a
+property collision is rejected.
+
+`HostFunction` receives and returns only `HostValue::Undefined`, `Null`,
+`Bool`, `Number`, or `String`. Objects, `Symbol`, and `BigInt` are rejected
+before callback dispatch, so neither a callback nor its retained Rust state can
+hold a BlueJS object identity beyond GC-visible VM roots. A callback error is
+converted to a JavaScript `TypeError`; its text is host-controlled and MUST NOT
+reflect page-controlled data without the host's own disclosure policy.
+
+`BlueJsPageRuntime::configure_realm_bindings` provides the only page-runtime
+path to this mechanism. It lends a `BlueJsHostBindingRegistrar` for a single
+live tab realm; that registrar can install only global functions, host objects,
+and methods, not execute bytecode, inspect source, access the heap, or retrieve
+VM objects.
+Bindings belong to that realm VM and are discarded on navigation, reload, or
+close. An unknown realm and a failed installation reject without an implicit
+realm allocation or a partial program execution.
+
+This is a binding mechanism, not a general page API. `DirectPageScriptHost`
+currently recognizes two canonical non-empty profiles.
+`core-script-document-text-v1` installs `blueiceDocumentText(): string` as the
+stable `dom.document-text` `dom-read` binding. It captures one document's
+recursive text when the profile is installed, accepts no arguments, and returns
+the copied string; it does not expose a DOM reference, node identity, mutable
+operation, or event. `core-script-document-context-v1` composes that same
+binding with `blueiceDocumentOrigin(): string` (`dom.document-origin`). The
+origin is the core-derived canonical tuple origin only: it excludes the page
+URL's path, query, fragment, and URL-object identity. A profile switch in one
+realm is rejected, and navigation must install fresh snapshots in its
+replacement realm. Every other non-empty profile is rejected unless the host
+adds its matching runtime installer. The inline executor may select either
+verified profile through its owned direct host; the default production session
+still constructs no executor. A future binding profile MUST pair every
+installed value with the generated typing inventory, a stable binding ID, and
+its declared capability/origin policy before it can be advertised in
+`lib.blueice.d.ts`.
+
+Before a matching callback captures either copied result, core validates it as
+a pure string result boundary: `dom.document-text` uses
+`core-script-document-text-result-v1`, while `dom.document-origin` uses
+`core-script-document-origin-result-v1`. Both are `host-to-script`, `dom-read`
+boundaries with no script-provided value; the former uses the validator's
+default 1 MiB string budget and the latter a 4 KiB canonical-origin budget.
+The limits belong to the core-created page host, never the page request. A
+validation failure rejects profile installation before direct compilation can
+admit bytecode, and an inline execution report reduces it to a source-free
+host-contract rejection. This is deliberately an inventory for only these
+immutable primitive snapshots, not a claim of DOM-object, JSON, Fetch/XHR,
+storage, messaging, foreign-module, or extension contract coverage.
 
 ## Host-generated `lib.blueice.d.ts`
 
@@ -221,9 +373,14 @@ The manifest is emitted with a stable field order, normalized LF text and no tim
 The current `core-script-empty-v1` profile provides a checked-in,
 byte-for-byte reproducible empty declaration root and manifest. Core's narrow
 script IPC dispatcher is not a BlueJS object binding, so this profile MUST NOT
-declare `document`, DOM node types, or any other global until the long-lived
-BlueJS host installs it from the same runtime-binding inventory. The profile
-catalog and artifact validator already reject unknown profiles, ABI/identity
+declare `document`, DOM node types, or any other global. The additional
+`core-script-document-text-v1` checked-in artifact declares exactly
+`blueiceDocumentText(): string`; the composed
+`core-script-document-context-v1` artifact adds exactly
+`blueiceDocumentOrigin(): string`, which returns only the canonical tuple
+origin. The direct host verifies either canonical artifact and inventory before
+installing their matching snapshot callbacks. The profile catalog and artifact
+validator reject unknown profiles, ABI/identity
 and schema drift, binding-inventory drift, and declaration-byte drift without
 fallback. The generated artifact additionally verifies that a host's installed
 runtime registration records equal the schema-derived inventory regardless of
@@ -233,10 +390,18 @@ checks before producing one canonical `.d.ts` `ModuleSource` for
 `CompilerOptions::ambient_declaration_modules`. BlueTS parses this source under
 the normal source/module limits, includes its bytes in compiler fingerprints
 and static metadata, forbids imports/re-exports from it, and exposes only its
-static declarations; it produces no JavaScript or host capability. The
-standalone `bluetsc` leaves this host-only input empty. This establishes direct
-compiler consumption without advertising a page API before the BlueJS host has
-installed matching bindings.
+static declarations; it produces no JavaScript or host capability. Direct-page
+admission also enables the fingerprinted `require_declared_global_calls`
+policy, so a direct call must resolve to a local function or this verified
+ambient root before bytecode is admitted. The standalone `bluetsc` leaves both
+host-only facilities unavailable. This policy also contributes to
+`BlueTsDebugInfo`'s compiler-options hash, so a retained static record cannot
+cross the direct-page/standalone policy boundary. The empty profile therefore
+rejects `blueiceDocumentText()` and `blueiceDocumentOrigin()` statically, while an
+unconfigured raw BlueJS realm rejects either at runtime; the matching profile
+both checks and installs them. This
+establishes one truthful page capability without advertising a broad DOM API
+before matching runtime bindings exist.
 
 The direct bridge also retains `BlueTsDebugInfo` only through its exact live
 BlueJS generation when a caller opts into `DirectDebugRegistry`. Retention
@@ -248,15 +413,48 @@ not provide page-lifetime automation, diagnostics/contracts retention, source
 authorization, stack locations, scopes, runtime type inspection, pause
 mechanics, or debugger IPC.
 
+`blueice_ipc::debugger` now defines the separately framed v4 native debugger
+boundary. Its realm, program, and safe-point tuples include exact generations,
+and its capability response distinguishes `available`, `planned`, and
+`unsupported`. The v4 handshake rejects v1 through v3 peers before they receive
+the expanded capability/reply shapes. A core session that explicitly owns a
+live `--inline-bluejs` executor now serves source-free `ListPrograms`, bounded
+`ListSafePoints`, and `ValidateSafePoint` operations by resolving core-minted
+opaque program IDs through `BlueJsPageRuntime`'s exact tab-owned registry. A
+returned `(code-unit, offset)` is a compiler-verified instruction boundary,
+not source text or bytecode contents; wrong tab/realm/program generation and
+malformed boundaries fail closed. The same live executor serves bounded,
+idempotent `SetBreakpoint`, `ListBreakpoints`, and `ClearBreakpoint`
+configuration operations. A configuration record contains only the exact
+opaque safe-point tuple, is revalidated before insertion/removal, and is
+dropped before its tab realm is navigated, replaced, or closed. The available
+`BreakpointConfiguration` capability means only this lifecycle-bound table.
+When the core has both `--inline-bluejs` and a private debugger socket, its
+post-navigation admission turn does not immediately execute a newly admitted
+declaration. Each handshaken bounded discovery/configuration request retains it
+through one further session turn, so v4's `ArmEntryBreakpoint` can accept only
+that declaration's exact compiler-verified root-code-unit instruction-zero
+boundary; the session owner reports a source-free `Paused` state before the
+ordinary BlueJS VM entry point runs.
+`GetExecutionState` and `ResumeExecution` expose only pending/paused/resuming/
+completed state and cannot inject a value or exception. This is a real but
+zero-execution continuation: it does not preserve a live interpreter frame,
+operand stack, handler state, GC roots, or nested calls. Therefore only the
+limited root-entry `Breakpoints` and `PauseResume` capabilities are available;
+arbitrary safe-point interruption, stepping, stack, scope, and value
+capabilities remain planned. A stored non-entry configuration record MUST NOT
+be presented as a breakpoint hit or paused state. A host MUST NOT advertise
+those later capabilities until the corresponding native path exists.
+
 Adding a host API is additive only when it preserves existing binding IDs and declaration meanings. Removing or changing a public declaration requires a new host API major version and a new compatible feature profile. A compiler may target a declared older profile only when the host explicitly supplies its matching generated manifest; it may never infer API availability from the installed BlueJS version.
 
 ## Remaining implementation gate
 
 The first structured classic-script and resolver-preserving module-graph bridge has landed. Direct-page activation remains gated on its owner providing:
 
-1. Integrate the shipped public, tested BlueJS node IDs, code-unit IDs, and safe-point validation APIs into the process-owned page host and native debugger channel. `BlueJsPageRuntime` already validates them for the exact live tab-owned generation, but it does not expose a debugger wire protocol or pause execution.
+1. Extend the shipped source-free program-location, lifecycle-bound breakpoint-configuration, and root-entry pause wire path into production page-host ownership and general pause-capable debugger execution. The current opt-in core seam pauses only before any JavaScript bytecode begins; it has no source-level page map, arbitrary breakpoint hook, VM continuation, or out-of-process ownership.
 2. Bridge conformance fixtures extending the shipped no-emitted-JavaScript-reparse proof to exact origin/module preservation and deterministic bytecode-map ordering.
-3. A host schema generator proving each generated `lib.blueice.d.ts` binding exists in the corresponding feature profile and that an absent binding is rejected by both checker and host. The generator, profile catalog, byte-exact manifest validator, and deliberately empty initial fixture are shipped; matching BlueJS bindings and direct-page compiler enforcement are still required.
+3. Preserve the host-schema invariant for every future binding: its generated `lib.blueice.d.ts` declaration, exact profile inventory, BlueJS installation, and static/runtime absence behavior must be covered together. The shipped `core-script-document-text-v1` and `core-script-document-context-v1` profiles meet this rule: the direct-page compiler rejects their globals under the empty profile before VM admission, and an unconfigured BlueJS realm rejects them at runtime.
 4. Debugger tests for breakpoint binding, step/exception locations, stale-map rejection and the distinction between a static TypeScript type and a runtime BlueJS value.
 
 Until those gates are satisfied, `BlueTsDebugInfo` remains VM-independent and contains static source/type/symbol data only. This document records the shipped bounded hand-off and fixes the rejection behavior for the still-missing page APIs.

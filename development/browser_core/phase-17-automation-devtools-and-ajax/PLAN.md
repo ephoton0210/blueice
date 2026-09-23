@@ -194,7 +194,7 @@ The default external endpoint is a per-user Unix socket protected by filesystem 
 - [x] Decide that DevTools, Playwright-shaped workflows, Selenium/WebDriver and CDP compatibility share one native automation service
 - [x] Decide that Fetch/XHR share one `core`-owned request service and that BlueJS has no direct socket access
 - [x] Define the compatibility, security, event-ordering and staged-delivery contracts above
-- [ ] Define and implement the versioned `blueice_ipc::automation`, `blueice_ipc::network` and `blueice_ipc::debugger` modules and public error/capability schemas
+- [ ] Define and implement the versioned `blueice_ipc::automation`, `blueice_ipc::network` and `blueice_ipc::debugger` modules and public error/capability schemas. `blueice_ipc::debugger` now supplies a separately framed v1 handshake, page-realm/program/safe-point generation identities, capability-report schema, and stable error taxonomy; it has no listener, core/BlueJS routing, native command implementation, or advertised available debugger capability yet. Automation and network have not started.
 - [ ] Refactor `TabManager` around browser contexts while retaining the current default-tab wire compatibility
 - [ ] Build the local, authenticated automation adapter and inspection/locator/input slice
 - [ ] Build the first-party DevTools Elements, Accessibility, Console, Network and Sources panels

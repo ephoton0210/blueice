@@ -184,6 +184,8 @@ pub(crate) enum DatePart {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NativeFunction {
+    /// A realm-private embedding callback stored in [`crate::Vm`].
+    Host(u32),
     Function,
     /// The intrinsic constructor reached through an async function's
     /// `constructor` property. It is deliberately not installed as a global.

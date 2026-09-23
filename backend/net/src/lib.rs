@@ -59,12 +59,43 @@ pub struct FetchedPage {
 /// URL still gets an immediate error reply -- see that module's own
 /// docs) doesn't have to duplicate the check or its message format.
 pub fn validate_url_scheme(url: &str) -> Result<(), FetchError> {
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(FetchError::InvalidUrl(format!(
-            "unsupported scheme in {url:?} (only http/https are supported)"
-        )));
-    }
-    Ok(())
+    canonical_http_origin(url).map(|_| ())
+}
+
+/// Returns the canonical tuple origin for a complete HTTP(S) URL without
+/// performing a request. This is the shared core policy boundary for callers
+/// that need to scope state (such as a page script realm) to the document that
+/// navigation accepted, rather than treating an arbitrary input string as an
+/// origin identity.
+///
+/// The network client itself already uses `ureq`'s HTTP URI implementation;
+/// relying on that parser here avoids creating a second URL grammar at the
+/// page-host boundary. Host names are ASCII-case-normalized and default ports
+/// are omitted, which gives the same origin identity to ordinary equivalent
+/// HTTP URI spellings.
+pub fn canonical_http_origin(url: &str) -> Result<String, FetchError> {
+    let uri = url
+        .parse::<ureq::http::Uri>()
+        .map_err(|error| FetchError::InvalidUrl(format!("malformed URL {url:?}: {error}")))?;
+    let scheme = match uri.scheme_str() {
+        Some(scheme) if scheme.eq_ignore_ascii_case("http") => "http",
+        Some(scheme) if scheme.eq_ignore_ascii_case("https") => "https",
+        _ => {
+            return Err(FetchError::InvalidUrl(format!(
+                "unsupported scheme in {url:?} (only http/https are supported)"
+            )));
+        }
+    };
+    let host = uri
+        .host()
+        .filter(|host| !host.is_empty())
+        .ok_or_else(|| FetchError::InvalidUrl(format!("missing HTTP(S) host in {url:?}")))?;
+    let port = uri.port_u16();
+    let port = match (scheme, port) {
+        ("http", Some(80)) | ("https", Some(443)) | (_, None) => String::new(),
+        (_, Some(port)) => format!(":{port}"),
+    };
+    Ok(format!("{scheme}://{}{port}", host.to_ascii_lowercase()))
 }
 
 /// Fetches `url` with a plain GET, following redirects, and returns the
@@ -137,6 +168,34 @@ mod tests {
         ));
         assert!(matches!(
             validate_url_scheme("not-a-valid-url"),
+            Err(FetchError::InvalidUrl(_))
+        ));
+    }
+
+    #[test]
+    fn canonical_http_origin_normalizes_host_case_and_default_ports() {
+        assert_eq!(
+            canonical_http_origin("HTTP://EXAMPLE.test:80/a?x=1#section").unwrap(),
+            "http://example.test"
+        );
+        assert_eq!(
+            canonical_http_origin("https://Example.test:443/app").unwrap(),
+            "https://example.test"
+        );
+        assert_eq!(
+            canonical_http_origin("https://example.test:8443/app").unwrap(),
+            "https://example.test:8443"
+        );
+    }
+
+    #[test]
+    fn canonical_http_origin_requires_a_complete_http_url() {
+        assert!(matches!(
+            canonical_http_origin("https:///missing-host"),
+            Err(FetchError::InvalidUrl(_))
+        ));
+        assert!(matches!(
+            canonical_http_origin("about:blank"),
             Err(FetchError::InvalidUrl(_))
         ));
     }

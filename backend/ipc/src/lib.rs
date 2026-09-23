@@ -30,8 +30,11 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 pub mod ai;
+pub mod compiler;
+pub mod debugger;
 pub mod extension;
 pub mod gatekeeper;
+pub mod page_host;
 pub mod script;
 pub mod shm;
 
@@ -139,6 +142,16 @@ pub enum ClientMessage {
     /// Chromium differential-testing harness, `TEST_PLAN.md`) needs to
     /// *not* have filtered out.
     GetDom,
+    /// Requests source-free execution outcomes for inline BlueTS scripts in
+    /// the addressed tab, replied to with [`ServerMessage::BlueTsScriptReports`].
+    /// This is observability only: it neither enables inline execution nor
+    /// exposes a script's source, diagnostics, or runtime values.
+    GetBlueTsScriptReports,
+    /// Requests source-free execution outcomes for standard JavaScript scripts
+    /// in the addressed tab, replied to with [`ServerMessage::BlueJsScriptReports`].
+    /// This is observability only: it neither enables JavaScript execution nor
+    /// exposes a script's source, diagnostics, or runtime values.
+    GetBlueJsScriptReports,
     /// Opens a new, blank tab, replied to with [`ServerMessage::TabOpened`]
     /// -- `phase-16-multi-tab-and-tab-groups/PLAN.md`'s minimal first
     /// slice. `url` is optional purely for convenience (equivalent to
@@ -201,6 +214,17 @@ pub enum ServerMessage {
     Representation(AiSnapshot),
     /// Reply to [`ClientMessage::GetDom`].
     Dom(String),
+    /// Reply to [`ClientMessage::GetBlueTsScriptReports`].
+    ///
+    /// The reports deliberately include only stable tab/document identity,
+    /// script kind, ordinal, and a source-free outcome category. They are not
+    /// an execution-result, diagnostic, or source-inspection API.
+    BlueTsScriptReports(Vec<BlueTsScriptExecutionReport>),
+    /// Reply to [`ClientMessage::GetBlueJsScriptReports`]. These bounded
+    /// records have the same source-free shape as BlueTS reports, but identify
+    /// standard JavaScript declarations executed by an explicitly enabled
+    /// BlueJS page host.
+    BlueJsScriptReports(Vec<BlueJsScriptExecutionReport>),
     /// Reply to [`ClientMessage::OpenTab`]. `url` reflects whatever
     /// actually ended up loaded -- `None` for a blank tab (`OpenTab`
     /// was given no `url`), `Some(final_url)` once a requested
@@ -249,6 +273,62 @@ pub struct TabSummary {
     pub url: Option<String>,
 }
 
+/// The HTML script classification used by a [`BlueTsScriptExecutionReport`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueTsScriptKind {
+    Classic,
+    Module,
+}
+
+/// The source-free outcome of an inline BlueTS script attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueTsScriptExecutionOutcome {
+    Executed,
+    Rejected {
+        /// A bounded policy/compiler category, never source or diagnostics.
+        category: String,
+    },
+}
+
+/// One source-free inline BlueTS execution report for a tab/document pair.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlueTsScriptExecutionReport {
+    pub tab_id: u64,
+    pub document_generation: u64,
+    pub ordinal: u32,
+    pub kind: BlueTsScriptKind,
+    pub outcome: BlueTsScriptExecutionOutcome,
+}
+
+/// The HTML script classification used by a [`BlueJsScriptExecutionReport`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueJsScriptKind {
+    Classic,
+    Module,
+}
+
+/// The source-free outcome of one standard JavaScript script attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BlueJsScriptExecutionOutcome {
+    Executed,
+    Rejected {
+        /// A bounded host/parser/compiler/runtime category, never page source
+        /// or diagnostics.
+        category: String,
+    },
+}
+
+/// One source-free standard JavaScript execution report for a tab/document
+/// pair. This is not a JavaScript completion, debugger, or source API.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlueJsScriptExecutionReport {
+    pub tab_id: u64,
+    pub document_generation: u64,
+    pub ordinal: u32,
+    pub kind: BlueJsScriptKind,
+    pub outcome: BlueJsScriptExecutionOutcome,
+}
+
 fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
     let bytes = serde_json::to_vec(msg).map_err(io::Error::other)?;
     let len = u32::try_from(bytes.len()).map_err(io::Error::other)?;
@@ -258,12 +338,36 @@ fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
 }
 
 fn read_frame_bytes<R: Read>(r: &mut R) -> io::Result<Vec<u8>> {
+    read_frame_bytes_with_limit(r, usize::MAX)
+}
+
+/// Reads one framed payload while rejecting an oversized length before any
+/// payload allocation. Private protocol modules with materially larger source
+/// records use this instead of trusting an unbounded `u32` length from their
+/// peer. It is crate-visible so every protocol still shares the same partial-
+/// read/timeout framing discipline below.
+pub(crate) fn read_frame_bytes_with_limit<R: Read>(
+    r: &mut R,
+    max_bytes: usize,
+) -> io::Result<Vec<u8>> {
     let mut len_bytes = [0u8; 4];
     read_exact_no_progress_loss(r, &mut len_bytes)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
+    if len > max_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("frame length {len} exceeds protocol limit {max_bytes}"),
+        ));
+    }
     let mut buf = vec![0u8; len];
     read_exact_no_progress_loss(r, &mut buf)?;
     Ok(buf)
+}
+
+/// Reads one framed payload while rejecting an advertised size before it can
+/// allocate. Retained for compiler IPC's independently documented bound.
+fn read_frame_bytes_bounded<R: Read>(r: &mut R, maximum_bytes: usize) -> io::Result<Vec<u8>> {
+    read_frame_bytes_with_limit(r, maximum_bytes)
 }
 
 /// Like [`Read::read_exact`], but a read *timeout* that occurs after
@@ -580,6 +684,8 @@ mod tests {
             ClientMessage::Highlight { id: Some(7) },
             ClientMessage::Highlight { id: None },
             ClientMessage::GetDom,
+            ClientMessage::GetBlueTsScriptReports,
+            ClientMessage::GetBlueJsScriptReports,
             ClientMessage::OpenTab {
                 url: Some("https://example.com".to_string()),
             },
@@ -640,6 +746,38 @@ mod tests {
                 }],
             }),
             ServerMessage::Dom("| <html>\n".to_string()),
+            ServerMessage::BlueTsScriptReports(vec![BlueTsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 0,
+                kind: BlueTsScriptKind::Classic,
+                outcome: BlueTsScriptExecutionOutcome::Executed,
+            }]),
+            ServerMessage::BlueJsScriptReports(vec![BlueJsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 0,
+                kind: BlueJsScriptKind::Classic,
+                outcome: BlueJsScriptExecutionOutcome::Executed,
+            }]),
+            ServerMessage::BlueJsScriptReports(vec![BlueJsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 1,
+                kind: BlueJsScriptKind::Module,
+                outcome: BlueJsScriptExecutionOutcome::Rejected {
+                    category: "BlueJS compilation rejected the page script".to_string(),
+                },
+            }]),
+            ServerMessage::BlueTsScriptReports(vec![BlueTsScriptExecutionReport {
+                tab_id: 2,
+                document_generation: 42,
+                ordinal: 1,
+                kind: BlueTsScriptKind::Module,
+                outcome: BlueTsScriptExecutionOutcome::Rejected {
+                    category: "BlueTS compilation rejected the page script".to_string(),
+                },
+            }]),
             ServerMessage::TabOpened {
                 tab_id: 2,
                 url: Some("https://example.com/".to_string()),

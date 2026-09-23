@@ -482,6 +482,7 @@ fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, String> {
         // that verified a generated `lib.blueice.d.ts` may add ambient
         // declarations through the library API.
         ambient_declaration_modules: Vec::new(),
+        require_declared_global_calls: false,
         limits: CompilerLimits::default(),
     };
     Ok(Invocation {

@@ -214,6 +214,16 @@ impl<'a> ModuleChecker<'a> {
             return;
         };
         let Some(signatures) = self.functions.get(&call.callee.text).cloned() else {
+            if self.require_declared_global_calls && !scope.contains_key(&call.callee.text) {
+                self.type_error(
+                    span,
+                    format!(
+                        "function {} is not declared by this page profile",
+                        call.callee.text
+                    ),
+                    DiagnosticCode::UnknownName,
+                );
+            }
             return;
         };
         let Some(arguments) = split_call_arguments(call.arguments) else {

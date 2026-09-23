@@ -12,6 +12,7 @@ pub(super) struct ModuleChecker<'a> {
     exported_types: &'a BTreeMap<String, BTreeMap<String, TypeDefinition>>,
     ambient: Option<&'a AmbientDeclarations>,
     enforce_types: bool,
+    require_declared_global_calls: bool,
     pub(super) diagnostics: Vec<Diagnostic>,
     pub(super) symbols: Vec<Symbol>,
     types: BTreeMap<String, TypeDefinition>,

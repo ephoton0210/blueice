@@ -187,6 +187,25 @@ impl AuthorizedModuleLoader {
     pub fn module_count(&self) -> usize {
         self.modules.len()
     }
+
+    /// Iterates the exact source records selected when this closed graph was
+    /// constructed. The iterator has no loading, resolution, filesystem, or
+    /// network capability; it is useful to a trusted host that must copy the
+    /// graph into another already-authorized execution transport.
+    pub fn authorized_modules(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.modules
+            .iter()
+            .map(|(module_id, source)| (module_id.as_str(), source.as_str()))
+    }
+
+    /// Iterates the exact static edges selected when this closed graph was
+    /// constructed. It never resolves a new specifier or falls back to a
+    /// relative, URL, package, or filesystem resolver.
+    pub fn authorized_resolutions(&self) -> impl Iterator<Item = (&str, &str, &str)> {
+        self.resolutions
+            .iter()
+            .map(|((from, specifier), target)| (from.as_str(), specifier.as_str(), target.as_str()))
+    }
 }
 
 impl ModuleLoader for AuthorizedModuleLoader {

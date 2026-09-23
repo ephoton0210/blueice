@@ -17,7 +17,10 @@ blueice-i18n = { path = "../../i18n" }
 blueice-bluets = { path = "../../bluets" }
 blueice-bluets-bluejs = { path = "../../bluets-bluejs" }
 blueice-bluejs = { path = "../../bluejs" }
+ureq = "3"
 
 [dev-dependencies]
 blueice-testing = { path = "../../testing" }
 blueice-ai-gatekeeper = { path = "../../ai-gatekeeper" }
+blueice-launcher = { path = "../../launcher" }
+serde_json = "1"

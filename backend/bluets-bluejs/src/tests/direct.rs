@@ -104,6 +104,53 @@ fn installs_direct_bytecode_with_its_checked_canonical_source_identity() {
 }
 
 #[test]
+fn resolves_a_ts_byte_position_to_the_next_verified_safe_point_or_unbound() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const first: number = 1; const second: number = 2; second;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let mut registry = bluejs::BlueJsProgramRegistry::default();
+    let attachment = artifact.attach_in(&mut registry).unwrap();
+    let first = &attachment.provenance[0];
+    let second = &attachment.provenance[1];
+    let DirectSafePointBinding::Bound(first_safe_point) = first.safe_point else {
+        panic!("the first declaration must have a verified safe point")
+    };
+    let DirectSafePointBinding::Bound(second_safe_point) = second.safe_point else {
+        panic!("the second declaration must have a verified safe point")
+    };
+
+    assert_eq!(
+        attachment.breakpoint_at_or_after(ENTRY, first.source.start),
+        DirectSafePointBinding::Bound(first_safe_point)
+    );
+    assert_eq!(
+        attachment.breakpoint_at_or_after(ENTRY, first.source.end),
+        DirectSafePointBinding::Bound(second_safe_point),
+        "a position after the first exclusive span end binds to the next statement"
+    );
+    assert_eq!(
+        attachment
+            .safe_point_map
+            .nearest_bound_safe_point_at_or_after(ENTRY, first.source.end),
+        Some(second_safe_point)
+    );
+    assert_eq!(
+        attachment.breakpoint_at_or_after(ENTRY, usize::MAX),
+        DirectSafePointBinding::Unbound
+    );
+    assert_eq!(
+        attachment.breakpoint_at_or_after("page:///other.ts", 0),
+        DirectSafePointBinding::Unbound
+    );
+}
+
+#[test]
 fn rejects_object_methods_without_reparsing_emitted_javascript() {
     let result = compile_direct_script(
         ENTRY,
@@ -144,6 +191,27 @@ fn lowers_typed_local_functions_and_direct_calls() {
         bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
         bluejs::Value::Number(42.0)
     );
+}
+
+#[test]
+fn direct_lowered_functions_do_not_forge_javascript_source_text() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function identity(value: number): number { return value; } identity(42);",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    let bluejs::BlueJsProgramV1::Script(bluejs::Program { body }) = artifact.program else {
+        panic!("a direct script must lower to a script program");
+    };
+    let bluejs::Stmt::FunctionDecl(function) = &body[0] else {
+        panic!("the first lowered statement must be the local function");
+    };
+
+    assert_eq!(function.source_text.as_str(), None);
 }
 
 #[test]
