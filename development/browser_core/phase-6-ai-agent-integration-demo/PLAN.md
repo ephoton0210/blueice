@@ -3,7 +3,7 @@
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
 **Status**: In progress — the first-party, loopback-only scenario, shared
-human/agent observer path, and an OpenAI Responses/MCP live-model driver are
+human/agent observer path, and a local Ollama Chat/MCP live-model driver are
 implemented and tested; an actual configured LLM run and its human-observer
 evidence remain.
 
@@ -40,6 +40,15 @@ matching `call_id`, and continue until the model provides a final report. The
 current OpenAI function-calling guidance is the source for that multi-turn
 shape and strict JSON-schema constraints: <https://developers.openai.com/api/docs/guides/function-calling>.
 
+**Local-model update (2026-09-23).** The live driver now uses a local Ollama
+server through its loopback OpenAI-compatible Chat Completions endpoint
+(`http://127.0.0.1:11434/v1/chat/completions`), not OpenAI Responses. It sends
+the same bounded function definitions and writes tool results back as chat tool
+messages; model requests stay local and require no API key. `--ollama-base`
+defaults to that loopback server and rejects a non-loopback host. Operators
+select an installed lightweight vision-and-tool-capable Ollama model through
+`--model`; the real-run/human-observer evidence requirements remain unchanged.
+
 The driver does **not** give a model the raw MCP tool inventory. It exposes
 only six zero-argument scenario operations: fixed loopback navigation, page
 representation, screenshot, set the labelled `Name` field to the fixed value
@@ -64,12 +73,12 @@ occurred. Its local tests cover URL containment, refusal of model-supplied
 arguments, live-node assertions, and required-launcher no-fallback behavior;
 they do not claim to be an LLM provider run.
 
-Run prerequisites are deliberately explicit: an operator must provide an
-account-authorized Responses model via `--model` and a non-empty
-`OPENAI_API_KEY` environment variable. The key is neither accepted on the
-command line nor recorded. No key/model was configured in this development
-environment on 2026-09-23, so no live model transcript or human screenshot is
-claimed yet.
+Run prerequisites are deliberately explicit: an operator must install and run
+a loopback Ollama server, pull a local vision-and-tool-capable lightweight
+model, and pass that installed model name through `--model`. No API key is
+accepted, needed, or recorded. No local Ollama model/human observer was
+configured in this development environment on 2026-09-23, so no live model
+transcript or human screenshot is claimed yet.
 
 - Pick a small, concrete demo task and site/page scope, within what the Phase 2 MVP scope can actually render.
 - Wire an LLM-driven agent to consume the Phase 5 API as its only channel for perceiving and acting on the page (no fallback to CDP/Puppeteer, since that would undermine what's being demonstrated).

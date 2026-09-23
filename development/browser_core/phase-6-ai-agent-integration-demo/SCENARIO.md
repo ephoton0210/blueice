@@ -54,14 +54,14 @@ target/debug/blueice-launcher --socket "$SOCKET"
 target/debug/blueice-frontend-reference --socket "$SOCKET" --url http://127.0.0.1:4312/index.html
 ```
 
-Finally, in a fourth terminal with `OPENAI_API_KEY` already supplied by the
-operator's secret manager or shell environment, run an account-authorized,
-vision- and function-calling-capable Responses model. Do not place a key in
-the command, transcript, source tree, or commit.
+Finally, in a fourth terminal, run a locally installed Ollama model that
+supports vision and tool calling. The default `http://127.0.0.1:11434/v1/`
+endpoint is loopback-only and requires no API key; never use a remote model
+endpoint for this local evidence run.
 
 ```sh
 target/debug/blueice-phase6-agent \
-  --model "<operator-selected-model>" \
+  --model "<local-ollama-model>" \
   --demo-url http://127.0.0.1:4312/index.html \
   --launcher-socket "$SOCKET" \
   --transcript "$RUN_DIR/agent.jsonl" \
