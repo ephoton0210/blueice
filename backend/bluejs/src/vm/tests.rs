@@ -332,3 +332,29 @@ fn host_objects_and_methods_reject_collisions_and_construction() {
         Err(RuntimeError::TypeError(message)) if message == "value is not a constructor"
     ));
 }
+
+#[test]
+fn a_call_is_refused_exactly_when_the_native_stack_falls_below_the_red_zone() {
+    use super::completion::CALL_STACK_RED_ZONE;
+    // The depth is irrelevant once the thread's stack can be measured: only
+    // the bytes left decide, so a deep-but-cheap chain is not cut short and a
+    // shallow-but-nearly-overflowing one is.
+    for depth in [0, 1, 32, 500, usize::MAX] {
+        assert!(!call_stack_exhausted(Some(CALL_STACK_RED_ZONE), depth));
+        assert!(!call_stack_exhausted(Some(usize::MAX), depth));
+        assert!(call_stack_exhausted(Some(CALL_STACK_RED_ZONE - 1), depth));
+        assert!(call_stack_exhausted(Some(0), depth));
+    }
+}
+
+#[test]
+fn an_unmeasurable_stack_falls_back_to_the_conservative_frame_count() {
+    use super::completion::UNMEASURED_STACK_MAX_CALL_DEPTH;
+    assert!(!call_stack_exhausted(None, 0));
+    assert!(!call_stack_exhausted(
+        None,
+        UNMEASURED_STACK_MAX_CALL_DEPTH - 1
+    ));
+    assert!(call_stack_exhausted(None, UNMEASURED_STACK_MAX_CALL_DEPTH));
+    assert!(call_stack_exhausted(None, usize::MAX));
+}
