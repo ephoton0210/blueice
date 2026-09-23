@@ -1025,6 +1025,10 @@ def classify(reply, negative):
         # A host-capability declaration disagreeing with a fixture's own
         # applicability (see HOST_CAN_BLOCK), never a negative-error match.
         return "excluded"
+    if kind == "stale_corpus":
+        # The fixture contradicts the current spec text (see
+        # STALE_CORPUS_FIXTURES); it is recorded without being dispatched.
+        return "stale_corpus"
     if kind in {"timeout", "resource_error"}:
         return "timeout" if kind == "timeout" else "fail"
     if kind in {"harness_error", "worker_error"}:

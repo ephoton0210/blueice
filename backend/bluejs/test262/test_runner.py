@@ -434,6 +434,19 @@ class RunnerTests(unittest.TestCase):
         expected = {"phase": "runtime", "type": "TypeError"}
         self.assertEqual(classify({"kind": "excluded", "reason": "x"}, expected), "excluded")
 
+    def test_stale_corpus_kind_classifies_as_its_own_status(self):
+        # `analyze.py` re-derives every record's status with `classify` and
+        # rejects the run if it disagrees with the runner's own, so a
+        # `stale_corpus` record (which carries a `stale_corpus` reply kind and
+        # never reaches the adapter) must round-trip rather than becoming "fail".
+        self.assertEqual(
+            classify({"kind": "stale_corpus", "reason": "x"}, None), "stale_corpus"
+        )
+        expected = {"phase": "runtime", "type": "TypeError"}
+        self.assertEqual(
+            classify({"kind": "stale_corpus", "reason": "x"}, expected), "stale_corpus"
+        )
+
     def test_stale_corpus_fixtures_are_a_distinct_status_from_fail_unsupported_and_excluded(self):
         # A fixture whose own assertions contradict the *current* ECMA-262
         # draft (verified directly against the live spec text, not merely
