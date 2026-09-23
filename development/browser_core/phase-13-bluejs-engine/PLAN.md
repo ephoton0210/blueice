@@ -2,7 +2,7 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
-**Status**: In progress — BlueJS has a modular parser/compiler/VM, generational heap, standard-library and Temporal/Intl implementation. The complete unfiltered Test262 inventory of 2026-09-21 passes 89,444 / 91,820 (97.412%) ECMA-262 Core modes and 6,714 / 6,714 (100.000%) ECMA-402 modes on Ubuntu 24.04.4 (macOS: 89,444 / 91,820 (97.412%) Core, identical ECMA-402), and 99,897 of 102,926 modes overall (97.057%); it is not a full-conformance claim. The classified remaining failures, page-script integration and cross-platform verification are tracked below.
+**Status**: In progress — BlueJS has a modular parser/compiler/VM, generational heap, standard-library and Temporal/Intl implementation. The complete unfiltered Test262 inventory of 2026-09-23 (commit `fbcbe2c2`, macOS, Apple M4) passes 102,921 of 102,926 modes with 0 failures: the other 5 are 4 `excluded` Atomics `CanBlockIsFalse` modes and 1 `stale_corpus` fixture that contradicts the current spec text, both individually verified (see [the triage](TEST262_ANALYSIS_REPORT.md)); ECMA-402 is 6,714 / 6,714. It is not a full-conformance claim. Linux/Windows re-runs at this commit, page-script integration and cross-platform verification remain tracked below.
 
 ## Ubuntu verification scope (2026-09-19)
 

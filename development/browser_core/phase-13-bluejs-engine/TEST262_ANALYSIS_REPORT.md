@@ -2,23 +2,24 @@
 
 Snapshot: `72faf8ec1445c55149615e8b35187830783aba1a`.
 
-## Session status (2026-09-23) — numbers below are STALE, not re-measured against current HEAD
+## Final status (2026-09-23): 0 failures
 
-This session (branch `feature/test262-remaining-failures`) landed a large batch of real fixes on top of the `d33babc` commit the tables below were measured against, but **did not re-run the full inventory afterward** — the session was explicitly wrapped up without waiting for long-running verification, per direction, rather than guessing at updated numbers. Treat every count below (the target table, the 63-mode breakdown, the diagnostics table) as describing the state **before** everything in this list, not the current one:
+Measured at commit `fbcbe2c2` on `feature/test262-remaining-failures`: **102,921 pass, 0 fail, 1 `stale_corpus`, 4 `excluded` of 102,926 modes (99.995% pass)**, from a complete, unfiltered 53,582-file inventory on macOS 26.6.2 / Apple M4 (`aarch64-apple-darwin`), debug adapter binaries freshly rebuilt from that exact commit, 224 s, reconciled by `analyze.py` (the tables below are its output). The 1 `stale_corpus` and 4 `excluded` modes are deliberate, individually verified dispositions, described in their own sections below, not hidden failures. Linux and Windows have not been re-run at this commit, and the per-platform reports `TEST262_{MACOS,LINUX,WINDOWS}_REPORT.md` still hold their earlier figures. Test262 passing is a progress measurement, not a full-conformance claim.
 
-- **Cross-realm reverse membrane** (the 10-mode bucket below): mostly fixed. A real reverse-membrane implementation landed (`Test262ReverseValue`, `vm/test262/reverse.rs`, reusing `shadow_realm.rs`'s `ACTIVE` reentrancy mechanism via the new shared `vm/realm_reentrancy.rs`), plus a receiver-is-foreign native-dispatch extension (`IteratorWrapperNext`/`ArrayBuffer.prototype.slice`) and a post-merge `register_active` integration fix. Along the way, two genuine *forward*-direction bugs were also found and fixed (`object_get_own_property`/`has_property` never checking foreign/reverse facades; `object_set_prototype` never checking foreign at all). See commits `4abfe64`, `087e6e9`, `52708f1`.
-- **String-size resource policy** (the 4-mode bucket below): fixed. `RuntimeError::StringLimit` is now a catchable `RangeError` (matching V8/SpiderMonkey/JSC), and `staging/sm/JSON/parse-mega-huge-array.js` got its own resource allowance via the existing exact-path mechanism. See commits `66bc85e`, `86388e9`.
-- **Grammar gap** (the 1-mode bucket below): fixed — `parse_for_stmt` was missing the `for await` early-error check on 3 of its exit paths. See commit `853f0a7`.
-- **Spec-version conflict** (the 1-mode bucket below): confirmed, not fixed, not fixable — verified directly against the live ECMA-262 draft and cross-referenced against upstream `tc39/test262#5112`/`#5113`; see that row's own entry below, already accurate.
-- **New `stale_corpus` status**: added to the test262 harness (`run.py`/`analyze.py`) so a fixture like the one above — verified current-spec-correct, with an open upstream Test262 fix pending — gets its own status instead of being folded into `fail`. See commit `a9f497c`.
-- **A regression, found and now fully fixed**: fixing the reverse membrane's `Symbol.species` lookup made a previously-unreachable code path reachable for the first time (`staging/sm/TypedArray/slice-bitwise-same.js`'s cross-compartment species-construction case), which panicked. The panic was fixed first (commit `7dce4ee`); the deeper round-trip-cache data-loss gap found underneath it is now also fixed — see "Reverse-membrane round-trip cache discards mutations (fixed)" below for the full writeup, including a second, independent misclassification bug found via the *real* corpus fixture (not just this crate's own hand-written regression) while verifying the first fix.
-- **"Corpus problem" bucket (19 modes below)**: a fix exists (commit `774ad1f`, on worktree branch `worktree-agent-a8f3aa9080a3c0568`, a general adapter fix — stop strict-prefixing Test262 harness *includes*, only the test body — verified upstream via `tc39/test262#5008`, and independently verified via a full-inventory before/after diff showing exactly 17 of 19 modes fixed, 2 remaining for separate confirmed unrelated bugs) but **has not been merged into this branch yet**.
+### How the 63 failures recorded at `d33babc` were resolved
 
-**Not done, explicitly deferred, before trusting any updated pass/fail count:**
-1. Merge `774ad1f` into this branch.
-2. Run the coverage gate.
-3. Run a fresh, complete 102,926-mode inventory and reconcile the numbers below against it.
-4. Regenerate this file's target table and breakdown via `analyze.py` from that fresh run, preserving the hand-written prose sections (this one, the spec-version-conflict row, the round-trip-cache writeup below).
+| Class | Modes | Resolution |
+| --- | ---: | --- |
+| Cross-realm reverse membrane | 10 | Real reverse membrane (`vm/test262/reverse.rs`) plus forward-direction fixes and the round-trip-cache fix below (commits `4abfe64`..`0a7070f`). |
+| String-size resource policy | 4 | `RuntimeError::StringLimit` is a catchable `RangeError`; `parse-mega-huge-array.js` has its own allowance (`66bc85e`, `86388e9`). |
+| Grammar gap | 1 | `for await` C-style and `for-in` heads rejected on every exit path (`853f0a7`). |
+| Corpus problem (strict-mode harness) | 19 | Adapter bug, not a corpus problem: `bluejs-test262.rs` wrapped every harness *include* in a `"use strict"` it invented, so a helper's own unprefixed direct `eval` (`sm/non262-strict-shell.js`'s `testLenientAndStrict`, `sm/non262-expressions-shell.js`'s `testDestructuringArrayDefault`) could never observe sloppy-mode behavior. Only the test body is prefixed now (`f9587f6`). This corrects the earlier triage, which had attributed these to the corpus itself. |
+| Instruction-budget / wall-time | 22 | Exact-path allowances in `run.py`'s `LARGE_FIXTURE_RESOURCES`, each from a measurement: the eight `dst-offset-caching` parts 200M dispatches / 70 s, `two-digit-years` 30M (fails at 5M, passes at 8M), `toSpliced-dense` 80M (19.6M measured), and the deep-WeakMap fixture 30M plus a 64 MiB heap (it was failing on the 16 MiB heap ceiling, not on fuel, so the earlier "fuel" classification was incomplete) (`70d6224`). A JIT was considered and rejected for this: these fixtures are dominated by builtin calls and property access, which a numeric-loop tier would not touch. |
+| Call-depth limit | 2 | `Vm::enter_call` guards on `stacker::remaining_stack()` (256 KiB red zone) instead of a 32-frame count (`2d64f63`); see `CLAUDE.md`. |
+| `regress` crate RegExp deviations | 4 | Wrapper-layer rewrites, no fork or version bump; see the section below (`7ff9d1b`). |
+| Spec-version conflict | 1 | Reclassified `stale_corpus` (`a9f497c`); see below. |
+
+`analyze.py` also could not reconcile a run containing a `stale_corpus` record (`classify()` had no branch for that reply kind, so it re-derived `fail` and rejected the run); fixed with a regression test in `test_runner.py`.
 
 ## Reverse-membrane round-trip cache discards mutations (fixed 2026-09-23)
 
@@ -39,48 +40,41 @@ This session (branch `feature/test262-remaining-failures`) landed a large batch 
 
 **Current state:** fixed and verified three ways: (1) `backend/bluejs/tests/test262_reverse_membrane.rs`'s `typed_array_species_slice_via_a_reverse_facade_constructor_preserves_nan_bit_patterns` (the plain-intrinsic case) and `typed_array_species_slice_via_a_reverse_facade_to_a_parent_owned_subclass_preserves_nan_bit_patterns` (the subclass case) both assert exact NaN bit-pattern fidelity, not just shape; (2) the real corpus fixture, `staging/sm/TypedArray/slice-bitwise-same.js`, passes both modes against a freshly rebuilt adapter binary; (3) a `--filter staging/sm/TypedArray` sweep of the full 101-file/195-mode TypedArray corpus subset (which exercises both bugs' harness, `sm/non262-TypedArray-shell.js`) passes in full, with no other regression.
 
-## Platform provenance (updated 2026-09-22, stale — see "Session status" above)
+## Platform provenance (2026-09-23)
 
-This triage was regenerated by `backend/bluejs/test262/analyze.py` from a complete, unfiltered 53,582-file / 102,926-mode inventory of commit `d33babc` on branch `feature/test262-remaining-failures` (not yet merged to `main`), run on **macOS 26.6.2 on Apple silicon (Apple M4, aarch64-apple-darwin)**, 10 logical CPUs, 24 GB RAM, Python 3.12, which completed in 269.255 seconds; the counts below are that run's. Both adapter binaries (`bluejs-test262`, `bluejs-regexp-worker`) were rebuilt from this exact commit immediately before running — an earlier attempt against a stale pre-`vm.rs`-split binary produced an implausible 3,003-fail result and was discarded rather than trusted.
-
-This run exists specifically to verify `d33babc`'s new `excluded` status (the `CanBlockIsTrue`/`CanBlockIsFalse` host-capability reclassification described below), not to supersede the per-platform breakdown tables in [the Ubuntu report](TEST262_LINUX_REPORT.md) or [the macOS report](TEST262_MACOS_REPORT.md), which still reflect the prior `9decbb3`/`eaeb5c1` measurements (group/selection/ECMA-402/coverage/oracle tables — none of that was re-measured here). The totals below reconcile exactly against that prior measurement (102,859 pass either way, same 102,926-mode denominator): this is confirmation that `d33babc` only moves 4 modes from `fail` to `excluded`, not a platform-divergent or regressed result. **Windows has not been re-run against `d33babc`.**
+This triage was regenerated by `backend/bluejs/test262/analyze.py` from the run described in "Final status" above; the counts below are that run's.
 
 Reconciled 53,582 files / 102,926 modes; complete inventory: True.
 
 Targets are inferred from paths/metadata; blockers are first observed symptoms, not proven root causes. Feature/dependency counts overlap. Target counts are exclusive and reconcile to all modes. Priorities are dependency order, not failure-count order. Passed negatives remain passes; no outcomes are excluded.
 
-| Order | Target | Pass | Fail | Unsupported | Excluded | Timeout | Harness error | Prerequisites |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| P0.1 | completion: Completion records, iterator lifetime, catch/finally, control transfer | 9659 | 0 | 0 | 0 | 0 | 0 | — |
-| P0.2 | environments: Persistent realms, bindings, parameter environments, arguments, eval | 3947 | 0 | 0 | 0 | 0 | 0 | completion |
-| P0.3 | references: Reference evaluation, coercion and observable evaluation order | 6083 | 0 | 0 | 0 | 0 | 0 | completion, environments |
-| P0.4 | objects: Internal methods, descriptors, receiver and callable/constructor contracts | 7799 | 0 | 0 | 0 | 0 | 0 | references |
-| P1.1 | grammar: Source grammar and classified strict/early errors | 4330 | 3 | 0 | 0 | 0 | 0 | environments, references |
-| P1.2 | classes: Classes, private slots, super and derived construction | 17118 | 4 | 0 | 0 | 0 | 0 | objects, grammar |
-| P1.3 | suspension: Resumable frames, generators, async functions and promise jobs | 5081 | 0 | 0 | 0 | 0 | 0 | completion, environments, objects, grammar |
-| P1.4 | modules: Module linking, live bindings, evaluation and dynamic import | 2667 | 0 | 0 | 0 | 0 | 0 | environments, suspension, grammar |
-| P1.5 | storage: BigInt, buffers, typed arrays, shared memory and GC weak slots | 7645 | 2 | 0 | 4 | 0 | 0 | objects |
-| P1.6 | host: Test262 realm, agent, GC, buffer and async host hooks | 232 | 0 | 0 | 0 | 0 | 0 | environments, suspension, modules, storage |
-| P2.1 | library: Remaining standard builtin algorithms and descriptors | 29545 | 0 | 0 | 0 | 0 | 0 | completion, references, objects |
-| P2.2 | intl: ECMA-402 constructors, algorithms and locale data | 6714 | 0 | 0 | 0 | 0 | 0 | library |
-| P3.1 | review: Unmapped/staging targets requiring specification and applicability review | 2039 | 54 | 0 | 0 | 0 | 0 | — |
+| Order | Target | Pass | Fail | Unsupported | Excluded | Stale corpus | Timeout | Harness error | Prerequisites |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| P0.1 | completion: Completion records, iterator lifetime, catch/finally, control transfer | 9659 | 0 | 0 | 0 | 0 | 0 | 0 | — |
+| P0.2 | environments: Persistent realms, bindings, parameter environments, arguments, eval | 3947 | 0 | 0 | 0 | 0 | 0 | 0 | completion |
+| P0.3 | references: Reference evaluation, coercion and observable evaluation order | 6083 | 0 | 0 | 0 | 0 | 0 | 0 | completion, environments |
+| P0.4 | objects: Internal methods, descriptors, receiver and callable/constructor contracts | 7799 | 0 | 0 | 0 | 0 | 0 | 0 | references |
+| P1.1 | grammar: Source grammar and classified strict/early errors | 4332 | 0 | 0 | 0 | 1 | 0 | 0 | environments, references |
+| P1.2 | classes: Classes, private slots, super and derived construction | 17122 | 0 | 0 | 0 | 0 | 0 | 0 | objects, grammar |
+| P1.3 | suspension: Resumable frames, generators, async functions and promise jobs | 5081 | 0 | 0 | 0 | 0 | 0 | 0 | completion, environments, objects, grammar |
+| P1.4 | modules: Module linking, live bindings, evaluation and dynamic import | 2667 | 0 | 0 | 0 | 0 | 0 | 0 | environments, suspension, grammar |
+| P1.5 | storage: BigInt, buffers, typed arrays, shared memory and GC weak slots | 7647 | 0 | 0 | 4 | 0 | 0 | 0 | objects |
+| P1.6 | host: Test262 realm, agent, GC, buffer and async host hooks | 232 | 0 | 0 | 0 | 0 | 0 | 0 | environments, suspension, modules, storage |
+| P2.1 | library: Remaining standard builtin algorithms and descriptors | 29545 | 0 | 0 | 0 | 0 | 0 | 0 | completion, references, objects |
+| P2.2 | intl: ECMA-402 constructors, algorithms and locale data | 6714 | 0 | 0 | 0 | 0 | 0 | 0 | library |
+| P3.1 | review: Unmapped/staging targets requiring specification and applicability review | 2093 | 0 | 0 | 0 | 0 | 0 | 0 | — |
 
-`P0.1`-`P1.6` and `P2.*` are now failure-free at the target-classification granularity above: the 63 remaining failures are concentrated in `P1.1`/`P1.2`/`P1.5` (grammar, class and storage edge cases the classifier still routes there even though the root causes are cross-realm/resource-limit, not grammar/class/storage gaps — see the breakdown below) and `P3.1` (staging/proposal review). `P1.5` also carries the 4 `excluded` modes (Atomics host-capability declaration, not a failure — see below). This does not mean the corresponding features are complete, only that this inventory's remaining failures don't fall in them.
+## Observed blockers
 
-## Remaining-failure breakdown (63 modes, by root-cause class)
+| Symptom | Modes | Representative test / mode |
+| --- | ---: | --- |
+| none | 102921 | `—` |
+| host-capability-declared | 4 | `built-ins/Atomics/wait/bigint/cannot-suspend-throws.js [sloppy]` |
+| corpus-stale-pending-upstream-fix | 1 | `annexB/language/function-code/block-decl-func-skip-arguments.js [sloppy]` |
 
-Classified by hand against the 63 failing (path, mode) pairs, not by the symptom classifier above. (Down from the prior 67: `d33babc` moved the 4 `CanBlockIsFalse` Atomics modes out of `fail` into their own `excluded` status — see the next section — rather than removing an engine gap.)
+## Stale corpus (1 mode, not counted as a failure)
 
-| Class | Modes | Representative test | Why |
-| --- | ---: | --- | --- |
-| Instruction-budget / wall-time | 22 | `staging/sm/Date/dst-offset-caching-1-of-8.js` | A bytecode interpreter's default fuel isn't enough for a few genuinely heavy fixtures (8 DST-cache-table files, `two-digit-years.js`, `toSpliced-dense.js`, a 100,000-live-object WeakMap chain); each was measured and would need an exact-path allowance an order of magnitude past what's reasonable to grant blindly. |
-| Corpus problem (not an engine gap) | 19 | `staging/sm/strict/10.6.js` | The shared Annex B strict-mode harness (`non262-strict-shell.js`) runs its "lenient" half through a `"use strict"`-prefixed direct `eval`, so proving sloppy-only behavior (an implicit global, a non-strict `delete`, `arguments` aliasing, ...) is impossible under strict; verified independently by running the identical harness+test concatenation under Node 24, which fails the same way. 6 more (`destructuring-array-default-*.js`, strict mode only) hit the same shape: an assignment-pattern target that is never declared is an implicit global in sloppy code and a `ReferenceError` in strict, and the harness only checks the sloppy answer. |
-| Cross-realm "reverse membrane" | 10 | `staging/sm/Date/defaultvalue.js` | A `$262.createRealm()` child realm can run a foreign built-in on a local receiver (built, this session), but a parent-realm object/Proxy/callback re-entering the child (the reverse direction) isn't supported yet; doing it safely needs a proper reverse-membrane exotic-object design, judged disproportionate to add opportunistically. |
-| String-size resource policy | 4 | `staging/sm/String/replace-math.js` | The fixture expects a catchable out-of-memory error past the managed string's 1 MiB limit; the host's resource limit is deliberately an uncatchable abort, so it can never satisfy `assert.throws`. |
-| `regress` crate RegExp limitation (**fixed 2026-09-23, no longer failing**) | 4 (now 0) | `staging/sm/RegExp/unicode-back-reference.js`, `staging/sm/RegExp/ignoreCase-non-latin1-to-latin1.js` (2 modes each) | The pinned `regress` engine's non-`u`-mode Canonicalize and `u`-mode backreference matching disagree with ECMA-262. The earlier conclusion that this was "not fixable without patching or replacing the dependency" was wrong: both deviations are corrected in the wrapper layer, see "RegExp deviations fixed in the wrapper layer" below. |
-| Call-depth limit | 2 | `staging/sm/class/superPropChains.js` | A 100-deep constructor chain needs more native stack than the 32-frame limit allows without a byte-budget guard (see CLAUDE.md's Phase 13 paragraph). |
-| Spec-version conflict (confirmed stale corpus fixture, not a BlueJS gap) | 1 | `annexB/language/function-code/block-decl-func-skip-arguments.js` | Verified 2026-09-23 directly against the live [ECMA-262 draft](https://tc39.es/ecma262/multipage/ordinary-and-exotic-objects-behaviours.html#step-functiondeclarationinstantiation-web-compat-insertion-point) (`FunctionDeclarationInstantiation`'s Annex B web-compat insertion point): the `funcName is not "arguments"` guard gates only *creating a new* var binding; the sibling step that runs when the block function is evaluated (`funcEnv.SetMutableBinding(funcName, funcObj, false)`) has no such guard and still overwrites an existing `arguments` binding. This fixture (2017) was written against an older edition that appended `"arguments"` to `parameterNames` itself, a step the current algorithm no longer has; the two `staging/sm` fixtures already in this inventory require the current behavior instead, and BlueJS matches it (as do V8 and SpiderMonkey). This is a known, already-reported-and-fixed-upstream corpus bug, not an open question: [tc39/test262#5113](https://github.com/tc39/test262/issues/5113) documents the exact same contradiction, and [tc39/test262#5112](https://github.com/tc39/test262/pull/5112) (open, unmerged as of this snapshot) corrects the fixture's three assertions to expect the current behavior. No BlueJS change is possible or warranted here — flipping the engine to satisfy the stale fixture would contradict the current spec text and regress the two already-correct `staging/sm` fixtures. |
-| Grammar gap | 1 | `staging/sm/AsyncGenerators/for-await-bad-syntax.js` | An early-error rule for a specific malformed `for await` loop body isn't classified yet. |
+`annexB/language/function-code/block-decl-func-skip-arguments.js`: Verified 2026-09-23 directly against the live [ECMA-262 draft](https://tc39.es/ecma262/multipage/ordinary-and-exotic-objects-behaviours.html#step-functiondeclarationinstantiation-web-compat-insertion-point) (`FunctionDeclarationInstantiation`'s Annex B web-compat insertion point): the `funcName is not "arguments"` guard gates only *creating a new* var binding; the sibling step that runs when the block function is evaluated (`funcEnv.SetMutableBinding(funcName, funcObj, false)`) has no such guard and still overwrites an existing `arguments` binding. This fixture (2017) was written against an older edition that appended `"arguments"` to `parameterNames` itself, a step the current algorithm no longer has; the two `staging/sm` fixtures already in this inventory require the current behavior instead, and BlueJS matches it (as do V8 and SpiderMonkey). This is a known, already-reported-and-fixed-upstream corpus bug, not an open question: [tc39/test262#5113](https://github.com/tc39/test262/issues/5113) documents the exact same contradiction, and [tc39/test262#5112](https://github.com/tc39/test262/pull/5112) (open, unmerged as of this snapshot) corrects the fixture's three assertions to expect the current behavior. No BlueJS change is possible or warranted here — flipping the engine to satisfy the stale fixture would contradict the current spec text and regress the two already-correct `staging/sm` fixtures.
 
 ## Host-capability exclusions (4 modes, not counted as failures)
 
@@ -110,20 +104,8 @@ Exact per-mode evidence, source hashes, esid, includes and dependency labels are
 
 | Diagnostic (numeric details normalized) | Modes |
 | --- | ---: |
-| BlueJS instruction budget exhausted | 22 |
-| Test262Error: Expected SameValue(«false», «true») to be true | 13 |
-| ReferenceError: a is not defined | 6 |
-| BlueJS string exceeds # bytes | 4 |
 | host declares [[CanBlock]] = true, fixture requires CanBlockIsFalse | 4 |
-| uncaught JavaScript value: Object(ObjectId { heap: #, serial: # }) | 4 |
-| RangeError: maximum call depth exceeded | 2 |
-| Test262Error: Expected SameValue(«true», «false») to be true | 2 |
-| Test262Error: Expected SameValue(«undefined», «#») to be true | 2 |
-| Test262Error: number Expected SameValue(«#», «#») to be true | 2 |
-| TypeError: ArrayBuffer method requires an ArrayBuffer receiver | 2 |
-| TypeError: Iterator wrapper next requires an iterator wrapper | 2 |
-| Test262Error: AsyncGenerator:for await (;;) ; Expected a SyntaxError to be thrown but no exception was thrown at all | 1 |
-| Test262Error: Expected SameValue(«"function arguments() {}"», «"[object Arguments]"») to be true | 1 |
+| contradicts the current FunctionDeclarationInstantiation Annex B web-compat insertion point (verified against the live spec text); see tc39/test262##, fix pending in tc39/test262## | 1 |
 
 ## Measurement limits
 
