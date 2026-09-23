@@ -241,6 +241,9 @@ or second module resolver to bypass them.
   `blueiceDocumentOrigin(): string`; unit and real-child regressions prove a
   typed call executes through direct lowering and `fetch` is a source-free
   rejection, while the unit regression also rejects invalid callback arity.
+  The launcher-to-core-to-child regression now separately observes classic
+  and ESM BlueTS execution reports in their shared realm and a wrong callback
+  arity as the fixed source-free compilation-rejection category.
   It does not grant the child fetch, URL/import-map resolution, a filesystem,
   or external graph authority beyond the supplied graph. The concrete
   startup-selected child HTTP(S) authority now verifies a URL/SHA-256

@@ -263,7 +263,10 @@ The initial implementation completes the work that has no BlueJS dependency befo
   `blueiceDocumentOrigin(): string` ambient to child BlueTS. A missing, extra,
   renamed, or page-selected binding fails closed before compiler admission;
   `document`, `fetch`, URL, resolver, and object APIs remain untyped and
-  unavailable. This still is not a general DOM surface.
+  unavailable. A real launcher-to-core-to-child regression observes both
+  classic and ESM BlueTS report lanes in that shared realm and verifies a
+  wrong callback arity becomes only the fixed source-free compilation
+  category. This still is not a general DOM surface.
   `HttpOutOfProcessPageScriptSourceAuthorizer` now creates the closed graph
   itself under a fixed startup policy: canonical same-document origin or one
   canonical owner-selected origin, a URL/SHA-256 manifest, and fixed resource

@@ -448,7 +448,9 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
             "<script type=\"application/x-blueice-typescript\">const sharedAnswer: number = 42;</script>",
             "<script>if (sharedAnswer !== 42) throw 'BlueTS did not share this realm';</script>",
             "<script type=\"module\">export const moduleAnswer = 43;</script>",
-            "<script src=\"untrusted.js\"></script>"
+            "<script src=\"untrusted.js\"></script>",
+            "<script type=\"application/x-blueice-typescript-module\">export const typedModuleAnswer: number = 44;</script>",
+            "<script type=\"application/x-blueice-typescript\">blueiceDocumentText(1);</script>"
         );
         stream
             .write_all(
@@ -528,13 +530,31 @@ fn opt_in_launcher_supervises_the_private_bluejs_child_for_core_page_execution()
     write_client_message(&mut frontend, &ClientMessage::GetBlueTsScriptReports).unwrap();
     assert_eq!(
         read_server_message(&mut frontend).unwrap(),
-        ServerMessage::BlueTsScriptReports(vec![blueice_ipc::BlueTsScriptExecutionReport {
-            tab_id: 1,
-            document_generation: 1,
-            ordinal: 1,
-            kind: blueice_ipc::BlueTsScriptKind::Classic,
-            outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
-        }])
+        ServerMessage::BlueTsScriptReports(vec![
+            blueice_ipc::BlueTsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 1,
+                kind: blueice_ipc::BlueTsScriptKind::Classic,
+                outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueTsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 5,
+                kind: blueice_ipc::BlueTsScriptKind::Module,
+                outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Executed,
+            },
+            blueice_ipc::BlueTsScriptExecutionReport {
+                tab_id: 1,
+                document_generation: 1,
+                ordinal: 6,
+                kind: blueice_ipc::BlueTsScriptKind::Classic,
+                outcome: blueice_ipc::BlueTsScriptExecutionOutcome::Rejected {
+                    category: "BlueTS compilation rejected the page script".to_string(),
+                },
+            },
+        ])
     );
 
     // The only public operation here is normal frontend shutdown. It neither
