@@ -338,12 +338,17 @@ fn evaluate(request: Request) -> Value {
             module_codes.clone(),
         );
     }
+    // Harness includes never get the synthetic "strict mode" wrapper --
+    // only the test body does (`source`, above). Each include runs as its
+    // own top-level script; wrapping it in a `"use strict"` this adapter
+    // invented (rather than one the include's own source declares) makes
+    // every function defined at that script's top level strict too,
+    // breaking any harness helper that relies on an unprefixed *internal*
+    // `eval` to observe sloppy-mode-only behavior (direct eval inherits
+    // strictness from its immediately enclosing script, not just from its
+    // own text) -- e.g. sm/non262-strict-shell.js's `testLenientAndStrict`
+    // and sm/non262-expressions-shell.js's `testDestructuringArrayDefault`.
     for source in request.harness_sources {
-        let source = if request.mode == "strict" {
-            format!("\"use strict\";\n{source}")
-        } else {
-            source
-        };
         let program = match parse(&source) {
             Ok(program) => program,
             Err(error) => {
@@ -396,4 +401,90 @@ fn main() -> io::Result<()> {
         output.flush()?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn eval_request(mode: &str, harness_sources: Vec<String>, source: &str) -> Value {
+        evaluate(Request {
+            source: source.to_string(),
+            mode: mode.to_string(),
+            includes: Vec::new(),
+            harness_sources,
+            module_path: None,
+            module_sources: HashMap::new(),
+            module_json_sources: HashMap::new(),
+            module_text_sources: HashMap::new(),
+            module_bytes_sources: HashMap::new(),
+            speculative_module_sources: std::collections::HashSet::new(),
+            module_dynamic_sources: HashMap::new(),
+            module_source_requests: Vec::new(),
+            asynchronous: false,
+            parse_only: false,
+            is_html_dda: false,
+            bytecode_limit: None,
+            instruction_budget: None,
+            heap_limit: None,
+            regex_timeout_ms: None,
+            string_limit: None,
+        })
+    }
+
+    // Mirrors the shape of sm/non262-strict-shell.js's `testLenientAndStrict`
+    // and sm/non262-expressions-shell.js's `testDestructuringArrayDefault`:
+    // a harness include whose own helper relies on an *unprefixed* internal
+    // `eval` to observe sloppy-mode-only behavior (here, an implicit global
+    // created by an undeclared assignment).
+    const SLOPPY_ONLY_HARNESS: &str = r#"
+        globalThis.isSloppyImplicitGlobal = function(name) {
+            try {
+                eval(name + " = 1;");
+            } catch (e) {
+                return false;
+            }
+            return typeof globalThis[name] !== "undefined";
+        };
+    "#;
+
+    #[test]
+    fn harness_includes_stay_sloppy_under_a_strict_mode_test_body() {
+        // Only the test body gets Test262's synthetic "use strict" prefix
+        // for the "strict" execution mode -- never a harness include. A
+        // harness's own internal `eval` must keep observing sloppy-mode
+        // behavior regardless of the test body's own mode, exactly like
+        // real Test262 fixtures that depend on this (e.g.
+        // `staging/sm/strict/10.6.js`, `staging/sm/expressions/
+        // destructuring-array-default-simple.js`).
+        let reply = eval_request(
+            "strict",
+            vec![SLOPPY_ONLY_HARNESS.to_string()],
+            "assert.sameValue(isSloppyImplicitGlobal('bluejsCorpusProblemProbe'), true);",
+        );
+        assert_eq!(reply["kind"], json!("ok"), "reply was: {reply}");
+    }
+
+    #[test]
+    fn harness_includes_stay_sloppy_under_a_sloppy_mode_test_body_too() {
+        let reply = eval_request(
+            "sloppy",
+            vec![SLOPPY_ONLY_HARNESS.to_string()],
+            "assert.sameValue(isSloppyImplicitGlobal('bluejsCorpusProblemProbeSloppy'), true);",
+        );
+        assert_eq!(reply["kind"], json!("ok"), "reply was: {reply}");
+    }
+
+    #[test]
+    fn the_test_body_itself_is_still_strict_prefixed() {
+        // The fix must not stop prefixing the test body -- only harness
+        // includes. A bare implicit global in the *test body* itself must
+        // still throw ReferenceError under "strict" mode.
+        let reply = eval_request(
+            "strict",
+            Vec::new(),
+            "bluejsCorpusProblemProbeBody = 1;",
+        );
+        assert_eq!(reply["kind"], json!("ReferenceError"), "reply was: {reply}");
+    }
 }
