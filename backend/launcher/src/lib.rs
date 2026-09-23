@@ -92,6 +92,11 @@ mod unix {
         /// field: neither a launcher caller nor its CLI can choose a source,
         /// resolver, compiler option, or alternate profile.
         compiler_mcp_socket: Option<PathBuf>,
+        /// A caller-selected Unix endpoint for the core's bounded debugger
+        /// protocol.  The endpoint is only a transport location: debugger
+        /// protocol versioning and every target-bound operation remain
+        /// enforced by the trusted core.
+        debugger_socket: Option<PathBuf>,
     }
 
     impl CoreLaunchOptions {
@@ -144,6 +149,20 @@ mod unix {
         /// ever retargeting an existing compiler/MCP connection.
         pub fn with_core_closed_compiler_mcp_endpoint(mut self, path: PathBuf) -> Self {
             self.compiler_mcp_socket = Some(path);
+            self
+        }
+
+        /// Selects the launcher-owned stable endpoint for the core debugger
+        /// protocol.
+        ///
+        /// The launcher binds the supplied public path as owner-only (`0600`)
+        /// and relays each accepted stream to exactly one core generation's
+        /// private listener.  It does not add debugger operations, source,
+        /// bytecode, runtime values, or arbitrary child-host authority.
+        /// Replacement cores receive fresh private sockets; live streams are
+        /// never retargeted across a cutover.
+        pub fn with_debugger_endpoint(mut self, path: PathBuf) -> Self {
+            self.debugger_socket = Some(path);
             self
         }
     }
@@ -418,11 +437,15 @@ mod unix {
         /// per core generation, so no private child capability crosses a
         /// cutover boundary.
         core_options: CoreLaunchOptions,
-        /// The one public, launcher-owned compiler endpoint.  Its target is
-        /// switched only after a staged replacement core has its own sealed
-        /// private listener; per-connection relay streams remain pinned to
-        /// the target that was current when they were accepted.
-        compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
+        /// The shared acceptance/handoff gate for every stable auxiliary
+        /// endpoint.  It makes browser, compiler, and debugger clients see
+        /// one generation boundary even when both protocol relays are
+        /// selected.
+        route_gate: Arc<Mutex<()>>,
+        /// The optional public launcher-owned compiler endpoint.
+        compiler_mcp_relay: Option<Arc<GenerationPinnedUnixRelay>>,
+        /// The optional public launcher-owned debugger endpoint.
+        debugger_relay: Option<Arc<GenerationPinnedUnixRelay>>,
         /// Signaled exactly once, by whichever generation-tagged broadcast
         /// thread's own death is NOT a deliberate cutover supersession --
         /// what [`run_broker`] blocks on to know when the whole launcher
@@ -691,17 +714,14 @@ mod unix {
     /// and drop v1 itself (killing its process, cleaning up its socket and
     /// frame directory).
     fn perform_swap(broker: &Arc<Broker>, v2: SpawnedCore, target_generation: u64) {
-        // A compiler relay accept snapshots its target while holding this
-        // same short gate.  Hold it across the browser-writer swap and relay
-        // activation so a newly constructed paired MCP adapter cannot land
-        // on a v1 browser stream but a v2 compiler stream (or vice versa).
-        let route_gate = broker
-            .compiler_mcp_relay
-            .as_ref()
-            .map(|relay| relay.route_gate());
-        let _route_handoff = route_gate
-            .as_ref()
-            .map(|gate| gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner()));
+        // Every relay accept snapshots its target while holding this gate.
+        // Hold it across the browser-writer swap and both relay activations,
+        // so no newly accepted compiler or debugger connection can observe a
+        // different core generation from browser traffic.
+        let _route_handoff = broker
+            .route_gate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         broker.generation.store(target_generation, Ordering::SeqCst);
 
         let v2_broadcast_stream = v2
@@ -725,11 +745,10 @@ mod unix {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = v2_writer_stream;
 
-        // The replacement listener was created and catalog-sealed before
-        // replay/health checking.  Under the shared handoff gate, make it
-        // the target for only future compiler accepts after browser traffic
-        // has moved to the same core generation.
-        v2.activate_compiler_mcp_relay_after_handoff();
+        // The replacement private listeners are ready before replay/health
+        // checking. Under the shared handoff gate, make them targets only for
+        // future accepts after browser traffic has moved to the same core.
+        v2.activate_relays_after_handoff();
 
         let mut active = broker
             .active_core
@@ -766,12 +785,16 @@ mod unix {
 
         let target_generation = broker.generation.load(Ordering::SeqCst) + 1;
         let frame_dir = v2_frame_dir(&broker.frame_dir, target_generation);
-        let mut v2 = match SpawnedCore::spawn_with_options_and_compiler_mcp_relay(
+        let mut v2 = match SpawnedCore::spawn_with_options_and_relays(
             broker.width,
             broker.height,
             &frame_dir,
             broker.core_options.clone(),
-            broker.compiler_mcp_relay.clone(),
+            RelaySet {
+                route_gate: Arc::clone(&broker.route_gate),
+                compiler_mcp_relay: broker.compiler_mcp_relay.clone(),
+                debugger_relay: broker.debugger_relay.clone(),
+            },
         ) {
             Ok(v2) => v2,
             Err(e) => {
@@ -840,7 +863,9 @@ mod unix {
     ) -> io::Result<()> {
         let frame_dir = core.frame_dir.clone();
         let core_options = core.options.clone();
+        let route_gate = core.route_gate.clone();
         let compiler_mcp_relay = core.compiler_mcp_relay.clone();
+        let debugger_relay = core.debugger_relay.clone();
         let core_writer = Arc::new(Mutex::new(core.stream.try_clone()?));
         let broadcast_stream = core.stream.try_clone()?;
         let clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>> =
@@ -858,7 +883,9 @@ mod unix {
             height,
             frame_dir,
             core_options,
+            route_gate,
             compiler_mcp_relay,
+            debugger_relay,
             done: done_tx.clone(),
         });
 
@@ -900,6 +927,9 @@ mod unix {
             active.take();
         }
         if let Some(relay) = &broker.compiler_mcp_relay {
+            relay.close();
+        }
+        if let Some(relay) = &broker.debugger_relay {
             relay.close();
         }
 
@@ -960,6 +990,18 @@ mod unix {
         ))
     }
 
+    /// A generation-private debugger socket. Like the compiler socket, this
+    /// name is launcher-generated and cannot be supplied through the public
+    /// debugger transport.
+    fn unique_internal_debugger_socket_path() -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "blueice-launcher-debugger-{}-{n}.sock",
+            std::process::id()
+        ))
+    }
+
     fn wait_for_socket(path: &Path, timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
@@ -980,12 +1022,12 @@ mod unix {
     /// common `sockaddr_un.sun_path` capacity.  The actual platform capacity
     /// varies, so a conservative launcher-side limit rejects a bad setup
     /// before a core (or an optional BlueJS host) is spawned.
-    const MAX_COMPILER_MCP_SOCKET_PATH_BYTES: usize = 100;
+    const MAX_STABLE_ENDPOINT_SOCKET_PATH_BYTES: usize = 100;
 
     /// Removes only a Unix-domain socket.  A caller-selected endpoint must
     /// never let cleanup unlink an ordinary file, directory, or symlink that
     /// happens to occupy the same path after a child exits.
-    fn remove_compiler_mcp_socket_if_owned(path: &Path) {
+    fn remove_owned_socket_if_owned(path: &Path) {
         let Ok(metadata) = std::fs::symlink_metadata(path) else {
             return;
         };
@@ -994,39 +1036,52 @@ mod unix {
         }
     }
 
+    fn remove_compiler_mcp_socket_if_owned(path: &Path) {
+        remove_owned_socket_if_owned(path);
+    }
+
     /// Validates the only public compiler configuration before any child is
     /// created.  A stale socket may be reclaimed; a live listener, a symlink,
     /// or any non-socket file is an explicit configuration error.  In
     /// particular, never blindly unlink a caller's arbitrary path merely
     /// because it was supplied as a compiler endpoint.
+    #[cfg(test)]
     fn prepare_compiler_mcp_endpoint(path: &Path) -> io::Result<()> {
+        prepare_stable_endpoint(path, "compiler MCP")
+    }
+
+    /// Validates a caller-selected stable relay endpoint before a child is
+    /// created. A stale socket may be reclaimed; a live listener, symlink,
+    /// or other filesystem object fails closed. The label is launcher-owned
+    /// diagnostic text, never a protocol or capability input.
+    fn prepare_stable_endpoint(path: &Path, label: &str) -> io::Result<()> {
         use std::os::unix::ffi::OsStrExt;
 
         if !path.is_absolute() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "compiler MCP socket path must be absolute",
+                format!("{label} socket path must be absolute"),
             ));
         }
-        if path.as_os_str().as_bytes().len() > MAX_COMPILER_MCP_SOCKET_PATH_BYTES {
+        if path.as_os_str().as_bytes().len() > MAX_STABLE_ENDPOINT_SOCKET_PATH_BYTES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
-                    "compiler MCP socket path exceeds {MAX_COMPILER_MCP_SOCKET_PATH_BYTES} bytes"
+                    "{label} socket path exceeds {MAX_STABLE_ENDPOINT_SOCKET_PATH_BYTES} bytes"
                 ),
             ));
         }
         let parent = path.parent().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "compiler MCP socket path must have a parent directory",
+                format!("{label} socket path must have a parent directory"),
             )
         })?;
         if !parent.is_dir() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 format!(
-                    "compiler MCP socket parent does not exist or is not a directory: {}",
+                    "{label} socket parent does not exist or is not a directory: {}",
                     parent.display()
                 ),
             ));
@@ -1041,7 +1096,7 @@ mod unix {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
                 format!(
-                    "compiler MCP endpoint is occupied by a non-socket path: {}",
+                    "{label} endpoint is occupied by a non-socket path: {}",
                     path.display()
                 ),
             ));
@@ -1052,10 +1107,7 @@ mod unix {
             // accidental second launcher and a cutover attempt fail closed.
             Ok(_) => Err(io::Error::new(
                 io::ErrorKind::AddrInUse,
-                format!(
-                    "compiler MCP endpoint is already active: {}",
-                    path.display()
-                ),
+                format!("{label} endpoint is already active: {}", path.display()),
             )),
             // A socket inode without a listener is recoverable state from a
             // previous crashed child.  It is safe to reclaim only after its
@@ -1066,23 +1118,22 @@ mod unix {
             Err(error) => Err(io::Error::new(
                 error.kind(),
                 format!(
-                    "could not determine whether compiler MCP endpoint is live at {}: {error}",
+                    "could not determine whether {label} endpoint is live at {}: {error}",
                     path.display()
                 ),
             )),
         }
     }
 
-    /// A launcher-owned stable compiler endpoint.  The listener is public
+    /// A launcher-owned stable auxiliary endpoint. The listener is public
     /// only to the launching Unix user (`0600`); each connection is bound
-    /// once, at accept time, to one generation-private core listener.
+    /// exactly once, at accept time, to one generation-private core listener.
     ///
-    /// The relay deliberately has no compiler protocol awareness.  It never
-    /// accepts a project, source, resolver, option, or update/build/write
-    /// input, and it cannot manufacture a compiler catalog.  It only copies
-    /// bytes between a caller-selected owner-only socket and a private socket
-    /// selected by the launcher after that core has sealed its fixed profile.
-    struct CompilerMcpRelay {
+    /// This relay is deliberately protocol-agnostic. It parses no compiler
+    /// or debugger request and cannot manufacture either service's authority:
+    /// it only copies bytes between a validated owner-only public socket and
+    /// the launcher-selected private listener for the accepted generation.
+    struct GenerationPinnedUnixRelay {
         public_socket_path: PathBuf,
         /// Serializes one relay accept's target snapshot with the broker's
         /// small browser/compiler-generation handoff.
@@ -1092,9 +1143,13 @@ mod unix {
         accept_thread: Mutex<Option<JoinHandle<()>>>,
     }
 
-    impl CompilerMcpRelay {
-        fn bind(path: &Path) -> io::Result<Self> {
-            prepare_compiler_mcp_endpoint(path)?;
+    impl GenerationPinnedUnixRelay {
+        fn bind(
+            path: &Path,
+            endpoint_label: &'static str,
+            route_gate: Arc<Mutex<()>>,
+        ) -> io::Result<Self> {
+            prepare_stable_endpoint(path, endpoint_label)?;
             let listener = UnixListener::bind(path)?;
             // Do not depend on the process umask for a public capability
             // boundary.  This also keeps the public stable endpoint at the
@@ -1102,16 +1157,15 @@ mod unix {
             if let Err(error) =
                 std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
             {
-                remove_compiler_mcp_socket_if_owned(path);
+                remove_owned_socket_if_owned(path);
                 return Err(error);
             }
             if let Err(error) = listener.set_nonblocking(true) {
-                remove_compiler_mcp_socket_if_owned(path);
+                remove_owned_socket_if_owned(path);
                 return Err(error);
             }
 
             let target = Arc::new(Mutex::new(None));
-            let route_gate = Arc::new(Mutex::new(()));
             let accepting = Arc::new(AtomicBool::new(true));
             let thread_target = Arc::clone(&target);
             let thread_route_gate = Arc::clone(&route_gate);
@@ -1145,7 +1199,9 @@ mod unix {
                                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                                 .clone();
                             if let Some(target) = target {
-                                thread::spawn(move || relay_compiler_connection(client, target));
+                                thread::spawn(move || {
+                                    relay_generation_pinned_connection(client, target)
+                                });
                             } else {
                                 // A core is staged but not committed, or the
                                 // launcher is stopping.  There is no safe
@@ -1169,10 +1225,6 @@ mod unix {
                 accepting,
                 accept_thread: Mutex::new(Some(accept_thread)),
             })
-        }
-
-        fn route_gate(&self) -> Arc<Mutex<()>> {
-            Arc::clone(&self.route_gate)
         }
 
         /// Makes subsequently accepted public connections target `socket`.
@@ -1212,21 +1264,21 @@ mod unix {
             {
                 let _ = thread.join();
             }
-            remove_compiler_mcp_socket_if_owned(&self.public_socket_path);
+            remove_owned_socket_if_owned(&self.public_socket_path);
         }
     }
 
-    impl Drop for CompilerMcpRelay {
+    impl Drop for GenerationPinnedUnixRelay {
         fn drop(&mut self) {
             self.close();
         }
     }
 
-    /// Copies a single public compiler connection to its one private core
-    /// peer.  If the staged/old core no longer owns that private endpoint,
-    /// the accepted public connection is closed; it is never retried against
-    /// a newer core generation.
-    fn relay_compiler_connection(mut client: UnixStream, target: PathBuf) {
+    /// Copies a single accepted public connection to its one private core
+    /// peer. If the staged/old core no longer owns that private endpoint, the
+    /// accepted connection is closed; it is never retried against a newer
+    /// generation.
+    fn relay_generation_pinned_connection(mut client: UnixStream, target: PathBuf) {
         let mut core = match UnixStream::connect(target) {
             Ok(core) => core,
             Err(_) => {
@@ -1252,6 +1304,16 @@ mod unix {
         let _ = client_to_core_thread.join();
     }
 
+    /// The launcher-owned stable endpoint set for one core generation. The
+    /// public listeners outlive individual generations; only these private
+    /// targets and the shared handoff gate travel with a staged core.
+    #[derive(Clone)]
+    struct RelaySet {
+        route_gate: Arc<Mutex<()>>,
+        compiler_mcp_relay: Option<Arc<GenerationPinnedUnixRelay>>,
+        debugger_relay: Option<Arc<GenerationPinnedUnixRelay>>,
+    }
+
     /// A `core` process this launcher spawned and owns privately: killed
     /// and cleaned up (process, internal socket, and frame directory) on
     /// [`Drop`], the same lifetime discipline `mcp-server`'s `CoreProcess`
@@ -1259,10 +1321,13 @@ mod unix {
     pub struct SpawnedCore {
         child: Child,
         internal_socket_path: PathBuf,
-        /// A launcher-generated core-private listener.  The public compiler
-        /// endpoint is owned by [`CompilerMcpRelay`] instead, so this path
-        /// can be unique for every live/staged generation.
+        /// A launcher-generated core-private compiler listener. The public
+        /// endpoint is owned by [`GenerationPinnedUnixRelay`] instead, so
+        /// this path can be unique for every live/staged generation.
         compiler_private_socket_path: Option<PathBuf>,
+        /// A launcher-generated core-private debugger listener. The public
+        /// endpoint is likewise relay-owned and never directly exposed.
+        debugger_private_socket_path: Option<PathBuf>,
         frame_dir: PathBuf,
         /// Retained so a cutover can reproduce the selected launcher policy
         /// without preserving a generation-specific page-host capability.
@@ -1271,9 +1336,13 @@ mod unix {
         /// `Drop` implementation kills/reaps the isolated child after this
         /// core has been terminated, and removes the child-only socket.
         bluejs_host: Option<SpawnedBlueJsHost>,
+        /// Shared by the browser broker and every relay accept, so a cutover
+        /// changes all future protocol routes at one generation boundary.
+        route_gate: Arc<Mutex<()>>,
         /// Shared with the broker during a cutover so v1's Drop cannot close
-        /// the stable public endpoint while v2 is being staged.
-        compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
+        /// stable public endpoints while v2 is being staged.
+        compiler_mcp_relay: Option<Arc<GenerationPinnedUnixRelay>>,
+        debugger_relay: Option<Arc<GenerationPinnedUnixRelay>>,
         pub stream: UnixStream,
     }
 
@@ -1300,13 +1369,24 @@ mod unix {
             frame_dir: &Path,
             options: CoreLaunchOptions,
         ) -> io::Result<Self> {
-            // Do this before creating either child.  A malformed, partial,
-            // or occupied caller-selected compiler endpoint cannot briefly
-            // spawn a core or page host that would then need cleanup.
+            // Do this before creating either child. A malformed, partial, or
+            // occupied caller-selected endpoint cannot briefly spawn a core
+            // or page host that would then need cleanup.
+            let route_gate = Arc::new(Mutex::new(()));
             let compiler_mcp_relay = options
                 .compiler_mcp_socket
                 .as_deref()
-                .map(CompilerMcpRelay::bind)
+                .map(|path| {
+                    GenerationPinnedUnixRelay::bind(path, "compiler MCP", Arc::clone(&route_gate))
+                })
+                .transpose()?
+                .map(Arc::new);
+            let debugger_relay = options
+                .debugger_socket
+                .as_deref()
+                .map(|path| {
+                    GenerationPinnedUnixRelay::bind(path, "debugger", Arc::clone(&route_gate))
+                })
                 .transpose()?
                 .map(Arc::new);
             let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
@@ -1322,22 +1402,26 @@ mod unix {
                 options,
                 bluejs_host,
                 page_host_config,
-                compiler_mcp_relay,
+                RelaySet {
+                    route_gate,
+                    compiler_mcp_relay,
+                    debugger_relay,
+                },
             )?;
-            core.activate_compiler_mcp_relay();
+            core.activate_relays();
             Ok(core)
         }
 
-        /// Stages a core during a broker cutover.  `compiler_mcp_relay` is
-        /// the existing public listener, not a new caller-selected endpoint;
-        /// its target is intentionally left on v1 until replay and health
-        /// checking complete in [`cutover`].
-        fn spawn_with_options_and_compiler_mcp_relay(
+        /// Stages a core during a broker cutover. The relays are existing
+        /// public listeners, not new caller-selected endpoints; their
+        /// targets intentionally stay on v1 until replay and health checking
+        /// complete in [`cutover`].
+        fn spawn_with_options_and_relays(
             width: f64,
             height: f64,
             frame_dir: &Path,
             options: CoreLaunchOptions,
-            compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
+            relays: RelaySet,
         ) -> io::Result<Self> {
             let (bluejs_host, page_host_config) = if options.supervise_out_of_process_bluejs {
                 let (host, config) = SpawnedBlueJsHost::spawn_for_core()?;
@@ -1352,7 +1436,7 @@ mod unix {
                 options,
                 bluejs_host,
                 page_host_config,
-                compiler_mcp_relay,
+                relays,
             )
         }
 
@@ -1363,16 +1447,24 @@ mod unix {
             options: CoreLaunchOptions,
             bluejs_host: Option<SpawnedBlueJsHost>,
             page_host_config: Option<BlueJsHostCoreConfig>,
-            compiler_mcp_relay: Option<Arc<CompilerMcpRelay>>,
+            relays: RelaySet,
         ) -> io::Result<Self> {
             let this_exe = std::env::current_exe()?;
             let core_bin = sibling_core_binary(&this_exe);
             let internal_socket_path = unique_internal_socket_path();
             let _ = std::fs::remove_file(&internal_socket_path);
-            let compiler_private_socket_path = compiler_mcp_relay
+            let compiler_private_socket_path = relays
+                .compiler_mcp_relay
                 .as_ref()
                 .map(|_| unique_internal_compiler_socket_path());
             if let Some(path) = &compiler_private_socket_path {
+                let _ = std::fs::remove_file(path);
+            }
+            let debugger_private_socket_path = relays
+                .debugger_relay
+                .as_ref()
+                .map(|_| unique_internal_debugger_socket_path());
+            if let Some(path) = &debugger_private_socket_path {
                 let _ = std::fs::remove_file(path);
             }
 
@@ -1408,6 +1500,9 @@ mod unix {
                     .arg("--compiler-project-profile")
                     .arg(CORE_CLOSED_COMPILER_PROJECT_PROFILE);
             }
+            if let Some(debugger_socket) = &debugger_private_socket_path {
+                command.arg("--debugger-socket").arg(debugger_socket);
+            }
             let mut child = command.spawn()?;
 
             if !wait_for_socket(&internal_socket_path, Duration::from_secs(5)) {
@@ -1417,10 +1512,28 @@ mod unix {
                 if let Some(compiler_socket) = &compiler_private_socket_path {
                     remove_compiler_mcp_socket_if_owned(compiler_socket);
                 }
+                if let Some(debugger_socket) = &debugger_private_socket_path {
+                    remove_owned_socket_if_owned(debugger_socket);
+                }
                 return Err(io::Error::other(format!(
                     "blueice-core never created its socket at {}",
                     internal_socket_path.display()
                 )));
+            }
+            if let Some(debugger_socket) = &debugger_private_socket_path {
+                if !wait_for_socket(debugger_socket, Duration::from_secs(5)) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_file(&internal_socket_path);
+                    if let Some(compiler_socket) = &compiler_private_socket_path {
+                        remove_compiler_mcp_socket_if_owned(compiler_socket);
+                    }
+                    remove_owned_socket_if_owned(debugger_socket);
+                    return Err(io::Error::other(format!(
+                        "blueice-core never created its debugger socket at {}",
+                        debugger_socket.display()
+                    )));
+                }
             }
             let mut stream = match UnixStream::connect(&internal_socket_path) {
                 Ok(stream) => stream,
@@ -1430,6 +1543,9 @@ mod unix {
                     let _ = std::fs::remove_file(&internal_socket_path);
                     if let Some(compiler_socket) = &compiler_private_socket_path {
                         remove_compiler_mcp_socket_if_owned(compiler_socket);
+                    }
+                    if let Some(debugger_socket) = &debugger_private_socket_path {
+                        remove_owned_socket_if_owned(debugger_socket);
                     }
                     return Err(error);
                 }
@@ -1450,35 +1566,53 @@ mod unix {
                 if let Some(compiler_socket) = &compiler_private_socket_path {
                     remove_compiler_mcp_socket_if_owned(compiler_socket);
                 }
+                if let Some(debugger_socket) = &debugger_private_socket_path {
+                    remove_owned_socket_if_owned(debugger_socket);
+                }
                 return Err(error);
             }
             Ok(SpawnedCore {
                 child,
                 internal_socket_path,
                 compiler_private_socket_path,
+                debugger_private_socket_path,
                 frame_dir: frame_dir.to_path_buf(),
                 options,
                 bluejs_host,
-                compiler_mcp_relay,
+                route_gate: relays.route_gate,
+                compiler_mcp_relay: relays.compiler_mcp_relay,
+                debugger_relay: relays.debugger_relay,
                 stream,
             })
         }
 
-        fn activate_compiler_mcp_relay(&self) {
+        fn activate_relays(&self) {
             if let (Some(relay), Some(socket)) = (
                 self.compiler_mcp_relay.as_ref(),
                 self.compiler_private_socket_path.as_ref(),
             ) {
                 relay.activate_generation(socket);
             }
+            if let (Some(relay), Some(socket)) = (
+                self.debugger_relay.as_ref(),
+                self.debugger_private_socket_path.as_ref(),
+            ) {
+                relay.activate_generation(socket);
+            }
         }
 
-        /// Activates this staged core while [`CompilerMcpRelay::route_gate`]
-        /// is held by [`perform_swap`].
-        fn activate_compiler_mcp_relay_after_handoff(&self) {
+        /// Activates this staged core while the shared `route_gate` is held
+        /// by [`perform_swap`].
+        fn activate_relays_after_handoff(&self) {
             if let (Some(relay), Some(socket)) = (
                 self.compiler_mcp_relay.as_ref(),
                 self.compiler_private_socket_path.as_ref(),
+            ) {
+                relay.activate_generation_after_handoff(socket);
+            }
+            if let (Some(relay), Some(socket)) = (
+                self.debugger_relay.as_ref(),
+                self.debugger_private_socket_path.as_ref(),
             ) {
                 relay.activate_generation_after_handoff(socket);
             }
@@ -1497,6 +1631,9 @@ mod unix {
             let _ = std::fs::remove_file(&self.internal_socket_path);
             if let Some(compiler_socket) = &self.compiler_private_socket_path {
                 remove_compiler_mcp_socket_if_owned(compiler_socket);
+            }
+            if let Some(debugger_socket) = &self.debugger_private_socket_path {
+                remove_owned_socket_if_owned(debugger_socket);
             }
             // `child.kill()` sends SIGKILL, which never lets `blueice-core`
             // run its own graceful-exit cleanup (which would otherwise

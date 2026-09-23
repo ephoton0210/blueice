@@ -447,10 +447,15 @@ or second module resolver to bypass them.
   values. Real Unix-socket child/core tests cover location discovery, exact
   validation, configuration lifecycle, non-entry root pause/resume, cross-tab
   rejection, malformed response rejection, and navigation-stale rejection
-  without source, bytecode, or runtime-value leaks. The launcher does not yet
-  provide a stable public debugger listener across core cutover: its
-  generation-owned debugger socket and all opaque handles fail closed when
-  that core ends.
+  without source, bytecode, or runtime-value leaks. `blueice-launcher
+  --debugger-socket <absolute-path>` now owns an optional stable public `0600`
+  debugger listener. It validates the public endpoint before child spawn,
+  passes only a launcher-generated private debugger socket to each core
+  generation, and shares the browser/compiler handoff gate. Each accepted
+  debugger stream remains pinned to one private peer: a stream accepted for
+  v1 fails closed when v1 ends rather than being retargeted to v2, while a new
+  stream accepted after the committed cutover reaches v2. Realm, program, and
+  safe-point handles therefore remain generation-bound.
 
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm
