@@ -269,10 +269,16 @@ fn compute_state(
         && matches!(attr(attributes, "type"), Some("checkbox") | Some("radio")))
     .then(|| has_attr(attributes, "checked"));
     NodeState {
-        value: (tag == "input"
-            && attr(attributes, "type").is_none_or(|input_type| input_type.eq_ignore_ascii_case("text")))
-            .then(|| attr(attributes, "value").map(str::to_string))
-            .flatten(),
+        value: if tag == "input"
+            && attr(attributes, "type")
+                .is_none_or(|input_type| input_type.eq_ignore_ascii_case("text"))
+        {
+            attr(attributes, "value").map(str::to_string)
+        } else if tag == "textarea" {
+            Some(text_content(page.doc(), node))
+        } else {
+            None
+        },
         checked,
         disabled: has_attr(attributes, "disabled"),
         required: has_attr(attributes, "required"),

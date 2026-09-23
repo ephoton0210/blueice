@@ -136,6 +136,17 @@ pub enum ExtensionRequest {
         node_id: u64,
         checked: bool,
     },
+    /// Version 4 of `dom:write`: changes the text content of one explicit,
+    /// enabled native textarea in one explicit tab. This is deliberately a
+    /// separate operation from text inputs: core verifies the live tag and
+    /// enabled state before it changes its own document, then exposes the
+    /// result through the same representation/frame path as every other
+    /// core-owned form update.
+    SetTextareaValue {
+        tab_id: u64,
+        node_id: u64,
+        value: String,
+    },
     /// Registers a network interception rule -- requires the
     /// `network:intercept` capability. Registering interception at all
     /// is high-risk, so the host always routes this request through the
@@ -376,6 +387,11 @@ mod tests {
                 tab_id: 42,
                 node_id: 100,
                 checked: true,
+            },
+            ExtensionRequest::SetTextareaValue {
+                tab_id: 42,
+                node_id: 101,
+                value: "multi-line shared value".to_string(),
             },
             ExtensionRequest::NetworkIntercept,
         ] {

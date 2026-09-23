@@ -369,6 +369,34 @@ impl Page {
         Ok(())
     }
 
+    /// Sets the text content of a real, enabled native textarea for the
+    /// extension protocol's version-4 `dom:write` operation. This is a
+    /// distinct bounded operation from text-input attributes: a textarea's
+    /// value is represented by its child text, and extensions cannot use it
+    /// to replace arbitrary element content.
+    pub(crate) fn set_textarea_value(&mut self, id: NodeId, value: String) -> Result<(), String> {
+        if !self.doc.contains(id) {
+            return Err(format!("unknown textarea node {}", id.as_u64()));
+        }
+        let is_supported_textarea = matches!(
+            self.doc.data(id),
+            NodeData::Element {
+                tag_name,
+                attributes,
+            } if tag_name.eq_ignore_ascii_case("textarea")
+                && !attributes
+                    .iter()
+                    .any(|(name, _)| name.eq_ignore_ascii_case("disabled"))
+        );
+        if !is_supported_textarea {
+            return Err(format!(
+                "node {} is not an enabled native textarea",
+                id.as_u64()
+            ));
+        }
+        self.script_set_text_content(id, value)
+    }
+
     /// Sets the checked state of a real, enabled native checkbox for the
     /// extension protocol's version-3 `dom:write` operation. This remains a
     /// bounded semantic operation rather than a generic attribute setter:
@@ -1262,6 +1290,41 @@ mod tests {
         );
         assert!(
             page.set_text_input_value(NodeId::from_u64(9_999), "stale".to_string())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn extension_textarea_write_only_changes_live_enabled_native_textareas() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"<textarea id="notes">before</textarea><textarea id="disabled" disabled>locked</textarea><input id="other">"#,
+            None,
+        );
+        let textarea = page.script_get_element_by_id("notes").unwrap();
+        let disabled = page.script_get_element_by_id("disabled").unwrap();
+        let other = page.script_get_element_by_id("other").unwrap();
+
+        page.set_textarea_value(textarea, "after\nwith detail".to_string())
+            .unwrap();
+        assert_eq!(
+            page.snapshot(1, 1)
+                .nodes
+                .iter()
+                .find(|node| node.id == textarea.as_u64())
+                .and_then(|node| node.state.value.as_deref()),
+            Some("after with detail")
+        );
+        assert!(
+            page.set_textarea_value(disabled, "must not write".to_string())
+                .is_err()
+        );
+        assert!(
+            page.set_textarea_value(other, "must not write".to_string())
+                .is_err()
+        );
+        assert!(
+            page.set_textarea_value(NodeId::from_u64(9_999), "stale".to_string())
                 .is_err()
         );
     }

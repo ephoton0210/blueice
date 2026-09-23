@@ -274,6 +274,25 @@ fn request_checkbox_checked(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
 }
 
+fn request_textarea_value(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: u64,
+    node_id: u64,
+    value: String,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::SetTextareaValue {
+        tab_id,
+        node_id,
+        value,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
 /// Serves extension connections outside the session thread, but asks that
 /// thread for the one piece of real `Page` data Phase 9 currently supports.
 /// This keeps a `Page` single-thread-owned just like navigation and frontend
@@ -329,6 +348,11 @@ fn spawn_extension_listener(
                                     node_id,
                                     value == "true",
                                 )
+                            }
+                            blueice_ipc::extension::DomWriteTarget::FormInput { input_type }
+                                if input_type.eq_ignore_ascii_case("textarea") =>
+                            {
+                                request_textarea_value(&request_tx, tab_id, node_id, value)
                             }
                             _ => request_text_input_value(&request_tx, tab_id, node_id, value),
                         },
