@@ -141,14 +141,26 @@ impl Vm {
         // producing a result whose real TypedArray data lived in another
         // realm's heap while this function's caller read it directly from
         // `self.heap` -- silently empty/zeroed data, not an error.
-        let is_foreign_typed_array_constructor = matches!(
-            self.test262_foreign_native_function(constructor_id)?,
-            Some(NativeFunction::TypedArray(_))
-        ) || matches!(
-            self.test262_reverse_native_function(constructor_id)?,
-            Some(NativeFunction::TypedArray(_))
-        );
-        if !is_foreign_typed_array_constructor {
+        //
+        // The classification itself must be "is `constructor_id` a facade
+        // at all", not "...specifically for a native TypedArray
+        // constructor": a species constructor reaching across the membrane
+        // can be an ordinary JS *subclass* of a real TypedArray constructor
+        // (e.g. Test262's own `sm/non262-TypedArray-shell.js` synthesizes
+        // exactly this -- a `class SharedTypedArray extends
+        // Object.getPrototypeOf(baseConstructor)`), which has no
+        // `NativeFunction::TypedArray` tag of its own even though
+        // `[[Construct]]`ing it still produces a value belonging to the
+        // other realm. The narrower native-function check missed this,
+        // silently falling through to the same-realm construction path and
+        // losing every mutation applied to the result afterward (the
+        // round-trip identity cache in `test262_import_foreign_value`
+        // discards it on the way back out) -- the `actual < length` check
+        // below still catches anything that turns out not to be a valid
+        // TypedArray constructor, so broadening this is safe.
+        let is_foreign_constructor = self.test262_foreign_reference(constructor_id).is_some()
+            || self.test262_reverse_reference(constructor_id).is_some();
+        if !is_foreign_constructor {
             return Ok(None);
         }
         let target = self.call_with_target(
@@ -566,7 +578,7 @@ impl Vm {
         let attempted_cross_realm_construction = foreign_target.is_some();
         let constructed = match foreign_target {
             Some(value) => value,
-            None => Value::Object(self.typed_array_create(constructor, count)?.0),
+            None => Value::Object(self.typed_array_create(constructor.clone(), count)?.0),
         };
         let constructed_id = constructed
             .object_id()
@@ -638,39 +650,69 @@ impl Vm {
             // `constructed` is a genuine local object here (the branch
             // above handles a live facade), but it was reached through a
             // *reverse* facade constructor -- `test262_reverse_call`'s
-            // result crossed back into this realm via
-            // `test262_transport_value`'s ordinary TypedArray snapshot.
-            //
-            // KNOWN LIMITATION, not fully fixed here: mutating that
-            // snapshot after construction (whether via a raw byte copy, as
-            // originally attempted, or the ordinary element-by-element
-            // Get/Set copy below) is *not observable* once this result
-            // crosses back out to whichever realm dispatched into this one.
-            // `test262_import_foreign_value`'s round-trip cache
-            // (`realm.imported_values`, `foreign.rs`) recognizes that the
-            // object being re-exported is itself an import-created stand-in
-            // and returns the *original* value it stands in for --
-            // deliberately, so a value making a round trip keeps its
-            // identity -- which means any mutation applied to the stand-in
-            // after that registration is silently discarded in favor of
-            // the pristine original. A correct fix needs either
-            // constructing the result *with* its data already provided (so
-            // there is nothing to mutate afterward), or a proper reverse
-            // buffer-mirror mechanism symmetric to the forward one
-            // (`foreign.rs`'s buffer mirrors are parent-owned and
-            // forward-only); both are separate work.
-            //
-            // The Get/Set copy below is still strictly better than the
-            // alternative it replaced: it cannot corrupt memory or panic
-            // (unlike blindly trusting `foreign_target.is_some()` to mean
-            // "this id is a live facade", which it turned out not to be),
-            // it correctly populates the *local* snapshot for any caller
-            // that observes it before it round-trips back out, and once
-            // the limitation above is fixed this is the right shape for it
-            // to build on -- only the write target changes.
-            let values = self.typed_array_read_values(object, start, copy_count)?;
-            for (index, value) in values.into_iter().enumerate() {
-                self.typed_array_write_values(constructed_id, target_kind, index, &[value])?;
+            // result crossed back into this realm via `test262_transport_
+            // value`'s ordinary TypedArray snapshot, registered as a
+            // round-trip stand-in for the *real* object in the parent's
+            // own `imported_values` (`Test262Realm`, `vm.rs`). Mutating the
+            // snapshot itself has no observable effect once this value
+            // crosses back out: `test262_import_foreign_value`'s
+            // round-trip cache unconditionally returns that real, original
+            // object instead (see `TEST262_ANALYSIS_REPORT.md`'s
+            // "Reverse-membrane round-trip cache" writeup for the full
+            // trace this diagnosis came from). For the common
+            // same-element-type case, write the bytes directly into the
+            // *real* parent-owned buffer instead of the snapshot --
+            // `test262_reverse_write_into_real_construction_result`
+            // resolves it via the same `resolve_active` mechanism every
+            // other cross-realm call in this membrane uses (sound here
+            // because the parent is still registered active: this whole
+            // call is nested inside `test262_foreign_typed_array_native_
+            // call`'s own `register_active` scope). This also restores the
+            // same bitwise, NaN-payload-preserving copy the same-realm and
+            // live-foreign-facade branches above use.
+            let mut real_write_done = false;
+            if kind == target_kind {
+                let constructor_wrapper = constructor
+                    .object_id()
+                    .expect("a cross-realm species constructor is an object");
+                let byte_start = source_offset + start * kind.byte_width();
+                let byte_length = copy_count * kind.byte_width();
+                let bytes = self
+                    .heap
+                    .array_buffer_copy(source_buffer, byte_start, byte_length)?;
+                real_write_done = self.test262_reverse_write_into_real_construction_result(
+                    constructor_wrapper,
+                    constructed_id,
+                    0,
+                    &bytes,
+                )?;
+                if real_write_done {
+                    // The snapshot itself is still worth populating too --
+                    // for a caller that observes `constructed` *before* it
+                    // round-trips back out (e.g. more child-realm code
+                    // running before this call returns), the snapshot is
+                    // what it sees, not the real parent object. `array_
+                    // buffer_write` takes the *buffer* object's id, not the
+                    // TypedArray view's own id -- resolve it first.
+                    let (local_buffer, local_offset, ..) =
+                        self.heap.typed_array_info(constructed_id)?;
+                    self.with_roots(|heap| {
+                        heap.array_buffer_write(local_buffer, local_offset, &bytes)
+                    })?;
+                }
+            }
+            if !real_write_done {
+                // Either a differing element kind, or (defensively; not
+                // expected in practice -- see this function's own doc
+                // comment) the constructor wasn't actually a reverse
+                // facade after all. Falls back to populating the local
+                // snapshot only, which is still correct for any caller
+                // that observes it before a round trip, and strictly
+                // better than leaving it unpopulated.
+                let values = self.typed_array_read_values(object, start, copy_count)?;
+                for (index, value) in values.into_iter().enumerate() {
+                    self.typed_array_write_values(constructed_id, target_kind, index, &[value])?;
+                }
             }
             return Ok(constructed);
         }

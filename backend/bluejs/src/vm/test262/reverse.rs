@@ -90,31 +90,82 @@ impl Vm {
         Ok(ptr)
     }
 
-    /// The reverse-membrane counterpart of
-    /// [`Vm::test262_foreign_native_function`] (`foreign.rs`): the
-    /// `NativeFunction` tag of a reverse facade's real (parent-owned)
-    /// target, or `None` if `wrapper` isn't a reverse facade. A pure heap
-    /// read (no JavaScript execution, so no reentrancy to guard against --
-    /// unlike every other function in this module, this one does not need
-    /// `register_active`), used by callers that need to classify a value
-    /// as "potentially not locally owned" symmetrically in both
-    /// directions -- e.g. `typed_array_create_foreign_target`, which
-    /// checks both this and the forward direction before deciding whether
-    /// a species constructor's result needs cross-realm buffer handling.
-    pub(in super::super) fn test262_reverse_native_function(
+    /// Writes `bytes` directly into the *real* parent-owned buffer that
+    /// `local_result` (a value in *this*, the child, realm) is a
+    /// same-realm-of-`constructor_wrapper` stand-in for, bypassing
+    /// `test262_import_foreign_value`'s round-trip identity cache
+    /// entirely rather than working around it.
+    ///
+    /// Why this is needed: when a reverse-facade constructor (a parent
+    /// constructor observed from inside a child, e.g.
+    /// `TypedArraySpeciesCreate` reaching a parent's own `%TypedArray%`
+    /// subclass) is `Construct`ed via [`Vm::test262_reverse_call`], the
+    /// result is a genuine object in the *parent's* heap. `test262_
+    /// reverse_call` exports that result back into this realm via the
+    /// ordinary forward-direction `test262_export_foreign_value`, which
+    /// -- for a TypedArray/Array/ArrayBuffer result -- takes `test262_
+    /// transport_value`'s eager snapshot path (`foreign.rs`) rather than a
+    /// live facade: `local_result` is therefore a fresh, independent local
+    /// object, registered as a round-trip stand-in for the real parent
+    /// object in the parent's own `imported_values`/`imported_sources`
+    /// maps (`Test262Realm`, `vm.rs`). Mutating `local_result` after the
+    /// fact -- by any means, bitwise or ordinary `[[Set]]` -- has no
+    /// observable effect: once this value crosses back out to whichever
+    /// realm dispatched into this one, `test262_import_foreign_value`'s
+    /// round-trip cache checks `imported_values` first and unconditionally
+    /// returns the *original, pristine* parent object instead of
+    /// `local_result`, discarding any mutation (see
+    /// `TEST262_ANALYSIS_REPORT.md`'s "Reverse-membrane round-trip cache"
+    /// writeup for the full trace). Writing directly into the real
+    /// object's own buffer -- reached here via the exact same
+    /// `resolve_active`/raw-pointer discipline every other function in
+    /// this module uses -- sidesteps that cache instead of fighting it:
+    /// there is nothing left to discard.
+    ///
+    /// `constructor_wrapper` must be the reverse facade that was
+    /// `Construct`ed to produce `local_result` (so this can resolve the
+    /// exact parent realm and child-realm identity the round trip used);
+    /// any other value there will not find `local_result` registered and
+    /// returns `Ok(false)` (not an error -- an ordinary "nothing to do"
+    /// outcome for a caller that only takes this path defensively).
+    pub(in super::super) fn test262_reverse_write_into_real_construction_result(
         &self,
-        wrapper: ObjectId,
-    ) -> Result<Option<NativeFunction>, RuntimeError> {
-        let Some((home_heap, target, _, _)) = self.test262_reverse_reference(wrapper) else {
-            return Ok(None);
+        constructor_wrapper: ObjectId,
+        local_result: ObjectId,
+        byte_offset: usize,
+        bytes: &[u8],
+    ) -> Result<bool, RuntimeError> {
+        let Some((home_heap, ..)) = self.test262_reverse_reference(constructor_wrapper) else {
+            return Ok(false);
         };
+        let self_heap = self.object_prototype.heap;
         let ptr = self.resolve_reverse_parent(home_heap)?;
-        // SAFETY: read-only access to the parent's heap for the dynamic
-        // extent of this call only, mirroring `resolve_reverse_parent`'s
-        // own callers elsewhere in this module; `self` is not touched
-        // again afterward.
-        let parent = unsafe { &*ptr };
-        parent.heap.native_function(target).map_err(Into::into)
+        // SAFETY: see this module's top-level "Soundness" note. This
+        // function makes no nested calls into JavaScript (only direct heap
+        // reads/writes), so there is no reentrancy concern beyond the
+        // dereference itself, which is sound for the same reason every
+        // other function in this module's dereference is: `ptr` is only
+        // present in `ACTIVE` for the dynamic extent of a `&mut Vm` call
+        // currently suspended further up the Rust call stack, and we have
+        // already confirmed (via `resolve_reverse_parent`) it is not
+        // `self`.
+        let parent = unsafe { &mut *ptr };
+        let child_realm_id = reverse_child_realm_id(parent, self_heap);
+        let Some(real_target) = parent
+            .test262_realms
+            .get(&child_realm_id)
+            .expect("a reverse facade's home realm always owns this child directly")
+            .imported_values
+            .get(&local_result)
+            .and_then(|imported| imported.value.object_id())
+        else {
+            return Ok(false);
+        };
+        let (real_buffer, real_offset, ..) = parent.heap.typed_array_info(real_target)?;
+        parent.with_roots(|heap| {
+            heap.array_buffer_write(real_buffer, real_offset + byte_offset, bytes)
+        })?;
+        Ok(true)
     }
 
     /// `[[Get]]` on a reverse facade: forwards into the parent realm,

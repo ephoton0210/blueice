@@ -369,7 +369,7 @@ fn wrapped_reverse_call_arguments_survive_collection_in_the_parent_realm_until_t
 }
 
 #[test]
-fn typed_array_species_slice_via_a_reverse_facade_constructor_does_not_panic() {
+fn typed_array_species_slice_via_a_reverse_facade_constructor_preserves_nan_bit_patterns() {
     // Regression for `staging/sm/TypedArray/slice-bitwise-same.js`: `arr` is
     // a *child*-owned TypedArray; setting `arr.constructor` to the
     // *parent's* own `Float32Array` crosses that constructor into the
@@ -393,40 +393,100 @@ fn typed_array_species_slice_via_a_reverse_facade_constructor_does_not_panic() {
     // reading the constructed result's TypedArray info straight from
     // `self.heap` (the result is actually a fresh local object belonging
     // to *this* realm, per `test262_transport_value`'s ordinary TypedArray
-    // snapshot -- see below -- but that wasn't checked for either).
-    // Fixed by classifying both directions; `length`/`instanceof` are
-    // correct as a result.
+    // snapshot). Fixed by classifying both directions.
     //
-    // KNOWN REMAINING GAP, NOT fixed here and deliberately not asserted as
-    // passing below: the constructed result's *contents* are still wrong.
+    // The constructed result's *contents* used to be wrong too:
     // `test262_reverse_call`'s result crosses back into this realm through
-    // `test262_transport_value`'s ordinary TypedArray snapshot -- which
+    // `test262_transport_value`'s ordinary TypedArray snapshot, which
     // registers a *round-trip cache* entry (`realm.imported_values`,
     // `foreign.rs`) so a value making a full round trip keeps its original
     // identity. That cache is unconditional: when this facade crosses back
     // OUT again (`test262_import_foreign_value`), the cache is checked
     // first and returns the *original, pristine* parent object the
     // snapshot stood in for -- silently discarding any mutation applied to
-    // the snapshot in between, bitwise or ordinary Get/Set alike. So even
-    // populating the snapshot correctly (verified directly: reading it back
-    // immediately after writing, *before* it crosses back out, shows the
-    // right values) has no effect on what the caller ultimately observes.
-    // A correct fix needs either constructing the result *with* its data
-    // already provided (nothing left to mutate afterward), or a reverse
-    // buffer-mirror mechanism symmetric to the forward one -- both are
-    // separate, real design work, not attempted here. This test therefore
-    // only asserts what today's fix actually guarantees: the call
-    // completes (no panic) and the result's shape is right.
+    // the snapshot afterward. Fixed by writing the bytes directly into the
+    // *real* parent-owned buffer (`test262_reverse_write_into_real_
+    // construction_result`, `vm/test262/reverse.rs`) instead of the local
+    // snapshot, using the same `resolve_active` reentrancy mechanism every
+    // other cross-realm call in this membrane already relies on. This
+    // restores the bitwise, NaN-payload-preserving copy semantics
+    // `%TypedArray%.prototype.slice` requires for a same-element-type
+    // source/target pair (the real fixture's whole point -- an ordinary
+    // Get/Set element copy round-trips a NaN through `ToNumber`/`f64`,
+    // which normalizes away exactly the signaling/payload bits this
+    // asserts).
     assert_true(
         "(() => { \
            var other = $262.createRealm(); \
-           var arr = new other.global.Float32Array(3); \
-           arr[0] = 1.5; \
-           arr[1] = -2.25; \
-           arr[2] = 0; \
+           var arr = new other.global.Float32Array(4); \
+           var i32 = new Int32Array(arr.buffer); \
+           i32[0] = 0x7F800001|0; \
+           i32[1] = 0x7FBFFFFF|0; \
+           i32[2] = 0xFF800001|0; \
+           i32[3] = 0xFFFFFFFF|0; \
            arr.constructor = Float32Array; \
            var sliced = arr.slice(0); \
-           return sliced.length === 3 && sliced instanceof Float32Array; \
+           var ri32 = new Int32Array(sliced.buffer); \
+           return sliced.length === 4 \
+             && sliced instanceof Float32Array \
+             && ri32[0] === (0x7F800001|0) \
+             && ri32[1] === (0x7FBFFFFF|0) \
+             && ri32[2] === (0xFF800001|0) \
+             && ri32[3] === (0xFFFFFFFF|0); \
+         })()",
+    );
+}
+
+#[test]
+fn typed_array_species_slice_via_a_reverse_facade_to_a_parent_owned_subclass_preserves_nan_bit_patterns(
+) {
+    // A second, real gap found while diagnosing the fixture above via the
+    // actual Test262 corpus (not just this crate's own hand-written
+    // regression): `sm/non262-TypedArray-shell.js`'s own
+    // `anyTypedArrayConstructors` includes a *JS-defined subclass* of each
+    // native TypedArray constructor (`class SharedTypedArray extends
+    // Object.getPrototypeOf(baseConstructor) { constructor(...) {...} }`),
+    // used as a species constructor exactly like the plain intrinsic in the
+    // test above. `typed_array_create_foreign_target` classified a
+    // cross-realm species constructor by asking whether it carries a
+    // `NativeFunction::TypedArray` tag -- true for the intrinsic
+    // constructors themselves, but never true for an ordinary JS class,
+    // even one that is itself a reverse facade whose `[[Construct]]`
+    // unquestionably produces a value belonging to the parent realm. That
+    // misclassified this case as "local", which skipped this crate's
+    // direct-real-buffer write path entirely and fell back to the same
+    // same-realm bitwise-copy code the *actually* same-realm case above
+    // uses -- writing correct bytes into the local snapshot, which is
+    // exactly the object the round-trip identity cache
+    // (`test262_import_foreign_value`) then discards in favor of the
+    // pristine, never-written original once the result crosses back out.
+    // Fixed by classifying "is this constructor a facade at all" (forward
+    // or reverse), not "...specifically for a native TypedArray
+    // constructor" -- the real question this function needs answered is
+    // whether `[[Construct]]`ing it crosses a realm boundary, which is
+    // true independent of whether the constructor itself is native code or
+    // ordinary JS.
+    assert_true(
+        "(() => { \
+           var other = $262.createRealm(); \
+           class Sub extends Object.getPrototypeOf(Float32Array) { \
+             constructor(...args) { return Reflect.construct(Float32Array, args, new.target); } \
+           } \
+           Object.defineProperty(Sub, 'BYTES_PER_ELEMENT', { value: 4 }); \
+           var arr = new other.global.Float32Array(4); \
+           var i32 = new Int32Array(arr.buffer); \
+           i32[0] = 0x7F800001|0; \
+           i32[1] = 0x7FBFFFFF|0; \
+           i32[2] = 0xFF800001|0; \
+           i32[3] = 0xFFFFFFFF|0; \
+           arr.constructor = Sub; \
+           var sliced = arr.slice(0); \
+           var ri32 = new Int32Array(sliced.buffer); \
+           return sliced.length === 4 \
+             && ri32[0] === (0x7F800001|0) \
+             && ri32[1] === (0x7FBFFFFF|0) \
+             && ri32[2] === (0xFF800001|0) \
+             && ri32[3] === (0xFFFFFFFF|0); \
          })()",
     );
 }
