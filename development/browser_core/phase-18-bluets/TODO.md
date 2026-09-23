@@ -462,6 +462,12 @@ or second module resolver to bypass them.
   replacement discards that continuation, and it cannot pause another tab or
   render transport. Stepping plus frame/value handles remain outside this
   capability and therefore have no acceptance claim yet.
+  A separate launcher subprocess regression selects both
+  `--out-of-process-bluejs` and `--debugger-socket`, drives two local HTTP
+  classic-script documents through only public sockets, and proves that the
+  original realm/program/safe-point tuple rejects as `StaleRealm` after reload.
+  The test neither receives nor configures the private child endpoint or its
+  capability.
 
 ## P0 — direct BlueTS page integration
 
