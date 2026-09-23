@@ -245,6 +245,19 @@ fn infers_array_literal_element_types() {
 }
 
 #[test]
+fn accepts_array_holes_without_confusing_them_with_expression_elements() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "const values = [1,,3];",
+        )]),
+        CompilerOptions::default(),
+    );
+    assert!(!result.has_errors(), "{:#?}", result.diagnostics);
+}
+
+#[test]
 fn infers_known_array_spread_elements() {
     let result = crate::compile(
         "memory:///main.ts",

@@ -419,7 +419,8 @@ impl DirectModule {
 /// `delete` with a property target; arithmetic, relational (including `in` and
 /// `instanceof`), equality, logical,
 /// nullish-coalescing, arithmetic exponentiation, bitwise/shift, conditional,
-/// non-hole array literals with spread elements, object literals with
+/// array literals with holes or spread elements (but never both in one
+/// literal), object literals with
 /// identifier/string/numeric/computed keys and spread properties, template literals
 /// whose substitutions use the same bounded expression subset, dot or bracket
 /// property reads, comma sequences, identifier/property prefix/postfix updates,

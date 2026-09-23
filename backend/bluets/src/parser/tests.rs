@@ -19,6 +19,22 @@ fn parses_typed_exports_and_marks_only_type_syntax_for_erasure() {
 }
 
 #[test]
+fn retains_array_holes_in_variable_initializer_tokens() {
+    let module = parse_module("memory:///app.ts", "const values = [1,,3];").unwrap();
+    let Declaration::Variable(values) = &module.declarations[0] else {
+        panic!("expected a variable declaration");
+    };
+    assert_eq!(
+        values
+            .initializer
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["[", "1", ",", ",", "3", "]"]
+    );
+}
+
+#[test]
 fn rejects_runtime_enums_explicitly() {
     let diagnostics = parse_module("memory:///app.ts", "enum Colour { Red }").unwrap_err();
     assert_eq!(diagnostics[0].code, DiagnosticCode::UnsupportedSyntax);

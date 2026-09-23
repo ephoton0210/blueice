@@ -75,7 +75,7 @@ fn lowers_checked_compound_property_assignments() {
 }
 
 #[test]
-fn expression_lowerer_rejects_array_holes() {
+fn expression_lowerer_preserves_array_holes() {
     let tokens = expression_tokens(&[
         ("[", TokenKind::Punct),
         ("1", TokenKind::Number),
@@ -83,11 +83,35 @@ fn expression_lowerer_rejects_array_holes() {
         (",", TokenKind::Punct),
         ("]", TokenKind::Punct),
     ]);
+    assert!(matches!(
+        ExpressionLowerer::new(ENTRY, &tokens).parse(),
+        Ok(bluejs::Expr::Array(elements))
+            if matches!(
+                elements.as_slice(),
+                [
+                    Some(bluejs::ArrayElement::Normal(bluejs::Expr::Number(1.0))),
+                    None,
+                ]
+            )
+    ));
+}
+
+#[test]
+fn expression_lowerer_rejects_array_holes_mixed_with_spread() {
+    let tokens = expression_tokens(&[
+        ("[", TokenKind::Punct),
+        ("1", TokenKind::Number),
+        (",", TokenKind::Punct),
+        (",", TokenKind::Punct),
+        ("...", TokenKind::Punct),
+        ("suffix", TokenKind::Identifier),
+        ("]", TokenKind::Punct),
+    ]);
     let error = ExpressionLowerer::new(ENTRY, &tokens).parse().unwrap_err();
     let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
-        panic!("the direct bridge must reject an array hole");
+        panic!("the direct bridge must reject a mixed hole/spread array");
     };
-    assert!(message.contains("array holes"));
+    assert!(message.contains("cannot combine holes and spread"));
 }
 
 #[test]

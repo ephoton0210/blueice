@@ -733,6 +733,64 @@ fn lowers_checked_property_delete_expressions() {
 }
 
 #[test]
+fn lowers_checked_array_holes_without_materializing_undefined_properties() {
+    let artifact = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const values = [1,,3]; values.length === 3 && !(1 in values) && values[1] === undefined;",
+        )]),
+        CompilerOptions::default(),
+    )
+    .unwrap();
+    assert!(matches!(
+        artifact.program,
+        bluejs::BlueJsProgramV1::Script(bluejs::Program { ref body })
+            if matches!(
+                body.as_slice(),
+                [bluejs::Stmt::VarDecl(_, declarations), bluejs::Stmt::Expr(_)]
+                    if matches!(
+                        declarations.as_slice(),
+                        [bluejs::VarDeclarator {
+                            init: Some(bluejs::Expr::Array(elements)),
+                            ..
+                        }] if matches!(
+                            elements.as_slice(),
+                            [
+                                Some(bluejs::ArrayElement::Normal(bluejs::Expr::Number(1.0))),
+                                None,
+                                Some(bluejs::ArrayElement::Normal(bluejs::Expr::Number(3.0))),
+                            ]
+                        )
+                    )
+            )
+    ));
+    assert_eq!(
+        bluejs::Vm::default().execute(&artifact.bytecode).unwrap(),
+        bluejs::Value::Bool(true)
+    );
+}
+
+#[test]
+fn rejects_array_literals_that_mix_holes_and_spread() {
+    let error = match compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "const suffix = [2]; const mixed = [1,,...suffix];",
+        )]),
+        CompilerOptions::default(),
+    ) {
+        Ok(_) => panic!("the direct bridge must reject a mixed hole/spread array"),
+        Err(error) => error,
+    };
+    let BridgeError::UnsupportedRuntimeTarget { message, .. } = error else {
+        panic!("the direct bridge must reject a mixed hole/spread array");
+    };
+    assert!(message.contains("cannot combine holes and spread"));
+}
+
+#[test]
 fn lowers_checked_property_update_expressions() {
     let artifact = compile_direct_script(
         ENTRY,

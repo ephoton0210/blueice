@@ -719,6 +719,20 @@ mod tests {
     }
 
     #[test]
+    fn preserves_array_holes_while_erasing_the_annotation() {
+        let loader = MapLoader::from([ModuleSource::new(
+            "memory:///holes.ts",
+            "const values: number[] = [1,,3];",
+        )]);
+        let output = compile("memory:///holes.ts", &loader, CompilerOptions::default())
+            .output
+            .unwrap();
+        let javascript = &output.artifacts["memory:///holes.ts"].javascript;
+        assert!(javascript.contains("[1,,3]"), "{javascript}");
+        assert!(!javascript.contains(": number[]"), "{javascript}");
+    }
+
+    #[test]
     fn emits_source_map_and_public_declaration() {
         let loader = MapLoader::from([ModuleSource::new(
             "memory:///api.ts",

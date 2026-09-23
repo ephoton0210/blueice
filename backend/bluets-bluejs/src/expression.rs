@@ -564,12 +564,26 @@ impl<'a> ExpressionLowerer<'a> {
                 return Ok(bluejs::Expr::Array(elements));
             }
             if token.text == "," {
-                return Err(unsupported(
-                    self.token_span(token),
-                    "array holes are not in the v1 direct bridge subset",
-                ));
+                if elements
+                    .iter()
+                    .any(|element| matches!(element, Some(bluejs::ArrayElement::Spread(_))))
+                {
+                    return Err(unsupported(
+                        self.token_span(token),
+                        "array literals cannot combine holes and spread elements in the v1 direct bridge subset",
+                    ));
+                }
+                self.index += 1;
+                elements.push(None);
+                continue;
             }
             let element = if token.text == "..." {
+                if elements.iter().any(Option::is_none) {
+                    return Err(unsupported(
+                        self.token_span(token),
+                        "array literals cannot combine holes and spread elements in the v1 direct bridge subset",
+                    ));
+                }
                 self.index += 1;
                 bluejs::ArrayElement::Spread(self.parse_assignment()?)
             } else {

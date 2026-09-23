@@ -278,6 +278,15 @@ const CASES: &[OracleCase] = &[
         expected_diagnostics: &[],
     },
     OracleCase {
+        name: "array-hole-expression",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!("fixtures/typescript_oracle/array-hole-expression/main.ts"),
+        )],
+        expected_stdout: Some("3:false:undefined\n"),
+        expected_diagnostics: &[],
+    },
+    OracleCase {
         name: "array-spread-expression",
         modules: &[ (
             "memory:///main.ts",

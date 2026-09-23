@@ -1036,6 +1036,13 @@ rejected until this evidence exists.
   operand rules one at a time. Each item must define rejection/fallback rules;
   there is no emitted-JS reparsing fallback.
 
+  Foundation delivered: the direct bridge preserves holes in a non-spread
+  array literal as BlueJS AST holes, with parser/checker/emitter/direct-runtime
+  and TypeScript-oracle coverage. A literal that combines a hole and spread
+  remains explicitly rejected because the current BlueJS spread construction
+  path would materialize the hole as an `undefined` property. All other items
+  in this compatibility-growth task remain open.
+
 - [ ] **Make separate product decisions for large TypeScript features.**
   Classes, enums, decorators, namespaces, parameter properties, CommonJS,
   generic arrow functions, TSX/JSX, custom transformers, package-manager
