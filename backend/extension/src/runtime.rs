@@ -20,7 +20,8 @@
 use crate::InstalledExtension;
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
-    MAX_NETWORK_BLOCK_URL_BYTES, MAX_TEXT_WRITE_BYTES,
+    MAX_NETWORK_BLOCK_URL_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
+    MAX_TEXT_WRITE_BYTES,
 };
 use std::os::unix::net::UnixStream;
 use wasmtime::{
@@ -43,6 +44,7 @@ const RESULT_OK: i32 = 0;
 const RESULT_ERROR: i32 = -1;
 const RESULT_BUFFER_TOO_SMALL: i32 = -2;
 const RESULT_INVALID_ARGUMENT: i32 = -3;
+const RESULT_NOT_FOUND: i32 = -4;
 
 /// The core-defined context for one fresh `blueice_start` invocation. The
 /// integer values exposed through the ABI are stable: `0` is startup and `1`
@@ -244,6 +246,47 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
         )
         .map_err(|error| {
             format!("could not define the clear_network_block_urls ABI import: {error}")
+        })?;
+    linker
+        .func_wrap(
+            "blueice",
+            "storage_get_utf8",
+            |mut caller: Caller<'_, RuntimeState>,
+             key_ptr: i32,
+             key_len: i32,
+             destination: i32,
+             capacity: i32| {
+                storage_get_utf8(&mut caller, key_ptr, key_len, destination, capacity)
+            },
+        )
+        .map_err(|error| {
+            format!("could not define the storage_get_utf8 ABI import: {error}")
+        })?;
+    linker
+        .func_wrap(
+            "blueice",
+            "storage_set_utf8",
+            |mut caller: Caller<'_, RuntimeState>,
+             key_ptr: i32,
+             key_len: i32,
+             value_ptr: i32,
+             value_len: i32| {
+                storage_set_utf8(&mut caller, key_ptr, key_len, value_ptr, value_len)
+            },
+        )
+        .map_err(|error| {
+            format!("could not define the storage_set_utf8 ABI import: {error}")
+        })?;
+    linker
+        .func_wrap(
+            "blueice",
+            "storage_remove_utf8",
+            |mut caller: Caller<'_, RuntimeState>, key_ptr: i32, key_len: i32| {
+                storage_remove_utf8(&mut caller, key_ptr, key_len)
+            },
+        )
+        .map_err(|error| {
+            format!("could not define the storage_remove_utf8 ABI import: {error}")
         })?;
     linker
         .func_wrap(
@@ -452,6 +495,95 @@ fn clear_network_block_urls(caller: &mut Caller<'_, RuntimeState>) -> i32 {
     }
 }
 
+/// Copies the caller's bounded storage value into guest memory. A missing key
+/// has its own stable result rather than being conflated with an empty value
+/// or an authorization/network failure.
+fn storage_get_utf8(
+    caller: &mut Caller<'_, RuntimeState>,
+    key_ptr: i32,
+    key_len: i32,
+    destination: i32,
+    capacity: i32,
+) -> i32 {
+    let Ok(key) = read_storage_key(caller, key_ptr, key_len) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok((destination, capacity)) = guest_range(destination, capacity, MAX_STORAGE_VALUE_BYTES)
+    else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let value = match request_core(caller, ExtensionRequest::StorageGet { key }) {
+        Ok(ExtensionReply::StorageGetResult { value: Some(value) }) => value,
+        Ok(ExtensionReply::StorageGetResult { value: None }) => return RESULT_NOT_FOUND,
+        Ok(_) | Err(()) => return RESULT_ERROR,
+    };
+    let bytes = value.as_bytes();
+    if bytes.len() > MAX_STORAGE_VALUE_BYTES || bytes.len() > capacity {
+        return RESULT_BUFFER_TOO_SMALL;
+    }
+    if write_guest_bytes(caller, destination, bytes).is_err() {
+        return RESULT_INVALID_ARGUMENT;
+    }
+    i32::try_from(bytes.len()).unwrap_or(RESULT_ERROR)
+}
+
+/// Writes exactly one bounded key/value pair into the caller's isolated
+/// storage bucket. The host still validates the key grammar and aggregate
+/// quota after the request crosses the authenticated protocol boundary.
+fn storage_set_utf8(
+    caller: &mut Caller<'_, RuntimeState>,
+    key_ptr: i32,
+    key_len: i32,
+    value_ptr: i32,
+    value_len: i32,
+) -> i32 {
+    let Ok(key) = read_storage_key(caller, key_ptr, key_len) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok((value_ptr, value_len)) = guest_range(value_ptr, value_len, MAX_STORAGE_VALUE_BYTES)
+    else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(value) = read_guest_bytes(caller, value_ptr, value_len) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(value) = String::from_utf8(value) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(caller, ExtensionRequest::StorageSet { key, value }) {
+        Ok(ExtensionReply::StorageSetAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+/// Removes one key from only the caller's isolated storage bucket. Returns
+/// `1` when a value existed, `0` when it was already absent, and a negative
+/// ABI error for malformed input or an unavailable core operation.
+fn storage_remove_utf8(
+    caller: &mut Caller<'_, RuntimeState>,
+    key_ptr: i32,
+    key_len: i32,
+) -> i32 {
+    let Ok(key) = read_storage_key(caller, key_ptr, key_len) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(caller, ExtensionRequest::StorageRemove { key }) {
+        Ok(ExtensionReply::StorageRemoveAck { removed: true }) => 1,
+        Ok(ExtensionReply::StorageRemoveAck { removed: false }) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+fn read_storage_key(
+    caller: &mut Caller<'_, RuntimeState>,
+    key_ptr: i32,
+    key_len: i32,
+) -> Result<String, ()> {
+    let (key_ptr, key_len) = guest_range(key_ptr, key_len, MAX_STORAGE_KEY_BYTES)?;
+    let key = read_guest_bytes(caller, key_ptr, key_len)?;
+    String::from_utf8(key).map_err(|_| ())
+}
+
 fn stable_id(value: i64) -> Result<u64, ()> {
     u64::try_from(value).map_err(|_| ())
 }
@@ -519,7 +651,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(
             root.join("extension.json"),
-            r#"{"name":"Runtime test","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read","dom:write"]}}"#,
+            r#"{"name":"Runtime test","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["dom:read","dom:write","storage"]}}"#,
         )
         .unwrap();
         fs::write(root.join("extension.wasm"), wat::parse_str(wasm).unwrap()).unwrap();
@@ -698,6 +830,107 @@ mod tests {
             blueice_ipc::extension::write_extension_reply(
                 &mut core,
                 &ExtensionReply::NetworkInterceptAck,
+            )
+            .unwrap();
+        });
+
+        execute_installed_extension(&extension, guest).unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reactor_forwards_bounded_storage_operations_and_copies_a_found_value() {
+        let (root, extension) = installed_extension(
+            "storage",
+            r#"(module
+                (import "blueice" "storage_get_utf8" (func $get (param i32 i32 i32 i32) (result i32)))
+                (import "blueice" "storage_set_utf8" (func $set (param i32 i32 i32 i32) (result i32)))
+                (import "blueice" "storage_remove_utf8" (func $remove (param i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "task-state")
+                (data (i32.const 16) "complete")
+                (func (export "blueice_start")
+                    i32.const 0
+                    i32.const 10
+                    i32.const 16
+                    i32.const 8
+                    call $set
+                    i32.const 0
+                    i32.ne
+                    if unreachable end
+                    i32.const 0
+                    i32.const 10
+                    i32.const 64
+                    i32.const 16
+                    call $get
+                    i32.const 8
+                    i32.ne
+                    if unreachable end
+                    i32.const 64
+                    i32.load8_u
+                    i32.const 99
+                    i32.ne
+                    if unreachable end
+                    i32.const 0
+                    i32.const 10
+                    call $remove
+                    i32.const 1
+                    i32.ne
+                    if unreachable end
+                    i32.const 0
+                    i32.const 10
+                    i32.const 64
+                    i32.const 16
+                    call $get
+                    i32.const -4
+                    i32.ne
+                    if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::StorageSet {
+                    key: "task-state".to_string(),
+                    value: "complete".to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::StorageSetAck)
+                .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::StorageGet {
+                    key: "task-state".to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core,
+                &ExtensionReply::StorageGetResult {
+                    value: Some("complete".to_string()),
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::StorageRemove {
+                    key: "task-state".to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core,
+                &ExtensionReply::StorageRemoveAck { removed: true },
+            )
+            .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::StorageGet {
+                    key: "task-state".to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core,
+                &ExtensionReply::StorageGetResult { value: None },
             )
             .unwrap();
         });

@@ -20,6 +20,7 @@
 
 use crate::{
     ExtensionRegistry, CAPABILITY_DOM_READ, CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT,
+    CAPABILITY_STORAGE,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -334,7 +335,10 @@ fn validate_capability_tier(
 fn is_supported_capability(capability: &str) -> bool {
     matches!(
         capability,
-        CAPABILITY_DOM_READ | CAPABILITY_DOM_WRITE | CAPABILITY_NETWORK_INTERCEPT
+        CAPABILITY_DOM_READ
+            | CAPABILITY_DOM_WRITE
+            | CAPABILITY_NETWORK_INTERCEPT
+            | CAPABILITY_STORAGE
     )
 }
 

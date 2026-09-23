@@ -25,7 +25,7 @@ use blueice_extension_host::{
     execute_installed_extension, execute_installed_extension_for_invocation,
     handle_extension_connection_with_gatekeeper, load_installed_extension,
     registry_for_installed_extension, ExtensionRegistry, RuntimeInvocation, CAPABILITY_DOM_READ,
-    CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT,
+    CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT, CAPABILITY_STORAGE,
 };
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
@@ -175,10 +175,10 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
 
     // A package declares only the APIs it needs. The one-shot Wasm ABI uses
     // explicit tab reads (v2), every currently bounded DOM write (v6), and
-    // declarative rule registration/clearing (v3), so negotiate the highest
-    // safe version per declared capability before guest code can invoke an
-    // import. Core remains free to reject an unsupported declaration without
-    // granting it any authority.
+    // declarative rule registration/clearing (v3), and scoped storage (v1).
+    // Negotiate the highest safe version per declared capability before guest
+    // code can invoke an import. Core remains free to reject an unsupported
+    // declaration without granting it any authority.
     let capability_versions: BTreeMap<_, _> = installed
         .manifest()
         .capabilities()
@@ -189,6 +189,7 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
                 CAPABILITY_DOM_READ => 2,
                 CAPABILITY_DOM_WRITE => 6,
                 CAPABILITY_NETWORK_INTERCEPT => 3,
+                CAPABILITY_STORAGE => 1,
                 _ => 1,
             };
             (capability.clone(), version)

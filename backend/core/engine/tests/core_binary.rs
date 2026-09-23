@@ -590,6 +590,112 @@ fn installed_extension_v3_network_rule_clear_restores_navigation_after_a_redirec
 }
 
 #[test]
+fn installed_extension_storage_survives_a_reconnect_but_remains_core_owned() {
+    use blueice_ipc::extension::{
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    };
+    use std::collections::BTreeMap;
+
+    let core_socket = unique_socket_path("ext-storage");
+    let extension_socket = unique_private_extension_socket_path("storage");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-extension-storage-frames-{}",
+        std::process::id()
+    ));
+    let (package_root, manifest, extension_id) =
+        extension_manifest_package("storage", &["storage"]);
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .spawn()
+        .expect("failed to spawn core with a storage extension");
+
+    assert!(wait_for(&core_socket, Duration::from_secs(5)));
+    assert!(wait_for(&extension_socket, Duration::from_secs(5)));
+    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    let hello = || ExtensionRequest::Hello {
+        extension_id: extension_id.clone(),
+        capability_versions: BTreeMap::from([("storage".to_string(), 1)]),
+    };
+
+    let mut first_connection = UnixStream::connect(&extension_socket).unwrap();
+    write_extension_request(&mut first_connection, &hello()).unwrap();
+    assert_eq!(
+        read_extension_reply(&mut first_connection).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    write_extension_request(
+        &mut first_connection,
+        &ExtensionRequest::StorageSet {
+            key: "task-state".to_string(),
+            value: "complete".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut first_connection).unwrap(),
+        ExtensionReply::StorageSetAck
+    );
+    drop(first_connection);
+
+    let mut reconnected = UnixStream::connect(&extension_socket).unwrap();
+    write_extension_request(&mut reconnected, &hello()).unwrap();
+    assert_eq!(
+        read_extension_reply(&mut reconnected).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    write_extension_request(
+        &mut reconnected,
+        &ExtensionRequest::StorageGet {
+            key: "task-state".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut reconnected).unwrap(),
+        ExtensionReply::StorageGetResult {
+            value: Some("complete".to_string()),
+        }
+    );
+    write_extension_request(
+        &mut reconnected,
+        &ExtensionRequest::StorageRemove {
+            key: "task-state".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut reconnected).unwrap(),
+        ExtensionReply::StorageRemoveAck { removed: true }
+    );
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(core.wait().unwrap().success());
+    assert!(!core_socket.exists());
+    assert!(!extension_socket.exists());
+    assert!(!frame_dir.exists());
+    let _ = std::fs::remove_dir_all(package_root);
+}
+
+#[test]
 fn core_waits_for_its_spawned_extension_host_and_rejects_a_bearer_claim_peer() {
     use blueice_ipc::extension::{read_extension_reply, write_extension_request, ExtensionRequest};
     use std::collections::BTreeMap;

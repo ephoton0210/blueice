@@ -24,7 +24,7 @@ use blueice_engine::{session, HistorySnapshotMode, TabManager};
 use blueice_extension_host::{
     handle_extension_connection_with_actions_and_authentication_and_network_rules,
     load_installed_extension, registry_for_installed_extension, ExtensionActionDelegates,
-    ExtensionConnectionAuthentication, ExtensionRegistry,
+    ExtensionConnectionAuthentication, ExtensionRegistry, ExtensionStorage,
 };
 use blueice_ipc::extension::ExtensionRuntimeEvent;
 use std::io::Read;
@@ -83,6 +83,7 @@ struct ExtensionService {
     socket: PathBuf,
     listener: UnixListener,
     registry: Arc<ExtensionRegistry>,
+    storage: ExtensionStorage,
     required_authentication: Option<String>,
     runtime_start: Option<Arc<Mutex<mpsc::Receiver<()>>>>,
     runtime_events: Option<Arc<Mutex<mpsc::Receiver<ExtensionRuntimeEvent>>>>,
@@ -383,6 +384,7 @@ fn spawn_extension_listener(
         for incoming in service.listener.incoming() {
             let Ok(mut stream) = incoming else { break };
             let registry = Arc::clone(&service.registry);
+            let storage = service.storage.clone();
             let gatekeeper_socket = gatekeeper_socket.clone();
             let request_tx = request_tx.clone();
             let required_authentication = service.required_authentication.clone();
@@ -465,7 +467,8 @@ fn spawn_extension_listener(
                             },
                             move |url| request_network_block_url(&rule_tx, connection_id, url),
                             move || clear_network_block_urls(&clear_tx, connection_id),
-                        ),
+                        )
+                        .with_storage(storage),
                     );
                 let _ = clear_network_block_urls(&request_tx, connection_id);
             });
@@ -558,6 +561,7 @@ fn main() -> ExitCode {
                     socket: socket.clone(),
                     listener,
                     registry: Arc::new(registry_for_installed_extension(&installed)),
+                    storage: ExtensionStorage::default(),
                     required_authentication,
                     runtime_start: runtime_start_receiver,
                     runtime_events: runtime_event_receiver,

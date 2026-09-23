@@ -45,6 +45,16 @@ pub const MAX_TEXT_WRITE_BYTES: usize = 4 * 1024;
 /// before it becomes active.
 pub const MAX_NETWORK_BLOCK_URL_BYTES: usize = 2 * 1024;
 
+/// Maximum UTF-8 key for the first bounded extension storage API. Keys use a
+/// small identifier grammar in the host, while this wire-level size limit also
+/// protects manually connected development clients before a request reaches
+/// core-owned state.
+pub const MAX_STORAGE_KEY_BYTES: usize = 256;
+
+/// Maximum UTF-8 value for one bounded extension storage entry. The aggregate
+/// per-extension quota is enforced by the core-owned store as well.
+pub const MAX_STORAGE_VALUE_BYTES: usize = 16 * 1024;
+
 /// One message an extension process sends to the capability-enforcing
 /// side of this protocol.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -184,6 +194,19 @@ pub enum ExtensionRequest {
     /// so it needs no further gatekeeper action review. The same cleanup also
     /// runs automatically when the connection ends.
     ClearNetworkBlockUrls,
+    /// Version 1 of `storage`: read one value from the caller extension's
+    /// core-owned, per-core-lifetime key-value bucket. The extension identity
+    /// comes only from its already-negotiated handshake; it cannot supply a
+    /// different bucket ID in this request.
+    StorageGet { key: String },
+    /// Version 1 of `storage`: set one value in the caller extension's
+    /// bounded bucket. This is not an ambient filesystem API and cannot name
+    /// a host path, another extension, or a persistence target.
+    StorageSet { key: String, value: String },
+    /// Version 1 of `storage`: remove one value from the caller extension's
+    /// bucket. The reply says whether the key existed, making removal
+    /// idempotent without a preceding read.
+    StorageRemove { key: String },
     /// Registers a network interception rule -- requires the
     /// `network:intercept` capability. Registering interception at all
     /// is high-risk, so the host always routes this request through the
@@ -293,6 +316,14 @@ pub enum ExtensionReply {
     /// gatekeeper-cleared; clearing the caller's own connection-scoped rules
     /// needs only ordinary capability/version authorization.
     NetworkInterceptAck,
+    /// Reply to a granted [`ExtensionRequest::StorageGet`]. `None` means the
+    /// caller's isolated bucket has no such key; it is not an authorization
+    /// failure and reveals nothing about another extension's state.
+    StorageGetResult { value: Option<String> },
+    /// Reply to a granted [`ExtensionRequest::StorageSet`].
+    StorageSetAck,
+    /// Reply to a granted [`ExtensionRequest::StorageRemove`].
+    StorageRemoveAck { removed: bool },
     /// Authorization (and, where applicable, gatekeeper review) succeeded,
     /// but the host has no concrete implementation for this operation. This
     /// is deliberately distinct from an acknowledgement: the standalone
@@ -443,6 +474,16 @@ mod tests {
                 url: "https://example.test/private".to_string(),
             },
             ExtensionRequest::ClearNetworkBlockUrls,
+            ExtensionRequest::StorageGet {
+                key: "task-state".to_string(),
+            },
+            ExtensionRequest::StorageSet {
+                key: "task-state".to_string(),
+                value: "complete".to_string(),
+            },
+            ExtensionRequest::StorageRemove {
+                key: "task-state".to_string(),
+            },
             ExtensionRequest::NetworkIntercept,
         ] {
             let (mut a, mut b) = UnixStream::pair().unwrap();
@@ -480,6 +521,12 @@ mod tests {
             },
             ExtensionReply::DomWriteAck,
             ExtensionReply::NetworkInterceptAck,
+            ExtensionReply::StorageGetResult {
+                value: Some("complete".to_string()),
+            },
+            ExtensionReply::StorageGetResult { value: None },
+            ExtensionReply::StorageSetAck,
+            ExtensionReply::StorageRemoveAck { removed: true },
             ExtensionReply::OperationUnavailable {
                 capability: "network:intercept".to_string(),
                 reason: "no declarative rule format is available".to_string(),

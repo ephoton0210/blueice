@@ -88,6 +88,129 @@ pub const CAPABILITY_DOM_WRITE: &str = "dom:write";
 /// needs a cleared gatekeeper review after ordinary capability checks.
 pub const CAPABILITY_NETWORK_INTERCEPT: &str = "network:intercept";
 
+/// A per-extension key-value bucket owned by core, never by the guest's
+/// ambient filesystem or process. Version 1 deliberately lasts only for the
+/// core process lifetime; durable storage needs its own reviewed crash and
+/// filesystem-confinement design rather than silently inheriting host paths.
+pub const CAPABILITY_STORAGE: &str = "storage";
+
+/// A storage bucket has a bounded number of key/value pairs even when its
+/// values are small, so an extension cannot turn its declared capability into
+/// unbounded core memory use.
+pub const MAX_STORAGE_ENTRIES_PER_EXTENSION: usize = 128;
+
+/// Includes UTF-8 key and value bytes across one extension identity's bucket.
+pub const MAX_STORAGE_BYTES_PER_EXTENSION: usize = 256 * 1024;
+
+/// Core-owned, process-lifetime storage isolated by manifest-derived extension
+/// identity. It is cloneable only as a shared handle for independent extension
+/// connection workers; its map and quota checks remain in one mutex-protected
+/// owner, never in guest memory or a guest-selected file path.
+#[derive(Clone, Default)]
+pub struct ExtensionStorage {
+    buckets: Arc<Mutex<HashMap<String, BTreeMap<String, String>>>>,
+}
+
+impl ExtensionStorage {
+    /// Reads a value from exactly `extension_id`'s bucket after validating the
+    /// bounded identifier syntax shared by all storage operations.
+    pub fn get(&self, extension_id: &str, key: &str) -> Result<Option<String>, String> {
+        validate_storage_key(key)?;
+        let buckets = self
+            .buckets
+            .lock()
+            .map_err(|_| "extension storage state was poisoned".to_string())?;
+        Ok(buckets
+            .get(extension_id)
+            .and_then(|bucket| bucket.get(key))
+            .cloned())
+    }
+
+    /// Stores one bounded UTF-8 value in the caller's bucket. Replacement is
+    /// atomic under the same lock as the aggregate byte/entry quotas.
+    pub fn set(&self, extension_id: &str, key: String, value: String) -> Result<(), String> {
+        validate_storage_key(&key)?;
+        if value.len() > blueice_ipc::extension::MAX_STORAGE_VALUE_BYTES {
+            return Err(format!(
+                "storage values cannot exceed {} bytes",
+                blueice_ipc::extension::MAX_STORAGE_VALUE_BYTES
+            ));
+        }
+        let mut buckets = self
+            .buckets
+            .lock()
+            .map_err(|_| "extension storage state was poisoned".to_string())?;
+        let bucket = buckets.entry(extension_id.to_string()).or_default();
+        if !bucket.contains_key(&key) && bucket.len() >= MAX_STORAGE_ENTRIES_PER_EXTENSION {
+            return Err(format!(
+                "an extension may store at most {MAX_STORAGE_ENTRIES_PER_EXTENSION} keys"
+            ));
+        }
+        let existing_value_bytes = bucket.get(&key).map_or(0, String::len);
+        let current_bytes = bucket_storage_bytes(bucket)?;
+        let prospective_bytes = current_bytes
+            .checked_sub(existing_value_bytes)
+            .and_then(|bytes| bytes.checked_add(value.len()))
+            .ok_or_else(|| "extension storage size overflowed".to_string())?;
+        if prospective_bytes > MAX_STORAGE_BYTES_PER_EXTENSION {
+            return Err(format!(
+                "an extension storage bucket cannot exceed {MAX_STORAGE_BYTES_PER_EXTENSION} bytes"
+            ));
+        }
+        bucket.insert(key, value);
+        Ok(())
+    }
+
+    /// Removes only the identified extension's own key, returning whether it
+    /// existed. Empty buckets are discarded so a sequence of absent reads or
+    /// removals cannot grow the outer map.
+    pub fn remove(&self, extension_id: &str, key: &str) -> Result<bool, String> {
+        validate_storage_key(key)?;
+        let mut buckets = self
+            .buckets
+            .lock()
+            .map_err(|_| "extension storage state was poisoned".to_string())?;
+        let Some(bucket) = buckets.get_mut(extension_id) else {
+            return Ok(false);
+        };
+        let removed = bucket.remove(key).is_some();
+        if bucket.is_empty() {
+            buckets.remove(extension_id);
+        }
+        Ok(removed)
+    }
+}
+
+fn validate_storage_key(key: &str) -> Result<(), String> {
+    if key.is_empty() {
+        return Err("storage keys must not be empty".to_string());
+    }
+    if key.len() > blueice_ipc::extension::MAX_STORAGE_KEY_BYTES {
+        return Err(format!(
+            "storage keys cannot exceed {} bytes",
+            blueice_ipc::extension::MAX_STORAGE_KEY_BYTES
+        ));
+    }
+    if !key
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return Err(
+            "storage keys may contain only ASCII letters, digits, '.', '_' or '-'".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn bucket_storage_bytes(bucket: &BTreeMap<String, String>) -> Result<usize, String> {
+    bucket.iter().try_fold(0_usize, |total, (key, value)| {
+        total
+            .checked_add(key.len())
+            .and_then(|bytes| bytes.checked_add(value.len()))
+            .ok_or_else(|| "extension storage size overflowed".to_string())
+    })
+}
+
 /// An inclusive API-version interval a host supports for one capability.
 /// A capability grant and a supported version are deliberately separate:
 /// an extension may use a known API version without being authorized to
@@ -169,12 +292,14 @@ impl ExtensionRegistry {
     /// capability in its manifest or handshake.
     pub fn with_supported_capabilities() -> Self {
         let mut registry = Self::new();
+        let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
         let v1_to_v3 = CapabilityVersionWindow::new(1, 3).expect("literal version window is valid");
         let v1_to_v6 = CapabilityVersionWindow::new(1, 6).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v6);
         registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v3);
+        registry.register_capability_version_window(CAPABILITY_STORAGE, v1);
         registry
     }
 
@@ -466,6 +591,7 @@ pub struct ExtensionActionDelegates<R, W, N, B, C> {
     register_network_intercept: N,
     register_network_block_url: B,
     clear_network_block_urls: C,
+    storage: ExtensionStorage,
 }
 
 impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
@@ -485,7 +611,17 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
             register_network_intercept,
             register_network_block_url,
             clear_network_block_urls,
+            storage: ExtensionStorage::default(),
         }
+    }
+
+    /// Replaces the default isolated bucket handle with the core-owned handle
+    /// shared by every connection for one extension service. This preserves
+    /// per-identity state across reconnects without giving the guest a path,
+    /// process handle, or mutable reference to the map.
+    pub fn with_storage(mut self, storage: ExtensionStorage) -> Self {
+        self.storage = storage;
+        self
     }
 }
 
@@ -653,6 +789,7 @@ where
         mut register_network_intercept,
         mut register_network_block_url,
         mut clear_network_block_urls,
+        storage,
     } = delegates;
     let mut identity = match read_extension_request(stream) {
         Ok(request) => match authenticated_hello(authentication.expected(), request) {
@@ -1305,6 +1442,84 @@ where
                     )?,
                 }
             }
+            ExtensionRequest::StorageGet { key } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 1)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_STORAGE.to_string(),
+                            reason,
+                        },
+                    )?;
+                    continue;
+                }
+                match storage.get(&identity.extension_id, &key) {
+                    Ok(value) => write_extension_reply(
+                        stream,
+                        &ExtensionReply::StorageGetResult { value },
+                    )?,
+                    Err(reason) => write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_STORAGE.to_string(),
+                            reason,
+                        },
+                    )?,
+                }
+            }
+            ExtensionRequest::StorageSet { key, value } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 1)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_STORAGE.to_string(),
+                            reason,
+                        },
+                    )?;
+                    continue;
+                }
+                match storage.set(&identity.extension_id, key, value) {
+                    Ok(()) => write_extension_reply(stream, &ExtensionReply::StorageSetAck)?,
+                    Err(reason) => write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_STORAGE.to_string(),
+                            reason,
+                        },
+                    )?,
+                }
+            }
+            ExtensionRequest::StorageRemove { key } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 1)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_STORAGE.to_string(),
+                            reason,
+                        },
+                    )?;
+                    continue;
+                }
+                match storage.remove(&identity.extension_id, &key) {
+                    Ok(removed) => write_extension_reply(
+                        stream,
+                        &ExtensionReply::StorageRemoveAck { removed },
+                    )?,
+                    Err(reason) => write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_STORAGE.to_string(),
+                            reason,
+                        },
+                    )?,
+                }
+            }
             ExtensionRequest::NetworkIntercept => {
                 if let Some(reason) =
                     capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 1)
@@ -1456,6 +1671,12 @@ mod tests {
         registry
     }
 
+    fn registry_with_storage_granted() -> ExtensionRegistry {
+        let mut registry = ExtensionRegistry::minimal_slice();
+        registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE);
+        registry
+    }
+
     fn hello(extension_id: &str) -> ExtensionRequest {
         hello_with_capabilities(
             extension_id,
@@ -1511,6 +1732,166 @@ mod tests {
         assert!(!registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
         assert!(registry.has_capability(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ));
+    }
+
+    #[test]
+    fn extension_storage_is_bounded_and_isolated_by_extension_identity() {
+        let storage = ExtensionStorage::default();
+        storage
+            .set("sha256:first", "task-state".to_string(), "complete".to_string())
+            .unwrap();
+        assert_eq!(
+            storage.get("sha256:first", "task-state").unwrap(),
+            Some("complete".to_string())
+        );
+        assert_eq!(storage.get("sha256:second", "task-state").unwrap(), None);
+        assert!(storage
+            .set("sha256:first", "not a valid key".to_string(), "x".to_string())
+            .is_err());
+        assert!(storage
+            .set(
+                "sha256:first",
+                "oversized".to_string(),
+                "x".repeat(blueice_ipc::extension::MAX_STORAGE_VALUE_BYTES + 1),
+            )
+            .is_err());
+        assert!(storage.remove("sha256:first", "task-state").unwrap());
+        assert!(!storage.remove("sha256:first", "task-state").unwrap());
+        assert_eq!(storage.get("sha256:first", "task-state").unwrap(), None);
+
+        for index in 0..MAX_STORAGE_ENTRIES_PER_EXTENSION {
+            storage
+                .set("sha256:count", format!("key-{index}"), "x".to_string())
+                .unwrap();
+        }
+        assert!(storage
+            .set("sha256:count", "one-too-many".to_string(), "x".to_string())
+            .is_err());
+
+        let quota_storage = ExtensionStorage::default();
+        for index in 0..15 {
+            quota_storage
+                .set(
+                    "sha256:quota",
+                    format!("value-{index}"),
+                    "x".repeat(blueice_ipc::extension::MAX_STORAGE_VALUE_BYTES),
+                )
+                .unwrap();
+        }
+        assert!(quota_storage
+            .set(
+                "sha256:quota",
+                "exceeds-total".to_string(),
+                "x".repeat(blueice_ipc::extension::MAX_STORAGE_VALUE_BYTES),
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn granted_storage_v1_sets_reads_and_removes_only_its_handshake_bucket() {
+        let registry = registry_with_storage_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_gatekeeper(
+                &registry,
+                Path::new("/not-reached-for-storage-only-operation.sock"),
+                &mut server,
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_STORAGE, 1)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::StorageSet {
+                key: "task-state".to_string(),
+                value: "complete".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::StorageSetAck
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::StorageGet {
+                key: "task-state".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::StorageGetResult {
+                value: Some("complete".to_string()),
+            }
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::StorageRemove {
+                key: "task-state".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::StorageRemoveAck { removed: true }
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::StorageGet {
+                key: "task-state".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::StorageGetResult { value: None }
+        );
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn ungranted_storage_never_reaches_the_core_owned_bucket() {
+        let registry = ExtensionRegistry::minimal_slice();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || handle_extension_connection(&registry, &mut server));
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_STORAGE, 1)]),
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::StorageSet {
+                key: "task-state".to_string(),
+                value: "attacker-controlled".to_string(),
+            },
+        )
+        .unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, .. } => {
+                assert_eq!(capability, CAPABILITY_STORAGE)
+            }
+            other => panic!("expected storage capability denial, got {other:?}"),
+        }
+
+        drop(client);
+        handle.join().unwrap().unwrap();
     }
 
     #[test]
