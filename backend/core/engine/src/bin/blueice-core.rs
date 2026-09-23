@@ -20,15 +20,16 @@
 use blueice_engine::downloads_page::DownloadsSource;
 use blueice_engine::script::ScriptSession;
 use blueice_engine::session::ExtensionPageRequest;
-use blueice_engine::{HistorySnapshotMode, TabManager, session};
+use blueice_engine::{session, HistorySnapshotMode, TabManager};
 use blueice_extension_host::{
-    ExtensionRegistry, handle_extension_connection_with_actions, load_installed_extension,
-    registry_for_installed_extension,
+    handle_extension_connection_with_actions_and_authentication, load_installed_extension,
+    registry_for_installed_extension, ExtensionConnectionAuthentication, ExtensionRegistry,
 };
+use std::io::Read;
 use std::os::unix::net::UnixListener;
-use std::path::PathBuf;
-use std::process::ExitCode;
-use std::sync::{Arc, mpsc};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, ExitCode};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
@@ -67,18 +68,74 @@ struct Args {
     /// Strict installed package manifest used to establish the server-side
     /// extension identity/grants before the extension socket is published.
     extension_manifest: Option<PathBuf>,
+    /// The trusted BlueIce extension-host executable that core starts for the
+    /// validated package. This enables a fresh child credential; without
+    /// it, the explicit extension socket remains the legacy development mode.
+    extension_host: Option<PathBuf>,
 }
 
 struct ExtensionService {
     socket: PathBuf,
     listener: UnixListener,
     registry: Arc<ExtensionRegistry>,
+    required_authentication: Option<String>,
 }
 
 /// A core-owned response must be prompt enough not to hold an extension
 /// connection forever if the frontend session has already ended, while still
 /// comfortably exceeding the session loop's 25ms poll interval.
 const EXTENSION_CORE_REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// Core gives each host child a fresh 256-bit credential. This binary is Unix
+/// only (it already uses Unix-domain sockets), so the kernel CSPRNG is the
+/// appropriate local source and avoids persisting a credential in either the
+/// package manifest or a temporary file.
+fn new_extension_authentication() -> Result<String, String> {
+    let mut random = [0_u8; 32];
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut source| source.read_exact(&mut random))
+        .map_err(|error| {
+            format!("could not obtain extension-host authentication entropy: {error}")
+        })?;
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(random.len() * 2);
+    for byte in random {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    Ok(encoded)
+}
+
+/// Starts the BlueIce-owned host with its connection credential in the child
+/// environment only. In particular, the secret is never placed on the command
+/// line, in the manifest, or in a listener response.
+fn spawn_extension_host(
+    executable: &Path,
+    socket: &Path,
+    manifest: &Path,
+    authentication: &str,
+) -> Result<Child, String> {
+    Command::new(executable)
+        .arg("--connect")
+        .arg(socket)
+        .arg("--manifest")
+        .arg(manifest)
+        .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
+        .spawn()
+        .map_err(|error| {
+            format!(
+                "could not start extension host {}: {error}",
+                executable.display()
+            )
+        })
+}
+
+fn stop_extension_host(mut child: Child) {
+    if matches!(child.try_wait(), Ok(None)) {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+}
 
 /// Takes an injectable argument iterator (rather than reading
 /// `std::env::args()` directly) so every flag-parsing branch is a
@@ -98,6 +155,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut history_snapshots = false;
     let mut extension_socket = None;
     let mut extension_manifest = None;
+    let mut extension_host = None;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -121,6 +179,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--history-snapshots" => history_snapshots = true,
             "--extension-socket" => extension_socket = Some(PathBuf::from(value()?)),
             "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
+            "--extension-host" => extension_host = Some(PathBuf::from(value()?)),
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
@@ -129,6 +188,11 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if extension_socket.is_some() != extension_manifest.is_some() {
         return Err(
             "--extension-socket and --extension-manifest must be supplied together".to_string(),
+        );
+    }
+    if extension_host.is_some() && extension_socket.is_none() {
+        return Err(
+            "--extension-host requires --extension-socket and --extension-manifest".to_string(),
         );
     }
     Ok(Args {
@@ -142,6 +206,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         history_snapshots,
         extension_socket,
         extension_manifest,
+        extension_host,
     })
 }
 
@@ -187,6 +252,7 @@ fn spawn_extension_listener(
     service: ExtensionService,
     gatekeeper_socket: PathBuf,
     request_tx: mpsc::Sender<ExtensionPageRequest>,
+    authenticated_ready: Option<mpsc::Sender<()>>,
 ) {
     thread::spawn(move || {
         for incoming in service.listener.incoming() {
@@ -194,13 +260,25 @@ fn spawn_extension_listener(
             let registry = Arc::clone(&service.registry);
             let gatekeeper_socket = gatekeeper_socket.clone();
             let request_tx = request_tx.clone();
+            let required_authentication = service.required_authentication.clone();
+            let authenticated_ready = authenticated_ready.clone();
             thread::spawn(move || {
-                let _ = handle_extension_connection_with_actions(
+                let authentication = match required_authentication.as_deref() {
+                    Some(expected) => ExtensionConnectionAuthentication::required(expected),
+                    None => ExtensionConnectionAuthentication::unauthenticated(),
+                };
+                let authentication = match authenticated_ready {
+                    Some(ready) => authentication.with_ready_notification(ready),
+                    None => authentication,
+                };
+                let _ = handle_extension_connection_with_actions_and_authentication(
                     &registry,
                     &gatekeeper_socket,
                     &mut stream,
+                    authentication,
                     |tab_id| request_tab_representation(&request_tx, tab_id),
-                    |target, value, _| match target {
+                    |target, value, _| {
+                        match target {
                         Some((tab_id, node_id)) => {
                             request_text_input_value(&request_tx, tab_id, node_id, value)
                         }
@@ -208,6 +286,7 @@ fn spawn_extension_listener(
                             "core-backed legacy dom:write has no stable target node; negotiate dom:write version 2 and use SetTextInputValue"
                                 .to_string(),
                         ),
+                    }
                     },
                     || {
                         Err(
@@ -239,9 +318,9 @@ fn main() -> ExitCode {
     let downloads_socket = args.downloads_socket;
 
     // An installed extension is a core concern: validate its package and
-    // derive its registry identity before core publishes either socket. The
-    // manifest/socket pair is deliberately opt-in while the protocol lacks
-    // host-spawned-peer authentication and a WASM runtime.
+    // derive its registry identity before core publishes either socket. When
+    // `--extension-host` is supplied, the listener additionally requires the
+    // freshly generated credential from exactly that core-spawned child.
     let extension_service = match (
         args.extension_socket.as_ref(),
         args.extension_manifest.as_deref(),
@@ -277,10 +356,22 @@ fn main() -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             };
+            let required_authentication = match args.extension_host.as_ref() {
+                Some(_) => match new_extension_authentication() {
+                    Ok(authentication) => Some(authentication),
+                    Err(error) => {
+                        let _ = std::fs::remove_file(socket);
+                        eprintln!("blueice-core: {error}");
+                        return ExitCode::FAILURE;
+                    }
+                },
+                None => None,
+            };
             Some(ExtensionService {
                 socket: socket.clone(),
                 listener,
                 registry: Arc::new(registry_for_installed_extension(&installed)),
+                required_authentication,
             })
         }
         (None, None) => None,
@@ -324,15 +415,79 @@ fn main() -> ExitCode {
         None
     };
 
+    let extension_socket = extension_service
+        .as_ref()
+        .map(|service| service.socket.clone());
+    let (extension_requests, mut extension_host_child) = if let Some(service) = extension_service {
+        let (tx, rx) = mpsc::channel();
+        let required_authentication = service.required_authentication.clone();
+        let (authenticated_ready, ready_rx) = if args.extension_host.is_some() {
+            let (ready_tx, ready_rx) = mpsc::channel();
+            (Some(ready_tx), Some(ready_rx))
+        } else {
+            (None, None)
+        };
+        spawn_extension_listener(service, gatekeeper_socket.clone(), tx, authenticated_ready);
+
+        let child = if let Some(host) = args.extension_host.as_deref() {
+            let manifest = args
+                .extension_manifest
+                .as_deref()
+                .expect("extension-host configuration requires a manifest");
+            let socket = extension_socket
+                .as_deref()
+                .expect("extension-host configuration requires an extension socket");
+            let authentication = required_authentication
+                .as_deref()
+                .expect("extension-host configuration requires an authentication token");
+            let child = match spawn_extension_host(host, socket, manifest, authentication) {
+                Ok(child) => child,
+                Err(error) => {
+                    let _ = std::fs::remove_file(socket);
+                    if let Some(path) = args.script_socket.as_ref() {
+                        let _ = std::fs::remove_file(path);
+                    }
+                    eprintln!("blueice-core: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let ready_rx = ready_rx.expect("extension-host readiness receiver is configured");
+            match ready_rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(()) => Some(child),
+                Err(error) => {
+                    stop_extension_host(child);
+                    let _ = std::fs::remove_file(socket);
+                    if let Some(path) = args.script_socket.as_ref() {
+                        let _ = std::fs::remove_file(path);
+                    }
+                    eprintln!(
+                        "blueice-core: extension host did not authenticate before frontend readiness: {error}"
+                    );
+                    return ExitCode::FAILURE;
+                }
+            }
+        } else {
+            None
+        };
+        (Some(rx), child)
+    } else {
+        (None, None)
+    };
+
     // A stale socket file from a previous run (e.g. one that crashed
     // instead of exiting cleanly) makes bind() fail with AddrInUse
-    // even though nothing is actually listening -- remove it first.
+    // even though nothing is actually listening -- remove it first. This
+    // happens only after a requested extension host authenticated, so this
+    // socket remains the public readiness signal for the complete core setup.
     let _ = std::fs::remove_file(&args.socket);
 
     let listener = match UnixListener::bind(&args.socket) {
         Ok(listener) => listener,
         Err(e) => {
-            if let Some(extension_socket) = args.extension_socket.as_ref() {
+            if let Some(child) = extension_host_child.take() {
+                stop_extension_host(child);
+            }
+            if let Some(extension_socket) = extension_socket.as_ref() {
                 let _ = std::fs::remove_file(extension_socket);
             }
             eprintln!(
@@ -342,15 +497,6 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-
-    let extension_socket = extension_service
-        .as_ref()
-        .map(|service| service.socket.clone());
-    let extension_requests = extension_service.map(|service| {
-        let (tx, rx) = mpsc::channel();
-        spawn_extension_listener(service, gatekeeper_socket.clone(), tx);
-        rx
-    });
 
     let result = (|| -> std::io::Result<()> {
         let mut script = match script_listener {
@@ -415,6 +561,9 @@ fn main() -> ExitCode {
         result
     })();
 
+    if let Some(child) = extension_host_child.take() {
+        stop_extension_host(child);
+    }
     let _ = std::fs::remove_file(&args.socket);
     if let Some(path) = args.script_socket.as_ref() {
         let _ = std::fs::remove_file(path);
@@ -458,6 +607,7 @@ mod tests {
         assert!(!parsed.history_snapshots);
         assert_eq!(parsed.extension_socket, None);
         assert_eq!(parsed.extension_manifest, None);
+        assert_eq!(parsed.extension_host, None);
     }
 
     #[test]
@@ -493,6 +643,7 @@ mod tests {
                 history_snapshots: true,
                 extension_socket: None,
                 extension_manifest: None,
+                extension_host: None,
             }
         );
     }
@@ -537,6 +688,37 @@ mod tests {
         assert_eq!(
             parsed.extension_manifest,
             Some(PathBuf::from("/tmp/extension.json"))
+        );
+        assert_eq!(parsed.extension_host, None);
+    }
+
+    #[test]
+    fn extension_host_is_available_only_for_a_complete_installed_extension() {
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--extension-host",
+                "/tmp/blueice-extension-host",
+            ]),
+            Err(
+                "--extension-host requires --extension-socket and --extension-manifest".to_string()
+            )
+        );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--extension-socket",
+            "/tmp/ext.sock",
+            "--extension-manifest",
+            "/tmp/extension.json",
+            "--extension-host",
+            "/tmp/blueice-extension-host",
+        ])
+        .unwrap();
+        assert_eq!(
+            parsed.extension_host,
+            Some(PathBuf::from("/tmp/blueice-extension-host"))
         );
     }
 

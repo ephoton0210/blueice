@@ -19,8 +19,9 @@
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
@@ -70,6 +71,61 @@ fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
 fn sibling_bluejs_binary() -> PathBuf {
     let core = PathBuf::from(env!("CARGO_BIN_EXE_blueice-core"));
     core.parent().unwrap().join("bluejs")
+}
+
+fn core_extension_host_probe_script(root: &Path) -> PathBuf {
+    fn shell_quote(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+
+    let script = root.join("extension-host-probe.sh");
+    let test_binary = std::env::current_exe().unwrap();
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nBLUEICE_TEST_EXTENSION_SOCKET=\"$2\"\nBLUEICE_TEST_EXTENSION_MANIFEST=\"$4\"\nexport BLUEICE_TEST_EXTENSION_SOCKET BLUEICE_TEST_EXTENSION_MANIFEST\nexec {} --exact extension_host_probe_child_authenticates_to_core --nocapture\n",
+            shell_quote(test_binary.to_str().unwrap())
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+    script
+}
+
+/// `blueice-core` owns the child lifecycle and invokes a host executable with
+/// `--connect`/`--manifest`. This test-only process is deliberately tiny: it
+/// verifies that public invocation contract without relying on a sibling
+/// package's already-built binary. The real `blueice-extension-host --connect`
+/// path is tested in that package's own binary integration test.
+#[test]
+fn extension_host_probe_child_authenticates_to_core() {
+    let Ok(socket) = std::env::var("BLUEICE_TEST_EXTENSION_SOCKET") else {
+        return;
+    };
+    let manifest = std::env::var("BLUEICE_TEST_EXTENSION_MANIFEST").unwrap();
+    let authentication = std::env::var("BLUEICE_EXTENSION_AUTH_TOKEN").unwrap();
+    let installed = blueice_extension_host::load_installed_extension(&manifest).unwrap();
+    let capability_versions = installed
+        .manifest()
+        .capabilities()
+        .declared()
+        .iter()
+        .map(|capability| (capability.clone(), 1))
+        .collect();
+    let mut stream = UnixStream::connect(socket).unwrap();
+    blueice_ipc::extension::write_extension_request(
+        &mut stream,
+        &blueice_ipc::extension::ExtensionRequest::HelloAuthenticated {
+            extension_id: installed.extension_id().to_string(),
+            capability_versions,
+            authentication,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::extension::read_extension_reply(&mut stream).unwrap(),
+        blueice_ipc::extension::ExtensionReply::HelloAck { .. }
+    ));
 }
 
 fn extension_manifest_package(
@@ -271,7 +327,7 @@ fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
 #[test]
 fn installed_extension_reads_a_real_core_owned_representation_over_private_sockets() {
     use blueice_ipc::extension::{
-        ExtensionReply, ExtensionRequest, read_extension_reply, write_extension_request,
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
     use std::collections::BTreeMap;
 
@@ -360,9 +416,89 @@ fn installed_extension_reads_a_real_core_owned_representation_over_private_socke
 }
 
 #[test]
+fn core_waits_for_its_spawned_extension_host_and_rejects_a_bearer_claim_peer() {
+    use blueice_ipc::extension::{read_extension_reply, write_extension_request, ExtensionRequest};
+    use std::collections::BTreeMap;
+
+    // Darwin's Unix-domain socket path budget is small beneath its long
+    // per-user temporary root; the PID in `unique_socket_path` keeps these
+    // concise labels independent.
+    let core_socket = unique_socket_path("aec");
+    let extension_socket = unique_socket_path("aep");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-authenticated-extension-frames-{}",
+        std::process::id()
+    ));
+    let (package_root, manifest, extension_id) =
+        extension_manifest_package("authenticated-host", &["dom:read"]);
+    let extension_host = core_extension_host_probe_script(&package_root);
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--extension-host",
+            extension_host.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn core with its authenticated extension host");
+
+    // The core socket is its public readiness signal. Its existence proves
+    // that the child host completed the token handshake first; merely binding
+    // the extension listener is insufficient in this mode.
+    if !wait_for(&core_socket, Duration::from_secs(15)) {
+        let output = core
+            .wait_with_output()
+            .expect("failed to collect core startup diagnostics");
+        panic!(
+            "core never published its frontend socket: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    assert!(wait_for(&extension_socket, Duration::from_secs(5)));
+
+    let mut bearer_claim_peer = UnixStream::connect(&extension_socket).unwrap();
+    bearer_claim_peer
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    write_extension_request(
+        &mut bearer_claim_peer,
+        &ExtensionRequest::Hello {
+            extension_id,
+            capability_versions: BTreeMap::from([("dom:read".to_string(), 1)]),
+        },
+    )
+    .unwrap();
+    assert!(
+        read_extension_reply(&mut bearer_claim_peer).is_err(),
+        "the hash-derived manifest identity alone must not receive HelloAck in core-spawned mode"
+    );
+
+    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(core.wait().unwrap().success());
+    assert!(!core_socket.exists());
+    assert!(!extension_socket.exists());
+    assert!(!frame_dir.exists());
+    let _ = std::fs::remove_dir_all(package_root);
+}
+
+#[test]
 fn installed_extension_v2_writes_an_explicit_text_input_after_gatekeeper_review() {
     use blueice_ipc::extension::{
-        ExtensionReply, ExtensionRequest, read_extension_reply, write_extension_request,
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
     use std::collections::BTreeMap;
 
@@ -726,18 +862,14 @@ fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contami
         blueice_ipc::ServerMessage::Representation(snapshot) => snapshot,
         other => panic!("expected Representation, got {other:?}"),
     };
-    assert!(
-        default_tab_snapshot
-            .nodes
-            .iter()
-            .any(|n| n.name.as_deref() == Some("first tab content"))
-    );
-    assert!(
-        !default_tab_snapshot
-            .nodes
-            .iter()
-            .any(|n| n.name.as_deref() == Some("second tab content"))
-    );
+    assert!(default_tab_snapshot
+        .nodes
+        .iter()
+        .any(|n| n.name.as_deref() == Some("first tab content")));
+    assert!(!default_tab_snapshot
+        .nodes
+        .iter()
+        .any(|n| n.name.as_deref() == Some("second tab content")));
 
     // The second tab's representation, addressed explicitly, must show
     // only *its* content.
@@ -755,18 +887,14 @@ fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contami
         other => panic!("expected Representation, got {other:?}"),
     };
     assert_eq!(tab_two_snapshot.tab_id, tab_two);
-    assert!(
-        tab_two_snapshot
-            .nodes
-            .iter()
-            .any(|n| n.name.as_deref() == Some("second tab content"))
-    );
-    assert!(
-        !tab_two_snapshot
-            .nodes
-            .iter()
-            .any(|n| n.name.as_deref() == Some("first tab content"))
-    );
+    assert!(tab_two_snapshot
+        .nodes
+        .iter()
+        .any(|n| n.name.as_deref() == Some("second tab content")));
+    assert!(!tab_two_snapshot
+        .nodes
+        .iter()
+        .any(|n| n.name.as_deref() == Some("first tab content")));
 
     blueice_ipc::write_client_message(&mut stream, &blueice_ipc::ClientMessage::Shutdown).unwrap();
     let status = child
@@ -875,8 +1003,8 @@ impl WaitTimeoutOrKill for std::process::Child {
 #[test]
 fn opening_about_downloads_starts_the_downloads_process_and_the_open_page_follows_it() {
     use blueice_ipc::downloads::{
-        DOWNLOADS_PROTOCOL_VERSION, DownloadsClient, DownloadsRequest, read_downloads_reply,
-        write_downloads_request,
+        read_downloads_reply, write_downloads_request, DownloadsClient, DownloadsRequest,
+        DOWNLOADS_PROTOCOL_VERSION,
     };
     use blueice_ipc::{ClientMessage, ServerMessage};
 

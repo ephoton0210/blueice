@@ -45,9 +45,9 @@ pub enum ExtensionRequest {
     /// extension path derives `extension_id` from the exact validated
     /// manifest and WASM bytes; the standalone reference host retains a
     /// fixed test identity. This string establishes a registry lookup, not
-    /// process authentication: a future core-spawned peer binding remains
-    /// necessary before an untrusted local process can be trusted to present
-    /// it.
+    /// process authentication: core's optional production host-spawned mode
+    /// therefore requires [`Self::HelloAuthenticated`] instead. The standalone
+    /// and explicitly manual development modes still use this bearer form.
     ///
     /// `capability_versions` declares only the capabilities this
     /// extension actually uses, per-capability, e.g. `{"dom:read": 1}`
@@ -59,6 +59,23 @@ pub enum ExtensionRequest {
     Hello {
         extension_id: String,
         capability_versions: BTreeMap<String, u32>,
+    },
+    /// The authenticated form of [`Self::Hello`]. A core process creates a
+    /// fresh, high-entropy token for one extension-host child, passes it only
+    /// through that child's environment, and requires this first request when
+    /// it launched the host itself. The token is connection credentials, not
+    /// an extension-controlled capability or package identity; it is never
+    /// persisted in a manifest or returned in a reply.
+    ///
+    /// The unauthenticated [`Self::Hello`] is retained for the standalone
+    /// protocol test server and manually-connected development clients. A
+    /// core that enabled host-spawned mode rejects that older form before it
+    /// acknowledges anything, so compatibility cannot silently weaken the
+    /// new boundary.
+    HelloAuthenticated {
+        extension_id: String,
+        capability_versions: BTreeMap<String, u32>,
+        authentication: String,
     },
     /// Query the AI-facing representation, read-only -- requires the
     /// `dom:read` capability. The standalone reference host returns a
@@ -285,6 +302,11 @@ mod tests {
                 extension_id: "some-other-extension".to_string(),
                 capability_versions: BTreeMap::new(),
             },
+            ExtensionRequest::HelloAuthenticated {
+                extension_id: "core-spawned-extension".to_string(),
+                capability_versions: sample_capability_versions(),
+                authentication: "not-a-real-secret-in-this-round-trip-test".to_string(),
+            },
             ExtensionRequest::DomRead,
             ExtensionRequest::DomReadTab { tab_id: 42 },
             ExtensionRequest::DomWrite {
@@ -400,18 +422,14 @@ mod tests {
     #[test]
     fn only_form_input_and_network_causing_writes_require_a_gatekeeper_review() {
         assert!(!DomWriteTarget::Document.requires_gatekeeper_review());
-        assert!(
-            DomWriteTarget::FormInput {
-                input_type: "email".to_string()
-            }
-            .requires_gatekeeper_review()
-        );
-        assert!(
-            DomWriteTarget::NetworkCausing {
-                action: "form-submit".to_string()
-            }
-            .requires_gatekeeper_review()
-        );
+        assert!(DomWriteTarget::FormInput {
+            input_type: "email".to_string()
+        }
+        .requires_gatekeeper_review());
+        assert!(DomWriteTarget::NetworkCausing {
+            action: "form-submit".to_string()
+        }
+        .requires_gatekeeper_review());
         assert_eq!(DomWriteTarget::Document.gatekeeper_detail(), None);
         assert_eq!(
             DomWriteTarget::FormInput {

@@ -9,14 +9,16 @@
 //! plus its declared WASM module, validates both, and derives a domain-separated
 //! SHA-256 identity from their exact installed bytes. That exact identity is
 //! what the registry grants capabilities to and what a later protocol handshake
-//! must present. Binding that handshake to the host-spawned package is a later
-//! process-authentication task; a hash-derived ID alone is not credentials.
+//! must present. A hash-derived ID alone is not credentials: core's optional
+//! host-spawned mode binds it to an environment-only child credential through
+//! `HelloAuthenticated`; manual development listeners intentionally retain the
+//! bearer `Hello` form.
 //! There is no WASM runtime in this slice: validating the module's
 //! header establishes that the package is shaped for the selected format without
 //! pretending it has executed extension code.
 
 use crate::{
-    CAPABILITY_DOM_READ, CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT, ExtensionRegistry,
+    ExtensionRegistry, CAPABILITY_DOM_READ, CAPABILITY_DOM_WRITE, CAPABILITY_NETWORK_INTERCEPT,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -453,12 +455,10 @@ mod tests {
             &manifest(r#"{"declared":["dom:read"]}"#),
             b"not a wasm module",
         );
-        assert!(
-            load_installed_extension(&path)
-                .unwrap_err()
-                .to_string()
-                .contains("not a WebAssembly")
-        );
+        assert!(load_installed_extension(&path)
+            .unwrap_err()
+            .to_string()
+            .contains("not a WebAssembly"));
         let _ = std::fs::remove_dir_all(root);
     }
 

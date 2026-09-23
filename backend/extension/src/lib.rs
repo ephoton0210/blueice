@@ -39,32 +39,33 @@
 //! [`load_installed_extension`] derives a `sha256:` ID from exact manifest and
 //! WASM bytes, so package authors cannot assign an arbitrary friendly ID and a
 //! changed installed artifact receives a different registry identity. The
-//! current [`blueice_ipc::extension::ExtensionRequest::Hello`] still presents
-//! that derived ID as a bearer claim, however: binding a connection to the
-//! host-spawned WASM child (rather than merely checking a string supplied over
-//! the private socket) remains a real-core integration task. The derived
-//! identity is necessary installation evidence, not a substitute for that
-//! later process-authentication boundary.
+//! core-owned production path now starts a host child and requires its fresh,
+//! environment-only credential in
+//! [`blueice_ipc::extension::ExtensionRequest::HelloAuthenticated`] before it
+//! accepts that ID. The standalone server and an explicit manual core socket
+//! deliberately retain the bearer [`blueice_ipc::extension::ExtensionRequest::Hello`]
+//! form for protocol development; a derived identity alone is not credentials.
 
 mod manifest;
 
 pub use manifest::{
-    ExtensionManifest, InstalledExtension, MANIFEST_API_VERSION, ManifestCapabilities,
-    ManifestError, load_installed_extension, registry_for_installed_extension,
+    load_installed_extension, registry_for_installed_extension, ExtensionManifest,
+    InstalledExtension, ManifestCapabilities, ManifestError, MANIFEST_API_VERSION,
 };
 
 use blueice_ipc::extension::{
-    ExtensionReply, ExtensionRequest, UnsupportedCapabilityVersion, read_extension_request,
-    write_extension_reply,
+    read_extension_request, write_extension_reply, ExtensionReply, ExtensionRequest,
+    UnsupportedCapabilityVersion,
 };
 use blueice_ipc::gatekeeper::{
-    GatekeeperReply, GatekeeperRequest, default_gatekeeper_socket_path, read_gatekeeper_reply,
-    write_gatekeeper_request,
+    default_gatekeeper_socket_path, read_gatekeeper_reply, write_gatekeeper_request,
+    GatekeeperReply, GatekeeperRequest,
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::mpsc;
 use std::time::Duration;
 
 /// The one hardcoded identity used only when no installed manifest is supplied.
@@ -134,7 +135,8 @@ const GATEKEEPER_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 /// `blueice-core`/`registry_for_installed_extension`; the hardcoded
 /// [`ExtensionRegistry::minimal_slice`] remains only a protocol-test fallback.
 /// A derived ID establishes exact package membership and grants, but it is not
-/// connection credentials: peer authentication remains a separate boundary.
+/// connection credentials. Core's optional host-spawned path adds that separate
+/// boundary; standalone/manual protocol development intentionally does not.
 pub struct ExtensionRegistry {
     grants: HashMap<String, HashSet<String>>,
     supported_versions: HashMap<String, CapabilityVersionWindow>,
@@ -409,6 +411,86 @@ pub fn handle_extension_connection_with_actions<S, R, W, N>(
     registry: &ExtensionRegistry,
     gatekeeper_socket: &Path,
     stream: &mut S,
+    read_dom: R,
+    write_dom: W,
+    register_network_intercept: N,
+) -> io::Result<()>
+where
+    S: Read + Write,
+    R: FnMut(Option<u64>) -> Result<String, String>,
+    W: FnMut(
+        Option<(u64, u64)>,
+        String,
+        &blueice_ipc::extension::DomWriteTarget,
+    ) -> Result<(), String>,
+    N: FnMut() -> Result<(), String>,
+{
+    handle_extension_connection_with_actions_and_authentication(
+        registry,
+        gatekeeper_socket,
+        stream,
+        ExtensionConnectionAuthentication::unauthenticated(),
+        read_dom,
+        write_dom,
+        register_network_intercept,
+    )
+}
+
+/// Connection authentication for
+/// [`handle_extension_connection_with_actions_and_authentication`].
+///
+/// The standalone protocol server uses [`Self::unauthenticated`]. Core's
+/// host-spawned mode uses [`Self::required`] and can attach a one-shot
+/// readiness sender that fires only after the first valid handshake.
+pub struct ExtensionConnectionAuthentication<'a> {
+    expected: Option<&'a str>,
+    authenticated_ready: Option<mpsc::Sender<()>>,
+}
+
+impl<'a> ExtensionConnectionAuthentication<'a> {
+    /// Allows the documented bearer-claim development protocol.
+    pub const fn unauthenticated() -> Self {
+        Self {
+            expected: None,
+            authenticated_ready: None,
+        }
+    }
+
+    /// Requires every hello to prove this core-generated credential.
+    pub const fn required(expected: &'a str) -> Self {
+        Self {
+            expected: Some(expected),
+            authenticated_ready: None,
+        }
+    }
+
+    /// Signals core after the first valid handshake, before any operation can
+    /// be handled on the connection.
+    pub fn with_ready_notification(mut self, ready: mpsc::Sender<()>) -> Self {
+        self.authenticated_ready = Some(ready);
+        self
+    }
+
+    fn expected(&self) -> Option<&str> {
+        self.expected
+    }
+
+    fn signal_ready(&self) {
+        if let Some(ready) = &self.authenticated_ready {
+            let _ = ready.send(());
+        }
+    }
+}
+
+/// Like [`handle_extension_connection_with_actions`], but applies the supplied
+/// [`ExtensionConnectionAuthentication`] before it acknowledges a handshake.
+/// `blueice-core` uses a required credential for a host it spawned itself; the
+/// standalone server deliberately uses the unauthenticated development mode.
+pub fn handle_extension_connection_with_actions_and_authentication<S, R, W, N>(
+    registry: &ExtensionRegistry,
+    gatekeeper_socket: &Path,
+    stream: &mut S,
+    authentication: ExtensionConnectionAuthentication<'_>,
     mut read_dom: R,
     mut write_dom: W,
     mut register_network_intercept: N,
@@ -424,17 +506,18 @@ where
     N: FnMut() -> Result<(), String>,
 {
     let mut identity = match read_extension_request(stream) {
-        Ok(ExtensionRequest::Hello {
-            extension_id,
-            capability_versions,
-        }) => {
-            let (identity, reply) = negotiate_hello(registry, extension_id, capability_versions);
-            write_extension_reply(stream, &reply)?;
-            identity
-        }
-        Ok(_) => return Ok(()), // first message wasn't Hello: reject by ending the connection
+        Ok(request) => match authenticated_hello(authentication.expected(), request) {
+            Some((extension_id, capability_versions)) => {
+                let (identity, reply) =
+                    negotiate_hello(registry, extension_id, capability_versions);
+                write_extension_reply(stream, &reply)?;
+                identity
+            }
+            None => return Ok(()), // not an allowed first handshake: reject without an acknowledgement
+        },
         Err(_) => return Ok(()), // disconnected, or sent something unparseable, before ever completing the handshake
     };
+    authentication.signal_ready();
 
     loop {
         let request = match read_extension_request(stream) {
@@ -446,6 +529,24 @@ where
                 extension_id,
                 capability_versions,
             } => {
+                if authentication.expected().is_some() {
+                    return Ok(());
+                }
+                let (new_identity, reply) =
+                    negotiate_hello(registry, extension_id, capability_versions);
+                write_extension_reply(stream, &reply)?;
+                identity = new_identity;
+            }
+            ExtensionRequest::HelloAuthenticated {
+                extension_id,
+                capability_versions,
+                authentication: provided_authentication,
+            } => {
+                if authentication.expected().is_some_and(|expected| {
+                    !constant_time_authentication_matches(expected, &provided_authentication)
+                }) {
+                    return Ok(());
+                }
                 let (new_identity, reply) =
                     negotiate_hello(registry, extension_id, capability_versions);
                 write_extension_reply(stream, &reply)?;
@@ -691,10 +792,51 @@ where
     }
 }
 
+/// Turns one wire handshake into its server-side identity claim only if it is
+/// acceptable for this connection mode. The plain hello remains valid for an
+/// explicitly unauthenticated development server, while a core-spawned host
+/// must prove the secret on every identity-changing hello.
+fn authenticated_hello(
+    expected_authentication: Option<&str>,
+    request: ExtensionRequest,
+) -> Option<(String, BTreeMap<String, u32>)> {
+    match request {
+        ExtensionRequest::Hello {
+            extension_id,
+            capability_versions,
+        } if expected_authentication.is_none() => Some((extension_id, capability_versions)),
+        ExtensionRequest::HelloAuthenticated {
+            extension_id,
+            capability_versions,
+            authentication,
+        } if expected_authentication.is_none_or(|expected| {
+            constant_time_authentication_matches(expected, &authentication)
+        }) =>
+        {
+            Some((extension_id, capability_versions))
+        }
+        _ => None,
+    }
+}
+
+/// Compares a supplied credential without exiting early on its contents. The
+/// generated core credential has a fixed ASCII length, and this helper also
+/// mixes a length mismatch into the result instead of indexing beyond the
+/// supplied buffer.
+fn constant_time_authentication_matches(expected: &str, supplied: &str) -> bool {
+    let expected = expected.as_bytes();
+    let supplied = supplied.as_bytes();
+    let mut difference = u8::from(expected.len() != supplied.len());
+    for (index, expected_byte) in expected.iter().enumerate() {
+        difference |= expected_byte ^ supplied.get(index).copied().unwrap_or_default();
+    }
+    difference == 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_ipc::extension::{DomWriteTarget, read_extension_reply, write_extension_request};
+    use blueice_ipc::extension::{read_extension_reply, write_extension_request, DomWriteTarget};
     use blueice_ipc::gatekeeper::{read_gatekeeper_request, write_gatekeeper_reply};
     use std::collections::BTreeMap;
     use std::os::unix::net::{UnixListener, UnixStream};
@@ -1428,6 +1570,72 @@ mod tests {
         // No reply was ever written -- reading now must fail (EOF, since
         // the connection-handling thread already exited and dropped its
         // end of the socket), not hang or return a stray `HelloAck`.
+        assert!(read_extension_reply(&mut client).is_err());
+    }
+
+    #[test]
+    fn core_spawned_mode_requires_the_one_time_credential_before_acknowledging() {
+        let registry = ExtensionRegistry::minimal_slice();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let expected = "a-core-generated-credential".to_string();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication(
+                &registry,
+                Path::new("/not-used-before-a-dom-action.sock"),
+                &mut server,
+                ExtensionConnectionAuthentication::required(&expected),
+                |_| Ok(PLACEHOLDER_DOM_READ_VALUE.to_string()),
+                |_, _, _| Ok(()),
+                || Ok(()),
+            )
+        });
+
+        // A package-derived identity by itself is intentionally not
+        // credentials in host-spawned mode.
+        write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
+        handle.join().unwrap().unwrap();
+        assert!(read_extension_reply(&mut client).is_err());
+    }
+
+    #[test]
+    fn core_spawned_mode_accepts_only_the_authenticated_hello_and_signals_readiness() {
+        let registry = ExtensionRegistry::minimal_slice();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let expected = "a-core-generated-credential".to_string();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication(
+                &registry,
+                Path::new("/not-used-before-a-dom-action.sock"),
+                &mut server,
+                ExtensionConnectionAuthentication::required(&expected)
+                    .with_ready_notification(ready_tx),
+                |_| Ok(PLACEHOLDER_DOM_READ_VALUE.to_string()),
+                |_, _, _| Ok(()),
+                || Ok(()),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::HelloAuthenticated {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                capability_versions: BTreeMap::from([(CAPABILITY_DOM_READ.to_string(), 1)]),
+                authentication: "a-core-generated-credential".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_extension_reply(&mut client).unwrap(),
+            empty_hello_ack()
+        );
+        ready_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+
+        // A later identity change must also prove the connection credential;
+        // accepting a plain repeat Hello would let a previously authenticated
+        // stream silently fall back to the bearer-claim protocol.
+        write_extension_request(&mut client, &hello(MINIMAL_SLICE_EXTENSION_ID)).unwrap();
+        handle.join().unwrap().unwrap();
         assert!(read_extension_reply(&mut client).is_err());
     }
 

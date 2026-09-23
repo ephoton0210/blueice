@@ -14,12 +14,12 @@
 //! is denied one it isn't -- mirroring `blueice-engine`'s own
 //! `tests/core_binary.rs` real-subprocess pattern one layer over.
 
+use blueice_extension_host::load_installed_extension;
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
 };
-use blueice_extension_host::load_installed_extension;
 use std::collections::BTreeMap;
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -233,25 +233,59 @@ fn a_manifest_derived_identity_is_required_over_a_real_process_boundary() {
         drop(installed_extension);
 
         let mut friendly_name_impersonator = host.connect();
-        write_extension_request(
-            &mut friendly_name_impersonator,
-            &hello("Binary test"),
-        )
-        .unwrap();
+        write_extension_request(&mut friendly_name_impersonator, &hello("Binary test")).unwrap();
         assert_eq!(
             read_extension_reply(&mut friendly_name_impersonator).unwrap(),
             empty_hello_ack()
         );
-        write_extension_request(
-            &mut friendly_name_impersonator,
-            &ExtensionRequest::DomRead,
-        )
-        .unwrap();
+        write_extension_request(&mut friendly_name_impersonator, &ExtensionRequest::DomRead)
+            .unwrap();
         assert!(matches!(
             read_extension_reply(&mut friendly_name_impersonator).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == "dom:read"
         ));
     }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn core_connection_mode_proves_an_environment_only_credential_with_the_manifest_identity() {
+    let (root, manifest, extension_id) = manifest_package("core-connect");
+    let socket = unique_socket_path("core-connect");
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
+    let authentication = "test-only-core-credential";
+    let mut host = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
+        .args([
+            "--connect",
+            socket.to_str().unwrap(),
+            "--manifest",
+            manifest.to_str().unwrap(),
+        ])
+        .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
+        .spawn()
+        .expect("failed to launch blueice-extension-host in core connection mode");
+
+    let (mut stream, _) = listener.accept().unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::HelloAuthenticated {
+            extension_id,
+            capability_versions: BTreeMap::from([("dom:read".to_string(), 1)]),
+            authentication: authentication.to_string(),
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    drop(stream);
+    drop(listener);
+    assert!(host.wait().unwrap().success());
+    let _ = std::fs::remove_file(socket);
     let _ = std::fs::remove_dir_all(root);
 }
 

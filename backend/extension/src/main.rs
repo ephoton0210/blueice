@@ -14,26 +14,44 @@
 //! main.rs$`) -- covered instead by `tests/extension_host_binary.rs`'s
 //! real-subprocess test.
 //!
-//! Extension connections are long-lived (unlike `ai-gatekeeper`'s
-//! one-shot-per-check connections), but this minimal slice still only
-//! needs to serve them one at a time, sequentially. `--manifest` installs one
-//! validated package for that process lifetime; without it the historic
-//! hardcoded reference slice remains available for protocol-only testing.
+//! In its original `--socket` mode this is a standalone, sequential protocol
+//! reference server. In `--connect` mode it is instead the peer launched by
+//! `blueice-core`: it validates the selected package, proves the fresh
+//! credential that core supplied only through its environment, and keeps the
+//! authenticated connection alive for the (future) WASM runtime. That second
+//! mode is deliberately not a WASM runtime; it establishes the process
+//! authentication boundary that the runtime will inherit.
 
 use blueice_extension_host::{
     handle_extension_connection_with_gatekeeper, load_installed_extension,
     registry_for_installed_extension, ExtensionRegistry,
 };
+use blueice_ipc::extension::{
+    read_extension_reply, read_extension_request, write_extension_request, ExtensionReply,
+    ExtensionRequest,
+};
 use blueice_ipc::gatekeeper::default_gatekeeper_socket_path;
-use std::os::unix::net::UnixListener;
+use std::collections::BTreeMap;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 #[derive(Debug, PartialEq)]
 struct Args {
-    socket: PathBuf,
-    gatekeeper_socket: PathBuf,
-    manifest: Option<PathBuf>,
+    mode: Mode,
+}
+
+#[derive(Debug, PartialEq)]
+enum Mode {
+    Serve {
+        socket: PathBuf,
+        gatekeeper_socket: PathBuf,
+        manifest: Option<PathBuf>,
+    },
+    Connect {
+        socket: PathBuf,
+        manifest: PathBuf,
+    },
 }
 
 /// Takes an injectable argument iterator (rather than reading
@@ -42,6 +60,7 @@ struct Args {
 /// reason (see that binary's docs).
 fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut socket = None;
+    let mut connect = None;
     let mut gatekeeper_socket = None;
     let mut manifest = None;
 
@@ -50,18 +69,144 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         let mut value = || it.next().ok_or_else(|| format!("{flag} requires a value"));
         match flag.as_str() {
             "--socket" => socket = Some(PathBuf::from(value()?)),
+            "--connect" => connect = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--manifest" => manifest = Some(PathBuf::from(value()?)),
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
 
-    let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
-    Ok(Args {
-        socket,
-        gatekeeper_socket: gatekeeper_socket.unwrap_or_else(default_gatekeeper_socket_path),
-        manifest,
-    })
+    match (socket, connect) {
+        (Some(_), Some(_)) => Err("--socket and --connect are mutually exclusive".to_string()),
+        (Some(socket), None) => Ok(Args {
+            mode: Mode::Serve {
+                socket,
+                gatekeeper_socket: gatekeeper_socket.unwrap_or_else(default_gatekeeper_socket_path),
+                manifest,
+            },
+        }),
+        (None, Some(socket)) => {
+            if gatekeeper_socket.is_some() {
+                return Err("--gatekeeper-socket is only valid with --socket".to_string());
+            }
+            let manifest = manifest.ok_or_else(|| {
+                "--connect requires --manifest so the host can derive its package identity"
+                    .to_string()
+            })?;
+            Ok(Args {
+                mode: Mode::Connect { socket, manifest },
+            })
+        }
+        (None, None) => Err("--socket <path> or --connect <path> is required".to_string()),
+    }
+}
+
+fn serve(socket: PathBuf, gatekeeper_socket: PathBuf, manifest: Option<PathBuf>) -> ExitCode {
+    // Validate the package and populate the server-side registry before
+    // publishing a socket. A client must never race a briefly listening host
+    // whose identity/capability table has not been established yet.
+    let registry = match manifest.as_deref() {
+        Some(manifest_path) => match load_installed_extension(manifest_path) {
+            Ok(extension) => registry_for_installed_extension(&extension),
+            Err(error) => {
+                eprintln!(
+                    "blueice-extension-host: could not install {}: {error}",
+                    manifest_path.display()
+                );
+                let _ = std::fs::remove_file(&socket);
+                return ExitCode::FAILURE;
+            }
+        },
+        None => ExtensionRegistry::minimal_slice(),
+    };
+
+    // A stale socket file from a previous run (e.g. one that crashed
+    // instead of exiting cleanly) makes bind() fail with AddrInUse even
+    // though nothing is actually listening -- remove it first, same as
+    // `blueice-core`'s and `blueice-ai-gatekeeper`'s own binaries do.
+    let _ = std::fs::remove_file(&socket);
+
+    let listener = match UnixListener::bind(&socket) {
+        Ok(listener) => listener,
+        Err(e) => {
+            eprintln!(
+                "blueice-extension-host: failed to bind {}: {e}",
+                socket.display()
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    for mut stream in listener.incoming().flatten() {
+        let _ =
+            handle_extension_connection_with_gatekeeper(&registry, &gatekeeper_socket, &mut stream);
+    }
+
+    let _ = std::fs::remove_file(&socket);
+    ExitCode::SUCCESS
+}
+
+/// The core's child-side handshake. The token comes only from core's child
+/// environment -- there is intentionally no command-line flag for it, where a
+/// process listing or shell history could disclose it.
+fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
+    let installed = load_installed_extension(&manifest).map_err(|error| {
+        format!(
+            "could not install {} before connecting to core: {error}",
+            manifest.display()
+        )
+    })?;
+    let authentication = std::env::var("BLUEICE_EXTENSION_AUTH_TOKEN").map_err(|_| {
+        "BLUEICE_EXTENSION_AUTH_TOKEN is required in --connect mode and must be supplied by blueice-core"
+            .to_string()
+    })?;
+    if authentication.is_empty() {
+        return Err("BLUEICE_EXTENSION_AUTH_TOKEN must not be empty".to_string());
+    }
+
+    // A package declares only the APIs it needs. Version 1 is deliberately
+    // the conservative common denominator for this connection-liveness host;
+    // its eventual WASM runtime can opt into v2 requests after implementing
+    // them, without changing the authentication handshake.
+    let capability_versions: BTreeMap<_, _> = installed
+        .manifest()
+        .capabilities()
+        .declared()
+        .iter()
+        .map(|capability| (capability.clone(), 1))
+        .collect();
+    let mut stream = UnixStream::connect(&socket).map_err(|error| {
+        format!(
+            "could not connect to core extension socket {}: {error}",
+            socket.display()
+        )
+    })?;
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::HelloAuthenticated {
+            extension_id: installed.extension_id().to_string(),
+            capability_versions,
+            authentication,
+        },
+    )
+    .map_err(|error| format!("could not send authenticated extension hello: {error}"))?;
+    match read_extension_reply(&mut stream)
+        .map_err(|error| format!("core rejected the authenticated extension hello: {error}"))?
+    {
+        ExtensionReply::HelloAck { .. } => {}
+        reply => {
+            return Err(format!(
+                "core returned an unexpected extension hello reply: {reply:?}"
+            ))
+        }
+    }
+
+    // No core-to-host requests exist yet: the planned WASM runtime will own
+    // the authenticated stream and make extension requests itself. Keeping
+    // this stream alive today lets core verify the peer binding without
+    // pretending an unimplemented runtime executed package code. EOF (or a
+    // reset) means core ended and is a normal child shutdown condition.
+    while read_extension_request(&mut stream).is_ok() {}
+    Ok(())
 }
 
 fn main() -> ExitCode {
@@ -73,50 +218,20 @@ fn main() -> ExitCode {
         }
     };
 
-    // Validate the package and populate the server-side registry before
-    // publishing a socket. A client must never race a briefly listening host
-    // whose identity/capability table has not been established yet.
-    let registry = match args.manifest.as_deref() {
-        Some(manifest_path) => match load_installed_extension(manifest_path) {
-            Ok(extension) => registry_for_installed_extension(&extension),
-            Err(error) => {
-                eprintln!(
-                    "blueice-extension-host: could not install {}: {error}",
-                    manifest_path.display()
-                );
-                let _ = std::fs::remove_file(&args.socket);
-                return ExitCode::FAILURE;
+    match args.mode {
+        Mode::Serve {
+            socket,
+            gatekeeper_socket,
+            manifest,
+        } => serve(socket, gatekeeper_socket, manifest),
+        Mode::Connect { socket, manifest } => match connect_to_core(socket, manifest) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("blueice-extension-host: {message}");
+                ExitCode::FAILURE
             }
         },
-        None => ExtensionRegistry::minimal_slice(),
-    };
-
-    // A stale socket file from a previous run (e.g. one that crashed
-    // instead of exiting cleanly) makes bind() fail with AddrInUse even
-    // though nothing is actually listening -- remove it first, same as
-    // `blueice-core`'s and `blueice-ai-gatekeeper`'s own binaries do.
-    let _ = std::fs::remove_file(&args.socket);
-
-    let listener = match UnixListener::bind(&args.socket) {
-        Ok(listener) => listener,
-        Err(e) => {
-            eprintln!(
-                "blueice-extension-host: failed to bind {}: {e}",
-                args.socket.display()
-            );
-            return ExitCode::FAILURE;
-        }
-    };
-    for mut stream in listener.incoming().flatten() {
-        let _ = handle_extension_connection_with_gatekeeper(
-            &registry,
-            &args.gatekeeper_socket,
-            &mut stream,
-        );
     }
-
-    let _ = std::fs::remove_file(&args.socket);
-    ExitCode::SUCCESS
 }
 
 #[cfg(test)]
@@ -128,8 +243,11 @@ mod tests {
     }
 
     #[test]
-    fn socket_is_required() {
-        assert_eq!(args(&[]), Err("--socket <path> is required".to_string()));
+    fn a_server_socket_or_core_connection_is_required() {
+        assert_eq!(
+            args(&[]),
+            Err("--socket <path> or --connect <path> is required".to_string())
+        );
     }
 
     #[test]
@@ -137,9 +255,11 @@ mod tests {
         assert_eq!(
             args(&["--socket", "/tmp/x.sock"]).unwrap(),
             Args {
-                socket: PathBuf::from("/tmp/x.sock"),
-                gatekeeper_socket: default_gatekeeper_socket_path(),
-                manifest: None,
+                mode: Mode::Serve {
+                    socket: PathBuf::from("/tmp/x.sock"),
+                    gatekeeper_socket: default_gatekeeper_socket_path(),
+                    manifest: None,
+                },
             }
         );
     }
@@ -163,9 +283,11 @@ mod tests {
             ])
             .unwrap(),
             Args {
-                socket: PathBuf::from("/tmp/x.sock"),
-                gatekeeper_socket: PathBuf::from("/tmp/gatekeeper.sock"),
-                manifest: None,
+                mode: Mode::Serve {
+                    socket: PathBuf::from("/tmp/x.sock"),
+                    gatekeeper_socket: PathBuf::from("/tmp/gatekeeper.sock"),
+                    manifest: None,
+                },
             }
         );
     }
@@ -181,13 +303,59 @@ mod tests {
     #[test]
     fn a_manifest_override_is_parsed() {
         assert_eq!(
-            args(&["--socket", "/tmp/x.sock", "--manifest", "/tmp/extension.json"])
-                .unwrap(),
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--manifest",
+                "/tmp/extension.json"
+            ])
+            .unwrap(),
             Args {
-                socket: PathBuf::from("/tmp/x.sock"),
-                gatekeeper_socket: default_gatekeeper_socket_path(),
-                manifest: Some(PathBuf::from("/tmp/extension.json")),
+                mode: Mode::Serve {
+                    socket: PathBuf::from("/tmp/x.sock"),
+                    gatekeeper_socket: default_gatekeeper_socket_path(),
+                    manifest: Some(PathBuf::from("/tmp/extension.json")),
+                },
             }
+        );
+    }
+
+    #[test]
+    fn core_connection_requires_an_installed_manifest() {
+        assert_eq!(
+            args(&["--connect", "/tmp/core-extension.sock"]),
+            Err(
+                "--connect requires --manifest so the host can derive its package identity"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            args(&[
+                "--connect",
+                "/tmp/core-extension.sock",
+                "--manifest",
+                "/tmp/extension.json",
+            ])
+            .unwrap(),
+            Args {
+                mode: Mode::Connect {
+                    socket: PathBuf::from("/tmp/core-extension.sock"),
+                    manifest: PathBuf::from("/tmp/extension.json"),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn server_and_core_connection_modes_cannot_be_combined() {
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/server.sock",
+                "--connect",
+                "/tmp/core.sock",
+            ]),
+            Err("--socket and --connect are mutually exclusive".to_string())
         );
     }
 
