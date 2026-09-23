@@ -159,6 +159,12 @@ pub enum ExtensionRequest {
         node_id: u64,
         value: String,
     },
+    /// Version 5 of `dom:write`: selects one enabled native radio input.
+    /// This is intentionally selection-only, never a generic `checked`
+    /// setter: core identifies the radio's local group and clears its other
+    /// members with native-radio semantics. The request cannot supply a group
+    /// name, form owner, or arbitrary attribute mutation.
+    SetRadioChecked { tab_id: u64, node_id: u64 },
     /// Version 2 of `network:intercept`: install one declarative rule that
     /// blocks a navigation only when its canonical initial HTTP(S) URL exactly
     /// equals `url`. The rule is connection-scoped in core, so it disappears
@@ -410,6 +416,10 @@ mod tests {
                 tab_id: 42,
                 node_id: 101,
                 value: "multi-line shared value".to_string(),
+            },
+            ExtensionRequest::SetRadioChecked {
+                tab_id: 42,
+                node_id: 102,
             },
             ExtensionRequest::RegisterNetworkBlockUrl {
                 url: "https://example.test/private".to_string(),

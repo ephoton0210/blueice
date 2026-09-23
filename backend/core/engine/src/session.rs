@@ -117,6 +117,13 @@ pub enum ExtensionPageRequest {
         value: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
+    /// Selects one explicit radio while core owns the group-membership and
+    /// mutual-exclusion semantics.
+    SetRadioChecked {
+        tab_id: u64,
+        node_id: u64,
+        reply: mpsc::Sender<Result<(), String>>,
+    },
     /// Adds one core-validated, connection-scoped exact initial navigation
     /// block rule. The opaque connection ID is allocated by `blueice-core`,
     /// never supplied by an extension.
@@ -992,6 +999,37 @@ fn handle_extension_page_request<S: Write>(
             if result.is_ok() {
                 // Match the other constrained form writes: event handlers
                 // see the core-owned value before observers receive a frame.
+                let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "input");
+                let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "change");
+                let page = tabs
+                    .get_mut(tab_id)
+                    .expect("a checked extension target tab remains live");
+                send_frame(
+                    page,
+                    stream,
+                    frame_dir,
+                    generation,
+                    Some(tab_id.as_u64()),
+                    None,
+                )?;
+            }
+            let _ = reply.send(result);
+        }
+        ExtensionPageRequest::SetRadioChecked {
+            tab_id,
+            node_id,
+            reply,
+        } => {
+            let tab_id = TabId::from_u64(tab_id);
+            let node_id = NodeId::from_u64(node_id);
+            let result = match tabs.get_mut(tab_id) {
+                Some(page) => page.set_radio_checked(node_id),
+                None => Err(format!("unknown tab {}", tab_id.as_u64())),
+            };
+            if result.is_ok() {
+                // A selected radio can clear other controls in its core-owned
+                // group, so publish one post-mutation input/change pair and a
+                // single shared frame after the entire group update.
                 let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "input");
                 let _ = script_scheduler.dispatch_event(tabs, tab_id, node_id, "change");
                 let page = tabs

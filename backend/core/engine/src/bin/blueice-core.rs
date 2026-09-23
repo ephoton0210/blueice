@@ -283,6 +283,23 @@ fn request_checkbox_checked(
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
 }
 
+fn request_radio_checked(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: u64,
+    node_id: u64,
+) -> Result<(), String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::SetRadioChecked {
+        tab_id,
+        node_id,
+        reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx
+        .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
 fn request_textarea_value(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     tab_id: u64,
@@ -392,6 +409,11 @@ fn spawn_extension_listener(
                                     node_id,
                                     value == "true",
                                 )
+                            }
+                            blueice_ipc::extension::DomWriteTarget::FormInput { input_type }
+                                if input_type.eq_ignore_ascii_case("radio") =>
+                            {
+                                request_radio_checked(&write_tx, tab_id, node_id)
                             }
                             blueice_ipc::extension::DomWriteTarget::FormInput { input_type }
                                 if input_type.eq_ignore_ascii_case("textarea") =>

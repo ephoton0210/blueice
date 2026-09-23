@@ -197,6 +197,15 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
     linker
         .func_wrap(
             "blueice",
+            "set_radio_checked",
+            |mut caller: Caller<'_, RuntimeState>, tab_id: i64, node_id: i64| {
+                set_radio_checked(&mut caller, tab_id, node_id)
+            },
+        )
+        .map_err(|error| format!("could not define the set_radio_checked ABI import: {error}"))?;
+    linker
+        .func_wrap(
+            "blueice",
             "set_textarea_value",
             |mut caller: Caller<'_, RuntimeState>,
              tab_id: i64,
@@ -324,6 +333,22 @@ fn set_checkbox_checked(
             node_id,
             checked,
         },
+    ) {
+        Ok(ExtensionReply::DomWriteAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+/// Selects one live radio through the version-5 `dom:write` operation. The
+/// guest supplies no group name or `checked` Boolean: core derives the local
+/// group and applies the atomic mutual-exclusion transition itself.
+fn set_radio_checked(caller: &mut Caller<'_, RuntimeState>, tab_id: i64, node_id: i64) -> i32 {
+    let (Ok(tab_id), Ok(node_id)) = (stable_id(tab_id), stable_id(node_id)) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(
+        caller,
+        ExtensionRequest::SetRadioChecked { tab_id, node_id },
     ) {
         Ok(ExtensionReply::DomWriteAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
@@ -469,6 +494,7 @@ mod tests {
                 (import "blueice" "dom_read_utf8" (func $read (param i64 i32 i32) (result i32)))
                 (import "blueice" "set_text_input_value" (func $text (param i64 i64 i32 i32) (result i32)))
                 (import "blueice" "set_checkbox_checked" (func $checkbox (param i64 i64 i32) (result i32)))
+                (import "blueice" "set_radio_checked" (func $radio (param i64 i64) (result i32)))
                 (import "blueice" "set_textarea_value" (func $textarea (param i64 i64 i32 i32) (result i32)))
                 (memory (export "memory") 1)
                 (data (i32.const 0) "BlueIce")
@@ -488,6 +514,10 @@ mod tests {
                     i64.const 13
                     i32.const 1
                     call $checkbox
+                    drop
+                    i64.const 7
+                    i64.const 15
+                    call $radio
                     drop
                     i64.const 7
                     i64.const 14
@@ -525,6 +555,15 @@ mod tests {
                     tab_id: 7,
                     node_id: 13,
                     checked: true,
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::DomWriteAck)
+                .unwrap();
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::SetRadioChecked {
+                    tab_id: 7,
+                    node_id: 15,
                 }
             );
             blueice_ipc::extension::write_extension_reply(&mut core, &ExtensionReply::DomWriteAck)

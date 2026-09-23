@@ -440,6 +440,46 @@ impl Page {
         Ok(())
     }
 
+    /// Selects one real, enabled native radio input for the extension
+    /// protocol's version-5 `dom:write` operation. A radio is deliberately
+    /// not treated as a checkbox: core derives its local group from the live
+    /// document and clears the group's other members atomically. To avoid
+    /// silently approximating the HTML form-owner algorithm, this first
+    /// operation accepts only named radios with an ordinary ancestor form (or
+    /// no form) and rejects externally form-associated controls.
+    pub(crate) fn set_radio_checked(&mut self, id: NodeId) -> Result<(), String> {
+        let (name, form_owner) = extension_radio_group_scope(&self.doc, id)?;
+        let mut members = Vec::new();
+        collect_extension_radio_group_members(
+            &self.doc,
+            self.doc.root(),
+            &name,
+            form_owner,
+            &mut members,
+        );
+        if !members.contains(&id) {
+            return Err("the live radio group could not be resolved".to_string());
+        }
+
+        for member in members {
+            let NodeData::Element { attributes, .. } = self.doc.data_mut(member) else {
+                unreachable!("a collected radio group member remains an element");
+            };
+            if member == id {
+                if !attributes
+                    .iter()
+                    .any(|(attribute, _)| attribute.eq_ignore_ascii_case("checked"))
+                {
+                    attributes.push(("checked".to_string(), String::new()));
+                }
+            } else {
+                attributes.retain(|(attribute, _)| !attribute.eq_ignore_ascii_case("checked"));
+            }
+        }
+        self.relayout();
+        Ok(())
+    }
+
     /// Resolves an anchor's raw `href` using the current document URL.
     /// Test-only pages and built-in pages may have no usable hierarchical
     /// base; in that case preserve the raw target, so the session's normal
@@ -862,6 +902,98 @@ fn find_element_by_id(doc: &Document, node: NodeId, id: &str) -> Option<NodeId> 
     }
     doc.children(node)
         .find_map(|child| find_element_by_id(doc, child, id))
+}
+
+/// Returns the group identity for one extension-selectable radio. This is
+/// intentionally stricter than arbitrary script DOM mutation: the extension
+/// provides only a stable node ID, so all group membership comes from the
+/// core-owned current document.
+fn extension_radio_group_scope(
+    doc: &Document,
+    id: NodeId,
+) -> Result<(String, Option<NodeId>), String> {
+    if !doc.contains(id) {
+        return Err(format!("unknown radio node {}", id.as_u64()));
+    }
+    let NodeData::Element {
+        tag_name,
+        attributes,
+    } = doc.data(id)
+    else {
+        return Err(format!(
+            "node {} is not an enabled named native radio",
+            id.as_u64()
+        ));
+    };
+    let is_radio = tag_name.eq_ignore_ascii_case("input")
+        && attributes.iter().any(|(attribute, value)| {
+            attribute.eq_ignore_ascii_case("type") && value.eq_ignore_ascii_case("radio")
+        });
+    let disabled = attributes
+        .iter()
+        .any(|(attribute, _)| attribute.eq_ignore_ascii_case("disabled"));
+    let externally_associated = attributes
+        .iter()
+        .any(|(attribute, _)| attribute.eq_ignore_ascii_case("form"));
+    let name = attributes
+        .iter()
+        .find(|(attribute, _)| attribute.eq_ignore_ascii_case("name"))
+        .map(|(_, value)| value.clone())
+        .filter(|value| !value.is_empty());
+    if !is_radio || disabled || externally_associated || name.is_none() {
+        return Err(format!(
+            "node {} is not an enabled named native radio",
+            id.as_u64()
+        ));
+    }
+    Ok((
+        name.expect("a checked radio name is present"),
+        nearest_form_ancestor(doc, id),
+    ))
+}
+
+fn nearest_form_ancestor(doc: &Document, id: NodeId) -> Option<NodeId> {
+    let mut ancestor = doc.parent(id);
+    while let Some(node) = ancestor {
+        if matches!(doc.data(node), NodeData::Element { tag_name, .. } if tag_name.eq_ignore_ascii_case("form"))
+        {
+            return Some(node);
+        }
+        ancestor = doc.parent(node);
+    }
+    None
+}
+
+fn collect_extension_radio_group_members(
+    doc: &Document,
+    node: NodeId,
+    name: &str,
+    form_owner: Option<NodeId>,
+    members: &mut Vec<NodeId>,
+) {
+    if let NodeData::Element {
+        tag_name,
+        attributes,
+    } = doc.data(node)
+    {
+        let is_member = tag_name.eq_ignore_ascii_case("input")
+            && attributes.iter().any(|(attribute, value)| {
+                attribute.eq_ignore_ascii_case("type") && value.eq_ignore_ascii_case("radio")
+            })
+            && !attributes
+                .iter()
+                .any(|(attribute, _)| attribute.eq_ignore_ascii_case("form"))
+            && attributes
+                .iter()
+                .any(|(attribute, value)| attribute.eq_ignore_ascii_case("name") && value == name)
+            && nearest_form_ancestor(doc, node) == form_owner;
+        if is_member {
+            members.push(node);
+        }
+    }
+    for child in doc.children(node) {
+        collect_extension_radio_group_members(doc, child, name, form_owner, members);
+    }
 }
 
 fn node_text_content(doc: &Document, node: NodeId) -> String {
@@ -1365,6 +1497,54 @@ mod tests {
         assert!(page
             .set_checkbox_checked(NodeId::from_u64(9_999), true)
             .is_err());
+    }
+
+    #[test]
+    fn extension_radio_write_selects_only_its_live_named_local_group() {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(
+            r#"
+                <form id="one">
+                  <input id="first" type="radio" name="choice" checked>
+                  <input id="second" type="radio" name="choice">
+                  <input id="other-name" type="radio" name="other" checked>
+                  <input id="disabled" type="radio" name="choice" disabled>
+                </form>
+                <form id="two"><input id="other-form" type="radio" name="choice" checked></form>
+                <input id="unnamed" type="radio">
+                <input id="external" type="radio" name="choice" form="one">
+                <div id="other"></div>
+            "#,
+            None,
+        );
+        let first = page.script_get_element_by_id("first").unwrap();
+        let second = page.script_get_element_by_id("second").unwrap();
+        let other_name = page.script_get_element_by_id("other-name").unwrap();
+        let disabled = page.script_get_element_by_id("disabled").unwrap();
+        let other_form = page.script_get_element_by_id("other-form").unwrap();
+        let unnamed = page.script_get_element_by_id("unnamed").unwrap();
+        let external = page.script_get_element_by_id("external").unwrap();
+        let other = page.script_get_element_by_id("other").unwrap();
+
+        page.set_radio_checked(second).unwrap();
+        let snapshot = page.snapshot(1, 1);
+        let checked = |id: NodeId| {
+            snapshot
+                .nodes
+                .iter()
+                .find(|node| node.id == id.as_u64())
+                .and_then(|node| node.state.checked)
+        };
+        assert_eq!(checked(first), Some(false));
+        assert_eq!(checked(second), Some(true));
+        assert_eq!(checked(other_name), Some(true));
+        assert_eq!(checked(other_form), Some(true));
+
+        assert!(page.set_radio_checked(disabled).is_err());
+        assert!(page.set_radio_checked(unnamed).is_err());
+        assert!(page.set_radio_checked(external).is_err());
+        assert!(page.set_radio_checked(other).is_err());
+        assert!(page.set_radio_checked(NodeId::from_u64(9_999)).is_err());
     }
 
     #[test]

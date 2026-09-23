@@ -630,7 +630,7 @@ fn core_waits_for_its_spawned_extension_host_and_rejects_a_bearer_claim_peer() {
 }
 
 #[test]
-fn installed_extension_v4_writes_explicit_form_controls_after_gatekeeper_review() {
+fn installed_extension_v5_writes_explicit_form_controls_after_gatekeeper_review() {
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
@@ -641,7 +641,7 @@ fn installed_extension_v4_writes_explicit_form_controls_after_gatekeeper_review(
     let core_socket = unique_socket_path("ev2c");
     let extension_socket = unique_private_extension_socket_path("write");
     let frame_dir = std::env::temp_dir().join(format!(
-        "blueice-core-extension-v4-frames-{}",
+        "blueice-core-extension-v5-frames-{}",
         std::process::id()
     ));
     let (package_root, manifest, extension_id) =
@@ -657,7 +657,7 @@ fn installed_extension_v4_writes_explicit_form_controls_after_gatekeeper_review(
         let (mut stream, _) = listener.accept().unwrap();
         let mut buf = [0u8; 1024];
         let _ = stream.read(&mut buf);
-        let body = r#"<label for="shared">Shared value</label><input id="shared" type="text" value="before"><label for="agree">Agree</label><input id="agree" type="checkbox"><label for="notes">Notes</label><textarea id="notes">before</textarea>"#;
+        let body = r#"<label for="shared">Shared value</label><input id="shared" type="text" value="before"><label for="agree">Agree</label><input id="agree" type="checkbox"><label for="notes">Notes</label><textarea id="notes">before</textarea><label for="first-priority">First priority</label><input id="first-priority" type="radio" name="priority" checked><label for="second-priority">Second priority</label><input id="second-priority" type="radio" name="priority">"#;
         stream
             .write_all(
                 format!(
@@ -683,7 +683,7 @@ fn installed_extension_v4_writes_explicit_form_controls_after_gatekeeper_review(
             frame_dir.to_str().unwrap(),
         ])
         .spawn()
-        .expect("failed to spawn core with a v4 installed extension");
+        .expect("failed to spawn core with a v5 installed extension");
 
     assert!(wait_for(&core_socket, Duration::from_secs(5)));
     assert!(wait_for(&extension_socket, Duration::from_secs(5)));
@@ -709,7 +709,7 @@ fn installed_extension_v4_writes_explicit_form_controls_after_gatekeeper_review(
         &blueice_ipc::ClientMessage::GetRepresentation,
     )
     .unwrap();
-    let (input_id, checkbox_id, textarea_id) =
+    let (input_id, checkbox_id, textarea_id, first_radio_id, second_radio_id) =
         match blueice_ipc::read_server_message(&mut frontend).unwrap() {
             blueice_ipc::ServerMessage::Representation(snapshot) => {
                 let input_id = snapshot
@@ -733,7 +733,25 @@ fn installed_extension_v4_writes_explicit_form_controls_after_gatekeeper_review(
                     })
                     .expect("the navigated form must expose its textarea")
                     .id;
-                (input_id, checkbox_id, textarea_id)
+                let first_radio_id = snapshot
+                    .nodes
+                    .iter()
+                    .find(|node| node.name.as_deref() == Some("First priority"))
+                    .expect("the navigated form must expose its first radio")
+                    .id;
+                let second_radio_id = snapshot
+                    .nodes
+                    .iter()
+                    .find(|node| node.name.as_deref() == Some("Second priority"))
+                    .expect("the navigated form must expose its second radio")
+                    .id;
+                (
+                    input_id,
+                    checkbox_id,
+                    textarea_id,
+                    first_radio_id,
+                    second_radio_id,
+                )
             }
             other => panic!("expected the input representation, got {other:?}"),
         };
@@ -745,7 +763,7 @@ fn installed_extension_v4_writes_explicit_form_controls_after_gatekeeper_review(
             extension_id,
             capability_versions: BTreeMap::from([
                 ("dom:read".to_string(), 2),
-                ("dom:write".to_string(), 4),
+                ("dom:write".to_string(), 5),
             ]),
         },
     )
@@ -762,6 +780,27 @@ fn installed_extension_v4_writes_explicit_form_controls_after_gatekeeper_review(
             tab_id: 1,
             node_id: input_id,
             value: "from extension v2".to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::DomWriteAck
+    );
+    let (reply_tab, request_id, frame) =
+        blueice_ipc::read_server_message_with_ids(&mut frontend).unwrap();
+    assert_eq!(reply_tab, Some(1));
+    assert_eq!(request_id, None);
+    assert!(matches!(
+        frame,
+        blueice_ipc::ServerMessage::FrameReady { .. }
+    ));
+
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::SetRadioChecked {
+            tab_id: 1,
+            node_id: second_radio_id,
         },
     )
     .unwrap();
@@ -853,6 +892,22 @@ fn installed_extension_v4_writes_explicit_form_controls_after_gatekeeper_review(
             .find(|node| node.id == textarea_id)
             .and_then(|node| node.state.value.as_deref()),
         Some("from extension v4 with detail")
+    );
+    assert_eq!(
+        snapshot
+            .nodes
+            .iter()
+            .find(|node| node.id == first_radio_id)
+            .and_then(|node| node.state.checked),
+        Some(false)
+    );
+    assert_eq!(
+        snapshot
+            .nodes
+            .iter()
+            .find(|node| node.id == second_radio_id)
+            .and_then(|node| node.state.checked),
+        Some(true)
     );
 
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
