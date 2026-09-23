@@ -627,6 +627,11 @@ mod tests {
     fn compiler_connection_rejects_queries_before_a_core_capability_handshake() {
         let (client, _server) = UnixStream::pair().unwrap();
         let mut connection = CompilerConnection::new(client);
+        let error = connection.describe_project(1).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::NotConnected);
+        assert!(error
+            .to_string()
+            .contains("completed core-attested capability handshake"));
         let error = connection.check(1).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::NotConnected);
         assert!(error

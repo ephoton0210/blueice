@@ -421,6 +421,43 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         }};
     }
 
+    let project_result = compiler_tool!(
+        "bluetsc_describe_project",
+        serde_json::json!({ "project_id": 1 })
+    );
+    assert_eq!(project_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&project_result);
+    let blueice_ipc::compiler::CompilerReply::Project(project) =
+        compiler_tool_reply(&project_result)
+    else {
+        panic!("the sealed core profile must return its source-free project identity")
+    };
+    assert_eq!(project.project.id, 1);
+    assert_eq!(project.entry_module, "project:///core-fixture/main.ts");
+
+    let wrong_project_session = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_describe_project").with_arguments(
+                serde_json::json!({
+                    "session_id": "f".repeat(64),
+                    "project_id": 1,
+                })
+                .as_object()
+                .expect("MCP project description arguments must be an object")
+                .clone(),
+            ),
+        )
+        .await
+        .expect("mismatched project session must receive a structured MCP result");
+    assert_eq!(wrong_project_session.is_error, Some(true));
+    let wrong_project_session_text = wrong_project_session.content[0]
+        .as_text()
+        .expect("mismatched project session result must be text")
+        .text
+        .as_str();
+    assert!(wrong_project_session_text.contains("does not belong to this MCP adapter"));
+    assert!(!wrong_project_session_text.contains("coreRegisteredAnswer"));
+
     let check_result = compiler_tool!("bluetsc_check", serde_json::json!({ "project_id": 1 }));
     assert_eq!(check_result.is_error, Some(false));
     assert_source_free_compiler_tool_result(&check_result);

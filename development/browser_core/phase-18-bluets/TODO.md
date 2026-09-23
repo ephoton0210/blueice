@@ -898,11 +898,14 @@ or second module resolver to bypass them.
   `connect_with_core_and_compiler_sockets` construction paths. The paired
   path attaches both adapters to one already-running core and never falls
   back to an unrelated browser process. After
-  the separate compiler `Hello` negotiation, `bluetsc_check`,
+  the separate compiler `Hello` negotiation, `bluetsc_describe_project`, `bluetsc_check`,
   `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
   `debug_get_provenance`, `debug_get_contract`, and
   `debug_validate_contract` forward only opaque project/generation/metadata
-  handles to the core service. Contract validation accepts only bounded JSON
+  handles to the core service. `bluetsc_describe_project` accepts only a
+  previously known opaque project handle and returns that handle plus its
+  canonical entry-module identity; it cannot enumerate a catalog or reveal
+  source/project/config/output roots. Contract validation accepts only bounded JSON
   data (not JavaScript values or JSON-inexpressible `undefined`) and never
   echoes it. Their JSON output is source-text-free and wraps project-controlled
   diagnostic prose, identifiers, and static displays as untrusted data. The
@@ -940,7 +943,7 @@ or second module resolver to bypass them.
   capped, redacted where needed, and reject stale project state.
 
 - [ ] **Complete the negotiated MCP BlueTS/BlueTSC adapter (Phase 12).**
-  `bluetsc_check`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
+  `bluetsc_describe_project`, `bluetsc_check`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
   `debug_get_provenance`, `debug_get_contract`, and
   `debug_validate_contract` now adapt the native query service, not shell
   endpoints or a second compiler. Still add `bluetsc_build` only alongside an

@@ -1572,6 +1572,29 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
+        description = "Describe an already core-registered BlueTS/BlueTSC project through the negotiated compiler service. session_id must be the opaque receipt returned by bluetsc_session_capabilities for this exact MCP adapter; project_id is an opaque owner-minted handle, not a path. This may be called before bluetsc_check and returns only the same opaque project handle plus its canonical entry-module identity. It cannot enumerate registrations, read source, reveal project/config/output roots, change compiler configuration, build, or write output."
+    )]
+    async fn bluetsc_describe_project(
+        &self,
+        Parameters(CompilerProjectParams {
+            session_id,
+            project_id,
+        }): Parameters<CompilerProjectParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let Some(compiler) = self.compiler_conn() else {
+            return Ok(compiler_unavailable_result());
+        };
+        if !compiler.accepts_session(session_id.as_deref()) {
+            return Ok(compiler_session_mismatch_result());
+        }
+        let reply = blocking_compiler_session(compiler.clone(), move |connection, _| {
+            connection.describe_project(project_id)
+        })
+        .await?;
+        Ok(compiler_reply_to_result(&compiler.receipt, reply))
+    }
+
+    #[tool(
         description = "Check an already core-registered BlueTS/BlueTSC project through the negotiated compiler service. session_id must be the opaque receipt returned by bluetsc_session_capabilities for this exact MCP adapter; project_id is an opaque owner-minted handle, not a path. A successful check records its exact core generation in this session, which later static queries must repeat. The result is source-text-free and read-only: it can include capped diagnostics, work-set summaries, fingerprints and metadata counts, but never source, emitted artifacts, output paths, resolver/compiler options, or filesystem writes. A build/output operation is intentionally unsupported in this slice."
     )]
     async fn bluetsc_check(
@@ -1888,7 +1911,7 @@ impl ServerHandler for BlueIceMcpServer {
                  locale data. All are read-only and never execute JavaScript or access page state. \
                  Use bluetsc_session_capabilities first to learn whether this server was explicitly connected to a \
                  core-owned registered-project compiler endpoint. When available, repeat its opaque session receipt on \
-                 bluetsc_check, debug_list_static_metadata, debug_get_type, debug_get_symbol, debug_get_provenance, \
+                 bluetsc_describe_project, bluetsc_check, debug_list_static_metadata, debug_get_type, debug_get_symbol, debug_get_provenance, \
                  debug_get_contract and debug_validate_contract. A successful check records an exact generation for that \
                  one accepted compiler stream. Its receipt includes the complete core-authored capability manifest; MCP \
                  neither derives nor narrows that vocabulary. Static queries reject a different receipt or a generation not observed by \
