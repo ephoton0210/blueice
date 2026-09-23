@@ -6,7 +6,7 @@
 
 //! End-to-end coverage for the launcher-owned compiler MCP endpoint.  This
 //! drives the real `blueice-launcher` binary, its real `blueice-core` child,
-//! and the core's separate v2 compiler listener.  MCP's paired adapter is
+//! and the core's separate v3 compiler listener. MCP's paired adapter is
 //! covered from the MCP crate; this boundary proves the public launcher CLI
 //! is the one that creates the fixed closed profile and safely owns its
 //! caller-selected endpoint through shutdown and cutover refusal.
@@ -162,12 +162,15 @@ fn open_fixed_core_profile(
         },
     )
     .unwrap();
-    assert_eq!(
-        read_compiler_reply(&mut stream).unwrap(),
-        CompilerReply::HelloAck {
-            protocol_version: COMPILER_PROTOCOL_VERSION,
-        }
-    );
+    let CompilerReply::HelloAck {
+        protocol_version,
+        session_attestation,
+    } = read_compiler_reply(&mut stream).unwrap()
+    else {
+        panic!("fixed core profile must mint an attested compiler stream")
+    };
+    assert_eq!(protocol_version, COMPILER_PROTOCOL_VERSION);
+    assert!(session_attestation.is_well_formed());
     write_compiler_request(
         &mut stream,
         &CompilerRequest::Check {

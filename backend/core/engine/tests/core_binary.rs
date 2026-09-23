@@ -334,8 +334,8 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
     ));
     drop(invalid);
 
-    // Compiler IPC v1 cannot silently negotiate with the contract/provenance
-    // vocabulary added by v2.
+    // Obsolete compiler IPC versions cannot silently negotiate with the v3
+    // core-minted stream attestation.
     let mut v1 = UnixStream::connect(&compiler_socket_path).unwrap();
     blueice_ipc::compiler::write_compiler_request(
         &mut v1,
@@ -353,6 +353,23 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
     ));
     drop(v1);
 
+    let mut v2 = UnixStream::connect(&compiler_socket_path).unwrap();
+    blueice_ipc::compiler::write_compiler_request(
+        &mut v2,
+        &blueice_ipc::compiler::CompilerRequest::Hello {
+            protocol_version: 2,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::compiler::read_compiler_reply(&mut v2).unwrap(),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::ProtocolVersion,
+            ..
+        }
+    ));
+    drop(v2);
+
     let mut compiler = UnixStream::connect(&compiler_socket_path).unwrap();
     blueice_ipc::compiler::write_compiler_request(
         &mut compiler,
@@ -361,12 +378,18 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
         },
     )
     .unwrap();
+    let blueice_ipc::compiler::CompilerReply::HelloAck {
+        protocol_version,
+        session_attestation,
+    } = blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap()
+    else {
+        panic!("core compiler listener must mint a session attestation")
+    };
     assert_eq!(
-        blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap(),
-        blueice_ipc::compiler::CompilerReply::HelloAck {
-            protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
-        }
+        protocol_version,
+        blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION
     );
+    assert!(session_attestation.is_well_formed());
     blueice_ipc::compiler::write_compiler_request(
         &mut compiler,
         &blueice_ipc::compiler::CompilerRequest::DescribeProject {

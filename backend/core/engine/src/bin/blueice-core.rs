@@ -29,7 +29,7 @@ use blueice_engine::{
     script, session, TabManager,
 };
 #[cfg(unix)]
-use std::io;
+use std::io::{self, Read};
 #[cfg(unix)]
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 #[cfg(unix)]
@@ -377,7 +377,10 @@ fn serve_compiler_connection(
             protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
         }
     );
-    let reply = blueice_ipc::compiler::negotiate(&first);
+    let session_attestation = accepted
+        .then(mint_compiler_session_attestation)
+        .transpose()?;
+    let reply = blueice_ipc::compiler::negotiate(&first, session_attestation);
     blueice_ipc::compiler::write_compiler_reply(&mut stream, &reply)?;
     if !accepted {
         return Ok(());
@@ -392,6 +395,24 @@ fn serve_compiler_connection(
         let reply = sender.request(request)?;
         blueice_ipc::compiler::write_compiler_reply(&mut stream, &reply)?;
     }
+}
+
+/// Mints opaque evidence for one accepted compiler stream. The value is
+/// generated only by the core listener after the exact v3 `Hello` and is not
+/// tied to a project, source graph, catalog, path, or any extra authority.
+#[cfg(unix)]
+fn mint_compiler_session_attestation(
+) -> io::Result<blueice_ipc::compiler::CompilerSessionAttestation> {
+    let mut bytes = [0u8; 32];
+    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    let mut id = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write;
+        write!(id, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    let session_attestation = blueice_ipc::compiler::CompilerSessionAttestation { id };
+    debug_assert!(session_attestation.is_well_formed());
+    Ok(session_attestation)
 }
 
 /// Accepts successive compiler query peers. Bad handshakes and disconnected

@@ -18,11 +18,15 @@ use std::io::{self, Read, Write};
 /// share the browser protocol version.
 pub struct CompilerConnection<S> {
     stream: S,
+    session_attestation: Option<blueice_ipc::compiler::CompilerSessionAttestation>,
 }
 
 impl<S: Read + Write> CompilerConnection<S> {
     pub fn new(stream: S) -> Self {
-        Self { stream }
+        Self {
+            stream,
+            session_attestation: None,
+        }
     }
 
     /// Negotiates the compiler protocol before any query. A peer's structured
@@ -42,9 +46,13 @@ impl<S: Read + Write> CompilerConnection<S> {
             },
         )?;
         match read_compiler_reply(&mut self.stream)? {
-            CompilerReply::HelloAck { protocol_version }
-                if protocol_version == COMPILER_PROTOCOL_VERSION =>
+            CompilerReply::HelloAck {
+                protocol_version,
+                session_attestation,
+            } if protocol_version == COMPILER_PROTOCOL_VERSION
+                && session_attestation.is_well_formed() =>
             {
+                self.session_attestation = Some(session_attestation);
                 Ok(())
             }
             CompilerReply::Error { message, .. } => Err(io::Error::other(message)),
@@ -52,6 +60,15 @@ impl<S: Read + Write> CompilerConnection<S> {
                 "expected compiler Hello handshake reply, got {reply:?}"
             ))),
         }
+    }
+
+    /// Returns the source-free core evidence minted for this exact accepted
+    /// transport stream. It is available only after a successful v3
+    /// handshake, and it grants no authority beyond the stream itself.
+    pub fn session_attestation(
+        &self,
+    ) -> Option<&blueice_ipc::compiler::CompilerSessionAttestation> {
+        self.session_attestation.as_ref()
     }
 
     /// Returns the source-text-free description selected by the core for an
@@ -230,6 +247,12 @@ mod tests {
         }
     }
 
+    fn session_attestation() -> blueice_ipc::compiler::CompilerSessionAttestation {
+        blueice_ipc::compiler::CompilerSessionAttestation {
+            id: "b2".repeat(32),
+        }
+    }
+
     #[test]
     fn compiler_connection_checks_a_sealed_core_catalog_through_the_session_owner() {
         // The MCP client gets only the owner-minted opaque project ID. The
@@ -246,7 +269,7 @@ mod tests {
             let hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
-                &blueice_ipc::compiler::negotiate(&hello),
+                &blueice_ipc::compiler::negotiate(&hello, Some(session_attestation())),
             )
             .unwrap();
             let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
@@ -306,7 +329,7 @@ mod tests {
             let hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
-                &blueice_ipc::compiler::negotiate(&hello),
+                &blueice_ipc::compiler::negotiate(&hello, Some(session_attestation())),
             )
             .unwrap();
             for _ in 0..6 {
@@ -414,7 +437,7 @@ mod tests {
             ));
             blueice_ipc::compiler::write_compiler_reply(
                 &mut server,
-                &blueice_ipc::compiler::negotiate(&hello),
+                &blueice_ipc::compiler::negotiate(&hello, Some(session_attestation())),
             )
             .unwrap();
 
@@ -474,6 +497,10 @@ mod tests {
 
         let mut connection = CompilerConnection::new(client);
         connection.handshake().unwrap();
+        assert_eq!(
+            connection.session_attestation(),
+            Some(&session_attestation())
+        );
         assert!(matches!(
             connection.check(41).unwrap(),
             blueice_ipc::compiler::CompilerReply::Error {
@@ -495,6 +522,33 @@ mod tests {
                 ..
             }
         ));
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn compiler_connection_rejects_a_malformed_core_attestation_before_queries() {
+        let (client, mut server) = UnixStream::pair().unwrap();
+        let worker = thread::spawn(move || {
+            let _hello = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
+            blueice_ipc::compiler::write_compiler_reply(
+                &mut server,
+                &blueice_ipc::compiler::CompilerReply::HelloAck {
+                    protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
+                    session_attestation: blueice_ipc::compiler::CompilerSessionAttestation {
+                        id: "not-hex".to_string(),
+                    },
+                },
+            )
+            .unwrap();
+        });
+
+        let mut connection = CompilerConnection::new(client);
+        let error = connection.handshake().unwrap_err();
+        assert!(
+            error.to_string().contains("expected compiler Hello"),
+            "malformed core evidence must not create a usable compiler session: {error}"
+        );
+        assert_eq!(connection.session_attestation(), None);
         worker.join().unwrap();
     }
 }

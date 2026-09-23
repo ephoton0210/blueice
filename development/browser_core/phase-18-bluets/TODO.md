@@ -814,8 +814,9 @@ or second module resolver to bypass them.
   output root, or write flag from its command line or socket. Real-process
   coverage proves rejected pre-`Hello` traffic cannot reach the catalog and a
   handshaken opaque `DescribeProject`/`Check` receives source-free,
-  generation-bound metadata from the core-registered closed fixture. Its v2
-  process regression also proves v1 rejection plus exact source-hash
+  generation-bound metadata from the core-registered closed fixture. Its v3
+  process regression also proves v1/v2 rejection, a fresh core-minted
+  per-accepted-stream session attestation, plus exact source-hash
   provenance/contract lookup and redacted invalid-data validation. The
   launcher now has one explicit `--compiler-mcp-socket <absolute-path>` seam:
   it validates and owns that stable public `0600` endpoint before spawning a
@@ -855,21 +856,22 @@ or second module resolver to bypass them.
   exact query, and rejects cross-kind, replayed, and stale cursors without
   source text. It cannot use the connection to re-open startup registration.
   `bluetsc_session_capabilities` truthfully reports whether the compiler
-  adapter is attached and, when it is, returns one fresh opaque receipt for
-  that accepted relay stream and the fixed seven read-only operations. Every
-  compiler tool echoes and requires that receipt; static queries additionally
-  require the exact generation first observed by `bluetsc_check` under the
-  same receipt. A mismatched or unobserved generation fails source-free, and
-  receipt/session state is never retargeted on launcher cutover.
+  adapter is attached and, when it is, returns the exact opaque receipt minted
+  by the core listener for that accepted relay stream and the fixed seven
+  read-only operations. Every compiler tool echoes and requires that receipt;
+  static queries additionally require the exact generation first observed by
+  `bluetsc_check` under the same receipt. A malformed core attestation,
+  mismatched or unobserved generation fails source-free, and receipt/session
+  state is never retargeted on launcher cutover.
   There is still
   no general launcher-owned catalog distribution or authorization beyond the
   one fixed closed profile, no remote registration/update/source/filesystem/
   resolver/plugin/options authority, no `bluetsc_build`, no artifact/
   declaration/source-map/source response, and no output write or elevation.
   The delivered `bluetsc_session_capabilities` receipt/generation gate covers
-  this adapter's current connection lifecycle. Lowering/bytecode provenance,
-  core-owned cross-process session attestation, broader MCP negotiation, and
-  the full MCP tool set remain open.
+  this adapter's current connection lifecycle, including core-side
+  per-accepted-stream attestation. Lowering/bytecode provenance, broader MCP
+  negotiation, and the full MCP tool set remain open.
 
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
   no-emit-on-error guarantee; responses are generation/fingerprint bound,

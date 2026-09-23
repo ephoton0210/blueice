@@ -27,7 +27,6 @@ use rmcp::schemars;
 use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::fs;
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -973,11 +972,11 @@ where
 }
 
 /// Source-free proof of the compiler adapter that this MCP server accepted at
-/// construction. The receipt is generated once for the adapter's one compiler
-/// stream and does not identify a project, source graph, resolver, compiler
-/// option, artifact, filesystem object, or output target. The launcher relay
-/// pins that accepted stream to one core generation; after cutover its old
-/// peer fails closed instead of receiving a new catalog.
+/// construction. The core listener mints it once for the adapter's one
+/// compiler stream; it does not identify a project, source graph, resolver,
+/// compiler option, artifact, filesystem object, or output target. The
+/// launcher relay pins that accepted stream to one core generation; after
+/// cutover its old peer fails closed instead of receiving a new catalog.
 #[derive(Debug, Clone, Serialize)]
 struct CompilerMcpSessionReceipt {
     id: String,
@@ -987,20 +986,19 @@ struct CompilerMcpSessionReceipt {
 }
 
 impl CompilerMcpSessionReceipt {
-    fn new() -> io::Result<Self> {
-        use std::io::Read;
-
-        let mut bytes = [0u8; 32];
-        fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
-        let mut id = String::with_capacity(bytes.len() * 2);
-        for byte in bytes {
-            use std::fmt::Write;
-            write!(id, "{byte:02x}").expect("writing to a String cannot fail");
+    fn from_core(
+        session_attestation: blueice_ipc::compiler::CompilerSessionAttestation,
+    ) -> io::Result<Self> {
+        if !session_attestation.is_well_formed() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "core returned an invalid compiler session attestation",
+            ));
         }
         Ok(Self {
-            id,
+            id: session_attestation.id,
             compiler_protocol_version: blueice_ipc::compiler::COMPILER_PROTOCOL_VERSION,
-            binding: "one accepted compiler IPC stream pinned by the launcher relay; a cutover closes this stream rather than retargeting it",
+            binding: "one core-attested compiler IPC stream pinned by the launcher relay; a cutover closes this stream rather than retargeting it",
             capabilities: [
                 "check registered opaque project",
                 "list bounded static metadata",
@@ -1029,9 +1027,15 @@ struct CompilerMcpAdapter {
 
 impl CompilerMcpAdapter {
     fn new(connection: CompilerConnection<UnixStream>) -> io::Result<Self> {
+        let session_attestation = connection.session_attestation().cloned().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotConnected,
+                "compiler connection has no completed core-attested handshake",
+            )
+        })?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
-            receipt: CompilerMcpSessionReceipt::new()?,
+            receipt: CompilerMcpSessionReceipt::from_core(session_attestation)?,
             observed_generations: Arc::new(Mutex::new(BTreeMap::new())),
         })
     }
@@ -1891,6 +1895,33 @@ impl ServerHandler for BlueIceMcpServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compiler_adapter_receipt_is_minted_by_the_core_handshake() {
+        let (client, mut core) = UnixStream::pair().unwrap();
+        let core_attestation = blueice_ipc::compiler::CompilerSessionAttestation {
+            id: "c3".repeat(32),
+        };
+        let expected_attestation = core_attestation.clone();
+        let worker = std::thread::spawn(move || {
+            let hello = blueice_ipc::compiler::read_compiler_request(&mut core).unwrap();
+            blueice_ipc::compiler::write_compiler_reply(
+                &mut core,
+                &blueice_ipc::compiler::negotiate(&hello, Some(core_attestation)),
+            )
+            .unwrap();
+        });
+
+        let mut connection = CompilerConnection::new(client);
+        connection.handshake().unwrap();
+        let adapter = CompilerMcpAdapter::new(connection).unwrap();
+        assert_eq!(adapter.receipt.id, expected_attestation.id);
+        assert_eq!(
+            adapter.receipt.binding,
+            "one core-attested compiler IPC stream pinned by the launcher relay; a cutover closes this stream rather than retargeting it"
+        );
+        worker.join().unwrap();
+    }
 
     #[test]
     fn compiler_metadata_is_framed_as_untrusted_and_protocol_failures_are_tool_errors() {

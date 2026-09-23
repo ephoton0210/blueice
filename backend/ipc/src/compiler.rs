@@ -10,13 +10,16 @@
 //! path, or write capability. Callers can therefore only act on opaque
 //! project and generation handles minted by that owner.
 //!
-//! Version two exposes source-text-free identity, check, individual static
-//! type/symbol queries, compiler-minted provenance hashes, a deliberately
-//! bounded subset of reifiable static-contract inspection/validation, and
-//! generation-bound pages of opaque metadata IDs. Build artifacts, project
-//! registration/update, source reads, and output transactions remain separate
-//! capability-bearing operations. In particular, this module is not an MCP
-//! protocol and does not grant an MCP client any authority by itself.
+//! Version three adds a core-minted, per-accepted-stream session attestation
+//! to the source-text-free identity, check, individual static type/symbol
+//! queries, compiler-minted provenance hashes, deliberately bounded reifiable
+//! static-contract inspection/validation, and generation-bound pages of
+//! opaque metadata IDs. The attestation binds an MCP-side receipt to the core
+//! that accepted its relay stream; it grants no additional authority. Build
+//! artifacts, project registration/update, source reads, and output
+//! transactions remain separate capability-bearing operations. In particular,
+//! this module is not an MCP protocol and does not grant an MCP client any
+//! authority by itself.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -24,13 +27,39 @@ use std::io::{self, Read, Write};
 
 /// Independent protocol version for registered-project compiler IPC. It does
 /// not share the browser frontend protocol's lifecycle.
-pub const COMPILER_PROTOCOL_VERSION: u32 = 2;
+pub const COMPILER_PROTOCOL_VERSION: u32 = 3;
 
 /// The maximum encoded request or reply accepted by this protocol. The engine
 /// adapter applies a smaller response budget before a reply reaches this
 /// transport boundary; this check also rejects a malicious length prefix
 /// before it causes an unbounded allocation.
 pub const MAX_COMPILER_MESSAGE_BYTES: usize = 1_024 * 1_024;
+
+/// Source-free opaque evidence that a particular core process accepted one
+/// compiler transport stream. It identifies neither a project nor a catalog,
+/// and it carries no permission beyond that stream's existing query-only
+/// protocol.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerSessionAttestation {
+    /// Exactly 32 random bytes encoded as lowercase hexadecimal.
+    pub id: String,
+}
+
+impl CompilerSessionAttestation {
+    /// The number of hexadecimal characters in one core-minted attestation.
+    pub const ID_LENGTH: usize = 64;
+
+    /// Reject malformed evidence before a client binds its local receipt to
+    /// it. A syntactically valid value is still only meaningful on the stream
+    /// whose core listener minted it.
+    pub fn is_well_formed(&self) -> bool {
+        self.id.len() == Self::ID_LENGTH
+            && self
+                .id
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    }
+}
 
 /// Opaque identifier minted by the core owner when it registers a project.
 /// It is an identifier, not a path or authority to create a registration.
@@ -357,6 +386,7 @@ pub enum CompilerErrorCode {
 pub enum CompilerReply {
     HelloAck {
         protocol_version: u32,
+        session_attestation: CompilerSessionAttestation,
     },
     Project(CompilerProjectIdentity),
     Check(CompilerCheck),
@@ -378,28 +408,44 @@ pub enum CompilerReply {
 
 /// Produces the one valid reply to a new connection's first request. The
 /// transport owner must not dispatch any other request after a failed reply.
-pub fn negotiate(request: &CompilerRequest) -> CompilerReply {
-    match request {
-        CompilerRequest::Hello { protocol_version }
-            if *protocol_version == COMPILER_PROTOCOL_VERSION =>
+pub fn negotiate(
+    request: &CompilerRequest,
+    session_attestation: Option<CompilerSessionAttestation>,
+) -> CompilerReply {
+    match (request, session_attestation) {
+        (CompilerRequest::Hello { protocol_version }, Some(session_attestation))
+            if *protocol_version == COMPILER_PROTOCOL_VERSION
+                && session_attestation.is_well_formed() =>
         {
             CompilerReply::HelloAck {
                 protocol_version: COMPILER_PROTOCOL_VERSION,
+                session_attestation,
             }
         }
-        CompilerRequest::Hello { .. } => CompilerReply::Error {
+        (CompilerRequest::Hello { protocol_version }, _)
+            if *protocol_version == COMPILER_PROTOCOL_VERSION =>
+        {
+            CompilerReply::Error {
+                code: CompilerErrorCode::Unavailable,
+                message: "compiler listener did not mint a valid session attestation".to_string(),
+            }
+        }
+        (CompilerRequest::Hello { .. }, _) => CompilerReply::Error {
             code: CompilerErrorCode::ProtocolVersion,
             message: "unsupported compiler protocol version".to_string(),
         },
-        CompilerRequest::DescribeProject { .. }
-        | CompilerRequest::Check { .. }
-        | CompilerRequest::GetStaticType { .. }
-        | CompilerRequest::GetStaticSymbol { .. }
-        | CompilerRequest::ListStaticMetadata { .. }
-        | CompilerRequest::GetStaticProvenance { .. }
-        | CompilerRequest::GetStaticContract { .. }
-        | CompilerRequest::ValidateStaticContract { .. }
-        | CompilerRequest::Unknown => CompilerReply::Error {
+        (
+            CompilerRequest::DescribeProject { .. }
+            | CompilerRequest::Check { .. }
+            | CompilerRequest::GetStaticType { .. }
+            | CompilerRequest::GetStaticSymbol { .. }
+            | CompilerRequest::ListStaticMetadata { .. }
+            | CompilerRequest::GetStaticProvenance { .. }
+            | CompilerRequest::GetStaticContract { .. }
+            | CompilerRequest::ValidateStaticContract { .. }
+            | CompilerRequest::Unknown,
+            _,
+        ) => CompilerReply::Error {
             code: CompilerErrorCode::ProtocolVersion,
             message: "compiler protocol requires Hello as its first request".to_string(),
         },
@@ -454,6 +500,12 @@ mod tests {
         CompilerGeneration {
             project: project(),
             sequence: 3,
+        }
+    }
+
+    fn session_attestation() -> CompilerSessionAttestation {
+        CompilerSessionAttestation {
+            id: "a1".repeat(32),
         }
     }
 
@@ -554,35 +606,59 @@ mod tests {
     #[test]
     fn negotiation_requires_the_exact_version_and_first_request() {
         assert_eq!(
-            negotiate(&CompilerRequest::Hello {
-                protocol_version: COMPILER_PROTOCOL_VERSION,
-            }),
+            negotiate(
+                &CompilerRequest::Hello {
+                    protocol_version: COMPILER_PROTOCOL_VERSION,
+                },
+                Some(session_attestation()),
+            ),
             CompilerReply::HelloAck {
                 protocol_version: COMPILER_PROTOCOL_VERSION,
+                session_attestation: session_attestation(),
             }
         );
         assert!(matches!(
-            negotiate(&CompilerRequest::Hello {
-                protocol_version: COMPILER_PROTOCOL_VERSION + 1,
-            }),
+            negotiate(
+                &CompilerRequest::Hello {
+                    protocol_version: COMPILER_PROTOCOL_VERSION + 1,
+                },
+                Some(session_attestation()),
+            ),
             CompilerReply::Error {
                 code: CompilerErrorCode::ProtocolVersion,
                 ..
             }
         ));
         assert!(matches!(
-            negotiate(&CompilerRequest::Hello {
-                protocol_version: 1,
-            }),
+            negotiate(
+                &CompilerRequest::Hello {
+                    protocol_version: 1,
+                },
+                Some(session_attestation()),
+            ),
             CompilerReply::Error {
                 code: CompilerErrorCode::ProtocolVersion,
                 ..
             }
         ));
         assert!(matches!(
-            negotiate(&CompilerRequest::Check { project: project() }),
+            negotiate(&CompilerRequest::Check { project: project() }, None),
             CompilerReply::Error {
                 code: CompilerErrorCode::ProtocolVersion,
+                ..
+            }
+        ));
+        assert!(matches!(
+            negotiate(
+                &CompilerRequest::Hello {
+                    protocol_version: COMPILER_PROTOCOL_VERSION,
+                },
+                Some(CompilerSessionAttestation {
+                    id: "not-a-core-attestation".to_string(),
+                }),
+            ),
+            CompilerReply::Error {
+                code: CompilerErrorCode::Unavailable,
                 ..
             }
         ));
