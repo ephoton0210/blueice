@@ -17,7 +17,7 @@
 //!   therefore spelled `\u{D83D}`, which `regress` never combines with what
 //!   follows. Group names are left alone: there a lead and a trail escape
 //!   form one code point whatever the flags are, and `regress` reads them so.
-//! * The word characters of `/iu` are `[A-Za-z0-9_]` plus U+017F and U+212A
+//! * The word characters of `/iu` and `/iv` are `[A-Za-z0-9_]` plus U+017F and U+212A
 //!   (ECMA-262 WordCharacters), so `\W` never matches any case variant of
 //!   `s` or `k`. `regress` closes the complement of the basic word set under
 //!   case folding, which lets `[\W]` and `[^\W]` treat those two characters as
@@ -99,15 +99,18 @@ pub(crate) fn strip_braced_leading_zeros<'a>(
 /// one per code point with them) as described in the module comment.
 pub(crate) fn adjust_escapes(points: Vec<u32>, flags: &str) -> Vec<u32> {
     let unicode = flags.contains(['u', 'v']);
-    let extended_words = flags.contains('u') && flags.contains('i');
+    let unicode_sets = flags.contains('v');
+    let extended_words = unicode && flags.contains('i');
     if !points.contains(&BACKSLASH) {
         return points;
     }
     let mut adjusted = Vec::with_capacity(points.len());
-    let (mut index, mut in_class) = (0, false);
+    // Classes nest only under the `v` flag.
+    let (mut index, mut class_depth) = (0, 0usize);
     while index < points.len() {
         let point = points[index];
         let escaped = points.get(index + 1).copied();
+        let in_class = class_depth > 0;
         // `(?<name>` and `\k<name>`: copied as they are, through the `>`.
         let name_start = if in_class {
             None
@@ -135,8 +138,8 @@ pub(crate) fn adjust_escapes(points: Vec<u32>, flags: &str) -> Vec<u32> {
         }
         if point != BACKSLASH {
             match point {
-                0x5b => in_class = true,
-                0x5d => in_class = false,
+                0x5b if !in_class || unicode_sets => class_depth += 1,
+                0x5d => class_depth = class_depth.saturating_sub(1),
                 _ => {}
             }
             adjusted.push(point);
@@ -168,7 +171,15 @@ pub(crate) fn adjust_escapes(points: Vec<u32>, flags: &str) -> Vec<u32> {
                 continue;
             }
         } else if escaped == Some(u32::from(b'W')) && extended_words && in_class {
-            adjusted.extend(NON_WORD_UNICODE_IGNORE_CASE.chars().map(u32::from));
+            // Under `v` the operand of a set operation must be a class of its own.
+            let open = unicode_sets.then_some('[');
+            let close = unicode_sets.then_some(']');
+            adjusted.extend(
+                open.into_iter()
+                    .chain(NON_WORD_UNICODE_IGNORE_CASE.chars())
+                    .chain(close)
+                    .map(u32::from),
+            );
             index += 2;
             continue;
         }
@@ -265,10 +276,27 @@ mod tests {
     fn w_in_a_class_is_written_out_only_for_unicode_ignore_case() {
         let written_out = adjust(r"[^\W_]", "iu");
         assert!(written_out.starts_with("[^\\x00-\\x2f") && written_out.ends_with("\\u{10ffff}_]"));
-        for flags in ["u", "i", "iv", ""] {
+        for flags in ["u", "i", "v", ""] {
             assert_eq!(adjust(r"[^\W_]", flags), r"[^\W_]", "{flags}");
         }
         // Outside a class, and an escaped backslash before W, are untouched.
         assert_eq!(adjust(r"\W[\\W]", "iu"), r"\W[\\W]");
+        assert_eq!(adjust(r"\W[\\W]", "iv"), r"\W[\\W]");
+    }
+
+    #[test]
+    fn w_in_a_class_is_a_class_of_its_own_under_the_v_flag() {
+        // The class text is the same as under `u`, but an operand of a set operation
+        // must be a class, and classes nest, so `\W` after an inner class is still inside one.
+        let members = adjust(r"[^\W_]", "iu");
+        let members = &members[2..members.len() - 2];
+        assert_eq!(adjust(r"[^\W_]", "iv"), format!("[^[{members}]_]"));
+        assert_eq!(adjust(r"[[a]\W]", "iv"), format!("[[a][{members}]]"));
+        assert_eq!(adjust(r"[[a]--\W]", "iv"), format!("[[a]--[{members}]]"));
+        // Under `u` the class ends at the first `]`, so this `\W` is outside it.
+        assert_eq!(adjust(r"[[a]\W]", "iu"), r"[[a]\W]");
+        assert_eq!(adjust(r"[[\W]", "iu"), format!("[[{members}]"));
+        // After the class has ended `\W` is outside again.
+        assert_eq!(adjust(r"[[a]]\W", "iv"), r"[[a]]\W");
     }
 }
