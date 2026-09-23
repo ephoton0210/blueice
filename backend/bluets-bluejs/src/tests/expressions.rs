@@ -472,6 +472,43 @@ fn lowers_braced_else_if_statements_in_direct_functions() {
 }
 
 #[test]
+fn rejects_declared_return_fallthrough_before_direct_lowering() {
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function answer(value: number): number { if (value > 0) { return value; } } answer(0);",
+        )]),
+        CompilerOptions::default(),
+    );
+    let Err(BridgeError::BlueTs(diagnostics)) = result else {
+        panic!("the direct bridge must reject a checked function return fallthrough");
+    };
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == blueice_bluets::DiagnosticCode::ReturnTypeMismatch
+            && diagnostic
+                .message
+                .contains("can complete without returning")
+    }));
+}
+
+#[test]
+fn preserves_an_opaque_braced_branch_for_direct_bridge_rejection() {
+    let result = compile_direct_script(
+        ENTRY,
+        &MapLoader::from([ModuleSource::new(
+            ENTRY,
+            "function answer(value: number): number { if (value > 0) { if (value > 1) return value; } else { return 0; } } answer(2);",
+        )]),
+        CompilerOptions::default(),
+    );
+    let Err(BridgeError::UnsupportedRuntimeTarget { message, .. }) = result else {
+        panic!("the direct bridge must reject an opaque braced branch");
+    };
+    assert!(message.contains("function body syntax"));
+}
+
+#[test]
 fn refuses_to_silently_drop_an_unstructured_function_body_statement() {
     let result = compile_direct_script(
         ENTRY,

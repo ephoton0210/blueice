@@ -672,6 +672,20 @@ const CASES: &[OracleCase] = &[
         }],
     },
     OracleCase {
+        name: "function-return-fallthrough-error",
+        modules: &[ (
+            "memory:///main.ts",
+            include_str!(
+                "fixtures/typescript_oracle/function-return-fallthrough-error/main.ts"
+            ),
+        )],
+        expected_stdout: None,
+        expected_diagnostics: &[ExpectedDiagnostic {
+            code: DiagnosticCode::ReturnTypeMismatch,
+            line: 5,
+        }],
+    },
+    OracleCase {
         name: "optional-record-error",
         modules: &[ (
             "memory:///main.ts",

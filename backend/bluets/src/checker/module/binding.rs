@@ -6,6 +6,13 @@
 
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StructuredTermination {
+    Terminates,
+    FallsThrough,
+    Opaque,
+}
+
 impl<'a> ModuleChecker<'a> {
     pub(crate) fn new(
         project: &'a Project,
@@ -707,15 +714,30 @@ impl<'a> ModuleChecker<'a> {
         self.check_function_body_expressions(&function.body, &scope);
         if let Some(return_type) = &function.return_type {
             self.check_type(return_type, &function.span);
+            let allows_implicit_undefined =
+                self.return_type_allows_implicit_undefined(return_type, &function.span);
             for returned in &function.returns {
                 if returned.is_empty() {
+                    if !allows_implicit_undefined {
+                        self.type_error(
+                            &function.span,
+                            format!(
+                                "return expression has type `undefined`, which is not assignable to `{}`",
+                                type_label(return_type)
+                            ),
+                            DiagnosticCode::ReturnTypeMismatch,
+                        );
+                    }
                     continue;
                 }
                 self.check_function_call(returned, &scope, &function.span);
                 self.check_direct_property_access(returned, &scope, &function.span);
                 self.check_arithmetic_operators(returned, &scope, &function.span);
                 let actual = self.infer_expression(returned, &scope);
-                if !self.is_assignable_bounded(&actual, return_type, &function.span) {
+                let return_is_assignable = (matches!(actual, Type::Undefined)
+                    && allows_implicit_undefined)
+                    || self.is_assignable_bounded(&actual, return_type, &function.span);
+                if !return_is_assignable {
                     self.type_error(
                         &function.span,
                         format!(
@@ -727,8 +749,86 @@ impl<'a> ModuleChecker<'a> {
                     );
                 }
             }
+            if !function.declared
+                && !function.overload
+                && !allows_implicit_undefined
+                && matches!(
+                    Self::function_body_termination(&function.body),
+                    StructuredTermination::FallsThrough
+                )
+            {
+                self.type_error(
+                    &function.span,
+                    format!(
+                        "function with return type `{}` can complete without returning a value",
+                        type_label(return_type)
+                    ),
+                    DiagnosticCode::ReturnTypeMismatch,
+                );
+            }
         }
         self.type_parameters = previous_parameters;
+    }
+
+    /// Whether an explicit return annotation permits the JavaScript
+    /// fall-through result. `void` is special in TypeScript return positions;
+    /// the bounded assignability relation otherwise covers `undefined`,
+    /// `any`, `unknown`, aliases, and unions containing one of those types.
+    fn return_type_allows_implicit_undefined(
+        &mut self,
+        return_type: &Type,
+        span: &SourceSpan,
+    ) -> bool {
+        matches!(return_type, Type::Void)
+            || self.is_assignable_bounded(&Type::Undefined, return_type, span)
+    }
+
+    /// Determines whether the structured function body cannot reach its end.
+    ///
+    /// The parser records unsupported syntax as `Opaque`, which must never be
+    /// mistaken for a terminating branch. A recognized `return` (including an
+    /// invalid bare return, diagnosed separately) or `throw` terminates its
+    /// sequential path. An `if` does so only when both structured branches do.
+    /// The unknown result preserves the standalone parser's existing opaque
+    /// syntax behavior; the direct bridge rejects that syntax independently.
+    fn function_body_termination(items: &[FunctionBodyItem]) -> StructuredTermination {
+        for item in items {
+            match item {
+                FunctionBodyItem::Return { .. } | FunctionBodyItem::Throw { .. } => {
+                    return StructuredTermination::Terminates;
+                }
+                FunctionBodyItem::If(statement) => match Self::function_if_termination(statement) {
+                    StructuredTermination::Terminates => {
+                        return StructuredTermination::Terminates;
+                    }
+                    StructuredTermination::FallsThrough => {}
+                    StructuredTermination::Opaque => return StructuredTermination::Opaque,
+                },
+                FunctionBodyItem::Opaque(_) => return StructuredTermination::Opaque,
+                FunctionBodyItem::Variable(_) | FunctionBodyItem::Expression { .. } => {}
+            }
+        }
+        StructuredTermination::FallsThrough
+    }
+
+    fn function_if_termination(statement: &FunctionIfStatement) -> StructuredTermination {
+        let consequent = Self::function_body_termination(&statement.consequent);
+        let alternate = match &statement.alternate {
+            Some(FunctionElseBranch::Braced(body)) => Self::function_body_termination(body),
+            Some(FunctionElseBranch::ElseIf(branch)) => Self::function_if_termination(branch),
+            None => StructuredTermination::FallsThrough,
+        };
+        match (consequent, alternate) {
+            (StructuredTermination::Opaque, _) | (_, StructuredTermination::Opaque) => {
+                StructuredTermination::Opaque
+            }
+            (StructuredTermination::Terminates, StructuredTermination::Terminates) => {
+                StructuredTermination::Terminates
+            }
+            (StructuredTermination::FallsThrough, _) | (_, StructuredTermination::FallsThrough) => {
+                StructuredTermination::FallsThrough
+            }
+        }
     }
 
     pub(super) fn check_function_body_expressions(

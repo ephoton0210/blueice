@@ -112,6 +112,8 @@ Named local function bodies may also use `throw expression;`. BlueTSC retains an
 
 Named local function bodies may use a direct-expression `if` condition with braced consequent, braced `else if` branches, and an optional braced `else` body. BlueTSC retains each branch structurally and the bridge emits BlueJS `Stmt::If` nodes with explicit blocks for braced bodies, while lowering an `else if` as a direct alternate rather than inventing an artificial block scope. The checker applies its existing bounded direct-expression checks to every condition and recursively to the branch bodies; it does not claim control-flow narrowing. Unbraced branches, an `else if` with an unbraced branch, loops, and every other control-flow form remain opaque and fail closed at the direct bridge.
 
+For this structured function subset, an explicit return annotation that does not admit `undefined` must terminate every known path with a value `return` or `throw`. A bare `return;` is checked as `undefined`; `void`, `any`, `unknown`, and an annotation admitting `undefined` may fall through. Opaque control flow never supplies a termination proof and remains independently fail-closed at the direct bridge.
+
 The direct bridge lowers template substitutions containing supported direct expressions to BlueJS expression slots. It tokenizes the original substitution with BlueTS's lexer and constructs BlueJS AST directly; it never calls a BlueJS source parser on BlueTSC output. Nested templates and embedded expressions outside the direct subset remain excluded.
 
 Non-substituted template literals use the same ordinary escape decoder as quoted strings.

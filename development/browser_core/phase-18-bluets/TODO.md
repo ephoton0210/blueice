@@ -1024,6 +1024,12 @@ rejected until this evidence exists.
   return-path analysis, and callback/method overload resolution, gated on the
   matching BlueJS semantics and safe-point behavior.
 
+  Foundation delivered: explicit functions whose return annotation excludes
+  `undefined` now require every recognized `return`/`throw` or braced
+  `if`/`else if`/`else` path to terminate; a bare return is diagnosed as
+  `undefined`. Opaque control flow, loops, exception handlers, narrowing, and
+  callback/method resolution remain open.
+
 - [ ] **Broaden expression/runtime lowering deliberately.** Assess optional
   chaining/calls, nested templates, object methods/accessors, array holes,
   member constructors, general iterable spread, and structural/union/`any`

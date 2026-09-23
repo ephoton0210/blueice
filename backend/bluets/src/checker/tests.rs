@@ -454,6 +454,47 @@ fn checks_optional_parameter_values_in_function_bodies() {
 }
 
 #[test]
+fn requires_non_undefined_function_returns_on_every_structured_path() {
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "function complete(value: number): number {\n\
+                 if (value > 0) { return 1; }\n\
+                 else if (value < 0) { throw 'negative'; }\n\
+                 else { return 0; }\n\
+             }\n\
+             function missing_else(value: number): number { if (value > 0) { return 1; } }\n\
+             function bare_return(): number { return; }\n\
+             function may_fall_through(value: number): number | undefined { if (value > 0) { return 1; } }\n\
+             function unit(): void { return; }\n\
+             function unknown_result(): unknown {}\n\
+             function any_result(): any {}\n\
+             function throw_only(): number { throw 'broken'; }",
+        )]),
+        CompilerOptions::default(),
+    );
+    let return_errors = result
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code == DiagnosticCode::ReturnTypeMismatch)
+        .collect::<Vec<_>>();
+    assert_eq!(return_errors.len(), 2, "{:#?}", result.diagnostics);
+    assert!(
+        return_errors.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("can complete without returning")),
+        "{return_errors:#?}"
+    );
+    assert!(
+        return_errors
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("type `undefined`")),
+        "{return_errors:#?}"
+    );
+}
+
+#[test]
 fn rejects_a_default_parameter_initializer_with_the_wrong_type() {
     let result = crate::compile(
         "memory:///main.ts",
