@@ -9,23 +9,25 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version eight adds the
-//! fail-closed session and per-realm capability boundary for static metadata
-//! source-record identities: `Hello` grants only the canonical intersection
-//! of a requested manifest and the core policy, and a metadata operation may
-//! be dispatched only after the exact target's capability report also grants
-//! its specific metadata capability. A host must report every operation as
+//! and an opt-in root-code-unit pause/resume seam. Version nine adds the
+//! default-deny source-provenance operation for a prior source ID: `Hello`
+//! grants only the canonical intersection of a requested manifest and the
+//! core policy, and a metadata operation may be dispatched only after the
+//! exact target's capability report also grants its specific metadata
+//! capability. A host must report every operation as
 //! [`DebuggerCapabilityState::Available`] only after it implements the native
 //! behavior; a configured breakpoint is not evidence that pause, stack,
 //! scope, value inspection, or static metadata access already exists.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::io::{self, Read, Write};
+use std::sync::{Arc, Mutex};
 
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 8;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 9;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -132,6 +134,14 @@ pub const DEBUGGER_STATIC_METADATA_MAX_SOURCES: u32 = 4_096;
 pub const DEBUGGER_STATIC_METADATA_MAX_TYPES: u32 = 4_096;
 pub const DEBUGGER_STATIC_METADATA_MAX_SYMBOLS: u32 = 65_536;
 pub const DEBUGGER_STATIC_METADATA_MAX_CONTRACTS: u32 = 65_536;
+/// Maximum compiler-canonical module identity exposed by the distinct,
+/// owner-authorized provenance surface.
+pub const DEBUGGER_STATIC_METADATA_MODULE_MAX_BYTES: usize = 4_096;
+/// Required label for the compiler provenance digest.
+pub const DEBUGGER_STATIC_METADATA_SHA256_DIGEST_PREFIX: &str = "bts-sha256:";
+/// Exact byte length of a labeled lowercase SHA-256 digest.
+pub const DEBUGGER_STATIC_METADATA_SHA256_DIGEST_BYTES: usize =
+    DEBUGGER_STATIC_METADATA_SHA256_DIGEST_PREFIX.len() + 64;
 
 /// One source-record identity retained by an exact static metadata attachment.
 /// The identifier is compiler-minted but carries no module identity, source
@@ -147,6 +157,38 @@ pub struct DebuggerStaticMetadataSourceId {
 impl DebuggerStaticMetadataSourceId {
     pub fn is_well_formed(self) -> bool {
         self.metadata.is_well_formed()
+    }
+}
+
+/// One owner-authorized, source-text-free provenance description for a
+/// compiler-minted source ID. Module identity and a labeled SHA-256 digest
+/// identify the exact compiler input, but this carries no source text, span,
+/// name, type, symbol, contract, bytecode, VM object, value, or read ability.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataSourceProvenance {
+    pub source: DebuggerStaticMetadataSourceId,
+    /// Compiler-canonical module identity, never a caller-selected path.
+    pub module: String,
+    /// Compiler-selected `bts-sha256:` digest, never source text.
+    pub content_hash: String,
+}
+
+impl DebuggerStaticMetadataSourceProvenance {
+    /// Checks the fixed disclosure budget before a child-proxied result
+    /// reaches a debugger client.
+    pub fn is_well_formed(&self) -> bool {
+        self.source.is_well_formed()
+            && !self.module.is_empty()
+            && !self.module.starts_with('/')
+            && !self.module.starts_with("file:")
+            && self.module.len() <= DEBUGGER_STATIC_METADATA_MODULE_MAX_BYTES
+            && self.content_hash.len() == DEBUGGER_STATIC_METADATA_SHA256_DIGEST_BYTES
+            && self
+                .content_hash
+                .starts_with(DEBUGGER_STATIC_METADATA_SHA256_DIGEST_PREFIX)
+            && self.content_hash[DEBUGGER_STATIC_METADATA_SHA256_DIGEST_PREFIX.len()..]
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
     }
 }
 
@@ -200,6 +242,10 @@ pub enum DebuggerCapability {
     /// one exact opaque metadata attachment. It exposes no source identity,
     /// content hash, text, span, or record detail.
     StaticMetadataSourceInventory,
+    /// One exact source-text-free provenance record for a source ID returned
+    /// by the separately negotiated inventory. Module identity and a digest
+    /// need a distinct default-deny policy even though neither is source text.
+    StaticMetadataSourceProvenance,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -227,6 +273,11 @@ pub enum DebuggerMetadataCapability {
     /// parent opaque handle. Source provenance/detail remains separately
     /// default-denied and is not represented by this capability.
     OpaqueSourceInventory,
+    /// Describes one source ID previously returned by
+    /// [`Self::OpaqueSourceInventory`] with its compiler-canonical module
+    /// identity and labeled SHA-256 digest. This is not source text or a
+    /// source-read endpoint and needs an independent authorization.
+    OpaqueSourceProvenance,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -239,6 +290,9 @@ impl DebuggerMetadataCapability {
             Self::OpaqueInventory => Some(DebuggerCapability::StaticMetadataInventory),
             Self::OpaqueSummary => Some(DebuggerCapability::StaticMetadataSummary),
             Self::OpaqueSourceInventory => Some(DebuggerCapability::StaticMetadataSourceInventory),
+            Self::OpaqueSourceProvenance => {
+                Some(DebuggerCapability::StaticMetadataSourceProvenance)
+            }
             Self::Unknown => None,
         }
     }
@@ -248,6 +302,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueInventory => Some(0),
             Self::OpaqueSummary => Some(1),
             Self::OpaqueSourceInventory => Some(2),
+            Self::OpaqueSourceProvenance => Some(3),
             Self::Unknown => None,
         }
     }
@@ -332,6 +387,32 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants source inventory plus its dependent single-source provenance
+    /// surface. This deliberately omits the independent summary capability.
+    pub fn opaque_source_provenance() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSourceInventory,
+                DebuggerMetadataCapability::OpaqueSourceProvenance,
+            ],
+        }
+    }
+
+    /// Grants every currently implemented opaque static-metadata surface.
+    pub fn opaque_summary_source_inventory_and_provenance() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSummary,
+                DebuggerMetadataCapability::OpaqueSourceInventory,
+                DebuggerMetadataCapability::OpaqueSourceProvenance,
+            ],
+        }
+    }
+
     /// Validates the manifest version and strict canonical capability order.
     /// Empty is valid, which is how a caller explicitly requests no metadata.
     pub fn is_well_formed(&self) -> bool {
@@ -361,6 +442,15 @@ impl DebuggerMetadataCapabilityManifest {
                 || self
                     .capabilities
                     .contains(&DebuggerMetadataCapability::OpaqueInventory))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueSourceProvenance)
+                || (self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueSourceInventory)))
     }
 
     /// Whether this well-formed manifest contains one exact capability.
@@ -440,10 +530,46 @@ pub struct DebuggerCapabilities {
 /// successfully negotiated debugger `Hello`. It intentionally has no public
 /// constructor and is not serializable: it is an implementation guard for a
 /// future core/host dispatcher, never a client-supplied wire token.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct DebuggerMetadataSessionAuthorization {
     granted: DebuggerMetadataCapabilityManifest,
+    /// Bounded per-stream receipts for source IDs emitted by the public
+    /// source-inventory operation. This prevents provenance from accepting a
+    /// guessed numeric ID as an independent content-oracle target.
+    observed_source_identities: Arc<Mutex<BTreeSet<DebuggerMetadataSourceIdentity>>>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct DebuggerMetadataSourceIdentity {
+    browser_context_id: u64,
+    tab_id: u64,
+    realm_generation: u64,
+    program_handle: u64,
+    program_generation: u64,
+    metadata_handle: u64,
+    metadata_generation: u64,
+    source_id: u32,
+}
+
+impl From<DebuggerStaticMetadataSourceId> for DebuggerMetadataSourceIdentity {
+    fn from(source: DebuggerStaticMetadataSourceId) -> Self {
+        Self {
+            browser_context_id: source.metadata.program.realm.browser_context_id,
+            tab_id: source.metadata.program.realm.tab_id,
+            realm_generation: source.metadata.program.realm.realm_generation,
+            program_handle: source.metadata.program.program_handle,
+            program_generation: source.metadata.program.program_generation,
+            metadata_handle: source.metadata.metadata_handle,
+            metadata_generation: source.metadata.metadata_generation,
+            source_id: source.source_id,
+        }
+    }
+}
+
+/// One metadata session may remember at most one full source-ID page. This
+/// fixed cap avoids turning a long-lived debugger stream into an unbounded
+/// receipt cache; a caller can reconnect after it consumes the budget.
+pub const DEBUGGER_METADATA_SESSION_MAX_OBSERVED_SOURCE_IDENTITIES: usize = 4_096;
 
 impl DebuggerMetadataSessionAuthorization {
     /// Whether this session negotiated one exact metadata capability. A
@@ -451,6 +577,41 @@ impl DebuggerMetadataSessionAuthorization {
     /// negotiation alone does not prove a realm can currently supply data.
     pub fn permits(&self, capability: DebuggerMetadataCapability) -> bool {
         self.granted.contains(capability)
+    }
+
+    /// Records the exact IDs that the inventory operation actually returned
+    /// on this stream. The insertion is atomic with respect to the fixed
+    /// session budget and stores no source/module/digest payload.
+    pub fn observe_sources(&self, sources: &[DebuggerStaticMetadataSourceId]) -> bool {
+        let Ok(mut observed) = self.observed_source_identities.lock() else {
+            return false;
+        };
+        let new_count = sources
+            .iter()
+            .map(|source| DebuggerMetadataSourceIdentity::from(*source))
+            .filter(|source| !observed.contains(source))
+            .collect::<BTreeSet<_>>()
+            .len();
+        if observed.len().saturating_add(new_count)
+            > DEBUGGER_METADATA_SESSION_MAX_OBSERVED_SOURCE_IDENTITIES
+        {
+            return false;
+        }
+        observed.extend(
+            sources
+                .iter()
+                .copied()
+                .map(DebuggerMetadataSourceIdentity::from),
+        );
+        true
+    }
+
+    /// Whether this exact source ID was emitted by source inventory on this
+    /// session. Failure to access the local receipt store fails closed.
+    pub fn observed_source(&self, source: DebuggerStaticMetadataSourceId) -> bool {
+        self.observed_source_identities
+            .lock()
+            .is_ok_and(|observed| observed.contains(&source.into()))
     }
 }
 
@@ -487,6 +648,7 @@ pub fn metadata_session_authorization(
 
     Some(DebuggerMetadataSessionAuthorization {
         granted: granted_metadata_capabilities.clone(),
+        observed_source_identities: Arc::new(Mutex::new(BTreeSet::new())),
     })
 }
 
@@ -613,6 +775,13 @@ pub enum DebuggerRequest {
     ListStaticMetadataSources {
         metadata: DebuggerStaticMetadataHandle,
     },
+    /// Describes one source ID previously returned by
+    /// [`Self::ListStaticMetadataSources`]. This separately authorized
+    /// operation returns compiler-canonical module identity and a labeled
+    /// SHA-256 digest only; it cannot read source text.
+    DescribeStaticMetadataSource {
+        source: DebuggerStaticMetadataSourceId,
+    },
     /// Lists bounded, compiler-verified instruction boundaries for one exact
     /// live program generation. A caller must not infer or substitute offsets.
     ListSafePoints {
@@ -693,6 +862,9 @@ pub enum DebuggerReply {
     /// Reply to [`DebuggerRequest::ListStaticMetadataSources`]. IDs are
     /// parent-handle-bound and contain no source/provenance payload.
     StaticMetadataSources(Vec<DebuggerStaticMetadataSourceId>),
+    /// Reply to [`DebuggerRequest::DescribeStaticMetadataSource`]. This is a
+    /// bounded owner-authorized provenance disclosure, never source text.
+    StaticMetadataSourceProvenance(DebuggerStaticMetadataSourceProvenance),
     SafePoints(Vec<DebuggerSafePoint>),
     SafePointValidated {
         safe_point: DebuggerSafePoint,
@@ -781,6 +953,7 @@ pub fn negotiate(
         | DebuggerRequest::ListStaticMetadata { .. }
         | DebuggerRequest::DescribeStaticMetadata { .. }
         | DebuggerRequest::ListStaticMetadataSources { .. }
+        | DebuggerRequest::DescribeStaticMetadataSource { .. }
         | DebuggerRequest::ListSafePoints { .. }
         | DebuggerRequest::ValidateSafePoint { .. }
         | DebuggerRequest::SetBreakpoint { .. }
@@ -1402,6 +1575,81 @@ mod tests {
             DebuggerMetadataCapabilityManifest::opaque_summary_and_source_inventory()
                 .is_well_formed()
         );
+    }
+
+    #[test]
+    fn static_metadata_source_provenance_requires_source_inventory_and_sha256_format() {
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_source_provenance());
+        let reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_source_provenance(),
+        );
+        let session = metadata_session_authorization(&request, &reply)
+            .expect("the canonical provenance grant must negotiate");
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueInventory));
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueSourceInventory));
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueSourceProvenance));
+
+        let source_inventory_request =
+            hello(DebuggerMetadataCapabilityManifest::opaque_source_inventory());
+        let source_inventory_reply = negotiate(
+            &source_inventory_request,
+            &DebuggerMetadataCapabilityManifest::opaque_source_provenance(),
+        );
+        let source_inventory =
+            metadata_session_authorization(&source_inventory_request, &source_inventory_reply)
+                .unwrap();
+        assert!(!source_inventory.permits(DebuggerMetadataCapability::OpaqueSourceProvenance));
+
+        let provenance_available = capabilities(vec![capability_report(
+            DebuggerCapability::StaticMetadataSourceProvenance,
+            DebuggerCapabilityState::Available,
+        )]);
+        assert!(provenance_available
+            .authorize_metadata(&session, DebuggerMetadataCapability::OpaqueSourceProvenance)
+            .is_some());
+        assert!(provenance_available
+            .authorize_metadata(
+                &source_inventory,
+                DebuggerMetadataCapability::OpaqueSourceProvenance
+            )
+            .is_none());
+
+        let source = DebuggerStaticMetadataSourceId {
+            metadata: DebuggerStaticMetadataHandle {
+                program: DebuggerProgram {
+                    realm: realm(),
+                    program_handle: 12,
+                    program_generation: 4,
+                },
+                metadata_handle: 24,
+                metadata_generation: 7,
+            },
+            source_id: 0,
+        };
+        let provenance = DebuggerStaticMetadataSourceProvenance {
+            source,
+            module: "page-inline:///0.ts".to_string(),
+            content_hash:
+                "bts-sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                    .to_string(),
+        };
+        assert!(provenance.is_well_formed());
+        assert!(!DebuggerStaticMetadataSourceProvenance {
+            content_hash: "bts-fnv:0000000000000000".to_string(),
+            ..provenance.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticMetadataSourceProvenance {
+            module: "/private/source.ts".to_string(),
+            ..provenance.clone()
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticMetadataSourceProvenance {
+            module: "file:///private/source.ts".to_string(),
+            ..provenance
+        }
+        .is_well_formed());
     }
 
     #[test]

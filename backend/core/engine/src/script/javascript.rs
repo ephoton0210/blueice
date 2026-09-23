@@ -37,7 +37,9 @@ pub use debugger_support::{
     JavaScriptPageDebuggerBreakpoint, JavaScriptPageDebuggerError,
     JavaScriptPageDebuggerExecutionState, JavaScriptPageDebuggerProgram,
     JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
-    JavaScriptPageDebuggerStaticMetadataSourceId, JavaScriptPageDebuggerStaticMetadataSummary,
+    JavaScriptPageDebuggerStaticMetadataSourceId,
+    JavaScriptPageDebuggerStaticMetadataSourceProvenance,
+    JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
 };
 
 /// Source-free debugger location operations owned by an explicitly selected
@@ -92,6 +94,13 @@ pub trait PageJavaScriptDebuggerLocations {
         false
     }
 
+    /// Whether this route can disclose one source-free module identity and
+    /// labeled SHA-256 digest for an ID returned by the distinct inventory.
+    /// Source text and all other metadata records remain unavailable.
+    fn debugger_static_metadata_source_provenance_available(&self) -> bool {
+        false
+    }
+
     /// Lists only opaque public-facing program IDs for one live realm.
     fn debugger_programs(
         &mut self,
@@ -141,6 +150,19 @@ pub trait PageJavaScriptDebuggerLocations {
         _metadata_handle: u64,
         _metadata_generation: u64,
     ) -> Result<Vec<JavaScriptPageDebuggerStaticMetadataSourceId>, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes one inventoried source ID under the same exact opaque parent
+    /// metadata attachment. Implementations must never turn this into source
+    /// text or an arbitrary-record read surface.
+    fn debugger_static_metadata_source_provenance(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSourceTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSourceProvenance, JavaScriptPageDebuggerError>
     {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }

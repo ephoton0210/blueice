@@ -12,7 +12,8 @@
 
 use crate::{
     script::javascript::{
-        JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState, JavaScriptPageExecutor,
+        JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
+        JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageExecutor,
         PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
     },
     TabId, TabManager,
@@ -22,8 +23,8 @@ use blueice_ipc::debugger::{
     DebuggerErrorCode, DebuggerExecutionState, DebuggerMetadataCapability,
     DebuggerMetadataSessionAuthorization, DebuggerPageRealm, DebuggerProgram, DebuggerReply,
     DebuggerRequest, DebuggerSafePoint, DebuggerStaticMetadataHandle,
-    DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSummary, DEBUGGER_PROTOCOL_VERSION,
-    DEBUGGER_STATIC_METADATA_MAX_SOURCES,
+    DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSourceProvenance,
+    DebuggerStaticMetadataSummary, DEBUGGER_PROTOCOL_VERSION, DEBUGGER_STATIC_METADATA_MAX_SOURCES,
 };
 use std::io;
 use std::sync::mpsc;
@@ -243,6 +244,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::ListStaticMetadataSources { .. } => {
             unavailable_static_metadata_source_inventory()
         }
+        DebuggerRequest::DescribeStaticMetadataSource { .. } => {
+            unavailable_static_metadata_source_provenance()
+        }
         DebuggerRequest::ListSafePoints { program } => {
             list_safe_points(tabs, javascript_executor.as_deref(), program)
         }
@@ -345,6 +349,14 @@ fn handle_debugger_request_with_child_locations(
         DebuggerRequest::ListStaticMetadataSources { metadata } => {
             list_child_static_metadata_sources(tabs, locations, metadata_session, metadata)
         }
+        DebuggerRequest::DescribeStaticMetadataSource { source } => {
+            describe_child_static_metadata_source_provenance(
+                tabs,
+                locations,
+                metadata_session,
+                source,
+            )
+        }
         DebuggerRequest::ListSafePoints { program } => {
             list_child_safe_points(tabs, locations, program)
         }
@@ -443,6 +455,11 @@ fn describe_child_location_capabilities(
             session.permits(DebuggerMetadataCapability::OpaqueSourceInventory)
         })
         && locations.debugger_static_metadata_source_inventory_available();
+    let static_metadata_source_provenance_available = static_metadata_source_inventory_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueSourceProvenance)
+        })
+        && locations.debugger_static_metadata_source_provenance_available();
     let max_breakpoints_per_realm = if breakpoint_configuration_available {
         locations.max_debugger_breakpoints_per_realm()
     } else {
@@ -458,6 +475,7 @@ fn describe_child_location_capabilities(
             static_metadata_inventory_available,
             static_metadata_summary_available,
             static_metadata_source_inventory_available,
+            static_metadata_source_provenance_available,
         ),
         max_stack_frames: MAX_STACK_FRAMES,
         max_scope_bindings: MAX_SCOPE_BINDINGS,
@@ -689,6 +707,14 @@ fn list_child_static_metadata_sources(
                     source_id: source.source_id,
                 });
             }
+            if metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceProvenance)
+                && !metadata_session.observe_sources(&result)
+            {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::ResourceLimit,
+                    message: "debugger source provenance receipt budget is exhausted".to_string(),
+                };
+            }
             DebuggerReply::StaticMetadataSources(result)
         }
         Ok(_) => DebuggerReply::Error {
@@ -696,6 +722,84 @@ fn list_child_static_metadata_sources(
             message: "debugger static metadata source inventory exceeds its fixed limit"
                 .to_string(),
         },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
+fn describe_child_static_metadata_source_provenance(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    source: DebuggerStaticMetadataSourceId,
+) -> DebuggerReply {
+    if !source.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static metadata source provenance target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_source_provenance();
+    };
+    // Provenance is deliberately dependent on source inventory: callers must
+    // present an exact source ID under an opaque parent, not invent a source
+    // lookup key or obtain a standalone content oracle.
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceInventory)
+        || !metadata_session.observed_source(source)
+    {
+        return unavailable_static_metadata_source_provenance();
+    }
+    let capabilities = describe_child_location_capabilities(
+        tabs,
+        locations,
+        Some(metadata_session),
+        source.metadata.program.realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueSourceProvenance,
+    ) else {
+        return unavailable_static_metadata_source_provenance();
+    };
+    if !authorization.permits(
+        source.metadata.program.realm,
+        DebuggerMetadataCapability::OpaqueSourceProvenance,
+    ) {
+        return unavailable_static_metadata_source_provenance();
+    }
+    let tab_id = match resolve_live_realm(tabs, source.metadata.program.realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return reply,
+    };
+    match locations.debugger_static_metadata_source_provenance(
+        tab_id,
+        source.metadata.program.realm.realm_generation,
+        JavaScriptPageDebuggerStaticMetadataSourceTarget {
+            program_handle: source.metadata.program.program_handle,
+            program_generation: source.metadata.program.program_generation,
+            metadata_handle: source.metadata.metadata_handle,
+            metadata_generation: source.metadata.metadata_generation,
+            source_id: source.source_id,
+        },
+    ) {
+        Ok(provenance) => {
+            let provenance = DebuggerStaticMetadataSourceProvenance {
+                source,
+                module: provenance.module,
+                content_hash: provenance.content_hash,
+            };
+            if !provenance.is_well_formed() {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    message: "invalid debugger static metadata source provenance".to_string(),
+                };
+            }
+            DebuggerReply::StaticMetadataSourceProvenance(provenance)
+        }
         Err(error) => debugger_program_error(error),
     }
 }
@@ -1028,6 +1132,7 @@ fn describe_capabilities(
             program_locations_available,
             program_locations_available,
             entry_execution_control_available,
+            false,
             false,
             false,
             false,
@@ -1448,6 +1553,14 @@ fn unavailable_static_metadata_source_inventory() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_source_provenance() -> DebuggerReply {
+    DebuggerReply::Error {
+        code: DebuggerErrorCode::CapabilityUnavailable,
+        message: "debugger static metadata source provenance is not authorized for this session and live realm"
+            .to_string(),
+    }
+}
+
 fn unavailable_execution_control() -> DebuggerReply {
     DebuggerReply::Error {
         code: DebuggerErrorCode::CapabilityUnavailable,
@@ -1532,6 +1645,7 @@ fn capability_reports(
     static_metadata_inventory_available: bool,
     static_metadata_summary_available: bool,
     static_metadata_source_inventory_available: bool,
+    static_metadata_source_provenance_available: bool,
 ) -> Vec<DebuggerCapabilityReport> {
     [
         (
@@ -1650,6 +1764,19 @@ fn capability_reports(
                 "static metadata source identities require explicit inventory and source-inventory session grants plus a live BlueTS child program"
             },
         ),
+        (
+            DebuggerCapability::StaticMetadataSourceProvenance,
+            if static_metadata_source_provenance_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_source_provenance_available {
+                "owner-authorized source-free module identity and SHA-256 provenance are installed"
+            } else {
+                "source provenance requires explicit inventory, source-inventory, and provenance session grants plus a live BlueTS child program"
+            },
+        ),
     ]
     .into_iter()
     .map(|(capability, state, detail)| DebuggerCapabilityReport {
@@ -1686,6 +1813,10 @@ mod tests {
         }
 
         fn debugger_static_metadata_source_inventory_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_source_provenance_available(&self) -> bool {
             true
         }
 
@@ -1772,6 +1903,30 @@ mod tests {
                     source_id: 0,
                 },
             ])
+        }
+
+        fn debugger_static_metadata_source_provenance(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            target: crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSourceTarget,
+        ) -> Result<
+            crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSourceProvenance,
+            JavaScriptPageDebuggerError,
+        > {
+            if target.metadata_handle != 41
+                || target.metadata_generation != 9
+                || target.source_id != 0
+            {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            Ok(
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSourceProvenance {
+                    source_id: target.source_id,
+                    module: "page:///main.ts".to_string(),
+                    content_hash: "bts-sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".to_string(),
+                },
+            )
         }
 
         fn debugger_safe_points(
@@ -2099,6 +2254,117 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn source_provenance_requires_its_own_dependent_grant_and_exact_source_id() {
+        let (tabs, realm) = loaded_tabs();
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm,
+                program_handle: 7,
+                program_generation: 3,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let source = DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id: 0,
+        };
+        let mut locations = MetadataLocations {
+            malformed_summary: false,
+        };
+
+        let source_inventory_hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_inventory(),
+        };
+        let source_inventory_reply = blueice_ipc::debugger::negotiate(
+            &source_inventory_hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_inventory(),
+        );
+        let source_inventory_session = blueice_ipc::debugger::metadata_session_authorization(
+            &source_inventory_hello,
+            &source_inventory_reply,
+        )
+        .expect("source inventory policy must create a core-local session authorization");
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&source_inventory_session),
+                DebuggerRequest::DescribeStaticMetadataSource { source },
+            ),
+            unavailable_static_metadata_source_provenance()
+        );
+
+        let provenance_hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities:
+                blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_provenance(
+                ),
+        };
+        let provenance_hello_reply = blueice_ipc::debugger::negotiate(
+            &provenance_hello,
+            &blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_provenance(),
+        );
+        let provenance_session = blueice_ipc::debugger::metadata_session_authorization(
+            &provenance_hello,
+            &provenance_hello_reply,
+        )
+        .expect("source provenance policy must create a core-local session authorization");
+        let capabilities = handle_debugger_request_with_child_locations(
+            &tabs,
+            &mut locations,
+            Some(&provenance_session),
+            DebuggerRequest::DescribeCapabilities { realm },
+        );
+        let DebuggerReply::Capabilities(capabilities) = capabilities else {
+            panic!("live realm provenance capability discovery must succeed")
+        };
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataSourceProvenance
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&provenance_session),
+                DebuggerRequest::DescribeStaticMetadataSource { source },
+            ),
+            unavailable_static_metadata_source_provenance(),
+            "a provenance target must have been emitted by this stream's source inventory"
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&provenance_session),
+                DebuggerRequest::ListStaticMetadataSources { metadata },
+            ),
+            DebuggerReply::StaticMetadataSources(vec![DebuggerStaticMetadataSourceId {
+                metadata,
+                source_id: 0,
+            }])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&provenance_session),
+                DebuggerRequest::DescribeStaticMetadataSource { source },
+            ),
+            DebuggerReply::StaticMetadataSourceProvenance(DebuggerStaticMetadataSourceProvenance {
+                source,
+                module: "page:///main.ts".to_string(),
+                content_hash:
+                    "bts-sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                        .to_string(),
+            })
+        );
     }
 
     #[test]

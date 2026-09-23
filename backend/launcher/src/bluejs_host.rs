@@ -32,12 +32,13 @@ use blueice_bluets_bluejs::{
 };
 use blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_MAX_SOURCES;
 use blueice_ipc::page_host::{
-    self, PageHostDebuggerBlueTsMetadataSourceId, PageHostDebuggerBlueTsMetadataSummary,
-    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
-    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
-    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
-    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
-    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    self, PageHostDebuggerBlueTsMetadataSourceId, PageHostDebuggerBlueTsMetadataSourceProvenance,
+    PageHostDebuggerBlueTsMetadataSummary, PageHostDebuggerExecutionState,
+    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
+    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
+    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
+    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -288,6 +289,19 @@ impl BlueJsChildHost {
                 document_generation,
                 program,
                 metadata,
+            ),
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                source_id,
+            } => self.debugger_bluets_metadata_source_provenance(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                source_id,
             ),
             PageHostRequest::ListDebuggerSafePoints {
                 tab_id,
@@ -1047,6 +1061,75 @@ impl BlueJsChildHost {
             program,
             metadata,
             sources,
+        }
+    }
+
+    /// Returns the explicitly authorized, source-text-free provenance for one
+    /// source ID that remains owned by this exact child program and metadata
+    /// attachment. A failed registry lookup destroys the child-private handle
+    /// rather than letting a stale identity probe a successor attachment.
+    fn debugger_bluets_metadata_source_provenance(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let provenance = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let Some(source) = retained
+                    .static_info()
+                    .sources
+                    .iter()
+                    .find(|source| source.id.0 == source_id)
+                else {
+                    return invalid_request();
+                };
+                PageHostDebuggerBlueTsMetadataSourceProvenance {
+                    source_id,
+                    module: source.module.clone(),
+                    content_hash: source.content_hash.clone(),
+                }
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataSourceProvenance {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            provenance,
         }
     }
 

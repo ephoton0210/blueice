@@ -114,6 +114,10 @@ mod unix {
         /// source-record ID inventory. It requires the parent inventory and
         /// does not expose source identity, hash, text, or record detail.
         debugger_static_metadata_source_inventory: bool,
+        /// Owner-only policy for source-free compiler provenance of one
+        /// prior source ID. It requires source inventory and exposes only a
+        /// canonical module identity plus labeled SHA-256 digest.
+        debugger_static_metadata_source_provenance: bool,
     }
 
     impl CoreLaunchOptions {
@@ -222,6 +226,16 @@ mod unix {
         pub fn with_debugger_static_metadata_source_inventory(mut self) -> Self {
             self.debugger_static_metadata_inventory = true;
             self.debugger_static_metadata_source_inventory = true;
+            self
+        }
+
+        /// Enables the distinct source-provenance disclosure policy together
+        /// with its required opaque parent and source-ID inventory. A debugger
+        /// peer must still negotiate all canonical capabilities on its stream.
+        pub fn with_debugger_static_metadata_source_provenance(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self.debugger_static_metadata_source_provenance = true;
             self
         }
     }
@@ -1573,6 +1587,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_source_inventory {
                     command.arg("--debugger-static-metadata-source-inventory");
+                }
+                if options.debugger_static_metadata_source_provenance {
+                    command.arg("--debugger-static-metadata-source-provenance");
                 }
             }
             let mut child = command.spawn()?;

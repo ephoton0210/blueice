@@ -731,11 +731,17 @@ or second module resolver to bypass them.
   together only through their full canonical manifest; neither is inferred
   from the other or from protocol version. Real launcher-supervised public
   debugger coverage requests both, proves the source IDs remain payload-free,
-  and proves reload makes the prior metadata parent and source IDs stale. A
-  later debugger source-detail/provenance capability still needs its own
-  disclosure policy; it must remain separately authorized and may use only
-  the compiler's labeled SHA-256 identity, never the private FNV transport
-  fingerprint. The page host still must route
+  and proves reload makes the prior metadata parent and source IDs stale.
+  Page-host v10/debugger v9 now add that separately authorized provenance
+  policy: `OpaqueSourceProvenance` requires both the inventory and
+  source-inventory grants, its own owner flag
+  `--debugger-static-metadata-source-provenance`, a source ID actually
+  returned by that stream's bounded source inventory, and the same exact live
+  parent tuple. It discloses only a
+  non-filesystem canonical module identity and compiler labeled SHA-256
+  digest; it never carries source text, spans, names, types, symbols,
+  contracts, bytecode, VM objects, values, or a source-read operation. The
+  page host still must route
   cache/hibernation events through the same invariant and add source policy,
   diagnostics/contracts, stack locations, and runtime-value inspection before
   this item can close.

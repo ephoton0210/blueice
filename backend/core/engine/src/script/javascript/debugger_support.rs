@@ -52,6 +52,27 @@ pub struct JavaScriptPageDebuggerStaticMetadataSourceId {
     pub source_id: u32,
 }
 
+/// One child-validated source-text-free provenance description. The caller
+/// supplies the parent metadata handle and compiler-minted source ID; this
+/// internal transport value never carries a source read capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSourceProvenance {
+    pub source_id: u32,
+    pub module: String,
+    pub content_hash: String,
+}
+
+/// One exact opaque parent and compiler-minted source-ID target for the
+/// separately authorized source-provenance operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSourceTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub source_id: u32,
+}
+
 /// One compiler-verified instruction boundary represented without source or
 /// bytecode contents for the native debugger path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

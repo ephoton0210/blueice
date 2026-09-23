@@ -77,6 +77,10 @@ struct Args {
     /// Core-owner opt-in for bounded metadata-handle-bound source-record IDs.
     /// IDs disclose no module, hash, source text, span, or record detail.
     debugger_static_metadata_source_inventory: bool,
+    /// Core-owner opt-in for source-free compiler provenance of an already
+    /// inventoried source ID. It requires metadata and source inventory and
+    /// reveals only canonical module identity plus a labeled SHA-256 digest.
+    debugger_static_metadata_source_provenance: bool,
     /// Optional listener for queries over projects a trusted core owner
     /// registered during startup. Its protocol does not accept registration,
     /// source, path, resolver, compiler-option, build, or write requests.
@@ -126,6 +130,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_inventory = false;
     let mut debugger_static_metadata_summary = false;
     let mut debugger_static_metadata_source_inventory = false;
+    let mut debugger_static_metadata_source_provenance = false;
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
     let mut inline_bluets_profile = None;
@@ -157,6 +162,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--debugger-static-metadata-summary" => debugger_static_metadata_summary = true,
             "--debugger-static-metadata-source-inventory" => {
                 debugger_static_metadata_source_inventory = true
+            }
+            "--debugger-static-metadata-source-provenance" => {
+                debugger_static_metadata_source_provenance = true
             }
             "--compiler-socket" => compiler_socket = Some(PathBuf::from(value()?)),
             "--compiler-project-profile" => compiler_project_profile = Some(value()?),
@@ -234,6 +242,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if debugger_static_metadata_source_provenance && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-source-provenance requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_source_provenance && !debugger_static_metadata_source_inventory {
+        return Err(
+            "--debugger-static-metadata-source-provenance requires --debugger-static-metadata-source-inventory"
+                .to_string(),
+        );
+    }
     if compiler_socket.is_some() != compiler_project_profile.is_some() {
         return Err(
             "--compiler-socket and --compiler-project-profile must be provided together"
@@ -251,6 +270,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_inventory,
         debugger_static_metadata_summary,
         debugger_static_metadata_source_inventory,
+        debugger_static_metadata_source_provenance,
         compiler_socket,
         compiler_project_profile,
         inline_bluets_profile,
@@ -553,7 +573,13 @@ fn main() -> ExitCode {
         .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
     let script_socket = args.script_socket.clone();
     let debugger_socket = args.debugger_socket.clone();
-    let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_source_inventory
+    let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_source_provenance
+        && args.debugger_static_metadata_summary
+    {
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_summary_source_inventory_and_provenance()
+    } else if args.debugger_static_metadata_source_provenance {
+        blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_provenance()
+    } else if args.debugger_static_metadata_source_inventory
         && args.debugger_static_metadata_summary
     {
         blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_summary_and_source_inventory()
@@ -883,6 +909,7 @@ mod tests {
         assert!(!parsed.debugger_static_metadata_inventory);
         assert!(!parsed.debugger_static_metadata_summary);
         assert!(!parsed.debugger_static_metadata_source_inventory);
+        assert!(!parsed.debugger_static_metadata_source_provenance);
         assert_eq!(parsed.compiler_socket, None);
         assert_eq!(parsed.compiler_project_profile, None);
         assert_eq!(parsed.inline_bluets_profile, None);
@@ -930,6 +957,7 @@ mod tests {
                 debugger_static_metadata_inventory: false,
                 debugger_static_metadata_summary: false,
                 debugger_static_metadata_source_inventory: false,
+                debugger_static_metadata_source_provenance: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
@@ -1031,6 +1059,30 @@ mod tests {
         assert!(source_inventory.debugger_static_metadata_inventory);
         assert!(source_inventory.debugger_static_metadata_summary);
         assert!(source_inventory.debugger_static_metadata_source_inventory);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-source-provenance",
+            ]),
+            Err(
+                "--debugger-static-metadata-source-provenance requires --debugger-static-metadata-source-inventory"
+                    .to_string()
+            )
+        );
+        let provenance = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-source-inventory",
+            "--debugger-static-metadata-source-provenance",
+        ])
+        .unwrap();
+        assert!(provenance.debugger_static_metadata_source_provenance);
     }
 
     #[test]

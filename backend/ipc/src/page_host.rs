@@ -13,7 +13,7 @@
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
 //!
-//! Version 9 retains the two fixed, core-derived document snapshots consumed
+//! Version 10 retains the two fixed, core-derived document snapshots consumed
 //! by the child-owned JavaScript bindings, the location-only debugger
 //! inventory, a bounded exact-breakpoint configuration table, and an opt-in
 //! root-classic continuation seam. The
@@ -23,7 +23,7 @@
 //! BlueTS stays a child-fixed, direct-lowering profile with no ambient host
 //! typings, compiler option, resolver, or emitted JavaScript crossing this
 //! channel. Apart from the two fixed JavaScript primitive snapshot callbacks,
-//! version 9 exposes only a core-proxied, source-free debugger location
+//! version 10 exposes only a core-proxied, source-free debugger location
 //! inventory and configuration records. A core-selected document may opt in
 //! to the one-shot root-classic arm/state/resume lifecycle; the child admits
 //! no generic interruption, stepping, nested continuation, stack, scope,
@@ -38,12 +38,15 @@
 //! contract, bytecode, runtime value, or dereferenceable metadata record.
 //! Version 9 adds only bounded compiler-minted source-record IDs for that
 //! same handle; IDs carry no source identity, hash, text, or record detail.
+//! Version 10 adds the separately authorized source-provenance reply for one
+//! of those IDs: canonical module identity and a labeled SHA-256 digest only,
+//! never source text or a general static-record read.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 9;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 10;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -124,6 +127,16 @@ pub struct PageHostDebuggerBlueTsMetadataSummary {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PageHostDebuggerBlueTsMetadataSourceId {
     pub source_id: u32,
+}
+
+/// One child-local, source-text-free provenance description for a source ID
+/// under an exact private metadata attachment. Core validates and remints the
+/// enclosing public identities; this value never grants source access.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSourceProvenance {
+    pub source_id: u32,
+    pub module: String,
+    pub content_hash: String,
 }
 
 /// One exact compiler-verified instruction boundary returned without source
@@ -355,6 +368,15 @@ pub enum PageHostRequest {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
     },
+    /// Describes exactly one prior compiler-minted source ID. This private
+    /// request returns module identity and a digest only, never source text.
+    DescribeDebuggerBlueTsMetadataSource {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+    },
     /// Lists the child's bounded compiler-verified safe points for one exact
     /// opaque program. No source, bytecode, VM, or value crosses this channel.
     ListDebuggerSafePoints {
@@ -475,6 +497,13 @@ pub enum PageHostReply {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
         sources: Vec<PageHostDebuggerBlueTsMetadataSourceId>,
+    },
+    DebuggerBlueTsMetadataSourceProvenance {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        provenance: PageHostDebuggerBlueTsMetadataSourceProvenance,
     },
     DebuggerSafePoints {
         tab_id: u64,

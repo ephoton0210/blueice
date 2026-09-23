@@ -28,8 +28,9 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
     JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
     JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataSourceId,
-    JavaScriptPageDebuggerStaticMetadataSummary, JavaScriptPageExecutionReport,
-    PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
+    JavaScriptPageDebuggerStaticMetadataSourceProvenance,
+    JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
+    JavaScriptPageExecutionReport, PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
 };
 use crate::script::page_source_authorizer::AuthorizedPageScriptGraph;
 pub use crate::script::page_source_authorizer::{
@@ -190,6 +191,12 @@ pub trait PageHostClient {
         false
     }
 
+    /// Whether this peer implements the separately authorized source-free
+    /// module-identity and SHA-256 provenance operation.
+    fn debugger_bluets_metadata_source_provenance_available(&self) -> bool {
+        false
+    }
+
     /// Lists newly child-minted opaque handles only for a live direct-BlueTS
     /// attachment associated with one exact private program. The result has
     /// no source/module/name/type/span/contract payload, and a transport
@@ -233,6 +240,20 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement BlueTS debugger source inventories",
+        ))
+    }
+
+    fn debugger_bluets_metadata_source_provenance(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _source_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger source provenance",
         ))
     }
 
@@ -384,6 +405,10 @@ impl PageHostClient for PageHostConnection {
         true
     }
 
+    fn debugger_bluets_metadata_source_provenance_available(&self) -> bool {
+        true
+    }
+
     fn debugger_realm_stats(
         &mut self,
         tab_id: u64,
@@ -446,6 +471,23 @@ impl PageHostClient for PageHostConnection {
             document_generation,
             program,
             metadata,
+        })
+    }
+
+    fn debugger_bluets_metadata_source_provenance(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            source_id,
         })
     }
 
@@ -1153,6 +1195,14 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             && self.child.debugger_bluets_metadata_sources_available()
     }
 
+    fn debugger_static_metadata_source_provenance_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_sources_available()
+            && self
+                .child
+                .debugger_bluets_metadata_source_provenance_available()
+    }
+
     fn debugger_programs(
         &mut self,
         tab_id: TabId,
@@ -1387,6 +1437,64 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                 source_id: source.source_id,
             })
             .collect())
+    }
+
+    fn debugger_static_metadata_source_provenance(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSourceTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSourceProvenance, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_source_provenance_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_source_provenance(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.source_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSourceProvenance {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            provenance,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || provenance.source_id != target.source_id
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSourceProvenance {
+            source_id: provenance.source_id,
+            module: provenance.module,
+            content_hash: provenance.content_hash,
+        })
     }
 
     fn debugger_safe_points(
