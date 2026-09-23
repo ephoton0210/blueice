@@ -9,10 +9,15 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. A host must report every operation as
+//! and an opt-in root-code-unit pause/resume seam. Version six also reserves a
+//! fail-closed session and per-realm capability boundary for future static
+//! metadata: `Hello` grants only the canonical intersection of a requested
+//! manifest and the core policy, and a metadata operation may be dispatched
+//! only after the exact target's capability report also grants its specific
+//! metadata capability. A host must report every operation as
 //! [`DebuggerCapabilityState::Available`] only after it implements the native
 //! behavior; a configured breakpoint is not evidence that pause, stack,
-//! scope, or value inspection already exists.
+//! scope, value inspection, or static metadata access already exists.
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
@@ -20,7 +25,7 @@ use std::io::{self, Read, Write};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 5;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 6;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -53,6 +58,27 @@ pub struct DebuggerProgram {
 impl DebuggerProgram {
     pub fn is_well_formed(self) -> bool {
         self.realm.is_well_formed() && self.program_handle != 0 && self.program_generation != 0
+    }
+}
+
+/// A source-free, generation-bound handle for future debugger static-metadata
+/// operations. It is deliberately not a source URL, hash, symbol name, type,
+/// span, bytecode offset, or VM object. A host may issue one only after it has
+/// granted the corresponding [`DebuggerMetadataCapability`] for this exact
+/// program generation, and it must reject the handle after that program or
+/// its enclosing realm changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataHandle {
+    pub program: DebuggerProgram,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+}
+
+impl DebuggerStaticMetadataHandle {
+    /// The wire format never treats zero as an issuer-created handle or
+    /// generation. The caller still has to check the live program owner.
+    pub fn is_well_formed(self) -> bool {
+        self.program.is_well_formed() && self.metadata_handle != 0 && self.metadata_generation != 0
     }
 }
 
@@ -93,6 +119,141 @@ pub enum DebuggerCapability {
     Scopes,
     ExceptionPolicy,
     BoundedValues,
+    /// A bounded inventory of source-free, generation-bound static metadata
+    /// handles. This does not grant source text, source identity, spans,
+    /// symbols, types, contracts, bytecode, runtime values, or a general
+    /// metadata dump. Those each need their own later capability and request.
+    StaticMetadataInventory,
+}
+
+/// One narrowly scoped static-metadata operation a debugger client may ask
+/// for during `Hello` and a core policy may grant for that session.
+///
+/// This deliberately has no broad `StaticMetadata` or `All` variant. Every
+/// future metadata surface must add a distinct variant and map it to a
+/// distinct [`DebuggerCapability`] before it can be requested. At version six
+/// no request or reply exposes even the opaque inventory; this type establishes
+/// the policy boundary before that surface is added.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DebuggerMetadataCapability {
+    /// Enumerate only bounded [`DebuggerStaticMetadataHandle`] values for one
+    /// exact realm. The handles themselves carry no static metadata.
+    OpaqueInventory,
+    /// A newer metadata capability identifier. It makes the enclosing
+    /// manifest invalid instead of silently narrowing the requested set.
+    #[serde(other)]
+    Unknown,
+}
+
+impl DebuggerMetadataCapability {
+    const fn debugger_capability(self) -> Option<DebuggerCapability> {
+        match self {
+            Self::OpaqueInventory => Some(DebuggerCapability::StaticMetadataInventory),
+            Self::Unknown => None,
+        }
+    }
+
+    const fn canonical_index(self) -> Option<u8> {
+        match self {
+            Self::OpaqueInventory => Some(0),
+            Self::Unknown => None,
+        }
+    }
+}
+
+/// Independent schema version for the session-scoped debugger metadata
+/// capability manifest. It is intentionally separate from the transport
+/// version so future metadata operations cannot be inferred from a transport
+/// upgrade alone.
+pub const DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION: u32 = 1;
+
+/// A canonical requested or granted metadata-capability set for one debugger
+/// transport session. It carries capability identifiers only: no realm,
+/// source, source identity, metadata handle, bytecode, VM object, or value.
+///
+/// `Hello` carries the requested set and `HelloAck` carries the core policy's
+/// exact intersection. Both sender and receiver must reject a malformed,
+/// duplicate, reordered, or unknown set rather than treating it as a partial
+/// grant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerMetadataCapabilityManifest {
+    pub version: u32,
+    pub capabilities: Vec<DebuggerMetadataCapability>,
+}
+
+impl DebuggerMetadataCapabilityManifest {
+    /// The default core policy grants no debugger metadata capability.
+    pub fn empty() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: Vec::new(),
+        }
+    }
+
+    /// The only non-empty manifest shape currently known to version six.
+    /// Calling this does not enable any metadata request: a core still needs a
+    /// matching live-realm capability report before dispatch.
+    pub fn opaque_inventory() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![DebuggerMetadataCapability::OpaqueInventory],
+        }
+    }
+
+    /// Validates the manifest version and strict canonical capability order.
+    /// Empty is valid, which is how a caller explicitly requests no metadata.
+    pub fn is_well_formed(&self) -> bool {
+        if self.version != DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION {
+            return false;
+        }
+
+        let mut previous = None;
+        for capability in &self.capabilities {
+            let Some(index) = capability.canonical_index() else {
+                return false;
+            };
+            if previous.is_some_and(|previous| previous >= index) {
+                return false;
+            }
+            previous = Some(index);
+        }
+        true
+    }
+
+    /// Whether this well-formed manifest contains one exact capability.
+    pub fn contains(&self, capability: DebuggerMetadataCapability) -> bool {
+        self.is_well_formed() && self.capabilities.contains(&capability)
+    }
+
+    fn intersection(&self, requested: &Self) -> Self {
+        debug_assert!(self.is_well_formed());
+        debug_assert!(requested.is_well_formed());
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: requested
+                .capabilities
+                .iter()
+                .copied()
+                .filter(|capability| self.capabilities.contains(capability))
+                .collect(),
+        }
+    }
+
+    fn is_subset_of(&self, requested: &Self) -> bool {
+        self.is_well_formed()
+            && requested.is_well_formed()
+            && self
+                .capabilities
+                .iter()
+                .all(|capability| requested.capabilities.contains(capability))
+    }
+}
+
+impl Default for DebuggerMetadataCapabilityManifest {
+    fn default() -> Self {
+        Self::empty()
+    }
 }
 
 /// Availability is per target and protocol generation. `Planned` never grants
@@ -133,6 +294,121 @@ pub struct DebuggerCapabilities {
     pub max_breakpoints_per_realm: u32,
 }
 
+/// A core-local authorization for the metadata capabilities granted by one
+/// successfully negotiated debugger `Hello`. It intentionally has no public
+/// constructor and is not serializable: it is an implementation guard for a
+/// future core/host dispatcher, never a client-supplied wire token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DebuggerMetadataSessionAuthorization {
+    granted: DebuggerMetadataCapabilityManifest,
+}
+
+impl DebuggerMetadataSessionAuthorization {
+    /// Whether this session negotiated one exact metadata capability. A
+    /// handler must also require the per-realm authorization below; session
+    /// negotiation alone does not prove a realm can currently supply data.
+    pub fn permits(&self, capability: DebuggerMetadataCapability) -> bool {
+        self.granted.contains(capability)
+    }
+}
+
+/// Reconstructs the core-local session authorization from the exact `Hello`
+/// request and `HelloAck` reply a transport just exchanged. The caller must
+/// invoke this only on a reply emitted by [`negotiate`], retain it per stream,
+/// and discard it when that stream closes. A malformed reply, an unsupported
+/// protocol version, or a grant not requested by the client fails closed.
+pub fn metadata_session_authorization(
+    request: &DebuggerRequest,
+    reply: &DebuggerReply,
+) -> Option<DebuggerMetadataSessionAuthorization> {
+    let DebuggerRequest::Hello {
+        protocol_version,
+        requested_metadata_capabilities,
+    } = request
+    else {
+        return None;
+    };
+    let DebuggerReply::HelloAck {
+        protocol_version: acknowledged_version,
+        granted_metadata_capabilities,
+    } = reply
+    else {
+        return None;
+    };
+    if *protocol_version != DEBUGGER_PROTOCOL_VERSION
+        || *acknowledged_version != DEBUGGER_PROTOCOL_VERSION
+        || !requested_metadata_capabilities.is_well_formed()
+        || !granted_metadata_capabilities.is_subset_of(requested_metadata_capabilities)
+    {
+        return None;
+    }
+
+    Some(DebuggerMetadataSessionAuthorization {
+        granted: granted_metadata_capabilities.clone(),
+    })
+}
+
+/// A core-local authorization derived from a negotiated session and one exact
+/// live-realm capability report. It intentionally has no public constructor
+/// and is not serializable: it is an implementation guard for a future
+/// core/host dispatcher, never a client-supplied wire token. The dispatcher
+/// must additionally verify that the realm remains live before every
+/// operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DebuggerMetadataAuthorization {
+    realm: DebuggerPageRealm,
+    capability: DebuggerMetadataCapability,
+}
+
+impl DebuggerMetadataAuthorization {
+    /// Checks that a future metadata operation uses precisely the granted
+    /// capability and the same realm generation that discovery authorized.
+    pub fn permits(self, realm: DebuggerPageRealm, capability: DebuggerMetadataCapability) -> bool {
+        self.realm == realm && self.capability == capability && realm.is_well_formed()
+    }
+}
+
+impl DebuggerCapabilities {
+    /// Returns a core-local authorization only for one exact, unambiguous
+    /// `Available` report for the requested metadata capability after that
+    /// capability was granted for this exact session.
+    ///
+    /// Missing reports, duplicate reports, `Planned`/`Unsupported` states,
+    /// malformed realm identities, and replies from another protocol revision
+    /// all deny by default. Future metadata request handlers must retain this
+    /// session grant after `Hello`, retain the resulting authorization after
+    /// `DescribeCapabilities`, require
+    /// [`DebuggerMetadataAuthorization::permits`] for their target, and still
+    /// verify the live realm at dispatch time.
+    pub fn authorize_metadata(
+        &self,
+        session: &DebuggerMetadataSessionAuthorization,
+        capability: DebuggerMetadataCapability,
+    ) -> Option<DebuggerMetadataAuthorization> {
+        if self.protocol_version != DEBUGGER_PROTOCOL_VERSION
+            || !self.realm.is_well_formed()
+            || !session.permits(capability)
+        {
+            return None;
+        }
+
+        let required = capability.debugger_capability()?;
+        let mut reports = self
+            .reports
+            .iter()
+            .filter(|report| report.capability == required);
+        let report = reports.next()?;
+        if reports.next().is_some() || report.state != DebuggerCapabilityState::Available {
+            return None;
+        }
+
+        Some(DebuggerMetadataAuthorization {
+            realm: self.realm,
+            capability,
+        })
+    }
+}
+
 /// Source-free state of one native-debugger controlled declaration. A paused
 /// state identifies only an already-validated opaque instruction boundary;
 /// it never carries source text, bytecode, a stack, a scope, or a value.
@@ -157,6 +433,11 @@ pub enum DebuggerExecutionState {
 pub enum DebuggerRequest {
     Hello {
         protocol_version: u32,
+        /// The exact canonical static-metadata capabilities this debugger
+        /// client asks the core to consider for this transport session.
+        /// Requesting one grants nothing; the core replies with only its
+        /// policy intersection in [`DebuggerReply::HelloAck`].
+        requested_metadata_capabilities: DebuggerMetadataCapabilityManifest,
     },
     /// Lists bounded, currently loaded page realm identities. The reply carries
     /// no URL, source, program, bytecode, or runtime object; clients use the
@@ -233,6 +514,10 @@ pub enum DebuggerRequest {
 pub enum DebuggerReply {
     HelloAck {
         protocol_version: u32,
+        /// The canonical intersection of the client's requested metadata
+        /// capabilities and the core-owned allow policy for this one stream.
+        /// An empty set is a successful handshake with no metadata authority.
+        granted_metadata_capabilities: DebuggerMetadataCapabilityManifest,
     },
     /// Reply to [`DebuggerRequest::ListPageRealms`].
     PageRealms(Vec<DebuggerPageRealm>),
@@ -279,6 +564,7 @@ pub enum DebuggerReply {
 #[serde(rename_all = "kebab-case")]
 pub enum DebuggerErrorCode {
     ProtocolVersion,
+    InvalidCapabilityManifest,
     InvalidTarget,
     StaleRealm,
     StaleProgram,
@@ -291,15 +577,30 @@ pub enum DebuggerErrorCode {
 /// Builds the only valid reply to the connection's first request. A caller
 /// must still reject any non-`Hello` first request before it dispatches the
 /// connection to a realm owner.
-pub fn negotiate(request: &DebuggerRequest) -> DebuggerReply {
+pub fn negotiate(
+    request: &DebuggerRequest,
+    allowed_metadata_capabilities: &DebuggerMetadataCapabilityManifest,
+) -> DebuggerReply {
     match request {
-        DebuggerRequest::Hello { protocol_version }
-            if *protocol_version == DEBUGGER_PROTOCOL_VERSION =>
+        DebuggerRequest::Hello {
+            protocol_version,
+            requested_metadata_capabilities,
+        } if *protocol_version == DEBUGGER_PROTOCOL_VERSION
+            && requested_metadata_capabilities.is_well_formed()
+            && allowed_metadata_capabilities.is_well_formed() =>
         {
             DebuggerReply::HelloAck {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_metadata_capabilities: allowed_metadata_capabilities
+                    .intersection(requested_metadata_capabilities),
             }
         }
+        DebuggerRequest::Hello {
+            protocol_version, ..
+        } if *protocol_version == DEBUGGER_PROTOCOL_VERSION => DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidCapabilityManifest,
+            message: "debugger metadata capability manifest is malformed".to_string(),
+        },
         DebuggerRequest::Hello { .. } => DebuggerReply::Error {
             code: DebuggerErrorCode::ProtocolVersion,
             message: "unsupported debugger protocol version".to_string(),
@@ -357,11 +658,36 @@ mod tests {
         }
     }
 
+    fn capabilities(reports: Vec<DebuggerCapabilityReport>) -> DebuggerCapabilities {
+        DebuggerCapabilities {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            realm: realm(),
+            reports,
+            max_stack_frames: 64,
+            max_scope_bindings: 256,
+            max_value_preview_bytes: 4_096,
+            max_safe_points_per_program: 4_096,
+            max_breakpoints_per_realm: 256,
+        }
+    }
+
+    fn capability_report(
+        capability: DebuggerCapability,
+        state: DebuggerCapabilityState,
+    ) -> DebuggerCapabilityReport {
+        DebuggerCapabilityReport {
+            capability,
+            state,
+            detail: "test capability report".to_string(),
+        }
+    }
+
     #[test]
     fn request_and_reply_round_trip_on_a_real_socket() {
         for request in [
             DebuggerRequest::Hello {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             },
             DebuggerRequest::ListPageRealms,
             DebuggerRequest::DescribeCapabilities { realm: realm() },
@@ -450,20 +776,17 @@ mod tests {
             assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
         }
 
-        let reply = DebuggerReply::Capabilities(DebuggerCapabilities {
-            protocol_version: DEBUGGER_PROTOCOL_VERSION,
-            realm: realm(),
-            reports: vec![DebuggerCapabilityReport {
+        let reply = DebuggerReply::Capabilities(capabilities(vec![
+            DebuggerCapabilityReport {
                 capability: DebuggerCapability::BreakpointConfiguration,
                 state: DebuggerCapabilityState::Available,
                 detail: "exact breakpoint configuration is installed".to_string(),
-            }],
-            max_stack_frames: 64,
-            max_scope_bindings: 256,
-            max_value_preview_bytes: 4_096,
-            max_safe_points_per_program: 4_096,
-            max_breakpoints_per_realm: 256,
-        });
+            },
+            capability_report(
+                DebuggerCapability::StaticMetadataInventory,
+                DebuggerCapabilityState::Planned,
+            ),
+        ]));
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
@@ -507,21 +830,43 @@ mod tests {
         }
     }
 
+    fn hello(
+        requested_metadata_capabilities: DebuggerMetadataCapabilityManifest,
+    ) -> DebuggerRequest {
+        DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities,
+        }
+    }
+
     #[test]
     fn handshake_rejects_wrong_or_missing_versions_before_dispatch() {
+        let empty_policy = DebuggerMetadataCapabilityManifest::empty();
         assert_eq!(
-            negotiate(&DebuggerRequest::Hello {
-                protocol_version: DEBUGGER_PROTOCOL_VERSION,
-            }),
+            negotiate(
+                &hello(DebuggerMetadataCapabilityManifest::empty()),
+                &empty_policy
+            ),
             DebuggerReply::HelloAck {
                 protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
             }
         );
-        for unsupported_version in [1, 2, DEBUGGER_PROTOCOL_VERSION + 1] {
+        for unsupported_version in [
+            1,
+            2,
+            DEBUGGER_PROTOCOL_VERSION - 1,
+            DEBUGGER_PROTOCOL_VERSION + 1,
+        ] {
             assert!(matches!(
-                negotiate(&DebuggerRequest::Hello {
-                    protocol_version: unsupported_version,
-                }),
+                negotiate(
+                    &DebuggerRequest::Hello {
+                        protocol_version: unsupported_version,
+                        requested_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(
+                        ),
+                    },
+                    &empty_policy,
+                ),
                 DebuggerReply::Error {
                     code: DebuggerErrorCode::ProtocolVersion,
                     ..
@@ -529,19 +874,250 @@ mod tests {
             ));
         }
         assert!(matches!(
-            negotiate(&DebuggerRequest::ListPageRealms),
+            negotiate(&DebuggerRequest::ListPageRealms, &empty_policy),
             DebuggerReply::Error {
                 code: DebuggerErrorCode::ProtocolVersion,
                 ..
             }
         ));
         assert!(matches!(
-            negotiate(&DebuggerRequest::DescribeCapabilities { realm: realm() }),
+            negotiate(
+                &DebuggerRequest::DescribeCapabilities { realm: realm() },
+                &empty_policy,
+            ),
             DebuggerReply::Error {
                 code: DebuggerErrorCode::ProtocolVersion,
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn metadata_handshake_grants_only_the_canonical_policy_intersection() {
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_inventory());
+        let deny_reply = negotiate(&request, &DebuggerMetadataCapabilityManifest::empty());
+        assert_eq!(
+            deny_reply,
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            }
+        );
+        let denied_session = metadata_session_authorization(&request, &deny_reply)
+            .expect("a valid empty grant is still a negotiated session");
+        assert!(!denied_session.permits(DebuggerMetadataCapability::OpaqueInventory));
+
+        let allow_reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_inventory(),
+        );
+        let allowed_session = metadata_session_authorization(&request, &allow_reply)
+            .expect("the matching canonical requested and allowed sets must negotiate");
+        assert!(allowed_session.permits(DebuggerMetadataCapability::OpaqueInventory));
+        assert_eq!(
+            allow_reply,
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_inventory(
+                ),
+            }
+        );
+
+        let empty_request = hello(DebuggerMetadataCapabilityManifest::empty());
+        assert_eq!(
+            negotiate(
+                &empty_request,
+                &DebuggerMetadataCapabilityManifest::opaque_inventory(),
+            ),
+            DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::empty(),
+            }
+        );
+
+        for malformed in [
+            DebuggerMetadataCapabilityManifest {
+                version: 0,
+                capabilities: Vec::new(),
+            },
+            DebuggerMetadataCapabilityManifest {
+                version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+                capabilities: vec![
+                    DebuggerMetadataCapability::OpaqueInventory,
+                    DebuggerMetadataCapability::OpaqueInventory,
+                ],
+            },
+            DebuggerMetadataCapabilityManifest {
+                version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+                capabilities: vec![DebuggerMetadataCapability::Unknown],
+            },
+        ] {
+            assert!(matches!(
+                negotiate(
+                    &hello(malformed),
+                    &DebuggerMetadataCapabilityManifest::empty()
+                ),
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidCapabilityManifest,
+                    ..
+                }
+            ));
+        }
+        let unknown_wire_request: DebuggerRequest = serde_json::from_value(serde_json::json!({
+            "Hello": {
+                "protocol_version": DEBUGGER_PROTOCOL_VERSION,
+                "requested_metadata_capabilities": {
+                    "version": DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+                    "capabilities": ["future-metadata-surface"],
+                },
+            },
+        }))
+        .expect("an unknown capability must preserve handshake framing");
+        assert!(matches!(
+            negotiate(
+                &unknown_wire_request,
+                &DebuggerMetadataCapabilityManifest::empty(),
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidCapabilityManifest,
+                ..
+            }
+        ));
+        assert!(matches!(
+            negotiate(
+                &request,
+                &DebuggerMetadataCapabilityManifest {
+                    version: 0,
+                    capabilities: Vec::new(),
+                },
+            ),
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidCapabilityManifest,
+                ..
+            }
+        ));
+
+        assert!(metadata_session_authorization(
+            &empty_request,
+            &DebuggerReply::HelloAck {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                granted_metadata_capabilities: DebuggerMetadataCapabilityManifest::opaque_inventory(
+                ),
+            },
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn static_metadata_authorization_requires_session_and_one_exact_live_realm_grant() {
+        let inventory = DebuggerMetadataCapability::OpaqueInventory;
+        let request = hello(DebuggerMetadataCapabilityManifest::opaque_inventory());
+        let denied_reply = negotiate(&request, &DebuggerMetadataCapabilityManifest::empty());
+        let denied_session = metadata_session_authorization(&request, &denied_reply).unwrap();
+        let allowed_reply = negotiate(
+            &request,
+            &DebuggerMetadataCapabilityManifest::opaque_inventory(),
+        );
+        let allowed_session = metadata_session_authorization(&request, &allowed_reply).unwrap();
+
+        let available = capabilities(vec![capability_report(
+            DebuggerCapability::StaticMetadataInventory,
+            DebuggerCapabilityState::Available,
+        )]);
+        assert!(available
+            .authorize_metadata(&denied_session, inventory)
+            .is_none());
+        assert!(capabilities(Vec::new())
+            .authorize_metadata(&allowed_session, inventory)
+            .is_none());
+        assert!(capabilities(vec![capability_report(
+            DebuggerCapability::StaticMetadataInventory,
+            DebuggerCapabilityState::Planned,
+        )])
+        .authorize_metadata(&allowed_session, inventory)
+        .is_none());
+        assert!(capabilities(vec![capability_report(
+            DebuggerCapability::StaticMetadataInventory,
+            DebuggerCapabilityState::Unsupported,
+        )])
+        .authorize_metadata(&allowed_session, inventory)
+        .is_none());
+        assert!(capabilities(vec![
+            capability_report(
+                DebuggerCapability::StaticMetadataInventory,
+                DebuggerCapabilityState::Available,
+            ),
+            capability_report(
+                DebuggerCapability::StaticMetadataInventory,
+                DebuggerCapabilityState::Available,
+            ),
+        ])
+        .authorize_metadata(&allowed_session, inventory)
+        .is_none());
+
+        let mut wrong_version = available.clone();
+        wrong_version.protocol_version -= 1;
+        assert!(wrong_version
+            .authorize_metadata(&allowed_session, inventory)
+            .is_none());
+
+        let mut malformed_realm = available.clone();
+        malformed_realm.realm.realm_generation = 0;
+        assert!(malformed_realm
+            .authorize_metadata(&allowed_session, inventory)
+            .is_none());
+
+        let authorization = available
+            .authorize_metadata(&allowed_session, inventory)
+            .expect("one exact session and realm grant must authorize only that realm");
+        assert!(authorization.permits(realm(), inventory));
+        assert!(!authorization.permits(
+            DebuggerPageRealm {
+                realm_generation: realm().realm_generation + 1,
+                ..realm()
+            },
+            inventory,
+        ));
+    }
+
+    #[test]
+    fn static_metadata_handles_are_opaque_and_generation_bound() {
+        let handle = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 5,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        assert!(handle.is_well_formed());
+        assert_eq!(
+            serde_json::to_value(handle).unwrap(),
+            serde_json::json!({
+                "program": {
+                    "realm": {
+                        "browser_context_id": 1,
+                        "tab_id": 7,
+                        "realm_generation": 3,
+                    },
+                    "program_handle": 12,
+                    "program_generation": 5,
+                },
+                "metadata_handle": 41,
+                "metadata_generation": 9,
+            })
+        );
+        assert!(!DebuggerStaticMetadataHandle {
+            metadata_handle: 0,
+            ..handle
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticMetadataHandle {
+            metadata_generation: 0,
+            ..handle
+        }
+        .is_well_formed());
     }
 
     #[test]
