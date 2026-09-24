@@ -47,12 +47,14 @@ including after navigation and removal. Closing or replacing a realm clears
 its wrappers, listeners and queued events before another document can use the
 same tab. A node removed by `textContent` replacement becomes invalid.
 
-The script socket must accept only the launcher-owned child for the matching
-core generation. Extend its handshake with a per-spawn capability and bind
-each DOM request to the exact live document generation before exposing these
-bindings. An arbitrary process that can reach a socket or guess a tab/node
-number must not gain DOM authority. Public frontend, debugger and MCP requests
-cannot invoke this private operation set.
+The script socket accepts a matching per-core child capability before any DOM
+dispatch, and each DOM request is bound to the exact live document generation.
+The launcher configures the private listener with its fresh supervised-child
+secret; a predecessor capability is denied even when a successor reuses the
+same path. The child VM has no live DOM callback yet: connection authorization
+alone does not install these bindings. An arbitrary process that can reach a
+socket or guess a tab/node number must not gain DOM authority. Public frontend,
+debugger and MCP requests cannot invoke this private operation set.
 
 The VM's current `HostValue` callback ABI accepts primitives only. DOM wrapper
 objects and event listeners therefore need a VM-owned host-object/callable

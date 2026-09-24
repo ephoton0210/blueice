@@ -14,10 +14,9 @@ Headings show dependencies; they are not tasks to finish in one commit.
 Keep design history in PLAN.md and defer capabilities or syntax that do not
 close the current leaf.
 
-**Current leaf: A1.2.** Require a per-core child capability at the script
-socket handshake. A real socket test must show that wrong and predecessor
-capabilities are rejected before any DOM dispatch. A1.3 follows only after
-that test passes.
+**Current leaf: A1.3.** Through a real socket, verify wrong-tab,
+stale-generation, and old-core denial leaves the DOM unchanged. Authentication
+is now in place, but the child still has no reentrant DOM call route.
 
 ## Current boundary
 
@@ -39,9 +38,17 @@ client registration, build output, or write authority.
   Script IPC v2 also rejects obsolete/repeated Hello messages, bounds frames
   and DOM name/text fields, and proves through a real core subprocess that a
   still-open socket cannot mutate a replacement document with its old target.
-  This remains a proof-of-mechanism channel, not child authentication.
-- [ ] Require a launcher-issued, per-core child capability at the script
+  This remains a proof-of-mechanism DOM channel, not yet a child VM binding.
+- [x] Require a launcher-issued, per-core child capability at the script
   socket handshake; reject a foreign or predecessor child before dispatch.
+  Script IPC v3 requires a fixed-shape 32-byte capability. The launcher also
+  supplies its fresh per-core BlueJS child secret to that core's private script
+  listener; core refuses an unpaired listener/token and checks the Hello
+  before handing any request to the DOM session. Real core and supervised
+  launcher subprocess tests reject malformed, foreign, and predecessor
+  capabilities, including after a successor core reuses the same path. The
+  listener is owner-only (`0600`), preserves occupied files and live sockets,
+  and drops an incomplete unauthenticated handshake after two seconds.
 - [ ] Verify wrong-tab, stale-generation, and old-core denial through a
   real socket; denied requests must leave the DOM unchanged.
 

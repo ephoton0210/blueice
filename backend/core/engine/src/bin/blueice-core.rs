@@ -61,6 +61,9 @@ struct Args {
     /// or an integration test; omitting it preserves the reference binary's
     /// current frontend-only mode.
     script_socket: Option<PathBuf>,
+    /// Capability for this generation's child on the private script socket.
+    /// The socket is never bound without this fixed-shape owner secret.
+    script_session_token: Option<String>,
     /// Optional listener for the native debugger discovery channel. It remains
     /// separate from both frontend and DOM-script IPC; the session thread
     /// validates each requested tab/document generation before replying.
@@ -179,6 +182,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut frame_dir = None;
     let mut gatekeeper_socket = None;
     let mut script_socket = None;
+    let mut script_session_token = None;
     let mut debugger_socket = None;
     let mut debugger_static_metadata_inventory = false;
     let mut debugger_static_metadata_summary = false;
@@ -227,6 +231,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--frame-dir" => frame_dir = Some(PathBuf::from(value()?)),
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--script-socket" => script_socket = Some(PathBuf::from(value()?)),
+            "--script-session-token" => script_session_token = Some(value()?),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
             "--debugger-static-metadata-inventory" => debugger_static_metadata_inventory = true,
             "--debugger-static-metadata-summary" => debugger_static_metadata_summary = true,
@@ -297,6 +302,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     }
 
     let socket = socket.ok_or_else(|| "--socket <path> is required".to_string())?;
+    if script_socket.is_some() != script_session_token.is_some() {
+        return Err(
+            "--script-socket and --script-session-token must be provided together".to_string(),
+        );
+    }
+    if script_session_token
+        .as_deref()
+        .is_some_and(|token| !blueice_ipc::script::valid_script_session_token(token))
+    {
+        return Err("--script-session-token must be 64 lowercase hexadecimal bytes".to_string());
+    }
     if inline_bluets_profile.is_some() && inline_bluejs {
         return Err("--inline-bluejs cannot be combined with --inline-bluets-profile".to_string());
     }
@@ -311,6 +327,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         .is_some_and(str::is_empty)
     {
         return Err("--out-of-process-bluejs-token must not be empty".to_string());
+    }
+    if let (Some(script_token), Some(page_host_token)) = (
+        script_session_token.as_deref(),
+        out_of_process_bluejs_token.as_deref(),
+    ) {
+        if script_token != page_host_token {
+            return Err(
+                "--script-session-token must match the supervised BlueJS child capability"
+                    .to_string(),
+            );
+        }
     }
     if out_of_process_bluejs_page_script_profile.is_some() && out_of_process_bluejs_socket.is_none()
     {
@@ -578,6 +605,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         frame_dir,
         gatekeeper_socket,
         script_socket,
+        script_session_token,
         debugger_socket,
         debugger_static_metadata_inventory,
         debugger_static_metadata_summary,
@@ -776,22 +804,33 @@ fn construct_owner_http_page_policy(
 fn serve_script_connection(
     mut stream: UnixStream,
     sender: script::ScriptRequestSender,
+    expected_token: &str,
 ) -> io::Result<()> {
+    // An unauthenticated peer must not monopolize this serialized listener
+    // indefinitely by connecting without sending a complete Hello frame.
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
     let first = blueice_ipc::script::read_script_request(&mut stream)?;
     if !matches!(
-        first,
-        blueice_ipc::script::ScriptRequest::Hello { protocol_version }
-            if protocol_version == blueice_ipc::script::SCRIPT_PROTOCOL_VERSION
+        &first,
+        blueice_ipc::script::ScriptRequest::Hello { protocol_version, session_token }
+            if *protocol_version == blueice_ipc::script::SCRIPT_PROTOCOL_VERSION
+                && script_capability_matches(expected_token, session_token)
     ) {
         blueice_ipc::script::write_script_reply(
             &mut stream,
             &blueice_ipc::script::ScriptReply::Error {
-                message: "script protocol requires the current Hello version".to_string(),
+                message: "script handshake denied".to_string(),
             },
         )?;
         return Ok(());
     }
-    blueice_ipc::script::write_script_reply(&mut stream, &sender.request(first)?)?;
+    stream.set_read_timeout(None)?;
+    blueice_ipc::script::write_script_reply(
+        &mut stream,
+        &blueice_ipc::script::ScriptReply::HelloAck {
+            protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
+        },
+    )?;
 
     loop {
         let request = match blueice_ipc::script::read_script_request(&mut stream) {
@@ -813,15 +852,33 @@ fn serve_script_connection(
     }
 }
 
+/// Avoid prefix matches and data-dependent early exits at the capability
+/// boundary. Both strings have the same validated fixed length in production.
+#[cfg(unix)]
+fn script_capability_matches(expected: &str, presented: &str) -> bool {
+    if !blueice_ipc::script::valid_script_session_token(presented) {
+        return false;
+    }
+    expected
+        .bytes()
+        .zip(presented.bytes())
+        .fold(0u8, |difference, (left, right)| difference | (left ^ right))
+        == 0
+}
+
 /// Accepts successive script-host connections. A malformed or disconnected
 /// host ends only its own connection; it never tears down the core session.
 #[cfg(unix)]
-fn serve_script_listener(listener: UnixListener, sender: script::ScriptRequestSender) {
+fn serve_script_listener(
+    listener: UnixListener,
+    sender: script::ScriptRequestSender,
+    expected_token: String,
+) {
     for stream in listener.incoming() {
         let Ok(stream) = stream else {
             break;
         };
-        let _ = serve_script_connection(stream, sender.clone());
+        let _ = serve_script_connection(stream, sender.clone(), &expected_token);
     }
 }
 
@@ -952,12 +1009,12 @@ fn serve_compiler_listener(listener: UnixListener, sender: CompilerServiceIpcReq
     }
 }
 
-/// Binds the compiler control socket with an explicit owner-only filesystem
-/// mode. Opaque project IDs are not an authorization replacement, and a
-/// process that chooses to expose static compiler metadata must not rely on a
-/// permissive ambient umask to keep arbitrary local users off the listener.
+/// Binds either private capability-bearing listener with an explicit
+/// owner-only filesystem mode. A bearer token or opaque project ID is not a
+/// reason to rely on a permissive ambient umask. Existing live or non-socket
+/// paths are preserved; only an abandoned socket inode can be reclaimed.
 #[cfg(unix)]
-fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
+fn bind_owner_only_listener(path: &std::path::Path, label: &str) -> io::Result<UnixListener> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_socket() => match UnixStream::connect(path) {
             // Never unlink a working peer merely because a second core was
@@ -966,13 +1023,13 @@ fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
             Ok(_) => {
                 return Err(io::Error::new(
                     io::ErrorKind::AddrInUse,
-                    format!("compiler socket is already active: {}", path.display()),
+                    format!("{label} socket is already active: {}", path.display()),
                 ));
             }
             // This is the one recoverable startup residue: a dead core can
             // leave its socket inode behind after a forceful stop.
             Err(error) if error.kind() == io::ErrorKind::ConnectionRefused => {
-                remove_compiler_socket_if_owned(path);
+                remove_owned_socket_if_owned(path);
             }
             Err(error) => return Err(error),
         },
@@ -980,7 +1037,7 @@ fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
                 format!(
-                    "compiler socket is occupied by a non-socket path: {}",
+                    "{label} socket is occupied by a non-socket path: {}",
                     path.display()
                 ),
             ));
@@ -989,16 +1046,29 @@ fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
         Err(error) => return Err(error),
     }
     let listener = UnixListener::bind(path)?;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    if let Err(error) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+        remove_owned_socket_if_owned(path);
+        return Err(error);
+    }
     Ok(listener)
 }
 
-/// Removes a compiler listener endpoint only if it is still a Unix socket.
+#[cfg(unix)]
+fn bind_compiler_listener(path: &std::path::Path) -> io::Result<UnixListener> {
+    bind_owner_only_listener(path, "compiler")
+}
+
+#[cfg(unix)]
+fn bind_script_listener(path: &std::path::Path) -> io::Result<UnixListener> {
+    bind_owner_only_listener(path, "script")
+}
+
+/// Removes a private listener endpoint only if it is still a Unix socket.
 /// The core may be force-killed by its supervisor, but lifecycle cleanup must
 /// never unlink a regular file, directory, or symlink that has appeared at a
 /// caller-selected path since the listener was created.
 #[cfg(unix)]
-fn remove_compiler_socket_if_owned(path: &std::path::Path) {
+fn remove_owned_socket_if_owned(path: &std::path::Path) {
     let Ok(metadata) = std::fs::symlink_metadata(path) else {
         return;
     };
@@ -1024,6 +1094,7 @@ fn main() -> ExitCode {
         .gatekeeper_socket
         .unwrap_or_else(blueice_ipc::gatekeeper::default_gatekeeper_socket_path);
     let script_socket = args.script_socket.clone();
+    let script_session_token = args.script_session_token.clone();
     let debugger_socket = args.debugger_socket.clone();
     let debugger_allowed_metadata_capabilities = if args.debugger_static_metadata_inventory {
         blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_selected(
@@ -1132,19 +1203,16 @@ fn main() -> ExitCode {
     let mut compiler_service = compiler_catalog.map(CoreCompilerProjectCatalog::seal);
 
     let script_listener = match script_socket.as_ref() {
-        Some(path) => {
-            let _ = std::fs::remove_file(path);
-            match UnixListener::bind(path) {
-                Ok(listener) => Some(listener),
-                Err(error) => {
-                    eprintln!(
-                        "blueice-core: failed to bind script socket {}: {error}",
-                        path.display()
-                    );
-                    return ExitCode::FAILURE;
-                }
+        Some(path) => match bind_script_listener(path) {
+            Ok(listener) => Some(listener),
+            Err(error) => {
+                eprintln!(
+                    "blueice-core: failed to bind script socket {}: {error}",
+                    path.display()
+                );
+                return ExitCode::FAILURE;
             }
-        }
+        },
         None => None,
     };
     let debugger_listener = match debugger_socket.as_ref() {
@@ -1154,7 +1222,7 @@ fn main() -> ExitCode {
                 Ok(listener) => Some(listener),
                 Err(error) => {
                     if let Some(path) = &script_socket {
-                        let _ = std::fs::remove_file(path);
+                        remove_owned_socket_if_owned(path);
                     }
                     eprintln!(
                         "blueice-core: failed to bind debugger socket {}: {error}",
@@ -1171,7 +1239,7 @@ fn main() -> ExitCode {
             Ok(listener) => Some(listener),
             Err(error) => {
                 if let Some(path) = &script_socket {
-                    let _ = std::fs::remove_file(path);
+                    remove_owned_socket_if_owned(path);
                 }
                 if let Some(path) = &debugger_socket {
                     let _ = std::fs::remove_file(path);
@@ -1195,13 +1263,13 @@ fn main() -> ExitCode {
         Ok(listener) => listener,
         Err(e) => {
             if let Some(path) = &script_socket {
-                let _ = std::fs::remove_file(path);
+                remove_owned_socket_if_owned(path);
             }
             if let Some(path) = &debugger_socket {
                 let _ = std::fs::remove_file(path);
             }
             if let Some(path) = &compiler_socket {
-                remove_compiler_socket_if_owned(path);
+                remove_owned_socket_if_owned(path);
             }
             eprintln!(
                 "blueice-core: failed to bind {}: {e}",
@@ -1217,7 +1285,8 @@ fn main() -> ExitCode {
             blueice_engine::debugger::debugger_request_channel();
         let (compiler_sender, compiler_requests) = compiler_service_ipc_request_channel();
         if let Some(listener) = script_listener {
-            thread::spawn(move || serve_script_listener(listener, script_sender));
+            let token = script_session_token.expect("script listener requires its capability");
+            thread::spawn(move || serve_script_listener(listener, script_sender, token));
         }
         if let Some(listener) = debugger_listener {
             thread::spawn(move || {
@@ -1379,13 +1448,13 @@ fn main() -> ExitCode {
 
     let _ = std::fs::remove_file(&args.socket);
     if let Some(path) = script_socket {
-        let _ = std::fs::remove_file(path);
+        remove_owned_socket_if_owned(&path);
     }
     if let Some(path) = debugger_socket {
         let _ = std::fs::remove_file(path);
     }
     if let Some(path) = compiler_socket {
-        remove_compiler_socket_if_owned(&path);
+        remove_owned_socket_if_owned(&path);
     }
     let _ = std::fs::remove_dir_all(&frame_dir);
 
@@ -1426,6 +1495,7 @@ mod tests {
         assert_eq!(parsed.frame_dir, None);
         assert_eq!(parsed.gatekeeper_socket, None);
         assert_eq!(parsed.script_socket, None);
+        assert_eq!(parsed.script_session_token, None);
         assert_eq!(parsed.debugger_socket, None);
         assert!(!parsed.debugger_static_metadata_inventory);
         assert!(!parsed.debugger_static_metadata_summary);
@@ -1453,6 +1523,55 @@ mod tests {
     }
 
     #[test]
+    fn script_listener_requires_one_fixed_shape_owner_capability() {
+        let base = [
+            "--socket",
+            "/tmp/core.sock",
+            "--script-socket",
+            "/tmp/script.sock",
+        ];
+        assert!(args(&base).is_err());
+        assert!(args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--script-session-token",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ])
+        .is_err());
+        assert!(args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--script-socket",
+            "/tmp/script.sock",
+            "--script-session-token",
+            "short",
+        ])
+        .is_err());
+        assert!(args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--script-socket",
+            "/tmp/script.sock",
+            "--script-session-token",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ])
+        .is_ok());
+        assert!(args(&[
+            "--socket",
+            "/tmp/core.sock",
+            "--script-socket",
+            "/tmp/script.sock",
+            "--script-session-token",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--out-of-process-bluejs-socket",
+            "/tmp/child.sock",
+            "--out-of-process-bluejs-token",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ])
+        .is_err());
+    }
+
+    #[test]
     fn every_flag_is_parsed() {
         let parsed = args(&[
             "--socket",
@@ -1467,6 +1586,8 @@ mod tests {
             "/tmp/gk.sock",
             "--script-socket",
             "/tmp/script.sock",
+            "--script-session-token",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "--debugger-socket",
             "/tmp/debugger.sock",
             "--compiler-socket",
@@ -1486,6 +1607,7 @@ mod tests {
                 frame_dir: Some(PathBuf::from("/tmp/frames")),
                 gatekeeper_socket: Some(PathBuf::from("/tmp/gk.sock")),
                 script_socket: Some(PathBuf::from("/tmp/script.sock")),
+                script_session_token: Some("a".repeat(64)),
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
                 debugger_static_metadata_inventory: false,
                 debugger_static_metadata_summary: false,
@@ -2103,6 +2225,37 @@ mod tests {
 
         drop(listener);
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn script_listener_is_owner_only_and_preserves_occupied_paths() {
+        let path = PathBuf::from("/tmp").join(format!(
+            "blueice-core-script-endpoint-{}-{}.sock",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&path, b"keep this file").unwrap();
+        assert_eq!(
+            bind_script_listener(&path).unwrap_err().kind(),
+            io::ErrorKind::AlreadyExists
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"keep this file");
+        std::fs::remove_file(&path).unwrap();
+
+        let listener = bind_script_listener(&path).unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            bind_script_listener(&path).unwrap_err().kind(),
+            io::ErrorKind::AddrInUse
+        );
+        drop(listener);
+        remove_owned_socket_if_owned(&path);
     }
 
     #[test]

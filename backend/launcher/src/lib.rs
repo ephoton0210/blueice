@@ -1302,6 +1302,17 @@ mod unix {
         ))
     }
 
+    /// A script-DOM listener unique to one supervised core/child pair. The
+    /// child capability, not knowledge of this pathname, grants access.
+    fn unique_internal_script_socket_path() -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "blueice-launcher-script-{}-{n}.sock",
+            std::process::id()
+        ))
+    }
+
     /// A generation-private debugger socket. Like the compiler socket, this
     /// name is launcher-generated and cannot be supplied through the public
     /// debugger transport.
@@ -1633,6 +1644,7 @@ mod unix {
     pub struct SpawnedCore {
         child: Child,
         internal_socket_path: PathBuf,
+        script_private_socket_path: Option<PathBuf>,
         /// A launcher-generated core-private compiler listener. The public
         /// endpoint is owned by [`GenerationPinnedUnixRelay`] instead, so
         /// this path can be unique for every live/staged generation.
@@ -1661,6 +1673,13 @@ mod unix {
     impl SpawnedCore {
         pub fn spawn(width: f64, height: f64, frame_dir: &Path) -> io::Result<Self> {
             Self::spawn_with_options(width, height, frame_dir, CoreLaunchOptions::default())
+        }
+
+        /// Exposes only the generation-private script socket pathname for
+        /// lifecycle checks. The launcher-owned child capability is never
+        /// returned to a frontend or caller through this accessor.
+        pub fn script_socket_path(&self) -> Option<&Path> {
+            self.script_private_socket_path.as_deref()
         }
 
         /// Starts a core under launcher-owned operational policy.
@@ -1775,6 +1794,12 @@ mod unix {
             let core_bin = sibling_core_binary(&this_exe);
             let internal_socket_path = unique_internal_socket_path();
             let _ = std::fs::remove_file(&internal_socket_path);
+            let script_private_socket_path = page_host_config
+                .as_ref()
+                .map(|_| unique_internal_script_socket_path());
+            if let Some(path) = &script_private_socket_path {
+                remove_owned_socket_if_owned(path);
+            }
             let compiler_private_socket_path = relays
                 .compiler_mcp_relay
                 .as_ref()
@@ -1809,6 +1834,13 @@ mod unix {
                     .arg(config.socket_path())
                     .arg("--out-of-process-bluejs-token")
                     .arg(config.session_token());
+                if let Some(script_socket) = &script_private_socket_path {
+                    command
+                        .arg("--script-socket")
+                        .arg(script_socket)
+                        .arg("--script-session-token")
+                        .arg(config.session_token());
+                }
             }
             if options.core_http_page_script_fixture {
                 command
@@ -1921,6 +1953,9 @@ mod unix {
                     let _ = child.kill();
                     let _ = child.wait();
                     let _ = std::fs::remove_file(&internal_socket_path);
+                    if let Some(script_socket) = &script_private_socket_path {
+                        remove_owned_socket_if_owned(script_socket);
+                    }
                     if let Some(compiler_socket) = &compiler_private_socket_path {
                         remove_compiler_mcp_socket_if_owned(compiler_socket);
                     }
@@ -1935,6 +1970,9 @@ mod unix {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
+                if let Some(script_socket) = &script_private_socket_path {
+                    remove_owned_socket_if_owned(script_socket);
+                }
                 if let Some(compiler_socket) = &compiler_private_socket_path {
                     remove_compiler_mcp_socket_if_owned(compiler_socket);
                 }
@@ -1951,6 +1989,9 @@ mod unix {
                     let _ = child.kill();
                     let _ = child.wait();
                     let _ = std::fs::remove_file(&internal_socket_path);
+                    if let Some(script_socket) = &script_private_socket_path {
+                        remove_owned_socket_if_owned(script_socket);
+                    }
                     if let Some(compiler_socket) = &compiler_private_socket_path {
                         remove_compiler_mcp_socket_if_owned(compiler_socket);
                     }
@@ -1967,6 +2008,9 @@ mod unix {
                     let _ = child.kill();
                     let _ = child.wait();
                     let _ = std::fs::remove_file(&internal_socket_path);
+                    if let Some(script_socket) = &script_private_socket_path {
+                        remove_owned_socket_if_owned(script_socket);
+                    }
                     if let Some(compiler_socket) = &compiler_private_socket_path {
                         remove_compiler_mcp_socket_if_owned(compiler_socket);
                     }
@@ -1989,6 +2033,9 @@ mod unix {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&internal_socket_path);
+                if let Some(script_socket) = &script_private_socket_path {
+                    remove_owned_socket_if_owned(script_socket);
+                }
                 if let Some(compiler_socket) = &compiler_private_socket_path {
                     remove_compiler_mcp_socket_if_owned(compiler_socket);
                 }
@@ -2000,6 +2047,7 @@ mod unix {
             Ok(SpawnedCore {
                 child,
                 internal_socket_path,
+                script_private_socket_path,
                 compiler_private_socket_path,
                 debugger_private_socket_path,
                 frame_dir: frame_dir.to_path_buf(),
@@ -2055,6 +2103,9 @@ mod unix {
             // intended core generation.
             drop(self.bluejs_host.take());
             let _ = std::fs::remove_file(&self.internal_socket_path);
+            if let Some(script_socket) = &self.script_private_socket_path {
+                remove_owned_socket_if_owned(script_socket);
+            }
             if let Some(compiler_socket) = &self.compiler_private_socket_path {
                 remove_compiler_mcp_socket_if_owned(compiler_socket);
             }
@@ -2402,6 +2453,7 @@ mod unix {
         #[test]
         fn unique_internal_socket_path_stays_short_enough_for_af_unix() {
             assert!(unique_internal_socket_path().to_string_lossy().len() < 100);
+            assert!(unique_internal_script_socket_path().to_string_lossy().len() < 100);
         }
 
         #[test]
@@ -2410,6 +2462,10 @@ mod unix {
             // same launcher process (v1 at startup, v2 during cutover) --
             // PID alone would collide, so this must also vary per call.
             assert_ne!(unique_internal_socket_path(), unique_internal_socket_path());
+            assert_ne!(
+                unique_internal_script_socket_path(),
+                unique_internal_script_socket_path()
+            );
         }
 
         fn unique_compiler_mcp_test_path(label: &str) -> PathBuf {

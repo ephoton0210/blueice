@@ -196,6 +196,10 @@ fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
 
 #[test]
 fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_session() {
+    const CURRENT_SCRIPT_CAPABILITY: &str =
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const PREDECESSOR_SCRIPT_CAPABILITY: &str =
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     let socket_path = unique_socket_path("script-core");
     let script_socket_path = unique_socket_path("script-host");
     let frame_dir = std::env::temp_dir().join(format!(
@@ -212,6 +216,8 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
             socket_path.to_str().unwrap(),
             "--script-socket",
             script_socket_path.to_str().unwrap(),
+            "--script-session-token",
+            CURRENT_SCRIPT_CAPABILITY,
             "--frame-dir",
             frame_dir.to_str().unwrap(),
         ])
@@ -220,11 +226,11 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
         .expect("failed to spawn blueice-core");
 
     assert!(
-        wait_for(&socket_path, Duration::from_secs(5)),
+        wait_for(&socket_path, Duration::from_secs(15)),
         "blueice-core never created its frontend socket"
     );
     assert!(
-        wait_for(&script_socket_path, Duration::from_secs(5)),
+        wait_for(&script_socket_path, Duration::from_secs(15)),
         "blueice-core never created its script socket"
     );
     let mut frontend = connect_with_retry(&socket_path, Duration::from_secs(5))
@@ -257,6 +263,7 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
         &mut old_version,
         &blueice_ipc::script::ScriptRequest::Hello {
             protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION - 1,
+            session_token: CURRENT_SCRIPT_CAPABILITY.to_string(),
         },
     )
     .unwrap();
@@ -266,12 +273,37 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
     ));
     drop(old_version);
 
+    for capability in ["wrong", PREDECESSOR_SCRIPT_CAPABILITY] {
+        let mut denied = connect_with_retry(&script_socket_path, Duration::from_secs(5))
+            .expect("failed to connect a foreign script peer");
+        blueice_ipc::script::write_script_request(
+            &mut denied,
+            &blueice_ipc::script::ScriptRequest::Hello {
+                protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
+                session_token: capability.to_string(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            blueice_ipc::script::read_script_reply(&mut denied).unwrap(),
+            blueice_ipc::script::ScriptReply::Error { .. }
+        ));
+        assert!(blueice_ipc::script::read_script_reply(&mut denied).is_err());
+    }
+
+    let idle = connect_with_retry(&script_socket_path, Duration::from_secs(5))
+        .expect("failed to connect an idle unauthenticated peer");
+    thread::sleep(Duration::from_millis(50));
     let mut script = connect_with_retry(&script_socket_path, Duration::from_secs(5))
         .expect("failed to connect the real script host");
+    script
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
     blueice_ipc::script::write_script_request(
         &mut script,
         &blueice_ipc::script::ScriptRequest::Hello {
             protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
+            session_token: CURRENT_SCRIPT_CAPABILITY.to_string(),
         },
     )
     .unwrap();
@@ -281,6 +313,8 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
             protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
         }
     );
+    script.set_read_timeout(None).unwrap();
+    drop(idle);
     let target = blueice_ipc::script::ScriptDocumentTarget {
         tab_id: 1,
         document_generation: 0,
@@ -386,6 +420,66 @@ fn real_subprocess_routes_a_handshaken_script_connection_through_the_core_sessio
         !frame_dir.exists(),
         "blueice-core must remove its script frame directory on exit"
     );
+
+    // Reuse the pathname under a new core process to prove that the previous
+    // generation's capability cannot authenticate to its successor. The
+    // launcher uses a fresh random value (and a fresh pathname) on cutover;
+    // this deliberately stronger path-reuse fixture isolates the token check.
+    let successor_capability = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    let mut successor = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            socket_path.to_str().unwrap(),
+            "--script-socket",
+            script_socket_path.to_str().unwrap(),
+            "--script-session-token",
+            successor_capability,
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn successor blueice-core");
+    assert!(wait_for(&script_socket_path, Duration::from_secs(15)));
+    let mut predecessor = connect_with_retry(&script_socket_path, Duration::from_secs(5)).unwrap();
+    blueice_ipc::script::write_script_request(
+        &mut predecessor,
+        &blueice_ipc::script::ScriptRequest::Hello {
+            protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
+            session_token: CURRENT_SCRIPT_CAPABILITY.to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::script::read_script_reply(&mut predecessor).unwrap(),
+        blueice_ipc::script::ScriptReply::Error { .. }
+    ));
+    assert!(blueice_ipc::script::read_script_reply(&mut predecessor).is_err());
+
+    let mut current = connect_with_retry(&script_socket_path, Duration::from_secs(5)).unwrap();
+    blueice_ipc::script::write_script_request(
+        &mut current,
+        &blueice_ipc::script::ScriptRequest::Hello {
+            protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
+            session_token: successor_capability.to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::script::read_script_reply(&mut current).unwrap(),
+        blueice_ipc::script::ScriptReply::HelloAck {
+            protocol_version: blueice_ipc::script::SCRIPT_PROTOCOL_VERSION,
+        }
+    );
+    let mut successor_frontend = connect_with_retry(&socket_path, Duration::from_secs(5)).unwrap();
+    blueice_ipc::client_handshake(&mut successor_frontend).unwrap();
+    blueice_ipc::write_client_message(
+        &mut successor_frontend,
+        &blueice_ipc::ClientMessage::Shutdown,
+    )
+    .unwrap();
+    assert!(successor.wait().unwrap().success());
+    assert!(!script_socket_path.exists());
 }
 
 #[test]

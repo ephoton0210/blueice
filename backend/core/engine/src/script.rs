@@ -12,7 +12,6 @@
 use crate::{TabId, TabManager};
 use blueice_ipc::script::{
     ScriptDocumentTarget, ScriptReply, ScriptRequest, SCRIPT_MAX_NAME_BYTES, SCRIPT_MAX_TEXT_BYTES,
-    SCRIPT_PROTOCOL_VERSION,
 };
 use std::io;
 use std::sync::mpsc;
@@ -119,14 +118,7 @@ fn dispatch_script_request(tabs: &mut TabManager, envelope: ScriptRequestEnvelop
 /// error reply before an operation can touch a successor document.
 pub fn handle_script_request(tabs: &mut TabManager, request: ScriptRequest) -> ScriptReply {
     match request {
-        ScriptRequest::Hello { protocol_version }
-            if protocol_version == SCRIPT_PROTOCOL_VERSION =>
-        {
-            ScriptReply::HelloAck {
-                protocol_version: SCRIPT_PROTOCOL_VERSION,
-            }
-        }
-        ScriptRequest::Hello { .. } => script_error("unsupported script protocol version"),
+        ScriptRequest::Hello { .. } => script_error("script Hello is transport-only"),
         ScriptRequest::GetElementById { target, id } => {
             if id.len() > SCRIPT_MAX_NAME_BYTES {
                 return script_error("script DOM name exceeds its fixed byte limit");
@@ -216,6 +208,7 @@ fn with_document(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use blueice_ipc::script::SCRIPT_PROTOCOL_VERSION;
 
     fn target(tab: TabId, document_generation: u64) -> ScriptDocumentTarget {
         ScriptDocumentTarget {
@@ -235,20 +228,19 @@ mod tests {
     }
 
     #[test]
-    fn hello_and_lookup_are_scoped_to_the_current_tab_document() {
+    fn hello_is_transport_only_and_lookup_is_scoped_to_the_current_document() {
         let (mut tabs, tab) = loaded_tabs();
         let generation = tabs.get(tab).unwrap().document_generation();
-        assert_eq!(
+        assert!(matches!(
             handle_script_request(
                 &mut tabs,
                 ScriptRequest::Hello {
                     protocol_version: SCRIPT_PROTOCOL_VERSION,
+                    session_token: "a".repeat(64),
                 },
             ),
-            ScriptReply::HelloAck {
-                protocol_version: SCRIPT_PROTOCOL_VERSION,
-            }
-        );
+            ScriptReply::Error { .. }
+        ));
         let ScriptReply::Node { node: Some(label) } = handle_script_request(
             &mut tabs,
             ScriptRequest::GetElementById {

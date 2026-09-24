@@ -24,15 +24,16 @@
 //! Like [`crate::extension`] (and unlike [`crate::gatekeeper`]'s
 //! one-shot connections), a `bluejs` connection is long-lived and
 //! stateful, so it gets the same `Hello`-handshake-then-long-lived-
-//! connection shape. This v2 document-generation and byte-bound update is
-//! still a proof-of-mechanism channel, not an authenticated child DOM bridge:
-//! the launcher does not supply a child-only token or service reentrant calls
-//! during page-host execution yet. Do not expose it to a page VM as authority.
+//! connection shape. The listener requires a launcher-owned per-core child
+//! capability before forwarding any DOM request to the session. This is not
+//! yet a usable child DOM bridge: the page host has no reentrant call route
+//! during execution. Do not expose this raw protocol to a page VM.
 //!
 //! Each DOM request names the exact core-owned document generation as well as
 //! its tab. A request from a predecessor document fails before lookup or
 //! mutation, including operations that create new nodes and carry no old
-//! `NodeId`. The current socket's `Hello` is not yet child authentication.
+//! `NodeId`. The `Hello` capability authenticates the connection, not an
+//! individual document; each DOM call still requires its exact live target.
 //!
 //! **Scope of this minimal slice.** [`ScriptRequest`] covers only
 //! enough DOM operations to prove the mechanism end to end and to
@@ -55,7 +56,8 @@ use std::path::PathBuf;
 
 /// The old tab-only DOM request shapes must not be decoded as current-page
 /// authority after a document replacement.
-pub const SCRIPT_PROTOCOL_VERSION: u32 = 2;
+pub const SCRIPT_PROTOCOL_VERSION: u32 = 3;
+pub const SCRIPT_SESSION_TOKEN_HEX_BYTES: usize = 64;
 pub const SCRIPT_MAX_FRAME_BYTES: usize = 1_100_000;
 pub const SCRIPT_MAX_NAME_BYTES: usize = 4_096;
 pub const SCRIPT_MAX_TEXT_BYTES: usize = 1_048_576;
@@ -76,7 +78,11 @@ pub enum ScriptRequest {
     /// `Hello`-handshake shape [`crate::extension::ExtensionRequest::Hello`]
     /// uses, layered onto `gatekeeper`'s framing style, per this
     /// module's own docs above.
-    Hello { protocol_version: u32 },
+    Hello {
+        protocol_version: u32,
+        /// Fresh launcher-issued, child-only capability for this core.
+        session_token: String,
+    },
     /// `document.getElementById(id)`, scoped to one tab.
     GetElementById {
         target: ScriptDocumentTarget,
@@ -163,15 +169,21 @@ pub fn read_script_reply<R: Read>(r: &mut R) -> io::Result<ScriptReply> {
     serde_json::from_slice(&buf).map_err(io::Error::other)
 }
 
-/// Where `core` listens for a `bluejs` script host connection, and
-/// where `bluejs` connects by default in production. Mirrors
-/// [`crate::extension::default_extension_socket_path`]'s exact style
-/// (same per-user temp dir convention, so two different users -- or two
-/// independent BlueIce sessions -- never collide), but a distinct
-/// filename. Production code is the only caller that uses this default
-/// directly -- tests thread an explicit socket path through instead,
-/// for the same reason the other `default_*_socket_path` functions'
-/// docs give.
+/// Checks the fixed shape of a 32-byte cryptographic capability in lowercase
+/// hexadecimal. Core additionally compares it with its private expected
+/// value before dispatch; shape alone is never authorization.
+pub fn valid_script_session_token(token: &str) -> bool {
+    token.len() == SCRIPT_SESSION_TOKEN_HEX_BYTES
+        && token
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// Conventional path for standalone embedding experiments. The supervised
+/// launcher instead chooses a distinct private path per core generation and
+/// supplies the child capability separately; this pathname is never an
+/// authorization credential. Mirrors the other protocol defaults' per-user
+/// temporary-directory convention while keeping a distinct filename.
 pub fn default_script_socket_path() -> PathBuf {
     let dir = match std::env::var_os("XDG_RUNTIME_DIR") {
         Some(dir) => PathBuf::from(dir).join("blueice"),
@@ -212,6 +224,7 @@ mod tests {
         for req in [
             ScriptRequest::Hello {
                 protocol_version: SCRIPT_PROTOCOL_VERSION,
+                session_token: "a".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES),
             },
             ScriptRequest::GetElementById {
                 target,
@@ -241,6 +254,23 @@ mod tests {
             write_script_request(&mut a, &req).unwrap();
             assert_eq!(read_script_request(&mut b).unwrap(), req);
         }
+    }
+
+    #[test]
+    fn script_capability_has_one_fixed_lowercase_hex_shape() {
+        assert!(valid_script_session_token(
+            &"a".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES)
+        ));
+        assert!(!valid_script_session_token(""));
+        assert!(!valid_script_session_token(
+            &"A".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES)
+        ));
+        assert!(!valid_script_session_token(
+            &"g".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES)
+        ));
+        assert!(!valid_script_session_token(
+            &"a".repeat(SCRIPT_SESSION_TOKEN_HEX_BYTES - 1)
+        ));
     }
 
     #[test]
@@ -335,6 +365,19 @@ mod tests {
             &mut frame,
             &serde_json::json!({
                 "CreateTextNode": { "tab_id": 1, "data": "stale" }
+            }),
+        )
+        .unwrap();
+        assert!(read_script_request(&mut std::io::Cursor::new(frame)).is_err());
+    }
+
+    #[test]
+    fn legacy_hello_without_a_capability_is_not_decoded() {
+        let mut frame = Vec::new();
+        crate::write_framed(
+            &mut frame,
+            &serde_json::json!({
+                "Hello": { "protocol_version": SCRIPT_PROTOCOL_VERSION }
             }),
         )
         .unwrap();
