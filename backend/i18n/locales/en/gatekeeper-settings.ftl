@@ -1,12 +1,12 @@
 title = AI Gatekeeper settings
-intro = Inspect the enforced safety rules and review workflow. Configure an optional local Ollama or Hugging Face model, and add or remove blocking rules for hosts, page text, downloads, and extension popups. Compiled baseline rules and mandatory workflow steps cannot be disabled.
+intro = Inspect the enforced safety rules and review workflow. Configure an optional local Ollama, Hugging Face, or llama.cpp model, and add or remove blocking rules for hosts, page text, downloads, and extension popups. Compiled baseline rules and mandatory workflow steps cannot be disabled.
 ruleset-version = Ruleset version:
 model-review = Local model review:
 model-active = Enabled; local service availability is checked for each action.
 model-inactive = Not configured; deterministic rules are enforced.
 local-model-heading = Optional local model review
 local-model-warning = An enabled model receives review data after the mandatory rules. A block, timeout, malformed reply, oversized input, or unavailable local service blocks the action. BlueIce sends data only to the configured credential-free loopback HTTP /v1/ endpoint, with no cloud fallback or API key; the operator controls that local service. Disable the model here if its service is unavailable.
-local-model-provider = Provider (ollama or huggingface):
+local-model-provider = Provider (ollama, huggingface, or llamacpp):
 local-model-base = Local API base (for example http://127.0.0.1:11434/v1/):
 local-model-name = Local model name:
 local-model-save = Enable or update local model

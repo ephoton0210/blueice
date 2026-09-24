@@ -1,12 +1,12 @@
 title = AI 把關程式設定
-intro = 檢視強制套用的安全規則與審查工作流程。您可以設定選用的本機 Ollama 或 Hugging Face 模型，也能新增或移除主機、頁面文字、下載檔案與擴充功能彈出視窗的封鎖規則；編譯內建規則與必要工作流程步驟不可停用。
+intro = 檢視強制套用的安全規則與審查工作流程。您可以設定選用的本機 Ollama、Hugging Face 或 llama.cpp 模型，也能新增或移除主機、頁面文字、下載檔案與擴充功能彈出視窗的封鎖規則；編譯內建規則與必要工作流程步驟不可停用。
 ruleset-version = 規則集版本：
 model-review = 本機模型審查：
 model-active = 已啟用；每次操作都會檢查本機服務是否可用。
 model-inactive = 尚未設定；確定性規則仍強制執行。
 local-model-heading = 選用的本機模型審查
 local-model-warning = 啟用後，審查資料會先經過強制規則，再傳給本機模型。模型拒絕、逾時、回覆格式錯誤、輸入過大或本機服務不可用時，都會阻擋操作。BlueIce 只會將資料送至指定且不含憑證的回環 HTTP /v1/ 端點，不會自行改用雲端或 API 金鑰；本機服務由使用者管理。若服務不可用，可在此停用模型。
-local-model-provider = 提供者（ollama 或 huggingface）：
+local-model-provider = 提供者（ollama、huggingface 或 llamacpp）：
 local-model-base = 本機 API 基底（例如 http://127.0.0.1:11434/v1/）：
 local-model-name = 本機模型名稱：
 local-model-save = 啟用或更新本機模型
