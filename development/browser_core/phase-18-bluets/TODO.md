@@ -1219,8 +1219,12 @@ or second module resolver to bypass them.
   `bluetsc_check` retains at most 4,096 source-free diagnostics for that exact
   generation while its immediate reply remains capped; the MCP tool requires
   the same session receipt and observed generation, then accepts only a
-  core-minted one-shot diagnostic cursor. A page contains only code, severity,
-  canonical module identity, byte range, and untrusted compiler prose. It
+  core-minted one-shot diagnostic cursor. Compiler IPC v9 also gives immediate
+  and paged diagnostics optional original-source zero-based UTF-16 coordinates
+  only when the exact authorized source and valid UTF-8 span boundaries are
+  available; missing/invalid source positions remain absent. A page contains
+  only code, severity, canonical module identity, byte range, those optional
+  coordinates, and untrusted compiler prose. It
   never returns source text or a source-read path, and malformed/replayed
   cursors or a later check's stale generation fail closed. The real MCP/core
   regression exercises receipt mismatch, unobserved generation, and stale

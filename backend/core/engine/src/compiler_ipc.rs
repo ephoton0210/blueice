@@ -23,7 +23,8 @@ use crate::compiler_service::{
     RegisteredProjectRegistration, StaticMetadataInventoryKind, WorkSetInventoryKind,
 };
 use blueice_bluets::{
-    ContractId, ContractValue, Diagnostic, Severity, SourceId, SymbolKind, ValidationError,
+    ContractId, ContractValue, DebugSourceLocation, Diagnostic, Severity, SourceId, SymbolKind,
+    ValidationError,
 };
 use blueice_ipc::compiler::{
     CompilerCheck, CompilerContractValidation, CompilerContractValidationFailure,
@@ -532,7 +533,11 @@ impl CompilerServiceIpcAdapter {
         // any one-shot diagnostic cursor exists, so a later page cannot lose
         // a cursor merely because an unseen later entry violates the fixed
         // public field policy.
-        if !retained_diagnostics_fit_wire_policy(&check.retained_diagnostics, self.limits) {
+        if !retained_diagnostics_fit_wire_policy(
+            &check.retained_diagnostics,
+            &check.retained_diagnostic_locations,
+            self.limits,
+        ) {
             return response_limit_reply();
         }
         if [
@@ -589,7 +594,7 @@ impl CompilerServiceIpcAdapter {
         // this adapter's response envelope merely because a field is dense in
         // escapable bytes.
         const PAGE_FIXED_BYTES: usize = 256;
-        const PAGE_ENTRY_FIXED_BYTES: usize = 192;
+        const PAGE_ENTRY_FIXED_BYTES: usize = 352;
         let max_entry_bytes = self
             .limits
             .max_field_bytes
@@ -629,8 +634,12 @@ impl CompilerServiceIpcAdapter {
             }
             return response_limit_reply();
         }
-        let entries = match diagnostic_page_entries_to_wire(&page.entries, self.limits, &mut budget)
-        {
+        let entries = match diagnostic_page_entries_to_wire(
+            &page.entries,
+            &page.locations,
+            self.limits,
+            &mut budget,
+        ) {
             Ok(entries) => entries,
             Err(()) => {
                 if let Some(id) = page.next_cursor {
@@ -1081,6 +1090,10 @@ impl CompilerServiceIpcAdapter {
             module_list(&check.reused_checked_modules, self.limits, &mut budget)?;
         let diagnostics = diagnostics_to_wire(
             &check.diagnostics.entries,
+            check
+                .retained_diagnostic_locations
+                .get(..check.diagnostics.entries.len())
+                .ok_or(())?,
             check.diagnostics.truncated,
             self.limits,
             &mut budget,
@@ -1513,26 +1526,57 @@ const MAX_COMPILER_DIAGNOSTIC_CODE_BYTES: usize = 64;
 
 fn retained_diagnostics_fit_wire_policy(
     diagnostics: &[Diagnostic],
+    locations: &[Option<DebugSourceLocation>],
     limits: CompilerServiceIpcLimits,
 ) -> bool {
-    diagnostics.iter().all(|diagnostic| {
-        diagnostic.code.to_string().len() <= MAX_COMPILER_DIAGNOSTIC_CODE_BYTES
-            && diagnostic.span.module.len() <= limits.max_field_bytes
-            && diagnostic.message.len() <= limits.max_field_bytes
-            && u64::try_from(diagnostic.span.start).is_ok()
-            && u64::try_from(diagnostic.span.end).is_ok()
-    })
+    diagnostics.len() == locations.len()
+        && diagnostics
+            .iter()
+            .zip(locations)
+            .all(|(diagnostic, location)| {
+                diagnostic.code.to_string().len() <= MAX_COMPILER_DIAGNOSTIC_CODE_BYTES
+                    && diagnostic.span.module.len() <= limits.max_field_bytes
+                    && diagnostic.message.len() <= limits.max_field_bytes
+                    && u64::try_from(diagnostic.span.start).is_ok()
+                    && u64::try_from(diagnostic.span.end).is_ok()
+                    && diagnostic_coordinates_to_wire(diagnostic, *location).is_ok()
+            })
+}
+
+fn diagnostic_coordinates_to_wire(
+    diagnostic: &Diagnostic,
+    location: Option<DebugSourceLocation>,
+) -> Result<Option<CompilerSourceCoordinates>, ()> {
+    let Some(location) = location else {
+        return Ok(None);
+    };
+    let coordinates = CompilerSourceCoordinates {
+        start_line: u32::try_from(location.start.line).map_err(|_| ())?,
+        start_column_utf16: u32::try_from(location.start.column_utf16).map_err(|_| ())?,
+        end_line: u32::try_from(location.end.line).map_err(|_| ())?,
+        end_column_utf16: u32::try_from(location.end.column_utf16).map_err(|_| ())?,
+    };
+    let start = u64::try_from(diagnostic.span.start).map_err(|_| ())?;
+    let end = u64::try_from(diagnostic.span.end).map_err(|_| ())?;
+    coordinates
+        .is_well_formed_for_diagnostic_range(start, end)
+        .then_some(Some(coordinates))
+        .ok_or(())
 }
 
 fn diagnostics_to_wire(
     diagnostics: &[Diagnostic],
+    locations: &[Option<DebugSourceLocation>],
     service_truncated: bool,
     limits: CompilerServiceIpcLimits,
     budget: &mut ResponseBudget,
 ) -> Result<CompilerDiagnostics, ()> {
+    if diagnostics.len() != locations.len() {
+        return Err(());
+    }
     let mut entries = Vec::new();
     let mut truncated = service_truncated;
-    for diagnostic in diagnostics {
+    for (diagnostic, location) in diagnostics.iter().zip(locations) {
         if entries.len() >= limits.max_diagnostics {
             truncated = true;
             break;
@@ -1542,7 +1586,7 @@ fn diagnostics_to_wire(
             || !budget.reserve_optional_string(&code, MAX_COMPILER_DIAGNOSTIC_CODE_BYTES)?
             || !budget.reserve_optional_string(&diagnostic.span.module, limits.max_field_bytes)?
             || !budget.reserve_optional_string(&diagnostic.message, limits.max_field_bytes)?
-            || !budget.reserve_optional_fixed(160)
+            || !budget.reserve_optional_fixed(320)
         {
             truncated = true;
             break;
@@ -1563,6 +1607,7 @@ fn diagnostics_to_wire(
             module: diagnostic.span.module.clone(),
             start,
             end,
+            coordinates: diagnostic_coordinates_to_wire(diagnostic, *location)?,
             message: diagnostic.message.clone(),
         });
     }
@@ -1576,18 +1621,23 @@ fn diagnostics_to_wire(
 /// page is complete for that cursor rather than an unmarked partial page.
 fn diagnostic_page_entries_to_wire(
     diagnostics: &[Diagnostic],
+    locations: &[Option<DebugSourceLocation>],
     limits: CompilerServiceIpcLimits,
     budget: &mut ResponseBudget,
 ) -> Result<Vec<CompilerDiagnostic>, ()> {
+    if diagnostics.len() != locations.len() {
+        return Err(());
+    }
     diagnostics
         .iter()
-        .map(|diagnostic| {
+        .zip(locations)
+        .map(|(diagnostic, location)| {
             let code = diagnostic.code.to_string();
             if code.len() > MAX_COMPILER_DIAGNOSTIC_CODE_BYTES
                 || !budget.reserve_required_string(&code, MAX_COMPILER_DIAGNOSTIC_CODE_BYTES)
                 || !budget.reserve_required_string(&diagnostic.span.module, limits.max_field_bytes)
                 || !budget.reserve_required_string(&diagnostic.message, limits.max_field_bytes)
-                || !budget.reserve_optional_fixed(192)
+                || !budget.reserve_optional_fixed(352)
             {
                 return Err(());
             }
@@ -1604,6 +1654,7 @@ fn diagnostic_page_entries_to_wire(
                 module: diagnostic.span.module.clone(),
                 start,
                 end,
+                coordinates: diagnostic_coordinates_to_wire(diagnostic, *location)?,
                 message: diagnostic.message.clone(),
             })
         })
@@ -2199,7 +2250,7 @@ mod tests {
         .unwrap();
         let project = adapter
             .register_core_project(registration(
-                "const first: number = 'one'; \
+                "const marker = '😀';\r\nconst first: number = 'one'; \
                  const second: number = 'two'; \
                  const third: number = 'three';",
             ))
@@ -2221,6 +2272,13 @@ mod tests {
         };
         assert_eq!(first.generation, check.generation);
         assert_eq!(first.entries.len(), 1);
+        let coordinates = first.entries[0]
+            .coordinates
+            .expect("an authorized diagnostic must retain original source coordinates");
+        assert_eq!(coordinates.start_line, 1);
+        assert_eq!(coordinates.end_line, 1);
+        assert!(coordinates
+            .is_well_formed_for_diagnostic_range(first.entries[0].start, first.entries[0].end,));
         assert!(
             !format!("{first:?}").contains("const first"),
             "paged diagnostic output must not contain the retained project source"
@@ -2272,6 +2330,30 @@ mod tests {
             }
         ));
         assert_ne!(later.generation, check.generation);
+    }
+
+    #[test]
+    fn immediate_check_diagnostics_include_authorized_utf16_positions() {
+        let mut adapter = CompilerServiceIpcAdapter::default();
+        let project = adapter
+            .register_core_project(registration(
+                "const marker = '😀';\r\nconst invalid: number = 'wrong';",
+            ))
+            .unwrap();
+        let CompilerReply::Check(check) = adapter.handle(CompilerRequest::Check { project }) else {
+            panic!("the invalid closed project must return a check result")
+        };
+        let diagnostic = check
+            .diagnostics
+            .entries
+            .iter()
+            .find(|entry| entry.code == "BTS3003")
+            .expect("a static type mismatch must remain observable");
+        let coordinates = diagnostic.coordinates.unwrap();
+        assert_eq!(coordinates.start_line, 1);
+        assert_eq!(coordinates.end_line, 1);
+        assert!(coordinates.is_well_formed_for_diagnostic_range(diagnostic.start, diagnostic.end,));
+        assert!(!format!("{check:?}").contains("const marker"));
     }
 
     #[test]

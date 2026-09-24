@@ -10,8 +10,12 @@
 //! path, or write capability. Callers can therefore only act on opaque
 //! project and generation handles minted by that owner.
 //!
-//! Version eight adds exact-generation, receipt-bound symbol and contract
-//! declaration locations. The bounded replies contain only compiler-minted
+//! Version nine adds optional original-source UTF-16 coordinates to the
+//! existing bounded diagnostic records. They are derived only from exact
+//! authorized source bytes, carry no source text or read authority, and do
+//! not add a query operation or capability. Version eight adds
+//! exact-generation, receipt-bound symbol and contract declaration locations.
+//! The bounded replies contain only compiler-minted
 //! IDs, UTF-8 byte ranges, and original-source UTF-16 coordinates; they do
 //! not offer arbitrary offset mapping or source reads. Version seven adds the
 //! checker's export classification to the existing generation-bound
@@ -42,7 +46,7 @@ use std::io::{self, Read, Write};
 
 /// Independent protocol version for registered-project compiler IPC. It does
 /// not share the browser frontend protocol's lifecycle.
-pub const COMPILER_PROTOCOL_VERSION: u32 = 8;
+pub const COMPILER_PROTOCOL_VERSION: u32 = 9;
 
 /// The maximum encoded request or reply accepted by this protocol. The engine
 /// adapter applies a smaller response budget before a reply reaches this
@@ -256,6 +260,9 @@ pub struct CompilerDiagnostic {
     pub module: String,
     pub start: u64,
     pub end: u64,
+    /// Original-source zero-based UTF-16 coordinates, present only when the
+    /// exact authorized source and both UTF-8 boundaries are available.
+    pub coordinates: Option<CompilerSourceCoordinates>,
     /// Bounded compiler prose. The engine adapter rejects over-budget data
     /// rather than silently exposing an unbounded diagnostic.
     pub message: String,
@@ -434,6 +441,16 @@ impl CompilerSourceCoordinates {
         start_byte < end_byte
             && end_byte <= COMPILER_STATIC_LOCATION_MAX_SOURCE_BYTES
             && (self.start_line, self.start_column_utf16) < (self.end_line, self.end_column_utf16)
+            && u64::from(self.start_line) + u64::from(self.start_column_utf16) <= start_byte
+            && u64::from(self.end_line) + u64::from(self.end_column_utf16) <= end_byte
+    }
+
+    /// Diagnostics may be zero-width at EOF, unlike declaration locations.
+    /// Both positions must still be ordered and plausible for the byte range.
+    pub fn is_well_formed_for_diagnostic_range(self, start_byte: u64, end_byte: u64) -> bool {
+        start_byte <= end_byte
+            && end_byte <= COMPILER_STATIC_LOCATION_MAX_SOURCE_BYTES
+            && (self.start_line, self.start_column_utf16) <= (self.end_line, self.end_column_utf16)
             && u64::from(self.start_line) + u64::from(self.start_column_utf16) <= start_byte
             && u64::from(self.end_line) + u64::from(self.end_column_utf16) <= end_byte
     }
@@ -965,6 +982,12 @@ mod tests {
                 module: "project:///app/main.ts".to_string(),
                 start: 3,
                 end: 7,
+                coordinates: Some(CompilerSourceCoordinates {
+                    start_line: 0,
+                    start_column_utf16: 3,
+                    end_line: 0,
+                    end_column_utf16: 7,
+                }),
                 message: "fixture diagnostic".to_string(),
             }],
             next_cursor: Some(CompilerDiagnosticCursor { id: 6 }),
@@ -973,6 +996,13 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_compiler_reply(&mut sender, &diagnostic_page).unwrap();
         assert_eq!(read_compiler_reply(&mut receiver).unwrap(), diagnostic_page);
+        assert!(CompilerSourceCoordinates {
+            start_line: 1,
+            start_column_utf16: 3,
+            end_line: 1,
+            end_column_utf16: 3,
+        }
+        .is_well_formed_for_diagnostic_range(8, 8));
 
         let work_set_page = CompilerReply::WorkSetPage(CompilerWorkSetPage {
             generation: generation(),

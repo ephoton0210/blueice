@@ -13,10 +13,10 @@
 //! layers above this service.
 
 use blueice_bluets::{
-    AuthorizedModuleLoader, BlueTsDebugInfo, BuildOutput, CompilerOptions, ContractId,
-    ContractValue, DebugContract, DebugSource, DebugSymbol, DebugType, Diagnostic,
-    IncrementalCompiler, ModuleLoader, SourceId, SymbolId, TypeId, ValidationError,
-    ValidationLimits,
+    source_locations_for_spans, AuthorizedModuleLoader, BlueTsDebugInfo, BuildOutput,
+    CompilerOptions, ContractId, ContractValue, DebugContract, DebugSource, DebugSourceLocation,
+    DebugSymbol, DebugType, Diagnostic, IncrementalCompiler, ModuleLoader, SourceId, SymbolId,
+    TypeId, ValidationError, ValidationLimits,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -182,6 +182,9 @@ pub struct CompilerServiceCheck {
     /// only through bounded one-shot pages after it has applied its own field
     /// and response policy.
     pub(crate) retained_diagnostics: Vec<Diagnostic>,
+    /// Same-order original-source positions, derived only from the immutable
+    /// authorized graph. Invalid or unavailable source ranges remain absent.
+    pub(crate) retained_diagnostic_locations: Vec<Option<DebugSourceLocation>>,
     pub has_errors: bool,
     /// The compiler's graph/options fingerprint when artifact creation was
     /// successful. It is absent on a no-emit-on-error result.
@@ -242,6 +245,7 @@ pub struct StaticMetadataInventoryPage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticInventoryPage {
     pub entries: Vec<Diagnostic>,
+    pub locations: Vec<Option<DebugSourceLocation>>,
     pub next_cursor: Option<u64>,
     pub truncated: bool,
 }
@@ -495,6 +499,7 @@ struct RetainedCompilation {
     generation: RegisteredProjectGeneration,
     static_debug_info: Option<BlueTsDebugInfo>,
     diagnostics: Vec<Diagnostic>,
+    diagnostic_locations: Vec<Option<DebugSourceLocation>>,
     diagnostics_truncated: bool,
     work_sets: BTreeMap<WorkSetInventoryKind, Vec<String>>,
     work_sets_truncated: BTreeMap<WorkSetInventoryKind, bool>,
@@ -748,7 +753,9 @@ impl RegisteredProjectCompilerService {
                 limit: self.limits.max_diagnostic_cursors,
             });
         }
-        let entries = self.retained_compilation(generation)?.diagnostics[start..end].to_vec();
+        let retained = self.retained_compilation(generation)?;
+        let entries = retained.diagnostics[start..end].to_vec();
+        let locations = retained.diagnostic_locations[start..end].to_vec();
         if let Some(cursor) = consumed_cursor {
             self.diagnostic_cursors.remove(&cursor);
         }
@@ -762,6 +769,7 @@ impl RegisteredProjectCompilerService {
         };
         Ok(DiagnosticInventoryPage {
             entries,
+            locations,
             next_cursor,
             truncated,
         })
@@ -978,6 +986,8 @@ impl RegisteredProjectCompilerService {
                 .take(limits.max_retained_diagnostics)
                 .cloned()
                 .collect::<Vec<_>>();
+            let retained_diagnostic_locations =
+                diagnostic_locations(&project.registration.loader, &retained_diagnostics);
             let diagnostics = capped_diagnostics(
                 &retained_diagnostics,
                 limits.max_diagnostics,
@@ -1028,6 +1038,7 @@ impl RegisteredProjectCompilerService {
                 reused_checked_modules: result.reused_checked_modules,
                 diagnostics,
                 retained_diagnostics: retained_diagnostics.clone(),
+                retained_diagnostic_locations: retained_diagnostic_locations.clone(),
                 has_errors: result.compilation.has_errors(),
                 artifact_fingerprint,
                 static_debug_info: static_debug_info.clone(),
@@ -1036,6 +1047,7 @@ impl RegisteredProjectCompilerService {
                 generation,
                 static_debug_info,
                 diagnostics: retained_diagnostics,
+                diagnostic_locations: retained_diagnostic_locations,
                 diagnostics_truncated,
                 work_sets,
                 work_sets_truncated,
@@ -1189,6 +1201,26 @@ fn same_registration(
         && left.canonical_output_root == right.canonical_output_root
 }
 
+fn diagnostic_locations(
+    loader: &AuthorizedModuleLoader,
+    diagnostics: &[Diagnostic],
+) -> Vec<Option<DebugSourceLocation>> {
+    let mut locations = vec![None; diagnostics.len()];
+    for (module, source) in loader.authorized_modules() {
+        let matching = diagnostics
+            .iter()
+            .enumerate()
+            .filter(|(_, diagnostic)| diagnostic.span.module == module)
+            .map(|(index, diagnostic)| (index, &diagnostic.span))
+            .collect::<Vec<_>>();
+        let mapped = source_locations_for_spans(source, matching.iter().map(|(_, span)| *span));
+        for ((index, _), location) in matching.into_iter().zip(mapped) {
+            locations[index] = location;
+        }
+    }
+    locations
+}
+
 fn capped_diagnostics(
     diagnostics: &[Diagnostic],
     limit: usize,
@@ -1310,7 +1342,9 @@ fn add_response_bytes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_bluets::{AuthorizedModule, AuthorizedModuleResolution, RuntimePolicy};
+    use blueice_bluets::{
+        AuthorizedModule, AuthorizedModuleResolution, DiagnosticCode, RuntimePolicy, SourceSpan,
+    };
 
     const ENTRY: &str = "project:///app/main.ts";
     const DEPENDENCY: &str = "project:///app/math.ts";
@@ -1340,6 +1374,38 @@ mod tests {
                 ..CompilerOptions::default()
             },
         }
+    }
+
+    #[test]
+    fn retained_diagnostics_keep_authorized_utf16_locations_across_pages() {
+        let registration = registration("const marker = '😀';\r\nconst invalid: number = 'wrong';");
+        let unavailable = Diagnostic::error(
+            DiagnosticCode::ModuleNotFound,
+            SourceSpan::new("project:///app/not-authorized.ts", 0, 1),
+            "unavailable source",
+        );
+        assert_eq!(
+            diagnostic_locations(&registration.loader, &[unavailable]),
+            [None]
+        );
+        let mut service = RegisteredProjectCompilerService::default();
+        let id = service.register(registration).unwrap();
+        let check = service.check(id).unwrap();
+        assert!(check.has_errors);
+        let index = check
+            .retained_diagnostics
+            .iter()
+            .position(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch)
+            .expect("the typed assignment must produce a mismatch diagnostic");
+        let location = check.retained_diagnostic_locations[index].unwrap();
+        assert_eq!(location.start.line, 1);
+        assert_eq!(location.end.line, 1);
+        assert!(location.start.column_utf16 < location.end.column_utf16);
+        let page = service
+            .diagnostic_inventory(check.generation, None, 32)
+            .unwrap();
+        assert_eq!(page.entries.len(), page.locations.len());
+        assert_eq!(page.locations[index], Some(location));
     }
 
     #[test]

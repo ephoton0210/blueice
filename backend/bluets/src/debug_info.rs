@@ -163,6 +163,37 @@ impl SourcePositionIndex {
     }
 }
 
+/// Resolves authorized UTF-8 byte spans to zero-based original-source UTF-16
+/// coordinates in one scan. Invalid ranges and non-character boundaries have
+/// no location; this helper never returns source text or guesses a position.
+pub fn source_locations_for_spans<'a>(
+    source: &str,
+    spans: impl IntoIterator<Item = &'a SourceSpan>,
+) -> Vec<Option<DebugSourceLocation>> {
+    let spans = spans.into_iter().collect::<Vec<_>>();
+    let valid = spans
+        .iter()
+        .map(|span| {
+            span.start <= span.end
+                && span.end <= source.len()
+                && source.is_char_boundary(span.start)
+                && source.is_char_boundary(span.end)
+        })
+        .collect::<Vec<_>>();
+    let positions = SourcePositionIndex::new(
+        source,
+        spans
+            .iter()
+            .zip(&valid)
+            .filter_map(|(span, valid)| valid.then_some(*span)),
+    );
+    spans
+        .iter()
+        .zip(valid)
+        .map(|(span, valid)| valid.then(|| positions.location(span)))
+        .collect()
+}
+
 /// The host-neutral part of the Phase 18 debugger product.  BlueJS bytecode
 /// safe points and runtime-value correspondence are intentionally absent until
 /// the public hand-off ABI exists; this object is nevertheless stable enough
@@ -401,8 +432,38 @@ fn hash(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{source_hash, SourceId};
-    use crate::{compile, CompilerOptions, MapLoader, ModuleSource};
+    use super::{source_hash, source_locations_for_spans, SourceId};
+    use crate::{compile, CompilerOptions, MapLoader, ModuleSource, SourceSpan};
+
+    #[test]
+    fn authorized_spans_map_crlf_and_non_bmp_columns_without_guessing_invalid_offsets() {
+        let source = "a\r\n😀b";
+        let emoji = SourceSpan::new("memory:///app.ts", 3, 7);
+        let eof = SourceSpan::new("memory:///app.ts", 8, 8);
+        let middle_of_emoji = SourceSpan::new("memory:///app.ts", 4, 7);
+        let beyond_source = SourceSpan::new("memory:///app.ts", 8, 9);
+        let reversed = SourceSpan::new("memory:///app.ts", 7, 3);
+        let locations = source_locations_for_spans(
+            source,
+            [&emoji, &eof, &middle_of_emoji, &beyond_source, &reversed],
+        );
+        let emoji_location = locations[0].unwrap();
+        assert_eq!(
+            (emoji_location.start.line, emoji_location.start.column_utf16),
+            (1, 0)
+        );
+        assert_eq!(
+            (emoji_location.end.line, emoji_location.end.column_utf16),
+            (1, 2)
+        );
+        let eof_location = locations[1].unwrap();
+        assert_eq!(
+            (eof_location.start.line, eof_location.start.column_utf16),
+            (1, 3)
+        );
+        assert_eq!(eof_location.start, eof_location.end);
+        assert_eq!(&locations[2..], &[None, None, None]);
+    }
 
     #[test]
     fn retains_static_type_and_source_hash_without_retaining_source_text() {
