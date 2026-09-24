@@ -12,6 +12,8 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 24 adds a fixed root-shape classification to the existing
+//! contract-display reply for an exact child-private metadata attachment.
 //!
 //! Version 11 retains the two fixed, core-derived document snapshots consumed
 //! by the child-owned JavaScript bindings, the location-only debugger
@@ -73,12 +75,12 @@
 //! contract plan, or structural failure detail.
 
 use crate::compiler::CompilerContractValue;
-use crate::debugger::DebuggerStaticMetadataSymbolKind;
+use crate::debugger::{DebuggerStaticMetadataContractRootKind, DebuggerStaticMetadataSymbolKind};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 23;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 24;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -207,10 +209,12 @@ pub struct PageHostDebuggerBlueTsMetadataContractId {
 /// under an opaque metadata attachment. The enclosing request/reply carries
 /// the child program and metadata identities; this value never grants a
 /// generic static-record read, contract-plan access, or validation authority.
+/// Its fixed root-kind field has no plan edges or field names.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PageHostDebuggerBlueTsMetadataContractDisplay {
     pub contract_id: u32,
     pub display: String,
+    pub root_kind: DebuggerStaticMetadataContractRootKind,
 }
 
 /// One child-local boolean result for validating a data-only snapshot against
@@ -1600,6 +1604,7 @@ mod tests {
             contract: PageHostDebuggerBlueTsMetadataContractDisplay {
                 contract_id: 0,
                 display: "ProjectControlledContract".to_string(),
+                root_kind: DebuggerStaticMetadataContractRootKind::Record,
             },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();

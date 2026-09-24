@@ -89,12 +89,14 @@ pub struct JavaScriptPageDebuggerStaticMetadataContractId {
 }
 
 /// One child-validated compiler-produced display for an exact contract
-/// identity. It carries no source span, contract plan, validation behavior,
+/// identity. Its only plan-derived data is a fixed root-kind category; it
+/// carries no source span, plan edges, field names, validation behavior,
 /// bytecode, VM object, value, or arbitrary metadata record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JavaScriptPageDebuggerStaticMetadataContractDisplay {
     pub contract_id: u32,
     pub display: String,
+    pub root_kind: blueice_ipc::debugger::DebuggerStaticMetadataContractRootKind,
 }
 
 /// One child-validated boolean outcome for a data-only snapshot against an

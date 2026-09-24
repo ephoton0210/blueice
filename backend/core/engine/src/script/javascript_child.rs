@@ -2481,6 +2481,7 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         Ok(JavaScriptPageDebuggerStaticMetadataContractDisplay {
             contract_id: contract.contract_id,
             display: contract.display,
+            root_kind: contract.root_kind,
         })
     }
 

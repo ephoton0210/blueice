@@ -1101,6 +1101,10 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         };
         assert_eq!(contract_display.contract, *contract);
         assert!(!contract_display.display.is_empty());
+        assert_eq!(
+            contract_display.root_kind,
+            blueice_ipc::debugger::DebuggerStaticMetadataContractRootKind::Record
+        );
         assert!(
             !contract_display.display.contains("interface ")
                 && !contract_display.display.contains("enabled")

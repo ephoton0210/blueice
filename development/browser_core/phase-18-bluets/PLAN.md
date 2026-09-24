@@ -2,6 +2,15 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**Contract shape update:** Page-host v24 and debugger v23 extend the already
+independently default-denied `OpaqueContractDisplay` reply with a closed
+root-kind classification. The child resolves only compiler-retained local
+references, bounds cyclic resolution, and returns a fixed enum such as
+`Record` or `Union`; it never serializes a contract plan or field name. The
+same owner grant, negotiated capability, exact live parent and contract-ID
+receipt, and child capability report remain mandatory. No additional handle
+or authority is minted.
+
 **Contract location update:** Page-host v23 and debugger v22 add a fifteenth
 independently default-denied derived metadata capability,
 `OpaqueContractLocation`. The owner must select

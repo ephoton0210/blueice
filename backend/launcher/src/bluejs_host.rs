@@ -21,7 +21,7 @@ use blueice_bluejs::{
 };
 use blueice_bluets::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
-    ContractValue, RuntimePolicy, ValidationLimits,
+    Contract, ContractPlan, ContractValue, RuntimePolicy, ValidationLimits,
 };
 use blueice_bluets_bluejs::page_host_typings::{
     page_host_document_runtime_bindings_v1, PageHostDocumentTypingsV1,
@@ -32,7 +32,8 @@ use blueice_bluets_bluejs::{
 };
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
-    DebuggerStaticMetadataSymbolKind, DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES,
+    DebuggerStaticMetadataContractRootKind, DebuggerStaticMetadataSymbolKind,
+    DEBUGGER_STATIC_METADATA_CONTRACT_DISPLAY_MAX_BYTES,
     DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_COLLECTION_ENTRIES,
     DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_DEPTH,
     DEBUGGER_STATIC_METADATA_CONTRACT_VALIDATION_MAX_NODES,
@@ -2136,6 +2137,7 @@ impl BlueJsChildHost {
                 PageHostDebuggerBlueTsMetadataContractDisplay {
                     contract_id,
                     display: contract.name.clone(),
+                    root_kind: debugger_contract_root_kind(&contract.plan),
                 }
             }
             Err(_) => {
@@ -3407,6 +3409,37 @@ fn debugger_contract_validation_limits() -> ValidationLimits {
 /// while applying the fixed debugger limits before a second recursive tree is
 /// retained. It never accepts a JavaScript object, function, getter, proxy,
 /// host handle, source graph, or compiler configuration.
+fn debugger_contract_root_kind(plan: &ContractPlan) -> DebuggerStaticMetadataContractRootKind {
+    let mut root = &plan.root;
+    // At most one more hop than the retained definition count is attempted.
+    // A missing or cyclic reference stays `Reference`, not a plan disclosure.
+    for _ in 0..=plan.definitions.len() {
+        match root {
+            Contract::Reference(name) => {
+                let Some(next) = plan.definitions.get(name) else {
+                    return DebuggerStaticMetadataContractRootKind::Reference;
+                };
+                root = next;
+            }
+            _ => break,
+        }
+    }
+    match root {
+        Contract::Null => DebuggerStaticMetadataContractRootKind::Null,
+        Contract::Undefined => DebuggerStaticMetadataContractRootKind::Undefined,
+        Contract::Boolean => DebuggerStaticMetadataContractRootKind::Boolean,
+        Contract::Number => DebuggerStaticMetadataContractRootKind::Number,
+        Contract::String => DebuggerStaticMetadataContractRootKind::String,
+        Contract::Literal(_) => DebuggerStaticMetadataContractRootKind::Literal,
+        Contract::Array(_) => DebuggerStaticMetadataContractRootKind::Array,
+        Contract::Tuple(_) => DebuggerStaticMetadataContractRootKind::Tuple,
+        Contract::Record(_) => DebuggerStaticMetadataContractRootKind::Record,
+        Contract::Union(_) => DebuggerStaticMetadataContractRootKind::Union,
+        Contract::Intersection(_) => DebuggerStaticMetadataContractRootKind::Intersection,
+        Contract::Reference(_) => DebuggerStaticMetadataContractRootKind::Reference,
+    }
+}
+
 fn debugger_contract_value(value: CompilerContractValue) -> Result<ContractValue, ()> {
     fn convert(
         value: CompilerContractValue,
@@ -4012,6 +4045,37 @@ mod tests {
         limits = BlueJsHostRuntimeLimits::default();
         limits.max_reserved_heap_bytes = limits.max_heap_bytes_per_realm - 1;
         assert!(limits.runtime_config().is_err());
+    }
+
+    #[test]
+    fn contract_root_kind_resolves_local_definitions_without_exposing_a_plan() {
+        let plan = ContractPlan {
+            id: "private".to_string(),
+            root: Contract::Reference("Alias".to_string()),
+            definitions: BTreeMap::from([
+                (
+                    "Alias".to_string(),
+                    Contract::Reference("Shape".to_string()),
+                ),
+                ("Shape".to_string(), Contract::Record(Vec::new())),
+            ]),
+            fingerprint: "private".to_string(),
+        };
+        assert_eq!(
+            debugger_contract_root_kind(&plan),
+            DebuggerStaticMetadataContractRootKind::Record
+        );
+        let cyclic = ContractPlan {
+            definitions: BTreeMap::from([(
+                "Alias".to_string(),
+                Contract::Reference("Alias".to_string()),
+            )]),
+            ..plan
+        };
+        assert_eq!(
+            debugger_contract_root_kind(&cyclic),
+            DebuggerStaticMetadataContractRootKind::Reference
+        );
     }
 
     #[test]

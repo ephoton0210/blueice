@@ -9,7 +9,10 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version twenty-two adds a
+//! and an opt-in root-code-unit pause/resume seam. Version twenty-three adds a
+//! fixed root-shape classification to the already default-denied, receipt-
+//! bound contract display; it exposes no contract-plan edge or field name.
+//! Version twenty-two adds a
 //! separately default-denied contract declaration range under exact
 //! same-stream contract and source receipts; no plan or source text crosses.
 //! Version twenty-one adds a
@@ -43,7 +46,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 22;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 23;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -246,15 +249,35 @@ impl DebuggerStaticMetadataContractId {
     }
 }
 
+/// A fixed, source-free classification of a reifiable contract's root after
+/// resolving its compiler-retained local references. A cyclic or unresolved
+/// reference remains `Reference`; no field names or plan edges are exposed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DebuggerStaticMetadataContractRootKind {
+    Null,
+    Undefined,
+    Boolean,
+    Number,
+    String,
+    Literal,
+    Array,
+    Tuple,
+    Record,
+    Union,
+    Intersection,
+    Reference,
+}
+
 /// One owner-authorized display for a compiler-minted contract ID previously
 /// returned by the exact stream's contract inventory. A display can contain a
-/// project-authored identifier, so it is independently default-denied and
-/// carries no source span, plan, validation behavior, bytecode, or static
-/// record.
+/// project-authored identifier and a fixed root-shape classification, so it
+/// is independently default-denied. It carries no source span, plan edges,
+/// field names, validation behavior, bytecode, or static record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DebuggerStaticMetadataContractDisplay {
     pub contract: DebuggerStaticMetadataContractId,
     pub display: String,
+    pub root_kind: DebuggerStaticMetadataContractRootKind,
 }
 
 impl DebuggerStaticMetadataContractDisplay {
@@ -2701,6 +2724,7 @@ mod tests {
                     contract_id: 0,
                 },
                 display: "ProjectControlledContract".to_string(),
+                root_kind: DebuggerStaticMetadataContractRootKind::Record,
             }),
             DebuggerReply::StaticMetadataContractValidation(
                 DebuggerStaticMetadataContractValidation {
@@ -3569,6 +3593,7 @@ mod tests {
         let display = DebuggerStaticMetadataContractDisplay {
             contract,
             display: "ProjectControlledContract".to_string(),
+            root_kind: DebuggerStaticMetadataContractRootKind::Record,
         };
         assert!(display.is_well_formed());
         assert!(!DebuggerStaticMetadataContractDisplay {

@@ -1370,6 +1370,7 @@ fn describe_child_static_metadata_contract(
             let contract_display = DebuggerStaticMetadataContractDisplay {
                 contract,
                 display: contract_display.display,
+                root_kind: contract_display.root_kind,
             };
             if !contract_display.is_well_formed() {
                 return DebuggerReply::Error {
@@ -3850,6 +3851,8 @@ mod tests {
                         target.contract_id
                     },
                     display: "ProjectControlledContract".to_string(),
+                    root_kind:
+                        blueice_ipc::debugger::DebuggerStaticMetadataContractRootKind::Record,
                 },
             )
         }
@@ -4461,6 +4464,7 @@ mod tests {
             DebuggerReply::StaticMetadataContract(DebuggerStaticMetadataContractDisplay {
                 contract: displayed_contract,
                 display: "ProjectControlledContract".to_string(),
+                root_kind: blueice_ipc::debugger::DebuggerStaticMetadataContractRootKind::Record,
             })
         );
 

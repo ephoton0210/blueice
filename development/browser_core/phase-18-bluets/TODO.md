@@ -899,6 +899,12 @@ or second module resolver to bypass them.
   private-child and launcher-supervised tests cover valid disclosure,
   guessed targets, and reload staleness without exposing source text, module
   identity, contract name/plan, validation result, or runtime values.
+  Page-host v24/debugger v23 extend the existing opt-in, same-stream-receipted
+  `OpaqueContractDisplay` reply with one fixed compiler contract root-kind
+  category after bounded local-reference resolution. The owner must still
+  grant contract display independently; the child returns no plan edges,
+  field names, definitions, validation result, source text, or runtime value.
+  A cyclic or unresolved reference is reported only as `Reference`.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope
