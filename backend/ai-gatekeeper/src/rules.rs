@@ -13,7 +13,7 @@
 
 use blueice_ipc::gatekeeper::{
     GatekeeperLocalModel, GatekeeperReply, GatekeeperRequest, GatekeeperRuleInfo, GatekeeperSettings,
-    GatekeeperWorkflowStep,
+    GatekeeperWorkflowStep, GatekeeperUserCondition,
 };
 
 /// Version carried in diagnostics and release notes for this compiled rule
@@ -150,6 +150,7 @@ pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
             description: "Review URL before opening a network connection; a failure or unavailable gatekeeper blocks the navigation.".to_string(),
             failure_behavior: "Block navigation before the connection.".to_string(),
             review_order: Vec::new(),
+            active_user_conditions: Vec::new(),
             mandatory: true,
         },
         GatekeeperWorkflowStep {
@@ -158,6 +159,7 @@ pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
             description: "Review the final URL and HTML before parsing, cascade, layout, or paint.".to_string(),
             failure_behavior: "Do not parse or display the fetched page.".to_string(),
             review_order: Vec::new(),
+            active_user_conditions: Vec::new(),
             mandatory: true,
         },
         GatekeeperWorkflowStep {
@@ -166,6 +168,7 @@ pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
             description: "Review the URL and discovered file metadata before transfer bytes begin or resume.".to_string(),
             failure_behavior: "Do not start or resume transfer bytes.".to_string(),
             review_order: Vec::new(),
+            active_user_conditions: Vec::new(),
             mandatory: true,
         },
         GatekeeperWorkflowStep {
@@ -174,6 +177,7 @@ pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
             description: "Review non-extension-controlled action metadata before the core applies the capability side effect.".to_string(),
             failure_behavior: "Do not grant the high-risk action.".to_string(),
             review_order: Vec::new(),
+            active_user_conditions: Vec::new(),
             mandatory: true,
         },
         GatekeeperWorkflowStep {
@@ -182,6 +186,7 @@ pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
             description: "Review the bounded popup title and body before broadcasting native UI; an unavailable reviewer blocks publication.".to_string(),
             failure_behavior: "Do not publish the native popup.".to_string(),
             review_order: Vec::new(),
+            active_user_conditions: Vec::new(),
             mandatory: true,
         },
     ]
@@ -197,6 +202,24 @@ pub fn settings(
     let mut workflow = mandatory_workflow();
     for step in &mut workflow {
         step.review_order.push("compiled-rule-base".to_string());
+        let mut add_conditions = |kind: &str, values: &[String]| {
+            step.active_user_conditions.extend(values.iter().map(|value| GatekeeperUserCondition {
+                kind: kind.to_string(),
+                value: value.clone(),
+            }));
+        };
+        match step.id.as_str() {
+            "url-before-fetch" => add_conditions("host", &custom_blocked_hosts),
+            "content-before-parse" => add_conditions("phrase", &custom_blocked_phrases),
+            "download-before-bytes" => {
+                add_conditions("host", &custom_blocked_hosts);
+                add_conditions("download-extension", &custom_blocked_download_extensions);
+            }
+            "extension-popup-before-publish" => {
+                add_conditions("popup-phrase", &custom_blocked_popup_phrases);
+            }
+            _ => {}
+        }
         let custom_layer = match step.id.as_str() {
             "url-before-fetch" if !custom_blocked_hosts.is_empty() => {
                 Some("user-blocked-hosts")
@@ -585,7 +608,7 @@ mod tests {
     fn effective_workflow_discloses_only_active_layers_in_enforcement_order() {
         let bare = settings(None, vec![], vec![], vec![], vec![]);
         assert!(bare.workflow.iter().all(|step| {
-            step.review_order == ["compiled-rule-base"]
+            step.review_order == ["compiled-rule-base"] && step.active_user_conditions.is_empty()
         }));
 
         let configured = settings(
@@ -624,6 +647,20 @@ mod tests {
             "compiled-rule-base",
             "user-blocked-popup-phrases",
             "local-model",
+        ]);
+        let conditions = |id: &str| configured.workflow.iter()
+            .find(|step| step.id == id).unwrap().active_user_conditions.clone();
+        let condition = |kind: &str, value: &str| GatekeeperUserCondition {
+            kind: kind.to_string(), value: value.to_string(),
+        };
+        assert_eq!(conditions("url-before-fetch"), [condition("host", "blocked.example")]);
+        assert_eq!(conditions("content-before-parse"), [condition("phrase", "blocked text")]);
+        assert_eq!(conditions("download-before-bytes"), [
+            condition("host", "blocked.example"), condition("download-extension", ".zip"),
+        ]);
+        assert!(conditions("extension-before-side-effect").is_empty());
+        assert_eq!(conditions("extension-popup-before-publish"), [
+            condition("popup-phrase", "blocked popup"),
         ]);
     }
 

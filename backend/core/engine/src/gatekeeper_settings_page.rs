@@ -242,7 +242,8 @@ pub fn gatekeeper_settings_html(
                     ("adjustable", t("adjustable"))
                 };
                 body.push_str(&format!(
-                    "<div class=\"item\"><p class=\"name\">{}</p><p class=\"{status_class}\">{}</p><p class=\"detail\">{} {}</p><p class=\"detail\">{}</p>",
+                    "<div class=\"item\" data-gatekeeper-step=\"{}\"><p class=\"name\">{}</p><p class=\"{status_class}\">{}</p><p class=\"detail\">{} {}</p><p class=\"detail\">{}</p>",
+                    escape_html(&step.id),
                     escape_html(&step.id),
                     escape_html(&status_label),
                     escape_html(&t("trigger")),
@@ -287,6 +288,27 @@ pub fn gatekeeper_settings_html(
                     ));
                     for rule in applied_rules {
                         body.push_str(&format!("<li><code>{}</code></li>", escape_html(&rule.id)));
+                    }
+                    body.push_str("</ul>");
+                }
+                if !step.active_user_conditions.is_empty() {
+                    body.push_str(&format!(
+                        "<p class=\"detail\">{}</p><ul>",
+                        escape_html(&t("active-additions-at-step"))
+                    ));
+                    for condition in &step.active_user_conditions {
+                        let kind = match condition.kind.as_str() {
+                            "host" => t("addition-host"),
+                            "phrase" => t("addition-html-phrase"),
+                            "download-extension" => t("addition-download-extension"),
+                            "popup-phrase" => t("addition-popup-phrase"),
+                            _ => condition.kind.clone(),
+                        };
+                        body.push_str(&format!(
+                            "<li>{}: <code>{}</code></li>",
+                            escape_html(&kind),
+                            escape_html(&condition.value)
+                        ));
                     }
                     body.push_str("</ul>");
                 }
@@ -403,9 +425,42 @@ pub fn gatekeeper_settings_html(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blueice_ipc::gatekeeper::{GatekeeperLocalModel, GatekeeperRuleInfo, GatekeeperWorkflowStep};
+    use blueice_ipc::gatekeeper::{GatekeeperLocalModel, GatekeeperRuleInfo, GatekeeperUserCondition, GatekeeperWorkflowStep};
 
     fn settings() -> GatekeeperSettings {
+        let condition = |kind: &str, value: &str| GatekeeperUserCondition {
+            kind: kind.to_string(), value: value.to_string(),
+        };
+        let mut workflow = vec![GatekeeperWorkflowStep {
+            id: "url-before-fetch".to_string(),
+            trigger: "Every navigation".to_string(),
+            description: "Review first.".to_string(),
+            failure_behavior: "Block <unsafe> navigation.".to_string(),
+            review_order: vec!["compiled-rule-base".to_string(), "User <unsafe> rules".to_string()],
+            active_user_conditions: vec![condition("host", "tracker.example")],
+            mandatory: true,
+        }];
+        for id in [
+            "content-before-parse",
+            "download-before-bytes",
+            "extension-before-side-effect",
+            "extension-popup-before-publish",
+        ] {
+            workflow.push(GatekeeperWorkflowStep {
+                id: id.to_string(),
+                trigger: "Review before effect".to_string(),
+                description: "Review first.".to_string(),
+                failure_behavior: "Block the effect.".to_string(),
+                review_order: vec!["compiled-rule-base".to_string()],
+                active_user_conditions: match id {
+                    "content-before-parse" => vec![condition("phrase", "ignore <instructions>")],
+                    "download-before-bytes" => vec![condition("host", "tracker.example"), condition("download-extension", ".zip")],
+                    "extension-popup-before-publish" => vec![condition("popup-phrase", "send <secrets>")],
+                    _ => Vec::new(),
+                },
+                mandatory: true,
+            });
+        }
         GatekeeperSettings {
             ruleset_version: "2026.09.23.1".to_string(),
             model_review_active: false,
@@ -419,14 +474,7 @@ mod tests {
                 workflow_steps: vec!["url-before-fetch".to_string()],
                 mandatory: true,
             }],
-            workflow: vec![GatekeeperWorkflowStep {
-                id: "url-before-fetch".to_string(),
-                trigger: "Every navigation".to_string(),
-                description: "Review first.".to_string(),
-                failure_behavior: "Block <unsafe> navigation.".to_string(),
-                review_order: vec!["compiled-rule-base".to_string(), "User <unsafe> rules".to_string()],
-                mandatory: true,
-            }],
+            workflow,
             custom_blocked_hosts: vec!["tracker.example".to_string()],
             custom_blocked_phrases: vec!["ignore <instructions>".to_string()],
             custom_blocked_download_extensions: vec![".zip".to_string()],
@@ -466,6 +514,17 @@ mod tests {
         assert!(html.contains("A host also blocks its dot-boundary subdomains"));
         assert!(html.contains("ignore &lt;instructions&gt;"));
         assert!(html.contains("send &lt;secrets&gt;"));
+        let step = |id: &str| {
+            let marker = format!("data-gatekeeper-step=\"{id}\"");
+            html.split(&marker).nth(1).unwrap().split("</div>").next().unwrap().to_string()
+        };
+        assert!(step("url-before-fetch").contains("Host: <code>tracker.example</code>"));
+        assert!(step("content-before-parse").contains("HTML-text phrase: <code>ignore &lt;instructions&gt;</code>"));
+        assert!(!step("content-before-parse").contains("tracker.example"));
+        assert!(step("download-before-bytes").contains("Host: <code>tracker.example</code>"));
+        assert!(step("download-before-bytes").contains("Download extension: <code>.zip</code>"));
+        assert!(step("extension-popup-before-publish").contains("Extension-popup phrase: <code>send &lt;secrets&gt;</code>"));
+        assert!(!step("extension-before-side-effect").contains("Your active blocking conditions"));
     }
 
     #[test]
@@ -496,6 +555,7 @@ mod tests {
         assert!(html.contains("目前生效的審查順序："));
         assert!(html.contains("<li>編譯內建確定性規則（必要）</li><li>您封鎖的主機</li><li>選用的本機模型（無法審查時會阻擋）</li>"));
         assert!(html.contains("此步驟套用的內建規則：</p><ul><li><code>domain-rule</code></li></ul>"));
+        assert!(html.contains("此步驟生效的自訂封鎖條件："));
     }
 
     #[test]
@@ -554,6 +614,9 @@ mod tests {
                 .unwrap();
         assert_eq!(updated.custom_blocked_hosts, vec!["tracker.example"]);
         assert_eq!(updated.workflow[0].review_order, ["compiled-rule-base", "user-blocked-hosts"]);
+        assert_eq!(updated.workflow[0].active_user_conditions, [GatekeeperUserCondition {
+            kind: "host".to_string(), value: "tracker.example".to_string(),
+        }]);
         worker.join().unwrap();
         let _ = std::fs::remove_file(socket);
     }

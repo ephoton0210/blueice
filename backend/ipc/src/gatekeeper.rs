@@ -121,7 +121,17 @@ pub struct GatekeeperWorkflowStep {
     /// always first. Unknown IDs remain displayable by newer clients.
     #[serde(default)]
     pub review_order: Vec<String>,
+    /// Concrete user-added conditions active at this step, reported by the
+    /// enforcing service rather than reconstructed by the settings page.
+    #[serde(default)]
+    pub active_user_conditions: Vec<GatekeeperUserCondition>,
     pub mandatory: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatekeeperUserCondition {
+    pub kind: String,
+    pub value: String,
 }
 
 /// An explicitly enabled, self-operated Chat Completions reviewer. The
@@ -384,6 +394,7 @@ mod tests {
         let old = r#"{"id":"url-before-fetch","trigger":"Every navigation","description":"Review URL","failure_behavior":"Block navigation","mandatory":true}"#;
         let step: GatekeeperWorkflowStep = serde_json::from_str(old).unwrap();
         assert!(step.review_order.is_empty());
+        assert!(step.active_user_conditions.is_empty());
         assert!(step.mandatory);
     }
 
