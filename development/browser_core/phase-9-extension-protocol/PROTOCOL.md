@@ -71,7 +71,9 @@ Normal launcher use remains declared-only. Opting into
 whose F8 permission panel requires a second explicit confirmation before it
 can request Grant/Revoke for an installed `optional` declaration. The window
 shows the package hash, core generation, capability, grant state, and full
-manifest origin scope. Its anonymous launcher-owned pipe is not an extension
+manifest origin scope. Review and Confirm use separate native pointer targets;
+keyboard auto-repeat and a window too small to show the panel cannot confirm.
+Its anonymous launcher-owned pipe is not an extension
 API, public frontend/MCP message, operator-control request, or page action;
 it cannot grant `runtime_ephemeral` declarations. The launcher rechecks the
 package/generation and rejects cutover races before using its separate private

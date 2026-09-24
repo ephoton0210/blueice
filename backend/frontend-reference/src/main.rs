@@ -1235,6 +1235,9 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::RedrawRequested => self.redraw(),
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);
+                if self.permission_panel.is_open() {
+                    return;
+                }
                 // Forwarded so `core` becomes the single source of
                 // truth for "what's hovered" -- see
                 // `phase-1-ai-representation-layer/PLAN.md` §4 and
@@ -1326,7 +1329,10 @@ impl ApplicationHandler<UserEvent> for App {
                 self.send_selected(&ClientMessage::Scroll { delta_y });
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                if self.trusted_window_stdio && event.logical_key == Key::Named(NamedKey::F8) {
+                if self.trusted_window_stdio
+                    && !event.repeat
+                    && event.logical_key == Key::Named(NamedKey::F8)
+                {
                     if self.permission_panel.toggle() {
                         self.send_trusted_request(trusted_window::TrustedWindowRequest::Inspect);
                     }
@@ -1335,8 +1341,11 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 if self.permission_panel.is_open() {
                     let command = self.permission_panel.key(
-                        &event.logical_key, self.trusted_permissions.as_ref(),
+                        &event.logical_key,
+                        self.trusted_permissions.as_ref(),
                         self.trusted_request_pending,
+                        self.window_size,
+                        event.repeat,
                     );
                     self.handle_permission_panel_command(command);
                     return;

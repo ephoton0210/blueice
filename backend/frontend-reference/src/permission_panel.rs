@@ -106,6 +106,8 @@ impl PermissionPanel {
         key: &Key,
         reply: Option<&TrustedWindowReply>,
         pending: bool,
+        viewport: (u32, u32),
+        repeat: bool,
     ) -> PanelCommand {
         match key {
             Key::Named(NamedKey::Escape) => {
@@ -140,7 +142,11 @@ impl PermissionPanel {
                     .min(self.max_scope_offset(reply));
                 PanelCommand::None
             }
-            Key::Named(NamedKey::Enter | NamedKey::Space) => self.review_or_confirm(reply, pending),
+            Key::Named(NamedKey::Enter | NamedKey::Space)
+                if !repeat && panel_rect(viewport.0, viewport.1).is_some() =>
+            {
+                self.review_or_confirm(reply, pending)
+            }
             Key::Character(value) if value.eq_ignore_ascii_case("r") => PanelCommand::Refresh,
             _ => PanelCommand::None,
         }
@@ -182,7 +188,14 @@ impl PermissionPanel {
             self.confirming = false;
             return PanelCommand::Refresh;
         }
-        if button(panel, 20, 439, 190).contains(x, y) {
+        if self.confirming && button(panel, 20, 439, 190).contains(x, y) {
+            self.confirming = false;
+            return PanelCommand::None;
+        }
+        if !self.confirming && button(panel, 20, 439, 190).contains(x, y) {
+            return self.review_or_confirm(reply, pending);
+        }
+        if self.confirming && button(panel, 230, 439, 190).contains(x, y) {
             return self.review_or_confirm(reply, pending);
         }
         if button(panel, 20, 374, 75).contains(x, y) {
@@ -464,7 +477,7 @@ impl PermissionPanel {
                         0x0020_2228,
                     );
                     let label = if self.confirming {
-                        "CONFIRM CHANGE"
+                        "CANCEL"
                     } else {
                         "REVIEW CHANGE"
                     };
@@ -476,6 +489,16 @@ impl PermissionPanel {
                         label,
                         if pending { 0x0080_8790 } else { 0x0023_6B_2A },
                     );
+                    if self.confirming {
+                        draw_button(
+                            pixels,
+                            width,
+                            height,
+                            button(panel, 230, 439, 190),
+                            "CONFIRM CHANGE",
+                            if pending { 0x0080_8790 } else { 0x008B_0000 },
+                        );
+                    }
                 } else {
                     draw_text_line(
                         pixels,
@@ -668,25 +691,55 @@ mod tests {
         let reply = installed();
         assert!(panel.toggle());
         assert_eq!(
-            panel.key(&Key::Named(NamedKey::Enter), Some(&reply), false),
+            panel.key(
+                &Key::Named(NamedKey::Enter),
+                Some(&reply),
+                false,
+                (800, 600),
+                false
+            ),
             PanelCommand::None
         );
         assert!(panel.confirming);
         assert_eq!(
-            panel.key(&Key::Named(NamedKey::Escape), Some(&reply), false),
+            panel.key(
+                &Key::Named(NamedKey::Escape),
+                Some(&reply),
+                false,
+                (800, 600),
+                false
+            ),
             PanelCommand::None
         );
         assert!(!panel.confirming);
         assert_eq!(
-            panel.key(&Key::Named(NamedKey::Enter), Some(&reply), false),
+            panel.key(
+                &Key::Named(NamedKey::Enter),
+                Some(&reply),
+                false,
+                (800, 600),
+                false
+            ),
             PanelCommand::None
         );
         assert_eq!(
-            panel.key(&Key::Named(NamedKey::Enter), Some(&reply), true),
+            panel.key(
+                &Key::Named(NamedKey::Enter),
+                Some(&reply),
+                true,
+                (800, 600),
+                false
+            ),
             PanelCommand::None
         );
         assert_eq!(
-            panel.key(&Key::Named(NamedKey::Enter), Some(&reply), false),
+            panel.key(
+                &Key::Named(NamedKey::Enter),
+                Some(&reply),
+                false,
+                (800, 600),
+                false
+            ),
             PanelCommand::Change(TrustedWindowRequest::Change {
                 expected_core_generation: 7,
                 expected_extension_id: "sha256:installed-package".into(),
@@ -707,7 +760,7 @@ mod tests {
         let mut panel = PermissionPanel::default();
         panel.toggle();
         assert_eq!(
-            panel.key(&Key::Named(NamedKey::Enter), None, false),
+            panel.key(&Key::Named(NamedKey::Enter), None, false, (800, 600), false),
             PanelCommand::None
         );
         let mut reply = installed();
@@ -719,10 +772,22 @@ mod tests {
             unreachable!()
         };
         package.optional[0].origins = vec![origin; 32];
-        panel.key(&Key::Named(NamedKey::PageDown), Some(&reply), false);
+        panel.key(
+            &Key::Named(NamedKey::PageDown),
+            Some(&reply),
+            false,
+            (800, 600),
+            false,
+        );
         assert_eq!(panel.scope_offset, SCOPE_PAGE_LINES);
         for _ in 0..100 {
-            panel.key(&Key::Named(NamedKey::PageDown), Some(&reply), false);
+            panel.key(
+                &Key::Named(NamedKey::PageDown),
+                Some(&reply),
+                false,
+                (800, 600),
+                false,
+            );
         }
         assert_eq!(panel.scope_offset, panel.max_scope_offset(Some(&reply)));
     }
@@ -745,10 +810,56 @@ mod tests {
             PanelCommand::None
         );
         assert!(panel.confirming);
-        assert!(matches!(
+        assert_eq!(
             panel.click(x, y, 800, 600, Some(&reply), false),
+            PanelCommand::None,
+            "a second click in the review position must cancel, not confirm",
+        );
+        assert!(!panel.confirming);
+        assert_eq!(
+            panel.click(x, y, 800, 600, Some(&reply), false),
+            PanelCommand::None
+        );
+        assert!(panel.confirming);
+        assert!(matches!(
+            panel.click(f64::from(rect.x + 235), y, 800, 600, Some(&reply), false),
             PanelCommand::Change(TrustedWindowRequest::Change {
                 expected_core_generation: 7,
+                action: PermissionAction::Grant,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn hidden_or_autorepeated_keyboard_confirmation_cannot_change_a_grant() {
+        let mut panel = PermissionPanel::default();
+        let reply = installed();
+        panel.toggle();
+        let enter = Key::Named(NamedKey::Enter);
+        assert_eq!(
+            panel.key(&enter, Some(&reply), false, (500, 400), false),
+            PanelCommand::None
+        );
+        assert!(!panel.confirming);
+        assert_eq!(
+            panel.key(&enter, Some(&reply), false, (800, 600), false),
+            PanelCommand::None
+        );
+        assert!(panel.confirming);
+        assert_eq!(
+            panel.key(&enter, Some(&reply), false, (800, 600), true),
+            PanelCommand::None
+        );
+        assert!(panel.confirming);
+        assert_eq!(
+            panel.key(&enter, Some(&reply), false, (500, 400), false),
+            PanelCommand::None
+        );
+        assert!(panel.confirming);
+        assert!(matches!(
+            panel.key(&enter, Some(&reply), false, (800, 600), false),
+            PanelCommand::Change(TrustedWindowRequest::Change {
                 action: PermissionAction::Grant,
                 ..
             })
