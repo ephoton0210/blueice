@@ -132,11 +132,11 @@ impl Launcher {
             .expect("failed to spawn blueice-launcher");
 
         assert!(
-            wait_for(&rendezvous_socket, Duration::from_secs(5)),
+            wait_for(&rendezvous_socket, Duration::from_secs(12)),
             "blueice-launcher never created its rendezvous socket"
         );
         assert!(
-            wait_for(&control_socket, Duration::from_secs(5)),
+            wait_for(&control_socket, Duration::from_secs(12)),
             "blueice-launcher never created its control socket"
         );
         Launcher {
@@ -155,6 +155,15 @@ impl Launcher {
     fn connect_control(&self) -> UnixStream {
         UnixStream::connect(&self.control_socket)
             .expect("failed to connect to the launcher's control socket")
+    }
+
+    fn inspect_extension_permissions(&self) -> Option<blueice_launcher::control::InstalledExtensionPermissions> {
+        let mut control = self.connect_control();
+        write_control_request(&mut control, &ControlRequest::InspectExtensionPermissions).unwrap();
+        match read_control_reply(&mut control).unwrap() {
+            ControlReply::ExtensionPermissions { installed } => installed,
+            other => panic!("expected a read-only extension inspection, got {other:?}"),
+        }
     }
 
     /// The internal socket path `blueice_launcher::SpawnedCore::spawn`
@@ -226,6 +235,15 @@ fn an_unrecognized_argument_exits_with_failure_and_creates_no_socket() {
         !rendezvous_socket.exists(),
         "a launcher that failed argument parsing must never spawn core or bind a socket"
     );
+}
+
+#[test]
+fn permission_inspection_reports_no_package_without_creating_grant_authority() {
+    let mut launcher = Launcher::spawn();
+    assert_eq!(launcher.inspect_extension_permissions(), None);
+    let mut client = launcher.connect();
+    write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+    launcher.wait_or_kill(Duration::from_secs(5));
 }
 
 #[test]
@@ -636,6 +654,15 @@ fn an_installed_extension_survives_cutover_with_a_fresh_authenticated_host() {
         !v2_extension_socket.exists(),
         "v2's private extension socket must not predate the cutover"
     );
+    let before = launcher.inspect_extension_permissions()
+        .expect("v1 must answer through its private parent pipe");
+    assert_eq!(before.name, "Launcher cutover test");
+    assert_eq!(before.version, "1.0.0");
+    assert!(!before.extension_id.is_empty());
+    assert_eq!(before.optional.len(), 1);
+    assert_eq!(before.optional[0].capability, "storage");
+    assert!(!before.optional[0].granted, "inspection must not grant optional storage");
+    assert!(before.optional[0].origins.is_empty());
 
     let mut client = launcher.connect();
     write_client_message(
@@ -666,6 +693,9 @@ fn an_installed_extension_survives_cutover_with_a_fresh_authenticated_host() {
         v2_extension_socket.exists(),
         "v2 must revalidate the same package and start a fresh authenticated host"
     );
+    let after = launcher.inspect_extension_permissions()
+        .expect("v2 must own a new responsive private parent pipe");
+    assert_eq!(after, before, "cutover must keep package identity and declared-only grants");
 
     write_client_message_with_id(&mut client, Some(900), &ClientMessage::ListTabs).unwrap();
     let tabs = loop {

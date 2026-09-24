@@ -47,13 +47,17 @@ use blueice_ipc::{
     write_client_message_with_id, write_client_message_with_ids, write_server_message_with_ids,
     ClientMessage, ServerMessage, TabSummary,
 };
+use blueice_ipc::permission_control::{
+    read_permission_control_reply, write_permission_control_request,
+    PermissionControlReply, PermissionControlRequest,
+};
 use std::io;
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, RecvTimeoutError, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -747,13 +751,26 @@ fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
     control::ControlReply::CutoverDone { tabs_migrated }
 }
 
-/// Handles one control-socket connection: reads its one
-/// [`control::ControlRequest`], routes `Cutover` into [`cutover`], and
-/// writes back the resulting [`control::ControlReply`].
+/// Handles one control-socket connection: routes cutover through the
+/// single-flight gate, or performs a bounded, read-only inspection of the
+/// active core's private permission pipe. This socket cannot grant or
+/// revoke an extension capability.
 fn handle_control_connection(mut conn: UnixStream, broker: &Arc<Broker>) -> io::Result<()> {
     let request = control::read_control_request(&mut conn)?;
     let reply = match request {
         control::ControlRequest::Cutover => cutover(broker),
+        control::ControlRequest::InspectExtensionPermissions => {
+            let active = broker.active_core.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            match active.as_ref().map(SpawnedCore::inspect_installed_extension) {
+                Some(Ok(installed)) => control::ControlReply::ExtensionPermissions { installed },
+                Some(Err(error)) => control::ControlReply::ExtensionPermissionsUnavailable {
+                    reason: error.to_string(),
+                },
+                None => control::ControlReply::ExtensionPermissionsUnavailable {
+                    reason: "the active core is unavailable".into(),
+                },
+            }
+        }
     };
     control::write_control_reply(&mut conn, &reply)
 }
@@ -1046,6 +1063,66 @@ impl Drop for SpawnedGatekeeper {
     }
 }
 
+const PERMISSION_INSPECT_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Owns the only parent-side handles of one core generation's permission
+/// pipe. The worker serializes bounded, read-only inspections; its sender is
+/// not exposed through frontend IPC or to an extension guest. In particular,
+/// this does not manufacture a trusted human approval source for Grant/Revoke.
+struct PermissionControlChannel {
+    inspections: SyncSender<Sender<io::Result<PermissionControlReply>>>,
+}
+
+impl PermissionControlChannel {
+    fn new(mut input: ChildStdin, mut output: ChildStdout) -> io::Result<Self> {
+        let (inspections, pending) = mpsc::sync_channel::<Sender<io::Result<PermissionControlReply>>>(1);
+        thread::Builder::new()
+            .name("blueice-permission-inspect".into())
+            .spawn(move || {
+                for answer in pending {
+                    let result = write_permission_control_request(
+                        &mut input,
+                        &PermissionControlRequest::Inspect,
+                    )
+                    .and_then(|()| read_permission_control_reply(&mut output));
+                    let failed = result.is_err();
+                    let _ = answer.send(result);
+                    if failed {
+                        break;
+                    }
+                }
+                // Closing stdin tells core to revoke any optional grants
+                // that a future trusted parent may have made on this pipe.
+            })?;
+        Ok(Self { inspections })
+    }
+
+    fn inspect(&self) -> io::Result<PermissionControlReply> {
+        let (answer, reply) = mpsc::channel();
+        self.inspections.try_send(answer).map_err(|error| match error {
+            TrySendError::Full(_) => io::Error::new(
+                io::ErrorKind::WouldBlock,
+                "core permission inspection is busy",
+            ),
+            TrySendError::Disconnected(_) => io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "core permission pipe is closed",
+            ),
+        })?;
+        match reply.recv_timeout(PERMISSION_INSPECT_TIMEOUT) {
+            Ok(result) => result,
+            Err(RecvTimeoutError::Timeout) => Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "core permission inspection timed out",
+            )),
+            Err(RecvTimeoutError::Disconnected) => Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "core permission inspection ended without a reply",
+            )),
+        }
+    }
+}
+
 /// A `core` process this launcher spawned and owns privately: killed
 /// and cleaned up (process, internal socket, and frame directory) on
 /// [`Drop`], the same lifetime discipline `mcp-server`'s `CoreProcess`
@@ -1057,6 +1134,7 @@ pub struct SpawnedCore {
     script_socket_path: PathBuf,
     extension_socket_path: Option<PathBuf>,
     extension_manifest: Option<PathBuf>,
+    permission_control: Option<PermissionControlChannel>,
     frame_dir: PathBuf,
     pub stream: UnixStream,
 }
@@ -1124,7 +1202,10 @@ impl SpawnedCore {
         if let (Some(manifest), Some(socket)) = (extension_manifest, extension_socket_path.as_deref()) {
             command.arg("--extension-socket").arg(socket)
                 .arg("--extension-manifest").arg(manifest)
-                .arg("--extension-host").arg(sibling_extension_host_binary(&this_exe));
+                .arg("--extension-host").arg(sibling_extension_host_binary(&this_exe))
+                .arg("--permission-control-stdio")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped());
         }
         let mut child = command.spawn()?;
 
@@ -1209,21 +1290,58 @@ impl SpawnedCore {
             }
             return Err(error);
         }
-        Ok(SpawnedCore {
+        let mut core = SpawnedCore {
             child,
             script_child,
             internal_socket_path,
             script_socket_path,
             extension_socket_path,
             extension_manifest: extension_manifest.map(Path::to_path_buf),
+            permission_control: None,
             frame_dir: frame_dir.to_path_buf(),
             stream,
-        })
+        };
+        // A responsive, authenticated host is not enough: prove that this
+        // generation's private parent pipe actually reaches its registry
+        // before admitting it as v1 or cutting over to it as v2.
+        if extension_manifest.is_some() {
+            let input = core.child.stdin.take().ok_or_else(|| {
+                io::Error::other("installed core has no private permission input pipe")
+            })?;
+            let output = core.child.stdout.take().ok_or_else(|| {
+                io::Error::other("installed core has no private permission output pipe")
+            })?;
+            core.permission_control = Some(PermissionControlChannel::new(input, output)?);
+            core.inspect_installed_extension()?.ok_or_else(|| {
+                io::Error::other("installed core did not report extension permissions")
+            })?;
+        }
+        Ok(core)
+    }
+
+    fn inspect_installed_extension(&self) -> io::Result<Option<control::InstalledExtensionPermissions>> {
+        let Some(channel) = self.permission_control.as_ref() else {
+            return Ok(None);
+        };
+        match channel.inspect()? {
+            PermissionControlReply::State { extension_id, name, version, optional } => {
+                Ok(Some(control::InstalledExtensionPermissions {
+                    extension_id, name, version, optional,
+                }))
+            }
+            other => Err(io::Error::other(format!(
+                "core returned a non-state permission inspection reply: {other:?}"
+            ))),
+        }
     }
 }
 
 impl Drop for SpawnedCore {
     fn drop(&mut self) {
+        // Discard this generation's private authority before disconnecting
+        // it. The worker closes core's stdin on EOF; core then withdraws
+        // optional grants even if the normal client-shutdown path stalls.
+        self.permission_control.take();
         // Let core observe its private client disconnect and reap its own
         // extension-host child before the force-kill fallback. SIGKILL first
         // would orphan that child during every successful cutover.

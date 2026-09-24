@@ -14,12 +14,15 @@
 //! Wire format mirrors `blueice-ipc`'s own choice (length-prefixed
 //! JSON) for the same "fastest to validate the boundary" reason, kept
 //! as its own small implementation here rather than depending on
-//! `blueice-ipc` for it -- this protocol carries exactly one
-//! request/reply pair today, not worth sharing infrastructure for.
+//! `blueice-ipc` for it. It carries cutover commands and read-only
+//! inspection, but never a permission grant/revoke operation.
 
 use serde::{Deserialize, Serialize};
+use blueice_ipc::permission_control::OptionalCapabilityInfo;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
+
+const MAX_CONTROL_FRAME_BYTES: usize = 128 * 1024;
 
 /// Sent by an operator/test tool to an already-running `blueice-
 /// launcher`, over [`default_control_socket_path`] (or an override the
@@ -33,6 +36,20 @@ pub enum ControlRequest {
     /// spawned with the same width/height the launcher itself was
     /// started with, and a fresh frame directory derived from v1's own.
     Cutover,
+    /// Read-only information from the active core's private parent pipe.
+    /// This is never authority to grant or revoke a capability: the control
+    /// socket can also be reached by non-window clients of the same user.
+    InspectExtensionPermissions,
+}
+
+/// The installed package and its currently effective optional grants, read
+/// from the active core rather than reconstructed from a manifest on disk.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstalledExtensionPermissions {
+    pub extension_id: String,
+    pub name: String,
+    pub version: String,
+    pub optional: Vec<OptionalCapabilityInfo>,
 }
 
 /// The launcher's reply to a [`ControlRequest`].
@@ -52,6 +69,10 @@ pub enum ControlReply {
     /// active core. It remains the sole owner of that transition; this
     /// request made no change and callers may retry after it finishes.
     CutoverBusy,
+    /// `None` means this launcher has no installed extension package.
+    ExtensionPermissions { installed: Option<InstalledExtensionPermissions> },
+    /// Inspection failed or timed out; no permission mutation is attempted.
+    ExtensionPermissionsUnavailable { reason: String },
 }
 
 /// The control socket path, mirroring
@@ -64,6 +85,9 @@ pub fn default_control_socket_path() -> PathBuf {
 
 fn write_framed<W: Write, T: Serialize>(w: &mut W, msg: &T) -> io::Result<()> {
     let bytes = serde_json::to_vec(msg).map_err(io::Error::other)?;
+    if bytes.len() > MAX_CONTROL_FRAME_BYTES {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "control frame is oversized"));
+    }
     let len = u32::try_from(bytes.len()).map_err(io::Error::other)?;
     w.write_all(&len.to_le_bytes())?;
     w.write_all(&bytes)?;
@@ -74,6 +98,9 @@ fn read_framed<R: Read, T: for<'de> Deserialize<'de>>(r: &mut R) -> io::Result<T
     let mut len_bytes = [0u8; 4];
     r.read_exact(&mut len_bytes)?;
     let len = u32::from_le_bytes(len_bytes) as usize;
+    if len > MAX_CONTROL_FRAME_BYTES {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "control frame is oversized"));
+    }
     let mut buf = vec![0u8; len];
     r.read_exact(&mut buf)?;
     serde_json::from_slice(&buf).map_err(io::Error::other)
@@ -110,6 +137,22 @@ mod tests {
             read_control_request(&mut cursor).unwrap(),
             ControlRequest::Cutover
         );
+        let mut buf = Vec::new();
+        write_control_request(&mut buf, &ControlRequest::InspectExtensionPermissions).unwrap();
+        assert_eq!(
+            read_control_request(&mut Cursor::new(buf)).unwrap(),
+            ControlRequest::InspectExtensionPermissions
+        );
+    }
+
+    #[test]
+    fn control_socket_has_no_optional_permission_grant_or_revoke_request() {
+        assert!(serde_json::from_str::<ControlRequest>(
+            r#"{"GrantExtensionPermission":{"capability":"storage"}}"#
+        ).is_err());
+        assert!(serde_json::from_str::<ControlRequest>(
+            r#"{"RevokeExtensionPermission":{"capability":"storage"}}"#
+        ).is_err());
     }
 
     #[test]
@@ -120,6 +163,8 @@ mod tests {
                 reason: "boom".to_string(),
             },
             ControlReply::CutoverBusy,
+            ControlReply::ExtensionPermissions { installed: None },
+            ControlReply::ExtensionPermissionsUnavailable { reason: "timed out".into() },
         ] {
             let mut buf = Vec::new();
             write_control_reply(&mut buf, &reply).unwrap();
@@ -166,5 +211,21 @@ mod tests {
         buf.truncate(buf.len() - 1);
         let mut cursor = Cursor::new(buf);
         assert!(read_control_request(&mut cursor).is_err());
+    }
+
+    #[test]
+    fn oversized_control_frames_are_rejected_before_allocation() {
+        let mut oversized = ((MAX_CONTROL_FRAME_BYTES + 1) as u32).to_le_bytes().to_vec();
+        assert_eq!(
+            read_control_request(&mut oversized.as_slice()).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        oversized.clear();
+        assert!(write_control_reply(
+            &mut oversized,
+            &ControlReply::ExtensionPermissionsUnavailable {
+                reason: "x".repeat(MAX_CONTROL_FRAME_BYTES),
+            }
+        ).is_err());
     }
 }

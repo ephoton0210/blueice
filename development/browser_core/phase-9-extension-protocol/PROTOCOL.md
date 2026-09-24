@@ -70,7 +70,9 @@ neither tier is user-grantable there yet. An explicitly enabled, private
 core-parent stdio protocol can inspect, grant, and revoke installed `optional`
 declarations for integration and future trusted-parent wiring. It is not an
 extension API, public frontend/MCP message, or page action; it cannot grant
-`runtime_ephemeral` declarations. The process-lifetime registry denies
+`runtime_ephemeral` declarations. The normal launcher owns this pipe but uses
+only read-only inspection, including after a core cutover; its operator control
+socket has no Grant/Revoke request. The process-lifetime registry denies
 subsequent operations after revocation. Core
 also checks the grant generation when evaluating declarative navigation rules,
 so old rules become inert on revoke and cannot revive on regrant. Stale rule
