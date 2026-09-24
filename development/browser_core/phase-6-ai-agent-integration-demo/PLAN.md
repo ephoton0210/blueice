@@ -141,6 +141,23 @@ the PNG image message, and final `tool_choice: none`. This verifies process
 orchestration and shared-frame wiring, **not** model reasoning or a visible
 human window; the separate real-model result below does not close the latter.
 
+**Repeatable human-window evidence runbook (2026-09-25).**
+[`run-human-evidence.sh`](run-human-evidence.sh) now builds the local binaries,
+serves the first-party demo site only on `127.0.0.1`, starts a fresh launcher
+with an isolated gatekeeper settings directory and an independent frontend
+with the source/tab/generation badge, then waits until a person confirms that
+the window is visible before starting the chosen already-running loopback
+Ollama, Hugging Face TGI, or llama.cpp model. It announces the 90-second
+highlight hold for a window-only OS screenshot, retains the transcript/MCP
+PNGs/logs, verifies the highlighted snapshot and retained PNG have the same
+frame identity, and prints that identity in the badge's exact hexadecimal
+format. It never captures the whole desktop or claims that a supplied PNG
+matches the badge without visual inspection. A no-model startup/cleanup
+preflight launched the real demo site, launcher, and graphical frontend, then
+intentionally withheld the human Enter confirmation; the script cleanly
+stopped its process tree and removed its sockets. The full real-model and
+human-screenshot path has not yet been rerun through this script.
+
 Run prerequisites are deliberately explicit: an operator must run a loopback
 Ollama, Hugging Face TGI, or llama.cpp server with a local vision-and-tool-capable
 model (and a matching vision projector for the llama.cpp GGUF path). In every

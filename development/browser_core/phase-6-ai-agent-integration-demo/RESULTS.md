@@ -78,6 +78,12 @@ compiled-stack test's independent launcher client did receive the matching
 - Obtain a human screenshot of the actual BlueIce frontend during a fresh
   highlighted-frame hold, including its `TAB`/`GEN` badge. Compare its badge
   to that run's `highlight_frame` and second `evidence_saved` JSONL entries.
+- Use [`run-human-evidence.sh`](run-human-evidence.sh) for the next joint run.
+  It requires a running credential-free loopback Ollama/TGI/llama.cpp model,
+  pauses until the person sees the independent BlueIce window, holds the
+  highlighted frame for 90 seconds, and prints the exact `SRC`/`TAB`/`GEN`
+  identity to compare with a window-only PNG. Its 2026-09-25 no-model
+  startup/cleanup preflight passed; that is not human observation evidence.
 - The documented Ollama and Hugging Face TGI transports retain scripted
   compiled-stack coverage; a genuine service run for either is separate from
   this llama.cpp result.
