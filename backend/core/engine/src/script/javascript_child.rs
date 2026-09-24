@@ -3444,6 +3444,7 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                 Ok(JavaScriptPageDebuggerExecutionState::Completed)
             }
             PageHostDebuggerExecutionState::Paused { safe_point }
+            | PageHostDebuggerExecutionState::SourceStepLimitReached { safe_point }
                 if safe_point.program == program && safe_point.code_unit_ordinal == 0 =>
             {
                 validate_child_safe_point_reply(self, tab_id, document_generation, safe_point)?;
@@ -3452,7 +3453,8 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
                     bytecode_offset: safe_point.bytecode_offset,
                 })
             }
-            PageHostDebuggerExecutionState::Paused { .. } => {
+            PageHostDebuggerExecutionState::Paused { .. }
+            | PageHostDebuggerExecutionState::SourceStepLimitReached { .. } => {
                 Err(JavaScriptPageDebuggerError::NoLiveRealm)
             }
         }

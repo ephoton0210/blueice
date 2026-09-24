@@ -2,6 +2,20 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**Child-private BlueTS source-span stepping foundation:** Page-host protocol
+v30 adds an authenticated child-only request bound to one paused classic-root
+safe point, exact retained BlueTS metadata handle, and compiler-minted source
+ID. The child derives the starting span from its verified direct-lowering map,
+advances exactly one root instruction per core-owned turn, and stops at the
+next different bound original span or completion. A fixed 256-instruction
+budget yields a distinct source-free limit state while retaining the same VM
+continuation; ordinary step/resume still work. Wrong source/metadata, duplicate
+requests, and stale document generations fail before execution. Unit and real
+isolated-child socket tests prove transition, document order, redaction, and
+budget behavior. This is not yet a public source-step debugger operation:
+core-side receipt/capability routing, public stop-reason propagation, and
+launcher-to-core acceptance remain open, as do modules and nested frames.
+
 **HTTP source-cache accounting update:** The core-owned HTTP(S) page-script
 authorizer now retains at most 4 MiB of verified source payload across its
 documents. Its private deterministic least-recently-used cache evicts old

@@ -12,6 +12,11 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 30 adds a child-private BlueTS source-span step on a retained
+//! classic-root continuation. It advances one verified root instruction per
+//! owner turn, stops at a different compiler-bound source span, completion,
+//! or an explicit fixed instruction-budget yield. It reveals no source text,
+//! runtime value, stack, or VM frame and grants no public debugger operation.
 //! Version 29 adds a child-private, bounded BlueTS byte-position-to-safe-point
 //! binding under an exact live metadata attachment. It preserves explicitly
 //! unbound lowering spans and does not itself grant a public debugger client
@@ -98,7 +103,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 29;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 30;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -351,6 +356,12 @@ pub enum PageHostDebuggerExecutionState {
         safe_point: PageHostDebuggerSafePoint,
     },
     Stepping,
+    /// The source-span step reached its fixed root-instruction budget before
+    /// another bound span. The continuation remains paused at this exact
+    /// verified root boundary and may be resumed or instruction-stepped.
+    SourceStepLimitReached {
+        safe_point: PageHostDebuggerSafePoint,
+    },
     Resuming,
     Completed,
 }
@@ -781,6 +792,17 @@ pub enum PageHostRequest {
         document_generation: u64,
         program: PageHostDebuggerProgram,
     },
+    /// Requires an exact paused BlueTS classic safe point, live metadata,
+    /// and its compiler-minted source ID. The child derives the current span
+    /// from its retained map; no source text or caller-selected stop span is
+    /// accepted. This private operation does not authorize a public client.
+    StepDebuggerBlueTsSourceSpan {
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     /// Advances one exact opted-in realm in document order. It returns only
     /// fixed execution categories and never exposes a completion value.
     AdvanceDebuggerExecution {
@@ -1026,6 +1048,13 @@ pub enum PageHostReply {
         tab_id: u64,
         document_generation: u64,
         program: PageHostDebuggerProgram,
+    },
+    DebuggerBlueTsSourceStepRequested {
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        safe_point: PageHostDebuggerSafePoint,
     },
     DebuggerExecutionAdvanced {
         tab_id: u64,
@@ -1511,6 +1540,23 @@ mod tests {
                     program_generation: 13,
                 },
             },
+            PageHostRequest::StepDebuggerBlueTsSourceSpan {
+                tab_id: 7,
+                document_generation: 3,
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                source_id: 0,
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: 11,
+                        program_generation: 13,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                },
+            },
             PageHostRequest::AdvanceDebuggerExecution {
                 tab_id: 7,
                 document_generation: 3,
@@ -1553,6 +1599,27 @@ mod tests {
                 bytecode_offset: 4,
             },
             was_present: true,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsSourceStepRequested {
+            tab_id: 7,
+            document_generation: 3,
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            source_id: 0,
+            safe_point: PageHostDebuggerSafePoint {
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();

@@ -10,9 +10,10 @@
 //! document generation lifecycle, source-free responses, and cleanup path.
 
 use blueice_ipc::page_host::{
-    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind, PageHostScriptLanguage,
-    PageHostScriptOutcome, PageHostScriptReport, PageHostSource, PageHostStaticResolution,
+    PageHostDebuggerExecutionState, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
+    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
+    PageHostStaticResolution,
 };
 use blueice_launcher::bluejs_host::{BlueJsHostRuntimeLimits, SpawnedBlueJsHost};
 use std::os::unix::net::UnixStream;
@@ -54,6 +55,139 @@ fn blue_ts_classic(ordinal: u32, source: &str) -> PageHostScript {
             vec![PageHostSource::new(source_id.clone(), source)],
         ),
     }
+}
+
+#[test]
+fn isolated_child_steps_one_verified_bluets_source_span_over_its_private_protocol() {
+    assert!(std::path::Path::new(CHILD_BINARY).exists());
+    let mut host = SpawnedBlueJsHost::spawn().unwrap();
+    let mut page = document(
+        1,
+        vec![blue_ts_classic(
+            0,
+            "let first: number = 1; let middle: number = first + 1; let last: number = middle + 1;",
+        )],
+    );
+    page.debugger_execution_control = true;
+    assert!(matches!(
+        host.synchronize_document(page).unwrap(),
+        PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+    ));
+    let program = match host
+        .request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+        reply => panic!("expected child-private program, got {reply:?}"),
+    };
+    let metadata = match host
+        .request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+        reply => panic!("expected child-private BlueTS metadata, got {reply:?}"),
+    };
+    let safe_points = match host
+        .request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 41,
+            document_generation: 1,
+            program,
+        })
+        .unwrap()
+    {
+        PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points,
+        reply => panic!("expected verified child safe points, got {reply:?}"),
+    };
+    let mut mapped = Vec::new();
+    for safe_point in safe_points {
+        if let PageHostReply::DebuggerBlueTsSafePointSpan { span, .. } = host
+            .request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+                tab_id: 41,
+                document_generation: 1,
+                metadata,
+                safe_point,
+            })
+            .unwrap()
+        {
+            mapped.push((safe_point, span));
+        }
+    }
+    mapped.sort_by_key(|(point, _)| (point.code_unit_ordinal, point.bytecode_offset));
+    assert!(mapped.len() >= 3);
+    let (target, span) = mapped[1];
+    assert_ne!(target.bytecode_offset, 0);
+    assert!(matches!(
+        host.request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+            tab_id: 41,
+            document_generation: 1,
+            safe_point: target,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::AdvanceDebuggerExecution {
+            tab_id: 41,
+            document_generation: 1,
+        })
+        .unwrap(),
+        PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+    ));
+    let reply = host
+        .request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+            tab_id: 41,
+            document_generation: 1,
+            metadata,
+            source_id: span.source_id,
+            safe_point: target,
+        })
+        .unwrap();
+    assert!(matches!(
+        reply,
+        PageHostReply::DebuggerBlueTsSourceStepRequested { .. }
+    ));
+    assert!(!format!("{reply:?}").contains("middle"));
+    let mut stopped = None;
+    for _ in 0..256 {
+        assert!(matches!(
+            host.request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 41,
+                document_generation: 1,
+            })
+            .unwrap(),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        match host
+            .request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 41,
+                document_generation: 1,
+                program,
+            })
+            .unwrap()
+        {
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Stepping,
+                ..
+            } => {}
+            PageHostReply::DebuggerExecutionState {
+                state: PageHostDebuggerExecutionState::Paused { safe_point },
+                ..
+            } => {
+                stopped = Some(safe_point);
+                break;
+            }
+            reply => panic!("child source span step failed: {reply:?}"),
+        }
+    }
+    assert_eq!(stopped, Some(mapped[2].0));
+    host.shutdown().unwrap();
 }
 
 fn blue_ts_module_with_dependency(ordinal: u32) -> PageHostScript {

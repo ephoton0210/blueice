@@ -192,6 +192,18 @@ struct LiveDocument {
     debugger_execution_states: BTreeMap<PageHostDebuggerProgram, ChildDebuggerExecutionStatus>,
 }
 
+/// A source-span step can consume no more than this many root instructions
+/// before yielding the still-live continuation at an exact root boundary.
+/// The count is child-fixed and cannot be widened by a page or debugger peer.
+const MAX_BLUETS_SOURCE_STEP_ROOT_INSTRUCTIONS: u16 = 256;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BlueTsSourceSpanKey {
+    source_id: u32,
+    start_byte: u32,
+    end_byte: u32,
+}
+
 /// Private child-only association between a child-minted opaque debugger
 /// identity and its BlueJS registry handle. The registry handle never leaves
 /// this process; the core separately mints its public debugger identity.
@@ -212,6 +224,11 @@ enum ChildDebuggerExecutionStatus {
     Pending,
     Paused(PageHostDebuggerSafePoint),
     StepRequested,
+    BlueTsSourceStepRequested {
+        origin: BlueTsSourceSpanKey,
+        remaining: u16,
+    },
+    SourceStepLimitReached(PageHostDebuggerSafePoint),
     ResumeRequested,
     Completed,
 }
@@ -586,6 +603,19 @@ impl BlueJsChildHost {
                 document_generation,
                 program,
             } => self.step_debugger_root_instruction(tab_id, document_generation, program),
+            PageHostRequest::StepDebuggerBlueTsSourceSpan {
+                tab_id,
+                document_generation,
+                metadata,
+                source_id,
+                safe_point,
+            } => self.step_debugger_bluets_source_span(
+                tab_id,
+                document_generation,
+                metadata,
+                source_id,
+                safe_point,
+            ),
             PageHostRequest::AdvanceDebuggerExecution {
                 tab_id,
                 document_generation,
@@ -2824,7 +2854,11 @@ impl BlueJsChildHost {
         let Some(status) = document.debugger_execution_states.get_mut(&program) else {
             return invalid_debugger_state();
         };
-        if !matches!(status, ChildDebuggerExecutionStatus::Paused(_)) {
+        if !matches!(
+            status,
+            ChildDebuggerExecutionStatus::Paused(_)
+                | ChildDebuggerExecutionStatus::SourceStepLimitReached(_)
+        ) {
             return invalid_debugger_state();
         }
         *status = ChildDebuggerExecutionStatus::ResumeRequested;
@@ -2869,7 +2903,11 @@ impl BlueJsChildHost {
         let Some(status) = document.debugger_execution_states.get_mut(&program) else {
             return invalid_debugger_state();
         };
-        if !matches!(status, ChildDebuggerExecutionStatus::Paused(_)) {
+        if !matches!(
+            status,
+            ChildDebuggerExecutionStatus::Paused(_)
+                | ChildDebuggerExecutionStatus::SourceStepLimitReached(_)
+        ) {
             return invalid_debugger_state();
         }
         *status = ChildDebuggerExecutionStatus::StepRequested;
@@ -2877,6 +2915,125 @@ impl BlueJsChildHost {
             tab_id,
             document_generation,
             program,
+        }
+    }
+
+    fn debugger_bluets_source_span_key(
+        &self,
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> Result<Option<BlueTsSourceSpanKey>, PageHostReply> {
+        let document = self.exact_document(tab_id, document_generation)?;
+        let program = safe_point.program;
+        let record = document
+            .debugger_programs
+            .get(&program.program_handle)
+            .filter(|record| {
+                record.program_generation == program.program_generation
+                    && record.metadata == Some(metadata)
+            })
+            .ok_or_else(invalid_request)?;
+        let retained = self
+            .debug_registry
+            .get(self.runtime.program_registry(), record.runtime_handle)
+            .map_err(|_| invalid_request())?;
+        let Some(entry) = retained
+            .safe_point_map()
+            .source_span_for_safe_point(safe_point.code_unit_ordinal, safe_point.bytecode_offset)
+        else {
+            return Ok(None);
+        };
+        let mut sources = retained
+            .static_info()
+            .sources
+            .iter()
+            .filter(|source| source.module == entry.source);
+        let source = sources.next().ok_or_else(invalid_request)?;
+        if sources.next().is_some()
+            || entry.start_byte >= entry.end_byte
+            || entry.end_byte
+                > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES).unwrap()
+        {
+            return Err(invalid_request());
+        }
+        Ok(Some(BlueTsSourceSpanKey {
+            source_id: source.id.0,
+            start_byte: u32::try_from(entry.start_byte).map_err(|_| invalid_request())?,
+            end_byte: u32::try_from(entry.end_byte).map_err(|_| invalid_request())?,
+        }))
+    }
+
+    fn step_debugger_bluets_source_span(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> PageHostReply {
+        if !metadata.is_well_formed() || !safe_point.is_well_formed() {
+            return invalid_request();
+        }
+        if let Err(reply) = self.exact_debugger_safe_point(tab_id, document_generation, safe_point)
+        {
+            return reply;
+        }
+        let program = safe_point.program;
+        {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            if !document.debugger_execution_control
+                || !document
+                    .pending_debugger_executions
+                    .front()
+                    .is_some_and(|pending| {
+                        pending.program == Some(program)
+                            && matches!(
+                                pending.execution,
+                                DeferredChildExecution::BlueTsClassic { .. }
+                            )
+                    })
+                || !matches!(
+                    document.debugger_execution_states.get(&program),
+                    Some(ChildDebuggerExecutionStatus::Paused(point)
+                        | ChildDebuggerExecutionStatus::SourceStepLimitReached(point))
+                        if *point == safe_point
+                )
+            {
+                return invalid_debugger_state();
+            }
+        }
+        let origin = match self.debugger_bluets_source_span_key(
+            tab_id,
+            document_generation,
+            metadata,
+            safe_point,
+        ) {
+            Ok(Some(span)) if span.source_id == source_id => span,
+            Ok(_) => return invalid_request(),
+            Err(reply) => return reply,
+        };
+        self.documents
+            .get_mut(&tab_id)
+            .expect("the exact source-step document remains live")
+            .debugger_execution_states
+            .insert(
+                program,
+                ChildDebuggerExecutionStatus::BlueTsSourceStepRequested {
+                    origin,
+                    remaining: MAX_BLUETS_SOURCE_STEP_ROOT_INSTRUCTIONS,
+                },
+            );
+        PageHostReply::DebuggerBlueTsSourceStepRequested {
+            tab_id,
+            document_generation,
+            metadata,
+            source_id,
+            safe_point,
         }
     }
 
@@ -2918,7 +3075,8 @@ impl BlueJsChildHost {
                         .copied()
                         .expect("every deferred classic has scheduler state");
                     match status {
-                        ChildDebuggerExecutionStatus::Paused(_) => {
+                        ChildDebuggerExecutionStatus::Paused(_)
+                        | ChildDebuggerExecutionStatus::SourceStepLimitReached(_) => {
                             paused = true;
                             PageHostScriptOutcome::Executed
                         }
@@ -2978,6 +3136,119 @@ impl BlueJsChildHost {
                                         .debugger_execution_states
                                         .insert(program, ChildDebuggerExecutionStatus::Completed);
                                     rejected(page_runtime_category(error))
+                                }
+                            }
+                        }
+                        ChildDebuggerExecutionStatus::BlueTsSourceStepRequested {
+                            origin,
+                            remaining,
+                        } => {
+                            if pending.language != PageHostScriptLanguage::BlueTs || remaining == 0
+                            {
+                                self.documents
+                                    .get_mut(&tab_id)
+                                    .expect("the source-step document remains live")
+                                    .debugger_execution_states
+                                    .insert(program, ChildDebuggerExecutionStatus::Completed);
+                                rejected("BlueTS source step state was inconsistent")
+                            } else {
+                                match self.runtime.step_debugger_root_instruction(tab_id) {
+                                    Ok(BlueJsPageDebuggerExecutionState::Paused {
+                                        bytecode_offset,
+                                    }) => {
+                                        let original = root_safe_point.expect(
+                                            "a BlueTS source step requires an armed root safe point",
+                                        );
+                                        let successor = PageHostDebuggerSafePoint {
+                                            bytecode_offset,
+                                            ..original
+                                        };
+                                        let metadata = self
+                                            .documents
+                                            .get(&tab_id)
+                                            .and_then(|document| {
+                                                document
+                                                    .debugger_programs
+                                                    .get(&program.program_handle)
+                                            })
+                                            .and_then(|record| record.metadata);
+                                        let next_span = if self
+                                            .exact_debugger_safe_point(
+                                                tab_id,
+                                                document_generation,
+                                                successor,
+                                            )
+                                            .is_ok()
+                                        {
+                                            metadata.ok_or_else(invalid_request).and_then(
+                                                |metadata| {
+                                                    self.debugger_bluets_source_span_key(
+                                                        tab_id,
+                                                        document_generation,
+                                                        metadata,
+                                                        successor,
+                                                    )
+                                                },
+                                            )
+                                        } else {
+                                            Err(invalid_request())
+                                        };
+                                        if let Ok(next_span) = next_span {
+                                            let next_status = match next_span {
+                                                Some(span) if span != origin => {
+                                                    ChildDebuggerExecutionStatus::Paused(successor)
+                                                }
+                                                _ if remaining > 1 => {
+                                                    ChildDebuggerExecutionStatus::BlueTsSourceStepRequested {
+                                                        origin,
+                                                        remaining: remaining - 1,
+                                                    }
+                                                }
+                                                _ => ChildDebuggerExecutionStatus::SourceStepLimitReached(successor),
+                                            };
+                                            self.documents
+                                                .get_mut(&tab_id)
+                                                .expect("the source-step document remains live")
+                                                .debugger_execution_states
+                                                .insert(program, next_status);
+                                            paused = true;
+                                            PageHostScriptOutcome::Executed
+                                        } else {
+                                            self.documents
+                                                .get_mut(&tab_id)
+                                                .expect("the source-step document remains live")
+                                                .debugger_execution_states
+                                                .insert(
+                                                    program,
+                                                    ChildDebuggerExecutionStatus::Completed,
+                                                );
+                                            rejected(
+                                                "BlueTS source step lost its verified boundary",
+                                            )
+                                        }
+                                    }
+                                    Ok(BlueJsPageDebuggerExecutionState::Completed) => {
+                                        self.documents
+                                            .get_mut(&tab_id)
+                                            .expect("the source-step document remains live")
+                                            .debugger_execution_states
+                                            .insert(
+                                                program,
+                                                ChildDebuggerExecutionStatus::Completed,
+                                            );
+                                        PageHostScriptOutcome::Executed
+                                    }
+                                    Err(error) => {
+                                        self.documents
+                                            .get_mut(&tab_id)
+                                            .expect("the source-step document remains live")
+                                            .debugger_execution_states
+                                            .insert(
+                                                program,
+                                                ChildDebuggerExecutionStatus::Completed,
+                                            );
+                                        rejected(page_runtime_category(error))
+                                    }
                                 }
                             }
                         }
@@ -3750,7 +4021,13 @@ fn child_debugger_execution_state(
         ChildDebuggerExecutionStatus::Paused(safe_point) => {
             PageHostDebuggerExecutionState::Paused { safe_point }
         }
-        ChildDebuggerExecutionStatus::StepRequested => PageHostDebuggerExecutionState::Stepping,
+        ChildDebuggerExecutionStatus::StepRequested
+        | ChildDebuggerExecutionStatus::BlueTsSourceStepRequested { .. } => {
+            PageHostDebuggerExecutionState::Stepping
+        }
+        ChildDebuggerExecutionStatus::SourceStepLimitReached(safe_point) => {
+            PageHostDebuggerExecutionState::SourceStepLimitReached { safe_point }
+        }
         ChildDebuggerExecutionStatus::ResumeRequested => PageHostDebuggerExecutionState::Resuming,
         ChildDebuggerExecutionStatus::Completed => PageHostDebuggerExecutionState::Completed,
     }
@@ -6463,6 +6740,350 @@ mod tests {
             PageHostReply::RealmClosed { .. }
         ));
         assert!(host.debug_registry.is_empty());
+    }
+
+    #[test]
+    fn child_source_span_step_stops_at_the_next_bound_bluets_statement() {
+        let mut host = BlueJsChildHost::default();
+        let source = concat!(
+            "let first: number = 1; ",
+            "let middle: number = first + 1; ",
+            "let last: number = middle + 1;"
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(
+                    1,
+                    vec![blue_ts_classic(0, source), classic(1, "globalThis.afterStep = 1;")],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+            reply => panic!("expected a BlueTS program, got {reply:?}"),
+        };
+        let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+            reply => panic!("expected retained BlueTS metadata, got {reply:?}"),
+        };
+        let (entries, source_id) = {
+            let handle =
+                host.documents[&7].debugger_programs[&program.program_handle].runtime_handle;
+            let retained = host
+                .debug_registry
+                .get(host.runtime.program_registry(), handle)
+                .unwrap();
+            let entries = retained
+                .safe_point_map()
+                .entries
+                .iter()
+                .filter(|entry| entry.code_unit.ordinal() == 0)
+                .cloned()
+                .collect::<Vec<_>>();
+            let source_id = retained
+                .static_info()
+                .sources
+                .iter()
+                .find(|source| source.module == entries[1].source)
+                .unwrap()
+                .id
+                .0;
+            (entries, source_id)
+        };
+        assert!(entries.len() >= 3, "fixture needs three bound root spans");
+        let target_entry = &entries[1];
+        let target = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: target_entry.bytecode_offset,
+        };
+        assert_ne!(target.bytecode_offset, 0);
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: target,
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        let request = PageHostRequest::StepDebuggerBlueTsSourceSpan {
+            tab_id: 7,
+            document_generation: 1,
+            metadata,
+            source_id,
+            safe_point: target,
+        };
+        let wrong_source_reply =
+            host.handle_request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+                tab_id: 7,
+                document_generation: 1,
+                metadata,
+                source_id: source_id + 1,
+                safe_point: target,
+            });
+        assert!(
+            matches!(
+                wrong_source_reply,
+                PageHostReply::Error {
+                    code: PageHostErrorCode::InvalidRequest,
+                    ..
+                }
+            ),
+            "{wrong_source_reply:?}"
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+                tab_id: 7,
+                document_generation: 1,
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_generation: metadata.metadata_generation + 1,
+                    ..metadata
+                },
+                source_id,
+                safe_point: target,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
+        assert_eq!(
+            host.handle_request(request.clone()),
+            PageHostReply::DebuggerBlueTsSourceStepRequested {
+                tab_id: 7,
+                document_generation: 1,
+                metadata,
+                source_id,
+                safe_point: target,
+            }
+        );
+        assert!(matches!(
+            host.handle_request(request),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidDebuggerState,
+                ..
+            }
+        ));
+        let mut successor = None;
+        for _ in 0..MAX_BLUETS_SOURCE_STEP_ROOT_INSTRUCTIONS {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+            match host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }) {
+                PageHostReply::DebuggerExecutionState {
+                    state: PageHostDebuggerExecutionState::Stepping,
+                    ..
+                } => {}
+                PageHostReply::DebuggerExecutionState {
+                    state: PageHostDebuggerExecutionState::Paused { safe_point },
+                    ..
+                } => {
+                    successor = Some(safe_point);
+                    break;
+                }
+                reply => panic!("source step did not stop at a new bound span: {reply:?}"),
+            }
+        }
+        let successor = successor.expect("source step must reach the third statement");
+        assert_eq!(successor.bytecode_offset, entries[2].bytecode_offset);
+        assert_eq!(host.debug_registry.len(), 1);
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionResumed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.len() == 2
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(2, Vec::new()),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+                tab_id: 7,
+                document_generation: 1,
+                metadata,
+                source_id,
+                safe_point: target,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn child_source_span_step_yields_at_its_fixed_root_instruction_limit() {
+        let mut host = BlueJsChildHost::default();
+        let expression = std::iter::repeat_n("first", 320)
+            .collect::<Vec<_>>()
+            .join(" + ");
+        let source = format!(
+            "let first: number = 1; let slow: number = {expression}; let last: number = slow + 1;"
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: debugger_document(1, vec![blue_ts_classic(0, &source)]),
+            }),
+            PageHostReply::Synchronized { reports, .. } if reports.is_empty()
+        ));
+        let program = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs[0],
+            reply => panic!("expected a BlueTS program, got {reply:?}"),
+        };
+        let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+            reply => panic!("expected retained BlueTS metadata, got {reply:?}"),
+        };
+        let (target, source_id) = {
+            let handle =
+                host.documents[&7].debugger_programs[&program.program_handle].runtime_handle;
+            let retained = host
+                .debug_registry
+                .get(host.runtime.program_registry(), handle)
+                .unwrap();
+            let entry = retained
+                .safe_point_map()
+                .entries
+                .iter()
+                .filter(|entry| entry.code_unit.ordinal() == 0)
+                .nth(1)
+                .expect("the long second statement must have a bound root entry");
+            let source_id = retained
+                .static_info()
+                .sources
+                .iter()
+                .find(|source| source.module == entry.source)
+                .unwrap()
+                .id
+                .0;
+            (
+                PageHostDebuggerSafePoint {
+                    program,
+                    code_unit_ordinal: 0,
+                    bytecode_offset: entry.bytecode_offset,
+                },
+                source_id,
+            )
+        };
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ArmDebuggerRootSafePointBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                safe_point: target,
+            }),
+            PageHostReply::DebuggerRootSafePointBreakpointArmed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::StepDebuggerBlueTsSourceSpan {
+                tab_id: 7,
+                document_generation: 1,
+                metadata,
+                source_id,
+                safe_point: target,
+            }),
+            PageHostReply::DebuggerBlueTsSourceStepRequested { .. }
+        ));
+        for turn in 1..=MAX_BLUETS_SOURCE_STEP_ROOT_INSTRUCTIONS {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                    tab_id: 7,
+                    document_generation: 1,
+                }),
+                PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.is_empty()
+            ));
+            let state = host.handle_request(PageHostRequest::GetDebuggerExecutionState {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            });
+            if turn < MAX_BLUETS_SOURCE_STEP_ROOT_INSTRUCTIONS {
+                assert!(
+                    matches!(
+                        state,
+                        PageHostReply::DebuggerExecutionState {
+                            state: PageHostDebuggerExecutionState::Stepping,
+                            ..
+                        }
+                    ),
+                    "unexpected pre-limit state on turn {turn}: {state:?}"
+                );
+            } else {
+                assert!(
+                    matches!(
+                        state,
+                        PageHostReply::DebuggerExecutionState {
+                            state: PageHostDebuggerExecutionState::SourceStepLimitReached { safe_point },
+                            ..
+                        } if safe_point.program == program && safe_point != target
+                    ),
+                    "source step must yield at its exact budget: {state:?}"
+                );
+            }
+        }
+        assert!(matches!(
+            host.handle_request(PageHostRequest::ResumeDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+            }),
+            PageHostReply::DebuggerExecutionResumed { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::AdvanceDebuggerExecution {
+                tab_id: 7,
+                document_generation: 1,
+            }),
+            PageHostReply::DebuggerExecutionAdvanced { reports, .. } if reports.len() == 1
+        ));
     }
 
     #[test]

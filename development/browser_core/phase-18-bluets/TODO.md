@@ -531,6 +531,19 @@ or second module resolver to bypass them.
   `Paused` → resumed completion. No nested-frame, module, source-level,
   stack, scope, or value step is exposed.
 
+  The isolated child now has a v30 private source-span step foundation for a
+  paused BlueTS classic root. It requires the exact live metadata attachment,
+  compiler source ID, and current verified safe point; it derives the span
+  internally, then executes one root instruction per core-owned turn until a
+  different compiler-bound span or completion. After 256 instructions it yields
+  an explicit source-free limit state with the continuation intact. Unit and
+  real child-socket regressions cover a bound-span transition, wrong receipt,
+  stale document, redaction, and the fixed budget. Core does not yet expose
+  this private request through the public debugger: same-stream metadata/source
+  receipts, capability intersection, opaque reminting, and a public limit stop
+  reason are still required. Modules, nested frames, stack, scope, and values
+  remain outside the seam.
+
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm
   replacement discards that continuation, and it cannot pause another tab or
