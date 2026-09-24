@@ -527,10 +527,12 @@ fn request_toolbar_button(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     connection_id: u64,
     label: String,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::SetToolbarButton {
         connection_id,
+        grant_generation,
         label,
         reply: reply_tx,
     })
@@ -562,10 +564,12 @@ fn request_show_popup(
     title: String,
     body: String,
     action_label: Option<String>,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::ShowPopup {
         connection_id,
+        grant_generation,
         popup: blueice_ipc::ExtensionPopup {
             id: NEXT_EXTENSION_POPUP_ID.fetch_add(1, Ordering::Relaxed),
             tab_id,
@@ -738,19 +742,19 @@ fn spawn_extension_listener(
                                 &redirect_rule_tx, connection_id, source_url, target_url, grant_generation,
                             )
                         })
-                        .with_toolbar_button(move |label| {
-                            request_toolbar_button(&toolbar_tx, connection_id, label)
+                        .with_toolbar_button(move |label, grant_generation| {
+                            request_toolbar_button(&toolbar_tx, connection_id, label, grant_generation)
                         })
                         .with_toolbar_clearer(move || {
                             clear_toolbar_button(&toolbar_clear_tx, connection_id)
                         })
                         .with_popup(
-                            move |tab_id, title, body| {
-                                request_show_popup(&popup_tx, connection_id, tab_id, title, body, None)
+                            move |tab_id, title, body, grant_generation| {
+                                request_show_popup(&popup_tx, connection_id, tab_id, title, body, None, grant_generation)
                             },
                             move || clear_popup(&popup_clear_tx, connection_id),
                         )
-                        .with_popup_action(move |tab_id, title, body, action_label| {
+                        .with_popup_action(move |tab_id, title, body, action_label, grant_generation| {
                             request_show_popup(
                                 &popup_action_tx,
                                 connection_id,
@@ -758,6 +762,7 @@ fn spawn_extension_listener(
                                 title,
                                 body,
                                 Some(action_label),
+                                grant_generation,
                             )
                         }),
                     );

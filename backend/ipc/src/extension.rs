@@ -530,10 +530,19 @@ pub enum ExtensionRuntimeEvent {
     /// A client activated the displayed native extension button for a live
     /// tab. This is not an authenticated human gesture and grants no ambient
     /// or ephemeral authority by itself.
-    ToolbarActivated { tab_id: u64 },
+    ToolbarActivated {
+        tab_id: u64,
+        /// Internal core-owned generation; not an authenticated human gesture.
+        #[serde(default)]
+        grant_generation: u64,
+    },
     /// Core accepted the current popup's one action button for a live tab.
     /// Like `ToolbarActivated`, this is not an authenticated human gesture.
-    PopupActionActivated { tab_id: u64 },
+    PopupActionActivated {
+        tab_id: u64,
+        #[serde(default)]
+        grant_generation: u64,
+    },
 }
 
 /// A capability declaration the host could not negotiate during an

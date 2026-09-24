@@ -109,6 +109,7 @@ pub enum ExtensionPageRequest {
     },
     SetToolbarButton {
         connection_id: u64,
+        grant_generation: u64,
         label: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
@@ -118,6 +119,7 @@ pub enum ExtensionPageRequest {
     },
     ShowPopup {
         connection_id: u64,
+        grant_generation: u64,
         popup: ExtensionPopup,
         reply: mpsc::Sender<Result<(), String>>,
     },
@@ -433,11 +435,15 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
     let (listing_tx, listing_rx) = mpsc::channel::<DownloadsListing>();
     let mut downloads_refresher = DownloadsRefresher::default();
     // Only the connection that published the native button can remove it.
-    let mut extension_toolbar: Option<(u64, String)> = None;
-    let mut extension_popup: Option<(u64, ExtensionPopup)> = None;
+    let mut extension_toolbar: Option<(u64, String, u64)> = None;
+    let mut extension_popup: Option<(u64, ExtensionPopup, u64)> = None;
 
     loop {
-        match blueice_ipc::read_client_message_with_ids(stream) {
+        let incoming = blueice_ipc::read_client_message_with_ids(stream);
+        if !matches!(&incoming, Err(error) if !is_timeout(error)) {
+            clear_stale_extension_ui(tabs, stream, &mut extension_toolbar, &mut extension_popup)?;
+        }
+        match incoming {
             Ok((tab_id, request_id, msg)) => {
                 let target = tab_id
                     .map(TabId::from_u64)
@@ -793,7 +799,7 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                             )?;
                             if extension_popup
                                 .as_ref()
-                                .is_some_and(|(_, popup)| popup.tab_id == target.as_u64())
+                                .is_some_and(|(_, popup, _)| popup.tab_id == target.as_u64())
                             {
                                 extension_popup = None;
                                 blueice_ipc::write_server_message_with_ids(
@@ -983,7 +989,7 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                             None,
                             request_id,
                             &ServerMessage::ExtensionToolbar {
-                                label: extension_toolbar.as_ref().map(|(_, label)| label.clone()),
+                                label: extension_toolbar.as_ref().map(|(_, label, _)| label.clone()),
                             },
                         )?;
                     }
@@ -996,6 +1002,7 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                             events
                                 .try_send(ExtensionRuntimeEvent::ToolbarActivated {
                                     tab_id: target.as_u64(),
+                                    grant_generation: extension_toolbar.as_ref().unwrap().2,
                                 })
                                 .map_err(|_| "extension event queue is unavailable".to_string())
                         } else {
@@ -1016,14 +1023,14 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                             None,
                             request_id,
                             &ServerMessage::ExtensionPopup {
-                                popup: extension_popup.as_ref().map(|(_, popup)| popup.clone()),
+                                popup: extension_popup.as_ref().map(|(_, popup, _)| popup.clone()),
                             },
                         )?;
                     }
                     ClientMessage::DismissExtensionPopup => {
                         if extension_popup
                             .as_ref()
-                            .is_some_and(|(_, popup)| popup.tab_id == target.as_u64())
+                            .is_some_and(|(_, popup, _)| popup.tab_id == target.as_u64())
                         {
                             extension_popup = None;
                             blueice_ipc::write_server_message_with_ids(
@@ -1035,7 +1042,7 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                         }
                     }
                     ClientMessage::ActivateExtensionPopupAction { popup_id } => {
-                        let valid_popup = extension_popup.as_ref().is_some_and(|(_, popup)| {
+                        let valid_popup = extension_popup.as_ref().is_some_and(|(_, popup, _)| {
                             popup.id != 0
                                 && popup.id == popup_id
                                 && popup.tab_id == target.as_u64()
@@ -1047,6 +1054,7 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                             events
                                 .try_send(ExtensionRuntimeEvent::PopupActionActivated {
                                     tab_id: target.as_u64(),
+                                    grant_generation: extension_popup.as_ref().unwrap().2,
                                 })
                                 .map_err(|_| "extension event queue is unavailable".to_string())
                         } else {
@@ -1146,6 +1154,38 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
     }
 }
 
+/// Removes UI published under an earlier optional-grant generation before
+/// another client command can observe or activate it. The loop polls even
+/// without client traffic, so a revoke does not need a public IPC trigger.
+fn clear_stale_extension_ui<S: Write>(
+    tabs: &TabManager,
+    stream: &mut S,
+    toolbar: &mut Option<(u64, String, u64)>,
+    popup: &mut Option<(u64, ExtensionPopup, u64)>,
+) -> io::Result<()> {
+    let current = tabs.extension_capability_generation("ui:inject");
+    let toolbar_is_stale = toolbar.as_ref().is_some_and(|(_, _, generation)| {
+        current != Some(*generation)
+    });
+    let popup_is_stale = popup.as_ref().is_some_and(|(_, _, generation)| {
+        current != Some(*generation)
+    });
+    if toolbar_is_stale || popup_is_stale {
+        if popup.take().is_some() {
+            blueice_ipc::write_server_message_with_ids(
+                stream, None, None, &ServerMessage::ExtensionPopup { popup: None },
+            )?;
+        }
+    }
+    if toolbar_is_stale {
+        toolbar.take();
+        blueice_ipc::write_server_message_with_ids(
+            stream, None, None, &ServerMessage::ExtensionToolbar { label: None },
+        )?;
+    }
+    Ok(())
+}
+
 /// Applies a request received from the extension host. An accepted write
 /// produces the same uncorrelated fresh frame that other background-originated
 /// core work does, so every connected observer sees the core-owned mutation.
@@ -1157,8 +1197,8 @@ fn handle_extension_page_request<S: Write>(
     frame_dir: &Path,
     generation: &mut u64,
     script_scheduler: &mut dyn ScriptScheduler,
-    extension_toolbar: &mut Option<(u64, String)>,
-    extension_popup: &mut Option<(u64, ExtensionPopup)>,
+    extension_toolbar: &mut Option<(u64, String, u64)>,
+    extension_popup: &mut Option<(u64, ExtensionPopup, u64)>,
     request: ExtensionPageRequest,
 ) -> io::Result<()> {
     match request {
@@ -1197,13 +1237,15 @@ fn handle_extension_page_request<S: Write>(
         }
         ExtensionPageRequest::SetToolbarButton {
             connection_id,
+            grant_generation,
             label,
             reply,
         } => {
-            let result = blueice_extension_host::validate_toolbar_label(&label).and_then(|()| {
+            let result = tabs.with_stable_extension_capability("ui:inject", grant_generation, |_| {
+                blueice_extension_host::validate_toolbar_label(&label).and_then(|()| {
                 if extension_popup
                     .as_ref()
-                    .is_some_and(|(owner, _)| *owner != connection_id)
+                    .is_some_and(|(owner, _, _)| *owner != connection_id)
                 {
                     blueice_ipc::write_server_message_with_ids(
                         stream,
@@ -1223,17 +1265,18 @@ fn handle_extension_page_request<S: Write>(
                     },
                 )
                 .map_err(|error| format!("could not publish extension toolbar: {error}"))?;
-                *extension_toolbar = Some((connection_id, label));
+                *extension_toolbar = Some((connection_id, label, grant_generation));
                 Ok(())
-            });
+                })
+            }).and_then(|result| result);
             let _ = reply.send(result);
         }
         ExtensionPageRequest::ClearToolbarButton {
             connection_id,
             reply,
         } => {
-            if extension_toolbar.as_ref().is_some_and(|(owner, _)| *owner == connection_id) {
-                if extension_popup.as_ref().is_some_and(|(owner, _)| *owner == connection_id) {
+            if extension_toolbar.as_ref().is_some_and(|(owner, _, _)| *owner == connection_id) {
+                if extension_popup.as_ref().is_some_and(|(owner, _, _)| *owner == connection_id) {
                     *extension_popup = None;
                     blueice_ipc::write_server_message_with_ids(
                         stream,
@@ -1254,10 +1297,12 @@ fn handle_extension_page_request<S: Write>(
         }
         ExtensionPageRequest::ShowPopup {
             connection_id,
+            grant_generation,
             popup,
             reply,
         } => {
-            let result = blueice_extension_host::validate_popup_text(&popup.title, &popup.body)
+            let result = tabs.with_stable_extension_capability("ui:inject", grant_generation, |tabs| {
+                blueice_extension_host::validate_popup_text(&popup.title, &popup.body)
                 .and_then(|()| match popup.action_label.as_deref() {
                     Some(_) if popup.id == 0 => {
                         Err("a popup action needs a core-assigned ID".to_string())
@@ -1268,7 +1313,9 @@ fn handle_extension_page_request<S: Write>(
                 .and_then(|()| {
                     if !extension_toolbar
                         .as_ref()
-                        .is_some_and(|(owner, _)| *owner == connection_id)
+                        .is_some_and(|(owner, _, generation)| {
+                            *owner == connection_id && *generation == grant_generation
+                        })
                     {
                         return Err("a popup requires this connection's toolbar button".to_string());
                     }
@@ -1284,16 +1331,17 @@ fn handle_extension_page_request<S: Write>(
                         },
                     )
                     .map_err(|error| format!("could not publish extension popup: {error}"))?;
-                    *extension_popup = Some((connection_id, popup));
+                    *extension_popup = Some((connection_id, popup, grant_generation));
                     Ok(())
-                });
+                })
+            }).and_then(|result| result);
             let _ = reply.send(result);
         }
         ExtensionPageRequest::ClearPopup {
             connection_id,
             reply,
         } => {
-            if extension_popup.as_ref().is_some_and(|(owner, _)| *owner == connection_id) {
+            if extension_popup.as_ref().is_some_and(|(owner, _, _)| *owner == connection_id) {
                 *extension_popup = None;
                 blueice_ipc::write_server_message_with_ids(
                     stream,
@@ -2815,6 +2863,7 @@ mod tests {
         extension_tx
             .send(ExtensionPageRequest::SetToolbarButton {
                 connection_id: 4,
+                grant_generation: 0,
                 label: "\u{202e}spoof".to_string(),
                 reply: reply_tx,
             })
@@ -2824,6 +2873,7 @@ mod tests {
         extension_tx
             .send(ExtensionPageRequest::SetToolbarButton {
                 connection_id: 4,
+                grant_generation: 0,
                 label: "Notes".to_string(),
                 reply: reply_tx,
             })
@@ -2852,7 +2902,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             event_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
-            ExtensionRuntimeEvent::ToolbarActivated { tab_id: 1 }
+            ExtensionRuntimeEvent::ToolbarActivated { tab_id: 1, grant_generation: 0 }
         );
 
         // A stale connection cannot clear a newer connection's button.
@@ -2860,6 +2910,7 @@ mod tests {
         extension_tx
             .send(ExtensionPageRequest::SetToolbarButton {
                 connection_id: 5,
+                grant_generation: 0,
                 label: "Tasks".to_string(),
                 reply: reply_tx,
             })
@@ -2882,6 +2933,7 @@ mod tests {
         extension_tx
             .send(ExtensionPageRequest::ShowPopup {
                 connection_id: 5,
+                grant_generation: 0,
                 popup: popup.clone(),
                 reply: reply_tx,
             })
@@ -2905,6 +2957,7 @@ mod tests {
         extension_tx
             .send(ExtensionPageRequest::ShowPopup {
                 connection_id: 5,
+                grant_generation: 0,
                 popup: popup.clone(),
                 reply: reply_tx,
             })
@@ -2924,6 +2977,7 @@ mod tests {
         let (reply_tx, reply_rx) = mpsc::channel();
         extension_tx.send(ExtensionPageRequest::ShowPopup {
             connection_id: 5,
+            grant_generation: 0,
             popup: action_popup.clone(),
             reply: reply_tx,
         }).unwrap();
@@ -2940,10 +2994,11 @@ mod tests {
         assert_eq!(blueice_ipc::read_server_message(&mut client).unwrap(),
             ServerMessage::ExtensionPopup { popup: None });
         assert_eq!(event_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
-            ExtensionRuntimeEvent::PopupActionActivated { tab_id: 1 });
+            ExtensionRuntimeEvent::PopupActionActivated { tab_id: 1, grant_generation: 0 });
         let (reply_tx, reply_rx) = mpsc::channel();
         extension_tx.send(ExtensionPageRequest::ShowPopup {
             connection_id: 5,
+            grant_generation: 0,
             popup: action_popup,
             reply: reply_tx,
         }).unwrap();
@@ -3031,6 +3086,75 @@ mod tests {
         assert!(!tabs.is_extension_navigation_blocked("https://example.test/blocked"));
         assert!(submit(&mut tabs, new_generation).is_ok());
         assert!(tabs.is_extension_navigation_blocked("https://example.test/blocked"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn optional_ui_revocation_clears_published_surfaces_and_rejects_stale_publication() {
+        let root = temp_frame_dir("stale-optional-ui");
+        std::fs::create_dir_all(&root).unwrap();
+        let manifest = root.join("extension.json");
+        std::fs::write(&manifest,
+            r#"{"name":"Optional UI","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["ui:inject"]}}"#
+        ).unwrap();
+        std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
+        let installed = blueice_extension_host::load_installed_extension(&manifest).unwrap();
+        let id = installed.extension_id().to_string();
+        let registry = Arc::new(blueice_extension_host::registry_for_installed_extension(&installed));
+        let mut tabs = TabManager::new(320.0, 200.0);
+        tabs.set_extension_permission_registry(Arc::clone(&registry), id.clone());
+        registry.grant_optional(&id, "ui:inject").unwrap();
+        let old_generation = registry.capability_generation(&id, "ui:inject").unwrap();
+        let mut wire = Vec::new();
+        let mut frame_generation = 0;
+        let mut scheduler = NoScriptScheduler;
+        let mut toolbar = None;
+        let mut popup = None;
+        let (reply, result) = mpsc::channel();
+        handle_extension_page_request(&mut tabs, &mut wire, &root, &mut frame_generation,
+            &mut scheduler, &mut toolbar, &mut popup, ExtensionPageRequest::SetToolbarButton {
+                connection_id: 7, grant_generation: old_generation, label: "Notes".into(), reply,
+            }).unwrap();
+        result.recv().unwrap().unwrap();
+        let shown = ExtensionPopup { id: 1, tab_id: 1, title: "Notes".into(),
+            body: "Saved".into(), action_label: None };
+        let (reply, result) = mpsc::channel();
+        handle_extension_page_request(&mut tabs, &mut wire, &root, &mut frame_generation,
+            &mut scheduler, &mut toolbar, &mut popup, ExtensionPageRequest::ShowPopup {
+                connection_id: 7, grant_generation: old_generation, popup: shown.clone(), reply,
+            }).unwrap();
+        result.recv().unwrap().unwrap();
+
+        registry.revoke_optional(&id, "ui:inject").unwrap();
+        clear_stale_extension_ui(&tabs, &mut wire, &mut toolbar, &mut popup).unwrap();
+        assert!(toolbar.is_none() && popup.is_none());
+        registry.grant_optional(&id, "ui:inject").unwrap();
+        let new_generation = registry.capability_generation(&id, "ui:inject").unwrap();
+        assert_ne!(old_generation, new_generation);
+        let (reply, result) = mpsc::channel();
+        handle_extension_page_request(&mut tabs, &mut wire, &root, &mut frame_generation,
+            &mut scheduler, &mut toolbar, &mut popup, ExtensionPageRequest::SetToolbarButton {
+                connection_id: 7, grant_generation: old_generation, label: "Old".into(), reply,
+            }).unwrap();
+        assert!(result.recv().unwrap().is_err());
+        assert!(toolbar.is_none());
+        let (reply, result) = mpsc::channel();
+        handle_extension_page_request(&mut tabs, &mut wire, &root, &mut frame_generation,
+            &mut scheduler, &mut toolbar, &mut popup, ExtensionPageRequest::SetToolbarButton {
+                connection_id: 7, grant_generation: new_generation, label: "New".into(), reply,
+            }).unwrap();
+        result.recv().unwrap().unwrap();
+        let mut cursor = std::io::Cursor::new(wire);
+        assert_eq!(blueice_ipc::read_server_message(&mut cursor).unwrap(),
+            ServerMessage::ExtensionToolbar { label: Some("Notes".into()) });
+        assert_eq!(blueice_ipc::read_server_message(&mut cursor).unwrap(),
+            ServerMessage::ExtensionPopup { popup: Some(shown) });
+        assert_eq!(blueice_ipc::read_server_message(&mut cursor).unwrap(),
+            ServerMessage::ExtensionPopup { popup: None });
+        assert_eq!(blueice_ipc::read_server_message(&mut cursor).unwrap(),
+            ServerMessage::ExtensionToolbar { label: None });
+        assert_eq!(blueice_ipc::read_server_message(&mut cursor).unwrap(),
+            ServerMessage::ExtensionToolbar { label: Some("New".into()) });
         let _ = std::fs::remove_dir_all(root);
     }
 

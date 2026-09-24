@@ -739,7 +739,7 @@ fn core_connection_mode_runs_ui_v3_popup_action_over_a_real_host_process() {
     blueice_ipc::extension::write_extension_reply(
         &mut stream,
         &ExtensionReply::RuntimeEvent(
-            blueice_ipc::extension::ExtensionRuntimeEvent::ToolbarActivated { tab_id: 7 },
+            blueice_ipc::extension::ExtensionRuntimeEvent::ToolbarActivated { tab_id: 7, grant_generation: 0 },
         ),
     ).unwrap();
     assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
@@ -756,7 +756,7 @@ fn core_connection_mode_runs_ui_v3_popup_action_over_a_real_host_process() {
     blueice_ipc::extension::write_extension_reply(
         &mut stream,
         &ExtensionReply::RuntimeEvent(
-            blueice_ipc::extension::ExtensionRuntimeEvent::PopupActionActivated { tab_id: 7 },
+            blueice_ipc::extension::ExtensionRuntimeEvent::PopupActionActivated { tab_id: 7, grant_generation: 0 },
         ),
     ).unwrap();
     assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),

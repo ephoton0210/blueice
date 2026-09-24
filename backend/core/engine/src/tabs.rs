@@ -343,8 +343,13 @@ impl TabManager {
     }
 
     fn intercept_generation(&self) -> Option<u64> {
-        self.extension_permissions.as_ref()
-            .map_or(Some(0), ExtensionPermissionView::intercept_generation)
+        self.extension_capability_generation("network:intercept")
+    }
+
+    pub(crate) fn extension_capability_generation(&self, capability: &str) -> Option<u64> {
+        self.extension_permissions.as_ref().map_or(Some(0), |view| {
+            view.registry.capability_generation(&view.extension_id, capability)
+        })
     }
 
     /// Serializes a core-owned publication with the same optional grant

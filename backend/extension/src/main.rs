@@ -265,10 +265,10 @@ fn connect_to_core(socket: PathBuf, manifest: PathBuf) -> Result<(), String> {
                     ExtensionRuntimeEvent::NavigationCommitted { tab_id } => {
                         RuntimeInvocation::NavigationCommitted { tab_id }
                     }
-                    ExtensionRuntimeEvent::ToolbarActivated { tab_id } => {
+                    ExtensionRuntimeEvent::ToolbarActivated { tab_id, .. } => {
                         RuntimeInvocation::ToolbarActivated { tab_id }
                     }
-                    ExtensionRuntimeEvent::PopupActionActivated { tab_id } => {
+                    ExtensionRuntimeEvent::PopupActionActivated { tab_id, .. } => {
                         RuntimeInvocation::PopupActionActivated { tab_id }
                     }
                 };

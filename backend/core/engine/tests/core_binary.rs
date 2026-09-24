@@ -213,7 +213,7 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
     write_extension_request(&mut stream, &ExtensionRequest::NextRuntimeEvent).unwrap();
     assert_eq!(
         read_extension_reply(&mut stream).unwrap(),
-        ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::ToolbarActivated { tab_id: 1 })
+        ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::ToolbarActivated { tab_id: 1, grant_generation: 0 })
     );
     write_extension_request(
         &mut stream,
@@ -248,7 +248,7 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
     write_extension_request(&mut stream, &ExtensionRequest::NextRuntimeEvent).unwrap();
     assert_eq!(
         read_extension_reply(&mut stream).unwrap(),
-        ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::PopupActionActivated { tab_id: 1 })
+        ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::PopupActionActivated { tab_id: 1, grant_generation: 0 })
     );
     write_extension_request(&mut stream, &ExtensionRequest::SetToolbarButton {
         label: "Actioned".to_string(),

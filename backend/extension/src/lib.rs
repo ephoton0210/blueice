@@ -827,10 +827,10 @@ pub struct ExtensionActionDelegates<R, W, N, B, C> {
     clear_network_block_urls: C,
     observe_network: Box<dyn FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send>,
     observe_network_trace: Box<dyn FnMut(u64) -> Result<Option<NetworkTraceInfo>, String> + Send>,
-    set_toolbar_button: Box<dyn FnMut(String) -> Result<(), String> + Send>,
+    set_toolbar_button: Box<dyn FnMut(String, u64) -> Result<(), String> + Send>,
     clear_toolbar_button: Box<dyn FnMut() -> Result<(), String> + Send>,
-    show_popup: Box<dyn FnMut(u64, String, String) -> Result<(), String> + Send>,
-    show_popup_action: Box<dyn FnMut(u64, String, String, String) -> Result<(), String> + Send>,
+    show_popup: Box<dyn FnMut(u64, String, String, u64) -> Result<(), String> + Send>,
+    show_popup_action: Box<dyn FnMut(u64, String, String, String, u64) -> Result<(), String> + Send>,
     clear_popup: Box<dyn FnMut() -> Result<(), String> + Send>,
     storage: ExtensionStorage,
 }
@@ -867,16 +867,16 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
             observe_network_trace: Box::new(|_| {
                 Err("network:observe v2 needs a core-backed trace reader".to_string())
             }),
-            set_toolbar_button: Box::new(|_| {
+            set_toolbar_button: Box::new(|_, _| {
                 Err("ui:inject needs a core-backed native toolbar".to_string())
             }),
             clear_toolbar_button: Box::new(|| {
                 Err("ui:inject needs a core-backed native toolbar".to_string())
             }),
-            show_popup: Box::new(|_, _, _| {
+            show_popup: Box::new(|_, _, _, _| {
                 Err("ui:inject version 2 needs a core-backed native popup".to_string())
             }),
-            show_popup_action: Box::new(|_, _, _, _| {
+            show_popup_action: Box::new(|_, _, _, _, _| {
                 Err("ui:inject version 3 needs a core-backed popup action".to_string())
             }),
             clear_popup: Box::new(|| {
@@ -943,7 +943,7 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
 
     pub fn with_toolbar_button(
         mut self,
-        setter: impl FnMut(String) -> Result<(), String> + Send + 'static,
+        setter: impl FnMut(String, u64) -> Result<(), String> + Send + 'static,
     ) -> Self {
         self.set_toolbar_button = Box::new(setter);
         self
@@ -960,7 +960,7 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
 
     pub fn with_popup(
         mut self,
-        show: impl FnMut(u64, String, String) -> Result<(), String> + Send + 'static,
+        show: impl FnMut(u64, String, String, u64) -> Result<(), String> + Send + 'static,
         clear: impl FnMut() -> Result<(), String> + Send + 'static,
     ) -> Self {
         self.show_popup = Box::new(show);
@@ -970,7 +970,7 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
 
     pub fn with_popup_action(
         mut self,
-        show: impl FnMut(u64, String, String, String) -> Result<(), String> + Send + 'static,
+        show: impl FnMut(u64, String, String, String, u64) -> Result<(), String> + Send + 'static,
     ) -> Self {
         self.show_popup_action = Box::new(show);
         self
@@ -1268,7 +1268,15 @@ where
                             .to_string(),
                     )
                 } else {
-                    authentication.wait_for_runtime_event()
+                    loop {
+                        match authentication.wait_for_runtime_event() {
+                            Ok(Some(ExtensionRuntimeEvent::ToolbarActivated { grant_generation, .. }
+                                | ExtensionRuntimeEvent::PopupActionActivated { grant_generation, .. }))
+                                if registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT)
+                                    != Some(grant_generation) => continue,
+                            result => break result,
+                        }
+                    }
                 };
                 match result {
                     Ok(Some(event)) => {
@@ -1413,16 +1421,25 @@ where
                         },
                     )?;
                 } else {
+                    let Some(generation) = registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) else {
+                        write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason: grant_changed_reason(CAPABILITY_UI_INJECT),
+                        })?;
+                        continue;
+                    };
                     let result = validate_toolbar_label(&label)
-                        .and_then(|()| set_toolbar_button(label));
+                        .and_then(|()| set_toolbar_button(label, generation));
                     let reply = match result {
                         Ok(()) => {
                             toolbar_visible = true;
                             ExtensionReply::UiInjectAck
                         }
+                        Err(reason) if reason == grant_changed_reason(CAPABILITY_UI_INJECT) => ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                        },
                         Err(reason) => ExtensionReply::OperationUnavailable {
-                            capability: CAPABILITY_UI_INJECT.to_string(),
-                            reason,
+                            capability: CAPABILITY_UI_INJECT.to_string(), reason,
                         },
                     };
                     write_extension_reply(stream, &reply)?;
@@ -1467,6 +1484,13 @@ where
                     )?;
                     continue;
                 }
+                let Some(generation) = registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) else {
+                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_UI_INJECT.to_string(),
+                        reason: grant_changed_reason(CAPABILITY_UI_INJECT),
+                    })?;
+                    continue;
+                };
                 if let Err(reason) = validate_popup_text(&title, &body) {
                     write_extension_reply(
                         stream,
@@ -1498,11 +1522,18 @@ where
                     CAPABILITY_UI_INJECT,
                     detail,
                 ) {
-                    Ok(GatekeeperReply::Cleared) => match show_popup(tab_id, title, body) {
+                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) != Some(generation) => ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_UI_INJECT.to_string(),
+                        reason: grant_changed_reason(CAPABILITY_UI_INJECT),
+                    },
+                    Ok(GatekeeperReply::Cleared) => match show_popup(tab_id, title, body, generation) {
                         Ok(()) => {
                             popup_visible = true;
                             ExtensionReply::UiInjectAck
                         }
+                        Err(reason) if reason == grant_changed_reason(CAPABILITY_UI_INJECT) => ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                        },
                         Err(reason) => ExtensionReply::OperationUnavailable {
                             capability: CAPABILITY_UI_INJECT.to_string(),
                             reason,
@@ -1530,6 +1561,13 @@ where
                     })?;
                     continue;
                 }
+                let Some(generation) = registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) else {
+                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_UI_INJECT.to_string(),
+                        reason: grant_changed_reason(CAPABILITY_UI_INJECT),
+                    })?;
+                    continue;
+                };
                 if let Err(reason) = validate_popup_text(&title, &body)
                     .and_then(|()| validate_toolbar_label(&action_label))
                 {
@@ -1556,12 +1594,19 @@ where
                     CAPABILITY_UI_INJECT,
                     detail,
                 ) {
+                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) != Some(generation) => ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_UI_INJECT.to_string(),
+                        reason: grant_changed_reason(CAPABILITY_UI_INJECT),
+                    },
                     Ok(GatekeeperReply::Cleared) => {
-                        match show_popup_action(tab_id, title, body, action_label) {
+                        match show_popup_action(tab_id, title, body, action_label, generation) {
                             Ok(()) => {
                                 popup_visible = true;
                                 ExtensionReply::UiInjectAck
                             }
+                            Err(reason) if reason == grant_changed_reason(CAPABILITY_UI_INJECT) => ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                            },
                             Err(reason) => ExtensionReply::OperationUnavailable {
                                 capability: CAPABILITY_UI_INJECT.to_string(), reason,
                             },
@@ -2860,7 +2905,7 @@ mod tests {
                     |_, _| Ok(()),
                     || Ok(()),
                 )
-                .with_toolbar_button(move |label| {
+                .with_toolbar_button(move |label, _| {
                     seen_tx.send(label).unwrap();
                     Ok(())
                 })
@@ -2982,10 +3027,10 @@ mod tests {
                     |_, _| Ok(()),
                     || Ok(()),
                 )
-                .with_toolbar_button(|_| Ok(()))
+                .with_toolbar_button(|_, _| Ok(()))
                 .with_toolbar_clearer(|| Ok(()))
                 .with_popup(
-                    move |tab_id, title, body| {
+                    move |tab_id, title, body, _| {
                         shown_tx.send((tab_id, title, body)).unwrap();
                         Ok(())
                     },
@@ -3057,9 +3102,9 @@ mod tests {
                     |_, _| Ok(()),
                     || Ok(()),
                 )
-                .with_toolbar_button(|_| Ok(()))
+                .with_toolbar_button(|_, _| Ok(()))
                 .with_toolbar_clearer(|| Ok(()))
-                .with_popup_action(move |tab_id, title, body, label| {
+                .with_popup_action(move |tab_id, title, body, label, _| {
                     shown_tx.send((tab_id, title, body, label)).unwrap();
                     Ok(())
                 }),
@@ -3139,9 +3184,9 @@ mod tests {
                 ExtensionActionDelegates::new(
                     |_| Ok(String::new()), unused_write_delegate, || Ok(()), |_, _| Ok(()), || Ok(()),
                 )
-                .with_toolbar_button(|_| Ok(()))
+                .with_toolbar_button(|_, _| Ok(()))
                 .with_popup(
-                    move |_, _, _| { shown_tx.send(()).unwrap(); Ok(()) },
+                    move |_, _, _, _| { shown_tx.send(()).unwrap(); Ok(()) },
                     || Ok(()),
                 ),
             )
@@ -5667,6 +5712,52 @@ mod tests {
             ExtensionReply::RuntimeEvent(ExtensionRuntimeEvent::NavigationCommitted { tab_id: 17 })
         );
 
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn queued_ui_activation_from_revoked_grant_never_reaches_the_guest() {
+        let mut registry = ExtensionRegistry::with_supported_capabilities();
+        registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
+        let registry = Arc::new(registry);
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+        let old_generation = registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let (start_tx, start_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let handler_registry = Arc::clone(&registry);
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication(
+                &handler_registry, Path::new("/not-used-before-an-action.sock"), &mut server,
+                ExtensionConnectionAuthentication::required("core-secret")
+                    .with_runtime_start_receiver(Arc::new(Mutex::new(start_rx)))
+                    .with_runtime_event_receiver(Arc::new(Mutex::new(event_rx))),
+                |_| Ok(String::new()), unused_write_delegate, || Ok(()),
+            )
+        });
+        write_extension_request(&mut client, &ExtensionRequest::HelloAuthenticated {
+            extension_id: MINIMAL_SLICE_EXTENSION_ID.into(),
+            capability_versions: BTreeMap::from([(CAPABILITY_UI_INJECT.into(), 3)]),
+            authentication: "core-secret".into(),
+        }).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::RuntimeReady).unwrap();
+        start_tx.send(()).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::RuntimeStart);
+        event_tx.send(ExtensionRuntimeEvent::ToolbarActivated { tab_id: 1, grant_generation: old_generation }).unwrap();
+        registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+        let fresh_generation = registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+        assert_ne!(old_generation, fresh_generation);
+        event_tx.send(ExtensionRuntimeEvent::PopupActionActivated { tab_id: 1, grant_generation: fresh_generation }).unwrap();
+        write_extension_request(&mut client, &ExtensionRequest::NextRuntimeEvent).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::RuntimeEvent(
+            ExtensionRuntimeEvent::PopupActionActivated { tab_id: 1, grant_generation: fresh_generation }
+        ));
+        drop(event_tx);
+        write_extension_request(&mut client, &ExtensionRequest::NextRuntimeEvent).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::RuntimeEventStreamClosed);
         drop(client);
         handle.join().unwrap().unwrap();
     }
