@@ -356,6 +356,27 @@ impl TabManager {
         })
     }
 
+    /// The session owner calls this at the actual read, after resolving the
+    /// live tab and origin. A ticket captured by the extension worker when
+    /// its request arrived cannot borrow a later native gesture, and a
+    /// same-URL reload has a different document epoch.
+    pub(crate) fn consume_extension_runtime_ephemeral(
+        &self,
+        capability: &str,
+        tab_id: TabId,
+        expected_ticket: u64,
+    ) -> Result<(), String> {
+        let view = self.extension_permissions.as_ref()
+            .ok_or_else(|| "no installed extension can hold an ephemeral lease".to_string())?;
+        let epoch = self.document_epoch(tab_id)
+            .ok_or_else(|| "the requested tab is not live".to_string())?;
+        view.registry.consume_runtime_ephemeral(
+            &view.extension_id, capability, expected_ticket, tab_id.as_u64(), epoch,
+        ).then_some(()).ok_or_else(|| {
+            "the runtime-ephemeral lease is absent, spent, or bound to another document".to_string()
+        })
+    }
+
     /// Serializes a core-owned publication with the same optional grant
     /// generation captured before Gatekeeper review. A late queued request
     /// cannot borrow a newer grant after its caller timed out.

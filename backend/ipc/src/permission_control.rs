@@ -20,6 +20,9 @@ pub enum PermissionControlRequest {
     /// Read-only live tab identity for binding a future one-shot gesture.
     /// This does not grant any capability and is unavailable on public IPC.
     InspectDocument { tab_id: u64 },
+    /// Core-parent-only one-operation lease request. Core rechecks the live
+    /// tab epoch and the installed runtime-ephemeral declaration itself.
+    ArmEphemeral { capability: String, tab_id: u64, document_epoch: u64 },
     Grant { capability: String },
     Revoke { capability: String },
 }
@@ -46,6 +49,12 @@ pub enum PermissionControlReply {
         tab_id: u64,
         document_epoch: u64,
         url: Option<String>,
+    },
+    EphemeralArmed {
+        capability: String,
+        tab_id: u64,
+        document_epoch: u64,
+        ticket: u64,
     },
     Updated {
         capability: String,
@@ -134,6 +143,9 @@ mod tests {
         for request in [
             PermissionControlRequest::Inspect,
             PermissionControlRequest::InspectDocument { tab_id: 7 },
+            PermissionControlRequest::ArmEphemeral {
+                capability: "dom:read".into(), tab_id: 7, document_epoch: 12,
+            },
             PermissionControlRequest::Grant {
                 capability: "dom:read".into(),
             },
@@ -174,6 +186,12 @@ mod tests {
         let mut wire = Vec::new();
         write_permission_control_reply(&mut wire, &document).unwrap();
         assert_eq!(read_permission_control_reply(&mut wire.as_slice()).unwrap(), document);
+        let armed = PermissionControlReply::EphemeralArmed {
+            capability: "dom:read".into(), tab_id: 7, document_epoch: 12, ticket: 1,
+        };
+        let mut wire = Vec::new();
+        write_permission_control_reply(&mut wire, &armed).unwrap();
+        assert_eq!(read_permission_control_reply(&mut wire.as_slice()).unwrap(), armed);
     }
 
     #[test]

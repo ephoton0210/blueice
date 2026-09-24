@@ -247,8 +247,8 @@ pub fn load_installed_extension(
 
 /// Registers all host-supported Phase 9 capability windows and grants just an
 /// installed manifest's persistent `declared` capabilities to its derived
-/// identity. Optional declarations are retained but ungranted; runtime
-/// ephemeral declarations still have no grant path.
+/// identity. Optional and runtime-ephemeral declarations are retained but
+/// ungranted; the latter only seeds a dormant one-shot lease slot.
 pub fn registry_for_installed_extension(extension: &InstalledExtension) -> ExtensionRegistry {
     let mut registry = ExtensionRegistry::with_supported_capabilities();
     for capability in extension.manifest().capabilities().declared() {
@@ -256,6 +256,9 @@ pub fn registry_for_installed_extension(extension: &InstalledExtension) -> Exten
     }
     for capability in extension.manifest().capabilities().optional() {
         registry.declare_optional(extension.extension_id(), capability);
+    }
+    for capability in extension.manifest().capabilities().runtime_ephemeral() {
+        registry.declare_runtime_ephemeral(extension.extension_id(), capability);
     }
     registry
 }
@@ -535,6 +538,11 @@ mod tests {
         assert!(!registry.has_capability(id, CAPABILITY_DOM_READ));
         assert!(!registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE));
         assert!(registry.grant_optional(id, CAPABILITY_NETWORK_OBSERVE).is_err());
+        let ticket = registry.arm_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, 1, 0).unwrap();
+        assert!(!registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE),
+            "arming the one-shot slot must not become a persistent grant");
+        assert!(registry.consume_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, ticket, 1, 0));
+        assert!(!registry.consume_runtime_ephemeral(id, CAPABILITY_NETWORK_OBSERVE, ticket, 1, 0));
         assert!(registry.grant_optional(id, CAPABILITY_DOM_READ).unwrap());
         assert!(registry.has_capability(id, CAPABILITY_DOM_READ));
         assert!(!registry.has_capability(id, CAPABILITY_NETWORK_OBSERVE));

@@ -1655,6 +1655,9 @@ mod tests {
                     PermissionControlRequest::InspectDocument { tab_id } => PermissionControlReply::Document {
                         tab_id, document_epoch: 3, url: Some("https://example.test/".into()),
                     },
+                    PermissionControlRequest::ArmEphemeral { .. } => PermissionControlReply::Rejected {
+                        reason: "the test worker has no ephemeral declaration".into(),
+                    },
                     PermissionControlRequest::Grant { capability } => PermissionControlReply::Updated {
                         capability, granted: true, changed: true,
                     },
@@ -1719,6 +1722,9 @@ mod tests {
                         },
                         PermissionControlRequest::InspectDocument { tab_id } => PermissionControlReply::Document {
                             tab_id, document_epoch: 0, url: None,
+                        },
+                        PermissionControlRequest::ArmEphemeral { .. } => PermissionControlReply::Rejected {
+                            reason: "the test worker has no ephemeral declaration".into(),
                         },
                         PermissionControlRequest::Grant { capability } => {
                             grant_count.fetch_add(1, Ordering::SeqCst);

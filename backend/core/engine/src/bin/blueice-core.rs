@@ -94,6 +94,7 @@ struct PermissionControlMetadata {
     name: String,
     version: String,
     optional: Vec<OptionalCapabilityInfo>,
+    ephemeral: Vec<String>,
 }
 
 struct ExtensionService {
@@ -181,6 +182,17 @@ fn stop_extension_host(mut child: Child) {
     let _ = child.wait();
 }
 
+fn inspect_live_document(
+    session_requests: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: u64,
+) -> Result<(u64, Option<String>), String> {
+    let (reply, result) = mpsc::channel();
+    session_requests.send(ExtensionPageRequest::InspectDocument { tab_id, reply })
+        .map_err(|_| "the core session is unavailable for document inspection".to_string())?;
+    result.recv_timeout(Duration::from_secs(2))
+        .map_err(|_| "the core session did not answer document inspection".to_string())?
+}
+
 fn permission_control_reply(
     request: PermissionControlRequest,
     metadata: &PermissionControlMetadata,
@@ -199,20 +211,33 @@ fn permission_control_reply(
             }).collect(),
         },
         PermissionControlRequest::InspectDocument { tab_id } => {
-            let (reply, result) = mpsc::channel();
-            if session_requests.send(ExtensionPageRequest::InspectDocument { tab_id, reply }).is_err() {
-                return PermissionControlReply::Rejected {
-                    reason: "the core session is unavailable for document inspection".into(),
-                };
-            }
-            match result.recv_timeout(Duration::from_secs(2)) {
-                Ok(Ok((document_epoch, url))) => PermissionControlReply::Document {
+            match inspect_live_document(session_requests, tab_id) {
+                Ok((document_epoch, url)) => PermissionControlReply::Document {
                     tab_id, document_epoch, url,
                 },
-                Ok(Err(reason)) => PermissionControlReply::Rejected { reason },
-                Err(_) => PermissionControlReply::Rejected {
-                    reason: "the core session did not answer document inspection".into(),
+                Err(reason) => PermissionControlReply::Rejected { reason },
+            }
+        }
+        PermissionControlRequest::ArmEphemeral { capability, tab_id, document_epoch } => {
+            if !metadata.ephemeral.contains(&capability) {
+                return PermissionControlReply::Rejected {
+                    reason: "capability is not an installed runtime-ephemeral declaration".into(),
+                };
+            }
+            match inspect_live_document(session_requests, tab_id) {
+                Ok((current_epoch, _)) if current_epoch == document_epoch => {}
+                Ok(_) => return PermissionControlReply::Rejected {
+                    reason: "the document changed before the ephemeral lease was armed".into(),
                 },
+                Err(reason) => return PermissionControlReply::Rejected { reason },
+            }
+            match registry.arm_runtime_ephemeral(
+                &metadata.extension_id, &capability, tab_id, document_epoch,
+            ) {
+                Ok(ticket) => PermissionControlReply::EphemeralArmed {
+                    capability, tab_id, document_epoch, ticket,
+                },
+                Err(reason) => PermissionControlReply::Rejected { reason },
             }
         }
         PermissionControlRequest::Grant { capability } => {
@@ -265,6 +290,9 @@ fn serve_permission_control<R: Read, W: Write>(
     })();
     for entry in &metadata.optional {
         let _ = registry.revoke_optional(&metadata.extension_id, &entry.capability);
+    }
+    for capability in &metadata.ephemeral {
+        let _ = registry.revoke_runtime_ephemeral(&metadata.extension_id, capability);
     }
     result
 }
@@ -361,6 +389,20 @@ fn request_tab_representation(
     reply_rx
         .recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
         .map_err(|_| "blueice-core did not answer the extension request in time".to_string())?
+}
+
+fn request_ephemeral_tab_representation(
+    tx: &mpsc::Sender<ExtensionPageRequest>,
+    tab_id: u64,
+    ticket: u64,
+) -> Result<String, String> {
+    let (reply_tx, reply_rx) = mpsc::channel();
+    tx.send(ExtensionPageRequest::ReadEphemeralRepresentation {
+        tab_id, ticket, reply: reply_tx,
+    })
+    .map_err(|_| "blueice-core session is no longer available".to_string())?;
+    reply_rx.recv_timeout(EXTENSION_CORE_REQUEST_TIMEOUT)
+        .map_err(|_| "blueice-core did not answer the ephemeral read in time".to_string())?
 }
 
 fn request_network_response(
@@ -766,6 +808,7 @@ fn spawn_extension_listener(
                     None => authentication,
                 };
                 let read_tx = request_tx.clone();
+                let ephemeral_read_tx = request_tx.clone();
                 let observe_tx = request_tx.clone();
                 let observe_trace_tx = request_tx.clone();
                 let write_tx = request_tx.clone();
@@ -856,6 +899,9 @@ fn spawn_extension_listener(
                         .with_storage(storage)
                         .with_network_observer(move |tab_id| {
                             request_network_response(&observe_tx, tab_id)
+                        })
+                        .with_ephemeral_dom_reader(move |tab_id, ticket| {
+                            request_ephemeral_tab_representation(&ephemeral_read_tx, tab_id, ticket)
                         })
                         .with_network_trace_observer(move |tab_id| {
                             request_network_trace(&observe_trace_tx, tab_id)
@@ -958,6 +1004,8 @@ fn main() -> ExitCode {
                             .unwrap_or_default(),
                     }
                 }).collect(),
+                ephemeral: installed.manifest().capabilities().runtime_ephemeral()
+                    .iter().cloned().collect(),
             });
             if let Some(parent) = socket.parent() {
                 if let Err(error) = blueice_ipc::local_socket::ensure_private_socket_dir(parent) {
@@ -1454,7 +1502,36 @@ mod tests {
             optional: vec![OptionalCapabilityInfo {
                 capability: "storage".into(), granted: false, origins: Vec::new(),
             }],
+            ephemeral: vec!["dom:read".into()],
         };
+        let (live_tx, live_rx) = mpsc::channel();
+        let live_session = thread::spawn(move || {
+            for request in live_rx {
+                if let ExtensionPageRequest::InspectDocument { tab_id, reply } = request {
+                    let _ = reply.send(if tab_id == 1 {
+                        Ok((2, Some("about:credits".into())))
+                    } else {
+                        Err("the requested tab is not live".into())
+                    });
+                }
+            }
+        });
+        let arm = |capability: &str, tab_id, document_epoch| permission_control_reply(
+            PermissionControlRequest::ArmEphemeral {
+                capability: capability.into(), tab_id, document_epoch,
+            },
+            &metadata, &registry, &live_tx,
+        );
+        assert!(matches!(arm("storage", 1, 2), PermissionControlReply::Rejected { .. }));
+        assert!(matches!(arm("dom:read", 99, 2), PermissionControlReply::Rejected { .. }));
+        assert!(matches!(arm("dom:read", 1, 1), PermissionControlReply::Rejected { .. }));
+        assert_eq!(arm("dom:read", 1, 2), PermissionControlReply::EphemeralArmed {
+            capability: "dom:read".into(), tab_id: 1, document_epoch: 2, ticket: 1,
+        });
+        assert_eq!(registry.runtime_ephemeral_ticket(&id, "dom:read"), Some(1));
+        assert!(!registry.has_capability(&id, "dom:read"));
+        drop(live_tx);
+        live_session.join().unwrap();
         let malformed_metadata = metadata.clone();
         let mut input = Vec::new();
         for request in [
@@ -1489,6 +1566,8 @@ mod tests {
             PermissionControlReply::Updated { capability: "storage".into(), granted: true, changed: true });
         assert!(!registry.has_capability(&id, "storage"), "parent-pipe EOF must withdraw even a newly granted permission");
         assert!(!registry.has_capability(&id, "dom:read"), "ephemeral declarations are never optional grants");
+        assert_eq!(registry.runtime_ephemeral_ticket(&id, "dom:read"), None,
+            "parent-pipe EOF must withdraw an unspent ephemeral lease");
 
         let malformed_registry = Arc::new(registry_for_installed_extension(&installed));
         let mut malformed_input = Vec::new();

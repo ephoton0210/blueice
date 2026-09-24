@@ -95,6 +95,13 @@ and AI clients, so an ordinary client message or toolbar activation cannot by
 itself prove human approval; only the separately launched native panel uses
 the private permission path. A real person-driven Grant/Revoke window test and
 runtime-ephemeral gesture lifecycle remain open; see the [Phase 9 plan](PLAN.md).
+An internal core-parent-only `ArmEphemeral` test path can bind one
+`dom:read` v2 operation to a live tab/document epoch. The authenticated host
+must use an explicit tab ID, and core spends the captured one-shot ticket at
+the snapshot read. No native gesture invokes this path yet, so an installed
+extension cannot obtain such a lease through its guest ABI, the ordinary
+frontend/MCP protocol, or the current F8 panel. Other runtime-ephemeral
+capabilities remain ungrantable.
 The host derives an ID from the exact manifest and
 module bytes; the package cannot choose its identity. In production, core
 starts the host and authenticates that child with a fresh environment-only
