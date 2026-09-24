@@ -293,9 +293,17 @@ PY
     if [[ $human_png != "$run_dir/human-window.png" ]]; then
         cp -n -- "$human_png" "$run_dir/human-window.png"
     fi
+    printf 'Read the badge FROM THAT WINDOW PNG and type it as SRC:16HEX TAB:number GEN:number: '
+    if ! IFS= read -r observed_badge; then
+        printf 'No badge transcription was supplied; the human evidence is still incomplete.\n' >&2
+        exit 1
+    fi
+    python3 "$script_dir/verify-human-evidence.py" "$transcript" \
+        "$run_dir/human-window.png" "$observed_badge" \
+        "$run_dir/human-evidence-report.json"
     shasum -a 256 "$run_dir/human-window.png" "$evidence_dir"/*.png \
         >"$run_dir/evidence.sha256"
-    printf 'Copied screenshot and hashes to %s; visually verify its badge against the highlighted transcript entries.\n' "$run_dir"
+    printf 'Copied screenshot, badge report, and hashes to %s; visually audit that the PNG actually shows the BlueIce window.\n' "$run_dir"
 else
     printf 'No human screenshot supplied; Phase 6 same-window evidence remains open.\n'
 fi

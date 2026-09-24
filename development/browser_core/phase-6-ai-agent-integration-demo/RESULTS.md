@@ -84,6 +84,10 @@ compiled-stack test's independent launcher client did receive the matching
   highlighted frame for 90 seconds, and prints the exact `SRC`/`TAB`/`GEN`
   identity to compare with a window-only PNG. Its 2026-09-25 no-model
   startup/cleanup preflight passed; that is not human observation evidence.
+  A supplied screenshot now also requires a human-transcribed badge and gets
+  a separate JSON hash/identity report; the verifier rejects stale frame
+  metadata and screenshots copied byte-for-byte from either MCP PNG. Its
+  black-box tests pass, but no actual human-window image has been supplied.
 - The documented Ollama and Hugging Face TGI transports retain scripted
   compiled-stack coverage; a genuine service run for either is separate from
   this llama.cpp result.

@@ -157,6 +157,13 @@ preflight launched the real demo site, launcher, and graphical frontend, then
 intentionally withheld the human Enter confirmation; the script cleanly
 stopped its process tree and removed its sockets. The full real-model and
 human-screenshot path has not yet been rerun through this script.
+The separate [`verify-human-evidence.py`](verify-human-evidence.py) check
+requires the operator to transcribe the badge from their window PNG, compares
+it with the post-highlight MCP frame, rejects stale frame identities and any
+byte-identical MCP PNG substituted as the human capture, and writes hashes
+plus the attestation to a create-new JSON report. Five black-box verifier
+tests run locally and in CI. This is evidence bookkeeping, not an automated
+claim that the image visibly contains a browser window.
 
 Run prerequisites are deliberately explicit: an operator must run a loopback
 Ollama, Hugging Face TGI, or llama.cpp server with a local vision-and-tool-capable
