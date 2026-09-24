@@ -41,8 +41,8 @@ struct Args {
     /// Optional grants remain process-lifetime and do not cross a cutover.
     extension_manifest: Option<PathBuf>,
     /// Spawn the exact sibling native frontend with private anonymous pipes.
-    /// This is read-only permission inspection until a native confirmation UI
-    /// and fail-closed mutation path are installed.
+    /// Its native confirmation panel may change installed optional grants;
+    /// neither shared browser IPC nor the operator socket gains that route.
     trusted_frontend: bool,
     /// Test/debug-only: use a [`memory_pressure::FixedMemorySource`]
     /// reporting zero availability instead of real host memory, so the

@@ -48,8 +48,9 @@ For example:
 ```
 
 Only manifest-listed `dom:read`, `dom:write`, `network:observe`, and
-`network:intercept` may be scoped, including optional or runtime-ephemeral
-declarations that remain ungranted today.
+`network:intercept` may be scoped, including optional declarations grantable
+only through the opt-in native confirmation path; runtime-ephemeral grants
+remain unavailable.
 Each list must contain 1–32 unique canonical origins (scheme, host, optional
 nonzero port): no path, trailing slash, query, fragment, credentials,
 wildcards, or implicit subdomains. Core compares the scope to the **live
@@ -65,14 +66,18 @@ pre-existing all-origin grant for backward compatibility; `ui:inject` and
 Only `declared` grants a capability by default. The core-spawned host negotiates
 compatible API versions for every manifest tier at startup, including
 `optional` and `runtime_ephemeral`; version negotiation is not permission.
-Normal launcher use has no user-consent or authenticated gesture flow, so
-neither tier is user-grantable there yet. An explicitly enabled, private
-core-parent stdio protocol can inspect, grant, and revoke installed `optional`
-declarations for integration and future trusted-parent wiring. It is not an
-extension API, public frontend/MCP message, or page action; it cannot grant
-`runtime_ephemeral` declarations. The normal launcher owns this pipe but uses
-only read-only inspection, including after a core cutover; its operator control
-socket has no Grant/Revoke request. The process-lifetime registry denies
+Normal launcher use remains declared-only. Opting into
+`blueice-launcher --trusted-frontend` starts the exact sibling native window,
+whose F8 permission panel requires a second explicit confirmation before it
+can request Grant/Revoke for an installed `optional` declaration. The window
+shows the package hash, core generation, capability, grant state, and full
+manifest origin scope. Its anonymous launcher-owned pipe is not an extension
+API, public frontend/MCP message, operator-control request, or page action;
+it cannot grant `runtime_ephemeral` declarations. The launcher rechecks the
+package/generation and rejects cutover races before using its separate private
+core-parent stdio protocol. A failed or uncertain mutation kills that core
+generation, and loss of the native window pipe stops the broker/core. The
+process-lifetime registry denies
 subsequent operations after revocation. Core
 also checks the grant generation when evaluating declarative navigation rules,
 so old rules become inert on revoke and cannot revive on regrant. Stale rule
@@ -85,8 +90,10 @@ withdraws grants and the session's idle poll retires their effects. No
 client, guest, or public core IPC path can invoke that transition. The
 shared launcher IPC accepts both human frontend
 and AI clients, so an ordinary client message or toolbar activation cannot by
-itself prove human approval; see the [Phase 9 plan](PLAN.md) before designing
-an optional-grant flow. The host derives an ID from the exact manifest and
+itself prove human approval; only the separately launched native panel uses
+the private permission path. A real person-driven Grant/Revoke window test and
+runtime-ephemeral gesture lifecycle remain open; see the [Phase 9 plan](PLAN.md).
+The host derives an ID from the exact manifest and
 module bytes; the package cannot choose its identity. In production, core
 starts the host and authenticates that child with a fresh environment-only
 credential before accepting the derived ID. The manual development socket's

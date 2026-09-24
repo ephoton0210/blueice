@@ -52,13 +52,13 @@ use blueice_ipc::permission_control::{
     read_permission_control_reply, write_permission_control_request,
     PermissionControlReply, PermissionControlRequest,
 };
-use std::io;
+use std::io::{self, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, RecvTimeoutError, Sender, SyncSender, TrySendError};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -826,9 +826,8 @@ pub fn run_broker(
 
 /// The same broker with an optional launcher-spawned native frontend child.
 /// Only the anonymous pipes owned for that exact child can carry the private
-/// trusted-window protocol. In this increment the pipe answers Inspect only;
-/// Change is rejected until a real native confirmation UI and fail-closed
-/// mutation handling are both installed.
+/// trusted-window protocol; shared frontend and operator-control sockets
+/// cannot grant or revoke optional permissions.
 pub fn run_broker_with_trusted_window(
     rendezvous_listener: UnixListener,
     control_listener: UnixListener,
@@ -930,61 +929,76 @@ pub fn run_broker_with_trusted_window(
     Ok(())
 }
 
-fn serve_trusted_window_pipe(
-    mut requests: ChildStdout,
-    mut replies: ChildStdin,
+fn serve_trusted_window_pipe<R: Read, W: Write>(
+    mut requests: R,
+    mut replies: W,
     broker: &Arc<Broker>,
     ready: Sender<()>,
 ) -> io::Result<()> {
     let mut ready = Some(ready);
-    while let Some(request) = trusted_window::read_request(&mut requests)? {
-        let inspected = matches!(&request, trusted_window::TrustedWindowRequest::Inspect);
-        let reply = match request {
-            trusted_window::TrustedWindowRequest::Inspect => {
-                let active = broker.active_core.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                let core_generation = broker.generation.load(Ordering::SeqCst);
-                match active.as_ref().map(SpawnedCore::inspect_installed_extension) {
-                    Some(Ok(installed)) => trusted_window::TrustedWindowReply::State {
-                        core_generation, installed,
-                    },
-                    Some(Err(error)) => trusted_window::TrustedWindowReply::Rejected {
-                        reason: error.to_string(),
-                    },
-                    None => trusted_window::TrustedWindowReply::Rejected {
-                        reason: "the active core is unavailable".into(),
-                    },
+    let result = (|| {
+        while let Some(request) = trusted_window::read_request(&mut requests)? {
+            let inspected = matches!(&request, trusted_window::TrustedWindowRequest::Inspect);
+            let reply = handle_trusted_window_request(request, broker);
+            trusted_window::write_reply(&mut replies, &reply)?;
+            if inspected && matches!(reply, trusted_window::TrustedWindowReply::State { .. }) {
+                if let Some(ready) = ready.take() {
+                    let _ = ready.send(());
                 }
             }
-            trusted_window::TrustedWindowRequest::Change {
-                expected_core_generation,
-                expected_extension_id,
-                capability,
-                ..
-            } => {
-                let active = broker.active_core.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                let core_generation = broker.generation.load(Ordering::SeqCst);
-                let reason = match active.as_ref().map(SpawnedCore::inspect_installed_extension) {
-                    Some(Ok(installed)) => trusted_window::validate_change_target(
-                        core_generation,
-                        installed.as_ref(),
-                        expected_core_generation,
-                        &expected_extension_id,
-                        &capability,
-                    ).err().unwrap_or("native permission confirmation is not enabled yet"),
-                    Some(Err(_)) => "the active core permission state is unavailable",
-                    None => "the active core is unavailable",
-                };
-                trusted_window::TrustedWindowReply::Rejected { reason: reason.into() }
-            }
-        };
-        trusted_window::write_reply(&mut replies, &reply)?;
-        if inspected && matches!(reply, trusted_window::TrustedWindowReply::State { .. }) {
-            if let Some(ready) = ready.take() {
-                let _ = ready.send(());
-            }
         }
+        Ok(())
+    })();
+    // The native window is the lifetime owner of its human-approved grants.
+    // EOF, malformed frames, or a broken reply pipe must tear down the
+    // active core, not leave those grants serving to ordinary/MCP clients.
+    let _ = broker.done.send(());
+    result
+}
+
+fn handle_trusted_window_request(
+    request: trusted_window::TrustedWindowRequest,
+    broker: &Arc<Broker>,
+) -> trusted_window::TrustedWindowReply {
+    let result = (|| -> Result<(u64, Option<control::InstalledExtensionPermissions>), String> {
+        let change = match request {
+            trusted_window::TrustedWindowRequest::Inspect => None,
+            trusted_window::TrustedWindowRequest::Change {
+                expected_core_generation, expected_extension_id, capability, action,
+            } => Some((expected_core_generation, expected_extension_id, capability, action)),
+        };
+        // A mutation must not race a capture/replay/swap. A busy cutover
+        // rejects it; the person can inspect the new generation afterward.
+        let _cutover_guard = if change.is_some() {
+            Some(broker.cutover_gate.try_acquire().ok_or_else(||
+                "a core cutover is in progress; inspect permissions again".to_string())?)
+        } else { None };
+        let mut active = broker.active_core.lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let generation = broker.generation.load(Ordering::SeqCst);
+        let core = active.as_mut().ok_or_else(|| "the active core is unavailable".to_string())?;
+        let installed = core.inspect_installed_extension()
+            .map_err(|error| format!("the active core permission state is unavailable: {error}"))?;
+        let Some((expected_generation, expected_id, capability, action)) = change else {
+            return Ok((generation, installed));
+        };
+        trusted_window::validate_change_target(
+            generation, installed.as_ref(), expected_generation, &expected_id, &capability,
+        ).map_err(str::to_string)?;
+        let updated = core.apply_optional_change(action, &capability)
+            .map_err(|error| format!("the active core could not confirm the permission change: {error}"))?;
+        if updated.extension_id != expected_id {
+            let _ = core.child.kill();
+            return Err("the installed extension changed during permission confirmation".into());
+        }
+        Ok((generation, Some(updated)))
+    })();
+    match result {
+        Ok((core_generation, installed)) => trusted_window::TrustedWindowReply::State {
+            core_generation, installed,
+        },
+        Err(reason) => trusted_window::TrustedWindowReply::Rejected { reason },
     }
-    Ok(())
 }
 
 /// The `blueice-core` binary's path, resolved relative to this
@@ -1047,7 +1061,7 @@ fn sibling_extension_host_binary(this_exe: &Path) -> PathBuf {
     dir.join(name)
 }
 
-/// The native frontend trusted for a *future* permission confirmation must
+/// The native frontend trusted for permission confirmation must
 /// be from the same installed build. Never accept an arbitrary binary path
 /// from a control-socket caller as a substitute for this child.
 fn sibling_frontend_binary(this_exe: &Path) -> PathBuf {
@@ -1063,8 +1077,8 @@ fn sibling_frontend_binary(this_exe: &Path) -> PathBuf {
 
 /// An exact sibling native frontend launched by this launcher. Its stdin and
 /// stdout are private anonymous pipes, not the shared frontend/MCP socket.
-/// Only read-only inspection is accepted on them until native confirmation
-/// and fail-closed mutation handling are wired end to end.
+/// Only this child can ask for native confirmation. Launcher independently
+/// validates and applies each decision through the active core's private pipe.
 pub struct SpawnedTrustedWindow {
     child: Child,
 }
@@ -1236,60 +1250,77 @@ impl Drop for SpawnedGatekeeper {
 }
 
 const PERMISSION_INSPECT_TIMEOUT: Duration = Duration::from_secs(2);
+const PERMISSION_CHANGE_TIMEOUT: Duration = Duration::from_secs(5);
+
+type PermissionExchange = (
+    PermissionControlRequest,
+    Sender<io::Result<PermissionControlReply>>,
+);
 
 /// Owns the only parent-side handles of one core generation's permission
-/// pipe. The worker serializes bounded, read-only inspections; its sender is
-/// not exposed through frontend IPC or to an extension guest. In particular,
-/// this does not manufacture a trusted human approval source for Grant/Revoke.
+/// pipe. The worker serializes bounded requests; its sender is not exposed
+/// through frontend IPC or to an extension guest. Grant/Revoke callers must
+/// still prove they originate from the launcher's native confirmation UI.
 struct PermissionControlChannel {
-    inspections: SyncSender<Sender<io::Result<PermissionControlReply>>>,
+    requests: SyncSender<PermissionExchange>,
+}
+
+fn serve_permission_control_worker<R: Read, W: Write>(
+    mut input: W,
+    mut output: R,
+    pending: Receiver<PermissionExchange>,
+) {
+    for (request, answer) in pending {
+        let result = write_permission_control_request(&mut input, &request)
+            .and_then(|()| read_permission_control_reply(&mut output));
+        let failed = result.is_err();
+        let _ = answer.send(result);
+        if failed {
+            break;
+        }
+    }
+    // Closing input tells core to revoke every optional grant made on
+    // this parent's pipe, including after a failed or unanswered exchange.
 }
 
 impl PermissionControlChannel {
-    fn new(mut input: ChildStdin, mut output: ChildStdout) -> io::Result<Self> {
-        let (inspections, pending) = mpsc::sync_channel::<Sender<io::Result<PermissionControlReply>>>(1);
+    fn new(input: ChildStdin, output: ChildStdout) -> io::Result<Self> {
+        let (requests, pending) = mpsc::sync_channel::<PermissionExchange>(1);
         thread::Builder::new()
-            .name("blueice-permission-inspect".into())
-            .spawn(move || {
-                for answer in pending {
-                    let result = write_permission_control_request(
-                        &mut input,
-                        &PermissionControlRequest::Inspect,
-                    )
-                    .and_then(|()| read_permission_control_reply(&mut output));
-                    let failed = result.is_err();
-                    let _ = answer.send(result);
-                    if failed {
-                        break;
-                    }
-                }
-                // Closing stdin tells core to revoke any optional grants
-                // that a future trusted parent may have made on this pipe.
-            })?;
-        Ok(Self { inspections })
+            .name("blueice-permission-control".into())
+            .spawn(move || serve_permission_control_worker(input, output, pending))?;
+        Ok(Self { requests })
     }
 
     fn inspect(&self) -> io::Result<PermissionControlReply> {
+        self.exchange(PermissionControlRequest::Inspect, PERMISSION_INSPECT_TIMEOUT)
+    }
+
+    fn exchange(
+        &self,
+        request: PermissionControlRequest,
+        timeout: Duration,
+    ) -> io::Result<PermissionControlReply> {
         let (answer, reply) = mpsc::channel();
-        self.inspections.try_send(answer).map_err(|error| match error {
+        self.requests.try_send((request, answer)).map_err(|error| match error {
             TrySendError::Full(_) => io::Error::new(
                 io::ErrorKind::WouldBlock,
-                "core permission inspection is busy",
+                "core permission control is busy",
             ),
             TrySendError::Disconnected(_) => io::Error::new(
                 io::ErrorKind::BrokenPipe,
                 "core permission pipe is closed",
             ),
         })?;
-        match reply.recv_timeout(PERMISSION_INSPECT_TIMEOUT) {
+        match reply.recv_timeout(timeout) {
             Ok(result) => result,
             Err(RecvTimeoutError::Timeout) => Err(io::Error::new(
                 io::ErrorKind::TimedOut,
-                "core permission inspection timed out",
+                "core permission control timed out",
             )),
             Err(RecvTimeoutError::Disconnected) => Err(io::Error::new(
                 io::ErrorKind::BrokenPipe,
-                "core permission inspection ended without a reply",
+                "core permission control ended without a reply",
             )),
         }
     }
@@ -1506,6 +1537,53 @@ impl SpawnedCore {
             ))),
         }
     }
+
+    /// The caller must hold the broker's cutover gate and active-core lock
+    /// after validating this package/capability against a native decision.
+    /// An uncertain mutating reply cannot leave a possibly granted core
+    /// serving: terminate it, which also withdraws its process-local grants.
+    fn apply_optional_change(
+        &mut self,
+        action: trusted_window::PermissionAction,
+        capability: &str,
+    ) -> io::Result<control::InstalledExtensionPermissions> {
+        let outcome = (|| {
+            let channel = self.permission_control.as_ref().ok_or_else(|| {
+                io::Error::other("the active core has no installed permission channel")
+            })?;
+            let (request, expected_granted) = match action {
+                trusted_window::PermissionAction::Grant => (
+                    PermissionControlRequest::Grant { capability: capability.to_string() }, true,
+                ),
+                trusted_window::PermissionAction::Revoke => (
+                    PermissionControlRequest::Revoke { capability: capability.to_string() }, false,
+                ),
+            };
+            match channel.exchange(request, PERMISSION_CHANGE_TIMEOUT)? {
+                PermissionControlReply::Updated { capability: updated, granted, .. }
+                    if updated == capability && granted == expected_granted => {}
+                PermissionControlReply::Rejected { reason } => return Err(io::Error::other(reason)),
+                other => return Err(io::Error::other(format!(
+                    "core returned an unexpected permission change reply: {other:?}"
+                ))),
+            }
+            let installed = self.inspect_installed_extension()?.ok_or_else(|| {
+                io::Error::other("the installed extension disappeared after a permission change")
+            })?;
+            if !installed.optional.iter().any(|entry| {
+                entry.capability == capability && entry.granted == expected_granted
+            }) {
+                return Err(io::Error::other(
+                    "core permission state did not confirm the requested change",
+                ));
+            }
+            Ok(installed)
+        })();
+        if outcome.is_err() {
+            let _ = self.child.kill();
+        }
+        outcome
+    }
 }
 
 impl Drop for SpawnedCore {
@@ -1547,6 +1625,295 @@ impl Drop for SpawnedCore {
 mod tests {
     use super::*;
     use blueice_ipc::*;
+    use blueice_ipc::permission_control::{
+        read_permission_control_request, write_permission_control_reply,
+    };
+
+    #[test]
+    fn private_permission_worker_serializes_inspect_grant_and_revoke() {
+        let (parent_input, mut child_input) = UnixStream::pair().unwrap();
+        let (mut child_output, parent_output) = UnixStream::pair().unwrap();
+        let (requests, pending) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            serve_permission_control_worker(parent_input, parent_output, pending)
+        });
+        let core = thread::spawn(move || {
+            for expected in [
+                PermissionControlRequest::Inspect,
+                PermissionControlRequest::Grant { capability: "storage".into() },
+                PermissionControlRequest::Revoke { capability: "storage".into() },
+            ] {
+                assert_eq!(read_permission_control_request(&mut child_input).unwrap(), Some(expected.clone()));
+                let reply = match expected {
+                    PermissionControlRequest::Inspect => PermissionControlReply::State {
+                        extension_id: "sha256:installed".into(),
+                        name: "Notes".into(),
+                        version: "1".into(),
+                        optional: vec![],
+                    },
+                    PermissionControlRequest::Grant { capability } => PermissionControlReply::Updated {
+                        capability, granted: true, changed: true,
+                    },
+                    PermissionControlRequest::Revoke { capability } => PermissionControlReply::Updated {
+                        capability, granted: false, changed: true,
+                    },
+                };
+                write_permission_control_reply(&mut child_output, &reply).unwrap();
+            }
+            assert!(read_permission_control_request(&mut child_input).unwrap().is_none());
+        });
+        let channel = PermissionControlChannel { requests };
+        assert!(matches!(channel.inspect().unwrap(), PermissionControlReply::State { .. }));
+        assert!(matches!(
+            channel.exchange(PermissionControlRequest::Grant { capability: "storage".into() }, PERMISSION_CHANGE_TIMEOUT).unwrap(),
+            PermissionControlReply::Updated { granted: true, .. }
+        ));
+        assert!(matches!(
+            channel.exchange(PermissionControlRequest::Revoke { capability: "storage".into() }, PERMISSION_CHANGE_TIMEOUT).unwrap(),
+            PermissionControlReply::Updated { granted: false, .. }
+        ));
+        drop(channel);
+        worker.join().unwrap();
+        core.join().unwrap();
+    }
+
+    #[test]
+    fn native_pipe_changes_only_the_exact_active_optional_grant_outside_cutover() {
+        use std::sync::atomic::AtomicBool;
+        let root = std::env::temp_dir().join(format!(
+            "blueice-native-permission-unit-{}-{}",
+            std::process::id(), synthetic_request_id(),
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let (parent_input, mut child_input) = UnixStream::pair().unwrap();
+        let (mut child_output, parent_output) = UnixStream::pair().unwrap();
+        let (requests, pending) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            serve_permission_control_worker(parent_input, parent_output, pending)
+        });
+        let granted = Arc::new(AtomicBool::new(false));
+        let grant_count = Arc::new(AtomicU64::new(0));
+        let simulated_core = thread::spawn({
+            let granted = Arc::clone(&granted);
+            let grant_count = Arc::clone(&grant_count);
+            move || {
+                while let Some(request) = read_permission_control_request(&mut child_input).unwrap() {
+                    let reply = match request {
+                        PermissionControlRequest::Inspect => PermissionControlReply::State {
+                            extension_id: "sha256:installed".into(),
+                            name: "Notes".into(),
+                            version: "1".into(),
+                            optional: vec![blueice_ipc::permission_control::OptionalCapabilityInfo {
+                                capability: "storage".into(),
+                                granted: granted.load(Ordering::SeqCst),
+                                origins: vec!["https://example.test".into()],
+                            }],
+                        },
+                        PermissionControlRequest::Grant { capability } => {
+                            grant_count.fetch_add(1, Ordering::SeqCst);
+                            let changed = !granted.swap(true, Ordering::SeqCst);
+                            PermissionControlReply::Updated { capability, granted: true, changed }
+                        }
+                        PermissionControlRequest::Revoke { capability } => {
+                            let changed = granted.swap(false, Ordering::SeqCst);
+                            PermissionControlReply::Updated { capability, granted: false, changed }
+                        }
+                    };
+                    write_permission_control_reply(&mut child_output, &reply).unwrap();
+                }
+            }
+        });
+        let (core_stream, _core_peer) = UnixStream::pair().unwrap();
+        let fake_child = || Command::new("true").spawn().unwrap();
+        let core = SpawnedCore {
+            child: fake_child(), script_child: fake_child(),
+            internal_socket_path: root.join("core.sock"),
+            script_socket_path: root.join("script.sock"),
+            extension_socket_path: None, extension_manifest: None,
+            permission_control: Some(PermissionControlChannel { requests }),
+            frame_dir: root.join("frames"), stream: core_stream,
+        };
+        let (done, done_rx) = mpsc::channel();
+        let broker = Arc::new(Broker {
+            core_writer: Arc::new(Mutex::new(core.stream.try_clone().unwrap())),
+            clients: Arc::new(Mutex::new(Vec::new())),
+            generation: Arc::new(AtomicU64::new(3)),
+            cutover_gate: CutoverGate::new(),
+            active_core: Mutex::new(Some(core)),
+            width: 320.0, height: 200.0,
+            frame_dir: root.join("frames"), gatekeeper_socket: root.join("gate.sock"),
+            extension_manifest: None, done,
+        });
+        let change = |generation, id: &str, capability: &str, action| {
+            trusted_window::TrustedWindowRequest::Change {
+                expected_core_generation: generation,
+                expected_extension_id: id.into(), capability: capability.into(), action,
+            }
+        };
+        let initial = handle_trusted_window_request(trusted_window::TrustedWindowRequest::Inspect, &broker);
+        assert!(matches!(initial, trusted_window::TrustedWindowReply::State {
+            core_generation: 3, installed: Some(_),
+        }));
+        for invalid in [
+            change(2, "sha256:installed", "storage", trusted_window::PermissionAction::Grant),
+            change(3, "sha256:wrong", "storage", trusted_window::PermissionAction::Grant),
+            change(3, "sha256:installed", "dom:read", trusted_window::PermissionAction::Grant),
+        ] {
+            assert!(matches!(handle_trusted_window_request(invalid, &broker),
+                trusted_window::TrustedWindowReply::Rejected { .. }));
+        }
+        let cutover = broker.cutover_gate.try_acquire().unwrap();
+        assert!(matches!(handle_trusted_window_request(
+            change(3, "sha256:installed", "storage", trusted_window::PermissionAction::Grant), &broker,
+        ), trusted_window::TrustedWindowReply::Rejected { .. }));
+        drop(cutover);
+        assert_eq!(grant_count.load(Ordering::SeqCst), 0);
+        let granted_reply = handle_trusted_window_request(
+            change(3, "sha256:installed", "storage", trusted_window::PermissionAction::Grant), &broker,
+        );
+        assert!(matches!(granted_reply, trusted_window::TrustedWindowReply::State {
+            core_generation: 3, installed: Some(ref installed),
+        } if installed.optional[0].granted));
+        assert_eq!(grant_count.load(Ordering::SeqCst), 1);
+        let revoked_reply = handle_trusted_window_request(
+            change(3, "sha256:installed", "storage", trusted_window::PermissionAction::Revoke), &broker,
+        );
+        assert!(matches!(revoked_reply, trusted_window::TrustedWindowReply::State {
+            core_generation: 3, installed: Some(ref installed),
+        } if !installed.optional[0].granted));
+        let mut inbound = Vec::new();
+        trusted_window::write_request(&mut inbound, &trusted_window::TrustedWindowRequest::Inspect).unwrap();
+        let mut outbound = Vec::new();
+        let (ready, ready_rx) = mpsc::channel();
+        serve_trusted_window_pipe(inbound.as_slice(), &mut outbound, &broker, ready).unwrap();
+        ready_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(matches!(trusted_window::read_reply(&mut outbound.as_slice()).unwrap(),
+            Some(trusted_window::TrustedWindowReply::State { .. })));
+        done_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        let (ready, _ready_rx) = mpsc::channel();
+        assert!(serve_trusted_window_pipe([1_u8].as_slice(), &mut Vec::new(), &broker, ready).is_err());
+        done_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        broker.active_core.lock().unwrap().take();
+        worker.join().unwrap();
+        simulated_core.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires compiled sibling core, BlueJS, and extension-host binaries"]
+    fn real_installed_core_confirms_private_grant_and_revoke() {
+        let root = std::env::temp_dir().join(format!(
+            "blueice-real-optional-permission-{}-{}",
+            std::process::id(), synthetic_request_id(),
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let manifest = root.join("extension.json");
+        std::fs::write(&manifest,
+            r#"{"name":"Private permission proof","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["storage"],"optional":["dom:read"]},"capability_origins":{"dom:read":["https://example.test"]}}"#,
+        ).unwrap();
+        std::fs::write(root.join("extension.wasm"),
+            wat::parse_str(r#"(module (func (export "blueice_start")))"#).unwrap(),
+        ).unwrap();
+        let core = SpawnedCore::spawn_with_gatekeeper_and_extension(
+            320.0, 200.0, &root.join("frames"),
+            &root.join("unused-gatekeeper.sock"), Some(&manifest),
+        ).unwrap();
+        let initial = core.inspect_installed_extension().unwrap().unwrap();
+        assert_eq!(initial.optional.len(), 1);
+        assert_eq!(initial.optional[0].capability, "dom:read");
+        assert_eq!(initial.optional[0].origins, ["https://example.test"]);
+        assert!(!initial.optional[0].granted);
+        let (done, done_rx) = mpsc::channel();
+        let broker = Arc::new(Broker {
+            core_writer: Arc::new(Mutex::new(core.stream.try_clone().unwrap())),
+            clients: Arc::new(Mutex::new(Vec::new())),
+            generation: Arc::new(AtomicU64::new(0)),
+            cutover_gate: CutoverGate::new(),
+            active_core: Mutex::new(Some(core)),
+            width: 320.0, height: 200.0,
+            frame_dir: root.join("frames"),
+            gatekeeper_socket: root.join("unused-gatekeeper.sock"),
+            extension_manifest: Some(manifest), done,
+        });
+        let mut requests = Vec::new();
+        for request in [
+            trusted_window::TrustedWindowRequest::Inspect,
+            trusted_window::TrustedWindowRequest::Change {
+                expected_core_generation: 0,
+                expected_extension_id: initial.extension_id.clone(),
+                capability: "dom:read".into(),
+                action: trusted_window::PermissionAction::Grant,
+            },
+            trusted_window::TrustedWindowRequest::Change {
+                expected_core_generation: 0,
+                expected_extension_id: initial.extension_id.clone(),
+                capability: "dom:read".into(),
+                action: trusted_window::PermissionAction::Revoke,
+            },
+        ] {
+            trusted_window::write_request(&mut requests, &request).unwrap();
+        }
+        let mut replies = Vec::new();
+        let (ready, ready_rx) = mpsc::channel();
+        serve_trusted_window_pipe(requests.as_slice(), &mut replies, &broker, ready).unwrap();
+        ready_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        let mut replies = replies.as_slice();
+        for expected_granted in [false, true, false] {
+            let reply = trusted_window::read_reply(&mut replies).unwrap().unwrap();
+            assert!(matches!(reply, trusted_window::TrustedWindowReply::State {
+                core_generation: 0, installed: Some(ref package),
+            } if package.extension_id == initial.extension_id
+                && package.optional[0].granted == expected_granted));
+        }
+        done_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        broker.active_core.lock().unwrap().take();
+        drop(broker);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn malformed_mutation_reply_terminates_the_possibly_granted_core() {
+        let root = std::env::temp_dir().join(format!(
+            "blueice-uncertain-grant-unit-{}-{}",
+            std::process::id(), synthetic_request_id(),
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let (parent_input, mut child_input) = UnixStream::pair().unwrap();
+        let (mut child_output, parent_output) = UnixStream::pair().unwrap();
+        let (requests, pending) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            serve_permission_control_worker(parent_input, parent_output, pending)
+        });
+        let fake_core = thread::spawn(move || {
+            assert_eq!(read_permission_control_request(&mut child_input).unwrap(),
+                Some(PermissionControlRequest::Grant { capability: "storage".into() }));
+            child_output.write_all(&[1, 0, 0, 0, b'{']).unwrap();
+        });
+        let (stream, _peer) = UnixStream::pair().unwrap();
+        let mut core = SpawnedCore {
+            child: Command::new("sleep").arg("30").spawn().unwrap(),
+            script_child: Command::new("true").spawn().unwrap(),
+            internal_socket_path: root.join("core.sock"),
+            script_socket_path: root.join("script.sock"),
+            extension_socket_path: None,
+            extension_manifest: None,
+            permission_control: Some(PermissionControlChannel { requests }),
+            frame_dir: root.join("frames"), stream,
+        };
+        assert!(core.apply_optional_change(
+            trusted_window::PermissionAction::Grant, "storage",
+        ).is_err());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while core.child.try_wait().unwrap().is_none() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(core.child.try_wait().unwrap().is_some(),
+            "an uncertain Grant reply cannot leave its core process alive");
+        drop(core);
+        worker.join().unwrap();
+        fake_core.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn cutover_gate_allows_only_one_in_flight_cutover_and_releases_on_drop() {

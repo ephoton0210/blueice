@@ -2,11 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Proposed private permission messages between a launcher and a native
-//! frontend process **spawned by that launcher**. These types are not part of
-//! the rendezvous or operator-control socket protocols. Defining them does
-//! not authorize a caller: a later integration must accept them only from
-//! pipe handles retained when the launcher starts its own trusted window.
+//! Private permission messages between a launcher and a native frontend
+//! process **spawned by that launcher**. These types are not part of the
+//! rendezvous or operator-control socket protocols. The launcher accepts
+//! them only from pipe handles retained for its own trusted window and
+//! revalidates every mutating target against the active core generation.
 //! In particular, an ordinary `--launcher` frontend and every MCP client
 //! remain unable to send a grant or revoke request.
 

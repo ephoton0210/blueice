@@ -62,6 +62,9 @@ use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
 
+mod permission_panel;
+use permission_panel::{PanelCommand, PermissionPanel};
+
 /// Repacks RGBA8 (as produced by `blueice_raster::Pixmap`) into
 /// softbuffer's expected `0x00RRGGBB` word per pixel. The page
 /// background is always painted fully opaque (`blueice-raster`'s
@@ -291,9 +294,15 @@ struct App {
     groups: Vec<TabGroupSummary>,
     extension_toolbar_label: Option<String>,
     extension_popup: Option<ExtensionPopup>,
-    /// Read-only state from the launcher-owned anonymous child pipe. An
-    /// ordinary manually attached frontend never receives this channel.
+    /// State from the launcher-owned anonymous child pipe. An ordinary
+    /// manually attached frontend never receives this channel or permission
+    /// confirmation UI.
     trusted_permissions: Option<trusted_window::TrustedWindowReply>,
+    trusted_window_stdio: bool,
+    trusted_request_pending: bool,
+    trusted_refresh_after_pending: bool,
+    trusted_frame_source: Option<u64>,
+    permission_panel: PermissionPanel,
     /// The launcher may consider the child ready only after the real native
     /// window has been created, not merely after the core socket connects.
     trusted_window_inspection_pending: bool,
@@ -308,6 +317,38 @@ struct App {
 }
 
 impl App {
+    fn send_trusted_request(&mut self, request: trusted_window::TrustedWindowRequest) {
+        if !self.trusted_window_stdio || self.trusted_request_pending {
+            return;
+        }
+        if matches!(&request, trusted_window::TrustedWindowRequest::Inspect) {
+            self.trusted_permissions = None;
+            self.permission_panel.begin_inspection();
+        }
+        match trusted_window::write_request(&mut std::io::stdout(), &request) {
+            Ok(()) => self.trusted_request_pending = true,
+            Err(error) => {
+                eprintln!("blueice-frontend: private launcher pipe failed: {error}");
+                // A late grant must never outlive this native authority if
+                // its request/reply transport becomes uncertain. Exiting
+                // closes our request pipe; the launcher then kills core.
+                std::process::exit(1);
+            }
+        }
+        self.request_redraw();
+    }
+
+    fn handle_permission_panel_command(&mut self, command: PanelCommand) {
+        match command {
+            PanelCommand::None => {}
+            PanelCommand::Refresh => {
+                self.send_trusted_request(trusted_window::TrustedWindowRequest::Inspect);
+            }
+            PanelCommand::Change(request) => self.send_trusted_request(request),
+        }
+        self.request_redraw();
+    }
+
     fn send_unscoped(&mut self, msg: &ClientMessage) {
         if let Err(e) =
             blueice_ipc::write_client_message_with_ids(&mut self.writer, None, None, msg)
@@ -378,6 +419,21 @@ impl App {
                         pixels_xrgb: rgba_to_xrgb(&mapped),
                     },
                 );
+                if self.trusted_window_stdio
+                    && self.trusted_frame_source.replace(frame_source)
+                        .is_some_and(|previous| previous != frame_source)
+                {
+                    // A cutover resets process-local optional grants. Never
+                    // leave the old generation's displayed consent state
+                    // actionable while the new core's state is unknown.
+                    self.trusted_permissions = None;
+                    self.permission_panel.invalidate_for_cutover();
+                    if self.trusted_request_pending {
+                        self.trusted_refresh_after_pending = true;
+                    } else {
+                        self.send_trusted_request(trusted_window::TrustedWindowRequest::Inspect);
+                    }
+                }
                 self.selected_tab.get_or_insert(tab_id);
                 if let Some(window) = &self.window {
                     window.request_redraw();
@@ -490,7 +546,8 @@ impl App {
             .unwrap_or("new tab");
         let extension_status = match self.trusted_permissions.as_ref() {
             Some(trusted_window::TrustedWindowReply::State { installed: Some(package), .. }) => {
-                format!(" · Extension: {} ({} optional)", package.name, package.optional.len())
+                format!(" · Extension: {} ({} optional)",
+                    permission_panel::safe_extension_name(&package.name), package.optional.len())
             }
             Some(trusted_window::TrustedWindowReply::State { installed: None, .. }) => {
                 " · No installed extension".to_string()
@@ -500,7 +557,8 @@ impl App {
             }
             None => String::new(),
         };
-        window.set_title(&format!("BlueIce — {group_name}{page}{extension_status}"));
+        let permission_hint = if self.trusted_window_stdio { " · F8 Permissions" } else { "" };
+        window.set_title(&format!("BlueIce — {group_name}{page}{extension_status}{permission_hint}"));
     }
 
     fn open_tab(&mut self) {
@@ -548,7 +606,11 @@ impl App {
         } else {
             None
         };
-        let pixels = compose_window(size.width, size.height, frame, &strip, popup, generation_badge);
+        let mut pixels = compose_window(size.width, size.height, frame, &strip, popup, generation_badge);
+        self.permission_panel.draw(
+            &mut pixels, size.width, size.height,
+            self.trusted_permissions.as_ref(), self.trusted_request_pending,
+        );
         let Some(surface) = &mut self.surface else {
             return;
         };
@@ -1147,10 +1209,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.refresh_title();
         self.redraw();
         if self.trusted_window_inspection_pending {
-            trusted_window::write_request(
-                &mut std::io::stdout(),
-                &trusted_window::TrustedWindowRequest::Inspect,
-            ).expect("could not request trusted launcher permission state");
+            self.send_trusted_request(trusted_window::TrustedWindowRequest::Inspect);
             self.trusted_window_inspection_pending = false;
         }
     }
@@ -1193,6 +1252,14 @@ impl ApplicationHandler<UserEvent> for App {
                 ..
             } => {
                 let (x, y) = self.cursor;
+                if self.permission_panel.is_open() {
+                    let command = self.permission_panel.click(
+                        x, y, self.window_size.0, self.window_size.1,
+                        self.trusted_permissions.as_ref(), self.trusted_request_pending,
+                    );
+                    self.handle_permission_panel_command(command);
+                    return;
+                }
                 if y < f64::from(TAB_STRIP_HEIGHT) {
                     let strip = tab_strip(
                         &self.tabs,
@@ -1244,6 +1311,11 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                if self.permission_panel.is_open() {
+                    self.permission_panel.scroll(delta, self.trusted_permissions.as_ref());
+                    self.request_redraw();
+                    return;
+                }
                 if self.extension_popup.as_ref().is_some_and(|popup| Some(popup.tab_id) == self.selected_tab) {
                     return;
                 }
@@ -1254,6 +1326,21 @@ impl ApplicationHandler<UserEvent> for App {
                 self.send_selected(&ClientMessage::Scroll { delta_y });
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                if self.trusted_window_stdio && event.logical_key == Key::Named(NamedKey::F8) {
+                    if self.permission_panel.toggle() {
+                        self.send_trusted_request(trusted_window::TrustedWindowRequest::Inspect);
+                    }
+                    self.request_redraw();
+                    return;
+                }
+                if self.permission_panel.is_open() {
+                    let command = self.permission_panel.key(
+                        &event.logical_key, self.trusted_permissions.as_ref(),
+                        self.trusted_request_pending,
+                    );
+                    self.handle_permission_panel_command(command);
+                    return;
+                }
                 if let Some(popup) = self.extension_popup.as_ref().filter(|popup| Some(popup.tab_id) == self.selected_tab) {
                     if let Some(message) = extension_popup_key_message(
                         popup,
@@ -1393,8 +1480,16 @@ impl ApplicationHandler<UserEvent> for App {
                 event_loop.exit();
             }
             UserEvent::TrustedPermissions(reply) => {
+                self.trusted_request_pending = false;
+                if self.trusted_refresh_after_pending {
+                    self.trusted_refresh_after_pending = false;
+                    self.send_trusted_request(trusted_window::TrustedWindowRequest::Inspect);
+                    return;
+                }
+                self.permission_panel.on_reply(&reply);
                 self.trusted_permissions = Some(reply);
                 self.refresh_title();
+                self.request_redraw();
             }
             UserEvent::SetVisible(visible) => {
                 if let Some(window) = &self.window {
@@ -1756,9 +1851,13 @@ fn spawn_trusted_window_reader(proxy: EventLoopProxy<UserEvent>) {
                         break;
                     }
                 }
-                Ok(None) => break,
+                Ok(None) => {
+                    let _ = proxy.send_event(UserEvent::Disconnected);
+                    break;
+                }
                 Err(error) => {
                     eprintln!("blueice-frontend: trusted launcher pipe ended: {error}");
+                    let _ = proxy.send_event(UserEvent::Disconnected);
                     break;
                 }
             }
@@ -1874,6 +1973,11 @@ fn main() {
         extension_toolbar_label: None,
         extension_popup: None,
         trusted_permissions: None,
+        trusted_window_stdio,
+        trusted_request_pending: false,
+        trusted_refresh_after_pending: false,
+        trusted_frame_source: None,
+        permission_panel: PermissionPanel::default(),
         trusted_window_inspection_pending: trusted_window_stdio,
         show_generation,
         selected_tab: None,
