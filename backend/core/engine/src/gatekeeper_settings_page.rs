@@ -256,6 +256,25 @@ pub fn gatekeeper_settings_html(
                         escape_html(&step.failure_behavior)
                     ));
                 }
+                if !step.review_order.is_empty() {
+                    body.push_str(&format!(
+                        "<p class=\"detail\">{}</p><ol>",
+                        escape_html(&t("review-order"))
+                    ));
+                    for layer in &step.review_order {
+                        let label = match layer.as_str() {
+                            "compiled-rule-base" => t("review-layer-compiled"),
+                            "user-blocked-hosts" => t("review-layer-hosts"),
+                            "user-blocked-html-phrases" => t("review-layer-html-phrases"),
+                            "user-blocked-downloads" => t("review-layer-downloads"),
+                            "user-blocked-popup-phrases" => t("review-layer-popup-phrases"),
+                            "local-model" => t("review-layer-model"),
+                            _ => layer.clone(),
+                        };
+                        body.push_str(&format!("<li>{}</li>", escape_html(&label)));
+                    }
+                    body.push_str("</ol>");
+                }
                 body.push_str("</div>");
             }
             body.push_str("</div>");
@@ -390,6 +409,7 @@ mod tests {
                 trigger: "Every navigation".to_string(),
                 description: "Review first.".to_string(),
                 failure_behavior: "Block <unsafe> navigation.".to_string(),
+                review_order: vec!["compiled-rule-base".to_string(), "User <unsafe> rules".to_string()],
                 mandatory: true,
             }],
             custom_blocked_hosts: vec!["tracker.example".to_string()],
@@ -424,6 +444,8 @@ mod tests {
         assert!(html.contains("&lt;unsafe&gt;"));
         assert!(html.contains("one &lt;unsafe&gt; condition"));
         assert!(html.contains("Block &lt;unsafe&gt; navigation."));
+        assert!(html.contains("Active review order:"));
+        assert!(html.contains("<li>Compiled deterministic rule base (required)</li><li>User &lt;unsafe&gt; rules</li>"));
         assert!(html.contains("Applied at workflow steps: url-before-fetch"));
         assert!(html.contains("A host also blocks its dot-boundary subdomains"));
         assert!(html.contains("ignore &lt;instructions&gt;"));
@@ -444,6 +466,19 @@ mod tests {
         assert!(html.contains("value=\"local&lt;model&gt;\""));
         assert!(html.contains("data-gatekeeper-action=\"disable-model\""));
         assert!(html.contains("timeout, malformed reply, oversized input, or unavailable local service blocks"));
+    }
+
+    #[test]
+    fn settings_page_localizes_the_enforced_review_order() {
+        let mut config = settings();
+        config.workflow[0].review_order = vec![
+            "compiled-rule-base".into(),
+            "user-blocked-hosts".into(),
+            "local-model".into(),
+        ];
+        let html = gatekeeper_settings_html(&GatekeeperSettingsView::Settings(config), "zh-TW", None);
+        assert!(html.contains("目前生效的審查順序："));
+        assert!(html.contains("<li>編譯內建確定性規則（必要）</li><li>您封鎖的主機</li><li>選用的本機模型（無法審查時會阻擋）</li>"));
     }
 
     #[test]
@@ -491,17 +526,17 @@ mod tests {
             rule.mandatory && !rule.match_logic.is_empty() && !rule.workflow_steps.is_empty()
         }));
         assert!(live.workflow.iter().all(|step| {
-            step.mandatory && !step.failure_behavior.is_empty()
+            step.mandatory
+                && !step.failure_behavior.is_empty()
+                && step.review_order == ["compiled-rule-base"]
         }));
-        assert_eq!(
-            source
+        let updated = source
                 .update(GatekeeperSettingsChange::AddBlockedHost {
                     host: "tracker.example".to_string(),
                 })
-                .unwrap()
-                .custom_blocked_hosts,
-            vec!["tracker.example"]
-        );
+                .unwrap();
+        assert_eq!(updated.custom_blocked_hosts, vec!["tracker.example"]);
+        assert_eq!(updated.workflow[0].review_order, ["compiled-rule-base", "user-blocked-hosts"]);
         worker.join().unwrap();
         let _ = std::fs::remove_file(socket);
     }

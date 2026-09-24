@@ -1857,11 +1857,18 @@ mod tests {
         let worker = thread::spawn({
             let service = service.clone();
             move || {
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                // Ten full settings-page renders can exceed ten seconds in a
+                // cold, single-test run even though every socket exchange is
+                // bounded separately by the production 300 ms client timeout.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                 let mut handled = 0;
                 while handled < 10 && std::time::Instant::now() < deadline {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
+                            // The listener is nonblocking only so this worker can
+                            // honor its deadline. On macOS an accepted stream may
+                            // inherit that mode and race the client's first write.
+                            stream.set_nonblocking(false).unwrap();
                             service.handle_connection(&mut stream).unwrap();
                             handled += 1;
                         }
@@ -1886,6 +1893,8 @@ mod tests {
         assert!(page.dom_dump().contains("known-malicious-domain"));
         assert!(page.dom_dump().contains("Exact host or dot-boundary subdomain match"));
         assert!(page.dom_dump().contains("If rejected or unavailable"));
+        assert!(page.dom_dump().contains("Active review order"));
+        assert!(page.dom_dump().contains("Compiled deterministic rule base (required)"));
         let model_name = find_element_by_id(page.doc(), page.doc().root(), "gatekeeper-model-name").unwrap();
         page.act(model_name, NodeAction::SetValue("local-model".to_string()));
         let configure_model = find_by_attribute(
@@ -1917,6 +1926,7 @@ mod tests {
         );
         assert_eq!(page.apply_gatekeeper_settings_control(add), Some(Ok(())));
         assert!(page.dom_dump().contains("tracker.example"));
+        assert!(page.dom_dump().contains("Your blocked hosts"));
         assert!(page.dom_dump().contains("Gatekeeper settings saved"));
         let phrase_input = find_element_by_id(
             page.doc(),
@@ -1981,6 +1991,7 @@ mod tests {
         ).unwrap();
         assert_eq!(page.apply_gatekeeper_settings_control(configure_model), Some(Ok(())));
         assert!(service.settings().model_review_active);
+        assert!(page.dom_dump().contains("Optional local model (blocks if unavailable)"));
         let disable_model = find_by_attribute(
             page.doc(), page.doc().root(), "data-gatekeeper-action", "disable-model",
         ).unwrap();

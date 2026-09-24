@@ -115,6 +115,12 @@ pub struct GatekeeperWorkflowStep {
     /// completed. Reported by the service, not inferred by the settings UI.
     #[serde(default)]
     pub failure_behavior: String,
+    /// Ordered IDs of currently active review layers for this step, as
+    /// reported by the enforcing process. Additive user rules and the
+    /// optional model only appear when configured; the compiled rule base is
+    /// always first. Unknown IDs remain displayable by newer clients.
+    #[serde(default)]
+    pub review_order: Vec<String>,
     pub mandatory: bool,
 }
 
@@ -134,8 +140,8 @@ pub struct GatekeeperLocalModel {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GatekeeperSettings {
     pub ruleset_version: String,
-    /// This release's deterministic layer is active; the separate local
-    /// model-review layer has not been wired into the enforcement path yet.
+    /// The deterministic layer is always active; this reports whether an
+    /// optional local model is additionally reviewing every request.
     pub model_review_active: bool,
     #[serde(default)]
     pub local_model: Option<GatekeeperLocalModel>,
@@ -371,6 +377,14 @@ mod tests {
         assert!(settings.local_model.is_none());
         assert!(settings.custom_blocked_download_extensions.is_empty());
         assert!(settings.custom_blocked_popup_phrases.is_empty());
+    }
+
+    #[test]
+    fn older_workflow_steps_without_a_review_order_remain_readable() {
+        let old = r#"{"id":"url-before-fetch","trigger":"Every navigation","description":"Review URL","failure_behavior":"Block navigation","mandatory":true}"#;
+        let step: GatekeeperWorkflowStep = serde_json::from_str(old).unwrap();
+        assert!(step.review_order.is_empty());
+        assert!(step.mandatory);
     }
 
     #[test]
