@@ -16,6 +16,7 @@ use blueice_launcher::control::{
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -78,6 +79,207 @@ impl Drop for TestRoot {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+struct TestProcess(Child);
+
+impl Drop for TestProcess {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn wait_for_path(path: &PathBuf, deadline: Instant) {
+    while Instant::now() < deadline {
+        if path.exists() {
+            return;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    panic!("timed out waiting for {}", path.display());
+}
+
+/// The headless companion to the human proof. This uses core's private
+/// parent pipe directly, so it validates the real installed-WASM effect
+/// lifecycle but deliberately cannot count as native-window consent.
+#[test]
+fn real_installed_wasm_toolbar_follows_private_optional_grant_and_revoke() {
+    use blueice_ipc::permission_control::{
+        read_permission_control_reply, write_permission_control_request, PermissionControlReply,
+        PermissionControlRequest,
+    };
+    use std::process::Stdio;
+
+    let launcher_bin = PathBuf::from(env!("CARGO_BIN_EXE_blueice-launcher"));
+    let core_bin = launcher_bin.with_file_name("blueice-core");
+    let host_bin = launcher_bin.with_file_name("blueice-extension-host");
+    let gatekeeper_bin = launcher_bin.with_file_name("blueice-ai-gatekeeper");
+    for binary in [&core_bin, &host_bin, &gatekeeper_bin] {
+        assert!(
+            binary.exists(),
+            "build {} beside the launcher first",
+            binary.display()
+        );
+    }
+    let root = std::env::temp_dir().join(format!(
+        "btw-wasm-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let root = TestRoot(root);
+    let core_socket = root.0.join("core.sock");
+    let extension_socket = root.0.join("extension.sock");
+    let gatekeeper_socket = root.0.join("gatekeeper.sock");
+    let frames = root.0.join("frames");
+    let manifest = root.0.join("extension.json");
+    std::fs::write(&manifest,
+        r#"{"name":"Manual consent proof","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["ui:inject"]}}"#,
+    ).unwrap();
+    std::fs::write(
+        root.0.join("extension.wasm"),
+        wat::parse_str(MANUAL_UI_WAT).unwrap(),
+    )
+    .unwrap();
+
+    let gatekeeper = Command::new(gatekeeper_bin)
+        .args([
+            "--socket",
+            gatekeeper_socket.to_str().unwrap(),
+            "--settings",
+            root.0.join("gatekeeper-settings.json").to_str().unwrap(),
+        ])
+        .spawn()
+        .unwrap();
+    let _gatekeeper = TestProcess(gatekeeper);
+    wait_for_path(&gatekeeper_socket, Instant::now() + Duration::from_secs(5));
+    let core = Command::new(core_bin)
+        .args([
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--extension-host",
+            host_bin.to_str().unwrap(),
+            "--permission-control-stdio",
+            "--gatekeeper-socket",
+            gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir",
+            frames.to_str().unwrap(),
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut core = TestProcess(core);
+    wait_for_path(&core_socket, Instant::now() + Duration::from_secs(15));
+    let mut parent_input = core.0.stdin.take().unwrap();
+    let mut parent_output = core.0.stdout.take().unwrap();
+    write_permission_control_request(&mut parent_input, &PermissionControlRequest::Inspect)
+        .unwrap();
+    assert!(
+        matches!(read_permission_control_reply(&mut parent_output).unwrap(),
+        PermissionControlReply::State { optional, .. }
+            if optional.len() == 1 && !optional[0].granted)
+    );
+
+    let mut client = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut client).unwrap();
+    let mut reader = client.try_clone().unwrap();
+    let (message_tx, message_rx) = mpsc::channel();
+    thread::spawn(move || {
+        while let Ok(message) = blueice_ipc::read_server_message(&mut reader) {
+            if message_tx.send(message).is_err() {
+                break;
+            }
+        }
+    });
+
+    write_permission_control_request(
+        &mut parent_input,
+        &PermissionControlRequest::Grant {
+            capability: "ui:inject".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_permission_control_reply(&mut parent_output).unwrap(),
+        PermissionControlReply::Updated {
+            capability: "ui:inject".into(),
+            granted: true,
+            changed: true
+        }
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}/optional-ui", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::WouldBlock
+                        && Instant::now() < deadline =>
+                {
+                    thread::sleep(Duration::from_millis(20));
+                }
+                Err(error) => panic!("optional UI fixture was never fetched: {error}"),
+            }
+        };
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 15\r\nConnection: close\r\n\r\n<p>Consent</p>\n").unwrap();
+    });
+    blueice_ipc::write_client_message(&mut client, &blueice_ipc::ClientMessage::Navigate { url })
+        .unwrap();
+    await_toolbar(
+        &message_rx,
+        Some("Consent Probe"),
+        Instant::now() + Duration::from_secs(15),
+    );
+    server.join().unwrap();
+
+    write_permission_control_request(
+        &mut parent_input,
+        &PermissionControlRequest::Revoke {
+            capability: "ui:inject".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_permission_control_reply(&mut parent_output).unwrap(),
+        PermissionControlReply::Updated {
+            capability: "ui:inject".into(),
+            granted: false,
+            changed: true
+        }
+    );
+    await_toolbar(&message_rx, None, Instant::now() + Duration::from_secs(5));
+    write_permission_control_request(&mut parent_input, &PermissionControlRequest::Inspect)
+        .unwrap();
+    assert!(
+        matches!(read_permission_control_reply(&mut parent_output).unwrap(),
+        PermissionControlReply::State { optional, .. }
+            if optional.len() == 1 && !optional[0].granted)
+    );
+    blueice_ipc::write_client_message(&mut client, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while core.0.try_wait().unwrap().is_none() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        core.0.try_wait().unwrap().is_some(),
+        "core did not exit after Shutdown"
+    );
 }
 
 #[test]
