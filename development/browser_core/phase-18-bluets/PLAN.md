@@ -137,8 +137,9 @@ rejects a forged child and an invalid direct BlueTS append call, confirms the
 live subtree, and compares its RGBA frame against the same empty page to prove
 visible rasterization. VM regressions reject foreign-family and same-family
 foreign-generation wrappers. The real-page cross-document child case remains
-open because ordinary realms cannot transfer wrappers; BlueTS also needs
-chained member-call argument checking before B2.2/B4 can be closed.
+open because ordinary realms cannot transfer wrappers. BlueTS now recursively
+infers chained call-result receivers and validates their method arguments;
+the real-page rejected script exercises this path before execution.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained

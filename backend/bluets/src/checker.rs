@@ -555,24 +555,39 @@ struct DirectCall<'a> {
 }
 
 struct MemberCall<'a> {
-    base: &'a Token,
+    receiver: &'a [Token],
     member: &'a Token,
     arguments: &'a [Token],
 }
 
 fn member_call_parts(tokens: &[Token]) -> Option<MemberCall<'_>> {
-    let [base, dot, member, open, rest @ ..] = tokens else {
+    let mut depth = 0usize;
+    let mut top_level_dot = None;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.is("(") {
+            depth = depth.checked_add(1)?;
+        } else if token.is(")") {
+            depth = depth.checked_sub(1)?;
+        } else if token.is(".") && depth == 0 {
+            top_level_dot = Some(index);
+        }
+    }
+    if depth != 0 {
         return None;
-    };
-    (base.kind == TokenKind::Identifier
-        && dot.is(".")
+    }
+    let dot = top_level_dot?;
+    let receiver = tokens.get(..dot)?;
+    let member = tokens.get(dot + 1)?;
+    let open = tokens.get(dot + 2)?;
+    let arguments = tokens.get(dot + 3..)?;
+    (!receiver.is_empty()
         && member.kind == TokenKind::Identifier
         && open.is("(")
-        && split_call_arguments(rest).is_some())
+        && split_call_arguments(arguments).is_some())
     .then_some(MemberCall {
-        base,
+        receiver,
         member,
-        arguments: rest,
+        arguments,
     })
 }
 

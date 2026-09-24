@@ -878,6 +878,17 @@ impl<'a> ModuleChecker<'a> {
         if tokens.is_empty() {
             return;
         }
+        if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {
+            self.type_error(
+                span,
+                format!(
+                    "member access exceeds the {} generic-expansion limit",
+                    self.max_type_expansions
+                ),
+                DiagnosticCode::ResourceLimit,
+            );
+            return;
+        }
         self.check_function_call(tokens, scope, span);
         self.check_member_calls_in_expression(tokens, scope, span);
         self.check_direct_property_access(tokens, scope, span);

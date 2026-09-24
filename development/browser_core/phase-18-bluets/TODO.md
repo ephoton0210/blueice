@@ -159,8 +159,8 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   subtree and a changed rasterized frame, and rejects a forged child; invalid
   direct BlueTS calls fail checking. VM tests reject a same-family foreign
   document generation, but a real-page cross-document child proof is still
-  open. BlueTS also still misses invalid arguments in chained expressions
-  such as `document.getElementById('x')!.appendChild('wrong')`.
+  open. BlueTS now checks chained call-result receivers and rejects invalid
+  arguments such as `document.getElementById('x')!.appendChild('wrong')`.
 
 #### B3. Deliver a real click.
 

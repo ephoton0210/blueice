@@ -88,6 +88,79 @@ fn inferred_ambient_method_result_checks_live_member_assignment() {
 }
 
 #[test]
+fn chained_ambient_member_calls_check_the_returned_receiver_and_arguments() {
+    let ambient = ModuleSource::new(
+        "memory:///lib.blueice.d.ts",
+        "interface Node { appendChild(child: Node): Node; }\n\
+         interface Document { getElementById(id: string): Node | null; createElement(tag: string): Node; createTextNode(data: string): Node; }\n\
+         declare const document: Document;",
+    );
+    let check = |source| {
+        crate::compile(
+            "memory:///main.ts",
+            &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+            CompilerOptions {
+                ambient_declaration_modules: vec![ambient.clone()],
+                require_declared_global_calls: true,
+                ..CompilerOptions::default()
+            },
+        )
+    };
+    let valid =
+        check("document.getElementById('target')!.appendChild(document.createTextNode('ok'));");
+    assert!(!valid.has_errors(), "{:#?}", valid.diagnostics);
+    for source in [
+        "document.getElementById('target')!.appendChild('wrong');",
+        "document.createElement('span').appendChild('wrong');",
+        "document.getElementById('target')!.missing('wrong');",
+    ] {
+        let invalid = check(source);
+        assert!(
+            invalid
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::TypeMismatch),
+            "{source}: {:#?}",
+            invalid.diagnostics
+        );
+    }
+}
+
+#[test]
+fn chained_member_inference_respects_the_type_expansion_limit() {
+    let ambient = ModuleSource::new(
+        "memory:///lib.blueice.d.ts",
+        "interface Node { appendChild(child: Node): Node; }\n\
+         interface Document { createElement(tag: string): Node; }\n\
+         declare const document: Document;",
+    );
+    let result = crate::compile(
+        "memory:///main.ts",
+        &MapLoader::from([ModuleSource::new(
+            "memory:///main.ts",
+            "document.createElement('a').appendChild(document.createElement('b'));",
+        )]),
+        CompilerOptions {
+            ambient_declaration_modules: vec![ambient],
+            require_declared_global_calls: true,
+            limits: crate::compiler::CompilerLimits {
+                max_type_expansions: 2,
+                ..crate::compiler::CompilerLimits::default()
+            },
+            ..CompilerOptions::default()
+        },
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == DiagnosticCode::ResourceLimit),
+        "{:#?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn member_calls_need_a_declared_receiver_under_the_page_profile_policy() {
     let result = crate::compile(
         "memory:///main.ts",

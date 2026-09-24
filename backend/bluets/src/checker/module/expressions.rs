@@ -12,6 +12,11 @@ impl<'a> ModuleChecker<'a> {
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
     ) -> Type {
+        // Each chained member call recursively infers its receiver. Keep
+        // that recursion under the compiler's existing expansion envelope.
+        if tokens.iter().filter(|token| token.is(".")).count() > self.max_type_expansions {
+            return Type::Unknown;
+        }
         let tokens = strip_outer_parentheses(tokens);
         if tokens.len() > 1 && tokens.last().is_some_and(|token| token.is("!")) {
             let inferred = self.infer_expression(&tokens[..tokens.len() - 1], scope);
@@ -32,7 +37,7 @@ impl<'a> ModuleChecker<'a> {
             };
         }
         if let Some(call) = member_call_parts(tokens) {
-            let base = scope.get(&call.base.text).cloned().unwrap_or(Type::Unknown);
+            let base = self.infer_expression(call.receiver, scope);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             if let PropertyType::Found(Type::Function { result, .. }) = property_type(
                 &base,
@@ -407,6 +412,13 @@ impl<'a> ModuleChecker<'a> {
                 self.check_member_call(&tokens[start..=end], scope, span);
             }
         }
+        // A method on a call result has no identifier immediately before its
+        // final dot (for example `document.getElementById('x')!.appendChild(y)`).
+        // The direct-call scan above checks the inner call; check the complete
+        // chain once for the outer receiver and its arguments.
+        if member_call_parts(tokens).is_some_and(|call| call.receiver.len() > 1) {
+            self.check_member_call(tokens, scope, span);
+        }
     }
 
     fn check_member_call(
@@ -424,18 +436,20 @@ impl<'a> ModuleChecker<'a> {
         let Some(call) = member_call_parts(tokens) else {
             return;
         };
-        if self.require_declared_global_calls && !scope.contains_key(&call.base.text) {
+        if self.require_declared_global_calls
+            && call.receiver.first().is_some_and(|base| {
+                base.kind == TokenKind::Identifier && !scope.contains_key(&base.text)
+            })
+        {
+            let base = &call.receiver[0];
             self.type_error(
                 span,
-                format!(
-                    "object {} is not declared by this page profile",
-                    call.base.text
-                ),
+                format!("object {} is not declared by this page profile", base.text),
                 DiagnosticCode::UnknownName,
             );
             return;
         }
-        let base = scope.get(&call.base.text).cloned().unwrap_or(Type::Unknown);
+        let base = self.infer_expression(call.receiver, scope);
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         let member_type = property_type(
             &base,

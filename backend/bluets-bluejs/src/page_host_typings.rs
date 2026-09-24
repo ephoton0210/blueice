@@ -532,6 +532,7 @@ mod tests {
             "document.createTextNode();",
             "document.createTextNode(42);",
             "const parent = document.getElementById('target')!; parent.appendChild('wrong');",
+            "document.getElementById('target')!.appendChild('wrong');",
             "document.fetch('https://example.test/');",
         ] {
             assert!(compile(source).is_err(), "{source}");
