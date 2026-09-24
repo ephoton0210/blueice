@@ -285,10 +285,15 @@ or second module resolver to bypass them.
   reserves its full per-realm budget before realm creation; navigation keeps
   that reservation, and close or post-creation binding failure releases it. The public
   launcher CLI, page, frontend, core, and page-host IPC cannot inspect or
-  widen the envelope. This is not actual aggregate usage accounting, an RSS
-  cap, or a fleet budget: VM heap accounting excludes allocator/Rust/source/
-  registry/OS overhead, and reservations conservatively count full realm
-  budgets even when little is used. Those limits, native debugger attachment,
+  widen the envelope. Page-host v31 now adds an authenticated core-only query
+  for actual program/root-bytecode/VM-managed-heap totals across the live
+  child realms; the child recomputes checked sums under the owner envelope,
+  and core validates the source-free reply against its live realm count.
+  Replacement and close remove predecessor usage, while a malformed reply
+  fails closed. This remains neither an RSS cap nor a fleet budget: VM heap
+  accounting excludes allocator/Rust/source/registry/OS overhead, and
+  reservations conservatively count full realm budgets even when little is
+  used. Those limits, native debugger attachment,
   and general JavaScript DOM-object/event binding remain open, so the
   prerequisite remains open.
 
@@ -548,6 +553,9 @@ or second module resolver to bypass them.
   regression covers cross-span pause, denied owner or cross-stream access,
   resumed completion, and stale generation. Modules, nested frames, stack,
   scope, and values remain outside the seam.
+  Core accepts compiler-minted source ID zero for this operation when the
+  same-stream receipt and verified child echo match; zero is not a missing
+  source sentinel.
 
   Acceptance for the delivered seam: a classic JS page fixture pauses at a
   verified root-code-unit safe point and resumes its same frame; realm

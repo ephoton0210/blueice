@@ -2,6 +2,17 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**Private page-host actual-usage accounting:** Page-host v31 adds one
+authenticated child-wide snapshot of currently live realm count, retained
+programs/root bytecode, and VM-managed heap. The child recomputes checked
+totals from exact live realms and rejects impossible or owner-envelope-exceeding
+results; core accepts only a well-formed reply matching its live realm count.
+Replacement and close drop the predecessor charge. This is core-only and
+complements conservative child-wide reservations; it is not a source/cache,
+allocator, process-RSS, or fleet budget and is not exposed to page, frontend,
+debugger, or MCP peers. The public BlueTS source-span step now also accepts
+compiler-minted source ID zero, which is valid when separately receipted.
+
 **Public BlueTS source-span stepping:** Page-host protocol
 v30 adds an authenticated child request bound to one paused classic-root
 safe point, exact retained BlueTS metadata handle, and compiler-minted source
@@ -735,6 +746,7 @@ Acceptance: editing one module invalidates only its dependents; a cache entry ch
 - [ ] Complete Phase 13 page-script host and Phase 17 source-map prerequisites
 - [x] Expose one exact classic-root instruction step through debugger v26 on the in-process page route, retaining the BlueJS continuation and reporting only opaque safe points; source-level mapping remains Phase 13/17 work
 - [x] Carry the exact classic-root step through page-host v27 and the supervised child route, including retained BlueTS classic metadata and a public source-free debugger transition; nested-frame and source-level stepping remain Phase 13/17 work
+- [x] Add page-host v31 core-only child-wide actual-usage snapshots with checked live-realm aggregation and owner-envelope validation; keep conservative reservations and RSS/fleet limits distinct.
 - [x] Expose a bounded classic-root BlueTS source-span step through debugger v30 and metadata manifest v4 with independent owner/client grants, same-stream receipts, core reminting, a distinct limit stop reason, and real launcher debugger-socket acceptance; modules and nested-frame stepping remain open.
 - [x] Add the page-host v28 private exact BlueTS safe-point-to-original-byte-span lookup under a live child metadata handle, with no nearest-position fallback or public debugger grant; public source-level breakpoint/stack routing and capability policy remain open.
 - [x] Bind the private v28 lookup to core-reminted program and metadata handles, require an exact compiler source ID, and reject mismatched child tuples/ranges before the public debugger adapter can use it; session receipts and owner/client grants remain open.

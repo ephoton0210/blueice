@@ -376,6 +376,14 @@ fn launcher_child_reserves_aggregate_capacity_before_admitting_a_second_tab() {
                 ..
             }])
     ));
+    let PageHostReply::ChildStats(first_usage) =
+        host.request(PageHostRequest::GetChildStats).unwrap()
+    else {
+        panic!("the authenticated child must report actual aggregate usage");
+    };
+    assert_eq!(first_usage.realm_count, 1);
+    assert_eq!(first_usage.program_count, 1);
+    assert!(first_usage.bytecode_bytes > 0 && first_usage.heap_bytes > 0);
 
     let mut second = document(1, vec![blue_ts_classic(0, "let other: number = 7;")]);
     second.tab_id = 42;
@@ -386,6 +394,11 @@ fn launcher_child_reserves_aggregate_capacity_before_admitting_a_second_tab() {
             ..
         }
     ));
+    assert_eq!(
+        host.request(PageHostRequest::GetChildStats).unwrap(),
+        PageHostReply::ChildStats(first_usage),
+        "a denied second realm must not change actual usage"
+    );
     assert!(matches!(
         host.request(PageHostRequest::GetRealmStats {
             tab_id: 41,
@@ -402,8 +415,24 @@ fn launcher_child_reserves_aggregate_capacity_before_admitting_a_second_tab() {
         PageHostReply::RealmClosed { .. }
     ));
     assert!(matches!(
+        host.request(PageHostRequest::GetChildStats).unwrap(),
+        PageHostReply::ChildStats(stats)
+            if stats.realm_count == 0
+                && stats.program_count == 0
+                && stats.bytecode_bytes == 0
+                && stats.heap_bytes == 0
+    ));
+    assert!(matches!(
         host.synchronize_document(second).unwrap(),
         PageHostReply::Synchronized { .. }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::GetChildStats).unwrap(),
+        PageHostReply::ChildStats(stats)
+            if stats.realm_count == 1
+                && stats.program_count == 1
+                && stats.bytecode_bytes > 0
+                && stats.heap_bytes > 0
     ));
     host.shutdown().unwrap();
 }

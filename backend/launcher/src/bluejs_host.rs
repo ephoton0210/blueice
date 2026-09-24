@@ -44,8 +44,8 @@ use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
-    self, PageHostDebuggerBlueTsMetadataContractDisplay, PageHostDebuggerBlueTsMetadataContractId,
-    PageHostDebuggerBlueTsMetadataContractLocation,
+    self, PageHostChildStats, PageHostDebuggerBlueTsMetadataContractDisplay,
+    PageHostDebuggerBlueTsMetadataContractId, PageHostDebuggerBlueTsMetadataContractLocation,
     PageHostDebuggerBlueTsMetadataContractValidation,
     PageHostDebuggerBlueTsMetadataLoweringSummary, PageHostDebuggerBlueTsMetadataSourceId,
     PageHostDebuggerBlueTsMetadataSourceProvenance, PageHostDebuggerBlueTsMetadataSummary,
@@ -334,6 +334,7 @@ impl BlueJsChildHost {
                 tab_id,
                 document_generation,
             } => self.realm_stats(tab_id, document_generation),
+            PageHostRequest::GetChildStats => self.child_stats(),
             PageHostRequest::ListDebuggerPrograms {
                 tab_id,
                 document_generation,
@@ -1123,6 +1124,57 @@ impl BlueJsChildHost {
             }
             Err(_) => host_failure(),
         }
+    }
+
+    /// Recomputes actual VM-managed usage from the live realm table on each
+    /// request. No cached predecessor generation or conservative reservation
+    /// is included, and checked sums fail closed instead of wrapping.
+    fn child_stats(&self) -> PageHostReply {
+        let Ok(realm_count) = u32::try_from(self.documents.len()) else {
+            return host_failure();
+        };
+        let mut totals = PageHostChildStats {
+            realm_count,
+            program_count: 0,
+            bytecode_bytes: 0,
+            heap_bytes: 0,
+        };
+        for (&tab_id, document) in &self.documents {
+            let PageHostReply::RealmStats(stats) = self.realm_stats(tab_id, document.generation)
+            else {
+                return host_failure();
+            };
+            let Some(program_count) = totals
+                .program_count
+                .checked_add(u64::from(stats.program_count))
+            else {
+                return host_failure();
+            };
+            let Some(bytecode_bytes) = totals.bytecode_bytes.checked_add(stats.bytecode_bytes)
+            else {
+                return host_failure();
+            };
+            let Some(heap_bytes) = totals.heap_bytes.checked_add(stats.heap_bytes) else {
+                return host_failure();
+            };
+            totals.program_count = program_count;
+            totals.bytecode_bytes = bytecode_bytes;
+            totals.heap_bytes = heap_bytes;
+        }
+        if !totals.is_well_formed()
+            || usize::try_from(totals.program_count)
+                .ok()
+                .is_none_or(|count| count > self.limits.max_reserved_programs)
+            || usize::try_from(totals.bytecode_bytes)
+                .ok()
+                .is_none_or(|bytes| bytes > self.limits.max_reserved_bytecode_bytes)
+            || usize::try_from(totals.heap_bytes)
+                .ok()
+                .is_none_or(|bytes| bytes > self.limits.max_reserved_heap_bytes)
+        {
+            return host_failure();
+        }
+        PageHostReply::ChildStats(totals)
     }
 
     /// Lists only the child-minted private IDs for one exact realm. The core
@@ -4685,6 +4737,98 @@ mod tests {
         limits = BlueJsHostRuntimeLimits::default();
         limits.max_reserved_heap_bytes = limits.max_heap_bytes_per_realm - 1;
         assert!(limits.runtime_config().is_err());
+    }
+
+    #[test]
+    fn child_wide_actual_usage_tracks_live_realms_not_predecessors_or_reservations() {
+        let mut host = BlueJsChildHost::default();
+        assert_eq!(
+            host.handle_request(PageHostRequest::GetChildStats),
+            PageHostReply::ChildStats(PageHostChildStats {
+                realm_count: 0,
+                program_count: 0,
+                bytecode_bytes: 0,
+                heap_bytes: 0,
+            })
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(1, vec![classic(0, "globalThis.first = 1;")]),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        let mut second = document(1, vec![classic(0, "globalThis.second = 2;")]);
+        second.tab_id = 8;
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument { document: second }),
+            PageHostReply::Synchronized { .. }
+        ));
+        let PageHostReply::RealmStats(first) =
+            host.handle_request(PageHostRequest::GetRealmStats {
+                tab_id: 7,
+                document_generation: 1,
+            })
+        else {
+            panic!("first child realm must remain live");
+        };
+        let PageHostReply::RealmStats(second) =
+            host.handle_request(PageHostRequest::GetRealmStats {
+                tab_id: 8,
+                document_generation: 1,
+            })
+        else {
+            panic!("second child realm must remain live");
+        };
+        assert_eq!(
+            host.handle_request(PageHostRequest::GetChildStats),
+            PageHostReply::ChildStats(PageHostChildStats {
+                realm_count: 2,
+                program_count: u64::from(first.program_count + second.program_count),
+                bytecode_bytes: first.bytecode_bytes + second.bytecode_bytes,
+                heap_bytes: first.heap_bytes + second.heap_bytes,
+            })
+        );
+        assert!(first.bytecode_bytes > 0 && second.bytecode_bytes > 0);
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(2, Vec::new()),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        let PageHostReply::RealmStats(replaced) =
+            host.handle_request(PageHostRequest::GetRealmStats {
+                tab_id: 7,
+                document_generation: 2,
+            })
+        else {
+            panic!("replacement child realm must be live");
+        };
+        assert_eq!(replaced.program_count, 0);
+        assert_eq!(
+            host.handle_request(PageHostRequest::GetChildStats),
+            PageHostReply::ChildStats(PageHostChildStats {
+                realm_count: 2,
+                program_count: u64::from(second.program_count),
+                bytecode_bytes: second.bytecode_bytes,
+                heap_bytes: replaced.heap_bytes + second.heap_bytes,
+            })
+        );
+        assert!(matches!(
+            host.handle_request(PageHostRequest::CloseRealm {
+                tab_id: 8,
+                document_generation: 1,
+            }),
+            PageHostReply::RealmClosed { .. }
+        ));
+        assert_eq!(
+            host.handle_request(PageHostRequest::GetChildStats),
+            PageHostReply::ChildStats(PageHostChildStats {
+                realm_count: 1,
+                program_count: 0,
+                bytecode_bytes: 0,
+                heap_bytes: replaced.heap_bytes,
+            })
+        );
     }
 
     #[test]

@@ -12,11 +12,16 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
-//! Version 30 adds a child-private BlueTS source-span step on a retained
-//! classic-root continuation. It advances one verified root instruction per
+//! Version 31 adds an authenticated, source-free child-wide actual-usage
+//! snapshot for all live realms. It is private to the core/child connection,
+//! separate from the launcher's conservative reservations and from public
+//! debugger, frontend, and MCP protocols. Version 30 adds a child-private
+//! BlueTS source-span step on a retained classic-root continuation. It
+//! advances one verified root instruction per
 //! owner turn, stops at a different compiler-bound source span, completion,
 //! or an explicit fixed instruction-budget yield. It reveals no source text,
-//! runtime value, stack, or VM frame and grants no public debugger operation.
+//! runtime value, stack, or VM frame. Public debugger v30 separately gates its
+//! use with owner/client capability grants and same-stream source receipts.
 //! Version 29 adds a child-private, bounded BlueTS byte-position-to-safe-point
 //! binding under an exact live metadata attachment. It preserves explicitly
 //! unbound lowering spans and does not itself grant a public debugger client
@@ -103,7 +108,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 30;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 31;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -527,6 +532,34 @@ impl PageHostRealmStats {
     }
 }
 
+/// Actual source-free usage across every currently live child-owned realm.
+/// This excludes Rust allocation, source/cache copies, registry overhead,
+/// process RSS, and other children. It conveys no tab or program identity and
+/// is never a public debugger/frontend/MCP reply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostChildStats {
+    pub realm_count: u32,
+    pub program_count: u64,
+    pub bytecode_bytes: u64,
+    pub heap_bytes: u64,
+}
+
+impl PageHostChildStats {
+    /// Rejects conversion sentinels, impossible program counts, and a
+    /// nonempty charge for an empty child before core trusts the snapshot.
+    pub fn is_well_formed(self) -> bool {
+        self.realm_count != u32::MAX
+            && self.program_count != u64::MAX
+            && self.bytecode_bytes != u64::MAX
+            && self.heap_bytes != u64::MAX
+            && self.program_count
+                <= u64::from(self.realm_count) * u64::from(PAGE_HOST_REALM_STATS_MAX_PROGRAMS)
+            && (self.program_count != 0 || self.bytecode_bytes == 0)
+            && (self.realm_count != 0
+                || (self.program_count == 0 && self.bytecode_bytes == 0 && self.heap_bytes == 0))
+    }
+}
+
 /// Launcher/core requests to the private host. `Hello` carries the per-spawn
 /// secret capability so a same-user process that guesses a socket pathname
 /// cannot claim the child before its launcher does.
@@ -551,6 +584,9 @@ pub enum PageHostRequest {
         tab_id: u64,
         document_generation: u64,
     },
+    /// Returns one authenticated child-wide actual-usage snapshot. It has no
+    /// caller-selected realm, source, or runtime-object target.
+    GetChildStats,
     /// Lists only opaque program identities retained by one exact live child
     /// realm. This discovery operation cannot pause, resume, inspect, or
     /// mutate that realm.
@@ -835,6 +871,7 @@ pub enum PageHostReply {
         document_generation: u64,
     },
     RealmStats(PageHostRealmStats),
+    ChildStats(PageHostChildStats),
     DebuggerPrograms {
         tab_id: u64,
         document_generation: u64,
@@ -1272,6 +1309,7 @@ mod tests {
                 tab_id: 7,
                 document_generation: 3,
             },
+            PageHostRequest::GetChildStats,
             PageHostRequest::ListDebuggerPrograms {
                 tab_id: 7,
                 document_generation: 3,
@@ -2111,6 +2149,49 @@ mod tests {
             ..stats
         }
         .is_well_formed());
+    }
+
+    #[test]
+    fn child_stats_round_trip_and_reject_impossible_totals() {
+        let stats = PageHostChildStats {
+            realm_count: 2,
+            program_count: 3,
+            bytecode_bytes: 64,
+            heap_bytes: 128,
+        };
+        assert!(stats.is_well_formed());
+        for invalid in [
+            PageHostChildStats {
+                realm_count: 0,
+                ..stats
+            },
+            PageHostChildStats {
+                realm_count: u32::MAX,
+                ..stats
+            },
+            PageHostChildStats {
+                program_count: u64::from(PAGE_HOST_REALM_STATS_MAX_PROGRAMS) * 2 + 1,
+                ..stats
+            },
+            PageHostChildStats {
+                bytecode_bytes: u64::MAX,
+                ..stats
+            },
+            PageHostChildStats {
+                program_count: 0,
+                ..stats
+            },
+            PageHostChildStats {
+                heap_bytes: u64::MAX,
+                ..stats
+            },
+        ] {
+            assert!(!invalid.is_well_formed());
+        }
+        let reply = PageHostReply::ChildStats(stats);
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
     }
 
     #[test]
