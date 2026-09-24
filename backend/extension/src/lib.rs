@@ -694,6 +694,31 @@ fn write_dom_effect_reply<S: Write>(stream: &mut S, result: Result<(), String>) 
     }
 }
 
+fn with_stable_storage_grant<T>(
+    registry: &ExtensionRegistry,
+    identity: &ConnectionIdentity,
+    captured_generation: Option<u64>,
+    effect: impl FnOnce() -> Result<T, String>,
+) -> Result<T, ExtensionReply> {
+    let Some(generation) = captured_generation else {
+        return Err(ExtensionReply::CapabilityDenied {
+            capability: CAPABILITY_STORAGE.to_string(),
+            reason: grant_changed_reason(CAPABILITY_STORAGE),
+        });
+    };
+    match registry.with_stable_capability(
+        &identity.extension_id, CAPABILITY_STORAGE, generation, effect,
+    ) {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(reason)) => Err(ExtensionReply::OperationUnavailable {
+            capability: CAPABILITY_STORAGE.to_string(), reason,
+        }),
+        Err(reason) => Err(ExtensionReply::CapabilityDenied {
+            capability: CAPABILITY_STORAGE.to_string(), reason,
+        }),
+    }
+}
+
 fn write_network_registration_reply<S: Write>(
     stream: &mut S,
     result: Result<(), String>,
@@ -1228,6 +1253,9 @@ where
         // revoke/regrant cannot lend its authority to a reviewed write.
         let dom_write_generation = registry.capability_generation(
             &identity.extension_id, CAPABILITY_DOM_WRITE,
+        );
+        let storage_generation = registry.capability_generation(
+            &identity.extension_id, CAPABILITY_STORAGE,
         );
         match request {
             ExtensionRequest::Hello {
@@ -2439,18 +2467,12 @@ where
                     )?;
                     continue;
                 }
-                match storage.get(&identity.extension_id, &key) {
-                    Ok(value) => {
-                        write_extension_reply(stream, &ExtensionReply::StorageGetResult { value })?
-                    }
-                    Err(reason) => write_extension_reply(
-                        stream,
-                        &ExtensionReply::OperationUnavailable {
-                            capability: CAPABILITY_STORAGE.to_string(),
-                            reason,
-                        },
-                    )?,
-                }
+                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
+                    || storage.get(&identity.extension_id, &key)) {
+                    Ok(value) => ExtensionReply::StorageGetResult { value },
+                    Err(reply) => reply,
+                };
+                write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::StorageSet { key, value } => {
                 if let Some(reason) =
@@ -2465,16 +2487,12 @@ where
                     )?;
                     continue;
                 }
-                match storage.set(&identity.extension_id, key, value) {
-                    Ok(()) => write_extension_reply(stream, &ExtensionReply::StorageSetAck)?,
-                    Err(reason) => write_extension_reply(
-                        stream,
-                        &ExtensionReply::OperationUnavailable {
-                            capability: CAPABILITY_STORAGE.to_string(),
-                            reason,
-                        },
-                    )?,
-                }
+                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
+                    || storage.set(&identity.extension_id, key, value)) {
+                    Ok(()) => ExtensionReply::StorageSetAck,
+                    Err(reply) => reply,
+                };
+                write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::StorageRemove { key } => {
                 if let Some(reason) =
@@ -2489,19 +2507,12 @@ where
                     )?;
                     continue;
                 }
-                match storage.remove(&identity.extension_id, &key) {
-                    Ok(removed) => write_extension_reply(
-                        stream,
-                        &ExtensionReply::StorageRemoveAck { removed },
-                    )?,
-                    Err(reason) => write_extension_reply(
-                        stream,
-                        &ExtensionReply::OperationUnavailable {
-                            capability: CAPABILITY_STORAGE.to_string(),
-                            reason,
-                        },
-                    )?,
-                }
+                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
+                    || storage.remove(&identity.extension_id, &key)) {
+                    Ok(removed) => ExtensionReply::StorageRemoveAck { removed },
+                    Err(reply) => reply,
+                };
+                write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::DurableStorageGet { key } => {
                 if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2) {
@@ -2510,12 +2521,12 @@ where
                     })?;
                     continue;
                 }
-                match storage.durable_get(&identity.extension_id, &key) {
-                    Ok(value) => write_extension_reply(stream, &ExtensionReply::StorageGetResult { value })?,
-                    Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                        capability: CAPABILITY_STORAGE.to_string(), reason,
-                    })?,
-                }
+                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
+                    || storage.durable_get(&identity.extension_id, &key)) {
+                    Ok(value) => ExtensionReply::StorageGetResult { value },
+                    Err(reply) => reply,
+                };
+                write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::DurableStorageSet { key, value } => {
                 if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2) {
@@ -2524,12 +2535,12 @@ where
                     })?;
                     continue;
                 }
-                match storage.durable_set(&identity.extension_id, key, value) {
-                    Ok(()) => write_extension_reply(stream, &ExtensionReply::StorageSetAck)?,
-                    Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                        capability: CAPABILITY_STORAGE.to_string(), reason,
-                    })?,
-                }
+                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
+                    || storage.durable_set(&identity.extension_id, key, value)) {
+                    Ok(()) => ExtensionReply::StorageSetAck,
+                    Err(reply) => reply,
+                };
+                write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::DurableStorageRemove { key } => {
                 if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 2) {
@@ -2538,12 +2549,12 @@ where
                     })?;
                     continue;
                 }
-                match storage.durable_remove(&identity.extension_id, &key) {
-                    Ok(removed) => write_extension_reply(stream, &ExtensionReply::StorageRemoveAck { removed })?,
-                    Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                        capability: CAPABILITY_STORAGE.to_string(), reason,
-                    })?,
-                }
+                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
+                    || storage.durable_remove(&identity.extension_id, &key)) {
+                    Ok(removed) => ExtensionReply::StorageRemoveAck { removed },
+                    Err(reply) => reply,
+                };
+                write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::DurableStorageListKeys => {
                 if let Some(reason) = capability_denial_reason(registry, &identity, CAPABILITY_STORAGE, 3) {
@@ -2552,12 +2563,12 @@ where
                     })?;
                     continue;
                 }
-                match storage.durable_list_keys(&identity.extension_id) {
-                    Ok(keys) => write_extension_reply(stream, &ExtensionReply::StorageKeysResult { keys })?,
-                    Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                        capability: CAPABILITY_STORAGE.to_string(), reason,
-                    })?,
-                }
+                let reply = match with_stable_storage_grant(registry, &identity, storage_generation,
+                    || storage.durable_list_keys(&identity.extension_id)) {
+                    Ok(keys) => ExtensionReply::StorageKeysResult { keys },
+                    Err(reply) => reply,
+                };
+                write_extension_reply(stream, &reply)?;
             }
             ExtensionRequest::NetworkIntercept => {
                 if let Some(reason) =
@@ -3437,6 +3448,109 @@ mod tests {
 
         drop(client);
         handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn optional_storage_revoke_waits_for_inflight_effect_and_old_grant_cannot_be_reused() {
+        use std::time::Duration;
+
+        let mut registry = ExtensionRegistry::with_supported_capabilities();
+        registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE);
+        let registry = Arc::new(registry);
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+        let old_generation = registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let worker_registry = Arc::clone(&registry);
+        let worker = thread::spawn(move || {
+            let identity = ConnectionIdentity {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                negotiated_capabilities: BTreeMap::from([(CAPABILITY_STORAGE.to_string(), 3)]),
+            };
+            with_stable_storage_grant(&worker_registry, &identity, Some(old_generation), || {
+                entered_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                Ok(())
+            })
+        });
+        entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let (attempt_tx, attempt_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let revoker_registry = Arc::clone(&registry);
+        let revoker = thread::spawn(move || {
+            attempt_tx.send(()).unwrap();
+            revoker_registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+            done_tx.send(()).unwrap();
+        });
+        attempt_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(done_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        release_tx.send(()).unwrap();
+        assert!(worker.join().unwrap().is_ok());
+        done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        revoker.join().unwrap();
+
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+        let identity = ConnectionIdentity {
+            extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+            negotiated_capabilities: BTreeMap::from([(CAPABILITY_STORAGE.to_string(), 3)]),
+        };
+        assert!(matches!(
+            with_stable_storage_grant(&registry, &identity, Some(old_generation), || -> Result<(), String> {
+                panic!("a revoked generation must not run a storage effect")
+            }),
+            Err(ExtensionReply::CapabilityDenied { capability, .. }) if capability == CAPABILITY_STORAGE
+        ));
+    }
+
+    #[test]
+    fn optional_storage_revoke_denies_every_operation_on_an_existing_connection() {
+        let mut registry = ExtensionRegistry::with_supported_capabilities();
+        registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE);
+        let registry = Arc::new(registry);
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+        let handler_registry = Arc::clone(&registry);
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let worker = thread::spawn(move || {
+            handle_extension_connection_with_gatekeeper(
+                &handler_registry,
+                Path::new("/not-reached-for-storage-only-operation.sock"),
+                &mut server,
+            )
+        });
+        let exchange = |client: &mut UnixStream, request: ExtensionRequest| {
+            write_extension_request(client, &request).unwrap();
+            read_extension_reply(client).unwrap()
+        };
+        assert_eq!(
+            exchange(&mut client, hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_STORAGE, 3)])),
+            empty_hello_ack()
+        );
+        assert_eq!(
+            exchange(&mut client, ExtensionRequest::StorageSet { key: "task".into(), value: "safe".into() }),
+            ExtensionReply::StorageSetAck
+        );
+        registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+        for request in [
+            ExtensionRequest::StorageGet { key: "task".into() },
+            ExtensionRequest::StorageSet { key: "task".into(), value: "changed".into() },
+            ExtensionRequest::StorageRemove { key: "task".into() },
+            ExtensionRequest::DurableStorageGet { key: "task".into() },
+            ExtensionRequest::DurableStorageSet { key: "task".into(), value: "changed".into() },
+            ExtensionRequest::DurableStorageRemove { key: "task".into() },
+            ExtensionRequest::DurableStorageListKeys,
+        ] {
+            assert!(matches!(
+                exchange(&mut client, request),
+                ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_STORAGE
+            ));
+        }
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_STORAGE).unwrap();
+        assert_eq!(
+            exchange(&mut client, ExtensionRequest::StorageGet { key: "task".into() }),
+            ExtensionReply::StorageGetResult { value: Some("safe".into()) }
+        );
+        drop(client);
+        worker.join().unwrap().unwrap();
     }
 
     #[test]
