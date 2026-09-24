@@ -108,6 +108,9 @@ struct Args {
     /// separately inventoried symbol and source IDs. It exposes no source,
     /// module identity, line/column data, type, contract, or bytecode.
     debugger_static_metadata_symbol_location: bool,
+    /// Owner opt-in for an exact original BlueTS safe-point span under prior
+    /// metadata and source-ID receipts; source text remains unavailable.
+    debugger_static_metadata_safe_point_span: bool,
     /// Owner opt-in for one bounded contract declaration range under separate
     /// contract and source receipts; plans and source text stay unavailable.
     debugger_static_metadata_contract_location: bool,
@@ -157,6 +160,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_lowering_summary = false;
     let mut debugger_static_metadata_symbol_display = false;
     let mut debugger_static_metadata_symbol_location = false;
+    let mut debugger_static_metadata_safe_point_span = false;
     let mut debugger_static_metadata_contract_location = false;
     let mut debugger_static_metadata_symbol_type = false;
     let mut debugger_static_metadata_symbol_contract = false;
@@ -218,6 +222,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--debugger-static-metadata-symbol-location" => {
                 debugger_static_metadata_symbol_location = true
+            }
+            "--debugger-static-metadata-safe-point-span" => {
+                debugger_static_metadata_safe_point_span = true
             }
             "--debugger-static-metadata-contract-location" => {
                 debugger_static_metadata_contract_location = true
@@ -384,6 +391,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if debugger_static_metadata_safe_point_span && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-safe-point-span requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_safe_point_span && !debugger_static_metadata_inventory {
+        return Err("--debugger-static-metadata-safe-point-span requires --debugger-static-metadata-inventory".to_string());
+    }
+    if debugger_static_metadata_safe_point_span && !debugger_static_metadata_source_inventory {
+        return Err("--debugger-static-metadata-safe-point-span requires --debugger-static-metadata-source-inventory".to_string());
+    }
     if debugger_static_metadata_contract_location && debugger_socket.is_none() {
         return Err(
             "--debugger-static-metadata-contract-location requires --debugger-socket".to_string(),
@@ -452,6 +470,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_lowering_summary,
         debugger_static_metadata_symbol_display,
         debugger_static_metadata_symbol_location,
+        debugger_static_metadata_safe_point_span,
         debugger_static_metadata_contract_location,
         debugger_static_metadata_symbol_type,
         debugger_static_metadata_symbol_contract,
@@ -525,6 +544,9 @@ fn main() -> ExitCode {
     }
     if args.debugger_static_metadata_symbol_location {
         core_options = core_options.with_debugger_static_metadata_symbol_location();
+    }
+    if args.debugger_static_metadata_safe_point_span {
+        core_options = core_options.with_debugger_static_metadata_safe_point_span();
     }
     if args.debugger_static_metadata_contract_location {
         core_options = core_options.with_debugger_static_metadata_contract_location();
@@ -673,6 +695,7 @@ mod tests {
         assert!(!parsed.debugger_static_metadata_lowering_summary);
         assert!(!parsed.debugger_static_metadata_symbol_display);
         assert!(!parsed.debugger_static_metadata_symbol_location);
+        assert!(!parsed.debugger_static_metadata_safe_point_span);
         assert!(!parsed.debugger_static_metadata_symbol_type);
         assert!(!parsed.debugger_static_metadata_symbol_contract);
         assert!(!parsed.simulate_low_memory);
@@ -715,6 +738,7 @@ mod tests {
             "--debugger-static-metadata-lowering-summary",
             "--debugger-static-metadata-symbol-display",
             "--debugger-static-metadata-symbol-location",
+            "--debugger-static-metadata-safe-point-span",
             "--debugger-static-metadata-contract-location",
             "--debugger-static-metadata-symbol-type",
             "--debugger-static-metadata-symbol-contract",
@@ -748,6 +772,7 @@ mod tests {
                 debugger_static_metadata_lowering_summary: true,
                 debugger_static_metadata_symbol_display: true,
                 debugger_static_metadata_symbol_location: true,
+                debugger_static_metadata_safe_point_span: true,
                 debugger_static_metadata_contract_location: true,
                 debugger_static_metadata_symbol_type: true,
                 debugger_static_metadata_symbol_contract: true,
@@ -840,6 +865,39 @@ mod tests {
         ])
         .unwrap();
         assert!(parsed.debugger_static_metadata_symbol_location);
+    }
+
+    #[test]
+    fn static_metadata_safe_point_span_requires_explicit_owner_prerequisites() {
+        assert_eq!(
+            args(&["--debugger-static-metadata-safe-point-span"]),
+            Err(
+                "--debugger-static-metadata-safe-point-span requires --debugger-socket".to_string()
+            )
+        );
+        assert_eq!(
+            args(&[
+                "--debugger-socket", "/tmp/debugger.sock",
+                "--debugger-static-metadata-safe-point-span",
+            ]),
+            Err("--debugger-static-metadata-safe-point-span requires --debugger-static-metadata-inventory".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--debugger-socket", "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory", "--debugger-static-metadata-safe-point-span",
+            ]),
+            Err("--debugger-static-metadata-safe-point-span requires --debugger-static-metadata-source-inventory".to_string())
+        );
+        let parsed = args(&[
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-source-inventory",
+            "--debugger-static-metadata-safe-point-span",
+        ])
+        .unwrap();
+        assert!(parsed.debugger_static_metadata_safe_point_span);
     }
 
     #[test]

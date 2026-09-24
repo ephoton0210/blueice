@@ -975,18 +975,21 @@ or second module resolver to bypass them.
   instruction and returns only the compiler source ID plus the original
   half-open byte span from its retained direct-lowering map. Unbound
   instructions have no nearest-span fallback; cross-program handles, forged
-  offsets, and old document generations reject. The core-owned transport can
-  issue this request, but it is not yet a public debugger operation or grant:
-  public source-ID receipts, explicit owner/client capability policy, core
-  tuple revalidation, and safe-point-to-source reminting were the remaining
-  work after the child-only protocol landed.
+  offsets, and old document generations reject.
   The core page-executor adapter now translates its reminted program and
   metadata identities back to the exact child tuple for this query, requires
   a caller-selected compiler source ID, and rejects a mismatched reply tuple,
-  source ID, malformed range, or stale generation. This is an internal
-  prerequisite only: the debugger socket still has no request or capability
-  for safe-point source spans, and the same-stream source receipt plus
-  owner/client grants remain to be wired before public disclosure.
+  source ID, malformed range, or stale generation. Debugger v27 now exposes
+  this as the independently default-denied `OpaqueSafePointSpan` capability:
+  the trusted owner must explicitly enable the operation and its opaque
+  parent/source inventories, the client must negotiate the same grants in
+  `Hello`, and the exact metadata and source IDs must already have crossed
+  that debugger stream. The public reply repeats only the core-reminted
+  safe-point/metadata/source tuple and bounded original byte range. A second
+  stream, guessed source ID, unbound instruction, and stale navigation cannot
+  reuse the original receipt; no source text, module identity, arbitrary
+  offset conversion, nearest-match mapping, stack frame, or execution
+  control is added by this capability.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

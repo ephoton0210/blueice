@@ -149,6 +149,10 @@ mod unix {
         /// source text, line/column, names, types, contracts, and bytecode
         /// remain default-denied.
         debugger_static_metadata_symbol_location: bool,
+        /// Owner-only policy for an exact BlueTS safe-point byte span under
+        /// separate opaque metadata and source-ID receipts. No source text,
+        /// module identity, or nearest-position map is granted.
+        debugger_static_metadata_safe_point_span: bool,
         /// Owner-only policy for a bounded contract declaration range under
         /// separate contract and source receipts; no plan or source text.
         debugger_static_metadata_contract_location: bool,
@@ -368,6 +372,16 @@ mod unix {
             self.debugger_static_metadata_source_inventory = true;
             self.debugger_static_metadata_symbol_inventory = true;
             self.debugger_static_metadata_symbol_location = true;
+            self
+        }
+
+        /// Enables only exact original BlueTS safe-point spans and their
+        /// required opaque parent/source inventories. The debugger stream
+        /// must negotiate this distinct grant and receive the source ID.
+        pub fn with_debugger_static_metadata_safe_point_span(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self.debugger_static_metadata_safe_point_span = true;
             self
         }
 
@@ -1782,6 +1796,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_symbol_location {
                     command.arg("--debugger-static-metadata-symbol-location");
+                }
+                if options.debugger_static_metadata_safe_point_span {
+                    command.arg("--debugger-static-metadata-safe-point-span");
                 }
                 if options.debugger_static_metadata_contract_location {
                     command.arg("--debugger-static-metadata-contract-location");

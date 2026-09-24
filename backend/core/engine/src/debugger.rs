@@ -15,6 +15,7 @@ use crate::{
         JavaScriptPageDebuggerError, JavaScriptPageDebuggerExecutionState,
         JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
         JavaScriptPageDebuggerStaticMetadataContractTarget,
+        JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
         JavaScriptPageDebuggerStaticMetadataSourceTarget,
         JavaScriptPageDebuggerStaticMetadataSymbolContractTarget,
         JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
@@ -34,6 +35,7 @@ use blueice_ipc::debugger::{
     DebuggerStaticMetadataContractId, DebuggerStaticMetadataContractLocation,
     DebuggerStaticMetadataContractLocationTarget, DebuggerStaticMetadataContractValidation,
     DebuggerStaticMetadataHandle, DebuggerStaticMetadataLoweringSummary,
+    DebuggerStaticMetadataSafePointSpan, DebuggerStaticMetadataSafePointSpanTarget,
     DebuggerStaticMetadataSourceId, DebuggerStaticMetadataSourceProvenance,
     DebuggerStaticMetadataSummary, DebuggerStaticMetadataSymbolContract,
     DebuggerStaticMetadataSymbolDisplay, DebuggerStaticMetadataSymbolId,
@@ -295,6 +297,9 @@ pub fn handle_debugger_request_with_javascript_executor(
         DebuggerRequest::DescribeStaticMetadataSymbolLocation { .. } => {
             unavailable_static_metadata_symbol_location()
         }
+        DebuggerRequest::DescribeStaticMetadataSafePointSpan { .. } => {
+            unavailable_static_metadata_safe_point_span()
+        }
         DebuggerRequest::DescribeStaticMetadataContractLocation { .. } => {
             unavailable_static_metadata_contract_location()
         }
@@ -449,6 +454,14 @@ fn handle_debugger_request_with_child_locations(
         }
         DebuggerRequest::DescribeStaticMetadataSymbolLocation { target } => {
             describe_child_static_metadata_symbol_location(
+                tabs,
+                locations,
+                metadata_session,
+                target,
+            )
+        }
+        DebuggerRequest::DescribeStaticMetadataSafePointSpan { target } => {
+            describe_child_static_metadata_safe_point_span(
                 tabs,
                 locations,
                 metadata_session,
@@ -633,6 +646,11 @@ fn describe_child_location_capabilities(
             session.permits(DebuggerMetadataCapability::OpaqueSymbolLocation)
         })
         && locations.debugger_static_metadata_symbol_location_available();
+    let static_metadata_safe_point_span_available = static_metadata_source_inventory_available
+        && metadata_session.is_some_and(|session| {
+            session.permits(DebuggerMetadataCapability::OpaqueSafePointSpan)
+        })
+        && locations.debugger_static_metadata_safe_point_span_available();
     let static_metadata_contract_location_available = static_metadata_source_inventory_available
         && static_metadata_contract_inventory_available
         && metadata_session.is_some_and(|session| {
@@ -677,6 +695,7 @@ fn describe_child_location_capabilities(
             static_metadata_contract_validation_available,
             static_metadata_symbol_display_available,
             static_metadata_symbol_location_available,
+            static_metadata_safe_point_span_available,
             static_metadata_contract_location_available,
             static_metadata_symbol_type_available,
             static_metadata_symbol_contract_available,
@@ -1018,7 +1037,8 @@ fn list_child_static_metadata_sources(
             // the exact same stream-local identity boundary as provenance.
             if (metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceProvenance)
                 || metadata_session.permits(DebuggerMetadataCapability::OpaqueSymbolLocation)
-                || metadata_session.permits(DebuggerMetadataCapability::OpaqueContractLocation))
+                || metadata_session.permits(DebuggerMetadataCapability::OpaqueContractLocation)
+                || metadata_session.permits(DebuggerMetadataCapability::OpaqueSafePointSpan))
                 && !metadata_session.observe_sources(&result)
             {
                 return DebuggerReply::Error {
@@ -1806,6 +1826,87 @@ fn describe_child_static_metadata_symbol_location(
     }
 }
 
+/// Discloses only a compiler-verified original byte span for one exact safe
+/// point, after the stream independently received its opaque metadata parent
+/// and source ID. A guessed source ID or unbound instruction cannot become a
+/// nearest-position source-map query.
+fn describe_child_static_metadata_safe_point_span(
+    tabs: &TabManager,
+    locations: &mut dyn PageJavaScriptDebuggerLocations,
+    metadata_session: Option<&DebuggerMetadataSessionAuthorization>,
+    target: DebuggerStaticMetadataSafePointSpanTarget,
+) -> DebuggerReply {
+    if !target.is_well_formed() {
+        return DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "invalid debugger static metadata safe-point span target".to_string(),
+        };
+    }
+    let Some(metadata_session) = metadata_session else {
+        return unavailable_static_metadata_safe_point_span();
+    };
+    if !metadata_session.permits(DebuggerMetadataCapability::OpaqueInventory)
+        || !metadata_session.permits(DebuggerMetadataCapability::OpaqueSourceInventory)
+        || !metadata_session.observed_metadata(target.source.metadata)
+        || !metadata_session.observed_source(target.source)
+    {
+        return unavailable_static_metadata_safe_point_span();
+    }
+    let realm = target.safe_point.program.realm;
+    let capabilities =
+        describe_child_location_capabilities(tabs, locations, Some(metadata_session), realm);
+    let DebuggerReply::Capabilities(capabilities) = capabilities else {
+        return capabilities;
+    };
+    let Some(authorization) = capabilities.authorize_metadata(
+        metadata_session,
+        DebuggerMetadataCapability::OpaqueSafePointSpan,
+    ) else {
+        return unavailable_static_metadata_safe_point_span();
+    };
+    if !authorization.permits(realm, DebuggerMetadataCapability::OpaqueSafePointSpan) {
+        return unavailable_static_metadata_safe_point_span();
+    }
+    let tab_id = match resolve_live_realm(tabs, realm) {
+        Ok(tab_id) => tab_id,
+        Err(reply) => return *reply,
+    };
+    match locations.debugger_static_metadata_safe_point_span(
+        tab_id,
+        realm.realm_generation,
+        JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
+            program_handle: target.safe_point.program.program_handle,
+            program_generation: target.safe_point.program.program_generation,
+            metadata_handle: target.source.metadata.metadata_handle,
+            metadata_generation: target.source.metadata.metadata_generation,
+            source_id: target.source.source_id,
+            code_unit_ordinal: target.safe_point.code_unit_ordinal,
+            bytecode_offset: target.safe_point.bytecode_offset,
+        },
+    ) {
+        Ok(span) if span.source_id == target.source.source_id => {
+            let result = DebuggerStaticMetadataSafePointSpan {
+                safe_point: target.safe_point,
+                source: target.source,
+                start_byte: span.start_byte,
+                end_byte: span.end_byte,
+            };
+            if !result.is_well_formed() {
+                return DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    message: "invalid debugger static metadata safe-point span".to_string(),
+                };
+            }
+            DebuggerReply::StaticMetadataSafePointSpan(result)
+        }
+        Ok(_) => DebuggerReply::Error {
+            code: DebuggerErrorCode::InvalidTarget,
+            message: "mismatched debugger static metadata safe-point source identity".to_string(),
+        },
+        Err(error) => debugger_program_error(error),
+    }
+}
+
 /// A contract location is resolved only after this stream received the exact
 /// parent, contract ID, and source ID and the live child reports the distinct
 /// location capability. No source identity, text, plan, or value crosses it.
@@ -2504,6 +2605,7 @@ fn describe_capabilities(
             static_metadata_contract_validation_available: false,
             static_metadata_symbol_display_available: false,
             static_metadata_symbol_location_available: false,
+            static_metadata_safe_point_span_available: false,
             static_metadata_contract_location_available: false,
             static_metadata_symbol_type_available: false,
             static_metadata_symbol_contract_available: false,
@@ -3034,6 +3136,13 @@ fn unavailable_static_metadata_symbol_location() -> DebuggerReply {
     }
 }
 
+fn unavailable_static_metadata_safe_point_span() -> DebuggerReply {
+    DebuggerReply::Unsupported {
+        operation: "describe static metadata safe-point span".to_string(),
+        reason: "exact BlueTS safe-point spans require a separate owner/client grant, a prior same-stream source-ID receipt, and a live child attachment".to_string(),
+    }
+}
+
 fn unavailable_static_metadata_contract_location() -> DebuggerReply {
     DebuggerReply::Unsupported {
         operation: "describe static metadata contract location".to_string(),
@@ -3167,6 +3276,7 @@ struct DebuggerCapabilityAvailability {
     static_metadata_contract_validation_available: bool,
     static_metadata_symbol_display_available: bool,
     static_metadata_symbol_location_available: bool,
+    static_metadata_safe_point_span_available: bool,
     static_metadata_contract_location_available: bool,
     static_metadata_symbol_type_available: bool,
     static_metadata_symbol_contract_available: bool,
@@ -3191,6 +3301,7 @@ fn capability_reports(
         static_metadata_contract_validation_available,
         static_metadata_symbol_display_available,
         static_metadata_symbol_location_available,
+        static_metadata_safe_point_span_available,
         static_metadata_contract_location_available,
         static_metadata_symbol_type_available,
         static_metadata_symbol_contract_available,
@@ -3452,6 +3563,19 @@ fn capability_reports(
             },
         ),
         (
+            DebuggerCapability::StaticMetadataSafePointSpan,
+            if static_metadata_safe_point_span_available {
+                DebuggerCapabilityState::Available
+            } else {
+                DebuggerCapabilityState::Planned
+            },
+            if static_metadata_safe_point_span_available {
+                "exact BlueTS safe-point spans are installed for prior metadata and source-ID receipts"
+            } else {
+                "exact BlueTS safe-point spans require separate inventory, source-inventory, and span grants plus a live child attachment"
+            },
+        ),
+        (
             DebuggerCapability::StaticMetadataContractLocation,
             if static_metadata_contract_location_available {
                 DebuggerCapabilityState::Available
@@ -3552,6 +3676,10 @@ mod tests {
         }
 
         fn debugger_static_metadata_symbol_location_available(&self) -> bool {
+            true
+        }
+
+        fn debugger_static_metadata_safe_point_span_available(&self) -> bool {
             true
         }
 
@@ -3837,6 +3965,34 @@ mod tests {
                         end_line: 0,
                         end_column_utf16: 31,
                     },
+                },
+            )
+        }
+
+        fn debugger_static_metadata_safe_point_span(
+            &mut self,
+            _tab_id: TabId,
+            _document_generation: u64,
+            target: crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+        ) -> Result<
+            crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSafePointSpan,
+            JavaScriptPageDebuggerError,
+        > {
+            if target.program_handle != 7
+                || target.program_generation != 3
+                || target.metadata_handle != 41
+                || target.metadata_generation != 9
+                || target.source_id != 0
+                || target.code_unit_ordinal != 0
+                || target.bytecode_offset != 4
+            {
+                return Err(JavaScriptPageDebuggerError::UnknownProgram);
+            }
+            Ok(
+                crate::script::javascript::JavaScriptPageDebuggerStaticMetadataSafePointSpan {
+                    source_id: 0,
+                    start_byte: 6,
+                    end_byte: 31,
                 },
             )
         }
@@ -4910,6 +5066,173 @@ mod tests {
             ),
             unavailable_static_metadata_symbol_location(),
             "a guessed source ID cannot be paired with an observed symbol"
+        );
+    }
+
+    #[test]
+    fn static_metadata_safe_point_span_requires_its_own_grant_and_source_receipt() {
+        let (tabs, realm) = loaded_tabs();
+        let program = DebuggerProgram {
+            realm,
+            program_handle: 7,
+            program_generation: 3,
+        };
+        let metadata = DebuggerStaticMetadataHandle {
+            program,
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let source = DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id: 0,
+        };
+        let safe_point = DebuggerSafePoint {
+            program,
+            code_unit_ordinal: 0,
+            bytecode_offset: 4,
+        };
+        let target = DebuggerStaticMetadataSafePointSpanTarget { safe_point, source };
+        let manifest =
+            blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_safe_point_span();
+        let hello = DebuggerRequest::Hello {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            requested_metadata_capabilities: manifest.clone(),
+        };
+        let reply = blueice_ipc::debugger::negotiate(&hello, &manifest);
+        let session = blueice_ipc::debugger::metadata_session_authorization(&hello, &reply)
+            .expect("explicit safe-point span grant must create a session");
+        let mut locations = MetadataLocations {
+            malformed_summary: false,
+            malformed_provenance: false,
+            malformed_lowering_summary: false,
+            mismatched_symbol_display: false,
+            mismatched_contract_display: false,
+            mismatched_contract_validation: false,
+        };
+        let DebuggerReply::Capabilities(capabilities) =
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeCapabilities { realm },
+            )
+        else {
+            panic!("live child must report metadata capabilities");
+        };
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == DebuggerCapability::StaticMetadataSafePointSpan
+                && report.state == DebuggerCapabilityState::Available
+        }));
+        let request = DebuggerRequest::DescribeStaticMetadataSafePointSpan { target };
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone(),
+            ),
+            unavailable_static_metadata_safe_point_span()
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadata { program },
+            ),
+            DebuggerReply::StaticMetadata(vec![metadata])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone(),
+            ),
+            unavailable_static_metadata_safe_point_span()
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::ListStaticMetadataSources { metadata },
+            ),
+            DebuggerReply::StaticMetadataSources(vec![source])
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                request.clone(),
+            ),
+            DebuggerReply::StaticMetadataSafePointSpan(DebuggerStaticMetadataSafePointSpan {
+                safe_point,
+                source,
+                start_byte: 6,
+                end_byte: 31,
+            })
+        );
+        let separate_session =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &reply)
+                .expect("a second stream must negotiate independently");
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&separate_session),
+                request.clone(),
+            ),
+            unavailable_static_metadata_safe_point_span()
+        );
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeStaticMetadataSafePointSpan {
+                    target: DebuggerStaticMetadataSafePointSpanTarget {
+                        source: DebuggerStaticMetadataSourceId {
+                            source_id: 1,
+                            ..source
+                        },
+                        ..target
+                    },
+                },
+            ),
+            unavailable_static_metadata_safe_point_span()
+        );
+        assert!(matches!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&session),
+                DebuggerRequest::DescribeStaticMetadataSafePointSpan {
+                    target: DebuggerStaticMetadataSafePointSpanTarget {
+                        safe_point: DebuggerSafePoint {
+                            bytecode_offset: 5,
+                            ..safe_point
+                        },
+                        ..target
+                    },
+                },
+            ),
+            DebuggerReply::Error { .. }
+        ));
+        let inventory_only =
+            blueice_ipc::debugger::DebuggerMetadataCapabilityManifest::opaque_source_inventory();
+        let denied_reply = blueice_ipc::debugger::negotiate(&hello, &inventory_only);
+        let denied_session =
+            blueice_ipc::debugger::metadata_session_authorization(&hello, &denied_reply).unwrap();
+        assert_eq!(
+            handle_debugger_request_with_child_locations(
+                &tabs,
+                &mut locations,
+                Some(&denied_session),
+                request,
+            ),
+            unavailable_static_metadata_safe_point_span()
         );
     }
 
