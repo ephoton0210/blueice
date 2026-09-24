@@ -144,6 +144,11 @@ fresh invocation. The event queue is bounded and an unavailable queue leaves
 the popup visible with a structured error. The action does not open a URL or
 grant a permission by itself. Client-originated activation is not trusted
 human consent, even when it came from the reference frontend.
+While a popup is visible in the selected human tab, keyboard input and wheel
+events are consumed by browser chrome rather than the underlying page. Escape
+dismisses it; Enter or Space activates its button only when the whole button
+is visible in the current window. An offscreen button cannot be activated by
+keyboard.
 
 The storage key is 1–256 ASCII bytes from `[A-Za-z0-9._-]`. Each derived
 identity has at most 128 entries and 256 KiB total key/value bytes, including

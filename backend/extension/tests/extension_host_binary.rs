@@ -390,6 +390,75 @@ fn range_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
     (root, manifest, extension_id)
 }
 
+fn popup_action_manifest_package(label: &str) -> (PathBuf, PathBuf, String) {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "blueice-extension-host-popup-action-{label}-{}-{id}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest = root.join("extension.json");
+    std::fs::write(
+        &manifest,
+        r#"{"name":"Popup action","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"declared":["ui:inject"]}}"#,
+    ).unwrap();
+    std::fs::write(
+        root.join("extension.wasm"),
+        wat::parse_str(r#"(module
+            (import "blueice" "runtime_event_kind" (func $kind (result i32)))
+            (import "blueice" "runtime_event_tab_id" (func $tab (result i64)))
+            (import "blueice" "set_toolbar_button_utf8" (func $toolbar (param i32 i32) (result i32)))
+            (import "blueice" "show_popup_action_utf8" (func $popup (param i64 i32 i32 i32 i32 i32 i32) (result i32)))
+            (memory (export "memory") 1)
+            (data (i32.const 0) "Notes")
+            (data (i32.const 16) "Ready to open")
+            (data (i32.const 48) "Open")
+            (data (i32.const 64) "Done")
+            (func (export "blueice_start")
+                call $kind
+                i32.const 0
+                i32.eq
+                if
+                    i32.const 0
+                    i32.const 5
+                    call $toolbar
+                    i32.const 0
+                    i32.ne
+                    if unreachable end
+                end
+                call $kind
+                i32.const 2
+                i32.eq
+                if
+                    call $tab
+                    i32.const 0
+                    i32.const 5
+                    i32.const 16
+                    i32.const 13
+                    i32.const 48
+                    i32.const 4
+                    call $popup
+                    i32.const 0
+                    i32.ne
+                    if unreachable end
+                end
+                call $kind
+                i32.const 3
+                i32.eq
+                if
+                    i32.const 64
+                    i32.const 4
+                    call $toolbar
+                    i32.const 0
+                    i32.ne
+                    if unreachable end
+                end))"#).unwrap(),
+    ).unwrap();
+    let extension_id = load_installed_extension(&manifest).unwrap().extension_id().to_string();
+    (root, manifest, extension_id)
+}
+
 #[test]
 fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
     let output = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
@@ -568,6 +637,84 @@ fn core_connection_mode_authenticates_then_runs_a_navigation_event_reactor_over_
         &ExtensionReply::RuntimeEventStreamClosed,
     )
     .unwrap();
+    drop(listener);
+    assert!(host.wait().unwrap().success());
+    let _ = std::fs::remove_file(socket);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn core_connection_mode_runs_ui_v3_popup_action_over_a_real_host_process() {
+    let (root, manifest, extension_id) = popup_action_manifest_package("core-connect");
+    let socket = unique_socket_path("core-popup-action");
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).unwrap();
+    let authentication = "test-only-popup-action-credential";
+    let mut host = Command::new(env!("CARGO_BIN_EXE_blueice-extension-host"))
+        .args([
+            "--connect", socket.to_str().unwrap(),
+            "--manifest", manifest.to_str().unwrap(),
+        ])
+        .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
+        .spawn()
+        .expect("failed to launch blueice-extension-host for popup action");
+    let (mut stream, _) = listener.accept().unwrap();
+    stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    assert_eq!(
+        blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::HelloAuthenticated {
+            extension_id,
+            capability_versions: BTreeMap::from([("ui:inject".to_string(), 3)]),
+            authentication: authentication.to_string(),
+        }
+    );
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::HelloAck { unsupported_capabilities: BTreeMap::new() },
+    ).unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::RuntimeReady);
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::RuntimeStart)
+        .unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::SetToolbarButton { label: "Notes".to_string() });
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::UiInjectAck)
+        .unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent);
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::RuntimeEvent(
+            blueice_ipc::extension::ExtensionRuntimeEvent::ToolbarActivated { tab_id: 7 },
+        ),
+    ).unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::ShowPopupAction {
+            tab_id: 7,
+            title: "Notes".to_string(),
+            body: "Ready to open".to_string(),
+            action_label: "Open".to_string(),
+        });
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::UiInjectAck)
+        .unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent);
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::RuntimeEvent(
+            blueice_ipc::extension::ExtensionRuntimeEvent::PopupActionActivated { tab_id: 7 },
+        ),
+    ).unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::SetToolbarButton { label: "Done".to_string() });
+    blueice_ipc::extension::write_extension_reply(&mut stream, &ExtensionReply::UiInjectAck)
+        .unwrap();
+    assert_eq!(blueice_ipc::extension::read_extension_request(&mut stream).unwrap(),
+        ExtensionRequest::NextRuntimeEvent);
+    blueice_ipc::extension::write_extension_reply(
+        &mut stream,
+        &ExtensionReply::RuntimeEventStreamClosed,
+    ).unwrap();
     drop(listener);
     assert!(host.wait().unwrap().success());
     let _ = std::fs::remove_file(socket);

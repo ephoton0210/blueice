@@ -896,12 +896,33 @@ fn extension_popup_action_rect(width: u32, height: u32, popup: &ExtensionPopup) 
     let chars_per_line = ((panel_width.saturating_sub(20)) / 6).min(50) as usize;
     let line_count = popup.body.len().div_ceil(chars_per_line.max(1));
     let button_width = (label.len() as u32 * 6 + 16).min(panel_width.saturating_sub(20));
-    Some(Rect {
+    let rect = Rect {
         x: (width - button_width) / 2,
         y: TAB_STRIP_HEIGHT + 8 + 55 + line_count as u32 * 14,
         width: button_width,
         height: 22,
-    })
+    };
+    (rect.y.saturating_add(rect.height) <= height).then_some(rect)
+}
+
+/// A visible extension popup owns keyboard focus in the human window. Only
+/// these browser-defined commands are allowed; every other key is consumed
+/// instead of reaching a form control behind the popup.
+fn extension_popup_key_message(
+    popup: &ExtensionPopup,
+    key: &Key,
+    width: u32,
+    height: u32,
+) -> Option<ClientMessage> {
+    match key {
+        Key::Named(NamedKey::Escape) => Some(ClientMessage::DismissExtensionPopup),
+        Key::Named(NamedKey::Enter | NamedKey::Space)
+            if extension_popup_action_rect(width, height, popup).is_some() =>
+        {
+            Some(ClientMessage::ActivateExtensionPopupAction { popup_id: popup.id })
+        }
+        _ => None,
+    }
 }
 
 fn draw_rect(pixels: &mut [u32], width: u32, height: u32, rect: Rect, color: u32) {
@@ -1189,6 +1210,9 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                if self.extension_popup.as_ref().is_some_and(|popup| Some(popup.tab_id) == self.selected_tab) {
+                    return;
+                }
                 let delta_y = match delta {
                     MouseScrollDelta::LineDelta(_, y) => -y as f64 * 20.0,
                     MouseScrollDelta::PixelDelta(pos) => -pos.y,
@@ -1196,10 +1220,18 @@ impl ApplicationHandler<UserEvent> for App {
                 self.send_selected(&ClientMessage::Scroll { delta_y });
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                match event.logical_key {
-                    Key::Named(NamedKey::Escape) if self.extension_popup.as_ref().is_some_and(|popup| Some(popup.tab_id) == self.selected_tab) => {
-                        self.send_selected(&ClientMessage::DismissExtensionPopup);
+                if let Some(popup) = self.extension_popup.as_ref().filter(|popup| Some(popup.tab_id) == self.selected_tab) {
+                    if let Some(message) = extension_popup_key_message(
+                        popup,
+                        &event.logical_key,
+                        self.window_size.0,
+                        self.window_size.1,
+                    ) {
+                        self.send_selected(&message);
                     }
+                    return;
+                }
+                match event.logical_key {
                     Key::Named(NamedKey::Backspace) => {
                         self.send_selected(&ClientMessage::DeleteBackward);
                     }
@@ -2134,6 +2166,58 @@ mod tests {
         assert_eq!(shown[rect.y as usize * 400 + rect.x as usize], 0x003A_526C);
         assert!(rect.contains(f64::from(rect.x + 1), f64::from(rect.y + 1)));
         assert!(!rect.contains(20.0, f64::from(TAB_STRIP_HEIGHT + 8)));
+    }
+
+    #[test]
+    fn a_visible_popup_owns_keyboard_input_instead_of_typing_into_the_page() {
+        let mut popup = ExtensionPopup {
+            id: 9,
+            tab_id: 7,
+            title: "Notes".into(),
+            body: "Saved locally".into(),
+            action_label: Some("Open".into()),
+        };
+        assert_eq!(
+            extension_popup_key_message(&popup, &Key::Named(NamedKey::Escape), 400, 260),
+            Some(ClientMessage::DismissExtensionPopup)
+        );
+        for key in [NamedKey::Enter, NamedKey::Space] {
+            assert_eq!(
+                extension_popup_key_message(&popup, &Key::Named(key), 400, 260),
+                Some(ClientMessage::ActivateExtensionPopupAction { popup_id: 9 })
+            );
+        }
+        assert_eq!(
+            extension_popup_key_message(&popup, &Key::Character("secret".into()), 400, 260),
+            None
+        );
+        assert_eq!(
+            extension_popup_key_message(&popup, &Key::Named(NamedKey::Backspace), 400, 260),
+            None
+        );
+        popup.action_label = None;
+        assert_eq!(
+            extension_popup_key_message(&popup, &Key::Named(NamedKey::Enter), 400, 260),
+            None
+        );
+        popup.action_label = Some("Open".into());
+        popup.id = 0;
+        assert_eq!(
+            extension_popup_key_message(&popup, &Key::Named(NamedKey::Enter), 400, 260),
+            None
+        );
+        popup.id = 9;
+        popup.body = "Long popup body ".repeat(8);
+        assert!(extension_popup_action_rect(120, TAB_STRIP_HEIGHT + 100, &popup).is_none());
+        assert_eq!(
+            extension_popup_key_message(
+                &popup,
+                &Key::Named(NamedKey::Enter),
+                120,
+                TAB_STRIP_HEIGHT + 100,
+            ),
+            None
+        );
     }
 
     #[test]
