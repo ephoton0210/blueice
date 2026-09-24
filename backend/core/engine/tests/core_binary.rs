@@ -215,6 +215,73 @@ fn extension_host_probe_child_observes_optional_grants() {
     }
 }
 
+/// Authenticated child for the real-process published-effect revocation test.
+/// Only the parent test's private probe socket tells it when to attempt the
+/// two optional actions; the extension cannot grant itself either capability.
+#[test]
+fn extension_host_probe_child_publishes_optional_effects() {
+    let _guard = core_process_test_guard();
+    let Ok(probe_socket) = std::env::var("BLUEICE_TEST_PROBE_SOCKET") else {
+        return;
+    };
+    use blueice_ipc::extension::{
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    };
+    use std::collections::BTreeMap;
+
+    let socket = std::env::var("BLUEICE_TEST_EXTENSION_SOCKET").unwrap();
+    let manifest = std::env::var("BLUEICE_TEST_EXTENSION_MANIFEST").unwrap();
+    let authentication = std::env::var("BLUEICE_EXTENSION_AUTH_TOKEN").unwrap();
+    let rule_url = std::env::var("BLUEICE_TEST_RULE_URL").unwrap();
+    let installed = blueice_extension_host::load_installed_extension(manifest).unwrap();
+    let mut extension = UnixStream::connect(socket).unwrap();
+    write_extension_request(&mut extension, &ExtensionRequest::HelloAuthenticated {
+        extension_id: installed.extension_id().to_string(),
+        capability_versions: BTreeMap::from([
+            ("ui:inject".to_string(), 3),
+            ("network:intercept".to_string(), 2),
+        ]),
+        authentication,
+    }).unwrap();
+    assert!(matches!(read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck { unsupported_capabilities } if unsupported_capabilities.is_empty()));
+    write_extension_request(&mut extension, &ExtensionRequest::RuntimeReady).unwrap();
+    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::RuntimeStart);
+
+    let mut probe = UnixStream::connect(probe_socket).unwrap();
+    probe.write_all(b"S").unwrap();
+    loop {
+        let mut command = [0_u8; 1];
+        if probe.read_exact(&mut command).is_err() || command[0] == b'q' {
+            break;
+        }
+        assert!(matches!(command[0], b'p' | b'd'));
+        let published = command[0] == b'p';
+        for (request, capability, allowed_reply) in [
+            (
+                ExtensionRequest::SetToolbarButton { label: "Optional Notes".into() },
+                "ui:inject",
+                ExtensionReply::UiInjectAck,
+            ),
+            (
+                ExtensionRequest::RegisterNetworkBlockUrl { url: rule_url.clone() },
+                "network:intercept",
+                ExtensionReply::NetworkInterceptAck,
+            ),
+        ] {
+            write_extension_request(&mut extension, &request).unwrap();
+            let reply = read_extension_reply(&mut extension).unwrap();
+            if published {
+                assert_eq!(reply, allowed_reply, "a granted optional action must publish");
+            } else {
+                assert!(matches!(reply, ExtensionReply::CapabilityDenied { capability: actual, .. } if actual == capability),
+                    "an ungranted optional action must be denied as {capability}");
+            }
+        }
+        probe.write_all(if published { b"P" } else { b"D" }).unwrap();
+    }
+}
+
 #[test]
 fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
     let _guard = core_process_test_guard();
@@ -1915,6 +1982,144 @@ fn private_parent_pipe_grants_and_revokes_optional_capability_in_a_real_core() {
     assert!(!core_socket.exists());
     assert!(!extension_socket.exists());
     let _ = std::fs::remove_file(probe_socket);
+    let _ = std::fs::remove_dir_all(package_root);
+}
+
+#[test]
+fn private_parent_revoke_removes_published_ui_and_network_rules_before_acknowledgement() {
+    let _guard = core_process_test_guard();
+    use blueice_ipc::permission_control::{
+        read_permission_control_reply, write_permission_control_request,
+        PermissionControlReply, PermissionControlRequest,
+    };
+
+    let core_socket = unique_socket_path("perm-effects-core");
+    let extension_socket = unique_private_extension_socket_path("perm-effects");
+    let probe_socket = unique_socket_path("perm-effects-probe");
+    let gatekeeper_socket = clearing_gatekeeper("perm-effects-gk");
+    let frame_dir = std::env::temp_dir().join(format!("blueice-permission-effects-frames-{}", std::process::id()));
+    let (package_root, manifest, _) = extension_manifest_package("permission-effects", &[]);
+    std::fs::write(&manifest, r#"{"name":"Optional effects","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["ui:inject","network:intercept"]}}"#).unwrap();
+    let host = core_extension_host_probe_script(&package_root, "extension_host_probe_child_publishes_optional_effects");
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+    let _ = std::fs::remove_file(&probe_socket);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let probe_listener = UnixListener::bind(&probe_socket).unwrap();
+    probe_listener.set_nonblocking(true).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}/optional", listener.local_addr().unwrap());
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket", core_socket.to_str().unwrap(),
+            "--extension-socket", extension_socket.to_str().unwrap(),
+            "--extension-manifest", manifest.to_str().unwrap(),
+            "--extension-host", host.to_str().unwrap(),
+            "--permission-control-stdio",
+            "--gatekeeper-socket", gatekeeper_socket.to_str().unwrap(),
+            "--frame-dir", frame_dir.to_str().unwrap(),
+        ])
+        .env("BLUEICE_TEST_PROBE_SOCKET", &probe_socket)
+        .env("BLUEICE_TEST_RULE_URL", &url)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn core with optional published effects");
+    assert!(wait_for(&core_socket, Duration::from_secs(15)));
+    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    frontend.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut probe = loop {
+        match probe_listener.accept() {
+            Ok((stream, _)) => break stream,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(error) => panic!("authenticated optional-effects host never reached its probe: {error}"),
+        }
+    };
+    probe.set_nonblocking(false).unwrap();
+    probe.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let mut ready = [0_u8; 1];
+    probe.read_exact(&mut ready).unwrap();
+    assert_eq!(ready[0], b'S', "the authenticated host must enter its probe loop");
+    let probe_actions = |probe: &mut UnixStream, command: u8| {
+        probe.write_all(&[command]).unwrap();
+        let mut answer = [0_u8; 1];
+        probe.read_exact(&mut answer).unwrap();
+        answer[0]
+    };
+    assert_eq!(probe_actions(&mut probe, b'd'), b'D', "optional declarations are not grants");
+    let mut control_in = core.stdin.take().unwrap();
+    let mut control_out = core.stdout.take().unwrap();
+    for capability in ["ui:inject", "network:intercept"] {
+        write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant {
+            capability: capability.into(),
+        }).unwrap();
+        assert_eq!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated {
+            capability: capability.into(), granted: true, changed: true,
+        });
+    }
+    assert_eq!(probe_actions(&mut probe, b'p'), b'P');
+    assert_eq!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::ExtensionToolbar { label: Some("Optional Notes".into()) });
+
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
+        url: url.clone(),
+    }).unwrap();
+    assert!(matches!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Error { message } if message.contains("declarative extension rule")));
+    assert_eq!(listener.accept().unwrap_err().kind(), std::io::ErrorKind::WouldBlock,
+        "the published rule must block before opening a connection");
+
+    for capability in ["ui:inject", "network:intercept"] {
+        write_permission_control_request(&mut control_in, &PermissionControlRequest::Revoke {
+            capability: capability.into(),
+        }).unwrap();
+        assert_eq!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated {
+            capability: capability.into(), granted: false, changed: true,
+        });
+        if capability == "ui:inject" {
+            assert_eq!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+                blueice_ipc::ServerMessage::ExtensionToolbar { label: None },
+                "the native toolbar must be removed before revoke completes");
+        }
+    }
+    assert_eq!(probe_actions(&mut probe, b'd'), b'D', "the same host cannot republish either effect");
+
+    let target_server = thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(20));
+                }
+                Err(error) => panic!("navigation did not reconnect after completed revoke: {error}"),
+            }
+        };
+        let mut request = [0_u8; 1024];
+        let _ = stream.read(&mut request);
+        stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 16\r\nConnection: close\r\n\r\n<p>now open</p>\n").unwrap();
+    });
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Navigate {
+        url: url.clone(),
+    }).unwrap();
+    assert_eq!(blueice_ipc::read_server_message(&mut frontend).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url });
+    target_server.join().unwrap();
+
+    probe.write_all(b"q").unwrap();
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(core.wait().unwrap().success());
+    assert!(!core_socket.exists());
+    assert!(!extension_socket.exists());
+    let _ = std::fs::remove_file(probe_socket);
+    let _ = std::fs::remove_file(gatekeeper_socket);
     let _ = std::fs::remove_dir_all(package_root);
 }
 
