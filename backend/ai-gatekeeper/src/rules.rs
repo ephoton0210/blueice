@@ -18,7 +18,7 @@ use blueice_ipc::gatekeeper::{
 
 /// Version carried in diagnostics and release notes for this compiled rule
 /// set. Keep it monotonic whenever a detection decision changes.
-pub const RULESET_VERSION: &str = "2026.09.24.4";
+pub const RULESET_VERSION: &str = "2026.09.24.5";
 
 const KNOWN_MALICIOUS_HOSTS: &[&str] = &["malware.test", "phishing.test"];
 const BIDI_OVERRIDE_CODEPOINTS: &[&str] = &["U+202A–U+202E", "U+2066–U+2069"];
@@ -40,6 +40,13 @@ const SENSITIVE_INPUT_TYPES: &[&str] = &["password", "credit-card", "payment"];
 const POPUP_BLOCKED_PHRASES: &[&str] = &[
     "password", "seed phrase", "recovery phrase", "one-time code", "credit card",
     "disable gatekeeper", "http://", "https://",
+];
+// Toolbar labels are only 20 characters, so use high-precision phrases that
+// can actually fit in that constrained native UI surface. A generic word
+// like "password" would wrongly reject a legitimate password-manager button.
+const TOOLBAR_BLOCKED_PHRASES: &[&str] = &[
+    "enter password", "seed phrase", "recovery phrase", "one-time code",
+    "disable gatekeeper",
 ];
 const HIDDEN_CONTENT_MARKERS: &[&str] = &[
     "aria-hidden=\"true\"", "aria-hidden='true'", "display:none",
@@ -128,6 +135,15 @@ pub fn baseline_rules() -> Vec<GatekeeperRuleInfo> {
             mandatory: true,
         },
         GatekeeperRuleInfo {
+            id: "extension-toolbar-social-engineering".to_string(),
+            category: "extension-toolbar-social-engineering".to_string(),
+            description: "Blocks credential or safety-control prompts in an extension's native toolbar label before it reaches browser chrome.".to_string(),
+            conditions: signatures(TOOLBAR_BLOCKED_PHRASES),
+            match_logic: "Any listed phrase in the validated, lower-cased native toolbar label rejects before publication.".to_string(),
+            workflow_steps: vec!["extension-toolbar-before-publish".to_string()],
+            mandatory: true,
+        },
+        GatekeeperRuleInfo {
             id: "extension-visible-text-social-engineering".to_string(),
             category: "extension-visible-text-social-engineering".to_string(),
             description: "Blocks credential, external-URL, and instruction-override phrases in extension-proposed visible leaf or textContent replacements before mutation.".to_string(),
@@ -185,6 +201,15 @@ pub fn mandatory_workflow() -> Vec<GatekeeperWorkflowStep> {
             trigger: "Every extension native popup".to_string(),
             description: "Review the bounded popup title and body before broadcasting native UI; an unavailable reviewer blocks publication.".to_string(),
             failure_behavior: "Do not publish the native popup.".to_string(),
+            review_order: Vec::new(),
+            active_user_conditions: Vec::new(),
+            mandatory: true,
+        },
+        GatekeeperWorkflowStep {
+            id: "extension-toolbar-before-publish".to_string(),
+            trigger: "Every extension native toolbar label".to_string(),
+            description: "Review the validated button label before publishing it in native browser chrome.".to_string(),
+            failure_behavior: "Do not publish the native toolbar button.".to_string(),
             review_order: Vec::new(),
             active_user_conditions: Vec::new(),
             mandatory: true,
@@ -430,6 +455,14 @@ fn review_extension_action(
     }
 
     let detail = detail.to_lowercase();
+    if detail.starts_with("action=set-native-toolbar-button;")
+        && TOOLBAR_BLOCKED_PHRASES.iter().any(|phrase| detail.contains(phrase))
+    {
+        return reject(
+            "the extension toolbar label contains a credential or safety-control prompt",
+            "extension-toolbar-social-engineering",
+        );
+    }
     if detail.starts_with("action=show-native-popup;")
         && (POPUP_BLOCKED_PHRASES.iter()
         .any(|phrase| detail.contains(phrase))
@@ -648,6 +681,10 @@ mod tests {
             "user-blocked-popup-phrases",
             "local-model",
         ]);
+        assert_eq!(order("extension-toolbar-before-publish"), [
+            "compiled-rule-base",
+            "local-model",
+        ]);
         let conditions = |id: &str| configured.workflow.iter()
             .find(|step| step.id == id).unwrap().active_user_conditions.clone();
         let condition = |kind: &str, value: &str| GatekeeperUserCondition {
@@ -662,6 +699,7 @@ mod tests {
         assert_eq!(conditions("extension-popup-before-publish"), [
             condition("popup-phrase", "blocked popup"),
         ]);
+        assert!(conditions("extension-toolbar-before-publish").is_empty());
     }
 
     #[test]
@@ -828,6 +866,28 @@ mod tests {
             detail: "action=show-native-popup; title=\"Notes\"; body=\"Ready\"; action_label=\"Enter password\"".to_string(),
         });
         assert!(matches!(action_label, GatekeeperReply::Rejected { .. }));
+    }
+
+    #[test]
+    fn extension_toolbar_labels_are_reviewed_before_native_publication() {
+        for (label, blocked) in [
+            ("Notes", false),
+            ("Password manager", false),
+            ("Enter password", true),
+            ("Seed phrase", true),
+            ("Disable gatekeeper", true),
+        ] {
+            let reply = review(&GatekeeperRequest::CheckExtensionAction {
+                extension_id: "notes-extension".to_string(),
+                capability: "ui:inject".to_string(),
+                detail: format!("action=set-native-toolbar-button; label={label:?}"),
+            });
+            assert_eq!(
+                matches!(reply, GatekeeperReply::Rejected { category, .. } if category == "extension-toolbar-social-engineering"),
+                blocked,
+                "unexpected verdict for {label:?}"
+            );
+        }
     }
 
     #[test]

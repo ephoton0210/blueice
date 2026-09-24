@@ -166,7 +166,7 @@ effect in the guest.
 | `register_network_block_host(ptr:i32, len:i32) -> i32` | `network:intercept` v4 | At most 253 ASCII bytes, plain canonical DNS/IPv4 spelling without a URL, wildcard, or Unicode; matches the host and dot-boundary subdomains before connection. IPv4 literals match exactly. |
 | `register_network_block_path_prefix(host_ptr:i32, host_len:i32, path_ptr:i32, path_len:i32) -> i32` | `network:intercept` v5 | Host uses v4's grammar; path is 1–512 literal ASCII bytes beginning with `/`, with no empty/dot segments, percent escapes, query, or fragment. Matches the canonical URL path at a `/` segment boundary on that host or a dot-boundary subdomain; IPv4 matches exactly. |
 | `register_network_redirect_url(source_ptr:i32, source_len:i32, target_ptr:i32, target_len:i32) -> i32` | `network:intercept` v6 | Two at-most-2-KiB credential-free absolute HTTP(S) URLs. Core canonicalizes them, requires a different target on the same exact origin, rejects conflicting source mappings, and counts the rule under the shared 64-rule quota. On an exact match, block rules take precedence; both source and target pass mandatory URL review before only the target is fetched. HTTP and extension redirects share the ten-hop limit. |
-| `set_toolbar_button_utf8(ptr:i32, len:i32) -> i32` | `ui:inject` v1 | One 1–20-byte label: ASCII letters/digits, spaces, `-`, `_`, no outer spaces. |
+| `set_toolbar_button_utf8(ptr:i32, len:i32) -> i32` | `ui:inject` v1 | One 1–20-byte label: ASCII letters/digits, spaces, `-`, `_`, no outer spaces; mandatory gatekeeper review before native publication. |
 | `clear_toolbar_button() -> i32` | `ui:inject` v1 | Removes only this connection's button and popup. |
 | `show_popup_utf8(tab_id:i64, title_ptr:i32, title_len:i32, body_ptr:i32, body_len:i32) -> i32` | `ui:inject` v2 | Requires own live toolbar; title uses label grammar, body is 1–120 printable ASCII bytes without outer spaces. |
 | `show_popup_action_utf8(tab_id:i64, title_ptr:i32, title_len:i32, body_ptr:i32, body_len:i32, action_ptr:i32, action_len:i32) -> i32` | `ui:inject` v3 | Same title/body bounds as v2; adds one action label using the toolbar-label grammar. The title, body, and label are gatekeeper-reviewed before native publication. |
@@ -206,7 +206,7 @@ package has a different derived identity and cannot read the old package's
 bucket without a future migration mechanism. No guest can supply a bucket ID or host
 path. All implemented `dom:write` effects and declarative rule registration receive
 mandatory, fail-closed gatekeeper review after ordinary capability checks;
-publishing popup text or its v3 action label is also reviewed. A reviewer outage is **not** clearance.
+publishing a native toolbar label, popup text, or its v3 action label is also reviewed. A reviewer outage is **not** clearance.
 V3 key enumeration uses the same private-file validation and nonblocking lock
 as v2 point reads. It returns only keys belonging to the authenticated
 manifest-derived identity; listing never creates or consults a v1 bucket.

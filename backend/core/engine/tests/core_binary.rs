@@ -205,6 +205,18 @@ fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
     write_extension_request(
         &mut stream,
         &ExtensionRequest::SetToolbarButton {
+            label: "Enter password".to_string(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        read_extension_reply(&mut stream).unwrap(),
+        ExtensionReply::GatekeeperBlocked { category, .. }
+            if category == "extension-toolbar-social-engineering"
+    ));
+    write_extension_request(
+        &mut stream,
+        &ExtensionRequest::SetToolbarButton {
             label: "Notes".to_string(),
         },
     )

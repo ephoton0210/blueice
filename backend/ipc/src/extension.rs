@@ -193,7 +193,8 @@ pub enum ExtensionRequest {
     /// request, redirect hops, and final response, without headers or bodies.
     ReadNetworkTrace { tab_id: u64 },
     /// Version 1 of `ui:inject`: show one core-owned native toolbar button.
-    /// The label is validated as short printable ASCII before publication.
+    /// The label is validated as short printable ASCII and gatekeeper-reviewed
+    /// before publication; reviewer unavailability blocks the update.
     SetToolbarButton { label: String },
     /// Remove only this extension connection's native toolbar button.
     ClearToolbarButton,

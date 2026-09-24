@@ -105,7 +105,7 @@ pub struct GatekeeperRuleInfo {
 
 /// A required point in the gatekeeper's enforcement workflow. This is part of
 /// the user-visible policy, not a client-side hint: URL/content/download and
-/// high-risk extension checks remain server-owned and mandatory.
+/// extension-side-effect/native-UI checks remain server-owned and mandatory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GatekeeperWorkflowStep {
     pub id: String,

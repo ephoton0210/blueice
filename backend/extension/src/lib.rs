@@ -1519,6 +1519,12 @@ where
                         },
                     )?;
                 } else {
+                    if let Err(reason) = validate_toolbar_label(&label) {
+                        write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                        })?;
+                        continue;
+                    }
                     let Some(generation) = registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) else {
                         write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
                             capability: CAPABILITY_UI_INJECT.to_string(),
@@ -1526,18 +1532,32 @@ where
                         })?;
                         continue;
                     };
-                    let result = validate_toolbar_label(&label)
-                        .and_then(|()| set_toolbar_button(label, generation));
-                    let reply = match result {
-                        Ok(()) => {
-                            toolbar_visible = true;
-                            ExtensionReply::UiInjectAck
-                        }
-                        Err(reason) if reason == grant_changed_reason(CAPABILITY_UI_INJECT) => ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                    let detail = format!("action=set-native-toolbar-button; label={label:?}");
+                    let reply = match check_extension_action(
+                        gatekeeper_socket, &identity.extension_id, CAPABILITY_UI_INJECT, detail,
+                    ) {
+                        Ok(GatekeeperReply::Cleared) if registry.capability_generation(&identity.extension_id, CAPABILITY_UI_INJECT) != Some(generation) => ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_UI_INJECT.to_string(),
+                            reason: grant_changed_reason(CAPABILITY_UI_INJECT),
                         },
-                        Err(reason) => ExtensionReply::OperationUnavailable {
+                        Ok(GatekeeperReply::Cleared) => match set_toolbar_button(label, generation) {
+                            Ok(()) => {
+                                toolbar_visible = true;
+                                ExtensionReply::UiInjectAck
+                            }
+                            Err(reason) if reason == grant_changed_reason(CAPABILITY_UI_INJECT) => ExtensionReply::CapabilityDenied {
+                                capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                            },
+                            Err(reason) => ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                            },
+                        },
+                        Ok(GatekeeperReply::Rejected { reason, category }) => ExtensionReply::GatekeeperBlocked {
+                            capability: CAPABILITY_UI_INJECT.to_string(), reason, category,
+                        },
+                        Err(reason) => ExtensionReply::GatekeeperBlocked {
                             capability: CAPABILITY_UI_INJECT.to_string(), reason,
+                            category: "gatekeeper-unavailable".to_string(),
                         },
                     };
                     write_extension_reply(stream, &reply)?;
@@ -1610,9 +1630,9 @@ where
                     )?;
                     continue;
                 }
-                // Unlike the short toolbar label, popup prose may influence
-                // a human. Review the bounded, validated text itself before
-                // publishing; no guest-selected HTML or link target crosses.
+                // Native popup prose can influence a human too. Review the
+                // bounded, validated text itself before publishing; no
+                // guest-selected HTML or link target crosses.
                 let detail = format!("action=show-native-popup; title={title:?}; body={body:?}");
                 let reply = match check_extension_action(
                     gatekeeper_socket,
@@ -2732,6 +2752,24 @@ mod tests {
         (socket, handle)
     }
 
+    fn start_gatekeeper_replies(
+        label: &str,
+        replies: Vec<GatekeeperReply>,
+    ) -> (PathBuf, thread::JoinHandle<Vec<GatekeeperRequest>>) {
+        let socket = unique_gatekeeper_socket(label);
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).unwrap();
+        let handle = thread::spawn(move || {
+            replies.into_iter().map(|reply| {
+                let (mut stream, _) = listener.accept().unwrap();
+                let request = read_gatekeeper_request(&mut stream).unwrap();
+                write_gatekeeper_reply(&mut stream, &reply).unwrap();
+                request
+            }).collect()
+        });
+        (socket, handle)
+    }
+
     fn registry_with_dom_write_granted() -> ExtensionRegistry {
         let mut registry = ExtensionRegistry::minimal_slice();
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE);
@@ -2902,13 +2940,17 @@ mod tests {
     fn native_toolbar_requires_ui_grant_and_validates_before_delegation() {
         let mut registry = ExtensionRegistry::minimal_slice();
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
+        let (gatekeeper, reviewed) = start_gatekeeper_replies(
+            "toolbar-clear", vec![GatekeeperReply::Cleared; 2],
+        );
         let (seen_tx, seen_rx) = mpsc::channel();
         let (clear_tx, clear_rx) = mpsc::channel();
         let (mut client, mut server) = UnixStream::pair().unwrap();
+        let gatekeeper_for_host = gatekeeper.clone();
         let handle = thread::spawn(move || {
             handle_extension_connection_with_actions_and_authentication_and_network_rules(
                 &registry,
-                Path::new("/not-used-for-native-ui"),
+                &gatekeeper_for_host,
                 &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
@@ -3016,13 +3058,138 @@ mod tests {
         ));
         drop(client);
         handle.join().unwrap().unwrap();
+        let requests = reviewed.join().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(requests.iter().all(|request| matches!(request,
+            GatekeeperRequest::CheckExtensionAction { detail, .. }
+                if detail.contains("action=set-native-toolbar-button") && detail.contains("Notes")
+        )));
+        let _ = std::fs::remove_file(gatekeeper);
+    }
+
+    #[test]
+    fn native_toolbar_rejection_or_unavailable_gatekeeper_never_reaches_core() {
+        let mut registry = ExtensionRegistry::minimal_slice();
+        registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
+        let (gatekeeper, reviewed) = start_gatekeeper(
+            "toolbar-blocked",
+            GatekeeperReply::Rejected {
+                reason: "unsafe toolbar label".to_string(),
+                category: "extension-toolbar-social-engineering".to_string(),
+            },
+        );
+        let (published_tx, published_rx) = mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let gatekeeper_for_host = gatekeeper.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                &gatekeeper_for_host,
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok(String::new()), unused_write_delegate, || Ok(()), |_, _| Ok(()), || Ok(()),
+                )
+                .with_toolbar_button(move |label, _| {
+                    published_tx.send(label).unwrap();
+                    Ok(())
+                }),
+            )
+        });
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 1)]),
+        ).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton {
+            label: "Enter password".to_string(),
+        }).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::GatekeeperBlocked { category, .. }
+                if category == "extension-toolbar-social-engineering"));
+        assert!(matches!(reviewed.join().unwrap(),
+            GatekeeperRequest::CheckExtensionAction { detail, .. }
+                if detail.contains("action=set-native-toolbar-button") && detail.contains("Enter password")));
+        assert!(published_rx.try_recv().is_err());
+
+        // The one-shot reviewer is gone. The next label must fail closed too.
+        let _ = std::fs::remove_file(&gatekeeper);
+        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton {
+            label: "Notes".to_string(),
+        }).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::GatekeeperBlocked { category, .. }
+                if category == "gatekeeper-unavailable"));
+        assert!(published_rx.try_recv().is_err());
+        drop(client);
+        handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn reviewed_toolbar_cannot_publish_after_optional_revoke_and_regrant() {
+        let mut registry = ExtensionRegistry::with_supported_capabilities();
+        registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
+        let registry = Arc::new(registry);
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+        let socket = unique_gatekeeper_socket("toolbar-revoke");
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).unwrap();
+        let (review_started_tx, review_started_rx) = mpsc::channel();
+        let (release_review_tx, release_review_rx) = mpsc::channel();
+        let reviewer = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_gatekeeper_request(&mut stream).unwrap();
+            review_started_tx.send(request).unwrap();
+            release_review_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+            write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared).unwrap();
+        });
+        let (published_tx, published_rx) = mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let registry_for_host = Arc::clone(&registry);
+        let socket_for_host = socket.clone();
+        let host = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry_for_host, &socket_for_host, &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok(String::new()), unused_write_delegate, || Ok(()), |_, _| Ok(()), || Ok(()),
+                )
+                .with_toolbar_button(move |label, _| {
+                    published_tx.send(label).unwrap();
+                    Ok(())
+                }),
+            )
+        });
+        write_extension_request(&mut client, &hello_with_capabilities(
+            MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_UI_INJECT, 1)],
+        )).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(&mut client, &ExtensionRequest::SetToolbarButton {
+            label: "Notes".to_string(),
+        }).unwrap();
+        assert!(matches!(review_started_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            GatekeeperRequest::CheckExtensionAction { detail, .. }
+                if detail.contains("action=set-native-toolbar-button")));
+        registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT).unwrap();
+        release_review_tx.send(()).unwrap();
+        assert!(matches!(read_extension_reply(&mut client).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. }
+                if capability == CAPABILITY_UI_INJECT));
+        assert!(published_rx.try_recv().is_err());
+        drop(client);
+        host.join().unwrap().unwrap();
+        reviewer.join().unwrap();
+        let _ = std::fs::remove_file(socket);
     }
 
     #[test]
     fn native_popup_requires_v2_toolbar_and_review_of_its_actual_text() {
         let mut registry = ExtensionRegistry::minimal_slice();
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
-        let (gatekeeper, reviewed) = start_gatekeeper("popup-clear", GatekeeperReply::Cleared);
+        let (gatekeeper, reviewed) = start_gatekeeper_replies(
+            "popup-clear", vec![GatekeeperReply::Cleared; 2],
+        );
         let (shown_tx, shown_rx) = mpsc::channel();
         let (cleared_tx, cleared_rx) = mpsc::channel();
         let (mut client, mut server) = UnixStream::pair().unwrap();
@@ -3083,8 +3250,11 @@ mod tests {
         }).unwrap();
         assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
         assert_eq!(shown_rx.recv_timeout(Duration::from_secs(1)).unwrap(), (1, "Notes".to_string(), "Saved locally".to_string()));
-        let request = reviewed.join().unwrap();
-        assert!(matches!(request, GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
+        let requests = reviewed.join().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(matches!(&requests[0], GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
+            if capability == CAPABILITY_UI_INJECT && detail.contains("action=set-native-toolbar-button")));
+        assert!(matches!(&requests[1], GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
             if capability == CAPABILITY_UI_INJECT && detail.contains("Saved locally")));
         write_extension_request(&mut client, &ExtensionRequest::ClearPopup).unwrap();
         assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
@@ -3098,7 +3268,9 @@ mod tests {
     fn popup_action_requires_v3_and_reviews_the_button_label_before_publication() {
         let mut registry = ExtensionRegistry::minimal_slice();
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
-        let (gatekeeper, reviewed) = start_gatekeeper("popup-action-clear", GatekeeperReply::Cleared);
+        let (gatekeeper, reviewed) = start_gatekeeper_replies(
+            "popup-action-clear", vec![GatekeeperReply::Cleared; 3],
+        );
         let (shown_tx, shown_rx) = mpsc::channel();
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let gatekeeper_for_host = gatekeeper.clone();
@@ -3164,8 +3336,9 @@ mod tests {
         assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::UiInjectAck);
         assert_eq!(shown_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
             (1, "Notes".to_string(), "Saved locally".to_string(), "Open notes".to_string()));
-        let request = reviewed.join().unwrap();
-        assert!(matches!(request, GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
+        let requests = reviewed.join().unwrap();
+        assert_eq!(requests.len(), 3);
+        assert!(matches!(&requests[2], GatekeeperRequest::CheckExtensionAction { capability, detail, .. }
             if capability == CAPABILITY_UI_INJECT && detail.contains("action=show-native-popup")
                 && detail.contains("body=\"Saved locally\"")
                 && detail.contains("action_label=\"Open notes\"")));
@@ -3178,12 +3351,12 @@ mod tests {
     fn native_popup_rejection_never_calls_the_core_delegate() {
         let mut registry = ExtensionRegistry::minimal_slice();
         registry.grant(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_UI_INJECT);
-        let (gatekeeper, reviewed) = start_gatekeeper(
+        let (gatekeeper, reviewed) = start_gatekeeper_replies(
             "popup-rejected",
-            GatekeeperReply::Rejected {
+            vec![GatekeeperReply::Cleared, GatekeeperReply::Rejected {
                 reason: "unsafe popup".to_string(),
                 category: "extension-popup-social-engineering".to_string(),
-            },
+            }],
         );
         let (shown_tx, shown_rx) = mpsc::channel();
         let (mut client, mut server) = UnixStream::pair().unwrap();
@@ -3211,7 +3384,9 @@ mod tests {
         write_extension_request(&mut client, &ExtensionRequest::ShowPopup { tab_id: 1, title: "Notes".to_string(), body: "Enter your password".to_string() }).unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(), ExtensionReply::GatekeeperBlocked { category, .. } if category == "extension-popup-social-engineering"));
         assert!(shown_rx.try_recv().is_err());
-        assert!(matches!(reviewed.join().unwrap(), GatekeeperRequest::CheckExtensionAction { detail, .. } if detail.contains("Enter your password")));
+        let requests = reviewed.join().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(matches!(&requests[1], GatekeeperRequest::CheckExtensionAction { detail, .. } if detail.contains("Enter your password")));
         drop(client);
         handle.join().unwrap().unwrap();
         let _ = std::fs::remove_file(gatekeeper);

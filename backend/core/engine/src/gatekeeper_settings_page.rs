@@ -445,6 +445,7 @@ mod tests {
             "download-before-bytes",
             "extension-before-side-effect",
             "extension-popup-before-publish",
+            "extension-toolbar-before-publish",
         ] {
             workflow.push(GatekeeperWorkflowStep {
                 id: id.to_string(),
@@ -465,15 +466,26 @@ mod tests {
             ruleset_version: "2026.09.23.1".to_string(),
             model_review_active: false,
             local_model: None,
-            baseline_rules: vec![GatekeeperRuleInfo {
-                id: "domain-rule".to_string(),
-                category: "known-bad-domain".to_string(),
-                description: "Blocks <unsafe> text.".to_string(),
-                conditions: vec!["<unsafe>".to_string()],
-                match_logic: "one <unsafe> condition".to_string(),
-                workflow_steps: vec!["url-before-fetch".to_string()],
-                mandatory: true,
-            }],
+            baseline_rules: vec![
+                GatekeeperRuleInfo {
+                    id: "domain-rule".to_string(),
+                    category: "known-bad-domain".to_string(),
+                    description: "Blocks <unsafe> text.".to_string(),
+                    conditions: vec!["<unsafe>".to_string()],
+                    match_logic: "one <unsafe> condition".to_string(),
+                    workflow_steps: vec!["url-before-fetch".to_string()],
+                    mandatory: true,
+                },
+                GatekeeperRuleInfo {
+                    id: "extension-toolbar-social-engineering".to_string(),
+                    category: "extension-toolbar-social-engineering".to_string(),
+                    description: "Blocks deceptive native toolbar labels.".to_string(),
+                    conditions: vec!["enter password".to_string()],
+                    match_logic: "Any listed phrase rejects.".to_string(),
+                    workflow_steps: vec!["extension-toolbar-before-publish".to_string()],
+                    mandatory: true,
+                },
+            ],
             workflow,
             custom_blocked_hosts: vec!["tracker.example".to_string()],
             custom_blocked_phrases: vec!["ignore <instructions>".to_string()],
@@ -524,6 +536,9 @@ mod tests {
         assert!(step("download-before-bytes").contains("Host: <code>tracker.example</code>"));
         assert!(step("download-before-bytes").contains("Download extension: <code>.zip</code>"));
         assert!(step("extension-popup-before-publish").contains("Extension-popup phrase: <code>send &lt;secrets&gt;</code>"));
+        assert!(step("extension-toolbar-before-publish").contains(
+            "<code>extension-toolbar-social-engineering</code>"
+        ));
         assert!(!step("extension-before-side-effect").contains("Your active blocking conditions"));
     }
 
@@ -607,6 +622,11 @@ mod tests {
                 && !step.failure_behavior.is_empty()
                 && step.review_order == ["compiled-rule-base"]
         }));
+        let live_html = gatekeeper_settings_html(
+            &GatekeeperSettingsView::Settings(live.clone()), "en", None,
+        );
+        assert!(live_html.contains("data-gatekeeper-step=\"extension-toolbar-before-publish\""));
+        assert!(live_html.contains("<code>extension-toolbar-social-engineering</code>"));
         let updated = source
                 .update(GatekeeperSettingsChange::AddBlockedHost {
                     host: "tracker.example".to_string(),
