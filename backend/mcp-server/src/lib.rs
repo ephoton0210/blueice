@@ -51,6 +51,12 @@ pub struct FrameInfo {
     pub generation: u64,
 }
 
+impl FrameInfo {
+    pub fn frame_source(&self) -> u64 {
+        blueice_ipc::shm::frame_source_id_for_path(&self.shm_path)
+    }
+}
+
 /// The common result shape for every state-changing tool: the
 /// resulting page representation, plus an error message if `core`
 /// reported one along the way (e.g. a failed `navigate`) -- `core`
@@ -1175,6 +1181,7 @@ mod tests {
 
     fn sample_snapshot(generation: u64) -> AiSnapshot {
         AiSnapshot {
+            frame_source: 0,
             generation,
             tab_id: 1,
             url: Some("https://example.com".to_string()),

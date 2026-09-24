@@ -206,8 +206,13 @@ enum UserEvent {
 struct CurrentFrame {
     width: u32,
     height: u32,
+    frame_source: u64,
     generation: u64,
     pixels_xrgb: Vec<u32>,
+}
+
+fn should_replace_frame(existing: &CurrentFrame, frame_source: u64, generation: u64) -> bool {
+    existing.frame_source != frame_source || generation > existing.generation
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -348,9 +353,10 @@ impl App {
         height: u32,
         generation: u64,
     ) {
+        let frame_source = blueice_ipc::shm::frame_source_id_for_path(shm_path);
         if let Some(existing) = self.frames.get(&tab_id) {
-            if generation <= existing.generation {
-                return; // stale frame, already superseded
+            if !should_replace_frame(existing, frame_source, generation) {
+                return; // stale frame from this core generation
             }
         }
         match shm::map_frame(Path::new(shm_path)) {
@@ -360,6 +366,7 @@ impl App {
                     CurrentFrame {
                         width,
                         height,
+                        frame_source,
                         generation,
                         pixels_xrgb: rgba_to_xrgb(&mapped),
                     },
@@ -517,7 +524,8 @@ impl App {
         let popup = self.extension_popup.as_ref().filter(|popup| Some(popup.tab_id) == self.selected_tab);
         let frame = self.selected_frame();
         let generation_badge = if self.show_generation {
-            self.selected_tab.zip(frame.map(|frame| frame.generation))
+            self.selected_tab.zip(frame.map(|frame| (frame.frame_source, frame.generation)))
+                .map(|(tab_id, (frame_source, generation))| (frame_source, tab_id, generation))
         } else {
             None
         };
@@ -704,7 +712,7 @@ fn compose_window(
     frame: Option<&CurrentFrame>,
     strip: &TabStrip,
     popup: Option<&ExtensionPopup>,
-    generation_badge: Option<(u64, u64)>,
+    generation_badge: Option<(u64, u64, u64)>,
 ) -> Vec<u32> {
     let mut pixels = vec![0x00FF_FFFF; width as usize * height as usize];
     if let Some(frame) = frame {
@@ -831,8 +839,8 @@ fn compose_window(
     if let Some(popup) = popup {
         draw_extension_popup(&mut pixels, width, height, popup);
     }
-    if let Some((tab_id, generation)) = generation_badge {
-        draw_generation_badge(&mut pixels, width, height, tab_id, generation);
+    if let Some((frame_source, tab_id, generation)) = generation_badge {
+        draw_generation_badge(&mut pixels, width, height, frame_source, tab_id, generation);
     }
     pixels
 }
@@ -840,8 +848,8 @@ fn compose_window(
 /// Identifies the exact core frame the human window is currently presenting.
 /// This is window chrome for evidence capture, not a mutation of shared page
 /// pixels, so the MCP screenshot remains the unadorned core-rendered frame.
-fn draw_generation_badge(pixels: &mut [u32], width: u32, height: u32, tab_id: u64, generation: u64) {
-    let label = format!("TAB:{tab_id} GEN:{generation}");
+fn draw_generation_badge(pixels: &mut [u32], width: u32, height: u32, frame_source: u64, tab_id: u64, generation: u64) {
+    let label = format!("SRC:{frame_source:016X} TAB:{tab_id} GEN:{generation}");
     let badge_width = label.len() as u32 * 6 + 12;
     if badge_width + 8 > width || height < TAB_STRIP_HEIGHT + 28 {
         return;
@@ -2091,6 +2099,7 @@ mod tests {
         let frame = CurrentFrame {
             width: 2,
             height: 2,
+            frame_source: 11,
             generation: 1,
             pixels_xrgb: vec![0x0011_2233; 4],
         };
@@ -2104,14 +2113,31 @@ mod tests {
     fn evidence_badge_names_the_selected_tab_and_exact_core_frame() {
         let strip = tab_strip(&[], &[], None, &HashMap::new(), 800, None);
         let plain = compose_window(800, 600, None, &strip, None, None);
-        let shown = compose_window(800, 600, None, &strip, None, Some((7, 42)));
-        let changed_generation = compose_window(800, 600, None, &strip, None, Some((7, 43)));
-        let badge_width = "TAB:7 GEN:42".len() * 6 + 12;
+        let shown = compose_window(800, 600, None, &strip, None, Some((11, 7, 42)));
+        let changed_generation = compose_window(800, 600, None, &strip, None, Some((11, 7, 43)));
+        let changed_source = compose_window(800, 600, None, &strip, None, Some((12, 7, 42)));
+        let badge_width = "SRC:000000000000000B TAB:7 GEN:42".len() * 6 + 12;
         let badge_x = 800 - badge_width - 8;
         assert_eq!(plain[576 * 800 + badge_x], 0x00FF_FFFF);
         assert_eq!(shown[576 * 800 + badge_x], 0x003A_526C);
         assert_ne!(shown, changed_generation, "the visible digits must follow the core generation");
+        assert_ne!(shown, changed_source, "the badge must distinguish core frame directories");
         assert_eq!(shown[0], plain[0], "the page and tab strip remain unchanged");
+    }
+
+    #[test]
+    fn a_new_core_frame_is_accepted_even_when_its_generation_resets() {
+        let previous = CurrentFrame {
+            width: 1,
+            height: 1,
+            frame_source: 11,
+            generation: 42,
+            pixels_xrgb: vec![0],
+        };
+        assert!(!should_replace_frame(&previous, 11, 42));
+        assert!(!should_replace_frame(&previous, 11, 41));
+        assert!(should_replace_frame(&previous, 11, 43));
+        assert!(should_replace_frame(&previous, 12, 1));
     }
 
     #[test]

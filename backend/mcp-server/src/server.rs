@@ -583,7 +583,7 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
-        description = "Take a PNG screenshot of the most recently rendered frame for a tab (call navigate/open_tab on it first; there is nothing to screenshot before that). The text result identifies the exact tab_id and core frame generation encoded in the PNG. Omit tab_id for the tab most recently rendered by this MCP connection's own request; an unsolicited human-tab refresh never changes that default."
+        description = "Take a PNG screenshot of the most recently rendered frame for a tab (call navigate/open_tab on it first; there is nothing to screenshot before that). The text result identifies the frame source, tab_id and generation encoded in the PNG; all three are needed across core cutovers. Omit tab_id for the tab most recently rendered by this MCP connection's own request; an unsolicited human-tab refresh never changes that default."
     )]
     async fn screenshot(
         &self,
@@ -599,12 +599,12 @@ impl BlueIceMcpServer {
                 frame.width,
                 frame.height,
             )?;
-            Ok(Some((png, resolved_tab_id, frame.generation)))
+            Ok(Some((png, resolved_tab_id, frame.generation, frame.frame_source())))
         })
         .await?;
 
         match screenshot {
-            Some((bytes, resolved_tab_id, generation)) => {
+            Some((bytes, resolved_tab_id, generation, frame_source)) => {
                 let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
                 // A rendered page can bake adversarial text directly
                 // into its pixels (visual prompt injection against a
@@ -615,7 +615,7 @@ impl BlueIceMcpServer {
                 // tools.
                 let warning = crate::wrap_untrusted_page_content("(see attached image)");
                 let metadata = format!(
-                    "{}{{\"tab_id\":{resolved_tab_id},\"generation\":{generation}}}",
+                    "{}{{\"frame_source\":{frame_source},\"tab_id\":{resolved_tab_id},\"generation\":{generation}}}",
                     crate::FRAME_EVIDENCE_PREFIX
                 );
                 Ok(CallToolResult::success(vec![

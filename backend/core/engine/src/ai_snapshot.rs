@@ -49,6 +49,7 @@ pub(crate) fn build(page: &Page, generation: u64, tab_id: u64) -> AiSnapshot {
     link_children(&mut nodes);
     compute_occlusion(&mut nodes);
     AiSnapshot {
+        frame_source: 0, // the session fills this from its live frame directory
         generation,
         tab_id,
         url: page.url().map(str::to_string),

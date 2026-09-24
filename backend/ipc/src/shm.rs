@@ -34,6 +34,29 @@ use std::fs::OpenOptions;
 use std::io;
 use std::path::{Path, PathBuf};
 
+/// A stable, non-secret identifier for a live frame directory. Launcher gives
+/// each core generation a different directory, so this distinguishes a v2
+/// generation counter reset from an older v1 frame. It is not a global
+/// process identity: reusing the same directory in a later independent run
+/// also reuses this identifier.
+pub fn frame_source_id(dir: &Path) -> u64 {
+    let mut hash = 0xcbf29ce484222325_u64;
+    // `FrameReady.shm_path` itself uses `to_string_lossy`; hash the same
+    // spelling so a snapshot and a mapped frame agree even for a non-UTF-8
+    // directory name that the JSON wire cannot represent losslessly.
+    for byte in dir.to_string_lossy().as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+/// Returns the source identifier of a frame referenced by `FrameReady`.
+pub fn frame_source_id_for_path(shm_path: &str) -> u64 {
+    let path = Path::new(shm_path);
+    frame_source_id(path.parent().unwrap_or_else(|| Path::new("")))
+}
+
 /// How many of one tab's most recent frame files to keep on disk. Small
 /// enough to keep disk usage bounded regardless of session length,
 /// generous enough that a client which has received a `FrameReady` but not
@@ -93,6 +116,25 @@ pub fn map_frame(path: &Path) -> io::Result<Mmap> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frame_source_changes_with_core_directory_not_frame_generation() {
+        let first = Path::new("/tmp/blueice-frames");
+        let second = Path::new("/tmp/blueice-frames-cutover-1");
+        assert_ne!(frame_source_id(first), frame_source_id(second));
+        assert_eq!(
+            frame_source_id_for_path("/tmp/blueice-frames/frame-1-42.rgba"),
+            frame_source_id_for_path("/tmp/blueice-frames/frame-1-43.rgba")
+        );
+        assert_eq!(
+            frame_source_id_for_path("/tmp/blueice-frames-cutover-1/frame-1-1.rgba"),
+            frame_source_id(second)
+        );
+        use std::os::unix::ffi::OsStrExt;
+        let non_utf8 = Path::new(std::ffi::OsStr::from_bytes(b"/tmp/frames-\xff"));
+        let wire_path = non_utf8.join("frame-1-1.rgba").to_string_lossy().into_owned();
+        assert_eq!(frame_source_id(non_utf8), frame_source_id_for_path(&wire_path));
+    }
 
     #[test]
     fn write_then_map_round_trips_the_bytes() {

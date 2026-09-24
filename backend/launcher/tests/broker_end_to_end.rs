@@ -23,7 +23,7 @@
 //! already-connected client exactly as before.
 
 use blueice_ipc::{
-    read_server_message, read_server_message_with_id, write_client_message,
+    read_server_message, read_server_message_with_id, read_server_message_with_ids, write_client_message,
     write_client_message_with_id, ClientMessage, ServerMessage,
 };
 use blueice_launcher::control::{
@@ -490,11 +490,19 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
     // client as a side effect of sharing the broker, and must not be
     // mistaken for this request's own reply -- exactly the id-based
     // filtering discipline Part 1's fix exists to make possible through
-    // a shared broker connection.
+    // a shared broker connection. v2's replay frames arrive as unsolicited
+    // handoffs before the requested tab list, without another user action.
     write_client_message_with_id(&mut client, Some(777), &ClientMessage::ListTabs).unwrap();
+    let mut handoff_tabs = Vec::new();
     let tabs = loop {
-        let (reply_id, message) = read_server_message_with_id(&mut client).unwrap();
-        if matches!(reply_id, Some(id) if id != 777) {
+        let (tab_id, reply_id, message) = read_server_message_with_ids(&mut client).unwrap();
+        if reply_id.is_none() {
+            if matches!(message, ServerMessage::FrameReady { .. }) {
+                handoff_tabs.push(tab_id);
+            }
+            continue;
+        }
+        if reply_id != Some(777) {
             continue;
         }
         match message {
@@ -502,6 +510,7 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
             other => panic!("expected Tabs, got {other:?}"),
         }
     };
+    assert_eq!(handoff_tabs, vec![Some(1), Some(2)]);
 
     // (b) v2's replayed state matches what was set up on v1 before
     // cutover -- same URLs, same order, ids may legitimately differ
@@ -514,6 +523,99 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
             Some("about:blank".to_string())
         ]
     );
+
+    write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+    launcher.wait_or_kill(Duration::from_secs(5));
+}
+
+#[test]
+fn a_cutover_resets_generation_but_changes_the_shared_frame_source() {
+    let mut launcher = Launcher::spawn();
+    let mut client = launcher.connect();
+    write_client_message(&mut client, &ClientMessage::Navigate {
+        url: "about:credits".to_string(),
+    }).unwrap();
+    assert!(matches!(read_server_message(&mut client).unwrap(), ServerMessage::Navigated { .. }));
+    assert!(matches!(read_server_message(&mut client).unwrap(), ServerMessage::FrameReady { .. }));
+
+    let mut v1_source = 0;
+    let mut v1_generation = 0;
+    for index in 0..6_u64 {
+        let request_id = 930 + index;
+        write_client_message_with_id(&mut client, Some(request_id), &ClientMessage::Resize {
+            width: 320 + index as u32,
+            height: 200,
+        }).unwrap();
+        loop {
+            let (reply_id, message) = read_server_message_with_id(&mut client).unwrap();
+            if reply_id != Some(request_id) {
+                continue;
+            }
+            match message {
+                ServerMessage::FrameReady { shm_path, generation, .. } => {
+                    v1_source = blueice_ipc::shm::frame_source_id_for_path(&shm_path);
+                    v1_generation = generation;
+                    break;
+                }
+                other => panic!("expected v1 FrameReady, got {other:?}"),
+            }
+        }
+    }
+
+    let mut control = launcher.connect_control();
+    write_control_request(&mut control, &ControlRequest::Cutover).unwrap();
+    assert!(matches!(read_control_reply(&mut control).unwrap(),
+        ControlReply::CutoverDone { tabs_migrated: 1 }));
+    client.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let (handoff_source, handoff_generation) = loop {
+        let (reply_id, message) = read_server_message_with_id(&mut client)
+            .expect("cutover must hand the replay frame to an existing client without another action");
+        if reply_id.is_some() {
+            continue; // v1's synthetic ListTabs capture may still be queued
+        }
+        match message {
+            ServerMessage::FrameReady { shm_path, generation, .. } => {
+                break (blueice_ipc::shm::frame_source_id_for_path(&shm_path), generation);
+            }
+            other => panic!("expected a v2 handoff frame, got {other:?}"),
+        }
+    };
+    assert_ne!(v1_source, handoff_source);
+    assert!(handoff_generation < v1_generation);
+    write_client_message_with_id(&mut client, Some(950), &ClientMessage::Resize {
+        width: 399,
+        height: 200,
+    }).unwrap();
+    let (v2_source, v2_generation) = loop {
+        let (reply_id, message) = read_server_message_with_id(&mut client).unwrap();
+        if reply_id != Some(950) {
+            continue;
+        }
+        match message {
+            ServerMessage::FrameReady { shm_path, generation, .. } => {
+                break (blueice_ipc::shm::frame_source_id_for_path(&shm_path), generation);
+            }
+            other => panic!("expected v2 FrameReady, got {other:?}"),
+        }
+    };
+    assert_ne!(v1_source, v2_source, "cutover must use a fresh frame source");
+    assert_eq!(handoff_source, v2_source);
+    assert!(v2_generation < v1_generation,
+        "this test must exercise a real generation reset: v1={v1_generation}, v2={v2_generation}");
+
+    write_client_message_with_id(&mut client, Some(951), &ClientMessage::GetRepresentation).unwrap();
+    let snapshot = loop {
+        let (reply_id, message) = read_server_message_with_id(&mut client).unwrap();
+        if reply_id != Some(951) {
+            continue;
+        }
+        match message {
+            ServerMessage::Representation(snapshot) => break snapshot,
+            other => panic!("expected v2 Representation, got {other:?}"),
+        }
+    };
+    assert_eq!(snapshot.frame_source, v2_source);
+    assert_eq!(snapshot.generation, v2_generation);
 
     write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
     launcher.wait_or_kill(Duration::from_secs(5));
@@ -568,7 +670,7 @@ fn an_installed_extension_survives_cutover_with_a_fresh_authenticated_host() {
     write_client_message_with_id(&mut client, Some(900), &ClientMessage::ListTabs).unwrap();
     let tabs = loop {
         let (reply_id, message) = read_server_message_with_id(&mut client).unwrap();
-        if matches!(reply_id, Some(id) if id != 900) {
+        if reply_id != Some(900) {
             continue;
         }
         match message {

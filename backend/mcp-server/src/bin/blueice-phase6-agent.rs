@@ -586,6 +586,7 @@ fn snapshot_from(result: &McpToolResult) -> Result<Value, String> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FrameEvidence {
+    frame_source: u64,
     tab_id: u64,
     generation: u64,
 }
@@ -603,27 +604,36 @@ fn frame_evidence_from(text: &str) -> Result<FrameEvidence, String> {
     }
     let value: Value = serde_json::from_str(json)
         .map_err(|error| format!("MCP screenshot frame metadata was invalid: {error}"))?;
+    let frame_source = value["frame_source"]
+        .as_u64()
+        .ok_or_else(|| "MCP screenshot has no numeric frame source".to_string())?;
     let tab_id = value["tab_id"]
         .as_u64()
         .ok_or_else(|| "MCP screenshot has no numeric tab ID".to_string())?;
     let generation = value["generation"]
         .as_u64()
         .ok_or_else(|| "MCP screenshot has no numeric frame generation".to_string())?;
-    Ok(FrameEvidence { tab_id, generation })
+    Ok(FrameEvidence { frame_source, tab_id, generation })
 }
 
 fn frame_evidence_from_snapshot(snapshot: &Value) -> Result<FrameEvidence, String> {
+    let frame_source = snapshot["frame_source"]
+        .as_u64()
+        .ok_or_else(|| "MCP snapshot has no numeric frame source".to_string())?;
     let tab_id = snapshot["tab_id"]
         .as_u64()
         .ok_or_else(|| "MCP snapshot has no numeric tab ID".to_string())?;
     let generation = snapshot["generation"]
         .as_u64()
         .ok_or_else(|| "MCP snapshot has no numeric frame generation".to_string())?;
-    Ok(FrameEvidence { tab_id, generation })
+    Ok(FrameEvidence { frame_source, tab_id, generation })
 }
 
 fn require_highlight_frame(before: FrameEvidence, after: FrameEvidence) -> Result<(), String> {
-    if before.tab_id != after.tab_id || after.generation <= before.generation {
+    if before.frame_source != after.frame_source
+        || before.tab_id != after.tab_id
+        || after.generation <= before.generation
+    {
         return Err(format!(
             "highlight did not produce a newer frame on the same tab: before {before:?}, after {after:?}"
         ));
@@ -879,7 +889,7 @@ fn execute_tool(
             ensure_name_value(&after_snapshot)?;
             transcript.record(
                 "highlight_frame",
-                json!({ "tab_id": highlight_frame.tab_id, "generation": highlight_frame.generation }),
+                json!({ "frame_source": highlight_frame.frame_source, "tab_id": highlight_frame.tab_id, "generation": highlight_frame.generation }),
             )?;
             if !highlight_hold.is_zero() {
                 transcript.record(
@@ -1085,7 +1095,7 @@ fn run(args: Args) -> Result<(String, Vec<PathBuf>), String> {
             if let Some((png, path, frame)) = execution.screenshot {
                 transcript.record(
                     "evidence_saved",
-                    json!({ "path": path.display().to_string(), "tab_id": frame.tab_id, "generation": frame.generation }),
+                    json!({ "path": path.display().to_string(), "frame_source": frame.frame_source, "tab_id": frame.tab_id, "generation": frame.generation }),
                 )?;
                 let image_url = format!(
                     "data:image/png;base64,{}",
@@ -1339,12 +1349,12 @@ mod tests {
     #[test]
     fn screenshot_frame_identity_must_precede_the_untrusted_page_block() {
         let text = format!(
-            "{FRAME_EVIDENCE_PREFIX}{{\"tab_id\":7,\"generation\":42}}\n{}",
+            "{FRAME_EVIDENCE_PREFIX}{{\"frame_source\":11,\"tab_id\":7,\"generation\":42}}\n{}",
             blueice_mcp_server::wrap_untrusted_page_content("(see attached image)")
         );
         assert_eq!(
             frame_evidence_from(&text).unwrap(),
-            FrameEvidence { tab_id: 7, generation: 42 }
+            FrameEvidence { frame_source: 11, tab_id: 7, generation: 42 }
         );
         assert!(frame_evidence_from(&format!(
             "{}\n{FRAME_EVIDENCE_PREFIX}{{\"tab_id\":7,\"generation\":42}}",
@@ -1353,30 +1363,42 @@ mod tests {
         assert!(frame_evidence_from(&format!(
             "{FRAME_EVIDENCE_PREFIX}{{\"tab_id\":7,\"generation\":42}}"
         )).is_err());
+        assert!(frame_evidence_from(&format!(
+            "{FRAME_EVIDENCE_PREFIX}{{\"tab_id\":7,\"generation\":42}}\n{}",
+            blueice_mcp_server::wrap_untrusted_page_content("(see attached image)")
+        )).is_err());
     }
 
     #[test]
     fn highlighted_screenshot_must_match_the_new_snapshot_frame_exactly() {
         let before = frame_evidence_from_snapshot(&json!({
-            "tab_id": 7, "generation": 41,
+            "frame_source": 11, "tab_id": 7, "generation": 41,
         })).unwrap();
         let highlight = frame_evidence_from_snapshot(&json!({
-            "tab_id": 7, "generation": 42,
+            "frame_source": 11, "tab_id": 7, "generation": 42,
         })).unwrap();
         require_highlight_frame(before, highlight).unwrap();
         require_matching_highlight_screenshot(highlight, highlight).unwrap();
         assert!(require_highlight_frame(before, before).is_err());
         assert!(require_highlight_frame(
             before,
-            FrameEvidence { tab_id: 8, generation: 42 },
+            FrameEvidence { frame_source: 11, tab_id: 8, generation: 42 },
         ).is_err());
         assert!(require_matching_highlight_screenshot(
             highlight,
-            FrameEvidence { tab_id: 7, generation: 43 },
+            FrameEvidence { frame_source: 11, tab_id: 7, generation: 43 },
         ).is_err());
         assert!(require_matching_highlight_screenshot(
             highlight,
-            FrameEvidence { tab_id: 8, generation: 42 },
+            FrameEvidence { frame_source: 11, tab_id: 8, generation: 42 },
+        ).is_err());
+        assert!(require_matching_highlight_screenshot(
+            highlight,
+            FrameEvidence { frame_source: 12, tab_id: 7, generation: 42 },
+        ).is_err());
+        assert!(require_highlight_frame(
+            before,
+            FrameEvidence { frame_source: 12, tab_id: 7, generation: 42 },
         ).is_err());
         assert!(frame_evidence_from_snapshot(&json!({ "tab_id": 7 })).is_err());
     }

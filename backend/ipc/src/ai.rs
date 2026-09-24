@@ -20,9 +20,14 @@ use serde::{Deserialize, Serialize};
 /// references.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AiSnapshot {
+    /// Stable within a live core's frame directory and different for each
+    /// launcher cutover generation. Compare this together with `tab_id` and
+    /// `generation`; the counters alone can repeat after a core swap.
+    #[serde(default)]
+    pub frame_source: u64,
     /// The same counter [`crate::ServerMessage::FrameReady`] uses --
-    /// a snapshot and a frame sharing a generation number is the
-    /// concrete, checkable proof they came from the same render pass
+    /// a snapshot and a frame sharing `frame_source`, `tab_id`, and
+    /// `generation` are the checkable proof they came from the same render pass
     /// (`phase-5-ai-representation-output/PLAN.md`'s "same render
     /// pass" requirement).
     pub generation: u64,

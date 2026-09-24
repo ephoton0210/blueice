@@ -716,7 +716,8 @@ pub fn run_session_with_script_and_extension_requests_and_events<S: Read + Write
                     }
                     ClientMessage::GetRepresentation => match tabs.get_mut(target) {
                         Some(page) => {
-                            let snapshot = page.snapshot(page.frame_generation(), target.as_u64());
+                            let mut snapshot = page.snapshot(page.frame_generation(), target.as_u64());
+                            snapshot.frame_source = blueice_ipc::shm::frame_source_id(frame_dir);
                             blueice_ipc::write_server_message_with_ids(
                                 stream,
                                 reply_tab,
@@ -1257,7 +1258,9 @@ fn handle_extension_page_request<S: Write>(
                 .unwrap_or_else(|| tabs.default_tab());
             let result = tabs.check_extension_origin("dom:read", tab_id).and_then(|()| {
                 let page = tabs.get(tab_id).expect("the checked tab remains live");
-                serde_json::to_string(&page.snapshot(page.frame_generation(), tab_id.as_u64()))
+                let mut snapshot = page.snapshot(page.frame_generation(), tab_id.as_u64());
+                snapshot.frame_source = blueice_ipc::shm::frame_source_id(frame_dir);
+                serde_json::to_string(&snapshot)
                     .map_err(|error| {
                         format!("could not serialize the core representation: {error}")
                     })

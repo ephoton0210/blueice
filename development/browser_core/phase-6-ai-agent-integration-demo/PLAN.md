@@ -107,6 +107,28 @@ generation as the second MCP PNG entry and highlight snapshot. This closes an
 evidence gap but does not substitute for the outstanding human-window
 screenshot.
 
+**Cutover-aware frame-source follow-up (2026-09-24).** The first evidence
+format above was insufficient across a Phase 8 core swap: v2 can reuse the
+same tab ID and frame generation, and the reference frontend used to discard
+v2's lower generation as stale. The IPC frame-plane now derives a stable
+`frame_source` identifier from the frame directory, which launcher changes
+for each core generation. Core includes it in AI snapshots; MCP screenshots
+report the matching identifier; the agent requires the full
+source/tab/generation triple for the highlighted screenshot and rejects a
+source change during the highlight step. The opt-in human badge displays the
+source as 16 hex digits and accepts the new core's lower generation instead
+of freezing on v1. A compiled launcher/core test exercises a real generation
+reset, changed source, and matching v2 snapshot. This source is scoped to a
+frame-directory path, not a globally unique process identity if a later
+independent run reuses that path. The earlier Qwen evidence predates this field
+and remains a no-cutover run; the independent human-window screenshot remains
+outstanding. The launcher now also hands v2's already-rendered replay frames
+to existing clients immediately after a successful cutover. Otherwise the
+reference frontend could remain on v1's last pixels until another action
+generated a new frame, even though it could correctly identify v2 once that
+later frame arrived. A real two-tab cutover test verifies both unsolicited
+handoff frames.
+
 **Compiled-stack orchestration check (2026-09-24).**
 `backend/mcp-server/tests/phase6_agent_binary.rs` starts a real supervised
 gatekeeper, launcher broker, core, loopback demo site, compiled Phase 6 agent,
@@ -142,9 +164,9 @@ Ollama or TGI server, nor the still-open human-observer evidence requirement.
 - [x] Confirm the demo's target site(s)/page(s) are in-scope for the Phase 2 MVP and cleared under the Phase 5/plan §5 access policy — first-party `demo-site/`, loopback only
 - [x] Pick and scope a concrete demo task — see `SCENARIO.md`: inspect/describe the visible MVP elements, set and confirm the labelled text-box value, highlight it, and follow the local confirmation link
 - [x] Wire an LLM-driven agent to the Phase 5 API (no CDP/Puppeteer path) — `blueice-phase6-agent` confines a loopback Ollama, Hugging Face TGI, or llama.cpp Chat Completions function-calling loop to scenario-specific operations that each invoke the standard MCP adapter; targeted tests and MCP/core integration tests pass
-- [x] Instrument common-frame evidence — MCP screenshots identify the exact tab/generation behind each PNG; the agent transcript pairs that identity with its saved file; the human frontend can display the same core frame identity using `--show-generation`
+- [x] Instrument common-frame evidence — MCP screenshots identify the frame-source/tab/generation triple behind each PNG; the agent transcript pairs that identity with its saved file; the human frontend can display the same scoped frame identity using `--show-generation`
 - [x] Verify compiled local-provider orchestration against a real shared core — deterministic loopback Chat Completions peers drive both supported response shapes, while an independent launcher client receives the exact highlighted frame retained by MCP; this is not the real-model/human proof
 - [x] Run a real local vision/tool model through the shared core — Qwen3.5-4B GGUF via llama.cpp completed the first-party scenario, with a matched highlighted MCP PNG and transcript; see [RESULTS.md](RESULTS.md)
 - [ ] Demonstrate human + agent observing the same page/state simultaneously
 - [x] Record results (what worked, what broke, what surprised) — [RESULTS.md](RESULTS.md) records the real-model task, evidence identities/hashes, provider-label correction, viewport change, and missing human-window capture
-- [x] Feed findings back into earlier phases' plans — Phase 5 now records the live common-frame evidence boundary and the missing cross-cutover core-incarnation identity; Phase 8 records the human-frontend viewport change and why evidence must be compared after observer attachment. These notes do not substitute for the still-missing human-window screenshot.
+- [x] Feed findings back into earlier phases' plans — Phase 5 records the live common-frame evidence boundary and now the frame-source follow-up; Phase 8 records the human-frontend viewport change, cutover generation reset, and why evidence must be compared after observer attachment. These notes do not substitute for the still-missing human-window screenshot.

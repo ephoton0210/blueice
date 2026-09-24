@@ -30,13 +30,13 @@ reference frontend with `--launcher --url http://127.0.0.1:<port>/index.html`,
 and let `blueice-mcp-server` attach to the same default rendezvous socket. The
 frontend's shared mode never sends `Shutdown` or removes that socket on exit.
 The final evidence must retain the agent's MCP transcript, the frontend view
-while the highlight is active, and matching frame/snapshot generation numbers.
+while the highlight is active, and matching frame-source/tab/generation identities.
 Start the frontend with `--show-generation` so its native lower-right badge
-shows `TAB:<id> GEN:<generation>` for the selected core frame. The MCP
-`screenshot` tool reports the exact cached tab/generation used for its PNG;
+shows `SRC:<16-hex-digits> TAB:<id> GEN:<generation>` for the selected core frame. The MCP
+`screenshot` tool reports the exact cached frame source/tab/generation used for its PNG;
 the agent transcript records that metadata alongside each saved PNG path as
 `evidence_saved`. The runner also records `highlight_frame` and automatically
-rejects a second PNG whose tab or generation differs from the highlight
+rejects a second PNG whose frame source, tab, or generation differs from the highlight
 snapshot, before saving it as evidence. Compare the human screenshot's badge
 with the matching second PNG and `highlight_frame` transcript entries. A
 mismatch is evidence of different frames, not a successful common-observer
@@ -125,7 +125,7 @@ scenario, or a missing final report. It holds the shared highlight for ten
 seconds by default (`--highlight-hold-seconds 0` disables that pause only when
 no human capture is required). Preserve the JSONL transcript, retained PNGs,
 and a human-window screenshot taken during that hold. The transcript's
-`evidence_saved` entries identify each MCP PNG by path, tab ID, and exact core
-frame generation. Record the human badge, `highlight_frame` snapshot generation,
+`evidence_saved` entries identify each MCP PNG by path, frame source, tab ID, and exact core
+frame generation. Record the human badge, `highlight_frame` snapshot identity,
 and second PNG's metadata in the final result note; they must match for the
 same-frame claim.

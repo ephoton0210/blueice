@@ -264,7 +264,8 @@ pub enum ServerMessage {
     },
     /// A new frame is available. `shm_path` names a shared-memory-
     /// backed file the client maps read-only; `generation` increases on
-    /// every frame so a client can detect and drop stale
+    /// every frame within one core generation; it resets on a cutover.
+    /// Compare the frame directory source as well before dropping stale
     /// notifications (playing the role Chromium's `SyncToken`/Gecko's
     /// fence do for producer/consumer synchronization, per
     /// `research/frontend-ipc.md` §4) without needing its own clock.
@@ -788,6 +789,7 @@ mod tests {
                 can_go_forward: false,
             },
             ServerMessage::Representation(AiSnapshot {
+                frame_source: 0,
                 generation: 42,
                 tab_id: 1,
                 url: Some("https://example.com/".to_string()),
@@ -1009,6 +1011,7 @@ mod tests {
 
         let mut buf = Vec::new();
         let reply = ServerMessage::Representation(AiSnapshot {
+            frame_source: 0,
             generation: 1,
             tab_id: 1,
             url: None,

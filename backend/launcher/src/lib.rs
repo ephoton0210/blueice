@@ -139,8 +139,16 @@ pub fn broadcast_core_to_clients(
     mut core: UnixStream,
     clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>,
 ) {
+    broadcast_core_to_clients_for_generation(&mut core, clients, None);
+}
+
+fn broadcast_core_to_clients_for_generation(
+    core: &mut UnixStream,
+    clients: Arc<Mutex<Vec<Sender<TaggedServerMessage>>>>,
+    generation: Option<(&AtomicU64, u64)>,
+) {
     loop {
-        let (tab_id, request_id, message) = match read_server_message_with_ids(&mut core) {
+        let (tab_id, request_id, message) = match read_server_message_with_ids(core) {
             Ok(triple) => triple,
             Err(_) => return,
         };
@@ -152,6 +160,12 @@ pub fn broadcast_core_to_clients(
         let mut clients = clients
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Test the generation while holding the same lock used by the
+        // cutover's replay-frame handoff. A v1 read that completed just
+        // before the swap must not be queued *after* a v2 frame.
+        if generation.is_some_and(|(current, mine)| current.load(Ordering::SeqCst) != mine) {
+            return;
+        }
         clients.retain(|client| client.send(tagged.clone()).is_ok());
     }
 }
@@ -258,7 +272,12 @@ fn spawn_generation_tagged_broadcast(
     done: Sender<()>,
 ) {
     thread::spawn(move || {
-        broadcast_core_to_clients(core_stream, clients);
+        let mut core_stream = core_stream;
+        broadcast_core_to_clients_for_generation(
+            &mut core_stream,
+            clients,
+            Some((&generation, my_generation)),
+        );
         if generation.load(Ordering::SeqCst) == my_generation {
             let _ = done.send(());
         }
@@ -452,7 +471,11 @@ fn capture_v1_tabs(
 /// `Error`/`GatekeeperBlocked` reply, or the connection breaking)
 /// aborts the whole replay -- `phase-8-live-core-hotswap/PLAN.md`'s
 /// single-attempt, fail-closed contract.
-fn replay_tabs(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Result<(), String> {
+fn replay_tabs(
+    v2_stream: &mut UnixStream,
+    captured_tabs: &[TabSummary],
+) -> Result<Vec<TaggedServerMessage>, String> {
+    let mut replay_frames = Vec::new();
     for (i, tab) in captured_tabs.iter().enumerate() {
         if i == 0 {
             let Some(url) = &tab.url else { continue };
@@ -463,7 +486,7 @@ fn replay_tabs(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Resu
                 &ClientMessage::Navigate { url: url.clone() },
             )
             .map_err(|e| format!("failed to replay the default tab's Navigate into v2: {e}"))?;
-            expect_navigate_success(v2_stream, request_id)?;
+            replay_frames.push(expect_navigate_success(v2_stream, request_id)?);
         } else {
             let request_id = synthetic_request_id();
             write_client_message_with_id(
@@ -474,10 +497,12 @@ fn replay_tabs(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Resu
                 },
             )
             .map_err(|e| format!("failed to replay tab {i}'s OpenTab into v2: {e}"))?;
-            expect_open_tab_success(v2_stream, request_id, tab.url.is_some())?;
+            if let Some(frame) = expect_open_tab_success(v2_stream, request_id, tab.url.is_some())? {
+                replay_frames.push(frame);
+            }
         }
     }
-    Ok(())
+    Ok(replay_frames)
 }
 
 /// Reads from `v2_stream` until the reply to `request_id` -- `Navigated`
@@ -490,17 +515,26 @@ fn replay_tabs(v2_stream: &mut UnixStream, captured_tabs: &[TabSummary]) -> Resu
 /// `GatekeeperBlocked` reply, or the read itself failing (v2's
 /// connection broke, e.g. because writing the frame failed), is a
 /// replay failure.
-fn expect_navigate_success(v2_stream: &mut UnixStream, request_id: u64) -> Result<(), String> {
+fn expect_navigate_success(
+    v2_stream: &mut UnixStream,
+    request_id: u64,
+) -> Result<TaggedServerMessage, String> {
     let mut navigated = false;
     loop {
-        let (reply_id, message) = read_server_message_with_id(v2_stream)
+        let (tab_id, reply_id, message) = read_server_message_with_ids(v2_stream)
             .map_err(|e| format!("failed reading v2's reply while replaying: {e}"))?;
-        if matches!(reply_id, Some(id) if id != request_id) {
+        if reply_id != Some(request_id) {
             continue;
         }
         match message {
             ServerMessage::Navigated { .. } => navigated = true,
-            ServerMessage::FrameReady { .. } if navigated => return Ok(()),
+            frame @ ServerMessage::FrameReady { .. } if navigated => {
+                return Ok(TaggedServerMessage {
+                    tab_id,
+                    request_id: None, // a cutover handoff, not the synthetic replay request
+                    message: frame,
+                });
+            }
             ServerMessage::FrameReady { .. } => continue, // shouldn't happen before Navigated, but don't misinterpret
             ServerMessage::Error { message } => {
                 return Err(format!("v2 rejected the replayed Navigate: {message}"));
@@ -524,22 +558,28 @@ fn expect_open_tab_success(
     v2_stream: &mut UnixStream,
     request_id: u64,
     expects_frame: bool,
-) -> Result<(), String> {
+) -> Result<Option<TaggedServerMessage>, String> {
     let mut opened = false;
     loop {
-        let (reply_id, message) = read_server_message_with_id(v2_stream)
+        let (tab_id, reply_id, message) = read_server_message_with_ids(v2_stream)
             .map_err(|e| format!("failed reading v2's reply while replaying: {e}"))?;
-        if matches!(reply_id, Some(id) if id != request_id) {
+        if reply_id != Some(request_id) {
             continue;
         }
         match message {
             ServerMessage::TabOpened { .. } => {
                 opened = true;
                 if !expects_frame {
-                    return Ok(());
+                    return Ok(None);
                 }
             }
-            ServerMessage::FrameReady { .. } if opened => return Ok(()),
+            frame @ ServerMessage::FrameReady { .. } if opened => {
+                return Ok(Some(TaggedServerMessage {
+                    tab_id,
+                    request_id: None,
+                    message: frame,
+                }));
+            }
             ServerMessage::FrameReady { .. } => continue,
             ServerMessage::Error { message } => {
                 return Err(format!("v2 rejected the replayed OpenTab: {message}"));
@@ -602,43 +642,37 @@ fn v2_frame_dir(v1_frame_dir: &Path, target_generation: u64) -> PathBuf {
 }
 
 /// The actual swap, once replay + health check have both fully
-/// succeeded -- see `phase-8-live-core-hotswap/PLAN.md`'s "Concrete
-/// cutover mechanism" for the exact ordering this follows: bump
-/// `generation`, start v2's own generation-tagged broadcast thread
-/// (sharing the same `clients` list), retarget `core_writer`'s
-/// contents at v2, then close v1's stream (letting its now-superseded
-/// broadcast thread exit quietly, per [`spawn_generation_tagged_broadcast`])
-/// and drop v1 itself (killing its process, cleaning up its socket and
-/// frame directory).
-fn perform_swap(broker: &Arc<Broker>, v2: SpawnedCore, target_generation: u64) {
-    broker.generation.store(target_generation, Ordering::SeqCst);
-
+/// succeeded. Retarget the writer under its lock, suppress late v1
+/// broadcasts, hand the already-rendered v2 replay frames to existing
+/// clients, then start v2's live broadcast. This ensures the frontend
+/// sees the new core without needing another user action.
+fn perform_swap(
+    broker: &Arc<Broker>,
+    v2: SpawnedCore,
+    target_generation: u64,
+    replay_frames: Vec<TaggedServerMessage>,
+) {
     let v2_broadcast_stream = v2
         .stream
         .try_clone()
         .expect("try_clone on a fresh stream should not fail");
-    spawn_generation_tagged_broadcast(
-        v2_broadcast_stream,
-        Arc::clone(&broker.clients),
-        Arc::clone(&broker.generation),
-        target_generation,
-        broker.done.clone(),
-    );
-
     let v2_writer_stream = v2
         .stream
         .try_clone()
         .expect("try_clone on a fresh stream should not fail");
-    *broker
+    let mut writer = broker
         .core_writer
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = v2_writer_stream;
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    broker.generation.store(target_generation, Ordering::SeqCst);
+    *writer = v2_writer_stream;
 
-    let mut active = broker
+    let v1 = broker
         .active_core
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some(v1) = active.replace(v2) {
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .replace(v2);
+    if let Some(v1) = v1.as_ref() {
         // Unblocks v1's old broadcast thread's blocked read (shutdown
         // affects every fd sharing this socket's underlying open file
         // description, including that thread's own clone) so it exits
@@ -646,8 +680,24 @@ fn perform_swap(broker: &Arc<Broker>, v2: SpawnedCore, target_generation: u64) {
         // recognizes as an expected supersession, not a fault, since
         // `generation` was already bumped above.
         let _ = v1.stream.shutdown(Shutdown::Both);
-        drop(v1); // reaps v1 and cleans up its socket + frame_dir
     }
+
+    {
+        let mut clients = broker.clients.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        for frame in replay_frames {
+            clients.retain(|client| client.send(frame.clone()).is_ok());
+        }
+    }
+    drop(writer);
+
+    spawn_generation_tagged_broadcast(
+        v2_broadcast_stream,
+        Arc::clone(&broker.clients),
+        Arc::clone(&broker.generation),
+        target_generation,
+        broker.done.clone(),
+    );
+    drop(v1); // reap v1 after clients have already received v2's frames
 }
 
 /// Performs one cutover attempt: captures v1's tab list, spawns v2,
@@ -684,15 +734,16 @@ fn cutover(broker: &Arc<Broker>) -> control::ControlReply {
         }
     };
 
-    if let Err(reason) = replay_tabs(&mut v2.stream, &captured_tabs) {
-        return control::ControlReply::CutoverFailed { reason }; // v2 dropped here: killed, cleaned up
-    }
+    let replay_frames = match replay_tabs(&mut v2.stream, &captured_tabs) {
+        Ok(frames) => frames,
+        Err(reason) => return control::ControlReply::CutoverFailed { reason },
+    };
     if let Err(reason) = health_check(&mut v2.stream, &captured_tabs) {
         return control::ControlReply::CutoverFailed { reason }; // v2 dropped here: killed, cleaned up
     }
 
     let tabs_migrated = captured_tabs.len();
-    perform_swap(broker, v2, target_generation);
+    perform_swap(broker, v2, target_generation, replay_frames);
     control::ControlReply::CutoverDone { tabs_migrated }
 }
 
@@ -1699,6 +1750,30 @@ mod tests {
     }
 
     #[test]
+    fn superseded_generation_cannot_publish_a_late_frame() {
+        let (mut core_side, mut core_observed) = UnixStream::pair().unwrap();
+        let (sender, receiver) = mpsc::channel();
+        let clients = Arc::new(Mutex::new(vec![sender]));
+        let generation = AtomicU64::new(1);
+        write_server_message_with_ids(
+            &mut core_observed,
+            Some(1),
+            None,
+            &ServerMessage::FrameReady {
+                shm_path: "old-core-frame".into(),
+                width: 1,
+                height: 1,
+                generation: 12,
+            },
+        )
+        .unwrap();
+        drop(core_observed);
+
+        broadcast_core_to_clients_for_generation(&mut core_side, clients, Some((&generation, 0)));
+        assert!(receiver.try_recv().is_err(), "a late v1 frame must not follow v2 handoff");
+    }
+
+    #[test]
     fn capture_v1_tabs_filters_for_the_matching_request_id_and_ignores_other_traffic() {
         let (core_side, mut core_observed) = UnixStream::pair().unwrap();
         let core_writer = Arc::new(Mutex::new(core_side.try_clone().unwrap()));
@@ -1934,7 +2009,11 @@ mod tests {
             // no FrameReady expected, since url was None
         });
 
-        replay_tabs(&mut stream, &tabs).unwrap();
+        let frames = replay_tabs(&mut stream, &tabs).unwrap();
+        assert_eq!(frames.len(), 2, "only navigated tabs have replay frames");
+        assert!(frames.iter().all(|frame| frame.request_id.is_none()));
+        assert!(matches!(frames[0].message, ServerMessage::FrameReady { .. }));
+        assert!(matches!(frames[1].message, ServerMessage::FrameReady { .. }));
         responder.join().unwrap();
     }
 
@@ -1947,7 +2026,7 @@ mod tests {
             group_id: None,
         }];
 
-        replay_tabs(&mut stream, &tabs).unwrap();
+        assert!(replay_tabs(&mut stream, &tabs).unwrap().is_empty());
 
         // No message should ever have been sent for the blank default
         // tab -- dropping the peer without ever reading confirms
