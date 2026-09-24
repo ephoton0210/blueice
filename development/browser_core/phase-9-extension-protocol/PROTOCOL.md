@@ -68,8 +68,10 @@ compatible API versions for every manifest tier at startup, including
 no user-consent or authenticated gesture flow yet. Version negotiation is not
 permission. Do not interpret their presence or negotiation as a grant. The
 internal, process-lifetime registry retains optional declarations and has a
-live transition that denies subsequent operations after revocation; it does
-not yet remove previously registered network rules or published UI. No
+live transition that denies subsequent operations after revocation. Core
+also checks the grant generation when evaluating declarative navigation rules,
+so old rules become inert on revoke and cannot revive on regrant. Stale rule
+entries and already-published UI are not yet synchronously cleared. No
 client, guest, or public core IPC path can invoke that transition. The
 shared launcher IPC accepts both human frontend
 and AI clients, so an ordinary client message or toolbar activation cannot by

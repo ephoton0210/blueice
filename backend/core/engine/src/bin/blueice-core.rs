@@ -85,6 +85,7 @@ struct ExtensionService {
     socket: PathBuf,
     listener: UnixListener,
     registry: Arc<ExtensionRegistry>,
+    extension_id: String,
     storage: ExtensionStorage,
     required_authentication: Option<String>,
     runtime_start: Option<Arc<Mutex<mpsc::Receiver<()>>>>,
@@ -845,6 +846,7 @@ fn main() -> ExitCode {
                     socket: socket.clone(),
                     listener,
                     registry: Arc::new(registry_for_installed_extension(&installed)),
+                    extension_id: installed.extension_id().to_string(),
                     storage: match default_durable_storage_root() {
                         Ok(root) => ExtensionStorage::default().with_durable_root(root),
                         Err(reason) => {
@@ -904,6 +906,9 @@ fn main() -> ExitCode {
     let extension_socket = extension_service
         .as_ref()
         .map(|service| service.socket.clone());
+    let extension_permissions = extension_service.as_ref().map(|service| {
+        (Arc::clone(&service.registry), service.extension_id.clone())
+    });
     let (extension_requests, mut extension_host_child) = if let Some(service) = extension_service {
         let (tx, rx) = mpsc::channel();
         let required_authentication = service.required_authentication.clone();
@@ -1001,6 +1006,9 @@ fn main() -> ExitCode {
         let mut tabs =
             TabManager::new_with_history_snapshot_mode(args.width, args.height, history_mode);
         tabs.set_extension_capability_origins(extension_capability_origins);
+        if let Some((registry, extension_id)) = extension_permissions.as_ref() {
+            tabs.set_extension_permission_registry(Arc::clone(registry), extension_id.clone());
+        }
         tabs.set_downloads_source(Arc::new(match downloads_socket {
             Some(socket) => DownloadsSource::at(socket),
             None => DownloadsSource::new(),

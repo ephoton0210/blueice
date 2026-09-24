@@ -19,7 +19,9 @@
 use crate::downloads_page::DownloadsSource;
 use crate::gatekeeper_settings_page::GatekeeperSettingsSource;
 use crate::Page;
+use blueice_extension_host::ExtensionRegistry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::fmt;
 use std::sync::Arc;
 use url::Url;
 
@@ -39,22 +41,43 @@ pub(crate) enum ExtensionNavigationBlockRule {
     RedirectExactUrl { source_url: String, target_url: String },
 }
 
-/// Immutable navigation-start policy passed to the fetch worker. A scoped
-/// intercept grant applies only when the *target request URL* has one of its
-/// exact origins, including on redirect hops; the rule's host pattern alone
-/// cannot broaden that install-time authority.
+/// Navigation-start rule snapshot passed to the fetch worker. The rule set is
+/// immutable, but its live permission view is rechecked for every hop so a
+/// revoke invalidates even an in-flight snapshot. A scoped grant applies only
+/// when the target request URL has one of its exact origins.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ExtensionNavigationRuleSnapshot {
-    rules: HashSet<ExtensionNavigationBlockRule>,
+    rules: HashSet<(u64, ExtensionNavigationBlockRule)>,
     allowed_origins: Option<BTreeSet<String>>,
+    permission: Option<ExtensionPermissionView>,
+}
+
+#[derive(Clone)]
+struct ExtensionPermissionView {
+    registry: Arc<ExtensionRegistry>,
+    extension_id: String,
+}
+
+impl ExtensionPermissionView {
+    fn intercept_generation(&self) -> Option<u64> {
+        self.registry.capability_generation(&self.extension_id, "network:intercept")
+    }
+}
+
+impl fmt::Debug for ExtensionPermissionView {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("ExtensionPermissionView")
+            .field("extension_id", &self.extension_id).finish_non_exhaustive()
+    }
 }
 
 #[cfg(test)]
 impl From<HashSet<ExtensionNavigationBlockRule>> for ExtensionNavigationRuleSnapshot {
     fn from(rules: HashSet<ExtensionNavigationBlockRule>) -> Self {
         Self {
-            rules,
+            rules: rules.into_iter().map(|rule| (0, rule)).collect(),
             allowed_origins: None,
+            permission: None,
         }
     }
 }
@@ -249,11 +272,12 @@ pub struct TabManager {
     history_snapshot_mode: HistorySnapshotMode,
     /// Canonical HTTP(S) URL and ASCII host rules, keyed by an opaque
     /// core-allocated connection ID. Rules disappear on disconnect.
-    extension_navigation_block_rules: HashMap<u64, HashSet<ExtensionNavigationBlockRule>>,
+    extension_navigation_block_rules: HashMap<u64, (u64, HashSet<ExtensionNavigationBlockRule>)>,
     /// Install-time exact-origin restrictions for page-facing extension
     /// capabilities. The session checks these against the live tab at the
     /// same point it performs each read or write, avoiding a URL-check race.
     extension_capability_origins: BTreeMap<String, BTreeSet<String>>,
+    extension_permissions: Option<ExtensionPermissionView>,
 }
 
 impl TabManager {
@@ -302,7 +326,32 @@ impl TabManager {
             history_snapshot_mode,
             extension_navigation_block_rules: HashMap::new(),
             extension_capability_origins: BTreeMap::new(),
+            extension_permissions: None,
         }
+    }
+
+    /// Core installs its own registry view; external clients cannot supply
+    /// this gate. Navigation workers retain it in immutable rule snapshots so
+    /// a live revoke also invalidates rules already captured for a fetch.
+    pub fn set_extension_permission_registry(
+        &mut self,
+        registry: Arc<ExtensionRegistry>,
+        extension_id: String,
+    ) {
+        self.extension_permissions = Some(ExtensionPermissionView { registry, extension_id });
+        self.prune_stale_extension_navigation_rules();
+    }
+
+    fn intercept_generation(&self) -> Option<u64> {
+        self.extension_permissions.as_ref()
+            .map_or(Some(0), ExtensionPermissionView::intercept_generation)
+    }
+
+    fn prune_stale_extension_navigation_rules(&mut self) {
+        let current = self.intercept_generation();
+        self.extension_navigation_block_rules.retain(|_, (generation, _)| {
+            current == Some(*generation)
+        });
     }
 
     pub fn set_extension_capability_origins(&mut self, scopes: BTreeMap<String, BTreeSet<String>>) {
@@ -386,6 +435,7 @@ impl TabManager {
         source_url: String,
         target_url: String,
     ) -> Result<(), String> {
+        self.prune_stale_extension_navigation_rules();
         let source_url = canonical_http_navigation_url(&source_url)?;
         let target_url = canonical_http_navigation_url(&target_url)?;
         let source = Url::parse(&source_url).expect("a canonical URL must parse");
@@ -393,7 +443,7 @@ impl TabManager {
         if source.origin() != target.origin() || source_url == target_url {
             return Err("navigation redirects must change the URL within one exact origin".to_string());
         }
-        if self.extension_navigation_block_rules.values().flat_map(|rules| rules.iter()).any(|rule| {
+        if self.extension_navigation_block_rules.values().flat_map(|(_, rules)| rules.iter()).any(|rule| {
             matches!(rule, ExtensionNavigationBlockRule::RedirectExactUrl {
                 source_url: existing_source, target_url: existing_target,
             } if existing_source == &source_url && existing_target != &target_url)
@@ -410,10 +460,16 @@ impl TabManager {
         connection_id: u64,
         rule: ExtensionNavigationBlockRule,
     ) -> Result<(), String> {
-        let rules = self
+        let generation = self.intercept_generation()
+            .ok_or_else(|| "network:intercept is not currently granted".to_string())?;
+        self.prune_stale_extension_navigation_rules();
+        let (stored_generation, rules) = self
             .extension_navigation_block_rules
             .entry(connection_id)
-            .or_default();
+            .or_insert_with(|| (generation, HashSet::new()));
+        if *stored_generation != generation {
+            return Err("network:intercept grant changed while registering a rule".to_string());
+        }
         if !rules.contains(&rule)
             && rules.len() >= MAX_EXTENSION_NAVIGATION_RULES_PER_CONNECTION
         {
@@ -432,21 +488,21 @@ impl TabManager {
         self.extension_navigation_block_rules.remove(&connection_id);
     }
 
-    /// Takes a per-navigation immutable view of every currently live rule.
-    /// The background fetch worker receives this ordinary data rather than a
-    /// reference to `TabManager`, keeping the session thread the sole owner of
-    /// live tab state while still letting every redirect hop be evaluated.
+    /// Takes a per-navigation immutable rule set plus its live grant view.
+    /// The background fetch worker receives no `TabManager` reference; the
+    /// session thread remains the sole owner of live tab state.
     pub(crate) fn extension_navigation_block_rule_snapshot(&self) -> ExtensionNavigationRuleSnapshot {
         ExtensionNavigationRuleSnapshot {
             rules: self
                 .extension_navigation_block_rules
                 .values()
-                .flat_map(|rules| rules.iter().cloned())
+                .flat_map(|(generation, rules)| rules.iter().cloned().map(|rule| (*generation, rule)))
                 .collect(),
             allowed_origins: self
                 .extension_capability_origins
                 .get("network:intercept")
                 .cloned(),
+            permission: self.extension_permissions.clone(),
         }
     }
 
@@ -875,6 +931,11 @@ pub(crate) fn extension_navigation_rules_block_url(
     snapshot: &ExtensionNavigationRuleSnapshot,
     url: &str,
 ) -> bool {
+    let active_generation = match snapshot.permission.as_ref() {
+        Some(permission) => permission.intercept_generation(),
+        None => Some(0),
+    };
+    let Some(active_generation) = active_generation else { return false };
     let Ok(mut parsed) = Url::parse(url) else {
         return false;
     };
@@ -892,7 +953,7 @@ pub(crate) fn extension_navigation_rules_block_url(
     let has_credentials = !parsed.username().is_empty() || parsed.password().is_some();
     parsed.set_fragment(None);
     let canonical_url = parsed.to_string();
-    snapshot.rules.iter().any(|rule| match rule {
+    snapshot.rules.iter().filter(|(generation, _)| *generation == active_generation).any(|(_, rule)| match rule {
         ExtensionNavigationBlockRule::ExactUrl(blocked) => !has_credentials && blocked == &canonical_url,
         ExtensionNavigationBlockRule::Host(blocked) => host_matches_block_rule(&host, blocked),
         ExtensionNavigationBlockRule::PathPrefix { host: blocked, path_prefix } => {
@@ -913,6 +974,10 @@ pub(crate) fn extension_navigation_rules_redirect_url(
     snapshot: &ExtensionNavigationRuleSnapshot,
     url: &str,
 ) -> Option<String> {
+    let active_generation = match snapshot.permission.as_ref() {
+        Some(permission) => permission.intercept_generation(),
+        None => Some(0),
+    }?;
     let mut parsed = Url::parse(url).ok()?;
     if !matches!(parsed.scheme(), "http" | "https")
         || !parsed.username().is_empty()
@@ -927,7 +992,7 @@ pub(crate) fn extension_navigation_rules_redirect_url(
     }
     parsed.set_fragment(None);
     let canonical_url = parsed.to_string();
-    snapshot.rules.iter().find_map(|rule| match rule {
+    snapshot.rules.iter().filter(|(generation, _)| *generation == active_generation).find_map(|(_, rule)| match rule {
         ExtensionNavigationBlockRule::RedirectExactUrl { source_url, target_url }
             if source_url == &canonical_url => Some(target_url.clone()),
         _ => None,
@@ -1056,6 +1121,48 @@ mod tests {
             "https://127.0.0.1:4312/page"
         ));
         assert!(!extension_navigation_rules_block_url(&snapshot, "about:settings"));
+    }
+
+    #[test]
+    fn optional_intercept_revocation_invalidates_captured_rules_and_regrant_does_not_resurrect_them() {
+        let root = std::env::temp_dir().join(format!(
+            "blueice-optional-network-generation-{}", std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let manifest = root.join("extension.json");
+        std::fs::write(&manifest,
+            r#"{"name":"Optional network","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["network:intercept"]}}"#
+        ).unwrap();
+        std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
+        let installed = blueice_extension_host::load_installed_extension(&manifest).unwrap();
+        let id = installed.extension_id().to_string();
+        let registry = Arc::new(blueice_extension_host::registry_for_installed_extension(&installed));
+        let mut tabs = TabManager::new(320.0, 200.0);
+        tabs.set_extension_permission_registry(Arc::clone(&registry), id.clone());
+        assert!(tabs.add_extension_navigation_block_host_rule(7, "old.example.test".into()).is_err());
+
+        assert!(registry.grant_optional(&id, "network:intercept").unwrap());
+        tabs.add_extension_navigation_block_host_rule(7, "old.example.test".into()).unwrap();
+        tabs.add_extension_navigation_redirect_rule(7,
+            "https://example.test/old".into(), "https://example.test/new".into()).unwrap();
+        let captured = tabs.extension_navigation_block_rule_snapshot();
+        assert!(extension_navigation_rules_block_url(&captured, "https://old.example.test/page"));
+        assert_eq!(extension_navigation_rules_redirect_url(&captured, "https://example.test/old"),
+            Some("https://example.test/new".into()));
+
+        assert!(registry.revoke_optional(&id, "network:intercept").unwrap());
+        assert!(!extension_navigation_rules_block_url(&captured, "https://old.example.test/page"));
+        assert_eq!(extension_navigation_rules_redirect_url(&captured, "https://example.test/old"), None);
+        assert!(registry.grant_optional(&id, "network:intercept").unwrap());
+        assert!(!extension_navigation_rules_block_url(&captured, "https://old.example.test/page"));
+        assert_eq!(extension_navigation_rules_redirect_url(&captured, "https://example.test/old"), None);
+
+        tabs.add_extension_navigation_block_host_rule(7, "new.example.test".into()).unwrap();
+        let renewed = tabs.extension_navigation_block_rule_snapshot();
+        assert!(!extension_navigation_rules_block_url(&renewed, "https://old.example.test/page"));
+        assert!(extension_navigation_rules_block_url(&renewed, "https://new.example.test/page"));
+        assert_eq!(extension_navigation_rules_redirect_url(&renewed, "https://example.test/old"), None);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

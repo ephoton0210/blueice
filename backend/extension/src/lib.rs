@@ -357,8 +357,15 @@ const GATEKEEPER_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct ExtensionRegistry {
     grants: HashMap<String, HashSet<String>>,
     optional_declarations: HashMap<String, HashSet<String>>,
-    optional_grants: RwLock<HashMap<String, HashSet<String>>>,
+    optional_grants: RwLock<HashMap<String, HashMap<String, OptionalGrantState>>>,
     supported_versions: HashMap<String, CapabilityVersionWindow>,
+}
+
+#[derive(Default)]
+struct OptionalGrantState {
+    granted: bool,
+    generation: u64,
+    exhausted: bool,
 }
 
 impl Default for ExtensionRegistry {
@@ -431,32 +438,60 @@ impl ExtensionRegistry {
             .insert(capability.into());
     }
 
-    /// Internal grant transition for a future separately authenticated human
-    /// approval channel. This deliberately has crate-only visibility until
-    /// that authority exists; merely negotiating or requesting a declared
-    /// optional capability cannot call it. Returns whether state changed.
-    #[allow(dead_code)] // Wired only after a separately authenticated approval channel exists.
-    pub(crate) fn grant_optional(&self, extension_id: &str, capability: &str) -> Result<bool, String> {
+    /// In-process transition reserved for a separately authenticated human
+    /// approval channel. No guest or public IPC message can invoke it.
+    /// Returns whether state changed.
+    pub fn grant_optional(&self, extension_id: &str, capability: &str) -> Result<bool, String> {
         if !self.optional_declarations.get(extension_id)
             .is_some_and(|caps| caps.contains(capability)) {
             return Err(format!("{capability} is not an installed optional declaration for {extension_id}"));
         }
         let mut grants = self.optional_grants.write()
             .map_err(|_| "optional grant state is unavailable".to_string())?;
-        Ok(grants.entry(extension_id.to_string()).or_default().insert(capability.to_string()))
+        let state = grants.entry(extension_id.to_string()).or_default()
+            .entry(capability.to_string()).or_default();
+        if state.exhausted {
+            return Err("optional grant generation is exhausted".to_string());
+        }
+        let changed = !state.granted;
+        state.granted = true;
+        Ok(changed)
     }
 
-    /// Revocation is live even for an already-negotiated connection: every
-    /// later operation checks the registry again, not a handshake snapshot.
-    #[allow(dead_code)] // Wired only after a separately authenticated approval channel exists.
-    pub(crate) fn revoke_optional(&self, extension_id: &str, capability: &str) -> Result<bool, String> {
+    /// Every later operation on an already-negotiated connection rechecks
+    /// this state. A changed grant also advances its generation, so a future
+    /// regrant cannot reactivate persistent effects from the old generation.
+    pub fn revoke_optional(&self, extension_id: &str, capability: &str) -> Result<bool, String> {
         if !self.optional_declarations.get(extension_id)
             .is_some_and(|caps| caps.contains(capability)) {
             return Err(format!("{capability} is not an installed optional declaration for {extension_id}"));
         }
         let mut grants = self.optional_grants.write()
             .map_err(|_| "optional grant state is unavailable".to_string())?;
-        Ok(grants.get_mut(extension_id).is_some_and(|caps| caps.remove(capability)))
+        let Some(state) = grants.get_mut(extension_id).and_then(|caps| caps.get_mut(capability)) else {
+            return Ok(false);
+        };
+        if !state.granted {
+            return Ok(false);
+        }
+        match state.generation.checked_add(1) {
+            Some(next) => state.generation = next,
+            None => state.exhausted = true,
+        }
+        state.granted = false;
+        Ok(true)
+    }
+
+    /// A live capability's generation is a lease for core-owned effects.
+    /// `None` is fail-closed, including a poisoned lock or an ungranted tier.
+    /// A later regrant always has a different generation from an old lease.
+    pub fn capability_generation(&self, extension_id: &str, capability: &str) -> Option<u64> {
+        if self.grants.get(extension_id).is_some_and(|caps| caps.contains(capability)) {
+            return Some(0);
+        }
+        self.optional_grants.read().ok()?
+            .get(extension_id)?.get(capability)
+            .and_then(|state| state.granted.then_some(state.generation))
     }
 
     /// The actual enforcement point: does `extension_id` currently hold
@@ -465,13 +500,7 @@ impl ExtensionRegistry {
     /// docs for why an unknown identity isn't rejected outright at
     /// handshake time.
     pub fn has_capability(&self, extension_id: &str, capability: &str) -> bool {
-        self.grants
-            .get(extension_id)
-            .is_some_and(|caps| caps.contains(capability))
-            || self.optional_grants.read().ok()
-                .and_then(|grants| grants.get(extension_id)
-                    .map(|caps| caps.contains(capability)))
-                .unwrap_or(false)
+        self.capability_generation(extension_id, capability).is_some()
     }
 
     /// Returns why a declared API version is unavailable, if it cannot
@@ -3113,6 +3142,7 @@ mod tests {
         registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
         assert!(registry.grant_optional("other-extension", CAPABILITY_DOM_READ).is_err());
         assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_WRITE).is_err());
+        assert_eq!(registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ), None);
         let registry = Arc::new(registry);
         let (mut client, mut server) = UnixStream::pair().unwrap();
         let handler_registry = Arc::clone(&registry);
@@ -3128,6 +3158,7 @@ mod tests {
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ));
         assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
+        assert_eq!(registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ), Some(0));
         assert!(!registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
         assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomReadResult {
@@ -3135,7 +3166,11 @@ mod tests {
         });
 
         assert!(registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
+        assert_eq!(registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ), None);
         assert!(!registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
+        assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
+        assert_eq!(registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ), Some(1));
+        assert!(registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap());
         write_extension_request(&mut client, &ExtensionRequest::DomRead).unwrap();
         assert!(matches!(read_extension_reply(&mut client).unwrap(),
             ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ));
