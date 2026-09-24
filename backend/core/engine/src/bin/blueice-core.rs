@@ -432,10 +432,12 @@ fn request_network_block_url(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     connection_id: u64,
     url: String,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::RegisterNetworkBlockUrl {
         connection_id,
+        grant_generation,
         url,
         reply: reply_tx,
     })
@@ -449,10 +451,12 @@ fn request_network_block_host(
     tx: &mpsc::Sender<ExtensionPageRequest>,
     connection_id: u64,
     host: String,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::RegisterNetworkBlockHost {
         connection_id,
+        grant_generation,
         host,
         reply: reply_tx,
     })
@@ -467,10 +471,12 @@ fn request_network_block_path_prefix(
     connection_id: u64,
     host: String,
     path_prefix: String,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::RegisterNetworkBlockPathPrefix {
         connection_id,
+        grant_generation,
         host,
         path_prefix,
         reply: reply_tx,
@@ -486,10 +492,12 @@ fn request_network_redirect_url(
     connection_id: u64,
     source_url: String,
     target_url: String,
+    grant_generation: u64,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = mpsc::channel();
     tx.send(ExtensionPageRequest::RegisterNetworkRedirectUrl {
         connection_id,
+        grant_generation,
         source_url,
         target_url,
         reply: reply_tx,
@@ -705,7 +713,9 @@ fn spawn_extension_listener(
                                         .to_string(),
                                 )
                             },
-                            move |url| request_network_block_url(&rule_tx, connection_id, url),
+                            move |url, grant_generation| request_network_block_url(
+                                &rule_tx, connection_id, url, grant_generation,
+                            ),
                             move || clear_network_block_urls(&clear_tx, connection_id),
                         )
                         .with_storage(storage)
@@ -715,17 +725,17 @@ fn spawn_extension_listener(
                         .with_network_trace_observer(move |tab_id| {
                             request_network_trace(&observe_trace_tx, tab_id)
                         })
-                        .with_network_block_host(move |host| {
-                            request_network_block_host(&host_rule_tx, connection_id, host)
+                        .with_network_block_host(move |host, grant_generation| {
+                            request_network_block_host(&host_rule_tx, connection_id, host, grant_generation)
                         })
-                        .with_network_block_path_prefix(move |host, path_prefix| {
+                        .with_network_block_path_prefix(move |host, path_prefix, grant_generation| {
                             request_network_block_path_prefix(
-                                &path_rule_tx, connection_id, host, path_prefix,
+                                &path_rule_tx, connection_id, host, path_prefix, grant_generation,
                             )
                         })
-                        .with_network_redirect_url(move |source_url, target_url| {
+                        .with_network_redirect_url(move |source_url, target_url, grant_generation| {
                             request_network_redirect_url(
-                                &redirect_rule_tx, connection_id, source_url, target_url,
+                                &redirect_rule_tx, connection_id, source_url, target_url, grant_generation,
                             )
                         })
                         .with_toolbar_button(move |label| {

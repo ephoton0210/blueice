@@ -347,6 +347,24 @@ impl TabManager {
             .map_or(Some(0), ExtensionPermissionView::intercept_generation)
     }
 
+    /// Serializes a core-owned publication with the same optional grant
+    /// generation captured before Gatekeeper review. A late queued request
+    /// cannot borrow a newer grant after its caller timed out.
+    pub(crate) fn with_stable_extension_capability<T>(
+        &mut self,
+        capability: &str,
+        expected_generation: u64,
+        effect: impl FnOnce(&mut Self) -> T,
+    ) -> Result<T, String> {
+        match self.extension_permissions.clone() {
+            Some(view) => view.registry.with_stable_capability(
+                &view.extension_id, capability, expected_generation, || effect(self),
+            ),
+            None if expected_generation == 0 => Ok(effect(self)),
+            None => Err(format!("{capability} grant generation is unavailable")),
+        }
+    }
+
     fn prune_stale_extension_navigation_rules(&mut self) {
         let current = self.intercept_generation();
         self.extension_navigation_block_rules.retain(|_, (generation, _)| {
@@ -1157,9 +1175,16 @@ mod tests {
         assert!(!extension_navigation_rules_block_url(&captured, "https://old.example.test/page"));
         assert_eq!(extension_navigation_rules_redirect_url(&captured, "https://example.test/old"), None);
 
-        tabs.add_extension_navigation_block_host_rule(7, "new.example.test".into()).unwrap();
+        assert!(tabs.with_stable_extension_capability("network:intercept", 0, |tabs| {
+            tabs.add_extension_navigation_block_host_rule(7, "stale.example.test".into())
+        }).is_err(), "a queued registration cannot borrow the new grant");
+        let fresh_generation = registry.capability_generation(&id, "network:intercept").unwrap();
+        tabs.with_stable_extension_capability("network:intercept", fresh_generation, |tabs| {
+            tabs.add_extension_navigation_block_host_rule(7, "new.example.test".into())
+        }).unwrap().unwrap();
         let renewed = tabs.extension_navigation_block_rule_snapshot();
         assert!(!extension_navigation_rules_block_url(&renewed, "https://old.example.test/page"));
+        assert!(!extension_navigation_rules_block_url(&renewed, "https://stale.example.test/page"));
         assert!(extension_navigation_rules_block_url(&renewed, "https://new.example.test/page"));
         assert_eq!(extension_navigation_rules_redirect_url(&renewed, "https://example.test/old"), None);
         let _ = std::fs::remove_dir_all(root);

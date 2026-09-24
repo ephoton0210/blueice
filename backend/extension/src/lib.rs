@@ -73,7 +73,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::sync::{mpsc, Arc, Mutex, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
 /// The one hardcoded identity used only when no installed manifest is supplied.
@@ -356,16 +357,18 @@ const GATEKEEPER_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 /// boundary; standalone/manual protocol development intentionally does not.
 pub struct ExtensionRegistry {
     grants: HashMap<String, HashSet<String>>,
-    optional_declarations: HashMap<String, HashSet<String>>,
-    optional_grants: RwLock<HashMap<String, HashMap<String, OptionalGrantState>>>,
+    optional_declarations: HashMap<String, HashMap<String, OptionalGrantState>>,
     supported_versions: HashMap<String, CapabilityVersionWindow>,
 }
 
 #[derive(Default)]
 struct OptionalGrantState {
-    granted: bool,
-    generation: u64,
-    exhausted: bool,
+    /// Serializes transitions with a reviewed effect's synchronous core
+    /// acknowledgement. Readers in the core session use `published` instead
+    /// of taking this lock, avoiding a writer-preference deadlock.
+    serialize: Mutex<()>,
+    /// Low bit is the grant; upper bits are its monotonic generation.
+    published: AtomicU64,
 }
 
 impl Default for ExtensionRegistry {
@@ -380,7 +383,6 @@ impl ExtensionRegistry {
         Self {
             grants: HashMap::new(),
             optional_declarations: HashMap::new(),
-            optional_grants: RwLock::new(HashMap::new()),
             supported_versions: HashMap::new(),
         }
     }
@@ -435,63 +437,86 @@ impl ExtensionRegistry {
         self.optional_declarations
             .entry(extension_id.into())
             .or_default()
-            .insert(capability.into());
+            .entry(capability.into())
+            .or_default();
     }
 
     /// In-process transition reserved for a separately authenticated human
     /// approval channel. No guest or public IPC message can invoke it.
     /// Returns whether state changed.
     pub fn grant_optional(&self, extension_id: &str, capability: &str) -> Result<bool, String> {
-        if !self.optional_declarations.get(extension_id)
-            .is_some_and(|caps| caps.contains(capability)) {
-            return Err(format!("{capability} is not an installed optional declaration for {extension_id}"));
-        }
-        let mut grants = self.optional_grants.write()
-            .map_err(|_| "optional grant state is unavailable".to_string())?;
-        let state = grants.entry(extension_id.to_string()).or_default()
-            .entry(capability.to_string()).or_default();
-        if state.exhausted {
+        let state = self.optional_state(extension_id, capability)?;
+        let _serial = state.serialize.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let encoded = state.published.load(Ordering::Acquire);
+        if encoded == u64::MAX - 1 {
             return Err("optional grant generation is exhausted".to_string());
         }
-        let changed = !state.granted;
-        state.granted = true;
-        Ok(changed)
+        if encoded & 1 == 1 {
+            return Ok(false);
+        }
+        state.published.store(encoded + 1, Ordering::Release);
+        Ok(true)
     }
 
     /// Every later operation on an already-negotiated connection rechecks
     /// this state. A changed grant also advances its generation, so a future
     /// regrant cannot reactivate persistent effects from the old generation.
     pub fn revoke_optional(&self, extension_id: &str, capability: &str) -> Result<bool, String> {
-        if !self.optional_declarations.get(extension_id)
-            .is_some_and(|caps| caps.contains(capability)) {
-            return Err(format!("{capability} is not an installed optional declaration for {extension_id}"));
-        }
-        let mut grants = self.optional_grants.write()
-            .map_err(|_| "optional grant state is unavailable".to_string())?;
-        let Some(state) = grants.get_mut(extension_id).and_then(|caps| caps.get_mut(capability)) else {
-            return Ok(false);
-        };
-        if !state.granted {
+        let state = self.optional_state(extension_id, capability)?;
+        let _serial = state.serialize.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let encoded = state.published.load(Ordering::Acquire);
+        if encoded & 1 == 0 {
             return Ok(false);
         }
-        match state.generation.checked_add(1) {
-            Some(next) => state.generation = next,
-            None => state.exhausted = true,
-        }
-        state.granted = false;
+        state.published.store(encoded.checked_add(1).unwrap_or(u64::MAX - 1), Ordering::Release);
         Ok(true)
     }
 
+    fn optional_state(&self, extension_id: &str, capability: &str) -> Result<&OptionalGrantState, String> {
+        self.optional_declarations.get(extension_id)
+            .and_then(|caps| caps.get(capability))
+            .ok_or_else(|| format!(
+                "{capability} is not an installed optional declaration for {extension_id}"
+            ))
+    }
+
     /// A live capability's generation is a lease for core-owned effects.
-    /// `None` is fail-closed, including a poisoned lock or an ungranted tier.
+    /// `None` is fail-closed for an ungranted tier. This is a lock-free read so
+    /// a core session can check it while a registration guard is held by the
+    /// extension worker waiting for that session's acknowledgement.
     /// A later regrant always has a different generation from an old lease.
     pub fn capability_generation(&self, extension_id: &str, capability: &str) -> Option<u64> {
         if self.grants.get(extension_id).is_some_and(|caps| caps.contains(capability)) {
             return Some(0);
         }
-        self.optional_grants.read().ok()?
-            .get(extension_id)?.get(capability)
-            .and_then(|state| state.granted.then_some(state.generation))
+        let encoded = self.optional_declarations.get(extension_id)?
+            .get(capability)?.published.load(Ordering::Acquire);
+        (encoded & 1 == 1).then_some(encoded >> 1)
+    }
+
+    /// Runs one already-reviewed, core-owned effect only while its original
+    /// grant generation is still current. The serialization guard spans the effect's
+    /// synchronous core acknowledgement, so a concurrent revoke cannot
+    /// complete in between the final permission check and publication.
+    /// Callers must not grant or revoke this registry from `effect`.
+    pub fn with_stable_capability<T>(
+        &self,
+        extension_id: &str,
+        capability: &str,
+        expected_generation: u64,
+        effect: impl FnOnce() -> T,
+    ) -> Result<T, String> {
+        if self.grants.get(extension_id).is_some_and(|caps| caps.contains(capability)) {
+            return (expected_generation == 0).then(effect)
+                .ok_or_else(|| grant_changed_reason(capability));
+        }
+        let state = self.optional_state(extension_id, capability)?;
+        let _serial = state.serialize.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let encoded = state.published.load(Ordering::Acquire);
+        if encoded & 1 == 0 || encoded >> 1 != expected_generation {
+            return Err(grant_changed_reason(capability));
+        }
+        Ok(effect())
     }
 
     /// The actual enforcement point: does `extension_id` currently hold
@@ -552,6 +577,10 @@ impl ExtensionRegistry {
     }
 }
 
+fn grant_changed_reason(capability: &str) -> String {
+    format!("{capability} grant changed during review")
+}
+
 /// Connection-scoped identity plus the subset of capability declarations
 /// whose API version was successfully negotiated. The grant lookup stays
 /// in [`ExtensionRegistry`], so the extension cannot manufacture either
@@ -608,6 +637,39 @@ fn capability_denial_reason(
         ));
     }
     None
+}
+
+fn network_registration_generation(
+    registry: &ExtensionRegistry,
+    identity: &ConnectionIdentity,
+    minimum_version: u32,
+) -> Result<u64, String> {
+    if let Some(reason) = capability_denial_reason(
+        registry, identity, CAPABILITY_NETWORK_INTERCEPT, minimum_version,
+    ) {
+        return Err(reason);
+    }
+    registry.capability_generation(&identity.extension_id, CAPABILITY_NETWORK_INTERCEPT)
+        .ok_or_else(|| format!(
+            "{} is no longer granted {CAPABILITY_NETWORK_INTERCEPT}", identity.extension_id
+        ))
+}
+
+fn write_network_registration_reply<S: Write>(
+    stream: &mut S,
+    result: Result<(), String>,
+) -> io::Result<()> {
+    match result {
+        Ok(()) => write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck),
+        Err(reason) if reason == grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT) => {
+            write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
+            })
+        }
+        Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
+            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
+        }),
+    }
 }
 
 fn check_extension_action(
@@ -759,9 +821,9 @@ pub struct ExtensionActionDelegates<R, W, N, B, C> {
     write_dom: W,
     register_network_intercept: N,
     register_network_block_url: B,
-    register_network_block_host: Box<dyn FnMut(String) -> Result<(), String> + Send>,
-    register_network_block_path_prefix: Box<dyn FnMut(String, String) -> Result<(), String> + Send>,
-    register_network_redirect_url: Box<dyn FnMut(String, String) -> Result<(), String> + Send>,
+    register_network_block_host: Box<dyn FnMut(String, u64) -> Result<(), String> + Send>,
+    register_network_block_path_prefix: Box<dyn FnMut(String, String, u64) -> Result<(), String> + Send>,
+    register_network_redirect_url: Box<dyn FnMut(String, String, u64) -> Result<(), String> + Send>,
     clear_network_block_urls: C,
     observe_network: Box<dyn FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send>,
     observe_network_trace: Box<dyn FnMut(u64) -> Result<Option<NetworkTraceInfo>, String> + Send>,
@@ -789,13 +851,13 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
             write_dom,
             register_network_intercept,
             register_network_block_url,
-            register_network_block_host: Box::new(|_| {
+            register_network_block_host: Box::new(|_, _| {
                 Err("network:intercept v4 needs a core-backed host rule store".to_string())
             }),
-            register_network_block_path_prefix: Box::new(|_, _| {
+            register_network_block_path_prefix: Box::new(|_, _, _| {
                 Err("network:intercept v5 needs a core-backed path-prefix rule store".to_string())
             }),
-            register_network_redirect_url: Box::new(|_, _| {
+            register_network_redirect_url: Box::new(|_, _, _| {
                 Err("network:intercept v6 needs a core-backed redirect rule store".to_string())
             }),
             clear_network_block_urls,
@@ -855,7 +917,7 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
     /// Binds v4 declarative host blocking to core's connection-owned rules.
     pub fn with_network_block_host(
         mut self,
-        blocker: impl FnMut(String) -> Result<(), String> + Send + 'static,
+        blocker: impl FnMut(String, u64) -> Result<(), String> + Send + 'static,
     ) -> Self {
         self.register_network_block_host = Box::new(blocker);
         self
@@ -864,7 +926,7 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
     /// Binds v5 literal host/path-prefix blocking to core's owned rule set.
     pub fn with_network_block_path_prefix(
         mut self,
-        blocker: impl FnMut(String, String) -> Result<(), String> + Send + 'static,
+        blocker: impl FnMut(String, String, u64) -> Result<(), String> + Send + 'static,
     ) -> Self {
         self.register_network_block_path_prefix = Box::new(blocker);
         self
@@ -873,7 +935,7 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
     /// Binds v6 exact same-origin navigation rewrites to core's rule store.
     pub fn with_network_redirect_url(
         mut self,
-        redirector: impl FnMut(String, String) -> Result<(), String> + Send + 'static,
+        redirector: impl FnMut(String, String, u64) -> Result<(), String> + Send + 'static,
     ) -> Self {
         self.register_network_redirect_url = Box::new(redirector);
         self
@@ -1033,7 +1095,7 @@ where
             read_dom,
             write_dom,
             register_network_intercept,
-            |_| {
+            |_, _| {
                 Err(
                     "network:intercept version 2 needs a core-backed declarative rule handler"
                         .to_string(),
@@ -1077,7 +1139,7 @@ where
         &blueice_ipc::extension::DomWriteTarget,
     ) -> Result<(), String>,
     N: FnMut() -> Result<(), String>,
-    B: FnMut(String) -> Result<(), String>,
+    B: FnMut(String, u64) -> Result<(), String>,
     C: FnMut() -> Result<(), String>,
 {
     let ExtensionActionDelegates {
@@ -2082,18 +2144,15 @@ where
                 }
             }
             ExtensionRequest::RegisterNetworkBlockUrl { url } => {
-                if let Some(reason) =
-                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 2)
-                {
-                    write_extension_reply(
-                        stream,
-                        &ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                            reason,
-                        },
-                    )?;
-                    continue;
-                }
+                let grant_generation = match network_registration_generation(registry, &identity, 2) {
+                    Ok(generation) => generation,
+                    Err(reason) => {
+                        write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
+                        })?;
+                        continue;
+                    }
+                };
                 if url.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES {
                     write_extension_reply(
                         stream,
@@ -2116,18 +2175,15 @@ where
                     CAPABILITY_NETWORK_INTERCEPT,
                     "action=register-exact-navigation-block".to_string(),
                 ) {
-                    Ok(GatekeeperReply::Cleared) => match register_network_block_url(url) {
-                        Ok(()) => {
-                            write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?
-                        }
-                        Err(reason) => write_extension_reply(
-                            stream,
-                            &ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                                reason,
-                            },
-                        )?,
-                    },
+                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(
+                        &identity.extension_id, CAPABILITY_NETWORK_INTERCEPT,
+                    ) != Some(grant_generation) => write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                        reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
+                    })?,
+                    Ok(GatekeeperReply::Cleared) => write_network_registration_reply(
+                        stream, register_network_block_url(url, grant_generation),
+                    )?,
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
                             stream,
@@ -2151,18 +2207,15 @@ where
                 }
             }
             ExtensionRequest::RegisterNetworkBlockHost { host } => {
-                if let Some(reason) =
-                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 4)
-                {
-                    write_extension_reply(
-                        stream,
-                        &ExtensionReply::CapabilityDenied {
-                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                            reason,
-                        },
-                    )?;
-                    continue;
-                }
+                let grant_generation = match network_registration_generation(registry, &identity, 4) {
+                    Ok(generation) => generation,
+                    Err(reason) => {
+                        write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
+                        })?;
+                        continue;
+                    }
+                };
                 if host.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_HOST_BYTES {
                     write_extension_reply(
                         stream,
@@ -2185,18 +2238,15 @@ where
                     CAPABILITY_NETWORK_INTERCEPT,
                     "action=register-host-navigation-block".to_string(),
                 ) {
-                    Ok(GatekeeperReply::Cleared) => match register_network_block_host(host) {
-                        Ok(()) => {
-                            write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?
-                        }
-                        Err(reason) => write_extension_reply(
-                            stream,
-                            &ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                                reason,
-                            },
-                        )?,
-                    },
+                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(
+                        &identity.extension_id, CAPABILITY_NETWORK_INTERCEPT,
+                    ) != Some(grant_generation) => write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                        reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
+                    })?,
+                    Ok(GatekeeperReply::Cleared) => write_network_registration_reply(
+                        stream, register_network_block_host(host, grant_generation),
+                    )?,
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(
                             stream,
@@ -2220,15 +2270,15 @@ where
                 }
             }
             ExtensionRequest::RegisterNetworkBlockPathPrefix { host, path_prefix } => {
-                if let Some(reason) =
-                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 5)
-                {
-                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                        reason,
-                    })?;
-                    continue;
-                }
+                let grant_generation = match network_registration_generation(registry, &identity, 5) {
+                    Ok(generation) => generation,
+                    Err(reason) => {
+                        write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
+                        })?;
+                        continue;
+                    }
+                };
                 if host.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_HOST_BYTES
                     || path_prefix.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_PATH_BYTES
                 {
@@ -2247,14 +2297,15 @@ where
                     CAPABILITY_NETWORK_INTERCEPT,
                     "action=register-path-prefix-navigation-block".to_string(),
                 ) {
+                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(
+                        &identity.extension_id, CAPABILITY_NETWORK_INTERCEPT,
+                    ) != Some(grant_generation) => write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                        reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
+                    })?,
                     Ok(GatekeeperReply::Cleared) => {
-                        match register_network_block_path_prefix(host, path_prefix) {
-                            Ok(()) => write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?,
-                            Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
-                                reason,
-                            })?,
-                        }
+                        write_network_registration_reply(stream,
+                            register_network_block_path_prefix(host, path_prefix, grant_generation))?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
@@ -2273,14 +2324,15 @@ where
                 }
             }
             ExtensionRequest::RegisterNetworkRedirectUrl { source_url, target_url } => {
-                if let Some(reason) = capability_denial_reason(
-                    registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 6,
-                ) {
-                    write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
-                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
-                    })?;
-                    continue;
-                }
+                let grant_generation = match network_registration_generation(registry, &identity, 6) {
+                    Ok(generation) => generation,
+                    Err(reason) => {
+                        write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
+                        })?;
+                        continue;
+                    }
+                };
                 if source_url.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES
                     || target_url.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_URL_BYTES
                 {
@@ -2299,13 +2351,15 @@ where
                     CAPABILITY_NETWORK_INTERCEPT,
                     "action=register-same-origin-navigation-redirect".to_string(),
                 ) {
+                    Ok(GatekeeperReply::Cleared) if registry.capability_generation(
+                        &identity.extension_id, CAPABILITY_NETWORK_INTERCEPT,
+                    ) != Some(grant_generation) => write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+                        capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                        reason: grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT),
+                    })?,
                     Ok(GatekeeperReply::Cleared) => {
-                        match register_network_redirect_url(source_url, target_url) {
-                            Ok(()) => write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?,
-                            Err(reason) => write_extension_reply(stream, &ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(), reason,
-                            })?,
-                        }
+                        write_network_registration_reply(stream,
+                            register_network_redirect_url(source_url, target_url, grant_generation))?;
                     }
                     Ok(GatekeeperReply::Rejected { reason, category }) => {
                         write_extension_reply(stream, &ExtensionReply::GatekeeperBlocked {
@@ -2679,7 +2733,7 @@ mod tests {
                     |_| Ok(String::new()),
                     unused_write_delegate,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     || Ok(()),
                 )
                 .with_network_observer(|tab_id| {
@@ -2803,7 +2857,7 @@ mod tests {
                     |_| Ok(String::new()),
                     unused_write_delegate,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     || Ok(()),
                 )
                 .with_toolbar_button(move |label| {
@@ -2925,7 +2979,7 @@ mod tests {
                     |_| Ok(String::new()),
                     unused_write_delegate,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     || Ok(()),
                 )
                 .with_toolbar_button(|_| Ok(()))
@@ -3000,7 +3054,7 @@ mod tests {
                     |_| Ok(String::new()),
                     unused_write_delegate,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     || Ok(()),
                 )
                 .with_toolbar_button(|_| Ok(()))
@@ -3083,7 +3137,7 @@ mod tests {
                 &mut server,
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
-                    |_| Ok(String::new()), unused_write_delegate, || Ok(()), |_| Ok(()), || Ok(()),
+                    |_| Ok(String::new()), unused_write_delegate, || Ok(()), |_, _| Ok(()), || Ok(()),
                 )
                 .with_toolbar_button(|_| Ok(()))
                 .with_popup(
@@ -3386,7 +3440,7 @@ mod tests {
                         |_| Ok(String::new()),
                         unused_write_delegate,
                         || Ok(()),
-                        |_| Ok(()),
+                        |_, _| Ok(()),
                         || Ok(()),
                     )
                     .with_storage(storage),
@@ -4799,7 +4853,7 @@ mod tests {
                     |_| Ok("unused in this test".to_string()),
                     unused_write_delegate,
                     || Ok(()),
-                    move |url| {
+                    move |url, _generation| {
                         seen_tx.send(url).unwrap();
                         Ok(())
                     },
@@ -4850,6 +4904,100 @@ mod tests {
     }
 
     #[test]
+    fn late_core_permission_failure_is_a_structured_capability_denial() {
+        let mut wire = Vec::new();
+        write_network_registration_reply(&mut wire,
+            Err(grant_changed_reason(CAPABILITY_NETWORK_INTERCEPT))).unwrap();
+        assert!(matches!(read_extension_reply(&mut std::io::Cursor::new(wire)).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. }
+                if capability == CAPABILITY_NETWORK_INTERCEPT));
+    }
+
+    #[test]
+    fn reviewed_network_rules_cannot_borrow_a_regranted_optional_permission() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let cases = [
+            (ExtensionRequest::RegisterNetworkBlockUrl {
+                url: "https://example.test/blocked".into(),
+            }, 2),
+            (ExtensionRequest::RegisterNetworkBlockHost {
+                host: "example.test".into(),
+            }, 4),
+            (ExtensionRequest::RegisterNetworkBlockPathPrefix {
+                host: "example.test".into(), path_prefix: "/blocked".into(),
+            }, 5),
+            (ExtensionRequest::RegisterNetworkRedirectUrl {
+                source_url: "https://example.test/old".into(),
+                target_url: "https://example.test/new".into(),
+            }, 6),
+        ];
+        for (request, version) in cases {
+            let mut registry = ExtensionRegistry::with_supported_capabilities();
+            registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT);
+            assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT).unwrap());
+            let registry = Arc::new(registry);
+            let gatekeeper_socket = unique_gatekeeper_socket("optional-network-race");
+            let _ = std::fs::remove_file(&gatekeeper_socket);
+            let listener = UnixListener::bind(&gatekeeper_socket).unwrap();
+            let (reviewed_tx, reviewed_rx) = mpsc::channel();
+            let (release_tx, release_rx) = mpsc::channel();
+            let gatekeeper = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let reviewed = read_gatekeeper_request(&mut stream).unwrap();
+                reviewed_tx.send(reviewed).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                write_gatekeeper_reply(&mut stream, &GatekeeperReply::Cleared).unwrap();
+            });
+            let invoked = Arc::new(AtomicUsize::new(0));
+            let (mut client, mut server) = UnixStream::pair().unwrap();
+            let handler_registry = Arc::clone(&registry);
+            let handler_socket = gatekeeper_socket.clone();
+            let called_url = Arc::clone(&invoked);
+            let called_host = Arc::clone(&invoked);
+            let called_path = Arc::clone(&invoked);
+            let called_redirect = Arc::clone(&invoked);
+            let handler = thread::spawn(move || {
+                handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                    &handler_registry, &handler_socket, &mut server,
+                    ExtensionConnectionAuthentication::unauthenticated(),
+                    ExtensionActionDelegates::new(
+                        |_| Ok(String::new()), unused_write_delegate, || Ok(()),
+                        move |_, _| { called_url.fetch_add(1, Ordering::SeqCst); Ok(()) },
+                        || Ok(()),
+                    )
+                    .with_network_block_host(move |_, _| {
+                        called_host.fetch_add(1, Ordering::SeqCst); Ok(())
+                    })
+                    .with_network_block_path_prefix(move |_, _, _| {
+                        called_path.fetch_add(1, Ordering::SeqCst); Ok(())
+                    })
+                    .with_network_redirect_url(move |_, _, _| {
+                        called_redirect.fetch_add(1, Ordering::SeqCst); Ok(())
+                    }),
+                )
+            });
+            write_extension_request(&mut client, &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID, [(CAPABILITY_NETWORK_INTERCEPT, version)],
+            )).unwrap();
+            assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+            write_extension_request(&mut client, &request).unwrap();
+            assert!(matches!(reviewed_rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+                GatekeeperRequest::CheckExtensionAction { .. }));
+            assert!(registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT).unwrap());
+            assert!(registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_INTERCEPT).unwrap());
+            release_tx.send(()).unwrap();
+            assert!(matches!(read_extension_reply(&mut client).unwrap(),
+                ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_NETWORK_INTERCEPT));
+            assert_eq!(invoked.load(Ordering::SeqCst), 0);
+            drop(client);
+            handler.join().unwrap().unwrap();
+            gatekeeper.join().unwrap();
+            let _ = std::fs::remove_file(gatekeeper_socket);
+        }
+    }
+
+    #[test]
     fn v4_network_block_host_is_reviewed_then_delegated_without_exposing_the_host() {
         let registry = registry_with_network_intercept_granted();
         let (gatekeeper_socket, gatekeeper) =
@@ -4867,9 +5015,9 @@ mod tests {
                     |_| Ok("unused in this test".to_string()),
                     unused_write_delegate,
                     || Ok(()),
-                    |_| panic!("a host request must not register an exact URL"),
+                    |_, _| panic!("a host request must not register an exact URL"),
                     || Ok(()),
-                ).with_network_block_host(move |host| {
+                ).with_network_block_host(move |host, _generation| {
                     seen_tx.send(host).unwrap();
                     Ok(())
                 }),
@@ -4915,9 +5063,9 @@ mod tests {
                     |_| Ok("unused in this test".to_string()),
                     unused_write_delegate,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     || Ok(()),
-                ).with_network_block_host(|_| panic!("a v3 connection must not reach core")),
+                ).with_network_block_host(|_, _| panic!("a v3 connection must not reach core")),
             )
         });
         write_extension_request(
@@ -4959,8 +5107,8 @@ mod tests {
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
                     |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
-                    |_| panic!("a path request must not register an exact URL"), || Ok(()),
-                ).with_network_block_path_prefix(move |host, path_prefix| {
+                    |_, _| panic!("a path request must not register an exact URL"), || Ok(()),
+                ).with_network_block_path_prefix(move |host, path_prefix, _generation| {
                     seen_tx.send((host, path_prefix)).unwrap();
                     Ok(())
                 }),
@@ -4998,8 +5146,8 @@ mod tests {
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
                     |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
-                    |_| Ok(()), || Ok(()),
-                ).with_network_block_path_prefix(|_, _| panic!("v4 must not reach core")),
+                    |_, _| Ok(()), || Ok(()),
+                ).with_network_block_path_prefix(|_, _, _| panic!("v4 must not reach core")),
             )
         });
         write_extension_request(&mut client, &hello_with_capabilities(
@@ -5030,8 +5178,8 @@ mod tests {
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
                     |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
-                    |_| Ok(()), || Ok(()),
-                ).with_network_redirect_url(move |source_url, target_url| {
+                    |_, _| Ok(()), || Ok(()),
+                ).with_network_redirect_url(move |source_url, target_url, _generation| {
                     seen_tx.send((source_url, target_url)).unwrap();
                     Ok(())
                 }),
@@ -5068,8 +5216,8 @@ mod tests {
                 ExtensionConnectionAuthentication::unauthenticated(),
                 ExtensionActionDelegates::new(
                     |_| Ok("unused".into()), unused_write_delegate, || Ok(()),
-                    |_| Ok(()), || Ok(()),
-                ).with_network_redirect_url(|_, _| panic!("v5 must not reach core")),
+                    |_, _| Ok(()), || Ok(()),
+                ).with_network_redirect_url(|_, _, _| panic!("v5 must not reach core")),
             )
         });
         write_extension_request(&mut client, &hello_with_capabilities(
@@ -5102,7 +5250,7 @@ mod tests {
                     |_| Ok("unused in this test".to_string()),
                     unused_write_delegate,
                     || Ok(()),
-                    |_| panic!("a v3 clear must not register a rule"),
+                    |_, _| panic!("a v3 clear must not register a rule"),
                     move || {
                         cleared_tx.send(()).unwrap();
                         Ok(())
@@ -5148,7 +5296,7 @@ mod tests {
                     |_| Ok("unused in this test".to_string()),
                     unused_write_delegate,
                     || Ok(()),
-                    |_| panic!("a v2 connection must not register a v2 rule in this test"),
+                    |_, _| panic!("a v2 connection must not register a v2 rule in this test"),
                     || panic!("a v2 connection must not clear v3 rules"),
                 ),
             )
@@ -5193,7 +5341,7 @@ mod tests {
                     |_| Ok("unused in this test".to_string()),
                     unused_write_delegate,
                     || Ok(()),
-                    |_| panic!("a v1 connection must not install a v2 network rule"),
+                    |_, _| panic!("a v1 connection must not install a v2 network rule"),
                     || panic!("a v1 connection must not clear v3 rules"),
                 ),
             )
@@ -5244,7 +5392,7 @@ mod tests {
                     |_| Ok("unused in this test".to_string()),
                     unused_write_delegate,
                     || Ok(()),
-                    |_| panic!("an oversized network rule must not reach core"),
+                    |_, _| panic!("an oversized network rule must not reach core"),
                     || panic!("an oversized network rule must not clear v3 rules"),
                 ),
             )

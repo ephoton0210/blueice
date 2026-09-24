@@ -180,15 +180,19 @@ pub enum ExtensionPageRequest {
     /// Adds one core-validated, connection-scoped exact navigation block rule
     /// evaluated for the initial request and later redirect hops. The opaque
     /// connection ID is allocated by `blueice-core`, never supplied by an
-    /// extension.
+    /// extension. `grant_generation` is captured by the trusted host before
+    /// Gatekeeper review and checked again by this session at the actual
+    /// write, so a timed-out queued request cannot borrow a newer grant.
     RegisterNetworkBlockUrl {
         connection_id: u64,
+        grant_generation: u64,
         url: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
     /// Adds one core-validated, connection-scoped ASCII host/subdomain rule.
     RegisterNetworkBlockHost {
         connection_id: u64,
+        grant_generation: u64,
         host: String,
         reply: mpsc::Sender<Result<(), String>>,
     },
@@ -196,6 +200,7 @@ pub enum ExtensionPageRequest {
     /// rule without granting the guest a callback or arbitrary URL pattern.
     RegisterNetworkBlockPathPrefix {
         connection_id: u64,
+        grant_generation: u64,
         host: String,
         path_prefix: String,
         reply: mpsc::Sender<Result<(), String>>,
@@ -203,6 +208,7 @@ pub enum ExtensionPageRequest {
     /// Adds one exact same-origin navigation rewrite after core validation.
     RegisterNetworkRedirectUrl {
         connection_id: u64,
+        grant_generation: u64,
         source_url: String,
         target_url: String,
         reply: mpsc::Sender<Result<(), String>>,
@@ -1539,37 +1545,57 @@ fn handle_extension_page_request<S: Write>(
         }
         ExtensionPageRequest::RegisterNetworkBlockUrl {
             connection_id,
+            grant_generation,
             url,
             reply,
         } => {
-            let _ = reply.send(tabs.add_extension_navigation_block_rule(connection_id, url));
+            let result = tabs.with_stable_extension_capability(
+                "network:intercept", grant_generation,
+                |tabs| tabs.add_extension_navigation_block_rule(connection_id, url),
+            ).and_then(|result| result);
+            let _ = reply.send(result);
         }
         ExtensionPageRequest::RegisterNetworkBlockHost {
             connection_id,
+            grant_generation,
             host,
             reply,
         } => {
-            let _ = reply.send(tabs.add_extension_navigation_block_host_rule(connection_id, host));
+            let result = tabs.with_stable_extension_capability(
+                "network:intercept", grant_generation,
+                |tabs| tabs.add_extension_navigation_block_host_rule(connection_id, host),
+            ).and_then(|result| result);
+            let _ = reply.send(result);
         }
         ExtensionPageRequest::RegisterNetworkBlockPathPrefix {
             connection_id,
+            grant_generation,
             host,
             path_prefix,
             reply,
         } => {
-            let _ = reply.send(tabs.add_extension_navigation_block_path_prefix_rule(
-                connection_id, host, path_prefix,
-            ));
+            let result = tabs.with_stable_extension_capability(
+                "network:intercept", grant_generation,
+                |tabs| tabs.add_extension_navigation_block_path_prefix_rule(
+                    connection_id, host, path_prefix,
+                ),
+            ).and_then(|result| result);
+            let _ = reply.send(result);
         }
         ExtensionPageRequest::RegisterNetworkRedirectUrl {
             connection_id,
+            grant_generation,
             source_url,
             target_url,
             reply,
         } => {
-            let _ = reply.send(tabs.add_extension_navigation_redirect_rule(
-                connection_id, source_url, target_url,
-            ));
+            let result = tabs.with_stable_extension_capability(
+                "network:intercept", grant_generation,
+                |tabs| tabs.add_extension_navigation_redirect_rule(
+                    connection_id, source_url, target_url,
+                ),
+            ).and_then(|result| result);
+            let _ = reply.send(result);
         }
         ExtensionPageRequest::ClearNetworkBlockUrls {
             connection_id,
@@ -2962,6 +2988,53 @@ mod tests {
     }
 
     #[test]
+    fn queued_network_registration_checks_original_grant_generation_at_session_commit() {
+        let root = temp_frame_dir("stale-network-registration");
+        std::fs::create_dir_all(&root).unwrap();
+        let manifest = root.join("extension.json");
+        std::fs::write(&manifest,
+            r#"{"name":"Queued network","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["network:intercept"]}}"#
+        ).unwrap();
+        std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
+        let installed = blueice_extension_host::load_installed_extension(&manifest).unwrap();
+        let id = installed.extension_id().to_string();
+        let registry = Arc::new(blueice_extension_host::registry_for_installed_extension(&installed));
+        let mut tabs = TabManager::new(320.0, 200.0);
+        tabs.set_extension_permission_registry(Arc::clone(&registry), id.clone());
+        assert!(registry.grant_optional(&id, "network:intercept").unwrap());
+        let old_generation = registry.capability_generation(&id, "network:intercept").unwrap();
+        assert!(registry.revoke_optional(&id, "network:intercept").unwrap());
+        assert!(registry.grant_optional(&id, "network:intercept").unwrap());
+        let new_generation = registry.capability_generation(&id, "network:intercept").unwrap();
+        assert_ne!(old_generation, new_generation);
+
+        let mut wire = Vec::new();
+        let mut frame_generation = 0;
+        let mut scheduler = NoScriptScheduler;
+        let mut toolbar = None;
+        let mut popup = None;
+        let mut submit = |tabs: &mut TabManager, grant_generation| {
+            let (reply, result) = mpsc::channel();
+            handle_extension_page_request(
+                tabs, &mut wire, &root, &mut frame_generation, &mut scheduler,
+                &mut toolbar, &mut popup,
+                ExtensionPageRequest::RegisterNetworkBlockUrl {
+                    connection_id: 7,
+                    grant_generation,
+                    url: "https://example.test/blocked".into(),
+                    reply,
+                },
+            ).unwrap();
+            result.recv().unwrap()
+        };
+        assert!(submit(&mut tabs, old_generation).is_err());
+        assert!(!tabs.is_extension_navigation_blocked("https://example.test/blocked"));
+        assert!(submit(&mut tabs, new_generation).is_ok());
+        assert!(tabs.is_extension_navigation_blocked("https://example.test/blocked"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn extension_network_rule_blocks_a_matching_navigation_before_gatekeeper_or_fetch() {
         let (mut client, mut server) = client_pair();
         let (extension_tx, extension_rx) = mpsc::channel();
@@ -2990,6 +3063,7 @@ mod tests {
         extension_tx
             .send(ExtensionPageRequest::RegisterNetworkBlockUrl {
                 connection_id: 77,
+                grant_generation: 0,
                 url: "https://example.test/private#fragment".to_string(),
                 reply: rule_reply_tx,
             })
@@ -3068,6 +3142,7 @@ mod tests {
         extension_tx
             .send(ExtensionPageRequest::RegisterNetworkBlockUrl {
                 connection_id: 78,
+                grant_generation: 0,
                 url: blocked_url.clone(),
                 reply: rule_reply_tx,
             })
@@ -3137,6 +3212,7 @@ mod tests {
         let (rule_reply_tx, rule_reply_rx) = mpsc::channel();
         extension_tx.send(ExtensionPageRequest::RegisterNetworkBlockHost {
             connection_id: 78,
+            grant_generation: 0,
             host: "localhost".to_string(),
             reply: rule_reply_tx,
         }).unwrap();
