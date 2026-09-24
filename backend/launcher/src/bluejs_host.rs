@@ -52,12 +52,12 @@ use blueice_ipc::page_host::{
     PageHostDebuggerBlueTsMetadataSymbolContract, PageHostDebuggerBlueTsMetadataSymbolDisplay,
     PageHostDebuggerBlueTsMetadataSymbolId, PageHostDebuggerBlueTsMetadataSymbolLocation,
     PageHostDebuggerBlueTsMetadataSymbolType, PageHostDebuggerBlueTsMetadataTypeDisplay,
-    PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerExecutionState,
-    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
-    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
-    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerBlueTsSafePointSpan,
+    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
+    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
+    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -468,6 +468,17 @@ impl BlueJsChildHost {
                 program,
                 metadata,
                 contract_id,
+            ),
+            PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+                tab_id,
+                document_generation,
+                metadata,
+                safe_point,
+            } => self.debugger_bluets_safe_point_span(
+                tab_id,
+                document_generation,
+                metadata,
+                safe_point,
             ),
             PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
                 tab_id,
@@ -1799,6 +1810,99 @@ impl BlueJsChildHost {
             program,
             metadata,
             location,
+        }
+    }
+
+    /// Resolves only one exact compiler-bound safe point to its retained
+    /// original BlueTS byte span. The private child first revalidates the live
+    /// instruction and opaque metadata attachment; an ordinary BlueJS safe
+    /// point with no direct BlueTS lowering record never receives a guessed
+    /// source position.
+    fn debugger_bluets_safe_point_span(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> PageHostReply {
+        if !metadata.is_well_formed() || !safe_point.is_well_formed() {
+            return invalid_request();
+        }
+        if let Err(reply) = self.exact_debugger_safe_point(tab_id, document_generation, safe_point)
+        {
+            return reply;
+        }
+        let program = safe_point.program;
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let span = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let Some(entry) = retained.safe_point_map().source_span_for_safe_point(
+                    safe_point.code_unit_ordinal,
+                    safe_point.bytecode_offset,
+                ) else {
+                    return invalid_request();
+                };
+                let mut matching_sources = retained
+                    .static_info()
+                    .sources
+                    .iter()
+                    .filter(|source| source.module == entry.source);
+                let Some(source) = matching_sources.next() else {
+                    return invalid_request();
+                };
+                if matching_sources.next().is_some()
+                    || entry.start_byte >= entry.end_byte
+                    || entry.end_byte
+                        > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES).unwrap()
+                {
+                    return invalid_request();
+                }
+                let (Ok(start_byte), Ok(end_byte)) = (
+                    u32::try_from(entry.start_byte),
+                    u32::try_from(entry.end_byte),
+                ) else {
+                    return invalid_request();
+                };
+                PageHostDebuggerBlueTsSafePointSpan {
+                    source_id: source.id.0,
+                    start_byte,
+                    end_byte,
+                }
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsSafePointSpan {
+            tab_id,
+            document_generation,
+            metadata,
+            safe_point,
+            span,
         }
     }
 
@@ -5590,6 +5694,133 @@ mod tests {
                 symbol_id: symbol.symbol_id,
                 type_id: matching[0].type_id,
             }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn child_bluets_safe_point_span_requires_an_exact_live_metadata_attachment() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(
+                    1,
+                    vec![
+                        blue_ts_classic(0, "const first: number = 1;"),
+                        blue_ts_classic(1, "const second: number = 2;"),
+                    ],
+                ),
+            }),
+            PageHostReply::Synchronized { reports, .. }
+                if reports.iter().all(|report| report.outcome == PageHostScriptOutcome::Executed)
+        ));
+        let programs = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs,
+            reply => panic!("expected two private BlueTS programs, got {reply:?}"),
+        };
+        assert_eq!(programs.len(), 2);
+        let program = programs[0];
+        let other_program = programs[1];
+        let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+            reply => panic!("expected exact private metadata handle, got {reply:?}"),
+        };
+        let entry = {
+            let handle =
+                host.documents[&7].debugger_programs[&program.program_handle].runtime_handle;
+            host.debug_registry
+                .get(host.runtime.program_registry(), handle)
+                .unwrap()
+                .safe_point_map()
+                .entries[0]
+                .clone()
+        };
+        let safe_point = PageHostDebuggerSafePoint {
+            program,
+            code_unit_ordinal: entry.code_unit.ordinal(),
+            bytecode_offset: entry.bytecode_offset,
+        };
+        let request = PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+            tab_id: 7,
+            document_generation: 1,
+            metadata,
+            safe_point,
+        };
+        let PageHostReply::DebuggerBlueTsSafePointSpan {
+            span,
+            safe_point: echoed,
+            ..
+        } = host.handle_request(request.clone())
+        else {
+            panic!("an exact retained safe point must have its original BlueTS span")
+        };
+        assert_eq!(echoed, safe_point);
+        assert_eq!(
+            (span.start_byte, span.end_byte),
+            (
+                u32::try_from(entry.start_byte).unwrap(),
+                u32::try_from(entry.end_byte).unwrap()
+            )
+        );
+        assert!(span.start_byte < span.end_byte);
+        assert!(span.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES);
+        assert!(!format!("{span:?}").contains("const first"));
+        assert!(!format!("{span:?}").contains("inline-0.ts"));
+
+        for (metadata, safe_point) in [
+            (
+                metadata,
+                PageHostDebuggerSafePoint {
+                    program: other_program,
+                    ..safe_point
+                },
+            ),
+            (
+                PageHostDebuggerMetadataHandle {
+                    metadata_generation: metadata.metadata_generation + 1,
+                    ..metadata
+                },
+                safe_point,
+            ),
+            (
+                metadata,
+                PageHostDebuggerSafePoint {
+                    bytecode_offset: u32::MAX,
+                    ..safe_point
+                },
+            ),
+        ] {
+            assert!(matches!(
+                host.handle_request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+                    tab_id: 7,
+                    document_generation: 1,
+                    metadata,
+                    safe_point,
+                }),
+                PageHostReply::Error {
+                    code: PageHostErrorCode::InvalidRequest,
+                    ..
+                }
+            ));
+        }
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(2, vec![blue_ts_classic(0, "const successor = 3;")]),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(request),
             PageHostReply::Error {
                 code: PageHostErrorCode::StaleDocument,
                 ..

@@ -813,6 +813,21 @@ fn bytecode_matches(expected: &bluejs::Bytecode, actual: &bluejs::Bytecode) -> b
 }
 
 impl BlueTsSafePointMapV1 {
+    /// Resolves only an exact compiler-bound BlueJS instruction to its
+    /// original BlueTS byte span. An instruction with no direct lowering
+    /// record stays unbound; no nearest-statement or generated-source guess
+    /// is made. Callers must first validate the map against its live program.
+    pub fn source_span_for_safe_point(
+        &self,
+        code_unit_ordinal: u32,
+        bytecode_offset: u32,
+    ) -> Option<&BlueTsSafePointEntryV1> {
+        self.entries.iter().find(|entry| {
+            entry.code_unit.ordinal() == code_unit_ordinal
+                && entry.bytecode_offset == bytecode_offset
+        })
+    }
+
     /// Finds the nearest bound entry at or after one TypeScript UTF-8 byte
     /// position. This bound-only view is useful when a caller has retained the
     /// map independently; [`DirectProgramAttachment::breakpoint_at_or_after`]

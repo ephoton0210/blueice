@@ -969,6 +969,16 @@ or second module resolver to bypass them.
   source text, module identity, source-map read, runtime value, or new grant.
   Real launcher-supervised coverage checks CRLF and Unicode columns, exact
   source ownership, and reload staleness.
+  Page-host v28 now adds a child-private prerequisite for source-level
+  debugger locations: given one exact live child program safe point and its
+  separately minted BlueTS metadata handle, the child revalidates the
+  instruction and returns only the compiler source ID plus the original
+  half-open byte span from its retained direct-lowering map. Unbound
+  instructions have no nearest-span fallback; cross-program handles, forged
+  offsets, and old document generations reject. The core-owned transport can
+  issue this request, but it is not yet a public debugger operation or grant:
+  public source-ID receipts, explicit owner/client capability policy, core
+  tuple revalidation, and safe-point-to-source reminting still must be added.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

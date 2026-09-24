@@ -523,6 +523,7 @@ fn launcher_child_mints_source_free_bluets_metadata_handles_only_for_live_typed_
     assert_eq!(programs.len(), 2);
 
     let mut metadata_handle = None;
+    let mut javascript_program = None;
     for program in programs {
         let reply = host
             .request(PageHostRequest::ListDebuggerBlueTsMetadata {
@@ -545,11 +546,83 @@ fn launcher_child_mints_source_free_bluets_metadata_handles_only_for_live_typed_
             metadata_handle = Some((program, *metadata));
         } else {
             assert!(metadata.is_empty(), "the JavaScript program is ineligible");
+            javascript_program = Some(program);
         }
     }
     let (typed_program, metadata_handle) =
         metadata_handle.expect("the direct BlueTS program must have a live attachment");
     assert!(metadata_handle.is_well_formed());
+    let source_ids = match host
+        .request(PageHostRequest::ListDebuggerBlueTsMetadataSources {
+            tab_id: 41,
+            document_generation: 1,
+            program: typed_program,
+            metadata: metadata_handle,
+        })
+        .expect("the child must return the exact private source inventory")
+    {
+        PageHostReply::DebuggerBlueTsMetadataSources { sources, .. } => sources,
+        reply => panic!("expected private BlueTS source IDs, got {reply:?}"),
+    };
+    let safe_points = match host
+        .request(PageHostRequest::ListDebuggerSafePoints {
+            tab_id: 41,
+            document_generation: 1,
+            program: typed_program,
+        })
+        .expect("the child must return verified private safe points")
+    {
+        PageHostReply::DebuggerSafePoints { safe_points, .. } => safe_points,
+        reply => panic!("expected verified private safe points, got {reply:?}"),
+    };
+    let mapped = safe_points.into_iter().find_map(|safe_point| {
+        let reply = host
+            .request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+                tab_id: 41,
+                document_generation: 1,
+                metadata: metadata_handle,
+                safe_point,
+            })
+            .expect("the child must answer each exact private lookup");
+        match reply {
+            PageHostReply::DebuggerBlueTsSafePointSpan {
+                safe_point: echoed,
+                span,
+                ..
+            } => Some((safe_point, echoed, span)),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            } => None,
+            reply => panic!("unexpected private source-map reply: {reply:?}"),
+        }
+    });
+    let (mapped_safe_point, echoed, span) =
+        mapped.expect("one typed instruction must retain its original source span");
+    assert_eq!(mapped_safe_point, echoed);
+    assert!(span.start_byte < span.end_byte);
+    assert!(source_ids
+        .iter()
+        .any(|source| source.source_id == span.source_id));
+    assert!(!format!("{span:?}").contains("processTypedAnswer"));
+    assert!(!format!("{span:?}").contains("typed-1.ts"));
+    let javascript_program = javascript_program.expect("the fixture also admitted JavaScript");
+    assert!(matches!(
+        host.request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+            tab_id: 41,
+            document_generation: 1,
+            metadata: metadata_handle,
+            safe_point: blueice_ipc::page_host::PageHostDebuggerSafePoint {
+                program: javascript_program,
+                ..mapped_safe_point
+            },
+        })
+        .expect("the child must reject cross-program metadata reuse"),
+        PageHostReply::Error {
+            code: PageHostErrorCode::InvalidRequest,
+            ..
+        }
+    ));
 
     let replacement = host
         .synchronize_document(document(
@@ -570,6 +643,19 @@ fn launcher_child_mints_source_free_bluets_metadata_handles_only_for_live_typed_
         .expect("the child must reject a stale metadata request"),
         PageHostReply::Error {
             code: blueice_ipc::page_host::PageHostErrorCode::StaleDocument,
+            ..
+        }
+    ));
+    assert!(matches!(
+        host.request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+            tab_id: 41,
+            document_generation: 1,
+            metadata: metadata_handle,
+            safe_point: mapped_safe_point,
+        })
+        .expect("the child must reject the stale source span lookup"),
+        PageHostReply::Error {
+            code: PageHostErrorCode::StaleDocument,
             ..
         }
     ));

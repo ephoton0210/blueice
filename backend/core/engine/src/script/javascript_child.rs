@@ -288,6 +288,13 @@ pub trait PageHostClient {
         false
     }
 
+    /// Whether this authenticated child can resolve one exact verified safe
+    /// point to a private BlueTS byte span. This does not advertise or grant a
+    /// public debugger source-map operation.
+    fn debugger_bluets_safe_point_span_available(&self) -> bool {
+        false
+    }
+
     /// Whether this private peer can verify an exact symbol/type pair.
     fn debugger_bluets_metadata_symbol_type_available(&self) -> bool {
         false
@@ -492,6 +499,19 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement BlueTS debugger contract locations",
+        ))
+    }
+
+    fn debugger_bluets_safe_point_span(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement exact BlueTS safe-point spans",
         ))
     }
 
@@ -730,6 +750,10 @@ impl PageHostClient for PageHostConnection {
     }
 
     fn debugger_bluets_metadata_contract_location_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_safe_point_span_available(&self) -> bool {
         true
     }
 
@@ -991,6 +1015,21 @@ impl PageHostClient for PageHostConnection {
                 contract_id,
             },
         )
+    }
+
+    fn debugger_bluets_safe_point_span(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        safe_point: PageHostDebuggerSafePoint,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+            tab_id,
+            document_generation,
+            metadata,
+            safe_point,
+        })
     }
 
     fn debugger_bluets_metadata_symbol_type(
@@ -5688,6 +5727,86 @@ mod tests {
                 metadata.metadata_generation,
             ),
             Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        ));
+
+        drop(executor);
+        shutdown_child(&path, &token);
+        child.join().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn core_child_transport_resolves_only_live_exact_bluets_safe_point_spans() {
+        let (path, token, child) = spawn_child();
+        let (mut tabs, tab_id) = loaded_tabs(
+            "<script type=\"application/x-blueice-typescript\">const mapped: number = 42;</script>",
+            "https://example.test/mapped.html",
+        );
+        let mut executor = OutOfProcessJavaScriptPageExecutor::connect(&path, &token).unwrap();
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert!(executor.child.debugger_bluets_safe_point_span_available());
+
+        let PageHostReply::DebuggerPrograms { programs, .. } = executor
+            .child
+            .debugger_programs(tab_id.as_u64(), 1)
+            .unwrap()
+        else {
+            panic!("expected a child-private BlueTS program");
+        };
+        let program = programs[0];
+        let PageHostReply::DebuggerBlueTsMetadata { metadata, .. } = executor
+            .child
+            .debugger_bluets_metadata(tab_id.as_u64(), 1, program)
+            .unwrap()
+        else {
+            panic!("expected a child-private metadata attachment");
+        };
+        let metadata = metadata[0];
+        let PageHostReply::DebuggerSafePoints { safe_points, .. } = executor
+            .child
+            .debugger_safe_points(tab_id.as_u64(), 1, program)
+            .unwrap()
+        else {
+            panic!("expected child-private safe points");
+        };
+        let (safe_point, span) = safe_points
+            .into_iter()
+            .find_map(|safe_point| {
+                match executor
+                    .child
+                    .debugger_bluets_safe_point_span(tab_id.as_u64(), 1, metadata, safe_point)
+                    .unwrap()
+                {
+                    PageHostReply::DebuggerBlueTsSafePointSpan {
+                        safe_point: echoed,
+                        span,
+                        ..
+                    } if echoed == safe_point => Some((safe_point, span)),
+                    PageHostReply::Error {
+                        code: page_host::PageHostErrorCode::InvalidRequest,
+                        ..
+                    } => None,
+                    reply => panic!("unexpected exact-span reply: {reply:?}"),
+                }
+            })
+            .expect("one verified safe point must have a retained BlueTS span");
+        assert!(span.start_byte < span.end_byte);
+        assert!(!format!("{span:?}").contains("mapped"));
+
+        tabs.get_mut(tab_id).unwrap().load_html_str(
+            "<script>const successor = true;</script>",
+            Some("https://example.test/successor.html".to_string()),
+        );
+        executor.synchronize_and_execute(&tabs).unwrap();
+        assert!(matches!(
+            executor
+                .child
+                .debugger_bluets_safe_point_span(tab_id.as_u64(), 1, metadata, safe_point)
+                .unwrap(),
+            PageHostReply::Error {
+                code: page_host::PageHostErrorCode::StaleDocument,
+                ..
+            }
         ));
 
         drop(executor);

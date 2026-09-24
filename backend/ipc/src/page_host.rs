@@ -12,6 +12,10 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 28 adds a child-private exact safe-point-to-BlueTS byte-span lookup
+//! under one live opaque metadata attachment. It returns only a compiler
+//! source ID and bounded original byte range, never source text, module
+//! identity, a guessed nearest span, or a public debugger capability.
 //! Version 27 adds an exact-program, source-free single-root-instruction
 //! debugger step and a transient `Stepping` state for the isolated child.
 //! Version 26 adds bounded compiler-produced original-source UTF-16
@@ -36,7 +40,7 @@
 //! to the root-classic arm/state/resume lifecycle and, since v27, one
 //! root-instruction step per explicit request; the child admits no generic
 //! interruption, nested-frame stepping, stack, scope,
-//! bytecode, source, runtime value transport, general host callback,
+//! bytecode, source-text, runtime-value transport, general host callback,
 //! fetch/cache, or client-facing API. Version 7 additionally lets that
 //! authenticated core enumerate one separately minted opaque static-metadata
 //! handle for an exact BlueTS program. The handle discloses neither static
@@ -90,7 +94,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 27;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 28;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -273,6 +277,16 @@ pub struct PageHostDebuggerBlueTsMetadataContractLocation {
     pub start_byte: u32,
     pub end_byte: u32,
     pub coordinates: DebuggerSourceCoordinates,
+}
+
+/// A child-private exact lowering association for one verified instruction.
+/// The enclosing reply repeats the live safe-point and metadata handles; this
+/// payload contains no module identity, source text, AST node, or VM value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsSafePointSpan {
+    pub source_id: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
 }
 
 /// One exact child-verified relation between a compiler symbol and type.
@@ -648,6 +662,15 @@ pub enum PageHostRequest {
         metadata: PageHostDebuggerMetadataHandle,
         contract_id: u32,
     },
+    /// Resolves one already-verified child safe point to an exact retained
+    /// BlueTS lowering span under its live private metadata attachment.
+    /// There is no caller-selected source offset or nearest-match behavior.
+    DescribeDebuggerBlueTsSafePointSpan {
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        safe_point: PageHostDebuggerSafePoint,
+    },
     /// Verifies exactly one symbol-to-static-type pair under the same private
     /// attachment. The reply does not return an unrequested type ID.
     DescribeDebuggerBlueTsMetadataSymbolType {
@@ -895,6 +918,15 @@ pub enum PageHostReply {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
         location: PageHostDebuggerBlueTsMetadataContractLocation,
+    },
+    /// Exact original BlueTS byte span for the echoed verified child safe
+    /// point. This private reply is not exposed to a debugger socket client.
+    DebuggerBlueTsSafePointSpan {
+        tab_id: u64,
+        document_generation: u64,
+        metadata: PageHostDebuggerMetadataHandle,
+        safe_point: PageHostDebuggerSafePoint,
+        span: PageHostDebuggerBlueTsSafePointSpan,
     },
     /// A verified relation that repeats only the two requested opaque IDs.
     DebuggerBlueTsMetadataSymbolType {
@@ -1337,6 +1369,22 @@ mod tests {
                 },
                 symbol_id: 0,
             },
+            PageHostRequest::DescribeDebuggerBlueTsSafePointSpan {
+                tab_id: 7,
+                document_generation: 3,
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                safe_point: PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_handle: 11,
+                        program_generation: 13,
+                    },
+                    code_unit_ordinal: 0,
+                    bytecode_offset: 4,
+                },
+            },
             PageHostRequest::ListDebuggerSafePoints {
                 tab_id: 7,
                 document_generation: 3,
@@ -1463,6 +1511,31 @@ mod tests {
                 bytecode_offset: 4,
             },
             was_present: true,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsSafePointSpan {
+            tab_id: 7,
+            document_generation: 3,
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            safe_point: PageHostDebuggerSafePoint {
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            },
+            span: PageHostDebuggerBlueTsSafePointSpan {
+                source_id: 0,
+                start_byte: 0,
+                end_byte: 25,
+            },
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();

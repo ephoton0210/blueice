@@ -125,6 +125,23 @@ fn resolves_a_ts_byte_position_to_the_next_verified_safe_point_or_unbound() {
         panic!("the second declaration must have a verified safe point")
     };
 
+    let exact = attachment
+        .safe_point_map
+        .source_span_for_safe_point(
+            second_safe_point.code_unit.ordinal(),
+            second_safe_point.bytecode_offset,
+        )
+        .expect("the second bound instruction must retain its original span");
+    assert_eq!(exact.source, ENTRY);
+    assert_eq!(
+        (exact.start_byte, exact.end_byte),
+        (second.source.start, second.source.end)
+    );
+    assert!(attachment
+        .safe_point_map
+        .source_span_for_safe_point(second_safe_point.code_unit.ordinal(), u32::MAX,)
+        .is_none());
+
     assert_eq!(
         attachment.breakpoint_at_or_after(ENTRY, first.source.start),
         DirectSafePointBinding::Bound(first_safe_point)
