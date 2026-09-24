@@ -719,6 +719,35 @@ fn with_stable_storage_grant<T>(
     }
 }
 
+/// Keeps an optional read's original grant live through delivery, not only
+/// through the core lookup: a completed revoke must not be followed by a
+/// reply containing data from that old generation.
+fn write_stable_read_reply<S: Write>(
+    stream: &mut S,
+    registry: &ExtensionRegistry,
+    identity: &ConnectionIdentity,
+    capability: &str,
+    captured_generation: Option<u64>,
+    effect: impl FnOnce() -> ExtensionReply,
+) -> io::Result<()> {
+    let Some(generation) = captured_generation else {
+        return write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+            capability: capability.to_string(),
+            reason: grant_changed_reason(capability),
+        });
+    };
+    match registry.with_stable_capability(&identity.extension_id, capability, generation, || {
+        let reply = effect();
+        write_extension_reply(stream, &reply)
+    }) {
+        Ok(result) => result,
+        Err(reason) => write_extension_reply(stream, &ExtensionReply::CapabilityDenied {
+            capability: capability.to_string(),
+            reason,
+        }),
+    }
+}
+
 fn write_network_registration_reply<S: Write>(
     stream: &mut S,
     result: Result<(), String>,
@@ -1257,6 +1286,12 @@ where
         let storage_generation = registry.capability_generation(
             &identity.extension_id, CAPABILITY_STORAGE,
         );
+        let dom_read_generation = registry.capability_generation(
+            &identity.extension_id, CAPABILITY_DOM_READ,
+        );
+        let network_observe_generation = registry.capability_generation(
+            &identity.extension_id, CAPABILITY_NETWORK_OBSERVE,
+        );
         match request {
             ExtensionRequest::Hello {
                 extension_id,
@@ -1381,18 +1416,13 @@ where
                         },
                     )?;
                 } else {
-                    match read_dom(None) {
-                        Ok(value) => {
-                            write_extension_reply(stream, &ExtensionReply::DomReadResult { value })?
-                        }
-                        Err(reason) => write_extension_reply(
-                            stream,
-                            &ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_DOM_READ.to_string(),
-                                reason,
+                    write_stable_read_reply(stream, registry, &identity, CAPABILITY_DOM_READ,
+                        dom_read_generation, || match read_dom(None) {
+                            Ok(value) => ExtensionReply::DomReadResult { value },
+                            Err(reason) => ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_DOM_READ.to_string(), reason,
                             },
-                        )?,
-                    }
+                        })?;
                 }
             }
             ExtensionRequest::DomReadTab { tab_id } => {
@@ -1407,18 +1437,13 @@ where
                         },
                     )?;
                 } else {
-                    match read_dom(Some(tab_id)) {
-                        Ok(value) => {
-                            write_extension_reply(stream, &ExtensionReply::DomReadResult { value })?
-                        }
-                        Err(reason) => write_extension_reply(
-                            stream,
-                            &ExtensionReply::OperationUnavailable {
-                                capability: CAPABILITY_DOM_READ.to_string(),
-                                reason,
+                    write_stable_read_reply(stream, registry, &identity, CAPABILITY_DOM_READ,
+                        dom_read_generation, || match read_dom(Some(tab_id)) {
+                            Ok(value) => ExtensionReply::DomReadResult { value },
+                            Err(reason) => ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_DOM_READ.to_string(), reason,
                             },
-                        )?,
-                    }
+                        })?;
                 }
             }
             ExtensionRequest::ReadNetworkResponse { tab_id } => {
@@ -1433,25 +1458,24 @@ where
                         },
                     )?;
                 } else {
-                    let reply = match observe_network(tab_id) {
-                        Ok(response)
-                            if response.as_ref().is_some_and(|value| {
-                                serde_json::to_vec(value).is_ok_and(|bytes| {
-                                    bytes.len()
-                                        > blueice_ipc::extension::MAX_NETWORK_OBSERVATION_BYTES
-                                })
-                            }) => ExtensionReply::OperationUnavailable {
-                            capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
-                            reason: "network response metadata exceeds the 4096-byte limit"
-                                .to_string(),
-                        },
-                        Ok(response) => ExtensionReply::NetworkResponseResult { response },
-                        Err(reason) => ExtensionReply::OperationUnavailable {
-                            capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
-                            reason,
-                        },
-                    };
-                    write_extension_reply(stream, &reply)?;
+                    write_stable_read_reply(stream, registry, &identity, CAPABILITY_NETWORK_OBSERVE,
+                        network_observe_generation, || match observe_network(tab_id) {
+                            Ok(response)
+                                if response.as_ref().is_some_and(|value| {
+                                    serde_json::to_vec(value).is_ok_and(|bytes| {
+                                        bytes.len()
+                                            > blueice_ipc::extension::MAX_NETWORK_OBSERVATION_BYTES
+                                    })
+                                }) => ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                                reason: "network response metadata exceeds the 4096-byte limit"
+                                    .to_string(),
+                            },
+                            Ok(response) => ExtensionReply::NetworkResponseResult { response },
+                            Err(reason) => ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_NETWORK_OBSERVE.to_string(), reason,
+                            },
+                        })?;
                 }
             }
             ExtensionRequest::ReadNetworkTrace { tab_id } => {
@@ -1466,22 +1490,21 @@ where
                         },
                     )?;
                 } else {
-                    let reply = match observe_network_trace(tab_id) {
-                        Ok(trace) if trace.as_ref().is_some_and(|value| {
-                            serde_json::to_vec(value).is_ok_and(|bytes| {
-                                bytes.len() > blueice_ipc::extension::MAX_NETWORK_TRACE_BYTES
-                            })
-                        }) => ExtensionReply::OperationUnavailable {
-                            capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
-                            reason: "network trace metadata exceeds the 32768-byte limit".to_string(),
-                        },
-                        Ok(trace) => ExtensionReply::NetworkTraceResult { trace },
-                        Err(reason) => ExtensionReply::OperationUnavailable {
-                            capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
-                            reason,
-                        },
-                    };
-                    write_extension_reply(stream, &reply)?;
+                    write_stable_read_reply(stream, registry, &identity, CAPABILITY_NETWORK_OBSERVE,
+                        network_observe_generation, || match observe_network_trace(tab_id) {
+                            Ok(trace) if trace.as_ref().is_some_and(|value| {
+                                serde_json::to_vec(value).is_ok_and(|bytes| {
+                                    bytes.len() > blueice_ipc::extension::MAX_NETWORK_TRACE_BYTES
+                                })
+                            }) => ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_NETWORK_OBSERVE.to_string(),
+                                reason: "network trace metadata exceeds the 32768-byte limit".to_string(),
+                            },
+                            Ok(trace) => ExtensionReply::NetworkTraceResult { trace },
+                            Err(reason) => ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_NETWORK_OBSERVE.to_string(), reason,
+                            },
+                        })?;
                 }
             }
             ExtensionRequest::SetToolbarButton { label } => {
@@ -3796,6 +3819,140 @@ mod tests {
 
         drop(client);
         handle.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn optional_read_revocation_waits_for_reply_and_regrant_rejects_old_generation() {
+        use std::time::Duration;
+
+        let mut registry = ExtensionRegistry::with_supported_capabilities();
+        registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
+        let registry = Arc::new(registry);
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
+        let old_generation = registry.capability_generation(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let worker_registry = Arc::clone(&registry);
+        let worker = thread::spawn(move || {
+            let identity = ConnectionIdentity {
+                extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+                negotiated_capabilities: BTreeMap::from([(CAPABILITY_DOM_READ.to_string(), 2)]),
+            };
+            write_stable_read_reply(&mut server, &worker_registry, &identity, CAPABILITY_DOM_READ,
+                Some(old_generation), || {
+                    entered_tx.send(()).unwrap();
+                    release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                    ExtensionReply::DomReadResult { value: "prior-authorized-result".into() }
+                }).unwrap();
+        });
+        entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let (attempt_tx, attempt_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let revoker_registry = Arc::clone(&registry);
+        let revoker = thread::spawn(move || {
+            attempt_tx.send(()).unwrap();
+            revoker_registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
+            done_tx.send(()).unwrap();
+        });
+        attempt_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(done_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        release_tx.send(()).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::DomReadResult {
+            value: "prior-authorized-result".into()
+        });
+        worker.join().unwrap();
+        done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        revoker.join().unwrap();
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
+        let identity = ConnectionIdentity {
+            extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+            negotiated_capabilities: BTreeMap::from([(CAPABILITY_DOM_READ.to_string(), 2)]),
+        };
+        let mut denial = Vec::new();
+        write_stable_read_reply(&mut denial, &registry, &identity, CAPABILITY_DOM_READ,
+            Some(old_generation), || panic!("the old generation must not fetch data")).unwrap();
+        assert!(matches!(
+            read_extension_reply(&mut denial.as_slice()).unwrap(),
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == CAPABILITY_DOM_READ
+        ));
+    }
+
+    #[test]
+    fn optional_read_revocation_denies_dom_and_network_reads_on_existing_connection() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let mut registry = ExtensionRegistry::with_supported_capabilities();
+        registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ);
+        registry.declare_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE);
+        let registry = Arc::new(registry);
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE).unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let dom_calls = Arc::clone(&calls);
+        let response_calls = Arc::clone(&calls);
+        let trace_calls = Arc::clone(&calls);
+        let handler_registry = Arc::clone(&registry);
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let worker = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &handler_registry,
+                Path::new("/not-reached-for-read-only-operation.sock"),
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    move |_| { dom_calls.fetch_add(1, Ordering::SeqCst); Ok("safe".into()) },
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_, _| Ok(()),
+                    || Ok(()),
+                )
+                .with_network_observer(move |_| {
+                    response_calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(None)
+                })
+                .with_network_trace_observer(move |_| {
+                    trace_calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(None)
+                }),
+            )
+        });
+        let exchange = |client: &mut UnixStream, request: ExtensionRequest| {
+            write_extension_request(client, &request).unwrap();
+            read_extension_reply(client).unwrap()
+        };
+        assert_eq!(
+            exchange(&mut client, hello_with_capabilities(MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_DOM_READ, 2), (CAPABILITY_NETWORK_OBSERVE, 2)])),
+            empty_hello_ack()
+        );
+        registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
+        registry.revoke_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE).unwrap();
+        for (request, capability) in [
+            (ExtensionRequest::DomRead, CAPABILITY_DOM_READ),
+            (ExtensionRequest::DomReadTab { tab_id: 1 }, CAPABILITY_DOM_READ),
+            (ExtensionRequest::ReadNetworkResponse { tab_id: 1 }, CAPABILITY_NETWORK_OBSERVE),
+            (ExtensionRequest::ReadNetworkTrace { tab_id: 1 }, CAPABILITY_NETWORK_OBSERVE),
+        ] {
+            assert!(matches!(
+                exchange(&mut client, request),
+                ExtensionReply::CapabilityDenied { capability: denied, .. } if denied == capability
+            ));
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_DOM_READ).unwrap();
+        registry.grant_optional(MINIMAL_SLICE_EXTENSION_ID, CAPABILITY_NETWORK_OBSERVE).unwrap();
+        assert_eq!(exchange(&mut client, ExtensionRequest::DomRead),
+            ExtensionReply::DomReadResult { value: "safe".into() });
+        assert_eq!(exchange(&mut client, ExtensionRequest::DomReadTab { tab_id: 1 }),
+            ExtensionReply::DomReadResult { value: "safe".into() });
+        assert_eq!(exchange(&mut client, ExtensionRequest::ReadNetworkResponse { tab_id: 1 }),
+            ExtensionReply::NetworkResponseResult { response: None });
+        assert_eq!(exchange(&mut client, ExtensionRequest::ReadNetworkTrace { tab_id: 1 }),
+            ExtensionReply::NetworkTraceResult { trace: None });
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
+        drop(client);
+        worker.join().unwrap().unwrap();
     }
 
     #[test]
