@@ -50,7 +50,10 @@
 //! core-proxied operation, not a general static-record read or source access.
 //! Version 16 adds one exact contract-ID display lookup; it remains an explicit
 //! core-proxied operation, not a general static-record read or source access.
-//! Version 19 adds a separately requested, opaque-handle-bound symbol
+//! Version 20 adds an exact symbol-to-static-type verification under one
+//! private metadata attachment. It repeats only two caller-supplied opaque
+//! IDs and does not disclose type displays or static records. Version 19 adds
+//! a separately requested, opaque-handle-bound symbol
 //! location. It carries only a receipted source ID and bounded half-open byte
 //! range, never source text, module identity, line/column data, name, type,
 //! contract, bytecode, VM object, or value. Version 18 adds a separately
@@ -67,7 +70,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 19;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 20;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -232,6 +235,15 @@ pub struct PageHostDebuggerBlueTsMetadataSymbolLocation {
     pub source_id: u32,
     pub start_byte: u32,
     pub end_byte: u32,
+}
+
+/// One exact child-verified relation between a compiler symbol and type.
+/// Both numeric IDs came from separate core-proxied inventories; this
+/// contains no name, type display, source, span, contract, or record payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataSymbolType {
+    pub symbol_id: u32,
+    pub type_id: u32,
 }
 
 /// One child-local compiler-produced type display for an exact type ID under
@@ -579,6 +591,16 @@ pub enum PageHostRequest {
         metadata: PageHostDebuggerMetadataHandle,
         symbol_id: u32,
     },
+    /// Verifies exactly one symbol-to-static-type pair under the same private
+    /// attachment. The reply does not return an unrequested type ID.
+    DescribeDebuggerBlueTsMetadataSymbolType {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        type_id: u32,
+    },
     /// Describes exactly one prior compiler-minted source ID. This private
     /// request returns module identity and a digest only, never source text.
     DescribeDebuggerBlueTsMetadataSource {
@@ -792,6 +814,14 @@ pub enum PageHostReply {
         metadata: PageHostDebuggerMetadataHandle,
         location: PageHostDebuggerBlueTsMetadataSymbolLocation,
     },
+    /// A verified relation that repeats only the two requested opaque IDs.
+    DebuggerBlueTsMetadataSymbolType {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_type: PageHostDebuggerBlueTsMetadataSymbolType,
+    },
     DebuggerBlueTsMetadataSourceProvenance {
         tab_id: u64,
         document_generation: u64,
@@ -940,6 +970,42 @@ pub fn source_hash(source: &str) -> String {
 mod tests {
     use super::*;
     use std::os::unix::net::UnixStream;
+
+    #[test]
+    fn symbol_type_relation_round_trips_on_private_socket() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        };
+        let request = PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            symbol_id: 1,
+            type_id: 2,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_request(&mut writer, &request).unwrap();
+        assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+        let reply = PageHostReply::DebuggerBlueTsMetadataSymbolType {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            symbol_type: PageHostDebuggerBlueTsMetadataSymbolType {
+                symbol_id: 1,
+                type_id: 2,
+            },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
+    }
 
     fn source() -> PageHostSource {
         PageHostSource::new("blueice://page/main.js", "globalThis.answer = 42;")

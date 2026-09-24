@@ -80,6 +80,7 @@ struct StaticMetadataPolicy {
     contract_inventory: bool,
     symbol_display: bool,
     symbol_location: bool,
+    symbol_type: bool,
     contract_display: bool,
     contract_validation: bool,
     lowering_summary: bool,
@@ -158,6 +159,9 @@ impl LauncherProcess {
         }
         if policy.symbol_location {
             command.arg("--debugger-static-metadata-symbol-location");
+        }
+        if policy.symbol_type {
+            command.arg("--debugger-static-metadata-symbol-type");
         }
         if policy.contract_display {
             command.arg("--debugger-static-metadata-contract-display");
@@ -599,6 +603,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             contract_inventory: true,
             symbol_display: true,
             symbol_location: true,
+            symbol_type: true,
             contract_display: true,
             contract_validation: true,
             lowering_summary: true,
@@ -628,6 +633,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                             contract_inventory: true,
                             symbol_display: true,
                             symbol_location: true,
+                            symbol_type: true,
                             contract_display: true,
                             contract_validation: true,
                             lowering_summary: true,
@@ -648,6 +654,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     contract_inventory: true,
                     symbol_display: true,
                     symbol_location: true,
+                    symbol_type: true,
                     contract_display: true,
                     contract_validation: true,
                     lowering_summary: true,
@@ -675,6 +682,10 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     }));
     assert!(capabilities.reports.iter().any(|report| {
         report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSymbolLocation
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSymbolType
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
     assert!(capabilities.reports.iter().any(|report| {
@@ -882,6 +893,25 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             ..
         }
     ));
+    let unreceipted_relation = blueice_ipc::debugger::DebuggerStaticMetadataSymbolType {
+        symbol: blueice_ipc::debugger::DebuggerStaticMetadataSymbolId {
+            metadata: typed_metadata,
+            symbol_id: 0,
+        },
+        static_type: blueice_ipc::debugger::DebuggerStaticMetadataTypeId {
+            metadata: typed_metadata,
+            type_id: 0,
+        },
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolType {
+                target: unreceipted_relation,
+            },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
     let type_inventory_reply = debugger_request(
         &mut debugger,
         DebuggerRequest::ListStaticMetadataTypes {
@@ -891,6 +921,15 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     let DebuggerReply::StaticMetadataTypes(types) = type_inventory_reply else {
         panic!("expected bounded public static metadata type-record IDs")
     };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolType {
+                target: unreceipted_relation,
+            },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
     assert_eq!(types.len(), usize::try_from(summary.type_count).unwrap());
     assert!(types
         .iter()
@@ -1132,6 +1171,58 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             && !format!("{location:?}").contains("number"),
         "symbol location must expose only opaque IDs and a bounded byte range"
     );
+    let guessed_type_relation = blueice_ipc::debugger::DebuggerStaticMetadataSymbolType {
+        symbol: symbols[0],
+        static_type: blueice_ipc::debugger::DebuggerStaticMetadataTypeId {
+            type_id: u32::MAX,
+            ..types[0]
+        },
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolType {
+                target: guessed_type_relation,
+            },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
+    let mut verified_relation = None;
+    for symbol in &symbols {
+        for static_type in &types {
+            let target = blueice_ipc::debugger::DebuggerStaticMetadataSymbolType {
+                symbol: *symbol,
+                static_type: *static_type,
+            };
+            match debugger_request(
+                &mut debugger,
+                DebuggerRequest::DescribeStaticMetadataSymbolType { target },
+            ) {
+                DebuggerReply::StaticMetadataSymbolType(relation) => {
+                    assert_eq!(relation, target);
+                    verified_relation = Some(relation);
+                    break;
+                }
+                DebuggerReply::Error {
+                    code: DebuggerErrorCode::InvalidTarget,
+                    ..
+                } => {}
+                reply => panic!("unexpected symbol/type relation reply: {reply:?}"),
+            }
+        }
+        if verified_relation.is_some() {
+            break;
+        }
+    }
+    let verified_relation =
+        verified_relation.expect("the typed fixture has a symbol/type relation");
+    assert!(verified_relation.is_well_formed());
+    assert!(
+        !format!("{verified_relation:?}").contains("privateBlueTsMetadata")
+            && !format!("{verified_relation:?}").contains("number")
+            && !format!("{verified_relation:?}").contains("inline-0.ts"),
+        "the relation must repeat only opaque IDs"
+    );
 
     navigate(&mut browser, &url);
     fixture
@@ -1189,6 +1280,18 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             &mut debugger,
             DebuggerRequest::DescribeStaticMetadataSymbolLocation {
                 target: location_target,
+            },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSymbolType {
+                target: verified_relation,
             },
         ),
         DebuggerReply::Error {

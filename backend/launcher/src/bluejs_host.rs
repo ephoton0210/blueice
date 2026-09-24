@@ -48,13 +48,13 @@ use blueice_ipc::page_host::{
     PageHostDebuggerBlueTsMetadataLoweringSummary, PageHostDebuggerBlueTsMetadataSourceId,
     PageHostDebuggerBlueTsMetadataSourceProvenance, PageHostDebuggerBlueTsMetadataSummary,
     PageHostDebuggerBlueTsMetadataSymbolDisplay, PageHostDebuggerBlueTsMetadataSymbolId,
-    PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataTypeDisplay,
-    PageHostDebuggerBlueTsMetadataTypeId, PageHostDebuggerExecutionState,
-    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
-    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport, PageHostSource,
-    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataSymbolType,
+    PageHostDebuggerBlueTsMetadataTypeDisplay, PageHostDebuggerBlueTsMetadataTypeId,
+    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
+    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostScriptReport,
+    PageHostSource, PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
     PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM, PAGE_HOST_DOCUMENT_ORIGIN_MAX_BYTES,
     PAGE_HOST_DOCUMENT_TEXT_MAX_BYTES,
 };
@@ -413,6 +413,21 @@ impl BlueJsChildHost {
                 program,
                 metadata,
                 symbol_id,
+            ),
+            PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_id,
+                type_id,
+            } => self.debugger_bluets_metadata_symbol_type(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                symbol_id,
+                type_id,
             ),
             PageHostRequest::DescribeDebuggerBlueTsMetadataSource {
                 tab_id,
@@ -1637,6 +1652,81 @@ impl BlueJsChildHost {
             program,
             metadata,
             location,
+        }
+    }
+
+    /// Verifies an exact compiler-recorded symbol/type relation without
+    /// returning an unrequested ID or a static record. Core has already
+    /// required independent same-stream receipts for the two numeric IDs.
+    fn debugger_bluets_metadata_symbol_type(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        type_id: u32,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let symbol_type = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let static_info = retained.static_info();
+                let Some(symbol) = static_info
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.id.0 == symbol_id)
+                else {
+                    return invalid_request();
+                };
+                if symbol
+                    .static_type
+                    .is_none_or(|static_type| static_type.0 != type_id)
+                    || !static_info
+                        .types
+                        .iter()
+                        .any(|static_type| static_type.id.0 == type_id)
+                {
+                    return invalid_request();
+                }
+                PageHostDebuggerBlueTsMetadataSymbolType { symbol_id, type_id }
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataSymbolType {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            symbol_type,
         }
     }
 
@@ -4415,6 +4505,58 @@ mod tests {
         assert!(!format!("{location:?}").contains("typedAnswer"));
         assert!(!format!("{location:?}").contains("inline-0.ts"));
         assert!(!format!("{location:?}").contains("number"));
+        let types = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataTypes {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+            metadata,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadataTypes { types, .. } => types,
+            reply => panic!("expected private type-ID inventory, got {reply:?}"),
+        };
+        assert!(!types.is_empty());
+        let matching = types
+            .iter()
+            .filter_map(|static_type| {
+                let reply = host.handle_request(
+                    PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
+                        tab_id: 7,
+                        document_generation: 1,
+                        program,
+                        metadata,
+                        symbol_id: symbol.symbol_id,
+                        type_id: static_type.type_id,
+                    },
+                );
+                match reply {
+                    PageHostReply::DebuggerBlueTsMetadataSymbolType { symbol_type, .. } => {
+                        Some(symbol_type)
+                    }
+                    _ => None,
+                }
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0].symbol_id, symbol.symbol_id);
+        assert!(types
+            .iter()
+            .any(|static_type| static_type.type_id == matching[0].type_id));
+        assert!(!format!("{:?}", matching[0]).contains("typedAnswer"));
+        assert!(!format!("{:?}", matching[0]).contains("number"));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata,
+                symbol_id: symbol.symbol_id,
+                type_id: u32::MAX,
+            }),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
         assert!(matches!(
             host.handle_request(
                 PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolLocation {
@@ -4449,6 +4591,20 @@ mod tests {
                     symbol_id: symbol.symbol_id,
                 }
             ),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata,
+                symbol_id: symbol.symbol_id,
+                type_id: matching[0].type_id,
+            }),
             PageHostReply::Error {
                 code: PageHostErrorCode::StaleDocument,
                 ..

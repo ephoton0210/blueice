@@ -848,6 +848,19 @@ or second module resolver to bypass them.
   name, type, contract, bytecode, runtime value, source-map translation, or
   general static-record read crosses this layer. The private child regression
   proves source-free disclosure plus unknown-target and reload rejection.
+  Page-host v20/debugger v19 add the thirteenth independently default-denied
+  `OpaqueSymbolType` capability and the owner-only
+  `--debugger-static-metadata-symbol-type` flag. It requires parent, type-ID,
+  and symbol-ID inventories; exact same-stream receipts for both IDs under
+  the same opaque metadata handle; a live realm/program/metadata tuple; and a
+  child capability report. The public request supplies only the receipted
+  symbol/type pair. The child verifies that the retained BlueTS symbol's
+  static type is exactly that type ID, and core verifies the child's echoed
+  pair before returning only the two opaque IDs. Guessed or mismatched IDs,
+  absent static types, cross-parent pairs, and stale generations fail closed.
+  No type display, symbol name, source identity, span, static record, runtime
+  value, or general metadata read crosses this boundary. IPC, core-policy,
+  private-child, and launcher-supervised regressions cover the relation.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

@@ -149,6 +149,10 @@ mod unix {
         /// source text, line/column, names, types, contracts, and bytecode
         /// remain default-denied.
         debugger_static_metadata_symbol_location: bool,
+        /// Owner-only policy for a compiler-verified symbol/type relation
+        /// under two separately inventoried opaque IDs. Displays and static
+        /// records remain independently denied.
+        debugger_static_metadata_symbol_type: bool,
     }
 
     impl CoreLaunchOptions {
@@ -357,6 +361,17 @@ mod unix {
             self.debugger_static_metadata_source_inventory = true;
             self.debugger_static_metadata_symbol_inventory = true;
             self.debugger_static_metadata_symbol_location = true;
+            self
+        }
+
+        /// Enables one verified symbol/type relation and its parent, symbol,
+        /// and type inventory policies. A debugger peer still must negotiate
+        /// each grant and obtain both exact ID receipts on its own stream.
+        pub fn with_debugger_static_metadata_symbol_type(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_type_inventory = true;
+            self.debugger_static_metadata_symbol_inventory = true;
+            self.debugger_static_metadata_symbol_type = true;
             self
         }
     }
@@ -1738,6 +1753,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_symbol_location {
                     command.arg("--debugger-static-metadata-symbol-location");
+                }
+                if options.debugger_static_metadata_symbol_type {
+                    command.arg("--debugger-static-metadata-symbol-type");
                 }
             }
             let mut child = command.spawn()?;

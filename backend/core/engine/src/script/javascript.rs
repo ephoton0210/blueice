@@ -51,6 +51,8 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataSymbolLocation,
     JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
     JavaScriptPageDebuggerStaticMetadataSymbolTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolType,
+    JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
     JavaScriptPageDebuggerStaticMetadataTypeTarget,
 };
@@ -147,6 +149,12 @@ pub trait PageJavaScriptDebuggerLocations {
     /// This is separate from symbol names and source provenance because it
     /// exposes source structure.
     fn debugger_static_metadata_symbol_location_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can verify a relation between separately
+    /// inventoried opaque symbol and type IDs under one static attachment.
+    fn debugger_static_metadata_symbol_type_available(&self) -> bool {
         false
     }
 
@@ -369,6 +377,17 @@ pub trait PageJavaScriptDebuggerLocations {
         _target: JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolLocation, JavaScriptPageDebuggerError>
     {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Verifies one exact symbol/type relation without returning unrequested
+    /// IDs or compiler-produced displays.
+    fn debugger_static_metadata_symbol_type(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolType, JavaScriptPageDebuggerError> {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
 

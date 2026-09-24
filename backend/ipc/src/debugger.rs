@@ -9,7 +9,9 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version eighteen adds the
+//! and an opt-in root-code-unit pause/resume seam. Version nineteen adds an
+//! independently default-denied symbol-to-static-type relation that requires
+//! exact symbol and type receipts on one debugger stream. Version eighteen adds the
 //! independently default-deny symbol-location operation for prior opaque
 //! symbol and source receipts. Version seventeen added the independently
 //! default-deny lowering-map summary operation for a prior
@@ -33,7 +35,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 18;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 19;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -371,6 +373,23 @@ impl DebuggerStaticMetadataSymbolLocationTarget {
     }
 }
 
+/// One compiler-verified relation between a symbol and its static type. Both
+/// opaque IDs must have been returned by separate inventories on this stream.
+/// This exposes no type display, symbol name, source, span, or static record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataSymbolType {
+    pub symbol: DebuggerStaticMetadataSymbolId,
+    pub static_type: DebuggerStaticMetadataTypeId,
+}
+
+impl DebuggerStaticMetadataSymbolType {
+    pub fn is_well_formed(self) -> bool {
+        self.symbol.is_well_formed()
+            && self.static_type.is_well_formed()
+            && self.symbol.metadata == self.static_type.metadata
+    }
+}
+
 impl DebuggerStaticMetadataSymbolId {
     pub fn is_well_formed(self) -> bool {
         self.metadata.is_well_formed()
@@ -517,6 +536,9 @@ pub enum DebuggerCapability {
     /// One half-open byte range for a symbol and a separately receipted source
     /// ID. It contains no source/module/name/type/contract/bytecode payload.
     StaticMetadataSymbolLocation,
+    /// Verifies a symbol's compiler-minted static type using two separately
+    /// receipted IDs. It contains no name, display, source, or record payload.
+    StaticMetadataSymbolType,
     /// One bounded compiler-produced display for a contract ID previously
     /// returned by the exact stream's contract inventory. It does not expose a
     /// source span, plan, validation behavior, bytecode, or general
@@ -601,6 +623,9 @@ pub enum DebuggerMetadataCapability {
     /// ID. It is source-text-free but discloses source structure, so it needs
     /// its own default-deny authorization.
     OpaqueSymbolLocation,
+    /// Verifies a symbol-to-type relation only for IDs returned by separate
+    /// same-stream inventories. This disclosure has its own owner grant.
+    OpaqueSymbolType,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -629,6 +654,7 @@ impl DebuggerMetadataCapability {
             }
             Self::OpaqueLoweringSummary => Some(DebuggerCapability::StaticMetadataLoweringSummary),
             Self::OpaqueSymbolLocation => Some(DebuggerCapability::StaticMetadataSymbolLocation),
+            Self::OpaqueSymbolType => Some(DebuggerCapability::StaticMetadataSymbolType),
             Self::Unknown => None,
         }
     }
@@ -648,6 +674,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueContractValidation => Some(10),
             Self::OpaqueLoweringSummary => Some(11),
             Self::OpaqueSymbolLocation => Some(12),
+            Self::OpaqueSymbolType => Some(13),
             Self::Unknown => None,
         }
     }
@@ -691,6 +718,7 @@ pub struct DebuggerMetadataCapabilitySelection {
     pub contract_validation: bool,
     pub lowering_summary: bool,
     pub symbol_location: bool,
+    pub symbol_type: bool,
 }
 
 impl DebuggerMetadataCapabilityManifest {
@@ -891,6 +919,20 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants one symbol-to-static-type relation only with its parent,
+    /// symbol, and type inventory prerequisites.
+    pub fn opaque_symbol_type() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueTypeInventory,
+                DebuggerMetadataCapability::OpaqueSymbolInventory,
+                DebuggerMetadataCapability::OpaqueSymbolType,
+            ],
+        }
+    }
+
     /// Builds the exact canonical manifest selected by a trusted owner after
     /// it independently validated each prerequisite flag. Keeping this
     /// operation here avoids a caller hand-assembling a reordered manifest.
@@ -908,6 +950,7 @@ impl DebuggerMetadataCapabilityManifest {
             contract_validation,
             lowering_summary,
             symbol_location,
+            symbol_type,
         } = selection;
         let any = summary
             || source_inventory
@@ -920,7 +963,8 @@ impl DebuggerMetadataCapabilityManifest {
             || contract_display
             || contract_validation
             || lowering_summary
-            || symbol_location;
+            || symbol_location
+            || symbol_type;
         let mut capabilities = Vec::new();
         if any {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
@@ -934,13 +978,13 @@ impl DebuggerMetadataCapabilityManifest {
         if source_provenance {
             capabilities.push(DebuggerMetadataCapability::OpaqueSourceProvenance);
         }
-        if type_inventory || type_display {
+        if type_inventory || type_display || symbol_type {
             capabilities.push(DebuggerMetadataCapability::OpaqueTypeInventory);
         }
         if type_display {
             capabilities.push(DebuggerMetadataCapability::OpaqueTypeDisplay);
         }
-        if symbol_inventory || symbol_display || symbol_location {
+        if symbol_inventory || symbol_display || symbol_location || symbol_type {
             capabilities.push(DebuggerMetadataCapability::OpaqueSymbolInventory);
         }
         if contract_inventory || contract_display || contract_validation {
@@ -960,6 +1004,9 @@ impl DebuggerMetadataCapabilityManifest {
         }
         if symbol_location {
             capabilities.push(DebuggerMetadataCapability::OpaqueSymbolLocation);
+        }
+        if symbol_type {
+            capabilities.push(DebuggerMetadataCapability::OpaqueSymbolType);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -1089,6 +1136,18 @@ impl DebuggerMetadataCapabilityManifest {
                     && self
                         .capabilities
                         .contains(&DebuggerMetadataCapability::OpaqueSourceInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueSymbolInventory)))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueSymbolType)
+                || (self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueTypeInventory)
                     && self
                         .capabilities
                         .contains(&DebuggerMetadataCapability::OpaqueSymbolInventory)))
@@ -1733,6 +1792,11 @@ pub enum DebuggerRequest {
     DescribeStaticMetadataSymbolLocation {
         target: DebuggerStaticMetadataSymbolLocationTarget,
     },
+    /// Verifies one compiler-produced symbol-to-type relation. Both IDs must
+    /// have crossed this debugger stream's separate opaque inventories.
+    DescribeStaticMetadataSymbolType {
+        target: DebuggerStaticMetadataSymbolType,
+    },
     /// Lists only compiler-minted contract identities for one exact metadata
     /// attachment. It is not a contract name/span/plan/validation read.
     ListStaticMetadataContracts {
@@ -1859,6 +1923,9 @@ pub enum DebuggerReply {
     /// The location is parent-bound, receipted, source-text-free, and does
     /// not include a module identity or a bytecode/source-map translation.
     StaticMetadataSymbolLocation(DebuggerStaticMetadataSymbolLocation),
+    /// Reply to [`DebuggerRequest::DescribeStaticMetadataSymbolType`]. It
+    /// repeats only the two previously receipted opaque IDs.
+    StaticMetadataSymbolType(DebuggerStaticMetadataSymbolType),
     /// Reply to [`DebuggerRequest::ListStaticMetadataContracts`]. IDs remain
     /// parent-bound and contain no contract name, span, plan, or validation
     /// payload.
@@ -1967,6 +2034,7 @@ pub fn negotiate(
         | DebuggerRequest::ListStaticMetadataSymbols { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbol { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolLocation { .. }
+        | DebuggerRequest::DescribeStaticMetadataSymbolType { .. }
         | DebuggerRequest::ListStaticMetadataContracts { .. }
         | DebuggerRequest::DescribeStaticMetadataContract { .. }
         | DebuggerRequest::ValidateStaticMetadataContract { .. }
@@ -3422,6 +3490,96 @@ mod tests {
             capabilities: vec![DebuggerMetadataCapability::OpaqueLoweringSummary],
         };
         assert!(!malformed.is_well_formed());
+    }
+
+    #[test]
+    fn symbol_type_requires_two_receipted_ids_and_round_trips_on_a_socket() {
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 5,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let relation = DebuggerStaticMetadataSymbolType {
+            symbol: DebuggerStaticMetadataSymbolId {
+                metadata,
+                symbol_id: 1,
+            },
+            static_type: DebuggerStaticMetadataTypeId {
+                metadata,
+                type_id: 2,
+            },
+        };
+        assert!(relation.is_well_formed());
+        assert!(!DebuggerStaticMetadataSymbolType {
+            static_type: DebuggerStaticMetadataTypeId {
+                metadata: DebuggerStaticMetadataHandle {
+                    metadata_generation: 10,
+                    ..metadata
+                },
+                ..relation.static_type
+            },
+            ..relation
+        }
+        .is_well_formed());
+        let manifest = DebuggerMetadataCapabilityManifest::opaque_symbol_type();
+        assert!(manifest.is_well_formed());
+        let request = hello(manifest.clone());
+        let reply = negotiate(&request, &manifest);
+        let session = metadata_session_authorization(&request, &reply).unwrap();
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueSymbolType));
+        assert!(!session.observed_symbol(relation.symbol));
+        assert!(!session.observed_type(relation.static_type));
+        assert!(session.observe_symbols(&[relation.symbol]));
+        assert!(session.observe_types(&[relation.static_type]));
+        assert!(session.observed_symbol(relation.symbol));
+        assert!(session.observed_type(relation.static_type));
+        let separate_stream = metadata_session_authorization(&request, &reply).unwrap();
+        assert!(!separate_stream.observed_symbol(relation.symbol));
+        assert!(!separate_stream.observed_type(relation.static_type));
+        let inventory_only = DebuggerMetadataCapabilityManifest::opaque_selected(
+            DebuggerMetadataCapabilitySelection {
+                type_inventory: true,
+                symbol_inventory: true,
+                ..DebuggerMetadataCapabilitySelection::default()
+            },
+        );
+        let hello_without_relation = hello(manifest);
+        let granted_without_relation = negotiate(&hello_without_relation, &inventory_only);
+        let denied_session =
+            metadata_session_authorization(&hello_without_relation, &granted_without_relation)
+                .unwrap();
+        assert!(!denied_session.permits(DebuggerMetadataCapability::OpaqueSymbolType));
+        for missing in [
+            vec![DebuggerMetadataCapability::OpaqueSymbolType],
+            vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSymbolInventory,
+                DebuggerMetadataCapability::OpaqueSymbolType,
+            ],
+            vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueTypeInventory,
+                DebuggerMetadataCapability::OpaqueSymbolType,
+            ],
+        ] {
+            assert!(!DebuggerMetadataCapabilityManifest {
+                version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+                capabilities: missing,
+            }
+            .is_well_formed());
+        }
+        let request = DebuggerRequest::DescribeStaticMetadataSymbolType { target: relation };
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_request(&mut sender, &request).unwrap();
+        assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
+        let reply = DebuggerReply::StaticMetadataSymbolType(relation);
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_reply(&mut sender, &reply).unwrap();
+        assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
     }
 
     #[test]

@@ -151,6 +151,25 @@ pub struct JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
     pub source_id: u32,
 }
 
+/// One compiler-verified relation between separately inventoried symbol and
+/// type IDs. It carries no display, source, span, or static record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolType {
+    pub symbol_id: u32,
+    pub type_id: u32,
+}
+
+/// An exact relation target bound to one live program and metadata record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub symbol_id: u32,
+    pub type_id: u32,
+}
+
 /// One exact opaque parent and compiler-minted symbol-ID target for the
 /// separately authorized symbol-display operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

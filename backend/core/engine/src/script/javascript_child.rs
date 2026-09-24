@@ -40,6 +40,8 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerStaticMetadataSymbolLocation,
     JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
     JavaScriptPageDebuggerStaticMetadataSymbolTarget,
+    JavaScriptPageDebuggerStaticMetadataSymbolType,
+    JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
     JavaScriptPageDebuggerStaticMetadataTypeDisplay, JavaScriptPageDebuggerStaticMetadataTypeId,
     JavaScriptPageDebuggerStaticMetadataTypeTarget, JavaScriptPageExecutionReport,
     PageJavaScriptDebuggerLocations, PageJavaScriptExecutor,
@@ -59,12 +61,13 @@ use blueice_ipc::debugger::{
     DEBUGGER_STATIC_METADATA_TYPE_DISPLAY_MAX_BYTES,
 };
 use blueice_ipc::page_host::{
-    self, PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerExecutionState,
-    PageHostDebuggerMetadataHandle, PageHostDebuggerProgram, PageHostDebuggerSafePoint,
-    PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode, PageHostModuleGraph,
-    PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript, PageHostScriptKind,
-    PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource, PageHostStaticResolution,
-    PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM, PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
+    self, PageHostDebuggerBlueTsMetadataSymbolLocation, PageHostDebuggerBlueTsMetadataSymbolType,
+    PageHostDebuggerExecutionState, PageHostDebuggerMetadataHandle, PageHostDebuggerProgram,
+    PageHostDebuggerSafePoint, PageHostDocument, PageHostDocumentSnapshot, PageHostErrorCode,
+    PageHostModuleGraph, PageHostRealmStats, PageHostReply, PageHostRequest, PageHostScript,
+    PageHostScriptKind, PageHostScriptLanguage, PageHostScriptOutcome, PageHostSource,
+    PageHostStaticResolution, PAGE_HOST_DEBUGGER_MAX_BREAKPOINTS_PER_REALM,
+    PAGE_HOST_DEBUGGER_MAX_SAFE_POINTS_PER_PROGRAM,
 };
 use blueice_net::canonical_http_origin;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -276,6 +279,11 @@ pub trait PageHostClient {
         false
     }
 
+    /// Whether this private peer can verify an exact symbol/type pair.
+    fn debugger_bluets_metadata_symbol_type_available(&self) -> bool {
+        false
+    }
+
     /// Lists newly child-minted opaque handles only for a live direct-BlueTS
     /// attachment associated with one exact private program. The result has
     /// no source/module/name/type/span/contract payload, and a transport
@@ -456,6 +464,21 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement BlueTS debugger symbol locations",
+        ))
+    }
+
+    fn debugger_bluets_metadata_symbol_type(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _symbol_id: u32,
+        _type_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger symbol types",
         ))
     }
 
@@ -644,6 +667,10 @@ impl PageHostClient for PageHostConnection {
     }
 
     fn debugger_bluets_metadata_symbol_location_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_symbol_type_available(&self) -> bool {
         true
     }
 
@@ -878,6 +905,25 @@ impl PageHostClient for PageHostConnection {
                 symbol_id,
             },
         )
+    }
+
+    fn debugger_bluets_metadata_symbol_type(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        symbol_id: u32,
+        type_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            symbol_id,
+            type_id,
+        })
     }
 
     fn debugger_safe_points(
@@ -1624,6 +1670,13 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             && self
                 .child
                 .debugger_bluets_metadata_symbol_location_available()
+    }
+
+    fn debugger_static_metadata_symbol_type_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_symbols_available()
+            && self.child.debugger_bluets_metadata_types_available()
+            && self.child.debugger_bluets_metadata_symbol_type_available()
     }
 
     fn debugger_static_metadata_contract_inventory_available(&self) -> bool {
@@ -2503,6 +2556,67 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         })
     }
 
+    fn debugger_static_metadata_symbol_type(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSymbolTypeTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolType, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_symbol_type_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_symbol_type(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.symbol_id,
+                target.type_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataSymbolType {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            symbol_type,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || !valid_child_static_metadata_symbol_type(
+                symbol_type,
+                target.symbol_id,
+                target.type_id,
+            )
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataSymbolType {
+            symbol_id: symbol_type.symbol_id,
+            type_id: symbol_type.type_id,
+        })
+    }
+
     fn debugger_safe_points(
         &mut self,
         tab_id: TabId,
@@ -3035,6 +3149,14 @@ fn valid_child_static_metadata_symbol_location(
         && location.source_id == source_id
         && location.start_byte < location.end_byte
         && location.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+}
+
+fn valid_child_static_metadata_symbol_type(
+    symbol_type: PageHostDebuggerBlueTsMetadataSymbolType,
+    symbol_id: u32,
+    type_id: u32,
+) -> bool {
+    symbol_type.symbol_id == symbol_id && symbol_type.type_id == type_id
 }
 
 fn has_duplicate_child_static_metadata_contract_ids(
