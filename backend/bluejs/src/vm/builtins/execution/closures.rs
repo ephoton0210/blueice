@@ -4,13 +4,57 @@
 
 use super::*;
 
+/// How the first, synchronous stretch of an async function's body ended.
+enum AsyncBody {
+    Returned(Value),
+    Awaiting {
+        promise: ObjectId,
+        pc: usize,
+        handlers: Vec<HandlerFrame>,
+    },
+    Failed(RuntimeError),
+}
+
+impl AsyncBody {
+    /// An async function that is not a generator contains no `yield`, and only
+    /// generators suspend on entry, so those two exits are failures here.
+    fn classify(result: Result<InterpreterExit, RuntimeError>) -> Self {
+        match result {
+            Ok(InterpreterExit::Return(value)) => Self::Returned(value),
+            Ok(InterpreterExit::Await {
+                promise,
+                pc,
+                handlers,
+            }) => Self::Awaiting {
+                promise,
+                pc,
+                handlers,
+            },
+            Ok(InterpreterExit::Yield { .. }) => Self::Failed(RuntimeError::TypeError(
+                "yield requires an async generator function".into(),
+            )),
+            Ok(InterpreterExit::Suspend { .. }) => Self::Failed(RuntimeError::TypeError(
+                "an ordinary async function has no entry suspend".into(),
+            )),
+            Err(error) => Self::Failed(error),
+        }
+    }
+}
+
 impl Vm {
+    /// Marks a generator this call has just allocated as an async generator.
+    fn enable_async_generator(&mut self, generator: ObjectId) {
+        self.heap
+            .enable_async_generator(generator)
+            .expect("the generator was allocated by this call");
+    }
+
     pub(in super::super::super) fn binding_value(
         &mut self,
         slot: usize,
     ) -> Result<Option<Value>, RuntimeError> {
         if let Some(cell) = self.cells.get(&slot) {
-            let value = self.heap.get_own(*cell, "value")?;
+            let value = self.record_get(*cell, "value");
             if value.is_none() && self.binding_metadata[slot].eval_var {
                 // The eval-created binding was deleted: the name resolves
                 // outward again, as a fresh reference would.
@@ -109,13 +153,18 @@ impl Vm {
         }
         if code.generator {
             let async_generator = code.async_function;
+            // Creating the generator function (in the interpreter or the
+            // dynamic function constructors) already materialized both
+            // prototypes, so neither lookup can allocate here.
             let default_prototype = if code.async_function {
-                self.async_generator_prototype()?
+                self.async_generator_prototype()
             } else {
-                self.generator_prototype()?
-            };
+                self.generator_prototype()
+            }
+            .expect(GENERATOR_INTRINSICS);
             let prototype = self
-                .get_property(&callee, &"prototype".into())?
+                .get_property(&callee, &"prototype".into())
+                .expect(GENERATOR_PROTOTYPE)
                 .object_id()
                 .unwrap_or(default_prototype);
             if !code.generator_initializes_parameters {
@@ -130,7 +179,7 @@ impl Vm {
                 };
                 let generator = self.with_roots(|heap| heap.alloc_generator(state, prototype))?;
                 if async_generator {
-                    self.heap.enable_async_generator(generator)?;
+                    self.enable_async_generator(generator);
                 }
                 return Ok(Value::Object(generator));
             }
@@ -152,7 +201,7 @@ impl Vm {
                 )
             })?;
             if async_generator {
-                self.heap.enable_async_generator(generator)?;
+                self.enable_async_generator(generator);
             }
             let base = self.stack.len();
             self.stack.push(Value::Object(generator));
@@ -172,10 +221,13 @@ impl Vm {
             // default such as `(g.prototype = null)` must affect the freshly
             // created generator object's [[Prototype]].
             let prototype = self
-                .get_property(&callee, &"prototype".into())?
+                .get_property(&callee, &"prototype".into())
+                .expect(GENERATOR_PROTOTYPE)
                 .object_id()
                 .unwrap_or(default_prototype);
-            self.heap.set_prototype(generator, Some(prototype))?;
+            self.heap
+                .set_prototype(generator, Some(prototype))
+                .expect("a freshly allocated generator cannot form a prototype cycle");
             self.stack.push(Value::Object(generator));
             let stored = self.with_roots(|heap| heap.set_generator_state(generator, state));
             self.stack.pop();
@@ -267,17 +319,19 @@ impl Vm {
         let result_root = self.result_root.take();
         let mut suspended_parent_stack = None;
         let mut suspended_async = None;
-        let running = callee.object_id();
-        self.call_stack.extend(running);
+        let running = callee
+            .object_id()
+            .expect("a closure call has a function object as its callee");
+        self.call_stack.push(running);
         let result = if async_function {
             let mut iterators = Vec::new();
-            match self.interpret(&code, &mut iterators, 0, None, None, None) {
-                Ok(InterpreterExit::Return(value)) => Ok(value),
-                Ok(InterpreterExit::Await {
+            match AsyncBody::classify(self.interpret(&code, &mut iterators, 0, None, None, None)) {
+                AsyncBody::Returned(value) => Ok(value),
+                AsyncBody::Awaiting {
                     promise,
                     pc,
                     handlers,
-                }) => {
+                } => {
                     let stack = self.stack.split_off(frame_base);
                     let mut execution = self.suspend_module_execution();
                     let parent_stack = std::mem::replace(&mut execution.stack, stack);
@@ -297,13 +351,7 @@ impl Vm {
                     suspended_async = Some((state, promise));
                     Ok(Value::Undefined)
                 }
-                Ok(InterpreterExit::Yield { .. }) => Err(RuntimeError::TypeError(
-                    "yield requires an async generator function".into(),
-                )),
-                Ok(InterpreterExit::Suspend { .. }) => {
-                    unreachable!("ordinary async functions have no entry suspend")
-                }
-                Err(error) => {
+                AsyncBody::Failed(error) => {
                     let base = self.stack.len();
                     if let RuntimeError::Thrown(value) = &error {
                         self.stack.push(value.clone());
@@ -319,9 +367,7 @@ impl Vm {
         } else {
             self.run(&code)
         };
-        if running.is_some() {
-            self.call_stack.pop();
-        }
+        self.call_stack.pop();
         // A derived constructor's `this` lives in its hidden binding (which
         // `super()` in the constructor or in a nested arrow or eval bound);
         // every other constructor's is the receiver allocated at entry.
@@ -414,9 +460,74 @@ impl Vm {
             Ok(_) => {}
             Err(error) => {
                 let value = self.error_value(error)?;
-                self.settle_promise(promise, PromiseStatus::Rejected(value))?;
+                self.settle_tracked_promise(promise, PromiseStatus::Rejected(value));
             }
         }
         Ok(Value::Object(promise))
+    }
+}
+
+/// The `expect` message for a generator prototype looked up by a call to a
+/// generator function that already exists.
+const GENERATOR_INTRINSICS: &str = "a generator function's prototypes are already materialized";
+
+/// A generator function's own `prototype` is a writable, non-configurable data
+/// property, so reading it can neither throw nor allocate.
+const GENERATOR_PROTOTYPE: &str = "a generator function's prototype is a data property";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn message(body: AsyncBody) -> String {
+        match body {
+            AsyncBody::Failed(RuntimeError::TypeError(message)) => message,
+            AsyncBody::Failed(other) => format!("{other:?}"),
+            AsyncBody::Returned(_) => "returned".into(),
+            AsyncBody::Awaiting { pc, handlers, .. } => {
+                format!("awaiting at {pc} with {} handlers", handlers.len())
+            }
+        }
+    }
+
+    #[test]
+    fn an_async_function_body_can_only_return_await_or_fail() {
+        assert_eq!(
+            message(AsyncBody::classify(Ok(InterpreterExit::Return(
+                Value::Undefined
+            )))),
+            "returned"
+        );
+        assert_eq!(
+            message(AsyncBody::classify(Ok(InterpreterExit::Await {
+                promise: ObjectId { heap: 0, serial: 0 },
+                pc: 7,
+                handlers: Vec::new(),
+            }))),
+            "awaiting at 7 with 0 handlers"
+        );
+        assert_eq!(
+            message(AsyncBody::classify(Err(RuntimeError::RangeError(
+                "r".into()
+            )))),
+            "RangeError(\"r\")"
+        );
+        assert_eq!(
+            message(AsyncBody::classify(Ok(InterpreterExit::Yield {
+                value: Value::Undefined,
+                pc: 0,
+                iterators: Vec::new(),
+                handlers: Vec::new(),
+            }))),
+            "yield requires an async generator function"
+        );
+        assert_eq!(
+            message(AsyncBody::classify(Ok(InterpreterExit::Suspend {
+                pc: 0,
+                iterators: Vec::new(),
+                handlers: Vec::new(),
+            }))),
+            "an ordinary async function has no entry suspend"
+        );
     }
 }

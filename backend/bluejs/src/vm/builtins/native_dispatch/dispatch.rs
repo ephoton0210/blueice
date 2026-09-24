@@ -6,6 +6,35 @@ use super::*;
 use crate::vm::builtins::dynamic::DynamicFunctionKind;
 
 impl Vm {
+    /// Whether a TypedArray reads as empty: its buffer is detached, or the view
+    /// has fallen out of bounds of a shrunken buffer.
+    fn typed_array_unavailable(&self, buffer: ObjectId, array: ObjectId) -> bool {
+        self.heap
+            .buffer_is_detached(buffer)
+            .expect(Self::LIVE_OBJECT)
+            || self
+                .heap
+                .typed_array_is_out_of_bounds(array)
+                .expect(Self::LIVE_OBJECT)
+    }
+
+    /// The primitive that a `thisNumberValue`-style abstract operation reads:
+    /// a primitive is itself, a wrapper object contributes its primitive slot
+    /// (a cross-realm wrapper's own heap is the fallback), anything else has
+    /// none and reads as `undefined`.
+    fn this_primitive_value(&self, receiver: Value) -> Value {
+        let Value::Object(id) = receiver else {
+            return receiver;
+        };
+        self.heap
+            .boxed_primitive(id)
+            .expect(Self::LIVE_OBJECT)
+            .or(self
+                .test262_foreign_boxed_primitive(id)
+                .expect("a foreign wrapper's realm outlives the wrapper"))
+            .unwrap_or(Value::Undefined)
+    }
+
     pub(in super::super::super) fn native_call(
         &mut self,
         function: NativeFunction,
@@ -103,7 +132,7 @@ impl Vm {
                 if fulfill {
                     self.resolve_promise(promise, first.clone())?;
                 } else {
-                    self.settle_promise(promise, PromiseStatus::Rejected(first.clone()))?;
+                    self.settle_tracked_promise(promise, PromiseStatus::Rejected(first.clone()));
                 }
                 Ok(Value::Undefined)
             }
@@ -111,14 +140,11 @@ impl Vm {
                 self.promise_capability_executor(storage, &args)
             }
             NativeFunction::AsyncFromSyncFulfill { target, done } => {
-                let result = self.iterator_result(first.clone(), done);
-                match result {
-                    Ok(result) => self.settle_promise(target, PromiseStatus::Fulfilled(result))?,
-                    Err(error) => {
-                        let error = self.error_value(error)?;
-                        self.settle_promise(target, PromiseStatus::Rejected(error))?;
-                    }
-                }
+                // Building the result object can only fail on the heap
+                // ceiling, which is not a catchable exception: it ends the
+                // run instead of rejecting the promise.
+                let result = self.iterator_result(first.clone(), done)?;
+                self.settle_tracked_promise(target, PromiseStatus::Fulfilled(result));
                 Ok(Value::Undefined)
             }
             NativeFunction::AsyncFromSyncReject { target, record } => {
@@ -127,7 +153,7 @@ impl Vm {
                 // rejection even when the delegate's return method fails or
                 // returns a non-object.
                 let _ = self.iterator_close(&Value::Object(record));
-                self.settle_promise(target, PromiseStatus::Rejected(first.clone()))?;
+                self.settle_tracked_promise(target, PromiseStatus::Rejected(first.clone()));
                 Ok(Value::Undefined)
             }
             NativeFunction::AbstractModuleSource => Err(RuntimeError::TypeError(
@@ -227,7 +253,10 @@ impl Vm {
             NativeFunction::SupportedLocales => self.supported_locales(&args),
             NativeFunction::CollatorCompareGetter => self.collator_compare_getter(&receiver),
             NativeFunction::CollatorCompare => {
-                let collator = self.collator_data(&receiver)?;
+                // `compare` is a function bound to its Collator.
+                let collator = self
+                    .collator_data(&receiver)
+                    .expect("Intl.Collator compare functions are bound to a Collator");
                 let left = self.coerce_string(first)?;
                 let right = self.coerce_string(native::argument(&args, 1))?;
                 Ok(crate::intl::collate(&collator, &left, &right))
@@ -650,14 +679,10 @@ impl Vm {
                 };
                 if args.len() == 1 {
                     if let Value::Number(length) = first {
-                        let Value::Number(length) =
-                            self.array_length_value(&Value::Number(*length))?
-                        else {
-                            unreachable!()
-                        };
-                        return Ok(Value::Object(self.with_roots(|heap| {
-                            heap.alloc_array(length as u32, Some(prototype))
-                        })?));
+                        let length = Self::array_length_number(*length)?;
+                        return Ok(Value::Object(
+                            self.with_roots(|heap| heap.alloc_array(length, Some(prototype)))?,
+                        ));
                     }
                 }
                 self.array_from_with_prototype(args, prototype)
@@ -668,26 +693,40 @@ impl Vm {
             NativeFunction::DateUtc => self.date_utc(&args),
             NativeFunction::DateMethod(method) => self.date_method(method, &receiver, &args),
             NativeFunction::ArrayBuffer => self.array_buffer_constructor(&args, construct),
-            NativeFunction::ArrayBufferByteLength => Ok(Value::Number(
-                self.heap
-                    .array_buffer_byte_length(self.array_buffer_receiver(&receiver)?)?
-                    as f64,
-            )),
-            NativeFunction::ArrayBufferDetached => Ok(Value::Bool(
-                self.heap
-                    .array_buffer_is_detached(self.array_buffer_receiver(&receiver)?)?,
-            )),
-            NativeFunction::ArrayBufferMaxByteLength => Ok(Value::Number(
-                self.heap
-                    .buffer_max_byte_length(self.array_buffer_receiver(&receiver)?)?
-                    as f64,
-            )),
+            NativeFunction::ArrayBufferByteLength => {
+                let buffer = self.array_buffer_receiver(&receiver)?;
+                Ok(Value::Number(
+                    self.heap
+                        .array_buffer_byte_length(buffer)
+                        .expect(Self::LIVE_OBJECT) as f64,
+                ))
+            }
+            NativeFunction::ArrayBufferDetached => {
+                let buffer = self.array_buffer_receiver(&receiver)?;
+                Ok(Value::Bool(
+                    self.heap
+                        .array_buffer_is_detached(buffer)
+                        .expect(Self::LIVE_OBJECT),
+                ))
+            }
+            NativeFunction::ArrayBufferMaxByteLength => {
+                let buffer = self.array_buffer_receiver(&receiver)?;
+                Ok(Value::Number(
+                    self.heap
+                        .buffer_max_byte_length(buffer)
+                        .expect(Self::LIVE_OBJECT) as f64,
+                ))
+            }
             // IsResizableArrayBuffer looks only at the buffer's kind, so a
             // detached resizable buffer still reports true.
-            NativeFunction::ArrayBufferResizable => Ok(Value::Bool(
-                self.heap
-                    .array_buffer_is_resizable(self.array_buffer_receiver(&receiver)?)?,
-            )),
+            NativeFunction::ArrayBufferResizable => {
+                let buffer = self.array_buffer_receiver(&receiver)?;
+                Ok(Value::Bool(
+                    self.heap
+                        .array_buffer_is_resizable(buffer)
+                        .expect(Self::LIVE_OBJECT),
+                ))
+            }
             NativeFunction::ArrayBufferResize => self.buffer_resize(&receiver, first),
             NativeFunction::ArrayBufferTransfer => {
                 self.array_buffer_transfer(&receiver, &args, false)
@@ -713,20 +752,28 @@ impl Vm {
             NativeFunction::SharedArrayBuffer => {
                 self.shared_array_buffer_constructor(&args, construct)
             }
-            NativeFunction::SharedArrayBufferByteLength => Ok(Value::Number(
-                self.heap
-                    .buffer_byte_length(self.shared_array_buffer_receiver(&receiver)?)?
-                    as f64,
-            )),
-            NativeFunction::SharedArrayBufferMaxByteLength => Ok(Value::Number(
-                self.heap
-                    .buffer_max_byte_length(self.shared_array_buffer_receiver(&receiver)?)?
-                    as f64,
-            )),
-            NativeFunction::SharedArrayBufferGrowable => Ok(Value::Bool(
-                self.heap
-                    .buffer_growable(self.shared_array_buffer_receiver(&receiver)?)?,
-            )),
+            NativeFunction::SharedArrayBufferByteLength => {
+                let buffer = self.shared_array_buffer_receiver(&receiver)?;
+                Ok(Value::Number(
+                    self.heap
+                        .buffer_byte_length(buffer)
+                        .expect(Self::LIVE_OBJECT) as f64,
+                ))
+            }
+            NativeFunction::SharedArrayBufferMaxByteLength => {
+                let buffer = self.shared_array_buffer_receiver(&receiver)?;
+                Ok(Value::Number(
+                    self.heap
+                        .buffer_max_byte_length(buffer)
+                        .expect(Self::LIVE_OBJECT) as f64,
+                ))
+            }
+            NativeFunction::SharedArrayBufferGrowable => {
+                let buffer = self.shared_array_buffer_receiver(&receiver)?;
+                Ok(Value::Bool(
+                    self.heap.buffer_growable(buffer).expect(Self::LIVE_OBJECT),
+                ))
+            }
             NativeFunction::SharedArrayBufferGrow => self.shared_buffer_grow(&receiver, first),
             NativeFunction::SharedArrayBufferSlice => {
                 self.shared_array_buffer_slice(&receiver, &args)
@@ -743,17 +790,9 @@ impl Vm {
                 let object = receiver.object_id().ok_or_else(|| {
                     RuntimeError::TypeError("DataView method requires a DataView receiver".into())
                 })?;
-                let buffer = self
-                    .heap
-                    .data_view_buffer(object)
-                    .map_err(|error| match error {
-                        HeapError::InvalidInternalSlot(_) | HeapError::InvalidObject(_) => {
-                            RuntimeError::TypeError(
-                                "DataView method requires a DataView receiver".into(),
-                            )
-                        }
-                        error => error.into(),
-                    })?;
+                let buffer = self.heap.data_view_buffer(object).map_err(|_| {
+                    RuntimeError::TypeError("DataView method requires a DataView receiver".into())
+                })?;
                 // A view over an ArrayBuffer of another Test262 realm exposes
                 // that buffer, not the bridge's local mirror of it.
                 if let Some(facade) = self.test262_foreign_buffer_facade(buffer) {
@@ -796,17 +835,11 @@ impl Vm {
                 // Like DataView.prototype.buffer, this accessor exposes the
                 // stored [[ViewedArrayBuffer]] without validating its current
                 // detached or out-of-bounds state.
-                let (buffer, _, _, _) =
-                    self.heap
-                        .typed_array_info(object)
-                        .map_err(|error| match error {
-                            HeapError::InvalidInternalSlot(_) | HeapError::InvalidObject(_) => {
-                                RuntimeError::TypeError(
-                                    "TypedArray method requires a TypedArray receiver".into(),
-                                )
-                            }
-                            error => error.into(),
-                        })?;
+                let (buffer, _, _, _) = self.heap.typed_array_info(object).map_err(|_| {
+                    RuntimeError::TypeError(
+                        "TypedArray method requires a TypedArray receiver".into(),
+                    )
+                })?;
                 if let Some(facade) = self.test262_foreign_buffer_facade(buffer) {
                     return Ok(facade);
                 }
@@ -819,9 +852,7 @@ impl Vm {
                     )
                 })?;
                 let (buffer, _, length, kind) = self.heap.typed_array_info(object)?;
-                let byte_length = if self.heap.buffer_is_detached(buffer)?
-                    || self.heap.typed_array_is_out_of_bounds(object)?
-                {
+                let byte_length = if self.typed_array_unavailable(buffer, object) {
                     0
                 } else {
                     length * kind.byte_width()
@@ -835,9 +866,7 @@ impl Vm {
                     )
                 })?;
                 let (buffer, offset, _, _) = self.heap.typed_array_info(object)?;
-                let byte_offset = if self.heap.buffer_is_detached(buffer)?
-                    || self.heap.typed_array_is_out_of_bounds(object)?
-                {
+                let byte_offset = if self.typed_array_unavailable(buffer, object) {
                     0
                 } else {
                     offset
@@ -851,9 +880,7 @@ impl Vm {
                     )
                 })?;
                 let (buffer, _, length, _) = self.heap.typed_array_info(object)?;
-                let element_length = if self.heap.buffer_is_detached(buffer)?
-                    || self.heap.typed_array_is_out_of_bounds(object)?
-                {
+                let element_length = if self.typed_array_unavailable(buffer, object) {
                     0
                 } else {
                     length
@@ -893,7 +920,9 @@ impl Vm {
             NativeFunction::Proxy => self.proxy_constructor(&args, construct),
             NativeFunction::ProxyRevocable => self.proxy_revocable(&args),
             NativeFunction::ProxyRevoker(proxy) => {
-                self.with_roots(|heap| heap.revoke_proxy(proxy))?;
+                self.heap
+                    .revoke_proxy(proxy)
+                    .expect("the revoker's proxy is a live heap object");
                 Ok(Value::Undefined)
             }
             NativeFunction::Map => self.collection_constructor(true, &args, construct),
@@ -907,12 +936,14 @@ impl Vm {
                         "Map size requires a Map receiver".into(),
                     ));
                 };
-                if !self.heap.is_map(map)? {
+                if !self.heap.is_map(map).expect(Self::LIVE_OBJECT) {
                     return Err(RuntimeError::TypeError(
                         "Map size requires a Map receiver".into(),
                     ));
                 }
-                Ok(Value::Number(self.heap.map_size(map)? as f64))
+                Ok(Value::Number(
+                    self.heap.map_size(map).expect(Self::LIVE_OBJECT) as f64,
+                ))
             }
             NativeFunction::Set => self.collection_constructor(false, &args, construct),
             NativeFunction::SetMethod(method) => self.set_method(method, &receiver, &args),
@@ -922,12 +953,14 @@ impl Vm {
                         "Set size requires a Set receiver".into(),
                     ));
                 };
-                if !self.heap.is_set(set)? {
+                if !self.heap.is_set(set).expect(Self::LIVE_OBJECT) {
                     return Err(RuntimeError::TypeError(
                         "Set size requires a Set receiver".into(),
                     ));
                 }
-                Ok(Value::Number(self.heap.set_size(set)? as f64))
+                Ok(Value::Number(
+                    self.heap.set_size(set).expect(Self::LIVE_OBJECT) as f64,
+                ))
             }
             NativeFunction::WeakMap => self.weak_collection_constructor(true, &args, construct),
             NativeFunction::WeakSet => self.weak_collection_constructor(false, &args, construct),
@@ -1050,7 +1083,6 @@ impl Vm {
                 // chain: an inherited index setter or read-only property must
                 // see the strict Set the generic algorithm performs.
                 let direct = matches!(self.heap.is_array(object), Ok(true))
-                    && matches!(self.heap.get(object, "length"), Ok(Value::Number(_)))
                     && matches!(self.heap.is_extensible(object), Ok(true))
                     && matches!(
                         self.heap.get_own_property_descriptor(object, "length"),
@@ -1121,7 +1153,9 @@ impl Vm {
                         "Array iterator next requires an iterator".into(),
                     ));
                 };
-                let Some((object, index, done, kind)) = self.heap.array_iterator(id)? else {
+                let Some((object, index, done, kind)) =
+                    self.heap.array_iterator(id).expect(Self::LIVE_OBJECT)
+                else {
                     return Err(RuntimeError::TypeError(
                         "Array iterator next requires an iterator".into(),
                     ));
@@ -1129,7 +1163,7 @@ impl Vm {
                 if done {
                     return self.iterator_result(Value::Undefined, true);
                 }
-                let length = if self.heap.is_typed_array(object)? {
+                let length = if self.heap.is_typed_array(object).expect(Self::LIVE_OBJECT) {
                     let (_, _, length, _) = self.typed_array_receiver(&Value::Object(object))?;
                     length as f64
                 } else if let Some((length, _)) = self.test262_foreign_typed_array_info(object)? {
@@ -1181,7 +1215,7 @@ impl Vm {
                 self.async_generator_request(&receiver, first.clone(), function)
             }
             NativeFunction::Apply => {
-                if !self.is_callable(&receiver)? {
+                if !self.callable(&receiver) {
                     return Err(RuntimeError::TypeError("apply requires a callable".into()));
                 }
                 let list = native::argument(&args, 1);
@@ -1193,7 +1227,7 @@ impl Vm {
                 self.call_native(receiver, first.clone(), values, false)
             }
             NativeFunction::ReflectApply => {
-                if !self.is_callable(first)? {
+                if !self.callable(first) {
                     return Err(RuntimeError::TypeError(
                         "Reflect.apply requires a callable target".into(),
                     ));
@@ -1212,7 +1246,7 @@ impl Vm {
                 } else {
                     first.clone()
                 };
-                if !self.is_constructor(first)? || !self.is_constructor(&new_target)? {
+                if !self.constructible(first) || !self.constructible(&new_target) {
                     return Err(RuntimeError::TypeError(
                         "Reflect.construct requires constructors".into(),
                     ));
@@ -1221,31 +1255,37 @@ impl Vm {
                 self.call_with_target(first.clone(), Value::Undefined, values, true, new_target)
             }
             NativeFunction::FunctionToString => {
-                if !self.is_callable(&receiver)? {
+                if !self.callable(&receiver) {
                     return Err(RuntimeError::TypeError(
                         "Function.toString requires a callable".into(),
                     ));
                 }
                 let function = receiver.object_id().unwrap();
-                if let Some(source_text) = self.heap.function_source_text(function)? {
+                if let Some(source_text) = self
+                    .heap
+                    .function_source_text(function)
+                    .expect(Self::LIVE_OBJECT)
+                {
                     return Ok(Value::String(source_text));
                 }
-                let initial_name = self.heap.function_initial_name(function)?;
+                let initial_name = self
+                    .heap
+                    .function_initial_name(function)
+                    .expect(Self::LIVE_OBJECT);
                 Ok(Value::String(JsString::native_function_source(
                     initial_name,
                 )))
             }
             NativeFunction::PrimitiveConstructor(boolean) => {
                 let value = if boolean {
-                    Value::Bool(self.to_boolean(first)?)
+                    Value::Bool(self.truthy(first))
                 } else if let Value::BigInt(value) = first {
-                    Value::Number(value.to_f64().unwrap_or_else(|| {
-                        if value.sign() == Sign::Minus {
-                            f64::NEG_INFINITY
-                        } else {
-                            f64::INFINITY
-                        }
-                    }))
+                    // `to_f64` saturates to an infinity rather than failing.
+                    Value::Number(
+                        value
+                            .to_f64()
+                            .expect("a BigInt converts to an f64, saturating at infinity"),
+                    )
                 } else {
                     Value::Number(if args.is_empty() {
                         0.0
@@ -1256,9 +1296,12 @@ impl Vm {
                 if !construct {
                     return Ok(value);
                 }
-                let constructor = self.global(if boolean { "Boolean" } else { "Number" })?;
+                let constructor = self
+                    .global(if boolean { "Boolean" } else { "Number" })
+                    .expect("a materialized primitive constructor is a cached global");
                 let default = self
-                    .get_property(&constructor, &"prototype".into())?
+                    .get_property(&constructor, &"prototype".into())
+                    .expect("an intrinsic constructor's prototype is a data property")
                     .object_id()
                     .unwrap();
                 let prototype = self.constructor_prototype(default)?;
@@ -1350,7 +1393,10 @@ impl Vm {
             }
             NativeFunction::PrimitiveMethod { boolean, string } => {
                 let value = if let Value::Object(id) = receiver {
-                    self.heap.boxed_primitive(id)?.unwrap_or(Value::Undefined)
+                    self.heap
+                        .boxed_primitive(id)
+                        .expect(Self::LIVE_OBJECT)
+                        .unwrap_or(Value::Undefined)
                 } else {
                     receiver
                 };
@@ -1363,20 +1409,15 @@ impl Vm {
                     ));
                 }
                 if string {
-                    Ok(Value::String(primitive::string(&value)?))
+                    Ok(Value::String(
+                        primitive::string(&value).expect("a Number or Boolean has a string form"),
+                    ))
                 } else {
                     Ok(value)
                 }
             }
             NativeFunction::SymbolToString | NativeFunction::SymbolValueOf => {
-                let value = if let Value::Object(id) = receiver {
-                    self.heap
-                        .boxed_primitive(id)?
-                        .or(self.test262_foreign_boxed_primitive(id)?)
-                        .unwrap_or(Value::Undefined)
-                } else {
-                    receiver
-                };
+                let value = self.this_primitive_value(receiver);
                 let Value::Symbol(symbol) = value else {
                     return Err(RuntimeError::TypeError(
                         "Symbol method requires a Symbol".into(),
@@ -1389,14 +1430,7 @@ impl Vm {
                 }
             }
             NativeFunction::SymbolDescription => {
-                let value = if let Value::Object(id) = receiver {
-                    self.heap
-                        .boxed_primitive(id)?
-                        .or(self.test262_foreign_boxed_primitive(id)?)
-                        .unwrap_or(Value::Undefined)
-                } else {
-                    receiver
-                };
+                let value = self.this_primitive_value(receiver);
                 let Value::Symbol(symbol) = value else {
                     return Err(RuntimeError::TypeError(
                         "Symbol description requires a Symbol".into(),
@@ -1411,14 +1445,7 @@ impl Vm {
                 // Symbol's methods already do above); anything else,
                 // including the BigInt prototype object itself (which has
                 // no such slot), is a TypeError.
-                let value = if let Value::Object(id) = receiver {
-                    self.heap
-                        .boxed_primitive(id)?
-                        .or(self.test262_foreign_boxed_primitive(id)?)
-                        .unwrap_or(Value::Undefined)
-                } else {
-                    receiver
-                };
+                let value = self.this_primitive_value(receiver);
                 let Value::BigInt(value) = value else {
                     return Err(RuntimeError::TypeError(
                         "BigInt method requires a BigInt".into(),
@@ -1444,14 +1471,7 @@ impl Vm {
                 Ok(Value::String(value.to_str_radix(radix).into()))
             }
             NativeFunction::BigIntToLocaleString => {
-                let value = if let Value::Object(id) = receiver {
-                    self.heap
-                        .boxed_primitive(id)?
-                        .or(self.test262_foreign_boxed_primitive(id)?)
-                        .unwrap_or(Value::Undefined)
-                } else {
-                    receiver
-                };
+                let value = self.this_primitive_value(receiver);
                 let Value::BigInt(value) = value else {
                     return Err(RuntimeError::TypeError(
                         "BigInt method requires a BigInt".into(),
@@ -1466,7 +1486,7 @@ impl Vm {
                         value.to_string(),
                     ))
                     .map(|formatted| Value::String(formatted.into()))
-                    .map_err(|error| RuntimeError::RangeError(error.to_string()))
+                    .map_err(Self::number_format_error)
             }
             NativeFunction::RegExp => {
                 self.regexp_constructor(first, native::argument(&args, 1), construct)
@@ -1522,7 +1542,7 @@ impl Vm {
                 self.stack
                     .extend([Value::Object(object), key_value.clone(), accessor.clone()]);
                 let result = (|| {
-                    if !self.is_callable(&accessor)? {
+                    if !self.callable(&accessor) {
                         return Err(RuntimeError::TypeError(
                             "legacy accessor must be callable".into(),
                         ));
@@ -1644,23 +1664,29 @@ impl Vm {
                         let id = *id;
                         if self.is_array(&receiver)? {
                             "Array"
-                        } else if self.heap.boxed_string(id)?.is_some() {
+                        } else if self
+                            .heap
+                            .boxed_string(id)
+                            .expect(Self::LIVE_OBJECT)
+                            .is_some()
+                        {
                             "String"
-                        } else if self.heap.is_arguments(id)? {
+                        } else if self.heap.is_arguments(id).expect(Self::LIVE_OBJECT) {
                             "Arguments"
-                        } else if self.heap.is_date(id)? {
+                        } else if self.heap.is_date(id).expect(Self::LIVE_OBJECT) {
                             "Date"
-                        } else if self.is_callable(&receiver)? {
+                        } else if self.callable(&receiver) {
                             "Function"
-                        } else if self.heap.regexp(id)?.is_some() {
+                        } else if self.heap.regexp(id).expect(Self::LIVE_OBJECT).is_some() {
                             "RegExp"
-                        } else if self.heap.is_error(id)? {
+                        } else if self.heap.is_error(id).expect(Self::LIVE_OBJECT) {
                             "Error"
-                        } else if let Some(value) = self.heap.boxed_primitive(id)? {
+                        } else if let Some(value) =
+                            self.heap.boxed_primitive(id).expect(Self::LIVE_OBJECT)
+                        {
                             match value {
                                 Value::Number(_) => "Number",
                                 Value::Bool(_) => "Boolean",
-                                Value::BigInt(_) | Value::Symbol(_) => "Object",
                                 _ => "Object",
                             }
                         } else {
@@ -1693,7 +1719,7 @@ impl Vm {
                 let result = (|| {
                     let to_string = self.get_property(&receiver, &"toString".into())?;
                     self.stack.push(to_string.clone());
-                    if !self.is_callable(&to_string)? {
+                    if !self.callable(&to_string) {
                         return Err(RuntimeError::TypeError(
                             "toString property is not callable".into(),
                         ));
@@ -1707,7 +1733,7 @@ impl Vm {
                 let object = Value::Object(self.coerce_object(&receiver)?);
                 self.stack.push(object.clone());
                 let join = self.get_property(&object, &"join".into())?;
-                if self.is_callable(&join)? {
+                if self.callable(&join) {
                     self.call_native(join, object, vec![], false)
                 } else {
                     self.native_call(NativeFunction::ObjectToString, object, vec![], false)
@@ -1715,9 +1741,6 @@ impl Vm {
             }
             NativeFunction::ArrayConcat => self.array_concat(&receiver, &args),
             NativeFunction::ArrayJoin => self.array_join(&receiver, first),
-            NativeFunction::Symbol if construct => Err(RuntimeError::TypeError(
-                "Symbol is not a constructor".into(),
-            )),
             NativeFunction::Symbol => Ok(Value::Symbol(JsSymbol::new(
                 if matches!(first, Value::Undefined) {
                     None
@@ -1755,7 +1778,9 @@ impl Vm {
                 // makes `class C extends Object {}` and
                 // Reflect.construct(Object, values, C) allocate a fresh C
                 // instance rather than returning `values[0]`.
-                let object_constructor = self.global("Object")?;
+                let object_constructor = self
+                    .global("Object")
+                    .expect("Object is a cached global once it is being called");
                 if construct && self.new_target != object_constructor {
                     let prototype = self.constructor_prototype(self.object_prototype)?;
                     return Ok(Value::Object(
@@ -1775,26 +1800,23 @@ impl Vm {
                 self.coerce_object(first).map(Value::Object)
             }
             NativeFunction::Iterator => {
-                let constructor = self.global("Iterator")?;
+                let constructor = self
+                    .global("Iterator")
+                    .expect("Iterator is a cached global once it is being called");
                 if !construct || self.new_target == constructor {
                     return Err(RuntimeError::TypeError(
                         "Iterator is not directly callable or constructable".into(),
                     ));
                 }
-                let iterator_prototype = self.base_iterator_prototype()?;
+                let iterator_prototype = self
+                    .iterator_base
+                    .expect("the Iterator constructor exists with %Iterator.prototype%");
                 let prototype = self.constructor_prototype(iterator_prototype)?;
                 Ok(Value::Object(
                     self.with_roots(|heap| heap.alloc_object(Some(prototype)))?,
                 ))
             }
-            NativeFunction::IteratorFrom => {
-                if construct {
-                    return Err(RuntimeError::TypeError(
-                        "Iterator.from is not a constructor".into(),
-                    ));
-                }
-                self.iterator_from(first)
-            }
+            NativeFunction::IteratorFrom => self.iterator_from(first),
             NativeFunction::IteratorHelper(method) => match method {
                 native::IteratorHelperMethod::Concat => self.iterator_concat(&args),
                 native::IteratorHelperMethod::Zip => {
@@ -1837,7 +1859,8 @@ impl Vm {
                         "iterator next requires an iterator".into(),
                     ));
                 };
-                let Some(value) = self.heap.string_iterator_next(id)? else {
+                let Some(value) = self.heap.string_iterator_next(id).expect(Self::LIVE_OBJECT)
+                else {
                     return Err(RuntimeError::TypeError(
                         "iterator next requires a String iterator".into(),
                     ));
@@ -1869,7 +1892,9 @@ impl Vm {
                 };
                 self.check_string(&Value::String(string.clone()))?;
                 if construct {
-                    let (_, prototype) = self.string_intrinsics()?;
+                    let (_, prototype) = self
+                        .string_intrinsics
+                        .expect("String is being called, so its intrinsics exist");
                     let prototype = self.constructor_prototype(prototype)?;
                     Ok(Value::Object(self.with_roots(|heap| {
                         heap.alloc_string(string, Some(prototype))
@@ -1882,14 +1907,12 @@ impl Vm {
                 let mut result = JsString::default();
                 for arg in &args {
                     let number = Value::Number(self.coerce_number(arg)?);
-                    let Value::String(part) = native::from_codes(
+                    let part = primitive::string(&native::from_codes(
                         &[number],
                         function == NativeFunction::FromCodePoint,
                         self.config.max_string_bytes,
-                    )?
-                    else {
-                        unreachable!()
-                    };
+                    )?)
+                    .expect("String.fromCharCode builds a string");
                     native::append(&mut result, &part, self.config.max_string_bytes)?;
                 }
                 Ok(Value::String(result))
@@ -1909,5 +1932,29 @@ impl Vm {
                 false,
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_shadow_realm_wrapper_without_its_membrane_record_is_rejected() {
+        // `dispatch_call` routes every registered wrapper to its membrane
+        // record before a callee reaches this dispatcher; the bare tag only
+        // arrives here if that registration were missing.
+        let mut vm = Vm::default();
+        assert_eq!(
+            vm.native_call(
+                NativeFunction::ShadowRealmWrappedFunction,
+                Value::Undefined,
+                Vec::new(),
+                false
+            ),
+            Err(RuntimeError::TypeError(
+                "ShadowRealm wrapped function called without its membrane record".into()
+            ))
+        );
     }
 }

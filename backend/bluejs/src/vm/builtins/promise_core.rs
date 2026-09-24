@@ -30,7 +30,7 @@ impl Vm {
         // (including when called *from* that very materialization, via
         // `promise_prototype()`'s own cache check -- no circularity).
         self.global("Promise")?;
-        let prototype = self.promise_prototype()?;
+        let prototype = self.promise_prototype().expect(PROMISE_INTRINSICS);
         self.new_promise_with_prototype(prototype)
     }
 
@@ -57,7 +57,10 @@ impl Vm {
         function: NativeFunction,
         length: u32,
     ) -> Result<Value, RuntimeError> {
-        let prototype = self.function_prototype()?;
+        // Every caller already holds a promise or a Promise constructor, and
+        // creating either went through `global("Promise")`, which builds the
+        // string intrinsics first.
+        let prototype = self.function_prototype().expect(PROMISE_INTRINSICS);
         let id = self.with_roots(|heap| heap.alloc_native_function(function, "", prototype))?;
         self.stack.push(Value::Object(id));
         let result = (|| {
@@ -87,7 +90,12 @@ impl Vm {
         state: ObjectId,
         key: &str,
     ) -> Result<Value, RuntimeError> {
-        Ok(self.heap.get_own(state, key)?.unwrap_or(Value::Undefined))
+        Ok(self.promise_field(state, key))
+    }
+
+    /// A field of a closure-state record (`Undefined` while unset).
+    fn promise_field(&self, state: ObjectId, key: &str) -> Value {
+        self.record_get(state, key).unwrap_or(Value::Undefined)
     }
 
     pub(super) fn promise_state_set(
@@ -140,7 +148,7 @@ impl Vm {
         &mut self,
         state: ObjectId,
     ) -> Result<bool, RuntimeError> {
-        if self.promise_state_get(state, "resolved")? == Value::Bool(true) {
+        if self.promise_field(state, "resolved") == Value::Bool(true) {
             return Ok(true);
         }
         self.promise_state_set(state, "resolved", Value::Bool(true))?;
@@ -155,12 +163,12 @@ impl Vm {
         &mut self,
         constructor: &Value,
     ) -> Result<PromiseCapability, RuntimeError> {
-        if !self.is_constructor(constructor)? {
+        if !self.constructible(constructor) {
             return Err(RuntimeError::TypeError(
                 "Promise constructor must be a constructor".into(),
             ));
         }
-        let intrinsic = self.global("Promise")?;
+        let intrinsic = self.global("Promise").expect(PROMISE_INTRINSICS);
         let base = self.stack.len();
         let result = (|| {
             if *constructor == intrinsic {
@@ -182,15 +190,11 @@ impl Vm {
             self.stack.push(executor.clone());
             let promise =
                 self.call_native(constructor.clone(), Value::Undefined, vec![executor], true)?;
+            // Construct always yields an object.
             self.stack.push(promise.clone());
-            let Value::Object(_) = promise else {
-                return Err(RuntimeError::TypeError(
-                    "Promise constructor must return an object".into(),
-                ));
-            };
-            let resolve = self.promise_state_get(storage, "resolve")?;
-            let reject = self.promise_state_get(storage, "reject")?;
-            if !self.is_callable(&resolve)? || !self.is_callable(&reject)? {
+            let resolve = self.promise_field(storage, "resolve");
+            let reject = self.promise_field(storage, "reject");
+            if !self.callable(&resolve) || !self.callable(&reject) {
                 return Err(RuntimeError::TypeError(
                     "Promise constructor did not provide resolving functions".into(),
                 ));
@@ -211,8 +215,8 @@ impl Vm {
         storage: ObjectId,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        if self.promise_state_get(storage, "resolve")? != Value::Undefined
-            || self.promise_state_get(storage, "reject")? != Value::Undefined
+        if self.promise_field(storage, "resolve") != Value::Undefined
+            || self.promise_field(storage, "reject") != Value::Undefined
         {
             return Err(RuntimeError::TypeError(
                 "Promise capability executor was already called".into(),
@@ -303,7 +307,7 @@ impl Vm {
                 "Promise constructor must be called with new".into(),
             ));
         }
-        if !self.is_callable(&executor)? {
+        if !self.callable(&executor) {
             return Err(RuntimeError::TypeError(
                 "Promise resolver is not a function".into(),
             ));
@@ -311,7 +315,7 @@ impl Vm {
         // PromiseCreate uses OrdinaryCreateFromConstructor, so a distinct
         // newTarget can observe its `prototype` getter (and a revoked Proxy
         // there must throw) before the promise record is allocated.
-        let default_prototype = self.promise_prototype()?;
+        let default_prototype = self.promise_prototype().expect(PROMISE_INTRINSICS);
         let prototype = self.constructor_prototype(default_prototype)?;
         let promise = self.new_promise_with_prototype(prototype)?;
         // The capability and both resolving functions must survive further
@@ -409,6 +413,18 @@ impl Vm {
         result
     }
 
+    /// [`Self::settle_promise`] for a promise the VM created itself and so
+    /// knows is tracked (a resolving function's own promise, a fresh derived
+    /// promise).
+    pub(in super::super) fn settle_tracked_promise(
+        &mut self,
+        promise: ObjectId,
+        status: PromiseStatus,
+    ) {
+        self.settle_promise(promise, status)
+            .expect("the VM settles only promises it tracks");
+    }
+
     pub(in super::super) fn settle_promise(
         &mut self,
         promise: ObjectId,
@@ -421,10 +437,14 @@ impl Vm {
         if !matches!(record.status, PromiseStatus::Pending) {
             return Ok(());
         }
-        let fulfilled = matches!(status, PromiseStatus::Fulfilled(_));
-        let value = match &status {
-            PromiseStatus::Fulfilled(value) | PromiseStatus::Rejected(value) => value.clone(),
-            PromiseStatus::Pending => unreachable!("Promise settlement is final"),
+        let (fulfilled, value) = match &status {
+            PromiseStatus::Fulfilled(value) => (true, value.clone()),
+            PromiseStatus::Rejected(value) => (false, value.clone()),
+            PromiseStatus::Pending => {
+                return Err(RuntimeError::TypeError(
+                    "a Promise settles as fulfilled or rejected, never as pending".into(),
+                ))
+            }
         };
         let reactions = std::mem::take(&mut record.reactions);
         record.status = status;
@@ -487,10 +507,12 @@ impl Vm {
     ) -> Result<(), RuntimeError> {
         if resolution.object_id() == Some(promise) {
             let error = self.error_object("TypeError", "Promise resolved with itself".into())?;
-            return self.settle_promise(promise, PromiseStatus::Rejected(error));
+            self.settle_tracked_promise(promise, PromiseStatus::Rejected(error));
+            return Ok(());
         }
         if !matches!(resolution, Value::Object(_)) {
-            return self.settle_promise(promise, PromiseStatus::Fulfilled(resolution));
+            self.settle_tracked_promise(promise, PromiseStatus::Fulfilled(resolution));
+            return Ok(());
         }
         let base = self.stack.len();
         self.stack.push(resolution.clone());
@@ -500,11 +522,13 @@ impl Vm {
             Ok(then) => then,
             Err(error) => {
                 let error = self.error_value(error)?;
-                return self.settle_promise(promise, PromiseStatus::Rejected(error));
+                self.settle_tracked_promise(promise, PromiseStatus::Rejected(error));
+                return Ok(());
             }
         };
-        if !self.is_callable(&then)? {
-            return self.settle_promise(promise, PromiseStatus::Fulfilled(resolution));
+        if !self.callable(&then) {
+            self.settle_tracked_promise(promise, PromiseStatus::Fulfilled(resolution));
+            return Ok(());
         }
         self.promise_jobs.push_back(PromiseJob::Thenable {
             target: promise,
@@ -521,7 +545,7 @@ impl Vm {
         on_fulfilled: Value,
         on_rejected: Value,
         target: ReactionTarget,
-    ) -> Result<(), RuntimeError> {
+    ) {
         let reaction = PromiseThenReaction {
             target,
             on_fulfilled,
@@ -530,11 +554,11 @@ impl Vm {
         let record = self
             .promises
             .get_mut(&promise)
-            .ok_or(RuntimeError::TypeError("invalid Promise receiver".into()))?;
+            .expect("the caller passes a promise the VM tracks");
         let (fulfilled, value) = match &record.status {
             PromiseStatus::Pending => {
                 record.reactions.push(PromiseReaction::Then(reaction));
-                return Ok(());
+                return;
             }
             PromiseStatus::Fulfilled(value) => (true, value.clone()),
             PromiseStatus::Rejected(value) => (false, value.clone()),
@@ -549,7 +573,6 @@ impl Vm {
             value,
             fulfilled,
         });
-        Ok(())
     }
 
     /// PerformPromiseThen for VM-internal callers: `receiver` is a promise the
@@ -572,13 +595,13 @@ impl Vm {
             native::argument(args, 0).clone(),
             native::argument(args, 1).clone(),
             ReactionTarget::Native(target),
-        )?;
+        );
         Ok(Value::Object(target))
     }
 
     /// SpeciesConstructor ( promise, %Promise% ).
     fn promise_species_constructor(&mut self, promise: &Value) -> Result<Value, RuntimeError> {
-        let default = self.global("Promise")?;
+        let default = self.global("Promise").expect(PROMISE_INTRINSICS);
         let constructor = self.get_property(promise, &"constructor".into())?;
         if constructor == Value::Undefined {
             return Ok(default);
@@ -592,7 +615,7 @@ impl Vm {
         if matches!(species, Value::Undefined | Value::Null) {
             return Ok(default);
         }
-        if !self.is_constructor(&species)? {
+        if !self.constructible(&species) {
             return Err(RuntimeError::TypeError(
                 "Promise species must be a constructor".into(),
             ));
@@ -617,21 +640,22 @@ impl Vm {
         let result = (|| {
             let constructor = self.promise_species_constructor(receiver)?;
             self.stack.push(constructor.clone());
-            let (target, derived) = if constructor == self.global("Promise")? {
-                let derived = self.new_promise()?;
-                (ReactionTarget::Native(derived), Value::Object(derived))
-            } else {
-                let capability = self.new_promise_capability(&constructor)?;
-                let derived = capability.promise.clone();
-                (ReactionTarget::Capability(capability), derived)
-            };
+            let (target, derived) =
+                if constructor == self.global("Promise").expect(PROMISE_INTRINSICS) {
+                    let derived = self.new_promise()?;
+                    (ReactionTarget::Native(derived), Value::Object(derived))
+                } else {
+                    let capability = self.new_promise_capability(&constructor)?;
+                    let derived = capability.promise.clone();
+                    (ReactionTarget::Capability(capability), derived)
+                };
             self.stack.push(derived.clone());
             self.perform_promise_then(
                 promise,
                 native::argument(args, 0).clone(),
                 native::argument(args, 1).clone(),
                 target,
-            )?;
+            );
             Ok(derived)
         })();
         self.stack.truncate(base);
@@ -684,7 +708,7 @@ impl Vm {
         let result = (|| {
             let constructor = self.promise_species_constructor(receiver)?;
             self.stack.push(constructor.clone());
-            let (then_finally, catch_finally) = if self.is_callable(on_finally)? {
+            let (then_finally, catch_finally) = if self.callable(on_finally) {
                 let state = self.promise_state()?;
                 self.stack.push(Value::Object(state));
                 self.promise_state_set(state, "onFinally", on_finally.clone())?;
@@ -725,8 +749,8 @@ impl Vm {
         let base = self.stack.len();
         self.stack.push(argument.clone());
         let result = (|| {
-            let on_finally = self.promise_state_get(state, "onFinally")?;
-            let constructor = self.promise_state_get(state, "constructor")?;
+            let on_finally = self.promise_field(state, "onFinally");
+            let constructor = self.promise_field(state, "constructor");
             let outcome = self.call_native(on_finally, Value::Undefined, Vec::new(), false)?;
             self.stack.push(outcome.clone());
             let promise = self.promise_resolve_constructor(&constructor, outcome)?;
@@ -755,7 +779,7 @@ impl Vm {
         state: ObjectId,
         thrower: bool,
     ) -> Result<Value, RuntimeError> {
-        let value = self.promise_state_get(state, "value")?;
+        let value = self.promise_field(state, "value");
         if thrower {
             Err(RuntimeError::Thrown(value))
         } else {
@@ -766,12 +790,12 @@ impl Vm {
     /// Implements the settled-value portion of Await. A pending promise needs
     /// a saved interpreter continuation, which remains a separate boundary.
     pub(in super::super) fn await_value(&self, value: Value) -> Result<Value, RuntimeError> {
-        let Some(promise) = value.object_id() else {
-            return Ok(value);
-        };
-        let Some(record) = self.promises.get(&promise) else {
-            return Ok(value);
-        };
+        // The interpreter passes the result of PromiseResolve, which is always
+        // a native promise the VM tracks.
+        let record = self
+            .promises
+            .get(&value.object_id().expect("PromiseResolve returns a promise"))
+            .expect("PromiseResolve returns a promise the VM tracks");
         match &record.status {
             PromiseStatus::Pending => Err(RuntimeError::Unsupported("pending await continuation")),
             PromiseStatus::Fulfilled(value) => Ok(value.clone()),
@@ -817,9 +841,9 @@ impl Vm {
         let base = self.stack.len();
         self.stack.push(value.clone());
         let promise = self.new_promise();
-        let settled = promise.and_then(|promise| {
-            self.settle_promise(promise, PromiseStatus::Rejected(value))?;
-            Ok(Value::Object(promise))
+        let settled = promise.map(|promise| {
+            self.settle_tracked_promise(promise, PromiseStatus::Rejected(value));
+            Value::Object(promise)
         });
         self.stack.truncate(base);
         settled
@@ -857,5 +881,57 @@ impl Vm {
         })();
         self.stack.truncate(base);
         result
+    }
+}
+
+/// The `expect` message for an intrinsic looked up while operating on a
+/// promise or through the `Promise` constructor: `global("Promise")` builds
+/// the `Promise` global, `%Promise.prototype%` and the string intrinsics before
+/// either can exist, so the lookup only reads a cache.
+const PROMISE_INTRINSICS: &str = "the Promise intrinsics are materialized before any promise";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn plain_object(vm: &mut Vm) -> ObjectId {
+        vm.with_roots(|heap| heap.alloc_object(None)).unwrap()
+    }
+
+    #[test]
+    fn a_promise_settles_as_fulfilled_or_rejected_never_pending() {
+        let mut vm = Vm::default();
+        let promise = vm.new_promise().unwrap();
+        assert_eq!(
+            vm.settle_promise(promise, PromiseStatus::Pending),
+            Err(RuntimeError::TypeError(
+                "a Promise settles as fulfilled or rejected, never as pending".into()
+            ))
+        );
+        assert_eq!(
+            vm.settle_promise(promise, PromiseStatus::Fulfilled(Value::Undefined)),
+            Ok(())
+        );
+        // Settlement is final: a second settlement is ignored.
+        assert_eq!(vm.settle_promise(promise, PromiseStatus::Pending), Ok(()));
+    }
+
+    #[test]
+    fn promise_operations_reject_an_object_that_is_not_a_promise() {
+        let mut vm = Vm::default();
+        let object = plain_object(&mut vm);
+        let invalid = Err(RuntimeError::TypeError("invalid Promise receiver".into()));
+        assert_eq!(
+            vm.settle_promise(object, PromiseStatus::Fulfilled(Value::Undefined)),
+            invalid
+        );
+        let target = vm.new_promise().unwrap();
+        let _ = target;
+        assert_eq!(
+            vm.promise_then(&Value::Object(object), &[]),
+            Err(RuntimeError::TypeError(
+                "Promise.prototype.then receiver".into()
+            ))
+        );
     }
 }

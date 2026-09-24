@@ -22,23 +22,6 @@ impl Vm {
         name: &str,
         args: &[Value],
     ) -> Option<Result<Value, RuntimeError>> {
-        if !matches!(
-            name,
-            "assert"
-                | "sameValue"
-                | "notSameValue"
-                | "_isSameValue"
-                | "throws"
-                | "compareArray"
-                | "arrayEqual"
-                | "formatArray"
-                | "isPrimitive"
-                | "isNegativeZero"
-                | "formatIdentityFreeValue"
-                | "formatSimpleValue"
-        ) {
-            return None;
-        }
         let first = native::argument(args, 0);
         let second = native::argument(args, 1);
         // Every value a helper holds across a call that can run user code
@@ -56,13 +39,16 @@ impl Vm {
                 .test262_compare_array_values(first, second)
                 .map(Value::Bool),
             "formatArray" => self.test262_format_array(first),
-            "isPrimitive" => self.test262_is_primitive(first).map(Value::Bool),
+            "isPrimitive" => Ok(Value::Bool(self.test262_is_primitive(first))),
             "isNegativeZero" => Ok(Value::Bool(
                 matches!(first, Value::Number(n) if *n == 0.0 && n.is_sign_negative()),
             )),
             "formatIdentityFreeValue" => self.test262_format_identity_free_value(first),
             "formatSimpleValue" => self.test262_format_simple_value(first),
-            _ => unreachable!("the name filter above admits only the arms listed here"),
+            _ => {
+                self.stack.truncate(base);
+                return None;
+            }
         };
         self.stack.truncate(base);
         Some(result)
@@ -74,10 +60,10 @@ impl Vm {
     /// how an uncaught failure is reported; any other message needs a real
     /// error object so it keeps its type and value.
     fn test262_error(&mut self, message: &Value) -> RuntimeError {
-        let message = match self.to_boolean(message) {
-            Ok(true) => message.clone(),
-            Ok(false) => Value::String(JsString::default()),
-            Err(error) => return error,
+        let message = if self.truthy(message) {
+            message.clone()
+        } else {
+            Value::String(JsString::default())
         };
         if let Value::String(text) = &message {
             if let Ok(text) = text.to_utf8() {
@@ -118,25 +104,22 @@ impl Vm {
         self.add(Value::String(left.into()), right)
     }
 
-    fn test262_is_primitive(&mut self, value: &Value) -> Result<bool, RuntimeError> {
+    fn test262_is_primitive(&self, value: &Value) -> bool {
         // `!value || (typeof value !== 'object' && typeof value !== 'function')`
-        if !self.to_boolean(value)? {
-            return Ok(true);
-        }
-        Ok(!matches!(self.typeof_value(value)?, "object" | "function"))
+        !self.truthy(value) || !matches!(self.typeof_name(value), "object" | "function")
     }
 
     fn test262_format_identity_free_value(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         let kind = if *value == Value::Null {
             "null"
         } else {
-            self.typeof_value(value)?
+            self.typeof_name(value)
         };
         match kind {
             "string" => {
                 let json = self.lookup_global_name("JSON")?;
                 match json {
-                    Some(json) if self.typeof_value(&json)? != "undefined" => {
+                    Some(json) if self.typeof_name(&json) != "undefined" => {
                         let stringify = self.get_property(&json, &"stringify".into())?;
                         self.call_native(stringify, json, vec![value.clone()], false)
                     }
@@ -162,7 +145,7 @@ impl Vm {
 
     fn test262_format_simple_value(&mut self, value: &Value) -> Result<Value, RuntimeError> {
         let basic = self.test262_format_identity_free_value(value)?;
-        if self.to_boolean(&basic)? {
+        if self.truthy(&basic) {
             return Ok(basic);
         }
         let error = match self.test262_string(value) {
@@ -237,7 +220,7 @@ impl Vm {
         let expected = native::argument(args, 0);
         let func = native::argument(args, 1);
         let message = native::argument(args, 2);
-        if self.typeof_value(func)? != "function" {
+        if self.typeof_name(func) != "function" {
             return Err(self.test262_error(&Value::String(
                 "assert.throws requires two arguments: the error constructor and a function to run"
                     .into(),
@@ -265,7 +248,7 @@ impl Vm {
         // else (an exhausted budget, say) must never satisfy the assertion.
         let thrown = self.error_value(error)?;
         self.stack.push(thrown.clone());
-        if self.typeof_value(&thrown)? != "object" || thrown == Value::Null {
+        if self.typeof_name(&thrown) != "object" || thrown == Value::Null {
             let message = self.add(
                 message,
                 Value::String("Thrown value was not an object!".into()),
@@ -351,12 +334,12 @@ impl Vm {
         } else {
             native::argument(args, 2).clone()
         };
-        if self.typeof_value(&message)? == "symbol" {
+        if self.typeof_name(&message) == "symbol" {
             let to_string = self.get_property(&message, &"toString".into())?;
             message = self.call_native(to_string, message.clone(), vec![], false)?;
         }
         for (label, value) in [("Actual", actual), ("Expected", expected)] {
-            if self.test262_is_primitive(value)? {
+            if self.test262_is_primitive(value) {
                 let text = self.test262_concat(&format!("{label} argument ["), value.clone())?;
                 let text = self.add(text, Value::String("] shouldn't be primitive. ".into()))?;
                 let message = self.test262_string(&message)?;

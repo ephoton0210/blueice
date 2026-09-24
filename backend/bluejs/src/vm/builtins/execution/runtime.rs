@@ -4,7 +4,57 @@
 
 use super::*;
 
+/// The helpers driven by the shared pull loop of `iterator_helper_next`; every
+/// other kind has a state machine of its own.
+#[derive(Clone, Copy)]
+enum LinearHelper {
+    Take,
+    Drop,
+    Map,
+    Filter,
+    FlatMap,
+}
+
+const HELPER_LIVE: &str = "the caller verified that this is a live iterator helper";
+const ITERATOR_RECORD: &str = "an iterator record keeps its iterator and next method";
+
 impl Vm {
+    /// The state of `object` if it is an iterator helper. Callers hold
+    /// `object` as a receiver or as a helper they allocated, so it is a live
+    /// heap object and only the brand can differ.
+    fn helper_state(&self, object: ObjectId) -> Option<IteratorHelperState> {
+        self.heap
+            .iterator_helper(object)
+            .expect("a Value::Object receiver is a live heap object")
+    }
+
+    // The five transitions of a helper's `executing`/`done`/counter state.
+    // None of them allocates, and each is only reached for an object whose
+    // state the caller has already read with `helper_state`.
+    fn helper_begin(&mut self, helper: ObjectId) {
+        self.heap.begin_iterator_helper(helper).expect(HELPER_LIVE);
+    }
+
+    fn helper_leave(&mut self, helper: ObjectId) {
+        self.heap.leave_iterator_helper(helper).expect(HELPER_LIVE);
+    }
+
+    fn helper_finish(&mut self, helper: ObjectId) {
+        self.heap.finish_iterator_helper(helper).expect(HELPER_LIVE);
+    }
+
+    fn helper_advance(&mut self, helper: ObjectId) {
+        self.heap
+            .advance_iterator_helper(helper)
+            .expect(HELPER_LIVE);
+    }
+
+    fn helper_consume_take(&mut self, helper: ObjectId) {
+        self.heap
+            .consume_iterator_helper_take(helper)
+            .expect(HELPER_LIVE);
+    }
+
     pub(in super::super::super) fn iterator_helper_next(
         &mut self,
         receiver: &Value,
@@ -14,26 +64,30 @@ impl Vm {
                 "Iterator helper next requires an iterator helper".into(),
             ));
         };
-        let Some(state) = self.heap.iterator_helper(*helper)? else {
+        let Some(state) = self.helper_state(*helper) else {
             return Err(RuntimeError::TypeError(
                 "Iterator helper next requires an iterator helper".into(),
             ));
         };
-        if state.kind == IteratorHelperKind::Concat {
-            return self.iterator_concat_next(*helper, receiver, &state);
-        }
-        if matches!(
-            state.kind,
-            IteratorHelperKind::Zip | IteratorHelperKind::ZipKeyed
-        ) {
-            return self.iterator_zip_next(*helper, receiver, &state);
-        }
-        if state.kind == IteratorHelperKind::Chunks {
-            return self.iterator_chunks_next(*helper, receiver, &state);
-        }
-        if state.kind == IteratorHelperKind::Windows {
-            return self.iterator_windows_next(*helper, receiver, &state);
-        }
+        let kind = match state.kind {
+            IteratorHelperKind::Concat => {
+                return self.iterator_concat_next(*helper, receiver, &state)
+            }
+            IteratorHelperKind::Zip | IteratorHelperKind::ZipKeyed => {
+                return self.iterator_zip_next(*helper, receiver, &state)
+            }
+            IteratorHelperKind::Chunks => {
+                return self.iterator_chunks_next(*helper, receiver, &state)
+            }
+            IteratorHelperKind::Windows => {
+                return self.iterator_windows_next(*helper, receiver, &state)
+            }
+            IteratorHelperKind::Take => LinearHelper::Take,
+            IteratorHelperKind::Drop => LinearHelper::Drop,
+            IteratorHelperKind::Map => LinearHelper::Map,
+            IteratorHelperKind::Filter => LinearHelper::Filter,
+            IteratorHelperKind::FlatMap => LinearHelper::FlatMap,
+        };
         if state.done {
             return self.iterator_result(Value::Undefined, true);
         }
@@ -47,15 +101,15 @@ impl Vm {
         self.stack.push(state.callback.clone());
         let record = Value::Object(state.record);
         let result = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(*helper))?;
+            self.helper_begin(*helper);
             loop {
-                if state.kind == IteratorHelperKind::Take && state.index == 0 {
-                    self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+                if matches!(kind, LinearHelper::Take) && state.index == 0 {
+                    self.helper_finish(*helper);
                     self.iterator_close(&record)?;
                     return self.iterator_result(Value::Undefined, true);
                 }
-                if state.kind == IteratorHelperKind::FlatMap {
-                    let inner = self.heap.get_own(state.record, "flatMapInner")?;
+                if matches!(kind, LinearHelper::FlatMap) {
+                    let inner = self.record_get(state.record, "flatMapInner");
                     if let Some(inner @ Value::Object(_)) = inner {
                         self.stack.push(inner.clone());
                         let next = self.iterator_step(&inner, true);
@@ -66,43 +120,28 @@ impl Vm {
                             self.stack.pop();
                             return result;
                         }
-                        self.with_roots(|heap| {
-                            heap.set(state.record, "flatMapInner", Value::Undefined)
-                        })?;
+                        self.record_overwrite(state.record, "flatMapInner", Value::Undefined);
                     }
                 }
                 let Some(value) = self.iterator_step(&record, true)? else {
-                    self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+                    self.helper_finish(*helper);
                     return self.iterator_result(Value::Undefined, true);
                 };
-                match state.kind {
-                    IteratorHelperKind::Concat => {
-                        unreachable!("concat has a dedicated state machine")
-                    }
-                    IteratorHelperKind::Zip | IteratorHelperKind::ZipKeyed => {
-                        unreachable!("zip has a dedicated state machine")
-                    }
-                    IteratorHelperKind::Chunks => {
-                        unreachable!("chunks has a dedicated state machine")
-                    }
-                    IteratorHelperKind::Windows => {
-                        unreachable!("windows has a dedicated state machine")
-                    }
-                    IteratorHelperKind::Take => {
-                        self.with_roots(|heap| heap.consume_iterator_helper_take(*helper))?;
+                match kind {
+                    LinearHelper::Take => {
+                        self.helper_consume_take(*helper);
                         self.stack.push(value.clone());
                         let result = self.iterator_result(value, false);
                         self.stack.pop();
                         return result;
                     }
-                    IteratorHelperKind::Drop => {
+                    LinearHelper::Drop => {
                         let remaining = self
-                            .heap
-                            .iterator_helper(*helper)?
+                            .helper_state(*helper)
                             .expect("iterator helper state remains live")
                             .index;
                         if remaining > 0 {
-                            self.with_roots(|heap| heap.consume_iterator_helper_take(*helper))?;
+                            self.helper_consume_take(*helper);
                             continue;
                         }
                         self.stack.push(value.clone());
@@ -110,7 +149,7 @@ impl Vm {
                         self.stack.pop();
                         return result;
                     }
-                    IteratorHelperKind::Map => {
+                    LinearHelper::Map => {
                         let callback_result = self.iterator_helper_callback(*helper, &value)?;
                         self.stack.pop();
                         self.stack.push(callback_result.clone());
@@ -118,23 +157,16 @@ impl Vm {
                         self.stack.pop();
                         return result;
                     }
-                    IteratorHelperKind::Filter => {
+                    LinearHelper::Filter => {
                         let callback_result = self.iterator_helper_callback(*helper, &value)?;
-                        let selected = match self.to_boolean(&callback_result) {
-                            Ok(selected) => selected,
-                            Err(error) => {
-                                self.stack.pop();
-                                return Err(error);
-                            }
-                        };
-                        if selected {
+                        if self.truthy(&callback_result) {
                             let result = self.iterator_result(value, false);
                             self.stack.pop();
                             return result;
                         }
                         self.stack.pop();
                     }
-                    IteratorHelperKind::FlatMap => {
+                    LinearHelper::FlatMap => {
                         let mapped = self.iterator_helper_callback(*helper, &value)?;
                         self.stack.pop();
                         self.stack.push(mapped.clone());
@@ -142,20 +174,16 @@ impl Vm {
                         self.stack.pop();
                         let inner = inner?;
                         self.stack.push(inner.clone());
-                        self.with_roots(|heap| heap.set(state.record, "flatMapInner", inner))?;
+                        self.record_overwrite(state.record, "flatMapInner", inner);
                         self.stack.pop();
                     }
                 }
             }
         })();
         if result.is_err() {
-            self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
-        } else if !self
-            .heap
-            .iterator_helper(*helper)?
-            .is_some_and(|state| state.done)
-        {
-            self.with_roots(|heap| heap.leave_iterator_helper(*helper))?;
+            self.helper_finish(*helper);
+        } else if !self.helper_state(*helper).is_some_and(|state| state.done) {
+            self.helper_leave(*helper);
         }
         self.stack.pop();
         self.stack.pop();
@@ -182,10 +210,10 @@ impl Vm {
         self.stack.push(receiver.clone());
         self.stack.push(metadata.clone());
         let outcome = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
+            self.helper_begin(helper);
             loop {
                 if let Some(current @ Value::Object(_)) =
-                    self.heap.get_own(state.record, "concatCurrent")?
+                    self.record_get(state.record, "concatCurrent")
                 {
                     self.stack.push(current.clone());
                     let next = self.iterator_step(&current, true);
@@ -196,36 +224,24 @@ impl Vm {
                         self.stack.pop();
                         return result;
                     }
-                    self.with_roots(|heap| {
-                        heap.set(state.record, "concatCurrent", Value::Undefined)
-                    })?;
+                    self.record_overwrite(state.record, "concatCurrent", Value::Undefined);
                     continue;
                 }
 
                 let current_state = self
-                    .heap
-                    .iterator_helper(helper)?
+                    .helper_state(helper)
                     .expect("concat helper state remains live");
-                let length = self
-                    .heap
-                    .get_own(state.record, "concatLength")?
-                    .and_then(|value| match value {
-                        Value::Number(value) => Some(value as u64),
-                        _ => None,
-                    })
-                    .expect("concat state stores its argument count");
+                let length = self.record_count(state.record, "concatLength");
                 if current_state.index >= length {
-                    self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                    self.helper_finish(helper);
                     return self.iterator_result(Value::Undefined, true);
                 }
                 let index = current_state.index;
                 let iterable = self
-                    .heap
-                    .get_own(state.record, format!("concatIterable{index}"))?
+                    .record_get(state.record, format!("concatIterable{index}"))
                     .expect("concat state stores every iterable");
                 let open = self
-                    .heap
-                    .get_own(state.record, format!("concatOpen{index}"))?
+                    .record_get(state.record, format!("concatOpen{index}"))
                     .expect("concat state stores every iterator method");
                 self.stack.push(iterable.clone());
                 self.stack.push(open.clone());
@@ -241,25 +257,21 @@ impl Vm {
                 let direct = self.direct_iterator_record(&opened)?;
                 self.stack.pop();
                 self.stack.push(direct.clone());
-                self.with_roots(|heap| heap.set(state.record, "concatCurrent", direct))?;
-                self.with_roots(|heap| heap.advance_iterator_helper(helper))?;
+                self.record_overwrite(state.record, "concatCurrent", direct);
+                self.helper_advance(helper);
                 self.stack.pop();
             }
         })();
         let outcome = match outcome {
             Ok(value) => {
-                if !self
-                    .heap
-                    .iterator_helper(helper)?
-                    .is_some_and(|state| state.done)
-                {
-                    self.with_roots(|heap| heap.leave_iterator_helper(helper))?;
+                if !self.helper_state(helper).is_some_and(|state| state.done) {
+                    self.helper_leave(helper);
                 }
                 Ok(value)
             }
             Err(error) => {
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
-                self.close_concat_on_error(&metadata, error)
+                self.helper_finish(helper);
+                self.close_concat_on_error(state.record, error)
             }
         };
         self.stack.truncate(base);
@@ -285,24 +297,16 @@ impl Vm {
         self.stack.push(receiver.clone());
         self.stack.push(metadata.clone());
         let outcome = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
-            let count = self
-                .heap
-                .get_own(state.record, "zipCount")?
-                .and_then(|value| match value {
-                    Value::Number(value) => Some(value as u64),
-                    _ => None,
-                })
-                .expect("zip metadata stores its source count");
-            let mode = self
-                .heap
-                .get_own(state.record, "zipMode")?
-                .expect("zip metadata stores its mode");
-            let Value::String(mode) = mode else {
-                unreachable!("zip mode is a string")
-            };
+            self.helper_begin(helper);
+            let count = self.record_count(state.record, "zipCount");
+            let mode = primitive::string(
+                &self
+                    .record_get(state.record, "zipMode")
+                    .expect("zip metadata stores its mode"),
+            )
+            .expect("zip mode is a string");
             if count == 0 {
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.helper_finish(helper);
                 return self.iterator_result(Value::Undefined, true);
             }
             let values_base = self.stack.len();
@@ -312,8 +316,7 @@ impl Vm {
                 let mut all_done = true;
                 for index in 0..count {
                     let record = self
-                        .heap
-                        .get_own(state.record, format!("zipRecord{index}"))?
+                        .record_get(state.record, format!("zipRecord{index}"))
                         .expect("zip metadata stores every source record");
                     self.stack.push(record.clone());
                     let step = self.iterator_step(&record, true);
@@ -328,7 +331,7 @@ impl Vm {
                             any_done = true;
                             if mode == "strict" {
                                 if index != 0 {
-                                    self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                                    self.helper_finish(helper);
                                     let _ = self.iterator_zip_close_records(state.record, count);
                                     return Err(RuntimeError::TypeError(
                                         "Iterator.zip strict sources have different lengths".into(),
@@ -336,16 +339,13 @@ impl Vm {
                                 }
                                 for remaining in 1..count {
                                     let record = self
-                                        .heap
-                                        .get_own(state.record, format!("zipRecord{remaining}"))?
+                                        .record_get(state.record, format!("zipRecord{remaining}"))
                                         .expect("zip metadata stores every source record");
                                     self.stack.push(record.clone());
                                     let step = self.iterator_step(&record, true);
                                     self.stack.pop();
                                     if step?.is_some() {
-                                        self.with_roots(|heap| {
-                                            heap.finish_iterator_helper(helper)
-                                        })?;
+                                        self.helper_finish(helper);
                                         let _ =
                                             self.iterator_zip_close_records(state.record, count);
                                         return Err(RuntimeError::TypeError(
@@ -354,7 +354,7 @@ impl Vm {
                                         ));
                                     }
                                 }
-                                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                                self.helper_finish(helper);
                                 return self.iterator_result(Value::Undefined, true);
                             }
                             values.push(None);
@@ -362,20 +362,19 @@ impl Vm {
                     }
                     if mode == "shortest" && any_done {
                         self.iterator_zip_close_records(state.record, count)?;
-                        self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                        self.helper_finish(helper);
                         return self.iterator_result(Value::Undefined, true);
                     }
                 }
                 if mode == "longest" {
                     if all_done {
-                        self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                        self.helper_finish(helper);
                         return self.iterator_result(Value::Undefined, true);
                     }
                     for (index, value) in values.iter_mut().enumerate() {
                         if value.is_none() {
                             let padding = self
-                                .heap
-                                .get_own(state.record, format!("zipPadding{index}"))?
+                                .record_get(state.record, format!("zipPadding{index}"))
                                 .expect("zip metadata stores every padding value");
                             self.stack.push(padding.clone());
                             *value = Some(padding);
@@ -392,8 +391,6 @@ impl Vm {
                     self.iterator_zip_keyed_results(state.record, values)?
                 };
                 // Adding the marker property grows the helper's state, which
-                // can run a major collection: root the result array first.
-                // Adding the marker property grows the helper's state, which
                 // can run a major collection: root the result first.
                 self.stack.push(values.clone());
                 self.with_roots(|heap| heap.set(state.record, "zipStarted", Value::Bool(true)))?;
@@ -406,12 +403,8 @@ impl Vm {
         })();
         let outcome = match outcome {
             Ok(value) => {
-                if !self
-                    .heap
-                    .iterator_helper(helper)?
-                    .is_some_and(|state| state.done)
-                {
-                    self.with_roots(|heap| heap.leave_iterator_helper(helper))?;
+                if !self.helper_state(helper).is_some_and(|state| state.done) {
+                    self.helper_leave(helper);
                 }
                 Ok(value)
             }
@@ -420,10 +413,10 @@ impl Vm {
                 // while finishing the helper and closing every source run
                 // JavaScript and may collect.
                 self.root_thrown(&error);
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.helper_finish(helper);
                 let _ = self.iterator_zip_close_records(
                     state.record,
-                    self.iterator_zip_count(state.record)?,
+                    self.record_count(state.record, "zipCount"),
                 );
                 Err(error)
             }
@@ -443,40 +436,20 @@ impl Vm {
         let outcome = (|| {
             for (index, value) in values.into_iter().enumerate() {
                 let key = self
-                    .heap
-                    .get_own(metadata, format!("zipKey{index}"))?
+                    .record_get(metadata, format!("zipKey{index}"))
                     .expect("zipKeyed metadata stores every source key");
-                let key = self.coerce_property_key(&key)?;
+                let key = self
+                    .coerce_property_key(&key)
+                    .expect("stored keys are strings or symbols");
                 self.stack.push(value.clone());
-                let defined = self.object_define_own_property(
-                    result,
-                    key,
-                    PropertyDescriptor::data(value, true, true, true),
-                )?;
+                let defined = self.define_data(result, key, value, true, true, true);
                 self.stack.pop();
-                if !defined {
-                    return Err(RuntimeError::TypeError(
-                        "cannot define Iterator.zipKeyed result property".into(),
-                    ));
-                }
+                defined?;
             }
             Ok(Value::Object(result))
         })();
         self.stack.truncate(base);
         outcome
-    }
-
-    pub(in super::super::super) fn iterator_zip_count(
-        &self,
-        metadata: ObjectId,
-    ) -> Result<u64, RuntimeError> {
-        self.heap
-            .get_own(metadata, "zipCount")?
-            .and_then(|value| match value {
-                Value::Number(value) => Some(value as u64),
-                _ => None,
-            })
-            .ok_or_else(|| RuntimeError::TypeError("invalid Iterator.zip state".into()))
     }
 
     pub(in super::super::super) fn iterator_zip_close_records(
@@ -488,8 +461,7 @@ impl Vm {
         let base = self.stack.len();
         for index in (0..count).rev() {
             let record = self
-                .heap
-                .get_own(metadata, format!("zipRecord{index}"))?
+                .record_get(metadata, format!("zipRecord{index}"))
                 .expect("zip metadata stores every source record");
             self.stack.push(record.clone());
             let close = self.iterator_close(&record);
@@ -554,7 +526,7 @@ impl Vm {
         self.stack.push(receiver.clone());
         self.stack.push(record.clone());
         let outcome = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
+            self.helper_begin(helper);
             let values_base = self.stack.len();
             let chunk = (|| {
                 let mut values = Vec::new();
@@ -572,7 +544,7 @@ impl Vm {
             })();
             self.stack.truncate(values_base);
             let Some(chunk) = chunk? else {
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.helper_finish(helper);
                 return self.iterator_result(Value::Undefined, true);
             };
             self.stack.push(chunk.clone());
@@ -582,17 +554,13 @@ impl Vm {
         })();
         let outcome = match outcome {
             Ok(value) => {
-                if !self
-                    .heap
-                    .iterator_helper(helper)?
-                    .is_some_and(|state| state.done)
-                {
-                    self.with_roots(|heap| heap.leave_iterator_helper(helper))?;
+                if !self.helper_state(helper).is_some_and(|state| state.done) {
+                    self.helper_leave(helper);
                 }
                 Ok(value)
             }
             Err(error) => {
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.helper_finish(helper);
                 self.close_iterator_on_error(&record, Err(error))
             }
         };
@@ -619,14 +587,14 @@ impl Vm {
         self.stack.push(receiver.clone());
         self.stack.push(record.clone());
         let outcome = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
+            self.helper_begin(helper);
             let values_base = self.stack.len();
             let window = (|| {
                 let allow_partial = matches!(
-                    self.heap.get_own(state.record, "windowsAllowPartial")?,
+                    self.record_get(state.record, "windowsAllowPartial"),
                     Some(Value::Bool(true))
                 );
-                let prior = self.heap.get_own(state.record, "windowsBuffer")?;
+                let prior = self.record_get(state.record, "windowsBuffer");
                 let mut values = Vec::new();
                 if let Some(Value::Object(buffer)) = prior {
                     // A full prior window slides by one element. Its private
@@ -634,14 +602,13 @@ impl Vm {
                     // rooted while the next pull can allocate or invoke JS.
                     for index in 1..state.index {
                         let value = self
-                            .heap
-                            .get_own(buffer, index.to_string())?
+                            .record_get(buffer, index.to_string())
                             .expect("window buffer has the requested length");
                         self.stack.push(value.clone());
                         values.push(value);
                     }
                     let Some(value) = self.iterator_step(&record, true)? else {
-                        self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                        self.helper_finish(helper);
                         return Ok(None);
                     };
                     self.stack.push(value.clone());
@@ -649,7 +616,7 @@ impl Vm {
                 } else {
                     for _ in 0..state.index {
                         let Some(value) = self.iterator_step(&record, true)? else {
-                            self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                            self.helper_finish(helper);
                             if allow_partial && !values.is_empty() {
                                 return self.array_from(values).map(Some);
                             }
@@ -663,7 +630,7 @@ impl Vm {
                 // buffer, while the caller receives a distinct Array.
                 let buffer = self.array_from(values.clone())?;
                 self.stack.push(buffer.clone());
-                self.with_roots(|heap| heap.set(state.record, "windowsBuffer", buffer))?;
+                self.record_overwrite(state.record, "windowsBuffer", buffer);
                 self.stack.pop();
                 self.array_from(values).map(Some)
             })();
@@ -679,17 +646,13 @@ impl Vm {
         })();
         let outcome = match outcome {
             Ok(value) => {
-                if !self
-                    .heap
-                    .iterator_helper(helper)?
-                    .is_some_and(|state| state.done)
-                {
-                    self.with_roots(|heap| heap.leave_iterator_helper(helper))?;
+                if !self.helper_state(helper).is_some_and(|state| state.done) {
+                    self.helper_leave(helper);
                 }
                 Ok(value)
             }
             Err(error) => {
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.helper_finish(helper);
                 self.close_iterator_on_error(&record, Err(error))
             }
         };
@@ -699,13 +662,10 @@ impl Vm {
 
     pub(in super::super::super) fn close_concat_on_error<T>(
         &mut self,
-        metadata: &Value,
+        metadata: ObjectId,
         error: RuntimeError,
     ) -> Result<T, RuntimeError> {
-        let Value::Object(metadata) = metadata else {
-            unreachable!("concat metadata is an ordinary object")
-        };
-        let current = self.heap.get_own(*metadata, "concatCurrent")?;
+        let current = self.record_get(metadata, "concatCurrent");
         if let Some(current @ Value::Object(_)) = current {
             self.stack.push(current.clone());
             let result = self.close_iterator_on_error(&current, Err(error));
@@ -722,14 +682,8 @@ impl Vm {
         value: &Value,
     ) -> Result<Value, RuntimeError> {
         let state = self
-            .heap
-            .iterator_helper(helper)?
+            .helper_state(helper)
             .expect("iterator helper state remains live");
-        if state.index >= 9_007_199_254_740_991 {
-            return Err(RuntimeError::RangeError(
-                "Iterator helper index exceeds the safe integer range".into(),
-            ));
-        }
         self.stack.push(value.clone());
         let callback_result = self.call_native(
             state.callback.clone(),
@@ -744,7 +698,7 @@ impl Vm {
                 return Err(error);
             }
         };
-        self.with_roots(|heap| heap.advance_iterator_helper(helper))?;
+        self.helper_advance(helper);
         Ok(callback_result)
     }
 
@@ -903,7 +857,7 @@ impl Vm {
                 "Iterator helper return requires an iterator helper".into(),
             ));
         };
-        let Some(state) = self.heap.iterator_helper(*helper)? else {
+        let Some(state) = self.helper_state(*helper) else {
             return Err(RuntimeError::TypeError(
                 "Iterator helper return requires an iterator helper".into(),
             ));
@@ -929,10 +883,10 @@ impl Vm {
         self.stack.push(Value::Object(state.record));
         let record = Value::Object(state.record);
         let result = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(*helper))?;
+            self.helper_begin(*helper);
             if state.kind == IteratorHelperKind::FlatMap {
                 if let Some(inner @ Value::Object(_)) =
-                    self.heap.get_own(state.record, "flatMapInner")?
+                    self.record_get(state.record, "flatMapInner")
                 {
                     self.stack.push(inner.clone());
                     let inner_result = self.iterator_close(&inner);
@@ -945,7 +899,7 @@ impl Vm {
             self.iterator_close(&record)?;
             self.iterator_result(Value::Undefined, true)
         })();
-        self.with_roots(|heap| heap.finish_iterator_helper(*helper))?;
+        self.helper_finish(*helper);
         self.stack.pop();
         self.stack.pop();
         result
@@ -970,9 +924,8 @@ impl Vm {
         self.stack.push(receiver.clone());
         self.stack.push(metadata.clone());
         let result = (|| {
-            self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
-            if let Some(current @ Value::Object(_)) =
-                self.heap.get_own(state.record, "concatCurrent")?
+            self.helper_begin(helper);
+            if let Some(current @ Value::Object(_)) = self.record_get(state.record, "concatCurrent")
             {
                 self.stack.push(current.clone());
                 let close = self.iterator_close(&current);
@@ -981,7 +934,7 @@ impl Vm {
             }
             self.iterator_result(Value::Undefined, true)
         })();
-        self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+        self.helper_finish(helper);
         self.stack.truncate(base);
         result
     }
@@ -1006,31 +959,31 @@ impl Vm {
         self.stack.push(metadata);
         let result = (|| {
             let started = matches!(
-                self.heap.get_own(state.record, "zipStarted")?,
+                self.record_get(state.record, "zipStarted"),
                 Some(Value::Bool(true))
             );
             if started {
                 // Resuming a suspended yield runs the close handlers while
                 // the helper is executing, so their re-entrant `next`/return
                 // calls see the GeneratorValidate TypeError.
-                self.with_roots(|heap| heap.begin_iterator_helper(helper))?;
+                self.helper_begin(helper);
                 let close = self.iterator_zip_close_records(
                     state.record,
-                    self.iterator_zip_count(state.record)?,
+                    self.record_count(state.record, "zipCount"),
                 );
                 if let Err(error) = &close {
                     self.root_thrown(error);
                 }
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.helper_finish(helper);
                 close?;
             } else {
                 // GeneratorClose from suspended-start completes the helper
                 // before the close handlers run. Re-entrant `next` therefore
                 // returns the completed iterator result.
-                self.with_roots(|heap| heap.finish_iterator_helper(helper))?;
+                self.helper_finish(helper);
                 self.iterator_zip_close_records(
                     state.record,
-                    self.iterator_zip_count(state.record)?,
+                    self.record_count(state.record, "zipCount"),
                 )?;
             }
             self.iterator_result(Value::Undefined, true)
@@ -1045,11 +998,8 @@ impl Vm {
         value: Value,
         index: u64,
     ) -> Result<Value, RuntimeError> {
-        if !self.is_callable(callback)? {
-            return Err(RuntimeError::TypeError(
-                "Iterator helper callback must be callable".into(),
-            ));
-        }
+        // `callback_iterator_record` has already required the callback to be
+        // callable, before the first `next` is fetched.
         self.call_native(
             callback.clone(),
             Value::Undefined,
@@ -1129,7 +1079,7 @@ impl Vm {
             let mut index = 0_u64;
             while let Some(value) = self.iterator_step(&record, true)? {
                 let predicate = self.iterator_callback(callback, value, index)?;
-                if !self.to_boolean(&predicate)? {
+                if !self.truthy(&predicate) {
                     self.iterator_close(&record)?;
                     return Ok(Value::Bool(false));
                 }
@@ -1152,7 +1102,7 @@ impl Vm {
             let mut index = 0_u64;
             while let Some(value) = self.iterator_step(&record, true)? {
                 let predicate = self.iterator_callback(callback, value, index)?;
-                if self.to_boolean(&predicate)? {
+                if self.truthy(&predicate) {
                     self.iterator_close(&record)?;
                     return Ok(Value::Bool(true));
                 }
@@ -1175,7 +1125,7 @@ impl Vm {
             let mut index = 0_u64;
             while let Some(value) = self.iterator_step(&record, true)? {
                 let predicate = self.iterator_callback(callback, value.clone(), index)?;
-                if self.to_boolean(&predicate)? {
+                if self.truthy(&predicate) {
                     self.iterator_close(&record)?;
                     return Ok(value);
                 }
@@ -1196,11 +1146,6 @@ impl Vm {
         let record = self.callback_iterator_record(receiver, callback)?;
         self.stack.push(record.clone());
         let result = (|| {
-            if !self.is_callable(callback)? {
-                return Err(RuntimeError::TypeError(
-                    "Iterator helper callback must be callable".into(),
-                ));
-            }
             let mut index = 0_u64;
             let mut accumulator = if args.len() > 1 {
                 args[1].clone()
@@ -1233,28 +1178,13 @@ impl Vm {
         receiver: &Value,
         value: &Value,
     ) -> Result<Value, RuntimeError> {
-        let Value::Object(receiver) = receiver else {
-            return Err(RuntimeError::TypeError(
-                "Iterator prototype tag setter requires an object receiver".into(),
-            ));
-        };
-        let base = self.base_iterator_prototype()?;
-        if *receiver == base {
-            return Err(RuntimeError::TypeError(
-                "cannot assign Iterator.prototype Symbol.toStringTag".into(),
-            ));
-        }
-        let key: PropertyName = JsSymbol::well_known("toStringTag").into();
-        if self
-            .heap
-            .get_own_property_descriptor(*receiver, &key)?
-            .is_none()
-        {
-            self.define_data(*receiver, key, value.clone(), true, true, true)?;
-        } else {
-            self.set_property(&Value::Object(*receiver), &key, value)?;
-        }
-        Ok(Value::Undefined)
+        self.iterator_prototype_setter(
+            receiver,
+            value,
+            JsSymbol::well_known("toStringTag").into(),
+            "Iterator prototype tag setter requires an object receiver",
+            "cannot assign Iterator.prototype Symbol.toStringTag",
+        )
     }
 
     pub(in super::super::super) fn iterator_constructor_setter(
@@ -1262,26 +1192,40 @@ impl Vm {
         receiver: &Value,
         value: &Value,
     ) -> Result<Value, RuntimeError> {
+        self.iterator_prototype_setter(
+            receiver,
+            value,
+            "constructor".into(),
+            "Iterator prototype constructor setter requires an object receiver",
+            "cannot assign Iterator.prototype constructor",
+        )
+    }
+
+    /// SetterThatIgnoresPrototypeProperties ( this, %Iterator.prototype%, p, v ).
+    fn iterator_prototype_setter(
+        &mut self,
+        receiver: &Value,
+        value: &Value,
+        key: PropertyName,
+        receiver_message: &str,
+        home_message: &str,
+    ) -> Result<Value, RuntimeError> {
         let Value::Object(receiver) = receiver else {
-            return Err(RuntimeError::TypeError(
-                "Iterator prototype constructor setter requires an object receiver".into(),
-            ));
+            return Err(RuntimeError::TypeError(receiver_message.into()));
         };
-        let base = self.base_iterator_prototype()?;
+        let base = self
+            .iterator_base
+            .expect("the setter is only reachable once %Iterator.prototype% exists");
         if *receiver == base {
-            return Err(RuntimeError::TypeError(
-                "cannot assign Iterator.prototype constructor".into(),
-            ));
+            return Err(RuntimeError::TypeError(home_message.into()));
         }
-        let key: PropertyName = "constructor".into();
         if self
             .heap
             .get_own_property_descriptor(*receiver, &key)?
             .is_none()
         {
-            // SetterThatIgnoresPrototypeProperties creates an own data
-            // property instead of recursively invoking the accessor found on
-            // %Iterator.prototype%.
+            // An own data property is created instead of recursively invoking
+            // the accessor found on %Iterator.prototype%.
             self.define_data(*receiver, key, value.clone(), true, true, true)?;
         } else {
             self.set_property(&Value::Object(*receiver), &key, value)?;
@@ -1321,15 +1265,27 @@ impl Vm {
             )?;
             for array in [&raw, &cooked] {
                 let id = array.object_id().unwrap();
-                for key in self.heap.own_property_keys(id)? {
-                    let mut desc = self.heap.get_own_property_descriptor(id, &key)?.unwrap();
+                let keys = self
+                    .heap
+                    .own_property_keys(id)
+                    .expect("the template arrays are live heap objects");
+                for key in keys {
+                    let mut desc = self
+                        .heap
+                        .get_own_property_descriptor(id, &key)
+                        .expect("the template arrays are live heap objects")
+                        .expect("every own key has a descriptor");
                     desc.writable = Some(false);
                     desc.configurable = Some(false);
                     self.with_roots(|heap| heap.define_own_property(id, key, desc))?;
                 }
-                self.heap.prevent_extensions(id)?;
+                self.heap
+                    .prevent_extensions(id)
+                    .expect("the template arrays are live heap objects");
             }
-            self.heap.root(cooked.object_id().unwrap())?;
+            self.heap
+                .root(cooked.object_id().unwrap())
+                .expect("the template array is a live heap object");
             self.templates.insert(site.id, cooked.object_id().unwrap());
             Ok(cooked)
         })();
@@ -1349,22 +1305,7 @@ impl Vm {
         value: &Value,
         method: Value,
     ) -> Result<Value, RuntimeError> {
-        let iterator = self.call_native(method, value.clone(), Vec::new(), false)?;
-        if !matches!(iterator, Value::Object(_)) {
-            return Err(RuntimeError::TypeError("iterator must be an object".into()));
-        }
-        self.stack.push(iterator.clone());
-        let next = self.get_property(&iterator, &"next".into())?;
-        self.stack.push(next.clone());
-        let record = self.with_roots(|heap| heap.alloc_object(None))?;
-        self.stack.push(Value::Object(record));
-        self.with_roots(|heap| heap.set(record, "iterator", iterator))?;
-        self.with_roots(|heap| heap.set(record, "next", next))?;
-        self.with_roots(|heap| heap.set(record, "done", Value::Bool(false)))?;
-        self.stack.pop();
-        self.stack.pop();
-        self.stack.pop();
-        Ok(Value::Object(record))
+        self.iterator_record_from_method(value, method, "iterator must be an object")
     }
 
     /// GetAsyncIterator first observes @@asyncIterator and uses the ordinary
@@ -1388,9 +1329,9 @@ impl Vm {
         &mut self,
         record: Value,
     ) -> Result<Value, RuntimeError> {
-        let Value::Object(record_id) = record else {
-            unreachable!("GetIterator creates an iterator record")
-        };
+        let record_id = record
+            .object_id()
+            .expect("GetIterator creates an iterator record");
         self.stack.push(Value::Object(record_id));
         let result =
             self.with_roots(|heap| heap.set(record_id, "asyncFromSync", Value::Bool(true)));
@@ -1405,11 +1346,20 @@ impl Vm {
         value: &Value,
         method: Value,
     ) -> Result<Value, RuntimeError> {
+        self.iterator_record_from_method(value, method, "async iterator must be an object")
+    }
+
+    /// GetIteratorFromMethod: calls `method`, then captures the iterator and
+    /// its `next` method in a fresh record (`done` starts false).
+    fn iterator_record_from_method(
+        &mut self,
+        value: &Value,
+        method: Value,
+        not_an_object: &str,
+    ) -> Result<Value, RuntimeError> {
         let iterator = self.call_native(method, value.clone(), Vec::new(), false)?;
         if !matches!(iterator, Value::Object(_)) {
-            return Err(RuntimeError::TypeError(
-                "async iterator must be an object".into(),
-            ));
+            return Err(RuntimeError::TypeError(not_an_object.into()));
         }
         self.stack.push(iterator.clone());
         let next = self.get_property(&iterator, &"next".into())?;
@@ -1430,23 +1380,23 @@ impl Vm {
         record: &Value,
         argument: Option<Value>,
     ) -> Result<Value, RuntimeError> {
-        let Value::Object(record) = record else {
-            unreachable!("compiler only emits iterator records")
-        };
-        if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
+        let record = record
+            .object_id()
+            .expect("compiler only emits iterator records");
+        if matches!(self.record_get(record, "done"), Some(Value::Bool(true))) {
             return self.iterator_result(Value::Undefined, true);
         }
-        let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
-        let next = self.get_property(&Value::Object(*record), &"next".into())?;
+        let iterator = self.record_get(record, "iterator").expect(ITERATOR_RECORD);
+        let next = self.record_get(record, "next").expect(ITERATOR_RECORD);
         let result = self.call_native(next, iterator, argument.into_iter().collect(), false);
         if !matches!(
-            self.heap.get_own(*record, "asyncFromSync")?,
+            self.record_get(record, "asyncFromSync"),
             Some(Value::Bool(true))
         ) {
             return result;
         }
         match result {
-            Ok(result) => self.async_from_sync_continue(*record, result, true),
+            Ok(result) => self.async_from_sync_continue(record, result, true),
             Err(error) => {
                 let error = self.error_value(error)?;
                 self.promise_reject(error)
@@ -1458,7 +1408,12 @@ impl Vm {
         &mut self,
         function: NativeFunction,
     ) -> Result<Value, RuntimeError> {
-        let prototype = self.function_prototype()?;
+        // Both callers are already running an async operation, whose promise
+        // was made through `global("Promise")` and so after the string
+        // intrinsics.
+        let prototype = self
+            .function_prototype()
+            .expect("an async operation is running, so the string intrinsics exist");
         let id = self.with_roots(|heap| heap.alloc_native_function(function, "", prototype))?;
         self.stack.push(Value::Object(id));
         let result = (|| {
@@ -1490,7 +1445,7 @@ impl Vm {
                 ));
             }
             let done = self.get_property(&result, &"done".into())?;
-            let done = self.to_boolean(&done)?;
+            let done = self.truthy(&done);
             let value = self.get_property(&result, &"value".into())?;
             let close = close_on_rejection && !done;
             let value_wrapper = match self.promise_resolve(value) {
@@ -1531,12 +1486,7 @@ impl Vm {
             let wrapper = value_wrapper
                 .object_id()
                 .expect("PromiseResolve returns a promise object");
-            self.perform_promise_then(
-                wrapper,
-                fulfilled,
-                rejected,
-                ReactionTarget::Native(target),
-            )?;
+            self.perform_promise_then(wrapper, fulfilled, rejected, ReactionTarget::Native(target));
             Ok(Value::Object(target))
         })();
         self.stack.truncate(base);
@@ -1557,14 +1507,14 @@ impl Vm {
         record: &Value,
         argument: Option<Value>,
     ) -> Result<Value, RuntimeError> {
-        let Value::Object(record) = record else {
-            unreachable!("compiler only emits iterator records")
-        };
-        if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
+        let record = record
+            .object_id()
+            .expect("compiler only emits iterator records");
+        if matches!(self.record_get(record, "done"), Some(Value::Bool(true))) {
             return self.iterator_result(Value::Undefined, true);
         }
-        let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
-        let next = self.get_property(&Value::Object(*record), &"next".into())?;
+        let iterator = self.record_get(record, "iterator").expect(ITERATOR_RECORD);
+        let next = self.record_get(record, "next").expect(ITERATOR_RECORD);
         self.call_native(next, iterator, argument.into_iter().collect(), false)
     }
 
@@ -1573,9 +1523,9 @@ impl Vm {
         record: &Value,
         result: &Value,
     ) -> Result<Option<Value>, RuntimeError> {
-        let Value::Object(record) = record else {
-            unreachable!("compiler only emits iterator records")
-        };
+        let record = record
+            .object_id()
+            .expect("compiler only emits iterator records");
         let outcome = (|| {
             if !matches!(result, Value::Object(_)) {
                 return Err(RuntimeError::TypeError(
@@ -1583,20 +1533,14 @@ impl Vm {
                 ));
             }
             let done = self.get_property(result, &"done".into())?;
-            if self.to_boolean(&done)? {
+            if self.truthy(&done) {
                 Ok(None)
             } else {
                 self.get_property(result, &"value".into()).map(Some)
             }
         })();
         if !matches!(&outcome, Ok(Some(_))) {
-            let base = self.stack.len();
-            if let Err(RuntimeError::Thrown(value)) = &outcome {
-                self.stack.push(value.clone());
-            }
-            let marked = self.with_roots(|heap| heap.set(*record, "done", Value::Bool(true)));
-            self.stack.truncate(base);
-            marked?;
+            self.record_overwrite(record, "done", Value::Bool(true));
         }
         outcome
     }
@@ -1608,18 +1552,18 @@ impl Vm {
         record: &Value,
         read_value: bool,
     ) -> Result<Option<Value>, RuntimeError> {
-        let Value::Object(record) = record else {
-            unreachable!("compiler only emits iterator records")
-        };
-        if matches!(self.heap.get_own(*record, "done")?, Some(Value::Bool(true))) {
+        let record = record
+            .object_id()
+            .expect("compiler only emits iterator records");
+        if matches!(self.record_get(record, "done"), Some(Value::Bool(true))) {
             return Ok(None);
         }
-        if self.is_for_in_record(*record)? {
-            return self.for_in_step(*record);
+        if self.is_for_in_record(record) {
+            return self.for_in_step(record);
         }
         let outcome = (|| {
-            let iterator = self.get_property(&Value::Object(*record), &"iterator".into())?;
-            let next = self.get_property(&Value::Object(*record), &"next".into())?;
+            let iterator = self.record_get(record, "iterator").expect(ITERATOR_RECORD);
+            let next = self.record_get(record, "next").expect(ITERATOR_RECORD);
             let result = self.call_native(next, iterator, Vec::new(), false)?;
             if !matches!(result, Value::Object(_)) {
                 return Err(RuntimeError::TypeError(
@@ -1628,7 +1572,7 @@ impl Vm {
             }
             self.stack.push(result.clone());
             let done = self.get_property(&result, &"done".into())?;
-            let value = if self.to_boolean(&done)? {
+            let value = if self.truthy(&done) {
                 None
             } else if read_value {
                 Some(self.get_property(&result, &"value".into())?)
@@ -1639,13 +1583,7 @@ impl Vm {
             Ok(value)
         })();
         if !matches!(&outcome, Ok(Some(_))) {
-            let base = self.stack.len();
-            if let Err(RuntimeError::Thrown(value)) = &outcome {
-                self.stack.push(value.clone());
-            }
-            let marked = self.with_roots(|heap| heap.set(*record, "done", Value::Bool(true)));
-            self.stack.truncate(base);
-            marked?;
+            self.record_overwrite(record, "done", Value::Bool(true));
         }
         outcome
     }
@@ -1657,15 +1595,15 @@ impl Vm {
         let id = record
             .object_id()
             .expect("compiler only emits iterator records");
-        if matches!(self.heap.get_own(id, "done")?, Some(Value::Bool(true))) {
+        if matches!(self.record_get(id, "done"), Some(Value::Bool(true))) {
             return Ok(());
         }
-        self.with_roots(|heap| heap.set(id, "done", Value::Bool(true)))?;
-        if self.is_for_in_record(id)? {
+        self.record_overwrite(id, "done", Value::Bool(true));
+        if self.is_for_in_record(id) {
             // A for-in record has no ECMAScript iterator to return.
             return Ok(());
         }
-        let iterator = self.get_property(record, &"iterator".into())?;
+        let iterator = self.record_get(id, "iterator").expect(ITERATOR_RECORD);
         let close = self.get_method(&iterator, &"return".into())?;
         if close != Value::Undefined {
             let result = self.call_native(close, iterator, Vec::new(), false)?;
@@ -1676,5 +1614,42 @@ impl Vm {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{compile, parse};
+
+    /// An iterable whose iterators would throw if `next` were ever called.
+    const IMPOSSIBLE: &str = "({ [Symbol.iterator]() { return { next() { throw 'called'; } }; },
+        [Symbol.asyncIterator]() { return { next() { throw 'called'; } }; } })";
+
+    #[test]
+    fn a_finished_iterator_record_answers_done_without_calling_next() {
+        let mut vm = Vm::default();
+        let iterable = vm
+            .execute(&compile(&parse(IMPOSSIBLE).unwrap()).unwrap())
+            .unwrap();
+        vm.stack.push(iterable.clone());
+        let done = |vm: &mut Vm, result: Value| {
+            vm.stack.push(result.clone());
+            let done = vm.get_property(&result, &"done".into()).unwrap();
+            let value = vm.get_property(&result, &"value".into()).unwrap();
+            (done, value)
+        };
+
+        let record = vm.get_iterator(&iterable).unwrap();
+        vm.stack.push(record.clone());
+        vm.iterator_close(&record).unwrap();
+        let result = vm.iterator_next(&record, None).unwrap();
+        assert_eq!(done(&mut vm, result), (Value::Bool(true), Value::Undefined));
+
+        let record = vm.get_async_iterator(&iterable).unwrap();
+        vm.stack.push(record.clone());
+        vm.iterator_close(&record).unwrap();
+        let result = vm.async_iterator_next(&record, None).unwrap();
+        assert_eq!(done(&mut vm, result), (Value::Bool(true), Value::Undefined));
     }
 }

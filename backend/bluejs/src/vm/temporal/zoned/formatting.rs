@@ -21,7 +21,10 @@ impl Vm {
         receiver: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let existing = self.temporal_zoned_date_time_receiver(receiver)?;
+        // `native_call` has already brand-checked the receiver.
+        let existing = self
+            .temporal_zoned_date_time_receiver(receiver)
+            .expect("native_call brand-checks every Temporal.ZonedDateTime receiver");
         let base = self.stack.len();
         let result = (|| {
             let options = self.temporal_options(options)?;
@@ -93,7 +96,7 @@ impl Vm {
             let epoch_i128: i128 = existing
                 .epoch_nanoseconds
                 .to_i128()
-                .ok_or_else(|| RuntimeError::RangeError("invalid Temporal.ZonedDateTime".into()))?;
+                .expect("a valid epoch instant fits in 128 bits");
             let rounded = duration_math::TimeDuration::from_nanoseconds(epoch_i128)
                 .round_as_if_positive(unit, increment, mode)
                 .total_nanoseconds();
@@ -119,7 +122,7 @@ impl Vm {
                 result.push(']');
             }
             let show = plain_date::parse_show_calendar(show_calendar.as_deref().unwrap_or("auto"))
-                .ok_or_else(|| RuntimeError::RangeError("invalid calendarName option".into()))?;
+                .expect("temporal_string_option admits only the four calendarName values");
             result.push_str(&plain_date::format_calendar_annotation(
                 &existing.calendar,
                 show,
@@ -198,4 +201,23 @@ pub(super) fn format_zoned_date_time_date_time(
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_offsets_show_seconds_and_a_trimmed_fraction() {
+        assert_eq!(format_offset_nanoseconds_exact(3_600_000_000_000), "+01:00");
+        assert_eq!(
+            format_offset_nanoseconds_exact(-2_670_000_000_000),
+            "-00:44:30"
+        );
+        assert_eq!(
+            format_offset_nanoseconds_exact(-2_670_500_000_000),
+            "-00:44:30.5"
+        );
+        assert_eq!(format_offset_nanoseconds_exact(1), "+00:00:00.000000001");
+    }
 }

@@ -703,9 +703,8 @@ impl Bytecode {
     pub(crate) fn instruction(&self, offset: usize) -> Option<Instruction> {
         let opcode = Opcode::decode(*self.code.get(offset)?)?;
         let operand = if opcode.width() == 5 {
-            Some(u32::from_le_bytes(
-                self.code.get(offset + 1..offset + 5)?.try_into().ok()?,
-            ))
+            let bytes = self.code.get(offset + 1..offset + 5)?;
+            Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
         } else {
             None
         };
@@ -714,5 +713,40 @@ impl Bytecode {
             opcode,
             operand,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn code(bytes: &[u8]) -> Bytecode {
+        let mut bytecode = Bytecode::empty();
+        bytecode.code = bytes.to_vec();
+        bytecode
+    }
+
+    #[test]
+    fn decodes_an_instruction_with_and_without_an_operand() {
+        let bytecode = code(&[Opcode::Constant as u8, 7, 0, 0, 0, Opcode::Pop as u8]);
+        let constant = bytecode.instruction(0).unwrap();
+        assert_eq!(
+            (constant.opcode, constant.operand),
+            (Opcode::Constant, Some(7))
+        );
+        let pop = bytecode.instruction(5).unwrap();
+        assert_eq!((pop.opcode, pop.operand), (Opcode::Pop, None));
+        assert_eq!(bytecode.instructions().count(), 2);
+    }
+
+    #[test]
+    fn malformed_code_decodes_to_no_instruction() {
+        // Past the end, an unassigned opcode byte, and an operand cut short.
+        let bytecode = code(&[Opcode::Pop as u8, 0xFF, Opcode::Constant as u8, 1, 2]);
+        assert!(bytecode.instruction(9).is_none());
+        assert!(bytecode.instruction(1).is_none());
+        assert!(bytecode.instruction(2).is_none());
+        // The iterator stops at the first byte it cannot decode.
+        assert_eq!(bytecode.instructions().count(), 1);
     }
 }

@@ -5,6 +5,10 @@
 use super::*;
 
 impl Vm {
+    /// The `expect` message for a heap lookup of a `Value::Object`: the
+    /// object is live, so only a dangling handle could make the lookup fail.
+    pub(in super::super) const LIVE_OBJECT: &'static str = "a Value::Object is a live heap object";
+
     pub fn install_test262_done(&mut self) -> Result<(), RuntimeError> {
         let global = self.global("globalThis")?.object_id().unwrap();
         let prototype = self.function_prototype()?;
@@ -16,27 +20,92 @@ impl Vm {
     }
 
     pub(in super::super) fn is_callable(&self, value: &Value) -> Result<bool, RuntimeError> {
-        Ok(if let Value::Object(id) = value {
-            if let Some((_, _, callable, _)) = self.test262_foreign_reference(*id) {
-                callable
-            } else if let Some((_, _, callable, _)) = self.test262_reverse_reference(*id) {
-                // `$262.createRealm()` transports an object owned by a
-                // parent Test262 realm as a reverse-membrane facade in this
-                // realm. Its owner retains the forwarding record, while this
-                // realm retains the callable/constructible bits (and now, a
-                // live dispatch path back to the original) so `ShadowRealm`
-                // and ordinary call dispatch alike can treat it correctly.
-                callable
-            } else if let Some((callable, _)) = self.heap.proxy_capabilities(*id)? {
-                callable
-            } else {
-                self.heap.native_function(*id)?.is_some()
-                    || self.heap.closure(*id)?.is_some()
-                    || self.heap.bound_function(*id)?.is_some()
-            }
+        Ok(self.callable(value))
+    }
+
+    /// IsCallable for a value the VM holds. The heap lookups below can only
+    /// fail on a dangling object handle, and a `Value::Object` is always live.
+    pub(in super::super) fn callable(&self, value: &Value) -> bool {
+        let Value::Object(id) = value else {
+            return false;
+        };
+        if let Some((_, _, callable, _)) = self.test262_foreign_reference(*id) {
+            callable
+        } else if let Some((_, _, callable, _)) = self.test262_reverse_reference(*id) {
+            // `$262.createRealm()` transports an object owned by a
+            // parent Test262 realm as a reverse-membrane facade in this
+            // realm. Its owner retains the forwarding record, while this
+            // realm retains the callable/constructible bits (and now, a
+            // live dispatch path back to the original) so `ShadowRealm`
+            // and ordinary call dispatch alike can treat it correctly.
+            callable
+        } else if let Some((callable, _)) =
+            self.heap.proxy_capabilities(*id).expect(Self::LIVE_OBJECT)
+        {
+            callable
         } else {
-            false
-        })
+            self.heap
+                .native_function(*id)
+                .expect(Self::LIVE_OBJECT)
+                .is_some()
+                || self.heap.closure(*id).expect(Self::LIVE_OBJECT).is_some()
+                || self
+                    .heap
+                    .bound_function(*id)
+                    .expect(Self::LIVE_OBJECT)
+                    .is_some()
+        }
+    }
+
+    /// IsConstructor for a value the VM holds; see [`Self::callable`].
+    pub(in super::super) fn constructible(&self, value: &Value) -> bool {
+        self.is_constructor(value).expect(Self::LIVE_OBJECT)
+    }
+
+    /// ToBoolean of a value the VM itself holds. `to_boolean` can only fail
+    /// on a dangling object handle, and a `Value::Object` is always live.
+    pub(in super::super) fn truthy(&self, value: &Value) -> bool {
+        self.to_boolean(value).expect(Self::LIVE_OBJECT)
+    }
+
+    /// The own property `key` of a record object the VM allocated for its own
+    /// bookkeeping (iterator records, helper metadata, async state). Such an
+    /// object is a live heap object, so reading it cannot fail.
+    pub(in super::super) fn record_get(
+        &self,
+        record: ObjectId,
+        key: impl Into<PropertyName>,
+    ) -> Option<Value> {
+        self.heap
+            .get_own(record, key)
+            .expect("VM-internal records are live heap objects")
+    }
+
+    /// `typeof` of a value the VM holds; see [`Self::truthy`].
+    pub(in super::super) fn typeof_name(&self, value: &Value) -> &'static str {
+        self.typeof_value(value).expect(Self::LIVE_OBJECT)
+    }
+
+    /// A numeric field of a VM-internal record.
+    pub(in super::super) fn record_count(&self, record: ObjectId, key: &str) -> u64 {
+        let value = self
+            .record_get(record, key)
+            .expect("the record stores its counts");
+        primitive::number(&value).expect("counts are numbers") as u64
+    }
+
+    /// Overwrites a property a VM-internal record already holds with a value
+    /// of the same footprint (a flag, a number or an object handle). Nothing
+    /// grows, so the heap ceiling cannot be exceeded and the write cannot fail.
+    pub(in super::super) fn record_overwrite(
+        &mut self,
+        record: ObjectId,
+        key: impl Into<PropertyName>,
+        value: Value,
+    ) {
+        self.heap
+            .set(record, key, value)
+            .expect("overwriting a same-sized record field cannot fail");
     }
 
     pub(in super::super) fn coerce_primitive(
@@ -71,7 +140,7 @@ impl Vm {
         };
         for name in names {
             let method = self.get_property(value, &name.into())?;
-            if self.is_callable(&method)? {
+            if self.callable(&method) {
                 let result = self.call_native(method, value.clone(), Vec::new(), false)?;
                 if !matches!(result, Value::Object(_)) {
                     return Ok(result);
@@ -317,6 +386,16 @@ impl Vm {
         }
     }
 
+    /// The length check of `new Array(length)` for a Number argument: it must
+    /// be a valid uint32 exactly.
+    pub(in super::super) fn array_length_number(number: f64) -> Result<u32, RuntimeError> {
+        let length = primitive::to_uint32(number);
+        if f64::from(length) != number {
+            return Err(RuntimeError::RangeError("invalid array length".into()));
+        }
+        Ok(length)
+    }
+
     pub(in super::super) fn array_length_value(
         &mut self,
         value: &Value,
@@ -324,7 +403,7 @@ impl Vm {
         // ArraySetLength performs ToUint32 followed by a separate ToNumber.
         // These must remain separate observable conversions: an object can
         // supply a stateful `valueOf` implementation.
-        let length = native::uint32(&Value::Number(self.coerce_number(value)?))?;
+        let length = primitive::to_uint32(self.coerce_number(value)?);
         let number = self.coerce_number(value)?;
         if f64::from(length) != number {
             return Err(RuntimeError::RangeError("invalid array length".into()));
@@ -339,7 +418,9 @@ impl Vm {
         let value = self.coerce_primitive(value, "string")?;
         Ok(match value {
             Value::Symbol(symbol) => symbol.into(),
-            value => primitive::string(&value)?.into(),
+            value => primitive::string(&value)
+                .expect("a primitive that is not a symbol has a string form")
+                .into(),
         })
     }
 
@@ -365,25 +446,21 @@ impl Vm {
         if matches!(method, Value::Undefined | Value::Null) {
             return Ok(Value::Undefined);
         }
-        if !self.is_callable(&method)? {
+        if !self.callable(&method) {
             return Err(RuntimeError::TypeError("property is not callable".into()));
         }
         Ok(method)
     }
 
     pub(in super::super) fn is_regexp(&mut self, value: &Value) -> Result<bool, RuntimeError> {
-        if !matches!(value, Value::Object(_)) {
+        let Value::Object(id) = value else {
             return Ok(false);
-        }
+        };
         let matcher = self.get_property(value, &JsSymbol::well_known("match").into())?;
         if !matches!(matcher, Value::Undefined) {
-            return self.to_boolean(&matcher);
+            return Ok(self.truthy(&matcher));
         }
-        Ok(if let Value::Object(id) = value {
-            self.heap.regexp(*id)?.is_some()
-        } else {
-            false
-        })
+        Ok(self.heap.regexp(*id).expect(Self::LIVE_OBJECT).is_some())
     }
 
     pub(in super::super) fn dispatch_string_method(
@@ -396,7 +473,7 @@ impl Vm {
         if matches!(method, ToString | ValueOf) {
             return native::string_method(
                 method,
-                &self.unbox_string(receiver)?,
+                &self.unbox_string(receiver).expect(Self::LIVE_OBJECT),
                 &[],
                 self.config.max_string_bytes,
             );

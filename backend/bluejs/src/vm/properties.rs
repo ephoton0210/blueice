@@ -58,7 +58,8 @@ impl Vm {
                     _ => "Number",
                 })?;
                 let prototype = self
-                    .get_property(&constructor, &"prototype".into())?
+                    .get_property(&constructor, &"prototype".into())
+                    .expect("an intrinsic constructor's prototype is a data property")
                     .object_id()
                     .unwrap();
                 self.get_from_prototype(prototype, receiver, key)
@@ -136,7 +137,7 @@ impl Vm {
         receiver: &Value,
         key: &PropertyName,
     ) -> Result<Value, RuntimeError> {
-        if key == "constructor" && self.heap.is_array(target)? {
+        if key == "constructor" && self.heap.is_array(target).expect(Self::LIVE_OBJECT) {
             // Array instances inherit this property from `%Array.prototype%`.
             // The intrinsic constructor is otherwise lazy, but the inherited
             // lookup may occur before a global `Array` reference in the same
@@ -144,7 +145,7 @@ impl Vm {
             // observably absent.
             self.global("Array")?;
         }
-        if key == "constructor" && self.is_callable(&Value::Object(target))? {
+        if key == "constructor" && self.callable(&Value::Object(target)) {
             // `%Function.prototype%` owns its `constructor` property.
             // Materialize `%Function%` before an inherited lookup on a
             // closure (including one passed through Object(value)) can
@@ -166,8 +167,7 @@ impl Vm {
         self.materialize_global_object_property(target, key)?;
         if let Some(cell) = self.global_property_cell(target, key) {
             return self
-                .heap
-                .get_own(cell, "value")?
+                .record_get(cell, "value")
                 .ok_or_else(|| RuntimeError::ReferenceError("global binding".into()));
         }
         self.materialize_string_intrinsics_for_key(key)?;
@@ -184,16 +184,14 @@ impl Vm {
         if key == "caller" || key == "arguments" {
             self.global("Function")?;
         }
-        if key == "__proto__" && self.string_intrinsics.is_none() {
-            self.string_intrinsics()?;
-        }
         // `%Object.prototype%` has an initial own constructor property.
         // Intrinsics otherwise bootstrap lazily, so make it observable before
         // an ordinary object performs an inherited lookup.
         if key == "constructor"
             && self
                 .heap
-                .get_own_property_descriptor(self.object_prototype, "constructor")?
+                .get_own_property_descriptor(self.object_prototype, "constructor")
+                .expect(Self::LIVE_OBJECT)
                 .is_none()
         {
             self.global("Object")?;
@@ -228,14 +226,11 @@ impl Vm {
             self.global("Function")?;
         }
         if let Value::Object(object) = receiver {
-            if self.heap.proxy(*object)?.is_none()
-                && self.test262_foreign_reference(*object).is_some()
-            {
+            let ordinary = self.heap.proxy(*object)?.is_none();
+            if ordinary && self.test262_foreign_reference(*object).is_some() {
                 return self.test262_foreign_set(*object, key, value);
             }
-            if self.heap.proxy(*object)?.is_none()
-                && self.test262_reverse_reference(*object).is_some()
-            {
+            if ordinary && self.test262_reverse_reference(*object).is_some() {
                 return self.test262_reverse_set(*object, key, value);
             }
             self.materialize_global_object_property(*object, key)?;
@@ -287,20 +282,24 @@ impl Vm {
         &mut self,
         owner_slot: usize,
     ) -> Result<(Value, ObjectId, JsString), RuntimeError> {
-        let name = match self.pop() {
-            Value::String(name) => name,
-            _ => unreachable!("compiler emits a string private name"),
-        };
+        let name = primitive::string(&self.pop()).expect("compiler emits a string private name");
         let receiver = self.pop();
-        let owner = self
-            .binding_value(owner_slot)?
-            .and_then(|value| value.object_id())
-            .ok_or_else(|| {
-                RuntimeError::TypeError(
-                    "private elements are not available in this function".into(),
-                )
-            })?;
+        // An owner binding is made by the compiler for the class scope, never
+        // by `eval`, so reading it cannot take the eval-variable lookup that
+        // is the only fallible path of `binding_value`.
+        let owner = Self::private_owner(
+            self.binding_value(owner_slot)
+                .expect("a private owner binding is never eval-created"),
+        )?;
         Ok((receiver, owner, name))
+    }
+
+    /// The object standing for a class's private-name environment, from the
+    /// value of the owner binding a private access resolved to.
+    fn private_owner(owner: Option<Value>) -> Result<ObjectId, RuntimeError> {
+        owner.and_then(|value| value.object_id()).ok_or_else(|| {
+            RuntimeError::TypeError("private elements are not available in this function".into())
+        })
     }
 
     pub(super) fn private_receiver(
@@ -311,7 +310,11 @@ impl Vm {
         let object = receiver.object_id().ok_or_else(|| {
             RuntimeError::TypeError("private fields require an object receiver".into())
         })?;
-        if !self.heap.has_private_brand(object, owner)? {
+        if !self
+            .heap
+            .has_private_brand(object, owner)
+            .expect(Self::LIVE_OBJECT)
+        {
             return Err(RuntimeError::TypeError(
                 "receiver does not have the requested private element".into(),
             ));
@@ -326,15 +329,19 @@ impl Vm {
         name: &JsString,
     ) -> Result<Value, RuntimeError> {
         let object = self.private_receiver(receiver, owner)?;
-        let element = self.heap.private_element(owner, name)?.ok_or_else(|| {
-            RuntimeError::TypeError("private element is not declared by this class".into())
-        })?;
+        let element = self
+            .heap
+            .private_element(owner, name)
+            .expect(Self::LIVE_OBJECT)
+            .expect("the compiler declares every private name its class uses");
         match element {
-            PrivateElement::Field => {
-                self.heap.private_slot(object, owner, name)?.ok_or_else(|| {
+            PrivateElement::Field => self
+                .heap
+                .private_slot(object, owner, name)
+                .expect(Self::LIVE_OBJECT)
+                .ok_or_else(|| {
                     RuntimeError::TypeError("private field has not been initialized".into())
-                })
-            }
+                }),
             PrivateElement::Method(function) => Ok(function),
             PrivateElement::Accessor { get: None, .. } => Err(RuntimeError::TypeError(
                 "private accessor has no getter".into(),
@@ -356,9 +363,11 @@ impl Vm {
         key: &Value,
         prefix: u32,
     ) -> Result<(), RuntimeError> {
-        let Value::Object(function) = function else {
-            return Ok(());
-        };
+        // The compiler emits this only right after an anonymous function
+        // definition, so the value is always a function object.
+        let function = function
+            .object_id()
+            .expect("SetFunctionName follows a function definition");
         let prefix_text: JsString = match prefix {
             1 => "get ".into(),
             2 => "set ".into(),
@@ -366,11 +375,12 @@ impl Vm {
         };
         // The parser leaves an anonymous function's name empty, or (for a
         // computed object-literal accessor) just its prefix.
-        match self.heap.get_own(*function, "name")? {
-            None => {}
-            Some(Value::String(existing))
-                if existing.byte_len() == 0 || existing == prefix_text => {}
-            Some(_) => return Ok(()),
+        let anonymous = self.record_get(function, "name").is_none_or(|name| {
+            matches!(name, Value::String(ref existing)
+                if existing.byte_len() == 0 || *existing == prefix_text)
+        });
+        if !anonymous {
+            return Ok(());
         }
         let mut name = prefix_text;
         match key {
@@ -381,10 +391,13 @@ impl Vm {
                     name.push_str(&"]".into());
                 }
             }
-            Value::String(text) => name.push_str(text),
-            other => name.push_str(&crate::primitive::string(other)?),
+            // The key has already been through ToPropertyKey.
+            other => name.push_str(
+                &crate::primitive::string(other)
+                    .expect("a property key that is not a symbol is a string"),
+            ),
         }
-        self.define_data(*function, "name", Value::String(name), false, false, true)
+        self.define_data(function, "name", Value::String(name), false, false, true)
     }
 
     pub(super) fn private_set(
@@ -395,13 +408,20 @@ impl Vm {
         value: Value,
     ) -> Result<(), RuntimeError> {
         let object = self.private_receiver(receiver, owner)?;
-        let element = self.heap.private_element(owner, &name)?.ok_or_else(|| {
-            RuntimeError::TypeError("private element is not declared by this class".into())
-        })?;
+        let element = self
+            .heap
+            .private_element(owner, &name)
+            .expect(Self::LIVE_OBJECT)
+            .expect("the compiler declares every private name its class uses");
         match element {
             PrivateElement::Field => {
                 // Assignment updates an initialized field; it never adds one.
-                if self.heap.private_slot(object, owner, &name)?.is_none() {
+                if self
+                    .heap
+                    .private_slot(object, owner, &name)
+                    .expect(Self::LIVE_OBJECT)
+                    .is_none()
+                {
                     return Err(RuntimeError::TypeError(
                         "private field has not been initialized".into(),
                     ));
@@ -433,14 +453,21 @@ impl Vm {
             .expect("compiler emits a class closure before heritage");
         let prototype = self
             .heap
-            .get(class, "prototype")?
+            .get(class, "prototype")
+            .expect(Self::LIVE_OBJECT)
             .object_id()
             .expect("class constructors have a prototype object");
         let (constructor_parent, instance_parent) = match &base {
             // `extends null`: the constructor still inherits from
             // %Function.prototype%; only the instance prototype chain ends.
-            Value::Null => (Some(self.function_prototype()?), None),
-            Value::Object(base) if self.is_constructor(&Value::Object(*base))? => {
+            Value::Null => (
+                Some(
+                    self.function_prototype()
+                        .expect("the class constructor was made with the string intrinsics"),
+                ),
+                None,
+            ),
+            Value::Object(base) if self.constructible(&Value::Object(*base)) => {
                 let instance_parent =
                     match self.get_property(&Value::Object(*base), &"prototype".into())? {
                         Value::Object(prototype) => Some(prototype),
@@ -459,8 +486,14 @@ impl Vm {
                 ))
             }
         };
-        self.heap.set_prototype(class, constructor_parent)?;
-        self.heap.set_prototype(prototype, instance_parent)?;
+        // The class and its prototype are fresh, so neither can be part of a
+        // chain that would make the new links cyclic.
+        self.heap
+            .set_prototype(class, constructor_parent)
+            .expect("a fresh class cannot form a prototype cycle");
+        self.heap
+            .set_prototype(prototype, instance_parent)
+            .expect("a fresh class prototype cannot form a prototype cycle");
         self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
         Ok(())
     }
@@ -475,10 +508,16 @@ impl Vm {
         name: JsString,
         value: Value,
     ) -> Result<(), RuntimeError> {
-        let object = receiver.object_id().ok_or_else(|| {
-            RuntimeError::TypeError("private fields require an object receiver".into())
-        })?;
-        if self.heap.private_slot(object, owner, &name)?.is_some() {
+        // Fields are only added to the object `this` (or an override) names.
+        let object = receiver
+            .object_id()
+            .expect("private fields are added to an object");
+        if self
+            .heap
+            .private_slot(object, owner, &name)
+            .expect(Self::LIVE_OBJECT)
+            .is_some()
+        {
             return Err(RuntimeError::TypeError(
                 "private field is already defined on this object".into(),
             ));
@@ -508,7 +547,8 @@ impl Vm {
             .expect("compiler emits a class closure before its field initializer");
         let prototype = self
             .heap
-            .get(class, "prototype")?
+            .get(class, "prototype")
+            .expect(Self::LIVE_OBJECT)
             .object_id()
             .expect("class constructors have a prototype object");
         self.with_roots(|heap| heap.set_closure_home(initializer, prototype))?;
@@ -524,10 +564,14 @@ impl Vm {
         constructor: &Value,
         instance: &Value,
     ) -> Result<(), RuntimeError> {
-        let Some(class) = constructor.object_id() else {
-            return Ok(());
-        };
-        if let Some(initializer) = self.heap.class_fields(class)? {
+        let class = constructor
+            .object_id()
+            .expect("instance elements are initialized for a class constructor");
+        if let Some(initializer) = self
+            .heap
+            .class_fields(class)
+            .expect("instance elements are initialized for a class closure")
+        {
             self.call_native(
                 Value::Object(initializer),
                 instance.clone(),
@@ -547,7 +591,8 @@ impl Vm {
             .expect("compiler emits a class closure before setting its home object");
         let prototype = self
             .heap
-            .get(class, "prototype")?
+            .get(class, "prototype")
+            .expect(Self::LIVE_OBJECT)
             .object_id()
             .expect("class constructors have a prototype object");
         self.with_roots(|heap| heap.set_closure_home(class, prototype))?;
@@ -559,8 +604,11 @@ impl Vm {
         let home = self.home_object.ok_or_else(|| {
             RuntimeError::TypeError("super is not available in this function".into())
         })?;
+        // The home object is an object literal or a class (or its prototype),
+        // all ordinary, so reading its prototype cannot run a Proxy trap.
         Ok(self
-            .object_get_prototype(home)?
+            .object_get_prototype(home)
+            .expect("a home object is ordinary")
             .map_or(Value::Null, Value::Object))
     }
 
@@ -620,7 +668,7 @@ impl Vm {
         constructor: Value,
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        if !self.is_constructor(&constructor)? {
+        if !self.constructible(&constructor) {
             return Err(RuntimeError::TypeError(
                 "super constructor is not a constructor".into(),
             ));
@@ -640,13 +688,21 @@ impl Vm {
     ) -> Result<Value, RuntimeError> {
         let base = self.stack.len();
         let result = (|| {
-            let length_value = self.get_property(excluded, &"length".into())?;
-            let length = self.coerce_length(&length_value)? as u64;
+            // `excluded` is the compiler's own array of property keys.
+            let excluded = excluded
+                .object_id()
+                .expect("the compiler passes an array of excluded keys");
+            let length = self.record_count(excluded, "length");
             let mut excluded_keys = Vec::new();
             for index in 0..length {
                 self.charge_step()?;
-                let key = self.get_property(excluded, &index.to_string().into())?;
-                excluded_keys.push(self.coerce_property_key(&key)?);
+                let key = self
+                    .record_get(excluded, index.to_string())
+                    .expect("the compiler stores every excluded key");
+                excluded_keys.push(
+                    self.coerce_property_key(&key)
+                        .expect("an excluded key is already a property key"),
+                );
             }
             let prototype = self.object_prototype;
             let target = self.with_roots(|heap| heap.alloc_object(Some(prototype)))?;
@@ -691,15 +747,9 @@ impl Vm {
                     continue;
                 }
                 let value = self.get_property(&Value::Object(source_object), &key)?;
-                if !self.object_define_own_property(
-                    target,
-                    key,
-                    PropertyDescriptor::data(value, true, true, true),
-                )? {
-                    return Err(RuntimeError::TypeError(
-                        "cannot define copied property".into(),
-                    ));
-                }
+                // `target` is an object literal or fresh rest object, so
+                // defining a plain data property on it always succeeds.
+                self.define_data(target, key, value, true, true, true)?;
             }
             Ok(())
         })();
@@ -747,8 +797,8 @@ impl Vm {
     }
 
     /// Whether `record` is a `for-in` record made by [`Vm::for_in_iterator`].
-    pub(super) fn is_for_in_record(&self, record: ObjectId) -> Result<bool, RuntimeError> {
-        Ok(self.heap.get_own(record, "forInObject")?.is_some())
+    pub(super) fn is_for_in_record(&self, record: ObjectId) -> bool {
+        self.record_get(record, "forInObject").is_some()
     }
 
     /// The next key of a `for-in` loop, or `None` once every object of the
@@ -762,38 +812,39 @@ impl Vm {
         let result = self.for_in_next_key(record);
         self.stack.truncate(base);
         if !matches!(result, Ok(Some(_))) {
-            self.with_roots(|heap| heap.set(record, "done", Value::Bool(true)))?;
+            self.record_overwrite(record, "done", Value::Bool(true));
         }
         result
     }
 
     fn for_in_next_key(&mut self, record: ObjectId) -> Result<Option<Value>, RuntimeError> {
-        let visited = self.heap.get_own(record, "forInVisited")?;
-        let Some(Value::Object(visited)) = visited else {
-            return Ok(None);
-        };
+        let visited = self
+            .record_get(record, "forInVisited")
+            .and_then(|value| value.object_id())
+            .expect("a for-in record keeps its visited set");
         loop {
-            let Some(Value::Object(object)) = self.heap.get_own(record, "forInObject")? else {
+            // `forInObject` is `null` once the whole chain is exhausted.
+            let Some(object) = self
+                .record_get(record, "forInObject")
+                .and_then(|value| value.object_id())
+            else {
                 return Ok(None);
             };
             self.stack.push(Value::Object(object));
-            let keys = match self.heap.get_own(record, "forInKeys")? {
+            let keys = match self.record_get(record, "forInKeys") {
                 Some(Value::Object(keys)) => keys,
                 _ => {
                     // Entering this object: guard against a cyclic chain
                     // (a Proxy can return one), then list its own keys.
-                    let Some(Value::Object(chain)) = self.heap.get_own(record, "forInChain")?
-                    else {
-                        return Ok(None);
-                    };
-                    if self.array_contains_object(chain, object)? {
-                        self.with_roots(|heap| heap.set(record, "forInObject", Value::Null))?;
+                    let chain = self
+                        .record_get(record, "forInChain")
+                        .and_then(|value| value.object_id())
+                        .expect("a for-in record keeps its chain");
+                    if self.array_contains_object(chain, object) {
+                        self.record_overwrite(record, "forInObject", Value::Null);
                         continue;
                     }
-                    let length = match self.heap.get_own(chain, "length")? {
-                        Some(Value::Number(length)) => length as usize,
-                        _ => 0,
-                    };
+                    let length = self.record_count(chain, "length");
                     self.with_roots(|heap| {
                         heap.set(chain, length.to_string(), Value::Object(object))
                     })?;
@@ -803,35 +854,29 @@ impl Vm {
                             names.push(Value::String(key));
                         }
                     }
-                    let keys = self.array_from(names)?;
-                    let Value::Object(keys) = keys else {
-                        unreachable!("array_from returns an array object")
-                    };
+                    let keys = self
+                        .array_from(names)?
+                        .object_id()
+                        .expect("array_from returns an array object");
                     self.stack.push(Value::Object(keys));
-                    self.with_roots(|heap| heap.set(record, "forInKeys", Value::Object(keys)))?;
-                    self.with_roots(|heap| heap.set(record, "forInIndex", Value::Number(0.0)))?;
+                    self.record_overwrite(record, "forInKeys", Value::Object(keys));
+                    self.record_overwrite(record, "forInIndex", Value::Number(0.0));
                     keys
                 }
             };
-            let length = match self.heap.get_own(keys, "length")? {
-                Some(Value::Number(length)) => length as usize,
-                _ => 0,
-            };
-            let mut index = match self.heap.get_own(record, "forInIndex")? {
-                Some(Value::Number(index)) => index as usize,
-                _ => 0,
-            };
+            let length = self.record_count(keys, "length") as usize;
+            let mut index = self.record_count(record, "forInIndex") as usize;
             while index < length {
-                let key = self.heap.get_own(keys, index.to_string())?;
+                let key = primitive::string(
+                    &self
+                        .record_get(keys, index.to_string())
+                        .expect("the key list has an entry below its length"),
+                )
+                .expect("the key list holds strings");
                 index += 1;
-                self.with_roots(|heap| {
-                    heap.set(record, "forInIndex", Value::Number(index as f64))
-                })?;
-                let Some(Value::String(key)) = key else {
-                    continue;
-                };
+                self.record_overwrite(record, "forInIndex", Value::Number(index as f64));
                 let name = PropertyName::String(key.clone());
-                if self.heap.get_own(visited, name.clone())?.is_some() {
+                if self.record_get(visited, name.clone()).is_some() {
                     continue;
                 }
                 let Some(descriptor) = self.object_get_own_property(object, &name)? else {
@@ -845,25 +890,33 @@ impl Vm {
             // This object is exhausted: continue with its prototype.
             let prototype = self.object_get_prototype(object)?;
             let next = prototype.map_or(Value::Null, Value::Object);
-            self.with_roots(|heap| heap.set(record, "forInObject", next))?;
-            self.with_roots(|heap| heap.set(record, "forInKeys", Value::Undefined))?;
+            self.record_overwrite(record, "forInObject", next);
+            self.record_overwrite(record, "forInKeys", Value::Undefined);
         }
     }
 
-    fn array_contains_object(
-        &mut self,
-        array: ObjectId,
-        object: ObjectId,
-    ) -> Result<bool, RuntimeError> {
-        let length = match self.heap.get_own(array, "length")? {
-            Some(Value::Number(length)) => length as usize,
-            _ => 0,
-        };
-        for index in 0..length {
-            if self.heap.get_own(array, index.to_string())? == Some(Value::Object(object)) {
-                return Ok(true);
-            }
+    fn array_contains_object(&self, array: ObjectId, object: ObjectId) -> bool {
+        let length = self.record_count(array, "length");
+        (0..length)
+            .any(|index| self.record_get(array, index.to_string()) == Some(Value::Object(object)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_private_owner_binding_must_hold_an_object() {
+        let owner = ObjectId { heap: 3, serial: 9 };
+        assert_eq!(Vm::private_owner(Some(Value::Object(owner))), Ok(owner));
+        for value in [None, Some(Value::Undefined), Some(Value::Number(1.0))] {
+            assert_eq!(
+                Vm::private_owner(value),
+                Err(RuntimeError::TypeError(
+                    "private elements are not available in this function".into()
+                ))
+            );
         }
-        Ok(false)
     }
 }

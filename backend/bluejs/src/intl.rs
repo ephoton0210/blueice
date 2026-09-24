@@ -182,3 +182,22 @@ pub(crate) fn case_map(
     flush(&mut run, &mut result)?;
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_segment_record_past_the_last_segment_is_absent() {
+        let segments = Segments {
+            input: JsString::from("a"),
+            records: vec![SegmentRecord {
+                start: 0,
+                end: 1,
+                is_word_like: Some(true),
+            }],
+        };
+        assert_eq!(segments.record(0), Some(("a".into(), 0, Some(true))));
+        assert_eq!(segments.record(1), None);
+    }
+}

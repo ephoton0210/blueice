@@ -5,6 +5,14 @@
 use super::*;
 
 impl Vm {
+    /// The record of a `this` that `native_call` has already brand-checked
+    /// (`RequireInternalSlot(this, [[InitializedTemporalDuration]])` is every
+    /// member's first step), so the lookup cannot fail here.
+    fn temporal_duration_this(&mut self, receiver: &Value) -> blueice_ecma402::DurationRecord {
+        self.temporal_duration_receiver(receiver)
+            .expect("native_call brand-checks every Temporal.Duration receiver")
+    }
+
     /// The calendar-agnostic gate shared by `add`/`subtract`/`round`/`total`/
     /// `compare`. Where the specification requires a `relativeTo` this engine
     /// cannot honour, the answer is a `RangeError`, never an approximation.
@@ -27,7 +35,7 @@ impl Vm {
         receiver: &Value,
         like: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
+        let record = self.temporal_duration_this(receiver);
         if !matches!(like, Value::Object(_)) {
             return Err(RuntimeError::TypeError(
                 "Temporal.Duration.prototype.with requires a Duration-like object".into(),
@@ -67,7 +75,7 @@ impl Vm {
         receiver: &Value,
         absolute: bool,
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
+        let record = self.temporal_duration_this(receiver);
         let map = |value: i128| if absolute { value.abs() } else { -value };
         // Negating or taking the magnitude of every field at once preserves
         // both the common-sign and the range invariants, so this cannot fail.
@@ -94,7 +102,7 @@ impl Vm {
         other: &Value,
         negate: bool,
     ) -> Result<Value, RuntimeError> {
-        let one = self.temporal_duration_receiver(receiver)?;
+        let one = self.temporal_duration_this(receiver);
         let mut two = self.temporal_duration_from_value(other)?;
         if negate {
             two = blueice_ecma402::DurationRecord {
@@ -115,8 +123,9 @@ impl Vm {
         // so it is rejected outright rather than balanced.
         let largest = Self::temporal_duration_largest_unit(&one)
             .max(Self::temporal_duration_largest_unit(&two));
+        // `largest` is the larger of the operands' own largest units, so this
+        // rejects a calendar unit in either operand.
         Self::temporal_duration_require_no_calendar_units(&one, &[largest])?;
-        Self::temporal_duration_require_no_calendar_units(&two, &[])?;
         let total = duration_math::TimeDuration::from_record_with_24_hour_days(&one)
             .total_nanoseconds()
             + duration_math::TimeDuration::from_record_with_24_hour_days(&two).total_nanoseconds();
@@ -141,7 +150,7 @@ impl Vm {
         receiver: &Value,
         round_to: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
+        let record = self.temporal_duration_this(receiver);
         let base = self.stack.len();
         let result = (|| {
             let (shorthand, options) = self.temporal_duration_round_to(round_to, "round")?;
@@ -307,7 +316,7 @@ impl Vm {
         receiver: &Value,
         total_of: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
+        let record = self.temporal_duration_this(receiver);
         let base = self.stack.len();
         let result = (|| {
             let (shorthand, options) = self.temporal_duration_round_to(total_of, "total")?;
@@ -529,7 +538,7 @@ impl Vm {
         if value == Value::Undefined {
             return Ok(None);
         }
-        if !matches!(value, Value::Number(_)) {
+        let Value::Number(digits) = value else {
             let text = self
                 .coerce_string(&value)?
                 .to_utf8()
@@ -540,8 +549,7 @@ impl Vm {
             return Err(RuntimeError::RangeError(
                 "invalid fractionalSecondDigits".into(),
             ));
-        }
-        let digits = self.coerce_number(&value)?;
+        };
         if !digits.is_finite() {
             return Err(RuntimeError::RangeError(
                 "invalid fractionalSecondDigits".into(),
@@ -626,7 +634,7 @@ impl Vm {
         receiver: &Value,
         options: &Value,
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
+        let record = self.temporal_duration_this(receiver);
         let base = self.stack.len();
         let result = (|| {
             let options = self.temporal_duration_options(options)?;
@@ -734,7 +742,7 @@ impl Vm {
         receiver: &Value,
         args: &[Value],
     ) -> Result<Value, RuntimeError> {
-        let record = self.temporal_duration_receiver(receiver)?;
+        let record = self.temporal_duration_this(receiver);
         let base = self.stack.len();
         let result = (|| {
             let formatter = self.duration_format_for_locale_string(args)?;

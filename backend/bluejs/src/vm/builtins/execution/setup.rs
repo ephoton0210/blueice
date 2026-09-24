@@ -428,7 +428,8 @@ impl Vm {
                     unwrap,
                     Value::Undefined,
                     ReactionTarget::Native(promise),
-                )
+                );
+                Ok(())
             })();
             if let Err(error) = outcome {
                 let reason = self.error_value(error)?;
