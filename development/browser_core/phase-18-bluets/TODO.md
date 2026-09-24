@@ -990,6 +990,15 @@ or second module resolver to bypass them.
   reuse the original receipt; no source text, module identity, arbitrary
   offset conversion, nearest-match mapping, stack frame, or execution
   control is added by this capability.
+  A real launcher-supervised regression now takes only a separately receipted
+  exact span for the original BlueTS declaration, arms that verified non-entry
+  root safe point through the existing execution capability, observes the
+  actual BlueJS frame paused there, reads the same original span while paused,
+  resumes to completion, and confirms reload and a new debugger stream cannot
+  reuse the old tuple. This proves the current bounded source-to-pause path
+  without adding an arbitrary source-byte-position oracle. A separately
+  authorized source-position binding policy and non-root/module execution
+  support remain open before general TS breakpoints can be claimed.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

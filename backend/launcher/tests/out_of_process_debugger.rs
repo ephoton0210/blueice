@@ -1898,6 +1898,9 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
     assert!(!sources.is_empty());
     let mut mapped = None;
     for safe_point in safe_points {
+        if safe_point.code_unit_ordinal != 0 || safe_point.bytecode_offset == 0 {
+            continue;
+        }
         for source in &sources {
             let target = blueice_ipc::debugger::DebuggerStaticMetadataSafePointSpanTarget {
                 safe_point,
@@ -1928,6 +1931,10 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
     assert_eq!(span.source, target.source);
     assert!(span.is_well_formed());
     assert!(usize::try_from(span.end_byte).unwrap() <= FIRST_BLUETS_SOURCE.len());
+    let source_span = FIRST_BLUETS_SOURCE
+        .get(span.start_byte as usize..span.end_byte as usize)
+        .expect("the verified span must have original UTF-8 boundaries");
+    assert!(source_span.contains("privateBlueTsMetadata"));
     assert!(!format!("{span:?}").contains("privateBlueTsMetadata"));
     assert!(!format!("{span:?}").contains("inline-0.ts"));
 
@@ -1946,6 +1953,42 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
         ),
         DebuggerReply::Unsupported { .. }
     ));
+
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::GetExecutionState { program }
+        ),
+        DebuggerReply::ExecutionState {
+            program,
+            state: blueice_ipc::debugger::DebuggerExecutionState::Pending,
+        }
+    );
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmRootSafePointBreakpoint {
+                safe_point: target.safe_point,
+            },
+        ),
+        DebuggerReply::RootSafePointBreakpointArmed {
+            safe_point: target.safe_point,
+        }
+    );
+    await_paused_execution(&mut debugger, program, target.safe_point);
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataSafePointSpan { target },
+        ),
+        DebuggerReply::StaticMetadataSafePointSpan(span),
+        "the paused BlueJS frame must retain the same original BlueTS position"
+    );
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::ExecutionResumed { program }
+    );
+    await_completed_execution(&mut debugger, program);
 
     navigate(&mut browser, &url);
     fixture.join().expect("fixture must serve both documents");
