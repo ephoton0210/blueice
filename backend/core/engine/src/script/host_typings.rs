@@ -13,7 +13,8 @@
 
 use blueice_bluets::ModuleSource;
 use blueice_bluets_bluejs::page_host_typings::{
-    page_host_document_context_bindings_v1, page_host_dom_text_bindings_v1, PageHostBindingRoleV1,
+    page_host_document_context_bindings_v1, page_host_dom_mutation_bindings_v1,
+    page_host_dom_text_bindings_v1, PageHostBindingRoleV1,
 };
 use std::collections::BTreeMap;
 use std::fmt;
@@ -36,6 +37,7 @@ pub const CORE_SCRIPT_DOCUMENT_TEXT_PROFILE_V1: &str = "core-script-document-tex
 /// The profile identity and binding schema are shared with the isolated child
 /// so BlueTS cannot be typed against a different callback inventory there.
 pub use blueice_bluets_bluejs::page_host_typings::PAGE_HOST_DOCUMENT_CONTEXT_PROFILE_V1 as CORE_SCRIPT_DOCUMENT_CONTEXT_PROFILE_V1;
+pub use blueice_bluets_bluejs::page_host_typings::PAGE_HOST_DOM_MUTATION_PROFILE_V1 as CORE_SCRIPT_DOM_MUTATION_PROFILE_V1;
 pub use blueice_bluets_bluejs::page_host_typings::PAGE_HOST_DOM_TEXT_PROFILE_V1 as CORE_SCRIPT_DOM_TEXT_PROFILE_V1;
 
 /// Core host API version associated with [`CORE_SCRIPT_EMPTY_PROFILE_V1`].
@@ -320,6 +322,28 @@ pub fn core_script_host_type_catalog() -> HostTypeSurfaceCatalogV1 {
             blueice_bluets_bluejs::page_host_typings::PAGE_HOST_DOM_TEXT_HOST_API_VERSION_V1,
             CORE_SCRIPT_DOM_TEXT_PROFILE_V1,
             page_host_dom_text_bindings_v1()
+                .iter()
+                .map(|binding| {
+                    HostTypeBindingV1::new(
+                        binding.stable_id,
+                        binding.declaration,
+                        match binding.role {
+                            PageHostBindingRoleV1::Value => HostBindingRoleV1::Value,
+                            PageHostBindingRoleV1::Type => HostBindingRoleV1::Type,
+                        },
+                        binding.runtime_binding_id,
+                        binding.capability,
+                        binding.feature_flag,
+                        binding.first_host_api_version,
+                    )
+                })
+                .collect(),
+        ),
+        HostTypeSurfaceV1::new(
+            BLUEICE_HOST_TYPINGS_LANGUAGE_VERSION_V1,
+            blueice_bluets_bluejs::page_host_typings::PAGE_HOST_DOM_MUTATION_HOST_API_VERSION_V1,
+            CORE_SCRIPT_DOM_MUTATION_PROFILE_V1,
+            page_host_dom_mutation_bindings_v1()
                 .iter()
                 .map(|binding| {
                     HostTypeBindingV1::new(
@@ -840,6 +864,35 @@ mod tests {
         );
         assert_eq!(artifact.runtime_bindings[3].role, HostBindingRoleV1::Type);
         assert_eq!(artifact.runtime_bindings[4].role, HostBindingRoleV1::Type);
+        artifact
+            .validate_runtime_bindings(&artifact.runtime_bindings)
+            .unwrap();
+    }
+
+    #[test]
+    fn live_dom_mutation_manifest_matches_the_child_selected_artifact() {
+        let artifact = core_script_host_type_catalog()
+            .generate(CORE_SCRIPT_DOM_MUTATION_PROFILE_V1)
+            .unwrap();
+        let child = blueice_bluets_bluejs::page_host_typings::PageHostDocumentTypingsV1::generate_dom_mutation();
+        assert_eq!(artifact.declaration_source, child.declaration_source);
+        assert_eq!(artifact.manifest.binding_ids.len(), 8);
+        assert_eq!(
+            artifact.runtime_bindings.len(),
+            child.runtime_bindings.len()
+        );
+        assert_eq!(
+            artifact
+                .runtime_bindings
+                .iter()
+                .map(|binding| binding.runtime_binding_id.as_str())
+                .collect::<Vec<_>>(),
+            child
+                .runtime_bindings
+                .iter()
+                .map(|binding| binding.runtime_binding_id)
+                .collect::<Vec<_>>()
+        );
         artifact
             .validate_runtime_bindings(&artifact.runtime_bindings)
             .unwrap();

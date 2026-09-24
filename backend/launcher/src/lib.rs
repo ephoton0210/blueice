@@ -103,6 +103,9 @@ mod unix {
         /// Owner-selected first live DOM text profile; page and frontend
         /// traffic cannot select it or supply its private script socket.
         core_dom_text_fixture: bool,
+        /// Separate owner-selected live DOM creation/append profile. It does
+        /// not mutate the immutable text-v1 typing or callback inventory.
+        core_dom_mutation_fixture: bool,
         /// A caller-selected Unix endpoint for a sealed core compiler catalog.
         /// The default builder selects the fixed compiled-in fixture; the
         /// separate trusted-owner builder may supply a complete closed graph.
@@ -250,6 +253,14 @@ mod unix {
         pub fn supervise_out_of_process_bluejs_with_dom_text_fixture(mut self) -> Self {
             self.supervise_out_of_process_bluejs = true;
             self.core_dom_text_fixture = true;
+            self
+        }
+
+        /// Selects the exact bounded DOM mutation profile for one supervised
+        /// child. Page, frontend, and public launcher traffic cannot enable it.
+        pub fn supervise_out_of_process_bluejs_with_dom_mutation_fixture(mut self) -> Self {
+            self.supervise_out_of_process_bluejs = true;
+            self.core_dom_mutation_fixture = true;
             self
         }
 
@@ -1683,6 +1694,7 @@ mod unix {
                     options.bluejs_host_runtime_limits,
                     options.core_dom_lookup_probe_fixture,
                     options.core_dom_text_fixture,
+                    options.core_dom_mutation_fixture,
                 )?;
             Ok(Some(Self {
                 host,

@@ -8,7 +8,8 @@
 //! core or launcher crate: both need the same generated declaration bytes and
 //! runtime inventory, while neither may depend on the other. The default
 //! profile contains only copied snapshots; a distinct owner-selected profile
-//! can describe the bounded live DOM text route. Neither is `lib.dom.d.ts`.
+//! can describe bounded live DOM text or creation/append routes. None is
+//! `lib.dom.d.ts`.
 
 use blueice_bluets::ModuleSource;
 use std::fmt;
@@ -31,6 +32,13 @@ pub const PAGE_HOST_DOM_TEXT_PROFILE_V1: &str = "core-script-dom-text-v1";
 pub const PAGE_HOST_DOM_TEXT_DECLARATION_MODULE_ID_V1: &str =
     "blueice:///profiles/core-script-dom-text-v1/lib.blueice.d.ts";
 pub const PAGE_HOST_DOM_TEXT_HOST_API_VERSION_V1: &str = "blueice-core-script-v2";
+
+/// A separate owner-selected profile for bounded live DOM creation/append.
+/// The text-v1 artifact remains immutable for existing embedders.
+pub const PAGE_HOST_DOM_MUTATION_PROFILE_V1: &str = "core-script-dom-mutation-v1";
+pub const PAGE_HOST_DOM_MUTATION_DECLARATION_MODULE_ID_V1: &str =
+    "blueice:///profiles/core-script-dom-mutation-v1/lib.blueice.d.ts";
+pub const PAGE_HOST_DOM_MUTATION_HOST_API_VERSION_V1: &str = "blueice-core-script-v3";
 
 const DECLARATION_HEADER: &str = "// Generated from the BlueIce host type surface. Do not edit.\n";
 
@@ -111,6 +119,65 @@ const PAGE_HOST_DOM_TEXT_BINDINGS_V1: [PageHostDocumentBindingV1; 5] = [
     },
 ];
 
+const PAGE_HOST_DOM_MUTATION_BINDINGS_V1: [PageHostDocumentBindingV1; 8] = [
+    PAGE_HOST_DOCUMENT_CONTEXT_BINDINGS_V1[0],
+    PAGE_HOST_DOCUMENT_CONTEXT_BINDINGS_V1[1],
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-document",
+        declaration: "interface BlueIceNode extends BlueIceNodeAppend, BlueIceNodeText {}\ninterface BlueIceDocument extends BlueIceDocumentCreateElement, BlueIceDocumentCreateTextNode, BlueIceDocumentLookup {}\ndeclare const document: BlueIceDocument;",
+        role: PageHostBindingRoleV1::Value,
+        runtime_binding_id: "global.document",
+        capability: "dom-read",
+        feature_flag: "live-dom-mutation",
+        first_host_api_version: PAGE_HOST_DOM_MUTATION_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-document-create-element",
+        declaration: "interface BlueIceDocumentCreateElement { createElement(tagName: string): BlueIceNode; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "document.createElement",
+        capability: "dom-write",
+        feature_flag: "live-dom-mutation",
+        first_host_api_version: PAGE_HOST_DOM_MUTATION_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-document-create-text-node",
+        declaration: "interface BlueIceDocumentCreateTextNode { createTextNode(data: string): BlueIceNode; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "document.createTextNode",
+        capability: "dom-write",
+        feature_flag: "live-dom-mutation",
+        first_host_api_version: PAGE_HOST_DOM_MUTATION_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-document-method",
+        declaration: "interface BlueIceDocumentLookup { getElementById(id: string): BlueIceNode | null; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "document.getElementById",
+        capability: "dom-read",
+        feature_flag: "live-dom-mutation",
+        first_host_api_version: PAGE_HOST_DOM_MUTATION_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-node-append",
+        declaration: "interface BlueIceNodeAppend { appendChild(child: BlueIceNode): BlueIceNode; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "node.appendChild",
+        capability: "dom-write",
+        feature_flag: "live-dom-mutation",
+        first_host_api_version: PAGE_HOST_DOM_MUTATION_HOST_API_VERSION_V1,
+    },
+    PageHostDocumentBindingV1 {
+        stable_id: "dom.live-node-text",
+        declaration: "interface BlueIceNodeText { textContent: string; }",
+        role: PageHostBindingRoleV1::Type,
+        runtime_binding_id: "node.textContent",
+        capability: "dom-write",
+        feature_flag: "live-dom-mutation",
+        first_host_api_version: PAGE_HOST_DOM_MUTATION_HOST_API_VERSION_V1,
+    },
+];
+
 /// Returns the complete fixed binding inventory in deterministic stable-ID
 /// order.  There is no API to add, remove, or select records for one page.
 pub fn page_host_document_context_bindings_v1() -> &'static [PageHostDocumentBindingV1] {
@@ -123,6 +190,17 @@ pub fn page_host_dom_text_bindings_v1() -> &'static [PageHostDocumentBindingV1] 
 
 pub fn page_host_dom_text_runtime_bindings_v1() -> [PageHostRuntimeBindingV1; 5] {
     PAGE_HOST_DOM_TEXT_BINDINGS_V1.map(|binding| PageHostRuntimeBindingV1 {
+        stable_id: binding.stable_id,
+        runtime_binding_id: binding.runtime_binding_id,
+    })
+}
+
+pub fn page_host_dom_mutation_bindings_v1() -> &'static [PageHostDocumentBindingV1] {
+    &PAGE_HOST_DOM_MUTATION_BINDINGS_V1
+}
+
+pub fn page_host_dom_mutation_runtime_bindings_v1() -> [PageHostRuntimeBindingV1; 8] {
+    PAGE_HOST_DOM_MUTATION_BINDINGS_V1.map(|binding| PageHostRuntimeBindingV1 {
         stable_id: binding.stable_id,
         runtime_binding_id: binding.runtime_binding_id,
     })
@@ -172,6 +250,13 @@ impl PageHostDocumentTypingsV1 {
         Self::generate_from(
             PAGE_HOST_DOM_TEXT_PROFILE_V1,
             page_host_dom_text_bindings_v1(),
+        )
+    }
+
+    pub fn generate_dom_mutation() -> Self {
+        Self::generate_from(
+            PAGE_HOST_DOM_MUTATION_PROFILE_V1,
+            page_host_dom_mutation_bindings_v1(),
         )
     }
 
@@ -239,6 +324,17 @@ impl PageHostDocumentTypingsV1 {
         self.verified_module_for(
             Self::generate_dom_text(),
             PAGE_HOST_DOM_TEXT_DECLARATION_MODULE_ID_V1,
+            installed_bindings,
+        )
+    }
+
+    pub fn verified_dom_mutation_ambient_module(
+        &self,
+        installed_bindings: &[PageHostRuntimeBindingV1],
+    ) -> Result<ModuleSource, PageHostTypingsError> {
+        self.verified_module_for(
+            Self::generate_dom_mutation(),
+            PAGE_HOST_DOM_MUTATION_DECLARATION_MODULE_ID_V1,
             installed_bindings,
         )
     }
@@ -394,5 +490,51 @@ mod tests {
             artifact.verified_ambient_module(&bindings),
             Err(PageHostTypingsError::ArtifactMismatch)
         );
+    }
+
+    #[test]
+    fn live_dom_mutation_profile_types_only_installed_creation_and_append() {
+        use blueice_bluets::{CompilerOptions, MapLoader, RuntimePolicy};
+
+        let artifact = PageHostDocumentTypingsV1::generate_dom_mutation();
+        assert_eq!(artifact.profile, PAGE_HOST_DOM_MUTATION_PROFILE_V1);
+        let bindings = page_host_dom_mutation_runtime_bindings_v1();
+        let ambient = artifact
+            .verified_dom_mutation_ambient_module(&bindings)
+            .unwrap();
+        assert_eq!(ambient.id, PAGE_HOST_DOM_MUTATION_DECLARATION_MODULE_ID_V1);
+        assert_eq!(bindings.len(), 8);
+        assert_eq!(
+            artifact.verify_runtime_bindings(&bindings[..7]),
+            Err(PageHostTypingsError::RuntimeBindingInventoryMismatch)
+        );
+        let compile = |source| {
+            crate::compile_direct_script(
+                "memory:///main.ts",
+                &MapLoader::from([ModuleSource::new("memory:///main.ts", source)]),
+                CompilerOptions {
+                    runtime_policy: RuntimePolicy::Checked,
+                    require_declared_global_calls: true,
+                    ambient_declaration_modules: vec![ambient.clone()],
+                    ..CompilerOptions::default()
+                },
+            )
+        };
+        compile(
+            "const parent = document.getElementById('target')!;\n\
+             const child = document.createElement('span');\n\
+             const text = document.createTextNode('rendered');\n\
+             child.appendChild(text); parent.appendChild(child);",
+        )
+        .unwrap();
+        for source in [
+            "document.createElement(42);",
+            "document.createTextNode();",
+            "document.createTextNode(42);",
+            "const parent = document.getElementById('target')!; parent.appendChild('wrong');",
+            "document.fetch('https://example.test/');",
+        ] {
+            assert!(compile(source).is_err(), "{source}");
+        }
     }
 }

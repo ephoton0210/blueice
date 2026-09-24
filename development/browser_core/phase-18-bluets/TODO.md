@@ -152,11 +152,15 @@ Keep per-tab VM, program, source, bytecode, and child-wide budgets.
   and rejects a removed wrapper.
 - [ ] Implement createElement, createTextNode, and appendChild; a real
   page must render the new subtree and reject a cross-document child. Partial:
-  BlueJS now has a realm-private two-wrapper method boundary for `appendChild`:
-  it rejects forged/foreign-family arguments, returns the original child only
-  after the host accepts both opaque keys, and leaves exact document/generation
-  and liveness validation to the child/core adapter. The owner-selected
-  creation/append installer, typings, and real-page test remain open.
+  an owner-selected mutation profile now installs the two factories and
+  exact-wrapper append callback over generation-bound script IPC. Core
+  recomputes styles when a detached element joins the tree. A real HTTP page
+  executes JavaScript and checked BlueTS creation/append, verifies the live
+  subtree and a changed rasterized frame, and rejects a forged child; invalid
+  direct BlueTS calls fail checking. VM tests reject a same-family foreign
+  document generation, but a real-page cross-document child proof is still
+  open. BlueTS also still misses invalid arguments in chained expressions
+  such as `document.getElementById('x')!.appendChild('wrong')`.
 
 #### B3. Deliver a real click.
 

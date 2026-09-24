@@ -349,3 +349,193 @@ fn supervised_child_dom_text_profile_executes_checked_bluets_and_renders_live_te
     let _ = std::fs::remove_file(&gatekeeper_path);
     let _ = std::fs::remove_dir_all(&frame_dir);
 }
+
+#[test]
+fn supervised_child_dom_mutation_profile_renders_created_subtree_from_js_and_bluets() {
+    let gatekeeper_path = std::env::temp_dir().join(format!(
+        "bi-dom-mutation-gatekeeper-{}.sock",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&gatekeeper_path);
+    let gatekeeper = UnixListener::bind(&gatekeeper_path).unwrap();
+    thread::spawn(move || {
+        for incoming in gatekeeper.incoming() {
+            let Ok(mut stream) = incoming else { break };
+            let _ = blueice_ai_gatekeeper::handle_one_check(&mut stream);
+        }
+    });
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!(
+        "http://{}/dom-mutation.html",
+        listener.local_addr().unwrap()
+    );
+    let baseline_url = format!("http://{}/baseline.html", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        let body = concat!(
+            "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style>",
+            "<div id='target'></div>",
+            "<script>",
+            "if (typeof fetch !== 'undefined' || typeof blueiceTestGetElementById !== 'undefined') throw 'ambient';",
+            "let parent = document.getElementById('target');",
+            "let child = document.createElement('span');",
+            "let text = document.createTextNode('JS added');",
+            "if (child.appendChild(text) !== text) throw 'text identity';",
+            "if (parent.appendChild(child) !== child) throw 'child identity';",
+            "try { parent.appendChild(Object.create(child)); throw 'forged accepted'; } catch (error) { if (!(error instanceof TypeError)) throw error; }",
+            "globalThis.jsMutationCompleted = true;",
+            "</script>",
+            "<script type='application/x-blueice-typescript'>",
+            "const typedParent = document.getElementById('target')!;",
+            "const typedChild = document.createElement('strong');",
+            "const typedText = document.createTextNode(' BlueTS added');",
+            "typedChild.appendChild(typedText); typedParent.appendChild(typedChild);",
+            "</script>",
+            "<script type='application/x-blueice-typescript'>",
+            "const wrongParent = document.getElementById('target')!;",
+            "wrongParent.appendChild('wrong');",
+            "</script>",
+            "<script>",
+            "if (!globalThis.jsMutationCompleted) throw 'order';",
+            "let finalParent = document.getElementById('target');",
+            "if (finalParent.textContent !== 'JS added BlueTS added') throw 'missing subtree';",
+            "</script>"
+        );
+        for response_body in [
+            "<style>span { display: block; width: 100px; height: 30px; background-color: red; }</style><div id='target'></div>",
+            body,
+        ] {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request).unwrap();
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response_body}",
+                        response_body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
+    });
+
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-launcher-dom-mutation-frames-{}",
+        std::process::id()
+    ));
+    let core = SpawnedCore::spawn_with_options(
+        320.0,
+        200.0,
+        &frame_dir,
+        CoreLaunchOptions::default()
+            .with_gatekeeper_socket(gatekeeper_path.clone())
+            .supervise_out_of_process_bluejs_with_dom_mutation_fixture(),
+    )
+    .expect("launcher must supervise the real core and mutation-capable child");
+    let mut stream = core.stream.try_clone().unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::Navigate {
+            url: baseline_url.clone(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url: baseline_url }
+    );
+    let blueice_ipc::ServerMessage::FrameReady {
+        shm_path: baseline_path,
+        ..
+    } = blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected a baseline frame before DOM append");
+    };
+    let baseline_pixels = std::fs::read(baseline_path).unwrap();
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::Navigate { url: url.clone() },
+    )
+    .unwrap();
+    assert_eq!(
+        blueice_ipc::read_server_message(&mut stream).unwrap(),
+        blueice_ipc::ServerMessage::Navigated { url }
+    );
+    let blueice_ipc::ServerMessage::FrameReady { shm_path, .. } =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected a rendered frame after DOM append");
+    };
+    let appended_pixels = std::fs::read(shm_path).unwrap();
+    assert!(!appended_pixels.is_empty());
+    assert!(
+        appended_pixels != baseline_pixels,
+        "created subtree must change the rasterized frame"
+    );
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueJsScriptReports,
+    )
+    .unwrap();
+    let blueice_ipc::ServerMessage::BlueJsScriptReports(reports) =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected JavaScript reports");
+    };
+    assert_eq!(reports.len(), 2);
+    assert!(
+        reports.iter().all(|report| matches!(
+            report.outcome,
+            blueice_ipc::BlueJsScriptExecutionOutcome::Executed
+        )),
+        "{reports:?}"
+    );
+    blueice_ipc::write_client_message(
+        &mut stream,
+        &blueice_ipc::ClientMessage::GetBlueTsScriptReports,
+    )
+    .unwrap();
+    let blueice_ipc::ServerMessage::BlueTsScriptReports(typed_reports) =
+        blueice_ipc::read_server_message(&mut stream).unwrap()
+    else {
+        panic!("expected BlueTS reports");
+    };
+    assert_eq!(typed_reports.len(), 2);
+    assert!(
+        matches!(
+            typed_reports[0].outcome,
+            blueice_ipc::BlueTsScriptExecutionOutcome::Executed
+        ),
+        "{typed_reports:?}"
+    );
+    assert!(
+        matches!(
+            &typed_reports[1].outcome,
+            blueice_ipc::BlueTsScriptExecutionOutcome::Rejected { category }
+                if category == "BlueTS compilation rejected the page script"
+        ),
+        "{typed_reports:?}"
+    );
+    blueice_ipc::write_client_message_with_ids(
+        &mut stream,
+        Some(1),
+        Some(302),
+        &blueice_ipc::ClientMessage::GetDom,
+    )
+    .unwrap();
+    let (_, reply_id, dom_reply) = blueice_ipc::read_server_message_with_ids(&mut stream).unwrap();
+    assert_eq!(reply_id, Some(302));
+    let blueice_ipc::ServerMessage::Dom(dom) = dom_reply else {
+        panic!("expected the live DOM dump");
+    };
+    assert!(dom.contains("\"JS added\""), "{dom}");
+    assert!(dom.contains("\" BlueTS added\""), "{dom}");
+    server.join().unwrap();
+    drop(core);
+    let _ = std::fs::remove_file(&gatekeeper_path);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+}

@@ -4,8 +4,8 @@
 
 //! Private isolated BlueJS page-host child launched only by
 //! `blueice-launcher`. It owns no page loader, core DOM, network, filesystem,
-//! or frontend socket. A separately enabled proof profile can use the
-//! launcher's generation-private script socket for a boolean DOM lookup;
+//! or frontend socket. Owner-selected proof profiles can use the launcher's
+//! generation-private script socket for bounded live DOM operations;
 //! ordinary realms execute only complete authorized source graphs.
 
 #[cfg(unix)]
@@ -25,6 +25,7 @@ struct Args {
     script_socket: Option<PathBuf>,
     enable_dom_lookup_probe: bool,
     enable_dom_text_profile: bool,
+    enable_dom_mutation_profile: bool,
     runtime_limits: BlueJsHostRuntimeLimits,
 }
 
@@ -35,6 +36,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut script_socket = None;
     let mut enable_dom_lookup_probe = false;
     let mut enable_dom_text_profile = false;
+    let mut enable_dom_mutation_profile = false;
     let mut max_realms = None;
     let mut max_programs_per_realm = None;
     let mut max_bytecode_bytes_per_realm = None;
@@ -68,6 +70,14 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                     return Err("--enable-dom-text-profile may be supplied only once".to_string());
                 }
                 enable_dom_text_profile = true;
+            }
+            "--enable-dom-mutation-profile" => {
+                if enable_dom_mutation_profile {
+                    return Err(
+                        "--enable-dom-mutation-profile may be supplied only once".to_string()
+                    );
+                }
+                enable_dom_mutation_profile = true;
             }
             "--max-realms" => {
                 if max_realms.is_some() {
@@ -133,8 +143,20 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if enable_dom_text_profile && script_socket.is_none() {
         return Err("--enable-dom-text-profile requires --script-socket".to_string());
     }
-    if enable_dom_lookup_probe && enable_dom_text_profile {
-        return Err("DOM lookup and live text profiles are mutually exclusive".to_string());
+    if enable_dom_mutation_profile && script_socket.is_none() {
+        return Err("--enable-dom-mutation-profile requires --script-socket".to_string());
+    }
+    if [
+        enable_dom_lookup_probe,
+        enable_dom_text_profile,
+        enable_dom_mutation_profile,
+    ]
+    .into_iter()
+    .filter(|enabled| *enabled)
+    .count()
+        > 1
+    {
+        return Err("DOM proof profiles are mutually exclusive".to_string());
     }
     if let Some(script_socket) = script_socket.as_ref() {
         if !script_socket.is_absolute() {
@@ -182,6 +204,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         script_socket,
         enable_dom_lookup_probe,
         enable_dom_text_profile,
+        enable_dom_mutation_profile,
         runtime_limits,
     })
 }
@@ -219,6 +242,7 @@ fn main() -> ExitCode {
             args.session_token.clone(),
             args.enable_dom_lookup_probe,
             args.enable_dom_text_profile,
+            args.enable_dom_mutation_profile,
         ) {
             eprintln!("blueice-bluejs-host: invalid private script capability: {error}");
             return ExitCode::FAILURE;
@@ -362,7 +386,7 @@ mod tests {
                 "--enable-dom-text-profile",
                 "--enable-dom-lookup-probe",
             ]),
-            Err("DOM lookup and live text profiles are mutually exclusive".to_string())
+            Err("DOM proof profiles are mutually exclusive".to_string())
         );
         let parsed = args(&[
             "--socket",
@@ -375,6 +399,48 @@ mod tests {
         ])
         .unwrap();
         assert!(parsed.enable_dom_text_profile);
+        assert!(!parsed.enable_dom_lookup_probe);
+        assert!(!parsed.enable_dom_mutation_profile);
+    }
+
+    #[test]
+    fn live_dom_mutation_profile_requires_a_socket_and_excludes_other_profiles() {
+        let token = "0123456789abcdef".repeat(4);
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/host.sock",
+                "--session-token",
+                &token,
+                "--enable-dom-mutation-profile",
+            ]),
+            Err("--enable-dom-mutation-profile requires --script-socket".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/host.sock",
+                "--session-token",
+                &token,
+                "--script-socket",
+                "/tmp/script.sock",
+                "--enable-dom-mutation-profile",
+                "--enable-dom-text-profile",
+            ]),
+            Err("DOM proof profiles are mutually exclusive".to_string())
+        );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/host.sock",
+            "--session-token",
+            &token,
+            "--script-socket",
+            "/tmp/script.sock",
+            "--enable-dom-mutation-profile",
+        ])
+        .unwrap();
+        assert!(parsed.enable_dom_mutation_profile);
+        assert!(!parsed.enable_dom_text_profile);
         assert!(!parsed.enable_dom_lookup_probe);
     }
 

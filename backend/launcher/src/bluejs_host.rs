@@ -24,8 +24,8 @@ use blueice_bluets::{
     Contract, ContractPlan, ContractValue, RuntimePolicy, ValidationLimits,
 };
 use blueice_bluets_bluejs::page_host_typings::{
-    page_host_document_runtime_bindings_v1, page_host_dom_text_runtime_bindings_v1,
-    PageHostDocumentTypingsV1,
+    page_host_document_runtime_bindings_v1, page_host_dom_mutation_runtime_bindings_v1,
+    page_host_dom_text_runtime_bindings_v1, PageHostDocumentTypingsV1,
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
@@ -281,6 +281,26 @@ struct ScriptDomCapability {
     session_token: String,
     enable_lookup_probe: bool,
     enable_dom_text_profile: bool,
+    enable_dom_mutation_profile: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PageDomProfile {
+    Snapshot,
+    Text,
+    Mutation,
+}
+
+impl ScriptDomCapability {
+    fn profile(&self) -> PageDomProfile {
+        if self.enable_dom_mutation_profile {
+            PageDomProfile::Mutation
+        } else if self.enable_dom_text_profile {
+            PageDomProfile::Text
+        } else {
+            PageDomProfile::Snapshot
+        }
+    }
 }
 
 /// Child-only script IPC. The core still owns every DOM node and validates
@@ -372,6 +392,86 @@ impl ScriptDomClient {
                 Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "core returned an invalid child DOM validation result",
+                ))
+            }
+        }
+    }
+
+    fn create_element(
+        &mut self,
+        target: ScriptDocumentTarget,
+        tag_name: String,
+    ) -> io::Result<u64> {
+        if tag_name.len() > SCRIPT_MAX_NAME_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "script DOM tag name exceeds its fixed limit",
+            ));
+        }
+        self.created_node(target, ScriptRequest::CreateElement { target, tag_name })
+    }
+
+    fn create_text_node(&mut self, target: ScriptDocumentTarget, data: String) -> io::Result<u64> {
+        if data.len() > SCRIPT_MAX_TEXT_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "script DOM text exceeds its fixed limit",
+            ));
+        }
+        self.created_node(target, ScriptRequest::CreateTextNode { target, data })
+    }
+
+    fn created_node(
+        &mut self,
+        target: ScriptDocumentTarget,
+        request: ScriptRequest,
+    ) -> io::Result<u64> {
+        match self.call(target, request)? {
+            ScriptReply::NodeCreated { node } => Ok(node),
+            ScriptReply::Error { .. } => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "core denied child DOM node creation",
+                ))
+            }
+            _ => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "core returned an invalid child DOM creation result",
+                ))
+            }
+        }
+    }
+
+    fn append_child(
+        &mut self,
+        target: ScriptDocumentTarget,
+        parent: u64,
+        child: u64,
+    ) -> io::Result<()> {
+        match self.call(
+            target,
+            ScriptRequest::AppendChild {
+                target,
+                parent,
+                child,
+            },
+        )? {
+            ScriptReply::Ack => Ok(()),
+            ScriptReply::Error { .. } => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "core denied child DOM append",
+                ))
+            }
+            _ => {
+                self.stream = None;
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "core returned an invalid child DOM append result",
                 ))
             }
         }
@@ -491,8 +591,9 @@ impl ScriptDomClient {
 /// network resolver and gives the parent no VM/program handle. Ordinary
 /// realms install only the two fixed core-validated string snapshots; an
 /// explicit owner-only proof profile can additionally make boolean or
-/// opaque-wrapper DOM lookups, or live text reads/writes, through the private
-/// script socket without exposing numeric node IDs to page code.
+/// opaque-wrapper DOM lookups, live text reads/writes, or bounded creation
+/// and append through the private script socket without exposing numeric
+/// node IDs to page code.
 pub struct BlueJsChildHost {
     runtime: BlueJsPageRuntime,
     limits: BlueJsHostRuntimeLimits,
@@ -537,20 +638,29 @@ impl BlueJsChildHost {
     }
 
     /// Installs only a launcher-originated, generation-private script socket.
-    /// The two mutually exclusive page-visible proof profiles are owner-only;
-    /// neither grants the general typed DOM/event profile.
+    /// The mutually exclusive page-visible proof profiles are owner-only;
+    /// none grants the general typed DOM/event profile.
     pub fn configure_script_dom_capability(
         &mut self,
         socket_path: PathBuf,
         session_token: String,
         enable_lookup_probe: bool,
         enable_dom_text_profile: bool,
+        enable_dom_mutation_profile: bool,
     ) -> io::Result<()> {
         if !self.documents.is_empty()
             || self.script_dom_capability.is_some()
             || !socket_path.is_absolute()
             || !script::valid_script_session_token(&session_token)
-            || (enable_lookup_probe && enable_dom_text_profile)
+            || [
+                enable_lookup_probe,
+                enable_dom_text_profile,
+                enable_dom_mutation_profile,
+            ]
+            .into_iter()
+            .filter(|enabled| *enabled)
+            .count()
+                > 1
         {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -562,6 +672,7 @@ impl BlueJsChildHost {
             session_token,
             enable_lookup_probe,
             enable_dom_text_profile,
+            enable_dom_mutation_profile,
         });
         Ok(())
     }
@@ -934,14 +1045,14 @@ impl BlueJsChildHost {
         // while a later declaration remains eligible exactly as browser
         // document-order execution requires. No candidate program enters a
         // new realm until source/graph preflight has completed.
-        let typed_dom_text = self
+        let page_dom_profile = self
             .script_dom_capability
             .as_ref()
-            .is_some_and(|capability| capability.enable_dom_text_profile);
+            .map_or(PageDomProfile::Snapshot, ScriptDomCapability::profile);
         let prepared: Vec<_> = document
             .scripts
             .into_iter()
-            .map(|script| prepare_script(script, typed_dom_text))
+            .map(|script| prepare_script(script, page_dom_profile))
             .collect();
 
         let lifecycle = if self.documents.contains_key(&document.tab_id) {
@@ -3802,7 +3913,7 @@ fn validated_document_origin(
 }
 
 /// Installs the immutable snapshots and, only under an owner-selected
-/// capability, the exact live DOM text inventory compiled into BlueTS.
+/// capability, an exact live DOM inventory compiled into BlueTS.
 /// Neither raw node IDs nor the socket capability reach page code.
 fn install_document_snapshot_bindings(
     runtime: &mut BlueJsPageRuntime,
@@ -3811,18 +3922,18 @@ fn install_document_snapshot_bindings(
     snapshot: &PageHostDocumentSnapshot,
     script_dom_capability: Option<ScriptDomCapability>,
 ) -> Result<(), BlueJsPageRuntimeError> {
-    let typed_dom_text = script_dom_capability
+    let page_dom_profile = script_dom_capability
         .as_ref()
-        .is_some_and(|capability| capability.enable_dom_text_profile);
-    let artifact = if typed_dom_text {
-        PageHostDocumentTypingsV1::generate_dom_text()
-    } else {
-        PageHostDocumentTypingsV1::generate()
+        .map_or(PageDomProfile::Snapshot, ScriptDomCapability::profile);
+    let artifact = match page_dom_profile {
+        PageDomProfile::Snapshot => PageHostDocumentTypingsV1::generate(),
+        PageDomProfile::Text => PageHostDocumentTypingsV1::generate_dom_text(),
+        PageDomProfile::Mutation => PageHostDocumentTypingsV1::generate_dom_mutation(),
     };
-    let expected_bindings = if typed_dom_text {
-        page_host_dom_text_runtime_bindings_v1().to_vec()
-    } else {
-        page_host_document_runtime_bindings_v1().to_vec()
+    let expected_bindings = match page_dom_profile {
+        PageDomProfile::Snapshot => page_host_document_runtime_bindings_v1().to_vec(),
+        PageDomProfile::Text => page_host_dom_text_runtime_bindings_v1().to_vec(),
+        PageDomProfile::Mutation => page_host_dom_mutation_runtime_bindings_v1().to_vec(),
     };
     artifact
         .verify_runtime_bindings(&expected_bindings)
@@ -3921,8 +4032,8 @@ fn install_document_snapshot_bindings(
                 },
             )?;
         }
-        if let Some(capability) =
-            script_dom_capability.filter(|capability| capability.enable_dom_text_profile)
+        if let Some(capability) = script_dom_capability
+            .filter(|capability| capability.profile() != PageDomProfile::Snapshot)
         {
             let target = ScriptDocumentTarget {
                 tab_id,
@@ -3949,6 +4060,7 @@ fn install_document_snapshot_bindings(
                 },
             )?;
             let read_client = Rc::clone(&client);
+            let write_client = Rc::clone(&client);
             bindings.install_host_object_accessor(
                 family,
                 "textContent",
@@ -3977,14 +4089,72 @@ fn install_document_snapshot_bindings(
                     let value = value.to_utf8().map_err(|_| {
                         HostFunctionError::new("node.textContent requires valid UTF-16")
                     })?;
-                    client
+                    write_client
                         .borrow_mut()
                         .set_text_content(target, key.object(), value)
                         .map_err(|_| HostFunctionError::new("child DOM text write unavailable"))?;
                     Ok(HostValue::Undefined)
                 },
             )?;
-            installed_bindings.extend_from_slice(&page_host_dom_text_runtime_bindings_v1()[2..]);
+            if page_dom_profile == PageDomProfile::Mutation {
+                let element_client = Rc::clone(&client);
+                bindings.install_host_object_factory_method(
+                    document,
+                    "createElement",
+                    1,
+                    family,
+                    move |arguments: &[HostValue]| {
+                        let tag_name = dom_string_argument(arguments, "document.createElement")?;
+                        element_client
+                            .borrow_mut()
+                            .create_element(target, tag_name)
+                            .map(|node| Some(HostObjectKey::new(tab_id, document_generation, node)))
+                            .map_err(|_| {
+                                HostFunctionError::new("child DOM element creation unavailable")
+                            })
+                    },
+                )?;
+                let text_client = Rc::clone(&client);
+                bindings.install_host_object_factory_method(
+                    document,
+                    "createTextNode",
+                    1,
+                    family,
+                    move |arguments: &[HostValue]| {
+                        let data = dom_string_argument(arguments, "document.createTextNode")?;
+                        text_client
+                            .borrow_mut()
+                            .create_text_node(target, data)
+                            .map(|node| Some(HostObjectKey::new(tab_id, document_generation, node)))
+                            .map_err(|_| {
+                                HostFunctionError::new("child DOM text-node creation unavailable")
+                            })
+                    },
+                )?;
+                bindings.install_host_object_pair_method(
+                    family,
+                    "appendChild",
+                    1,
+                    move |parent: HostObjectKey, child: HostObjectKey| {
+                        if !parent.matches_owner(tab_id, document_generation)
+                            || !child.matches_owner(tab_id, document_generation)
+                        {
+                            return Err(HostFunctionError::new(
+                                "child DOM node belongs to another document",
+                            ));
+                        }
+                        client
+                            .borrow_mut()
+                            .append_child(target, parent.object(), child.object())
+                            .map_err(|_| HostFunctionError::new("child DOM append unavailable"))
+                    },
+                )?;
+                installed_bindings
+                    .extend_from_slice(&page_host_dom_mutation_runtime_bindings_v1()[2..]);
+            } else {
+                installed_bindings
+                    .extend_from_slice(&page_host_dom_text_runtime_bindings_v1()[2..]);
+            }
         }
         artifact
             .verify_runtime_bindings(&installed_bindings)
@@ -4001,6 +4171,20 @@ fn dom_lookup_id(arguments: &[HostValue], function: &str) -> Result<String, Host
     };
     id.to_utf8()
         .map_err(|_| HostFunctionError::new("DOM lookup ID must be valid UTF-16"))
+}
+
+fn dom_string_argument(
+    arguments: &[HostValue],
+    function: &str,
+) -> Result<String, HostFunctionError> {
+    let [HostValue::String(value)] = arguments else {
+        return Err(HostFunctionError::new(format!(
+            "{function} requires one string argument"
+        )));
+    };
+    value
+        .to_utf8()
+        .map_err(|_| HostFunctionError::new("DOM string argument must be valid UTF-16"))
 }
 
 fn require_no_arguments(arguments: &[HostValue], function: &str) -> Result<(), HostFunctionError> {
@@ -4040,7 +4224,7 @@ enum PreparedScript {
     },
 }
 
-fn prepare_script(script: PageHostScript, typed_dom_text: bool) -> PreparedScript {
+fn prepare_script(script: PageHostScript, page_dom_profile: PageDomProfile) -> PreparedScript {
     let ordinal = script.ordinal;
     let language = script.language;
     let kind = script.kind;
@@ -4064,7 +4248,7 @@ fn prepare_script(script: PageHostScript, typed_dom_text: bool) -> PreparedScrip
             })
         }
         (PageHostScriptLanguage::BlueTs, PageHostScriptKind::Classic) => {
-            prepare_bluets_classic(script.graph, typed_dom_text).map(|script| {
+            prepare_bluets_classic(script.graph, page_dom_profile).map(|script| {
                 PreparedScript::BlueTsClassic {
                     ordinal,
                     script: Box::new(script),
@@ -4072,7 +4256,7 @@ fn prepare_script(script: PageHostScript, typed_dom_text: bool) -> PreparedScrip
             })
         }
         (PageHostScriptLanguage::BlueTs, PageHostScriptKind::Module) => {
-            prepare_bluets_module_graph(script.graph, typed_dom_text).map(|graph| {
+            prepare_bluets_module_graph(script.graph, page_dom_profile).map(|graph| {
                 PreparedScript::BlueTsModule {
                     ordinal,
                     graph: Box::new(graph),
@@ -4126,10 +4310,10 @@ fn prepare_module_graph(
 /// no filesystem, URL, import-map, page-selected profile, or callback
 /// authority. Its only ambient declaration comes from the exact generated
 /// owner-selected profile: copied snapshots by default, or bounded live DOM
-/// text when the launcher granted that child capability.
+/// text/mutation when the launcher granted that child capability.
 fn prepare_bluets_classic(
     graph: PageHostModuleGraph,
-    typed_dom_text: bool,
+    page_dom_profile: PageDomProfile,
 ) -> Result<DirectScript, &'static str> {
     let modules = validate_graph(&graph)?;
     if modules.len() != 1 || !graph.resolutions.is_empty() {
@@ -4139,7 +4323,7 @@ fn prepare_bluets_classic(
     compile_direct_script(
         &graph.entry,
         &loader,
-        bluets_compiler_options(&graph, typed_dom_text)?,
+        bluets_compiler_options(&graph, page_dom_profile)?,
     )
     .map_err(bluets_bridge_category)
 }
@@ -4148,7 +4332,7 @@ fn prepare_bluets_classic(
 /// resolver beyond the exact static edges serialized by its caller.
 fn prepare_bluets_module_graph(
     graph: PageHostModuleGraph,
-    typed_dom_text: bool,
+    page_dom_profile: PageDomProfile,
 ) -> Result<DirectModuleGraph, &'static str> {
     let modules = validate_graph(&graph)?;
     validate_resolutions(&graph, &modules)?;
@@ -4156,7 +4340,7 @@ fn prepare_bluets_module_graph(
     compile_direct_module_graph(
         &graph.entry,
         &loader,
-        bluets_compiler_options(&graph, typed_dom_text)?,
+        bluets_compiler_options(&graph, page_dom_profile)?,
     )
     .map_err(bluets_bridge_category)
 }
@@ -4183,14 +4367,15 @@ fn bluets_loader(
 
 fn bluets_compiler_options(
     graph: &PageHostModuleGraph,
-    typed_dom_text: bool,
+    page_dom_profile: PageDomProfile,
 ) -> Result<CompilerOptions, &'static str> {
-    let ambient_declaration = if typed_dom_text {
-        PageHostDocumentTypingsV1::generate_dom_text()
-            .verified_dom_text_ambient_module(&page_host_dom_text_runtime_bindings_v1())
-    } else {
-        PageHostDocumentTypingsV1::generate()
-            .verified_ambient_module(&page_host_document_runtime_bindings_v1())
+    let ambient_declaration = match page_dom_profile {
+        PageDomProfile::Snapshot => PageHostDocumentTypingsV1::generate()
+            .verified_ambient_module(&page_host_document_runtime_bindings_v1()),
+        PageDomProfile::Text => PageHostDocumentTypingsV1::generate_dom_text()
+            .verified_dom_text_ambient_module(&page_host_dom_text_runtime_bindings_v1()),
+        PageDomProfile::Mutation => PageHostDocumentTypingsV1::generate_dom_mutation()
+            .verified_dom_mutation_ambient_module(&page_host_dom_mutation_runtime_bindings_v1()),
     }
     .map_err(|_| "verified page-host BlueTS typings are unavailable")?;
     let mut options = CompilerOptions {
@@ -4830,8 +5015,19 @@ impl SpawnedBlueJsHost {
         limits: BlueJsHostRuntimeLimits,
         enable_dom_lookup_probe: bool,
         enable_dom_text_profile: bool,
+        enable_dom_mutation_profile: bool,
     ) -> io::Result<(Self, BlueJsHostCoreConfig)> {
-        if !script_socket.is_absolute() || (enable_dom_lookup_probe && enable_dom_text_profile) {
+        if !script_socket.is_absolute()
+            || [
+                enable_dom_lookup_probe,
+                enable_dom_text_profile,
+                enable_dom_mutation_profile,
+            ]
+            .into_iter()
+            .filter(|enabled| *enabled)
+            .count()
+                > 1
+        {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "child script socket must be absolute and DOM profiles exclusive",
@@ -4843,6 +5039,7 @@ impl SpawnedBlueJsHost {
                 script_socket,
                 enable_dom_lookup_probe,
                 enable_dom_text_profile,
+                enable_dom_mutation_profile,
             )),
         )?;
         let config = BlueJsHostCoreConfig {
@@ -4854,7 +5051,7 @@ impl SpawnedBlueJsHost {
 
     fn spawn_unconnected(
         limits: BlueJsHostRuntimeLimits,
-        script_socket: Option<(&Path, bool, bool)>,
+        script_socket: Option<(&Path, bool, bool, bool)>,
     ) -> io::Result<Self> {
         limits
             .runtime_config()
@@ -4884,8 +5081,12 @@ impl SpawnedBlueJsHost {
             .arg(limits.max_reserved_bytecode_bytes.to_string())
             .arg("--max-reserved-heap-bytes")
             .arg(limits.max_reserved_heap_bytes.to_string());
-        if let Some((script_socket, enable_dom_lookup_probe, enable_dom_text_profile)) =
-            script_socket
+        if let Some((
+            script_socket,
+            enable_dom_lookup_probe,
+            enable_dom_text_profile,
+            enable_dom_mutation_profile,
+        )) = script_socket
         {
             command.arg("--script-socket").arg(script_socket);
             if enable_dom_lookup_probe {
@@ -4893,6 +5094,9 @@ impl SpawnedBlueJsHost {
             }
             if enable_dom_text_profile {
                 command.arg("--enable-dom-text-profile");
+            }
+            if enable_dom_mutation_profile {
+                command.arg("--enable-dom-mutation-profile");
             }
         }
         let mut child = command.spawn()?;
@@ -5177,7 +5381,7 @@ mod tests {
         });
 
         let mut host = BlueJsChildHost::default();
-        host.configure_script_dom_capability(socket_path.clone(), capability, true, false)
+        host.configure_script_dom_capability(socket_path.clone(), capability, true, false, false)
             .unwrap();
         let outcomes = |reply: PageHostReply| match reply {
             PageHostReply::Synchronized { reports, .. } => reports
@@ -5232,6 +5436,139 @@ mod tests {
             ),
         }));
         assert_eq!(third, vec![PageHostScriptOutcome::Executed]);
+        server.join().unwrap();
+        std::fs::remove_file(socket_path).unwrap();
+    }
+
+    #[test]
+    fn mutation_profile_uses_exact_core_creation_and_append_calls() {
+        let socket_path =
+            std::env::temp_dir().join(format!("bi-dom-mutation-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        let capability = "b".repeat(script::SCRIPT_SESSION_TOKEN_HEX_BYTES);
+        let server_capability = capability.clone();
+        let server = std::thread::spawn(move || {
+            let (mut peer, _) = listener.accept().unwrap();
+            peer.set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            assert_eq!(
+                script::read_script_request(&mut peer).unwrap(),
+                ScriptRequest::Hello {
+                    protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+                    session_token: server_capability,
+                }
+            );
+            script::write_script_reply(
+                &mut peer,
+                &ScriptReply::HelloAck {
+                    protocol_version: script::SCRIPT_PROTOCOL_VERSION,
+                },
+            )
+            .unwrap();
+            let target = ScriptDocumentTarget {
+                tab_id: 7,
+                document_generation: 1,
+            };
+            for (request_id, operation, reply) in [
+                (
+                    1,
+                    ScriptRequest::GetElementById {
+                        target,
+                        id: "target".to_string(),
+                    },
+                    ScriptReply::Node { node: Some(11) },
+                ),
+                (
+                    2,
+                    ScriptRequest::CreateElement {
+                        target,
+                        tag_name: "span".to_string(),
+                    },
+                    ScriptReply::NodeCreated { node: 12 },
+                ),
+                (
+                    3,
+                    ScriptRequest::CreateTextNode {
+                        target,
+                        data: "new text".to_string(),
+                    },
+                    ScriptReply::NodeCreated { node: 13 },
+                ),
+                (
+                    4,
+                    ScriptRequest::AppendChild {
+                        target,
+                        parent: 12,
+                        child: 13,
+                    },
+                    ScriptReply::Ack,
+                ),
+                (
+                    5,
+                    ScriptRequest::AppendChild {
+                        target,
+                        parent: 11,
+                        child: 12,
+                    },
+                    ScriptReply::Ack,
+                ),
+                (
+                    6,
+                    ScriptRequest::GetTextContent { target, node: 11 },
+                    ScriptReply::Text {
+                        value: "new text".to_string(),
+                    },
+                ),
+            ] {
+                assert_eq!(
+                    script::read_script_request(&mut peer).unwrap(),
+                    ScriptRequest::Call {
+                        request_id,
+                        request: Box::new(operation),
+                    }
+                );
+                script::write_script_reply(
+                    &mut peer,
+                    &ScriptReply::CallResult {
+                        request_id,
+                        target,
+                        reply: Box::new(reply),
+                    },
+                )
+                .unwrap();
+            }
+            assert_eq!(
+                script::read_script_request(&mut peer).unwrap_err().kind(),
+                io::ErrorKind::UnexpectedEof
+            );
+        });
+
+        let mut host = BlueJsChildHost::default();
+        host.configure_script_dom_capability(socket_path.clone(), capability, false, false, true)
+            .unwrap();
+        let reply = host.handle_request(PageHostRequest::SynchronizeDocument {
+            document: document(
+                1,
+                vec![classic(
+                    0,
+                    "let parent = document.getElementById('target'); \
+                     let child = document.createElement('span'); \
+                     let text = document.createTextNode('new text'); \
+                     if (child.appendChild(text) !== text) throw 'text identity'; \
+                     if (parent.appendChild(child) !== child) throw 'child identity'; \
+                     if (parent.textContent !== 'new text') throw 'mutation'; \
+                     try { parent.appendChild({}); throw 'forged accepted'; } \
+                     catch (error) { if (!(error instanceof TypeError)) throw error; }",
+                )],
+            ),
+        });
+        let PageHostReply::Synchronized { reports, .. } = reply else {
+            panic!("expected synchronized document");
+        };
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].outcome, PageHostScriptOutcome::Executed);
+        drop(host);
         server.join().unwrap();
         std::fs::remove_file(socket_path).unwrap();
     }
@@ -5312,7 +5649,7 @@ mod tests {
         });
 
         let mut host = BlueJsChildHost::default();
-        host.configure_script_dom_capability(socket_path.clone(), capability, true, false)
+        host.configure_script_dom_capability(socket_path.clone(), capability, true, false, false)
             .unwrap();
         let script = |ordinal| {
             classic(
@@ -5415,6 +5752,7 @@ mod tests {
                     session_token: String::new(),
                     enable_lookup_probe: true,
                     enable_dom_text_profile: false,
+                    enable_dom_mutation_profile: false,
                 },
                 stream: Some(client_stream),
                 next_call_id: 1,

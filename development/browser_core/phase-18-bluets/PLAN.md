@@ -123,16 +123,22 @@ the typed getter/setter path, an invalid call fails before execution, and the
 ordinary snapshot profile still rejects `document` calls. B2.2/B3 and the
 broader DOM/event typing publication remain separate later work.
 
-**Append boundary (B2.2 in progress):** BlueJS adds a private two-wrapper
-method callback for an eventual `appendChild(child)`. The VM verifies both
-receiver and sole argument are exact wrappers from one realm-local family and
-returns that same child object only after the host callback succeeds. The
-callback receives only two opaque keys; its caller must check the exact
-document owner/generation and core liveness before mutation. VM regressions
-cover forged objects, foreign families, wrong arity, construction, and a
-same-family wrapper with a foreign document generation. Page-visible creation,
-core IPC binding, the expanded typed profile, and a rendered subtree are
-still B2.2 work.
+**DOM creation and append (B2.2 in progress):** BlueJS's private two-wrapper
+method resolves an exact receiver and exact child in one realm-local family,
+then returns the original child object only after its host callback succeeds.
+The launcher-selected `core-script-dom-mutation-v1` profile now binds
+`document.createElement`, `document.createTextNode`, and `node.appendChild` to
+the generation-bound child/core script socket. Only opaque keys enter callbacks;
+the child checks both owners/generations before core checks node liveness and
+tree validity. The separate text-v1 profile remains immutable. Core recomputes
+author/UA styles when a new element joins the tree, then relayouts. A real
+HTTP launcher/core/child page executes JavaScript and checked BlueTS mutation,
+rejects a forged child and an invalid direct BlueTS append call, confirms the
+live subtree, and compares its RGBA frame against the same empty page to prove
+visible rasterization. VM regressions reject foreign-family and same-family
+foreign-generation wrappers. The real-page cross-document child case remains
+open because ordinary realms cannot transfer wrappers; BlueTS also needs
+chained member-call argument checking before B2.2/B4 can be closed.
 
 **Private page-host actual-usage accounting:** Page-host v31 adds one
 authenticated child-wide snapshot of currently live realm count, retained
