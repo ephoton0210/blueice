@@ -114,6 +114,9 @@ struct Args {
     /// Core-owner opt-in for one exact original BlueTS safe-point byte span
     /// under prior opaque metadata and source-ID receipts.
     debugger_static_metadata_safe_point_span: bool,
+    /// Core-owner opt-in for bounded original BlueTS source-position binding.
+    /// This is a distinct source-map oracle from exact safe-point span reads.
+    debugger_static_metadata_source_breakpoint: bool,
     /// Core-owner opt-in for a bounded contract declaration range under
     /// separately receipted contract and source IDs; no plan or source text.
     debugger_static_metadata_contract_location: bool,
@@ -183,6 +186,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_symbol_display = false;
     let mut debugger_static_metadata_symbol_location = false;
     let mut debugger_static_metadata_safe_point_span = false;
+    let mut debugger_static_metadata_source_breakpoint = false;
     let mut debugger_static_metadata_contract_location = false;
     let mut debugger_static_metadata_symbol_type = false;
     let mut debugger_static_metadata_symbol_contract = false;
@@ -250,6 +254,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--debugger-static-metadata-safe-point-span" => {
                 debugger_static_metadata_safe_point_span = true
+            }
+            "--debugger-static-metadata-source-breakpoint" => {
+                debugger_static_metadata_source_breakpoint = true
             }
             "--debugger-static-metadata-contract-location" => {
                 debugger_static_metadata_contract_location = true
@@ -467,6 +474,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if debugger_static_metadata_safe_point_span && !debugger_static_metadata_source_inventory {
         return Err("--debugger-static-metadata-safe-point-span requires --debugger-static-metadata-source-inventory".to_string());
     }
+    if debugger_static_metadata_source_breakpoint && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-source-breakpoint requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_source_breakpoint && !debugger_static_metadata_inventory {
+        return Err("--debugger-static-metadata-source-breakpoint requires --debugger-static-metadata-inventory".to_string());
+    }
+    if debugger_static_metadata_source_breakpoint && !debugger_static_metadata_source_inventory {
+        return Err("--debugger-static-metadata-source-breakpoint requires --debugger-static-metadata-source-inventory".to_string());
+    }
     if debugger_static_metadata_contract_location && debugger_socket.is_none() {
         return Err(
             "--debugger-static-metadata-contract-location requires --debugger-socket".to_string(),
@@ -540,6 +558,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_symbol_display,
         debugger_static_metadata_symbol_location,
         debugger_static_metadata_safe_point_span,
+        debugger_static_metadata_source_breakpoint,
         debugger_static_metadata_contract_location,
         debugger_static_metadata_symbol_type,
         debugger_static_metadata_symbol_contract,
@@ -867,6 +886,7 @@ fn main() -> ExitCode {
                 lowering_summary: args.debugger_static_metadata_lowering_summary,
                 symbol_location: args.debugger_static_metadata_symbol_location,
                 safe_point_span: args.debugger_static_metadata_safe_point_span,
+                source_breakpoint: args.debugger_static_metadata_source_breakpoint,
                 contract_location: args.debugger_static_metadata_contract_location,
                 symbol_type: args.debugger_static_metadata_symbol_type,
                 symbol_contract: args.debugger_static_metadata_symbol_contract,
@@ -1263,6 +1283,7 @@ mod tests {
                 debugger_static_metadata_symbol_display: false,
                 debugger_static_metadata_symbol_location: false,
                 debugger_static_metadata_safe_point_span: false,
+                debugger_static_metadata_source_breakpoint: false,
                 debugger_static_metadata_contract_location: false,
                 debugger_static_metadata_symbol_type: false,
                 debugger_static_metadata_symbol_contract: false,
@@ -1842,6 +1863,52 @@ mod tests {
         ])
         .unwrap();
         assert!(parsed.debugger_static_metadata_safe_point_span);
+    }
+
+    #[test]
+    fn static_metadata_source_breakpoint_requires_independent_owner_prerequisites() {
+        let flag = "--debugger-static-metadata-source-breakpoint";
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", flag]),
+            Err(format!("{flag} requires --debugger-socket"))
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                flag,
+            ]),
+            Err(format!(
+                "{flag} requires --debugger-static-metadata-inventory"
+            ))
+        );
+        assert_eq!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                flag,
+            ]),
+            Err(format!(
+                "{flag} requires --debugger-static-metadata-source-inventory"
+            ))
+        );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--debugger-socket",
+            "/tmp/debugger.sock",
+            "--debugger-static-metadata-inventory",
+            "--debugger-static-metadata-source-inventory",
+            flag,
+        ])
+        .unwrap();
+        assert!(parsed.debugger_static_metadata_source_breakpoint);
+        assert!(!parsed.debugger_static_metadata_safe_point_span);
     }
 
     #[test]

@@ -996,9 +996,22 @@ or second module resolver to bypass them.
   actual BlueJS frame paused there, reads the same original span while paused,
   resumes to completion, and confirms reload and a new debugger stream cannot
   reuse the old tuple. This proves the current bounded source-to-pause path
-  without adding an arbitrary source-byte-position oracle. A separately
-  authorized source-position binding policy and non-root/module execution
-  support remain open before general TS breakpoints can be claimed.
+  without adding an arbitrary source-byte-position oracle at that stage.
+  Page-host v29 now retains bounded lowering spans, including spans with no
+  emitted instruction, and resolves one bounded original byte position under
+  the exact live child program/metadata/source tuple to a verified safe point
+  or explicit unbound result. Core checks every echoed private identity,
+  remints the bound safe point, and validates it again against the live child.
+  Debugger v28 and metadata manifest v3 expose that position binding only
+  through the new independently default-denied `OpaqueSourceBreakpoint`
+  capability: both the trusted owner flag and client `Hello` grant are
+  required, and the metadata parent plus source ID must already have crossed
+  the same debugger stream. The reply contains neither source text nor module
+  identity and does not install, arm, or execute a breakpoint. Real-process
+  coverage follows the bound result into the existing root-classic pause and
+  resume path, proves unbound/end-of-source behavior, and rejects guessed,
+  cross-stream, and stale tuples. General non-root/module interruption and
+  stack/scope mapping remain open before general TS breakpoints can be claimed.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

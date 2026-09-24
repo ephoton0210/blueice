@@ -12,6 +12,10 @@
 //! child never receives a filesystem path, URL to fetch, DOM handle, network
 //! authority, or a resolver callback. It receives only complete source graphs
 //! selected by its caller and reports only bounded, source-free outcomes.
+//! Version 29 adds a child-private, bounded BlueTS byte-position-to-safe-point
+//! binding under an exact live metadata attachment. It preserves explicitly
+//! unbound lowering spans and does not itself grant a public debugger client
+//! an arbitrary source-position query or execution control.
 //! Version 28 adds a child-private exact safe-point-to-BlueTS byte-span lookup
 //! under one live opaque metadata attachment. It returns only a compiler
 //! source ID and bounded original byte range, never source text, module
@@ -94,7 +98,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 28;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 29;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -671,6 +675,18 @@ pub enum PageHostRequest {
         metadata: PageHostDebuggerMetadataHandle,
         safe_point: PageHostDebuggerSafePoint,
     },
+    /// Resolves one bounded original BlueTS byte position in a child-minted
+    /// source record to the first lowering span at or after it. A bound reply
+    /// names only a compiler-verified safe point; an unbound span or missing
+    /// following span returns `None` instead of guessing another instruction.
+    ResolveDebuggerBlueTsSourceBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        source_byte: u32,
+    },
     /// Verifies exactly one symbol-to-static-type pair under the same private
     /// attachment. The reply does not return an unrequested type ID.
     DescribeDebuggerBlueTsMetadataSymbolType {
@@ -927,6 +943,18 @@ pub enum PageHostReply {
         metadata: PageHostDebuggerMetadataHandle,
         safe_point: PageHostDebuggerSafePoint,
         span: PageHostDebuggerBlueTsSafePointSpan,
+    },
+    /// Repeats the exact private request tuple and returns only a verified
+    /// child safe point or an explicit unbound result. Core must separately
+    /// authorize and remint this before any public debugger disclosure.
+    DebuggerBlueTsSourceBreakpoint {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        source_byte: u32,
+        safe_point: Option<PageHostDebuggerSafePoint>,
     },
     /// A verified relation that repeats only the two requested opaque IDs.
     DebuggerBlueTsMetadataSymbolType {
@@ -1385,6 +1413,20 @@ mod tests {
                     bytecode_offset: 4,
                 },
             },
+            PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
+                tab_id: 7,
+                document_generation: 3,
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_handle: 17,
+                    metadata_generation: 19,
+                },
+                source_id: 0,
+                source_byte: 4,
+            },
             PageHostRequest::ListDebuggerSafePoints {
                 tab_id: 7,
                 document_generation: 3,
@@ -1536,6 +1578,51 @@ mod tests {
                 start_byte: 0,
                 end_byte: 25,
             },
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsSourceBreakpoint {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            source_id: 0,
+            source_byte: 4,
+            safe_point: Some(PageHostDebuggerSafePoint {
+                program: PageHostDebuggerProgram {
+                    program_handle: 11,
+                    program_generation: 13,
+                },
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            }),
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &debugger_reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), debugger_reply);
+
+        let debugger_reply = PageHostReply::DebuggerBlueTsSourceBreakpoint {
+            tab_id: 7,
+            document_generation: 3,
+            program: PageHostDebuggerProgram {
+                program_handle: 11,
+                program_generation: 13,
+            },
+            metadata: PageHostDebuggerMetadataHandle {
+                metadata_handle: 17,
+                metadata_generation: 19,
+            },
+            source_id: 0,
+            source_byte: 30,
+            safe_point: None,
         };
         let (mut writer, mut reader) = UnixStream::pair().unwrap();
         write_page_host_reply(&mut writer, &debugger_reply).unwrap();

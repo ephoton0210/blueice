@@ -36,6 +36,7 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerStaticMetadataLoweringSummary,
     JavaScriptPageDebuggerStaticMetadataSafePointSpan,
     JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget,
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
@@ -297,6 +298,10 @@ pub trait PageHostClient {
         false
     }
 
+    fn debugger_bluets_source_breakpoint_available(&self) -> bool {
+        false
+    }
+
     /// Whether this private peer can verify an exact symbol/type pair.
     fn debugger_bluets_metadata_symbol_type_available(&self) -> bool {
         false
@@ -514,6 +519,21 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement exact BlueTS safe-point spans",
+        ))
+    }
+
+    fn debugger_bluets_source_breakpoint(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _source_id: u32,
+        _source_byte: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS source breakpoints",
         ))
     }
 
@@ -756,6 +776,10 @@ impl PageHostClient for PageHostConnection {
     }
 
     fn debugger_bluets_safe_point_span_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_source_breakpoint_available(&self) -> bool {
         true
     }
 
@@ -1031,6 +1055,25 @@ impl PageHostClient for PageHostConnection {
             document_generation,
             metadata,
             safe_point,
+        })
+    }
+
+    fn debugger_bluets_source_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        source_byte: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            source_id,
+            source_byte,
         })
     }
 
@@ -1841,6 +1884,12 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         self.child.debugger_bluets_metadata_available()
             && self.child.debugger_bluets_metadata_sources_available()
             && self.child.debugger_bluets_safe_point_span_available()
+    }
+
+    fn debugger_static_metadata_source_breakpoint_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_sources_available()
+            && self.child.debugger_bluets_source_breakpoint_available()
     }
 
     fn debugger_static_metadata_contract_location_available(&self) -> bool {
@@ -2813,6 +2862,73 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             start_byte: span.start_byte,
             end_byte: span.end_byte,
         })
+    }
+
+    fn debugger_static_metadata_source_breakpoint(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
+        if !self.debugger_static_metadata_source_breakpoint_available()
+            || target.source_byte > DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_source_breakpoint(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.source_id,
+                target.source_byte,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsSourceBreakpoint {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            source_id,
+            source_byte,
+            safe_point,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || source_id != target.source_id
+            || source_byte != target.source_byte
+            || safe_point.is_some_and(|safe_point| {
+                !safe_point.is_well_formed() || safe_point.program != child_program
+            })
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        Ok(
+            safe_point.map(|safe_point| JavaScriptPageDebuggerSafePoint {
+                code_unit_ordinal: safe_point.code_unit_ordinal,
+                bytecode_offset: safe_point.bytecode_offset,
+            }),
+        )
     }
 
     fn debugger_static_metadata_contract_location(
@@ -5908,6 +6024,48 @@ mod tests {
                 end_byte: span.end_byte,
             }
         );
+        assert!(executor.debugger_static_metadata_source_breakpoint_available());
+        let breakpoint_target = JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
+            program_handle: public_program.program_handle,
+            program_generation: public_program.program_generation,
+            metadata_handle: public_metadata.metadata_handle,
+            metadata_generation: public_metadata.metadata_generation,
+            source_id: span.source_id,
+            source_byte: span.start_byte,
+        };
+        assert_eq!(
+            executor
+                .debugger_static_metadata_source_breakpoint(tab_id, 1, breakpoint_target)
+                .unwrap(),
+            Some(JavaScriptPageDebuggerSafePoint {
+                code_unit_ordinal: safe_point.code_unit_ordinal,
+                bytecode_offset: safe_point.bytecode_offset,
+            })
+        );
+        assert_eq!(
+            executor
+                .debugger_static_metadata_source_breakpoint(
+                    tab_id,
+                    1,
+                    JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
+                        source_byte: span.end_byte,
+                        ..breakpoint_target
+                    },
+                )
+                .unwrap(),
+            None,
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_source_breakpoint(
+                tab_id,
+                1,
+                JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
+                    metadata_generation: breakpoint_target.metadata_generation + 1,
+                    ..breakpoint_target
+                },
+            ),
+            Err(JavaScriptPageDebuggerError::UnknownProgram)
+        );
         assert_eq!(
             executor.debugger_static_metadata_safe_point_span(
                 tab_id,
@@ -5949,6 +6107,10 @@ mod tests {
         executor.synchronize_and_execute(&tabs).unwrap();
         assert_eq!(
             executor.debugger_static_metadata_safe_point_span(tab_id, 1, target),
+            Err(JavaScriptPageDebuggerError::NoLiveRealm)
+        );
+        assert_eq!(
+            executor.debugger_static_metadata_source_breakpoint(tab_id, 1, breakpoint_target),
             Err(JavaScriptPageDebuggerError::NoLiveRealm)
         );
         assert!(matches!(
@@ -6010,12 +6172,28 @@ mod tests {
             true
         }
 
+        fn debugger_bluets_source_breakpoint_available(&self) -> bool {
+            true
+        }
+
         fn debugger_bluets_safe_point_span(
             &mut self,
             _tab_id: u64,
             _document_generation: u64,
             _metadata: PageHostDebuggerMetadataHandle,
             _safe_point: PageHostDebuggerSafePoint,
+        ) -> io::Result<PageHostReply> {
+            Ok(self.reply.clone())
+        }
+
+        fn debugger_bluets_source_breakpoint(
+            &mut self,
+            _tab_id: u64,
+            _document_generation: u64,
+            _program: PageHostDebuggerProgram,
+            _metadata: PageHostDebuggerMetadataHandle,
+            _source_id: u32,
+            _source_byte: u32,
         ) -> io::Result<PageHostReply> {
             Ok(self.reply.clone())
         }
@@ -6170,6 +6348,140 @@ mod tests {
             executor.debugger_static_metadata_safe_point_span(tab_id, 1, target),
             Err(JavaScriptPageDebuggerError::UnknownProgram)
         );
+
+        let breakpoint_target = JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
+            program_handle: 101,
+            program_generation: 103,
+            metadata_handle: 107,
+            metadata_generation: 109,
+            source_id: 3,
+            source_byte: 2,
+        };
+        let breakpoint_reply = |reply_tab_id,
+                                reply_generation,
+                                program,
+                                metadata,
+                                source_id,
+                                source_byte,
+                                safe_point| {
+            PageHostReply::DebuggerBlueTsSourceBreakpoint {
+                tab_id: reply_tab_id,
+                document_generation: reply_generation,
+                program,
+                metadata,
+                source_id,
+                source_byte,
+                safe_point,
+            }
+        };
+        executor.child.reply = breakpoint_reply(
+            tab_id.as_u64(),
+            1,
+            child_program,
+            child_metadata,
+            3,
+            2,
+            Some(child_safe_point),
+        );
+        assert_eq!(
+            executor
+                .debugger_static_metadata_source_breakpoint(tab_id, 1, breakpoint_target)
+                .unwrap(),
+            Some(JavaScriptPageDebuggerSafePoint {
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            })
+        );
+        executor.child.reply = breakpoint_reply(
+            tab_id.as_u64(),
+            1,
+            child_program,
+            child_metadata,
+            3,
+            2,
+            None,
+        );
+        assert_eq!(
+            executor
+                .debugger_static_metadata_source_breakpoint(tab_id, 1, breakpoint_target)
+                .unwrap(),
+            None
+        );
+        for malformed in [
+            breakpoint_reply(8, 1, child_program, child_metadata, 3, 2, None),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                2,
+                child_program,
+                child_metadata,
+                3,
+                2,
+                None,
+            ),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                1,
+                PageHostDebuggerProgram {
+                    program_generation: 14,
+                    ..child_program
+                },
+                child_metadata,
+                3,
+                2,
+                None,
+            ),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                1,
+                child_program,
+                PageHostDebuggerMetadataHandle {
+                    metadata_generation: 20,
+                    ..child_metadata
+                },
+                3,
+                2,
+                None,
+            ),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                1,
+                child_program,
+                child_metadata,
+                4,
+                2,
+                None,
+            ),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                1,
+                child_program,
+                child_metadata,
+                3,
+                3,
+                None,
+            ),
+            breakpoint_reply(
+                tab_id.as_u64(),
+                1,
+                child_program,
+                child_metadata,
+                3,
+                2,
+                Some(PageHostDebuggerSafePoint {
+                    program: PageHostDebuggerProgram {
+                        program_generation: 14,
+                        ..child_program
+                    },
+                    ..child_safe_point
+                }),
+            ),
+        ] {
+            executor.child.reply = malformed;
+            assert_eq!(
+                executor.debugger_static_metadata_source_breakpoint(tab_id, 1, breakpoint_target),
+                Err(JavaScriptPageDebuggerError::NoLiveRealm)
+            );
+        }
     }
 
     #[test]

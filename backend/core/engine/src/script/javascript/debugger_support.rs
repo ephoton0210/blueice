@@ -179,6 +179,19 @@ pub struct JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget {
     pub bytecode_offset: u32,
 }
 
+/// One core-reminted program/metadata tuple and separately receipted source
+/// ID for a bounded original BlueTS byte-position binding. The resulting
+/// safe point is never a child handle on the public debugger channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub source_id: u32,
+    pub source_byte: u32,
+}
+
 /// One child-validated contract declaration range with no source text,
 /// module identity, plan, or runtime value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -18,6 +18,7 @@ pub struct DirectDebugRetentionLimits {
     pub max_sources_per_program: usize,
     pub max_symbols_per_program: usize,
     pub max_types_per_program: usize,
+    pub max_lowering_spans_per_program: usize,
 }
 
 impl Default for DirectDebugRetentionLimits {
@@ -27,8 +28,15 @@ impl Default for DirectDebugRetentionLimits {
             max_sources_per_program: 4_096,
             max_symbols_per_program: 65_536,
             max_types_per_program: 4_096,
+            max_lowering_spans_per_program: 65_536,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RetainedBreakpointSpan {
+    source: SourceSpan,
+    safe_point: DirectSafePointBinding,
 }
 
 /// Static data retained for one live direct-program generation.
@@ -37,6 +45,7 @@ pub struct RetainedDirectDebugInfo {
     handle: bluejs::BlueJsProgramHandle,
     static_info: BlueTsDebugInfo,
     safe_point_map: BlueTsSafePointMapV1,
+    breakpoint_spans: Vec<RetainedBreakpointSpan>,
 }
 
 impl RetainedDirectDebugInfo {
@@ -54,6 +63,23 @@ impl RetainedDirectDebugInfo {
     /// The exact safe-point map paired with this static compilation.
     pub fn safe_point_map(&self) -> &BlueTsSafePointMapV1 {
         &self.safe_point_map
+    }
+
+    /// Resolves the same compiler-lowered source span as the original live
+    /// attachment, including an explicit unbound result. Retaining only spans
+    /// and verified safe points avoids retaining AST nodes or source text.
+    pub fn breakpoint_at_or_after(
+        &self,
+        source: &str,
+        source_byte: usize,
+    ) -> DirectSafePointBinding {
+        resolve_breakpoint_at_or_after(
+            self.breakpoint_spans
+                .iter()
+                .map(|span| (&span.source, span.safe_point)),
+            source,
+            source_byte,
+        )
     }
 }
 
@@ -163,6 +189,32 @@ impl DirectDebugRegistry {
             static_info.types.len(),
             self.limits.max_types_per_program,
         )?;
+        enforce_limit(
+            "lowering spans",
+            attachment.provenance.len(),
+            self.limits.max_lowering_spans_per_program,
+        )?;
+        let rebuilt_map = build_safe_point_map(
+            attachment.handle,
+            compiler_options_fingerprint,
+            sources,
+            &attachment.provenance,
+        )
+        .map_err(|error| DirectDebugAttachmentError::SafePointMap(error.to_string()))?;
+        if rebuilt_map != attachment.safe_point_map {
+            return Err(DirectDebugAttachmentError::SafePointMap(
+                "retained lowering spans do not match the verified safe-point map".to_string(),
+            ));
+        }
+
+        let breakpoint_spans = attachment
+            .provenance
+            .iter()
+            .map(|provenance| RetainedBreakpointSpan {
+                source: provenance.source.clone(),
+                safe_point: provenance.safe_point,
+            })
+            .collect::<Vec<_>>();
 
         let generation = attachment.handle.generation();
         if let Some(existing) = self.programs.get(&generation) {
@@ -170,6 +222,7 @@ impl DirectDebugRegistry {
                 handle: attachment.handle,
                 static_info: static_info.clone(),
                 safe_point_map: attachment.safe_point_map.clone(),
+                breakpoint_spans: breakpoint_spans.clone(),
             };
             if existing == &replacement {
                 return Ok(());
@@ -187,6 +240,7 @@ impl DirectDebugRegistry {
                 handle: attachment.handle,
                 static_info: static_info.clone(),
                 safe_point_map: attachment.safe_point_map.clone(),
+                breakpoint_spans,
             },
         );
         Ok(())

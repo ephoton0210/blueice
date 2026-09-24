@@ -9,7 +9,12 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version twenty-seven adds
+//! and an opt-in root-code-unit pause/resume seam. Version twenty-eight adds
+//! a separately default-denied, bounded original-BlueTS byte-position binding
+//! under one same-stream source-ID receipt. It reports one core-revalidated
+//! safe point or explicit unbound result, without installing or executing a
+//! breakpoint or granting source text. The metadata capability manifest is v3.
+//! Version twenty-seven adds
 //! a separately default-denied original-BlueTS safe-point span under exact
 //! program, metadata, and same-stream source-ID receipts. It returns no source
 //! text, module identity, or nearest guess.
@@ -58,7 +63,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 27;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 28;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -490,6 +495,41 @@ impl DebuggerStaticMetadataSafePointSpan {
     }
 }
 
+/// A separately authorized original BlueTS position in one source record
+/// already inventoried by this debugger stream. This is an explicit
+/// source-position query, not part of the exact-span read capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataSourceBreakpointTarget {
+    pub source: DebuggerStaticMetadataSourceId,
+    pub source_byte: u32,
+}
+
+impl DebuggerStaticMetadataSourceBreakpointTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.source.is_well_formed()
+            && self.source_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+    }
+}
+
+/// A source-position binding result under the exact live program generation.
+/// `None` means that the selected lowering span has no instruction or there
+/// is no following lowered span; it must not be silently retargeted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataSourceBreakpoint {
+    pub target: DebuggerStaticMetadataSourceBreakpointTarget,
+    pub safe_point: Option<DebuggerSafePoint>,
+}
+
+impl DebuggerStaticMetadataSourceBreakpoint {
+    pub fn is_well_formed(self) -> bool {
+        self.target.is_well_formed()
+            && self.safe_point.is_none_or(|safe_point| {
+                safe_point.is_well_formed()
+                    && safe_point.program == self.target.source.metadata.program
+            })
+    }
+}
+
 impl DebuggerStaticMetadataSymbolLocationTarget {
     pub fn is_well_formed(self) -> bool {
         self.symbol.is_well_formed()
@@ -743,6 +783,10 @@ pub enum DebuggerCapability {
     /// separately receipted source ID. This neither reads source text nor
     /// grants nearest-offset mapping or source-level execution control.
     StaticMetadataSafePointSpan,
+    /// An independently granted, bounded source-byte-position to verified
+    /// safe-point binding. It can reveal lowering structure and therefore is
+    /// distinct from an exact safe-point span read or execution control.
+    StaticMetadataSourceBreakpoint,
 }
 
 /// One narrowly scoped static-metadata operation a debugger client may ask
@@ -827,6 +871,10 @@ pub enum DebuggerMetadataCapability {
     /// stream's opaque metadata and source-ID receipts. It is independent
     /// from source provenance, symbol locations, and execution control.
     OpaqueSafePointSpan,
+    /// Resolves one caller-selected bounded original byte position in a
+    /// separately receipted source ID. This source-position oracle needs an
+    /// independent owner policy and same-stream client grant.
+    OpaqueSourceBreakpoint,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -861,6 +909,9 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSymbolType => Some(DebuggerCapability::StaticMetadataSymbolType),
             Self::OpaqueSymbolContract => Some(DebuggerCapability::StaticMetadataSymbolContract),
             Self::OpaqueSafePointSpan => Some(DebuggerCapability::StaticMetadataSafePointSpan),
+            Self::OpaqueSourceBreakpoint => {
+                Some(DebuggerCapability::StaticMetadataSourceBreakpoint)
+            }
             Self::Unknown => None,
         }
     }
@@ -884,6 +935,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSymbolContract => Some(14),
             Self::OpaqueContractLocation => Some(15),
             Self::OpaqueSafePointSpan => Some(16),
+            Self::OpaqueSourceBreakpoint => Some(17),
             Self::Unknown => None,
         }
     }
@@ -893,7 +945,7 @@ impl DebuggerMetadataCapability {
 /// capability manifest. It is intentionally separate from the transport
 /// version so future metadata operations cannot be inferred from a transport
 /// upgrade alone.
-pub const DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION: u32 = 2;
+pub const DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION: u32 = 3;
 
 /// A canonical requested or granted metadata-capability set for one debugger
 /// transport session. It carries capability identifiers only: no realm,
@@ -931,6 +983,7 @@ pub struct DebuggerMetadataCapabilitySelection {
     pub symbol_type: bool,
     pub symbol_contract: bool,
     pub safe_point_span: bool,
+    pub source_breakpoint: bool,
 }
 
 impl DebuggerMetadataCapabilityManifest {
@@ -1159,6 +1212,20 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants only the parent/source inventories and the independently
+    /// authorized original-position binding operation. It grants neither
+    /// exact-span reads nor breakpoint installation/execution control.
+    pub fn opaque_source_breakpoint() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSourceInventory,
+                DebuggerMetadataCapability::OpaqueSourceBreakpoint,
+            ],
+        }
+    }
+
     /// Grants one symbol-to-static-type relation only with its parent,
     /// symbol, and type inventory prerequisites.
     pub fn opaque_symbol_type() -> Self {
@@ -1208,6 +1275,7 @@ impl DebuggerMetadataCapabilityManifest {
             symbol_type,
             symbol_contract,
             safe_point_span,
+            source_breakpoint,
         } = selection;
         let any = summary
             || source_inventory
@@ -1224,7 +1292,8 @@ impl DebuggerMetadataCapabilityManifest {
             || contract_location
             || symbol_type
             || symbol_contract
-            || safe_point_span;
+            || safe_point_span
+            || source_breakpoint;
         let mut capabilities = Vec::new();
         if any {
             capabilities.push(DebuggerMetadataCapability::OpaqueInventory);
@@ -1232,7 +1301,12 @@ impl DebuggerMetadataCapabilityManifest {
         if summary {
             capabilities.push(DebuggerMetadataCapability::OpaqueSummary);
         }
-        if source_inventory || symbol_location || contract_location || safe_point_span {
+        if source_inventory
+            || symbol_location
+            || contract_location
+            || safe_point_span
+            || source_breakpoint
+        {
             capabilities.push(DebuggerMetadataCapability::OpaqueSourceInventory);
         }
         if source_provenance {
@@ -1281,6 +1355,9 @@ impl DebuggerMetadataCapabilityManifest {
         }
         if safe_point_span {
             capabilities.push(DebuggerMetadataCapability::OpaqueSafePointSpan);
+        }
+        if source_breakpoint {
+            capabilities.push(DebuggerMetadataCapability::OpaqueSourceBreakpoint);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -1452,6 +1529,15 @@ impl DebuggerMetadataCapabilityManifest {
             && (!self
                 .capabilities
                 .contains(&DebuggerMetadataCapability::OpaqueSafePointSpan)
+                || (self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueSourceInventory)))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueSourceBreakpoint)
                 || (self
                     .capabilities
                     .contains(&DebuggerMetadataCapability::OpaqueInventory)
@@ -2105,6 +2191,13 @@ pub enum DebuggerRequest {
     DescribeStaticMetadataSafePointSpan {
         target: DebuggerStaticMetadataSafePointSpanTarget,
     },
+    /// Resolves one bounded original BlueTS byte position in a previously
+    /// inventoried source ID to a compiler-verified safe point or explicit
+    /// unbound result. This separately granted operation neither reads source
+    /// text nor stores, arms, or executes a breakpoint.
+    ResolveStaticMetadataSourceBreakpoint {
+        target: DebuggerStaticMetadataSourceBreakpointTarget,
+    },
     /// Describes one contract declaration range only after separate exact
     /// contract and source inventory receipts on this debugger stream.
     DescribeStaticMetadataContractLocation {
@@ -2256,6 +2349,10 @@ pub enum DebuggerReply {
     /// The exact safe point and previously receipted source ID are echoed;
     /// no source text or module identity is included.
     StaticMetadataSafePointSpan(DebuggerStaticMetadataSafePointSpan),
+    /// Reply to [`DebuggerRequest::ResolveStaticMetadataSourceBreakpoint`].
+    /// It repeats only the requested source/position and a core-reminted
+    /// verified safe point, or an explicit unbound result.
+    StaticMetadataSourceBreakpoint(DebuggerStaticMetadataSourceBreakpoint),
     /// Reply to [`DebuggerRequest::DescribeStaticMetadataContractLocation`].
     /// It contains only receipted IDs and a bounded byte range.
     StaticMetadataContractLocation(DebuggerStaticMetadataContractLocation),
@@ -2377,6 +2474,7 @@ pub fn negotiate(
         | DebuggerRequest::DescribeStaticMetadataSymbol { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolLocation { .. }
         | DebuggerRequest::DescribeStaticMetadataSafePointSpan { .. }
+        | DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { .. }
         | DebuggerRequest::DescribeStaticMetadataContractLocation { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolType { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolContract { .. }
@@ -4290,6 +4388,99 @@ mod tests {
         write_debugger_request(&mut sender, &request).unwrap();
         assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
         let reply = DebuggerReply::StaticMetadataSafePointSpan(span);
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_reply(&mut sender, &reply).unwrap();
+        assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+    }
+
+    #[test]
+    fn source_breakpoint_is_separately_granted_and_bound_to_one_source_position() {
+        let manifest = DebuggerMetadataCapabilityManifest::opaque_source_breakpoint();
+        assert!(manifest.is_well_formed());
+        assert_eq!(
+            manifest,
+            DebuggerMetadataCapabilityManifest::opaque_selected(
+                DebuggerMetadataCapabilitySelection {
+                    source_breakpoint: true,
+                    ..DebuggerMetadataCapabilitySelection::default()
+                }
+            )
+        );
+        assert!(!manifest.contains(DebuggerMetadataCapability::OpaqueSafePointSpan));
+        assert!(
+            !DebuggerMetadataCapabilityManifest::opaque_safe_point_span()
+                .contains(DebuggerMetadataCapability::OpaqueSourceBreakpoint)
+        );
+        for capabilities in [
+            vec![DebuggerMetadataCapability::OpaqueSourceBreakpoint],
+            vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSourceBreakpoint,
+            ],
+        ] {
+            assert!(!DebuggerMetadataCapabilityManifest {
+                version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+                capabilities,
+            }
+            .is_well_formed());
+        }
+        let hello = hello(manifest.clone());
+        let ack = negotiate(&hello, &manifest);
+        let session = metadata_session_authorization(&hello, &ack).unwrap();
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueSourceBreakpoint));
+
+        let program = DebuggerProgram {
+            realm: realm(),
+            program_handle: 12,
+            program_generation: 5,
+        };
+        let target = DebuggerStaticMetadataSourceBreakpointTarget {
+            source: DebuggerStaticMetadataSourceId {
+                metadata: DebuggerStaticMetadataHandle {
+                    program,
+                    metadata_handle: 24,
+                    metadata_generation: 7,
+                },
+                source_id: 0,
+            },
+            source_byte: 31,
+        };
+        assert!(target.is_well_formed());
+        assert!(!DebuggerStaticMetadataSourceBreakpointTarget {
+            source_byte: DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES + 1,
+            ..target
+        }
+        .is_well_formed());
+        let result = DebuggerStaticMetadataSourceBreakpoint {
+            target,
+            safe_point: Some(DebuggerSafePoint {
+                program,
+                code_unit_ordinal: 0,
+                bytecode_offset: 4,
+            }),
+        };
+        assert!(result.is_well_formed());
+        assert!(DebuggerStaticMetadataSourceBreakpoint {
+            safe_point: None,
+            ..result
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticMetadataSourceBreakpoint {
+            safe_point: Some(DebuggerSafePoint {
+                program: DebuggerProgram {
+                    program_generation: 6,
+                    ..program
+                },
+                ..result.safe_point.unwrap()
+            }),
+            ..result
+        }
+        .is_well_formed());
+        let request = DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target };
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_request(&mut sender, &request).unwrap();
+        assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
+        let reply = DebuggerReply::StaticMetadataSourceBreakpoint(result);
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);

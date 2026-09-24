@@ -127,22 +127,27 @@ impl DirectProgramAttachment {
         source: &str,
         source_byte: usize,
     ) -> DirectSafePointBinding {
-        self.provenance
-            .iter()
-            .filter(|provenance| {
-                provenance.source.module == source && provenance.source.end > source_byte
-            })
-            .min_by_key(|provenance| {
-                (
-                    provenance.source.start.saturating_sub(source_byte),
-                    provenance.source.start,
-                    provenance.source.end,
-                )
-            })
-            .map_or(DirectSafePointBinding::Unbound, |provenance| {
-                provenance.safe_point
-            })
+        resolve_breakpoint_at_or_after(
+            self.provenance
+                .iter()
+                .map(|provenance| (&provenance.source, provenance.safe_point)),
+            source,
+            source_byte,
+        )
     }
+}
+
+fn resolve_breakpoint_at_or_after<'a>(
+    spans: impl Iterator<Item = (&'a SourceSpan, DirectSafePointBinding)>,
+    source: &str,
+    source_byte: usize,
+) -> DirectSafePointBinding {
+    spans
+        .filter(|(span, _)| span.module == source && span.end > source_byte)
+        .min_by_key(|(span, _)| (span.start.saturating_sub(source_byte), span.start, span.end))
+        .map_or(DirectSafePointBinding::Unbound, |(_, safe_point)| {
+            safe_point
+        })
 }
 
 /// One source-level lowering span attached to a generated BlueJS AST node.

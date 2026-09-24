@@ -47,6 +47,7 @@ pub use debugger_support::{
     JavaScriptPageDebuggerStaticMetadataLoweringSummary,
     JavaScriptPageDebuggerStaticMetadataSafePointSpan,
     JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
+    JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget,
     JavaScriptPageDebuggerStaticMetadataSourceId,
     JavaScriptPageDebuggerStaticMetadataSourceProvenance,
     JavaScriptPageDebuggerStaticMetadataSourceTarget, JavaScriptPageDebuggerStaticMetadataSummary,
@@ -162,6 +163,13 @@ pub trait PageJavaScriptDebuggerLocations {
     /// separately receipted source ID under one opaque metadata attachment.
     /// This is not a public grant by itself.
     fn debugger_static_metadata_safe_point_span_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can resolve a bounded original BlueTS position
+    /// under one exact metadata/source tuple. A separate public owner and
+    /// session capability must authorize this source-position oracle.
+    fn debugger_static_metadata_source_breakpoint_available(&self) -> bool {
         false
     }
 
@@ -415,6 +423,15 @@ pub trait PageJavaScriptDebuggerLocations {
         _target: JavaScriptPageDebuggerStaticMetadataSafePointSpanTarget,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataSafePointSpan, JavaScriptPageDebuggerError>
     {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    fn debugger_static_metadata_source_breakpoint(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataSourceBreakpointTarget,
+    ) -> Result<Option<JavaScriptPageDebuggerSafePoint>, JavaScriptPageDebuggerError> {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
 

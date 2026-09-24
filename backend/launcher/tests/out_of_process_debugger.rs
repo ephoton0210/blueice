@@ -83,6 +83,7 @@ struct StaticMetadataPolicy {
     symbol_display: bool,
     symbol_location: bool,
     safe_point_span: bool,
+    source_breakpoint: bool,
     contract_location: bool,
     symbol_type: bool,
     symbol_contract: bool,
@@ -167,6 +168,9 @@ impl LauncherProcess {
         }
         if policy.safe_point_span {
             command.arg("--debugger-static-metadata-safe-point-span");
+        }
+        if policy.source_breakpoint {
+            command.arg("--debugger-static-metadata-source-breakpoint");
         }
         if policy.contract_location {
             command.arg("--debugger-static-metadata-contract-location");
@@ -757,6 +761,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             symbol_display: true,
             symbol_location: true,
             safe_point_span: false,
+            source_breakpoint: false,
             contract_location: true,
             symbol_type: true,
             symbol_contract: true,
@@ -790,6 +795,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                             symbol_display: true,
                             symbol_location: true,
                             safe_point_span: false,
+                            source_breakpoint: true,
                             contract_location: true,
                             symbol_type: true,
                             symbol_contract: true,
@@ -814,6 +820,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     symbol_display: true,
                     symbol_location: true,
                     safe_point_span: false,
+                    source_breakpoint: false,
                     contract_location: true,
                     symbol_type: true,
                     symbol_contract: true,
@@ -905,6 +912,11 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         report.capability
             == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSourceProvenance
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability
+            == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSourceBreakpoint
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Planned
     }));
     let DebuggerReply::Programs(programs) =
         debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm })
@@ -1338,6 +1350,18 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             && !format!("{sources:?}").contains("number"),
         "public source IDs must not contain source or compiler-record payload"
     );
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint {
+                target: blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpointTarget {
+                    source: sources[0],
+                    source_byte: 0,
+                },
+            },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
     let initial_contract_location_target =
         blueice_ipc::debugger::DebuggerStaticMetadataContractLocationTarget {
             contract: contracts[0],
@@ -2018,6 +2042,217 @@ fn launcher_exposes_exact_bluets_safe_point_spans_only_after_same_stream_source_
         debugger_request(
             &mut separate,
             DebuggerRequest::DescribeStaticMetadataSafePointSpan { target },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
+    drop(separate);
+    launcher.shutdown();
+    let _ = std::fs::remove_file(gatekeeper_socket);
+}
+
+#[test]
+fn launcher_resolves_receipted_bluets_source_positions_to_live_breakpoints() {
+    let gatekeeper_socket = clearing_gatekeeper();
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local HTTP fixture must bind");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let fixture = serve_two_bluets_documents(listener);
+    let mut launcher = LauncherProcess::spawn_with_static_metadata_policy(
+        &gatekeeper_socket,
+        StaticMetadataPolicy {
+            inventory: true,
+            source_inventory: true,
+            source_breakpoint: true,
+            ..StaticMetadataPolicy::default()
+        },
+    );
+    let mut browser = launcher.connect_browser();
+    blueice_ipc::client_handshake(&mut browser).expect("public browser handshake must succeed");
+    navigate(&mut browser, &url);
+
+    let manifest = DebuggerMetadataCapabilityManifest::opaque_source_breakpoint();
+    let mut debugger = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: manifest.clone(),
+            },
+        ),
+        DebuggerReply::HelloAck {
+            protocol_version: DEBUGGER_PROTOCOL_VERSION,
+            granted_metadata_capabilities: manifest.clone(),
+        }
+    );
+    let realm = one_realm(debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListPageRealms,
+    ));
+    let program = one_program(
+        debugger_request(&mut debugger, DebuggerRequest::ListPrograms { realm }),
+        realm,
+    );
+    let DebuggerReply::Capabilities(capabilities) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeCapabilities { realm },
+    ) else {
+        panic!("the live child must report source-breakpoint capabilities");
+    };
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability
+            == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSourceBreakpoint
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSafePointSpan
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Planned
+    }));
+    let DebuggerReply::StaticMetadata(metadata) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadata { program },
+    ) else {
+        panic!("the BlueTS program must have one opaque metadata attachment");
+    };
+    let metadata = metadata[0];
+    let source_byte = u32::try_from(
+        FIRST_BLUETS_SOURCE
+            .find("const privateBlueTsMetadata")
+            .expect("fixture must contain its executable TypeScript declaration"),
+    )
+    .unwrap();
+    let guessed = blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpointTarget {
+        source: blueice_ipc::debugger::DebuggerStaticMetadataSourceId {
+            metadata,
+            source_id: 0,
+        },
+        source_byte,
+    };
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target: guessed },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
+    let DebuggerReply::StaticMetadataSources(sources) = debugger_request(
+        &mut debugger,
+        DebuggerRequest::ListStaticMetadataSources { metadata },
+    ) else {
+        panic!("the same stream must receive compiler source IDs");
+    };
+    let mut bound = None;
+    for source in sources {
+        let target = blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpointTarget {
+            source,
+            source_byte,
+        };
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target },
+        ) {
+            DebuggerReply::StaticMetadataSourceBreakpoint(result) => {
+                assert_eq!(result.target, target);
+                if let Some(safe_point) = result.safe_point {
+                    bound = Some((target, safe_point));
+                    break;
+                }
+            }
+            reply => panic!("unexpected source-breakpoint reply: {reply:?}"),
+        }
+    }
+    let (target, safe_point) = bound.expect("the declaration must bind to one verified point");
+    assert_eq!(safe_point.program, program);
+    assert_eq!(safe_point.code_unit_ordinal, 0);
+    assert_ne!(safe_point.bytecode_offset, 0);
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint {
+                target: blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpointTarget {
+                    source_byte: FIRST_BLUETS_SOURCE.len() as u32,
+                    ..target
+                },
+            },
+        ),
+        DebuggerReply::StaticMetadataSourceBreakpoint(
+            blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpoint {
+                target: blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpointTarget {
+                    source_byte: FIRST_BLUETS_SOURCE.len() as u32,
+                    ..target
+                },
+                safe_point: None,
+            }
+        )
+    );
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint {
+                target: blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpointTarget {
+                    source: blueice_ipc::debugger::DebuggerStaticMetadataSourceId {
+                        source_id: u32::MAX,
+                        ..target.source
+                    },
+                    ..target
+                },
+            },
+        ),
+        DebuggerReply::Unsupported { .. }
+    ));
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ArmRootSafePointBreakpoint { safe_point },
+        ),
+        DebuggerReply::RootSafePointBreakpointArmed { safe_point }
+    );
+    await_paused_execution(&mut debugger, program, safe_point);
+    assert_eq!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target },
+        ),
+        DebuggerReply::StaticMetadataSourceBreakpoint(
+            blueice_ipc::debugger::DebuggerStaticMetadataSourceBreakpoint {
+                target,
+                safe_point: Some(safe_point),
+            }
+        )
+    );
+    assert_eq!(
+        debugger_request(&mut debugger, DebuggerRequest::ResumeExecution { program }),
+        DebuggerReply::ExecutionResumed { program }
+    );
+    await_completed_execution(&mut debugger, program);
+
+    navigate(&mut browser, &url);
+    fixture.join().expect("fixture must serve both documents");
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    drop(debugger);
+    let mut separate = UnixStream::connect(&launcher.debugger_socket).unwrap();
+    assert!(matches!(
+        debugger_request(
+            &mut separate,
+            DebuggerRequest::Hello {
+                protocol_version: DEBUGGER_PROTOCOL_VERSION,
+                requested_metadata_capabilities: manifest,
+            },
+        ),
+        DebuggerReply::HelloAck { .. }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut separate,
+            DebuggerRequest::ResolveStaticMetadataSourceBreakpoint { target },
         ),
         DebuggerReply::Unsupported { .. }
     ));

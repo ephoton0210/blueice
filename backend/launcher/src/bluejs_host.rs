@@ -28,7 +28,7 @@ use blueice_bluets_bluejs::page_host_typings::{
 };
 use blueice_bluets_bluejs::{
     compile_direct_module_graph, compile_direct_script, BridgeError, DirectDebugRegistry,
-    DirectModuleGraph, DirectScript,
+    DirectModuleGraph, DirectSafePointBinding, DirectScript,
 };
 use blueice_ipc::compiler::CompilerContractValue;
 use blueice_ipc::debugger::{
@@ -479,6 +479,21 @@ impl BlueJsChildHost {
                 document_generation,
                 metadata,
                 safe_point,
+            ),
+            PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                source_id,
+                source_byte,
+            } => self.debugger_bluets_source_breakpoint(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                source_id,
+                source_byte,
             ),
             PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
                 tab_id,
@@ -1903,6 +1918,94 @@ impl BlueJsChildHost {
             metadata,
             safe_point,
             span,
+        }
+    }
+
+    /// Resolves a bounded original TypeScript position only inside the
+    /// already-authorized private core/child channel. A retained unbound span
+    /// stays unbound; it is never silently skipped in favor of a later bound
+    /// instruction. This operation does not install or arm a breakpoint.
+    fn debugger_bluets_source_breakpoint(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        source_id: u32,
+        source_byte: u32,
+    ) -> PageHostReply {
+        if !program.is_well_formed()
+            || !metadata.is_well_formed()
+            || source_byte > DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+        {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let safe_point = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let mut matching_sources = retained
+                    .static_info()
+                    .sources
+                    .iter()
+                    .filter(|source| source.id.0 == source_id);
+                let Some(source) = matching_sources.next() else {
+                    return invalid_request();
+                };
+                if matching_sources.next().is_some() {
+                    return invalid_request();
+                }
+                match retained.breakpoint_at_or_after(&source.module, source_byte as usize) {
+                    DirectSafePointBinding::Bound(bound) => Some(PageHostDebuggerSafePoint {
+                        program,
+                        code_unit_ordinal: bound.code_unit.ordinal(),
+                        bytecode_offset: bound.bytecode_offset,
+                    }),
+                    DirectSafePointBinding::Unbound => None,
+                }
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        if let Some(safe_point) = safe_point {
+            if let Err(reply) =
+                self.exact_debugger_safe_point(tab_id, document_generation, safe_point)
+            {
+                return reply;
+            }
+        }
+        PageHostReply::DebuggerBlueTsSourceBreakpoint {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            source_id,
+            source_byte,
+            safe_point,
         }
     }
 
@@ -5821,6 +5924,156 @@ mod tests {
         ));
         assert!(matches!(
             host.handle_request(request),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn child_bluets_source_breakpoint_is_bound_to_a_live_source_and_generation() {
+        let mut host = BlueJsChildHost::default();
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(
+                    1,
+                    vec![
+                        blue_ts_classic(
+                            0,
+                            "const first: number = 1; const second: number = 2; second;"
+                        ),
+                        blue_ts_classic(1, "const other: number = 3;"),
+                    ],
+                ),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        let programs = match host.handle_request(PageHostRequest::ListDebuggerPrograms {
+            tab_id: 7,
+            document_generation: 1,
+        }) {
+            PageHostReply::DebuggerPrograms { programs, .. } => programs,
+            reply => panic!("expected private BlueTS programs, got {reply:?}"),
+        };
+        let program = programs[0];
+        let metadata = match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadata {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+        }) {
+            PageHostReply::DebuggerBlueTsMetadata { metadata, .. } => metadata[0],
+            reply => panic!("expected private BlueTS metadata, got {reply:?}"),
+        };
+        let (source_id, first, second) = {
+            let handle =
+                host.documents[&7].debugger_programs[&program.program_handle].runtime_handle;
+            let retained = host
+                .debug_registry
+                .get(host.runtime.program_registry(), handle)
+                .unwrap();
+            let mut entries = retained.safe_point_map().entries.iter().collect::<Vec<_>>();
+            entries.sort_by_key(|entry| entry.start_byte);
+            (
+                retained
+                    .static_info()
+                    .sources
+                    .iter()
+                    .find(|source| source.module == entries[0].source)
+                    .expect("the lowered source must have a compiler source ID")
+                    .id
+                    .0,
+                entries[0].clone(),
+                entries[1].clone(),
+            )
+        };
+        let request = |source_byte| PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
+            tab_id: 7,
+            document_generation: 1,
+            program,
+            metadata,
+            source_id,
+            source_byte,
+        };
+        for (source_byte, entry) in [
+            (u32::try_from(first.start_byte).unwrap(), &first),
+            (u32::try_from(first.end_byte).unwrap(), &second),
+        ] {
+            assert_eq!(
+                host.handle_request(request(source_byte)),
+                PageHostReply::DebuggerBlueTsSourceBreakpoint {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                    metadata,
+                    source_id,
+                    source_byte,
+                    safe_point: Some(PageHostDebuggerSafePoint {
+                        program,
+                        code_unit_ordinal: entry.code_unit.ordinal(),
+                        bytecode_offset: entry.bytecode_offset,
+                    }),
+                }
+            );
+        }
+        assert_eq!(
+            host.handle_request(request(u32::try_from(second.end_byte).unwrap() + 10)),
+            PageHostReply::DebuggerBlueTsSourceBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata,
+                source_id,
+                source_byte: u32::try_from(second.end_byte).unwrap() + 10,
+                safe_point: None,
+            }
+        );
+        for forged in [
+            PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                program: programs[1],
+                metadata,
+                source_id,
+                source_byte: 0,
+            },
+            PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata,
+                source_id: u32::MAX,
+                source_byte: 0,
+            },
+            PageHostRequest::ResolveDebuggerBlueTsSourceBreakpoint {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata: PageHostDebuggerMetadataHandle {
+                    metadata_generation: metadata.metadata_generation + 1,
+                    ..metadata
+                },
+                source_id,
+                source_byte: 0,
+            },
+            request(DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES + 1),
+        ] {
+            assert!(matches!(
+                host.handle_request(forged),
+                PageHostReply::Error {
+                    code: PageHostErrorCode::InvalidRequest,
+                    ..
+                }
+            ));
+        }
+        assert!(matches!(
+            host.handle_request(PageHostRequest::SynchronizeDocument {
+                document: document(2, vec![blue_ts_classic(0, "const successor = 4;")]),
+            }),
+            PageHostReply::Synchronized { .. }
+        ));
+        assert!(matches!(
+            host.handle_request(request(0)),
             PageHostReply::Error {
                 code: PageHostErrorCode::StaleDocument,
                 ..
