@@ -39,6 +39,7 @@
 pub mod control;
 pub mod memory_pressure;
 pub mod supervisor;
+pub mod trusted_window;
 
 pub use control::default_control_socket_path;
 
