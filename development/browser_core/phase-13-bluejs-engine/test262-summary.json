@@ -1,8 +1,8 @@
 {
-  "adapter_sha256": "d9f56845c8c7263f18f2aff9084792674fdc0c9897fa50dd584c25de4ac8694b",
+  "adapter_sha256": "0b5d02b83748321a63c21f87d3392d111dd59e8948574e6228ce04331a9af4c2",
   "complete_inventory": true,
   "discovered_js": 53876,
-  "elapsed_seconds": 810.668,
+  "elapsed_seconds": 235.768,
   "exclude": "",
   "features": {
     "AggregateError": {
@@ -30,7 +30,7 @@
       "pass": 556
     },
     "Atomics": {
-      "fail": 4,
+      "excluded": 4,
       "pass": 768
     },
     "Atomics.pause": {
@@ -40,7 +40,7 @@
       "pass": 202
     },
     "BigInt": {
-      "fail": 2,
+      "excluded": 2,
       "pass": 2979
     },
     "DataView": {
@@ -179,8 +179,7 @@
       "pass": 58
     },
     "Proxy": {
-      "fail": 2,
-      "pass": 931
+      "pass": 933
     },
     "Reflect": {
       "pass": 933
@@ -204,7 +203,7 @@
       "pass": 124
     },
     "SharedArrayBuffer": {
-      "fail": 4,
+      "excluded": 4,
       "pass": 926
     },
     "String.fromCodePoint": {
@@ -238,8 +237,7 @@
       "pass": 46
     },
     "Symbol": {
-      "fail": 2,
-      "pass": 2950
+      "pass": 2952
     },
     "Symbol.asyncIterator": {
       "pass": 1076
@@ -287,7 +285,7 @@
       "pass": 13432
     },
     "TypedArray": {
-      "fail": 4,
+      "excluded": 4,
       "pass": 4996
     },
     "TypedArray.prototype.at": {
@@ -396,8 +394,7 @@
       "pass": 29
     },
     "cross-realm": {
-      "fail": 2,
-      "pass": 396
+      "pass": 398
     },
     "decorators": {
       "pass": 48
@@ -445,8 +442,7 @@
       "pass": 35
     },
     "host-gc-required": {
-      "fail": 2,
-      "pass": 26
+      "pass": 28
     },
     "immutable-arraybuffer": {
       "pass": 127
@@ -473,8 +469,7 @@
       "pass": 156
     },
     "iterator-helpers": {
-      "fail": 2,
-      "pass": 1132
+      "pass": 1134
     },
     "iterator-includes": {
       "pass": 88
@@ -613,11 +608,11 @@
   "fixture_resources": 294,
   "groups": {
     "annexB": {
-      "fail": 1,
-      "pass": 1376
+      "pass": 1376,
+      "stale_corpus": 1
     },
     "built-ins": {
-      "fail": 4,
+      "excluded": 4,
       "pass": 47319
     },
     "harness": {
@@ -627,18 +622,16 @@
       "pass": 6714
     },
     "language": {
-      "fail": 2,
-      "pass": 44495
+      "pass": 44497
     },
     "staging": {
-      "fail": 60,
-      "pass": 2723
+      "pass": 2783
     }
   },
   "instruction_budget": 100000,
   "iterator_zip_basic_matrix_instruction_budget": 10000000,
   "iterator_zip_basic_matrix_timeout_seconds": 15,
-  "jobs": 4,
+  "jobs": 8,
   "limitations": [
     "static module graphs, Module Namespace Exotic Objects, literal dynamic imports, thenable assimilation, resumable top-level-await jobs, ordinary async-function continuations, and async generators with serialized next/return/throw requests, suspended catch/finally completion injection, and explicit yield* delegation state are implemented; host module loading remains unavailable",
     "unclassified parser rejections never satisfy parse-SyntaxError negative tests",
@@ -646,12 +639,13 @@
     "native overrides for sta.js and assert.js (propertyHelper.js and isConstructor.js run their upstream source), the two declared DateTimeFormat-part deepEqual fixtures, generated RegExp property helpers, and eight exhaustive legacy URI fixtures; raw tests receive no harness",
     "each mode has a bounded interpreter instruction budget; tail-call, TypedArray-harness, the two Temporal calendar matrices, and the six finite Iterator.zip/zipKeyed basic matrices receive their recorded budgets"
   ],
-  "regex_worker_sha256": "3f35e9ced03287355b0efa067e5ed5961d23c965c153a77650b1f7f1fd3d5c20",
+  "regex_worker_sha256": "d1e0cabbfa8ba438c6f301f7d3fdf070bda2fbd29a1333d7190d27fd68b45dd0",
   "results": {
-    "fail": 67,
-    "pass": 102859
+    "excluded": 4,
+    "pass": 102921,
+    "stale_corpus": 1
   },
-  "runner_sha256": "e2fef6fe60ae334cc010091ee1c3a554cc69386bbe89ff63128b20c1464ce8cd",
+  "runner_sha256": "d56c75f03b0422f20fea1dcd8a10be3ea81905f4a79d7fead0abb1ca6986d0ba",
   "scheduled_modes": 102926,
   "sm_typed_array_harness_instruction_budget": 100000000,
   "sm_typed_array_harness_timeout_seconds": 60,

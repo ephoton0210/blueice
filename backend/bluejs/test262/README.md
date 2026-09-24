@@ -1,6 +1,6 @@
 # Test262 verification
 
-This POSIX runner inventories every test in the pinned official snapshot, including staging/proposals and ECMA-402. It reports every requested execution mode. **A full inventory run is not a passing conformance result.** Static module graphs, Module Namespace Exotic Objects, literal dynamic imports and a bounded top-level-await job path are implemented; complete async execution, thenable assimilation, host loading and much of the language remain unsupported.
+This POSIX runner inventories every test in the pinned official snapshot, including staging/proposals and ECMA-402. It reports every requested execution mode. The 2026-09-25 complete macOS run recorded 102,921 passes, 0 failures, 1 `stale_corpus`, and 4 `excluded` modes: every dispatched mode passed, while the raw scheduled pass rate was 99.995%. **A full inventory run is not proof of full ECMAScript conformance.** See the [macOS report](../../../development/browser_core/phase-13-bluejs-engine/TEST262_MACOS_REPORT.md) for the exact denominator and dispositions.
 
 Prerequisites: Rust, Python 3, and the pinned Python dependency below. Node is only required by the separate differential oracle. The default Rust subprocess fault tests also use Python 3 on POSIX.
 
@@ -143,7 +143,7 @@ array-storage change, not a limit.
 
 Each supervising worker owns a process group. A whole-case timeout or adapter crash kills and reaps that group, including a regex child, before the next case creates a replacement. Regex operations additionally have their own engine-level deadline. Transport uses nonblocking bounded IO, so a blocked pipe does not disable the case deadline.
 
-The checked-in [summary](../../../development/browser_core/phase-13-bluejs-engine/test262-summary.json) records the current complete inventory. Full passing conformance, complete host hooks, the remaining ECMA-402 constructors, and unsupported language/API subsystems remain open work.
+The checked-in [summary](../../../development/browser_core/phase-13-bluejs-engine/test262-summary.json) records the current complete macOS inventory. All 102,921 dispatched modes passed; the 1 stale corpus mode and 4 host-capability exclusions remain visible and count as non-pass in the raw 102,926-mode inventory. Passing this finite snapshot is not a general conformance guarantee.
 
 ## Architecture-first triage
 

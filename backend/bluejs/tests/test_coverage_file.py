@@ -146,7 +146,7 @@ class CoverageFileTests(unittest.TestCase):
         report = self.repo / "macos.md"
         report.write_text(
             "before\n## Later BlueJS per-file coverage (old)\nold\n"
-            "## Differences from the other platforms\nafter\n"
+            "## Historical differences from the other platforms (old)\nafter\n"
         )
         self.patch(coverage_file, "MACOS_REPORT", report)
         files, totals = coverage_file.checked_export(self.export())
@@ -160,6 +160,16 @@ class CoverageFileTests(unittest.TestCase):
         self.assertIn("| Complete | Note |", text)
         self.assertIn("| ☑ |", text)
         self.assertIn("| - | - | - | - | Test source; not a coverage target |", text)
+
+        report.write_text(
+            "before\n## Later BlueJS per-file coverage (old)\nold\n"
+            "## Differences from the other platforms\nafter\n"
+        )
+        with patch.object(coverage_file.platform, "system", return_value="Darwin"), patch.object(
+            coverage_file, "provenance", return_value="test host"
+        ):
+            coverage_file.update_macos_report(files, totals)
+        self.assertIn("## Differences from the other platforms\nafter\n", report.read_text())
 
     def test_one_run_can_report_a_file_and_update_the_full_table(self):
         files, totals = coverage_file.checked_export(self.export())

@@ -1,61 +1,69 @@
 # macOS Test262 Report
 
-## Current complete inventory (2026-09-21)
+## Current complete inventory (2026-09-25)
 
-The test host is **macOS 26.6.2 (build 25G83) on Apple silicon** (Apple M4, model Mac16,10), `aarch64-apple-darwin`, with Rust/Cargo 1.98.0 (a Homebrew build: there is no `rustup`, so `rust-toolchain.toml`'s 1.95.0 pin was **not** in effect), 10 logical CPUs, 24 GB of RAM and Python 3.9.6. The command `python3 backend/bluejs/test262/run.py --corpus /tmp/blueice-test262-72faf8ec --jobs 8 --output <dir> --progress-interval 60` completed the pinned, unfiltered inventory in 324.897 seconds with 8 jobs. Adapter SHA-256: `1e206fac066340a8e2b796e900c6f9c54e33b9060586e86c24da9c159fdae4ec`. Regexp worker SHA-256: `24a83ec119bed9dac32564ef5a02fac435cfd74810cda38f244d4d9e91e552b3`. Test262 revision: `72faf8ec1445c55149615e8b35187830783aba1a`; the scope includes `main`, proposals and staging. The tree under test is commit `eaeb5c1` of `feature/bluejs-object-heap`; the two later commits (`4ef9a44`, a `.gitattributes` for two generated fixtures, and `fff18c4`, three Node-oracle corpus lines) do not change any Test262 outcome.
+The pinned, unfiltered Test262 snapshot was run on macOS 27.0 (build 26A428, Apple silicon) with Rust/Cargo 1.95.0 and Python 3.14.6, using source commit `e9c15268`. The verified corpus revision is `72faf8ec1445c55149615e8b35187830783aba1a` and includes main, proposals, and staging. The complete command was `/tmp/bluejs-conformance-venv/bin/python backend/bluejs/test262/run.py --corpus development/browser_core/reference/test262 --jobs 8 --output target/test262-macos-20260925 --progress-interval 60`, after `cargo build -p blueice-bluejs --bins --offline`; it completed in 235.768 seconds. The runner verified the pinned corpus marker, manifest, and every file before execution. `analyze.py` reconciled all 53,582 files and 102,926 modes against `results.jsonl` and `summary.json`.
 
-The same source revision was run unfiltered on all three platforms on 2026-09-21; the [macOS](TEST262_MACOS_REPORT.md), [Ubuntu](TEST262_LINUX_REPORT.md) and [Windows](TEST262_WINDOWS_REPORT.md) reports each contain the complete tables, and no platform's result is used as a substitute for another's. The [triage report](TEST262_ANALYSIS_REPORT.md) classifies the remaining failures.
+Adapter SHA-256: `0b5d02b83748321a63c21f87d3392d111dd59e8948574e6228ce04331a9af4c2`. RegExp worker SHA-256: `d1e0cabbfa8ba438c6f301f7d3fdf070bda2fbd29a1333d7190d27fd68b45dd0`. Runner SHA-256: `d56c75f03b0422f20fea1dcd8a10be3ea81905f4a79d7fead0abb1ca6986d0ba`. The [checked-in summary](test262-summary.json) contains the complete feature and top-level group counts; the full per-mode evidence is in `target/test262-macos-20260925/results.jsonl`.
 
-Test262 has no official “Core” classification. This report defines **ECMA-262 Core** as `language/` + `built-ins/`; **complete ECMA-262 Test262 scope** as Core + `annexB/` + `staging/`; and **ECMA-402** as `intl402/`. `harness/` tests runner support code, so it appears only in the all-inventory total. Every scope is derived from this one unfiltered complete run, not a separately filtered invocation. The complete ECMA-262 scope is an inventory label, not an assertion that time-based staging/proposal tests belong to one published ECMA edition.
+**Every dispatched, applicable mode passed: 102,921 / 102,921 (100%).** The raw scheduled inventory is **102,921 / 102,926 pass (99.995%)** because 4 modes are `excluded` by this host's declared `[[CanBlock]] = true` capability and 1 pinned fixture is classified `stale_corpus`. None of these 5 modes was dispatched or counted as a pass. There are **0 `fail`, 0 `unsupported`, 0 `timeout`, and 0 `harness_error`** outcomes. The runner intentionally exits 1 whenever any scheduled mode is not `pass`, so its exit code is 1 for this complete, reconciled run. This is a Test262 progress measurement, not proof of complete ECMAScript conformance. The exact five modes and their reasons are listed below and explained in the [analysis report](TEST262_ANALYSIS_REPORT.md).
 
-| Scope | Scheduled | Pass | Fail | Timeout | Pass rate |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| ECMA-262 Core (`language/` + `built-ins/`) | 91,820 | 89,444 | 2,376 | 0 | 97.412% |
-| Complete ECMA-262 Test262 scope (Core + `annexB/` + `staging/`) | 95,980 | 92,975 | 3,003 | 2 | 96.869% |
-| ECMA-402 (`intl402/`) | 6,714 | 6,714 | 0 | 0 | 100.000% |
-| Test262 harness support (`harness/`) | 232 | 210 | 22 | 0 | 90.517% |
-| All Test262 runner modes | 102,926 | 99,899 | 3,025 | 2 | 97.059% |
+Test262 has no official ‘Core’ classification. This report defines ECMA-262 Core as `language/` plus `built-ins/`, complete ECMA-262 Test262 scope as Core plus `annexB/` and `staging/`, and ECMA-402 as `intl402/`. `harness/` appears only in the full inventory total. All tables below are derived from this one unfiltered run; pass rates use every scheduled mode in each row as the denominator.
 
-| Top-level Test262 group | Scheduled | Pass | Fail | Timeout | Pass rate |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `language/` | 44,497 | 43,553 | 944 | 0 | 97.879% |
-| `built-ins/` | 47,323 | 45,891 | 1,432 | 0 | 96.974% |
-| `annexB/` | 1,377 | 1,176 | 201 | 0 | 85.403% |
-| `staging/` | 2,783 | 2,355 | 426 | 2 | 84.621% |
-| `intl402/` | 6,714 | 6,714 | 0 | 0 | 100.000% |
-| `harness/` | 232 | 210 | 22 | 0 | 90.517% |
+| Scope | Scheduled | Pass | Fail | Unsupported | Excluded | Stale corpus | Timeout | Harness error | Raw pass rate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ECMA-262 Core (`language/` + `built-ins/`) | 91,820 | 91,816 | 0 | 0 | 4 | 0 | 0 | 0 | 99.996% |
+| Complete ECMA-262 Test262 scope (Core + `annexB/` + `staging/`) | 95,980 | 95,975 | 0 | 0 | 4 | 1 | 0 | 0 | 99.995% |
+| ECMA-402 (`intl402/`) | 6,714 | 6,714 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| Test262 harness support (`harness/`) | 232 | 232 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| **All Test262 runner modes** | 102,926 | 102,921 | 0 | 0 | 4 | 1 | 0 | 0 | 99.995% |
 
-The run completed all 53,582 test files. Its JSONL contains 2 `timeout` records and 0 `harness_error` records. The 3,025 retained failures are semantic outcomes, not filtered or recategorized timeouts. The `timeout` records are `staging/explicit-resource-management/async-disposal-from-sync-method-returning-a-promise.js` (both modes).
+| Top-level Test262 group | Scheduled | Pass | Fail | Unsupported | Excluded | Stale corpus | Timeout | Harness error | Raw pass rate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `language/` | 44,497 | 44,497 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `built-ins/` | 47,323 | 47,319 | 0 | 0 | 4 | 0 | 0 | 0 | 99.992% |
+| `annexB/` | 1,377 | 1,376 | 0 | 0 | 0 | 1 | 0 | 0 | 99.927% |
+| `staging/` | 2,783 | 2,783 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `intl402/` | 6,714 | 6,714 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `harness/` | 232 | 232 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+
+### Non-pass inventory dispositions
+
+| Path | Modes | Status | Reason |
+| --- | ---: | --- | --- |
+| `annexB/language/function-code/block-decl-func-skip-arguments.js` | 1 | `stale_corpus` | The pinned fixture contradicts the current Annex B `FunctionDeclarationInstantiation` behavior; the upstream correction is tracked in Test262 issue #5113 / PR #5112. |
+| `built-ins/Atomics/wait/cannot-suspend-throws.js` | 2 | `excluded` | Fixture requires `CanBlockIsFalse`; this host declares `[[CanBlock]] = true`. |
+| `built-ins/Atomics/wait/bigint/cannot-suspend-throws.js` | 2 | `excluded` | Fixture requires `CanBlockIsFalse`; this host declares `[[CanBlock]] = true`. |
 
 ## Selected results (same complete run)
 
-These rows are subsets of the one unfiltered run above (grouped by path prefix), listed because they cover the areas changed most recently. `built-ins/Array/` here is the directory alone (6,117 modes); the filtered invocation `--filter built-ins/Array/` also matches the four `intl402/Array/` modes.
+These are subsets of the complete JSONL, grouped by exact path prefix. `built-ins/Array/` is that directory alone; an unanchored `--filter built-ins/Array/` would also match four `intl402/Array/` modes.
 
-| Selection | Modes | Pass | Fail | Timeout | Pass rate |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `built-ins/Array/` | 6,117 | 6,117 | 0 | 0 | 100.000% |
-| `built-ins/TypedArray/` + `TypedArrayConstructors/` | 4,322 | 4,322 | 0 | 0 | 100.000% |
-| `built-ins/ArrayBuffer/` | 442 | 442 | 0 | 0 | 100.000% |
-| `built-ins/SharedArrayBuffer/` | 208 | 208 | 0 | 0 | 100.000% |
-| `built-ins/DataView/` | 1,122 | 1,122 | 0 | 0 | 100.000% |
-| `built-ins/Atomics/` | 778 | 774 | 4 | 0 | 99.486% |
-| `built-ins/Iterator/` | 1,308 | 1,308 | 0 | 0 | 100.000% |
-| `built-ins/Promise/` | 1,458 | 806 | 652 | 0 | 55.281% |
-| `built-ins/ShadowRealm/` | 124 | 124 | 0 | 0 | 100.000% |
-| `built-ins/AsyncDisposableStack/` | 208 | 208 | 0 | 0 | 100.000% |
-| `built-ins/DisposableStack/` | 186 | 186 | 0 | 0 | 100.000% |
-| `built-ins/Temporal/` | 9,210 | 9,210 | 0 | 0 | 100.000% |
-| `language/import/` | 135 | 135 | 0 | 0 | 100.000% |
-| `language/expressions/dynamic-import/` | 1,900 | 1,900 | 0 | 0 | 100.000% |
-| `language/module-code/` | 602 | 602 | 0 | 0 | 100.000% |
-| `language/statements/using/` | 154 | 154 | 0 | 0 | 100.000% |
-| `language/statements/await-using/` | 188 | 188 | 0 | 0 | 100.000% |
-| `language/statements/for-await-of/` | 2,431 | 2,431 | 0 | 0 | 100.000% |
-| `language/eval-code/` | 454 | 454 | 0 | 0 | 100.000% |
+| Selection | Scheduled | Pass | Fail | Unsupported | Excluded | Stale corpus | Timeout | Harness error | Raw pass rate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `built-ins/Array/` | 6,117 | 6,117 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `built-ins/TypedArray/` + `built-ins/TypedArrayConstructors/` | 4,322 | 4,322 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `built-ins/ArrayBuffer/` | 442 | 442 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `built-ins/SharedArrayBuffer/` | 208 | 208 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `built-ins/DataView/` | 1,122 | 1,122 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `built-ins/Atomics/` | 778 | 774 | 0 | 0 | 4 | 0 | 0 | 0 | 99.486% |
+| `built-ins/Iterator/` | 1,308 | 1,308 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `built-ins/Promise/` | 1,458 | 1,458 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `built-ins/ShadowRealm/` | 124 | 124 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `built-ins/AsyncDisposableStack/` | 208 | 208 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `built-ins/DisposableStack/` | 186 | 186 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `built-ins/Temporal/` | 9,210 | 9,210 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `language/import/` | 135 | 135 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `language/expressions/dynamic-import/` | 1,900 | 1,900 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `language/module-code/` | 602 | 602 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `language/statements/using/` | 154 | 154 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `language/statements/await-using/` | 188 | 188 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `language/statements/for-await-of/` | 2,431 | 2,431 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
+| `language/eval-code/` | 454 | 454 | 0 | 0 | 0 | 0 | 0 | 0 | 100.000% |
 
 ## ECMA-402 and Temporal breakdown (same complete run)
 
-The tables above report `intl402/` as one aggregate row (100.000%). This section breaks it down by service and adds ECMA-262 Temporal's own test surface, which `built-ins/` also includes above without a separate line. These figures are derived from the same complete JSONL, not a filtered rerun; group `results.jsonl` by `path.split("/")[1]` (or `[2]` for the Temporal sub-breakdown).
+`intl402/` has 6,714 / 6,714 passing modes. This section breaks it down by service and combines its Temporal modes with `built-ins/Temporal/`. These groups are derived from the same complete JSONL.
 
 | `intl402/` group | Modes | Pass | Fail | Pass rate |
 | --- | ---: | ---: | ---: | ---: |
@@ -71,12 +79,12 @@ The tables above report `intl402/` as one aggregate row (100.000%). This section
 | `Collator/` | 130 | 130 | 0 | 100% |
 | `DisplayNames/` | 114 | 114 | 0 | 100% |
 | `PluralRules/` | 106 | 106 | 0 | 100% |
-| `intl402/*.js` (top-level) + `String/`/`Date/`/`BigInt/`/`Number/`/`Array/`/`FallbackSymbol/`/`TypedArray/` (`toLocale*`/`localeCompare`) | 152 | 152 | 0 | 100% |
-| **Total** | **6,714** | **6,714** | **0** | **100.000%** |
+| `intl402/*.js` (top level) and locale methods on `String/`, `Date/`, `BigInt/`, `Number/`, `Array/`, `FallbackSymbol/`, `TypedArray/` | 152 | 152 | 0 | 100% |
+| **Total** | **6,714** | **6,714** | **0** | **100%** |
 
-`Temporal/` is ECMA-262, not an ECMA-402 service — see [Phase 26's plan](../phase-26-ecma262-temporal/PLAN.md) rather than [Phase 25's](../phase-25-ecma402-internationalization/PLAN.md). `built-ins/Temporal/` (9,210 modes) is Temporal's primary test surface; combined with `intl402/Temporal/` the Temporal denominator is **13,268 modes, 13,268 passing (100.000%)**, per type:
+`Temporal/` is an ECMA-262 feature. Its 9,210 `built-ins/` modes plus 4,058 `intl402/` modes give **13,268 / 13,268 pass (100%)**:
 
-| Temporal type | Combined modes (`built-ins/` + `intl402/`) | Combined pass | Pass rate |
+| Temporal type | Combined modes | Pass | Pass rate |
 | --- | ---: | ---: | ---: |
 | `ZonedDateTime` | 2,968 | 2,968 | 100% |
 | `PlainDateTime` | 2,512 | 2,512 | 100% |
@@ -88,9 +96,15 @@ The tables above report `intl402/` as one aggregate row (100.000%). This section
 | `PlainMonthDay` | 578 | 578 | 100% |
 | `Now` | 138 | 138 | 100% |
 | `Temporal/` root files | 10 | 10 | 100% |
-| **Total** | **13,268** | **13,268** | **100.000%** |
+| **Total** | **13,268** | **13,268** | **100%** |
 
-## Additional verification on this platform (same source revision)
+## Historical complete inventory (2026-09-21)
+
+The earlier macOS 26.6.2 run at `eaeb5c1` recorded 99,899 pass, 3,025 fail, and 2 timeout out of 102,926 modes (97.059%). Its three-platform comparison belongs to that earlier source revision. The current 2026-09-25 inventory above replaces it as the macOS Test262 status.
+
+## Historical verification on this platform (2026-09-21 source revision)
+
+These checks were performed for the earlier `eaeb5c1` source revision. They are retained as historical evidence, not as measurements of the current Test262 run.
 
 | Check | Command | Result | Gate |
 | --- | --- | --- | --- |
@@ -101,14 +115,14 @@ The tables above report `intl402/` as one aggregate row (100.000%). This section
 | Node differential oracle | `cargo test -p blueice-bluejs --test node_differential -- --ignored` (Node v24.21.0) | **4 / 4 tests pass**: the 22,268-script main corpus plus the 10-script and 67-script matrices (Intl NumberFormat range/locale data) agree with Node | all pass |
 | TypeScript compatibility oracle | `npm exec --yes --package typescript@5.9.3 -- env BLUEICE_BLUETSC_ORACLE=tsc cargo test -p blueice-bluets --test typescript_oracle -- --ignored` | **1 / 1 test passes**: all 68 cases (48 compile-and-run cases whose stdout is compared, 20 diagnostic-parity cases; 71 module sources) agree with TypeScript 5.9.3 | all pass |
 
-Coverage on this host uses Homebrew `llvm@22` (LLVM 22.1.8, the same LLVM version as this `rustc`) through `LLVM_COV`/`LLVM_PROFDATA`, since Homebrew's Rust ships without `llvm-tools`. Node 24.21.0 is Homebrew's `node@24` (the default `node` on this machine is 26.7.0, so the oracles were run with `node@24` first in `PATH`, matching CI). The Node oracle initially disagreed with Node 24 on three scripts that assert Node's legacy behaviour for a hook installed on a primitive's prototype (`'a'.match(3)`, `'a'.search('b')`, `'a'.matchAll(true)`); BlueJS follows ECMA-262 and Test262 there, so those lines were removed from the oracle corpus in `fff18c4`.
+For that historical measurement, coverage used Homebrew `llvm@22` (LLVM 22.1.8, the same LLVM version as that `rustc`) through `LLVM_COV`/`LLVM_PROFDATA`, since Homebrew's Rust ships without `llvm-tools`. Node 24.21.0 was Homebrew's `node@24` (the default `node` on that machine was 26.7.0, so the oracles were run with `node@24` first in `PATH`, matching CI). The Node oracle initially disagreed with Node 24 on three scripts that assert Node's legacy behaviour for a hook installed on a primitive's prototype (`'a'.match(3)`, `'a'.search('b')`, `'a'.matchAll(true)`); BlueJS follows ECMA-262 and Test262 there, so those lines were removed from the oracle corpus in `fff18c4`.
 
 Line coverage is a different measure from a Test262 pass rate and the two must not be quoted interchangeably: it is the fraction of the Rust source lines that execute during the crates' own test suites. The five ignored tests are the opt-in oracles (four Node differential tests and one TypeScript compatibility test), which the table's last two rows run explicitly.
 
 
 ## Later BlueJS per-file coverage (2026-09-25)
 
-This is a separate, later coverage measurement at commit `38c6b297` with uncommitted changes on Darwin 27.0 (`arm64`), rustc 1.95.0 (59807616e 2026-04-14) and `cargo-llvm-cov 0.9.1`. It does **not** describe the 2026-09-21 Test262 run or the same-revision verification table above. `python3 backend/bluejs/coverage_file.py --update-macos-report` cleaned prior LLVM artifacts, ran the complete default BlueJS Rust test suite, and exported fresh per-file JSON. The opt-in Node oracle and external full Test262 runner were not included. Workspace coverage was not remeasured at this revision.
+This is a separate, later coverage measurement at commit `38c6b297` with uncommitted changes on Darwin 27.0 (`arm64`), rustc 1.95.0 (59807616e 2026-04-14) and `cargo-llvm-cov 0.9.1`. That working-tree source content was later committed as `e9c15268`, the source used for the current Test262 inventory above. `python3 backend/bluejs/coverage_file.py --update-macos-report` cleaned prior LLVM artifacts, ran the complete default BlueJS Rust test suite, and exported fresh per-file JSON. The opt-in Node oracle and external full Test262 runner were not included in the coverage measurement. Workspace coverage was not remeasured at this revision.
 
 Each measured cell shows covered / instrumented and the coverage rate. All 171 Rust files under `backend/bluejs/src/` are listed: 158 have LLVM counters; 13 use `-` with an individual reason in `Note`. A `0%` result requires a positive instrumented denominator and zero covered units. `☑` means **lines, functions and regions all reach 100%**; `☐` means at least one is below 100%. The total aggregates only instrumented files. Region coverage is separate from branch coverage. To rerun any one file independently, use `python3 backend/bluejs/coverage_file.py ast.rs` (replace `ast.rs` with its source path). Each invocation reruns the entire test suite, since tests outside a file can still exercise it.
 
@@ -287,16 +301,19 @@ Each measured cell shows covered / instrumented and the coverage rate. All 171 R
 | [`vm/tests.rs`](../../../backend/bluejs/src/vm/tests.rs) | - | - | - | - | Test source; not a coverage target |
 | **Total (158 instrumented files)** | **67,884 / 73,162 (92.79%)** | **4,972 / 5,330 (93.28%)** | **113,569 / 126,229 (89.97%)** | ☐ |  |
 
-## Differences from the other platforms
+## Historical differences from the other platforms (2026-09-21)
 
 - **Ubuntu**: 2 of 102,926 modes differ (1 file): `staging/sm/Math/acosh-approx.js` (this platform: pass; Ubuntu: fail).
 
-## Reproduce
+## Reproduce the current Test262 inventory
 
 ```sh
-cargo build -p blueice-bluejs --bins
-python3 backend/bluejs/test262/run.py --corpus /tmp/blueice-test262-72faf8ec --jobs 8 --output /tmp/blueice-test262-macos
-python3 backend/bluejs/test262/analyze.py --run /tmp/blueice-test262-macos --corpus /tmp/blueice-test262-72faf8ec --output /tmp/blueice-test262-macos-analysis
+python3 -m venv /tmp/bluejs-conformance-venv
+/tmp/bluejs-conformance-venv/bin/pip install -r backend/bluejs/test262/requirements.txt
+cargo build -p blueice-bluejs --bins --offline
+/tmp/bluejs-conformance-venv/bin/python -m unittest discover -s backend/bluejs/test262 -v
+/tmp/bluejs-conformance-venv/bin/python backend/bluejs/test262/run.py --corpus development/browser_core/reference/test262 --jobs 8 --output target/test262-macos-20260925 --progress-interval 60
+/tmp/bluejs-conformance-venv/bin/python backend/bluejs/test262/analyze.py --run target/test262-macos-20260925 --corpus development/browser_core/reference/test262 --output target/test262-macos-20260925-analysis
 ```
 
-Fetch the pinned corpus once with `--fetch --corpus /tmp/blueice-test262-72faf8ec` (the runner verifies it against `snapshot.json`). `analyze.py` needs the same `--corpus` because the default reference directory has no snapshot metadata. Do not run other heavy jobs while the inventory runs: the per-case wall deadline is 2 seconds, and a loaded machine produces spurious `timeout` records.
+The runner validates the pinned corpus marker, manifest hash, and every corpus file before execution. It returns 1 for this run because the 1 `stale_corpus` and 4 `excluded` modes remain non-pass statuses; inspect `summary.json` and use `analyze.py` to reconcile all records. Keep the host otherwise idle during this inventory because ordinary cases have a two-second wall deadline.

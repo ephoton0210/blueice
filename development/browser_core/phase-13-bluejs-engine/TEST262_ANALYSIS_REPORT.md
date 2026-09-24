@@ -2,9 +2,13 @@
 
 Snapshot: `72faf8ec1445c55149615e8b35187830783aba1a`.
 
-## Final status (2026-09-23): 0 failures
+## Latest complete macOS rerun (2026-09-25)
 
-Measured at commit `fbcbe2c2` on `feature/test262-remaining-failures`: **102,921 pass, 0 fail, 1 `stale_corpus`, 4 `excluded` of 102,926 modes (99.995% pass)**, from a complete, unfiltered 53,582-file inventory on macOS 26.6.2 / Apple M4 (`aarch64-apple-darwin`), debug adapter binaries freshly rebuilt from that exact commit, 224 s, reconciled by `analyze.py` (the tables below are its output). The 1 `stale_corpus` and 4 `excluded` modes are deliberate, individually verified dispositions, described in their own sections below, not hidden failures. Linux and Windows have not been re-run at this commit, and the per-platform reports `TEST262_{MACOS,LINUX,WINDOWS}_REPORT.md` still hold their earlier figures. Test262 passing is a progress measurement, not a full-conformance claim.
+At source commit `e9c15268`, the pinned, unfiltered 53,582-file / 102,926-mode inventory produced **102,921 pass, 0 fail, 0 unsupported, 0 timeout, 0 harness error, 1 `stale_corpus`, and 4 `excluded`** in 235.768 seconds. Thus all **102,921 dispatched modes passed (100%)**, while the raw scheduled pass rate is **99.995%**. The runner returns 1 because the five non-pass dispositions remain visible. `analyze.py` reconciled every path, mode, source hash, status, feature count, and group count; its current output is `target/test262-macos-20260925-analysis/`. The detailed dispositions below still apply, and the [macOS report](TEST262_MACOS_REPORT.md) now records this latest run.
+
+## Previous milestone (2026-09-23): 0 failures
+
+Measured at commit `fbcbe2c2` on `feature/test262-remaining-failures`: **102,921 pass, 0 fail, 1 `stale_corpus`, 4 `excluded` of 102,926 modes (99.995% pass)**, from a complete, unfiltered 53,582-file inventory on macOS 26.6.2 / Apple M4 (`aarch64-apple-darwin`), debug adapter binaries freshly rebuilt from that exact commit, 224 s, reconciled by `analyze.py` (the tables below are its output). The 1 `stale_corpus` and 4 `excluded` modes are deliberate, individually verified dispositions, described in their own sections below, not hidden failures. Linux and Windows have not been re-run at that commit; their per-platform reports retain their own source-revision figures. Test262 passing is a progress measurement, not a full-conformance claim.
 
 ### How the 63 failures recorded at `d33babc` were resolved
 

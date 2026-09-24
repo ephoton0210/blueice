@@ -172,9 +172,9 @@ def report_section(files: dict[Path, dict], totals: dict) -> str:
         f"| **Total ({len(files)} instrumented files)** | {total_cells} | {total_complete} |  |"
     )
     measurement_note = (
-        f"This is a separate, later coverage measurement at {provenance()}. "
-        "It does **not** describe the 2026-09-21 Test262 run or the "
-        "same-revision verification table above. "
+        f"This is a separate BlueJS coverage measurement at {provenance()}. "
+        "It measures the Rust test suite independently of the Test262 "
+        "inventory and historical verification above. "
         "`python3 backend/bluejs/coverage_file.py --update-macos-report` "
         "cleaned prior LLVM artifacts, ran the complete default BlueJS Rust "
         "test suite, and exported fresh per-file JSON. The opt-in Node "
@@ -216,7 +216,16 @@ def update_macos_report(files: dict[Path, dict], totals: dict) -> None:
         raise ValueError("the macOS report can only be regenerated on macOS")
     text = MACOS_REPORT.read_text()
     start = text.index("## Later BlueJS per-file coverage (")
-    end = text.index("## Differences from the other platforms", start)
+    end_markers = (
+        "## Historical differences from the other platforms",
+        "## Differences from the other platforms",
+    )
+    end = min(
+        (position for marker in end_markers if (position := text.find(marker, start)) >= 0),
+        default=-1,
+    )
+    if end < 0:
+        raise ValueError("cannot find the section after BlueJS per-file coverage")
     new_text = text[:start] + report_section(files, totals) + "\n" + text[end:]
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", dir=MACOS_REPORT.parent, delete=False
