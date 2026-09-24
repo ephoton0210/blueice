@@ -326,11 +326,11 @@ impl ExtensionRegistry {
         let mut registry = Self::new();
         let v1 = CapabilityVersionWindow::new(1, 1).expect("literal version window is valid");
         let v1_to_v2 = CapabilityVersionWindow::new(1, 2).expect("literal version window is valid");
-        let v1_to_v3 = CapabilityVersionWindow::new(1, 3).expect("literal version window is valid");
+        let v1_to_v4 = CapabilityVersionWindow::new(1, 4).expect("literal version window is valid");
         let v1_to_v7 = CapabilityVersionWindow::new(1, 7).expect("literal version window is valid");
         registry.register_capability_version_window(CAPABILITY_DOM_READ, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_DOM_WRITE, v1_to_v7);
-        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v3);
+        registry.register_capability_version_window(CAPABILITY_NETWORK_INTERCEPT, v1_to_v4);
         registry.register_capability_version_window(CAPABILITY_NETWORK_OBSERVE, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_UI_INJECT, v1_to_v2);
         registry.register_capability_version_window(CAPABILITY_STORAGE, v1);
@@ -624,6 +624,7 @@ pub struct ExtensionActionDelegates<R, W, N, B, C> {
     write_dom: W,
     register_network_intercept: N,
     register_network_block_url: B,
+    register_network_block_host: Box<dyn FnMut(String) -> Result<(), String> + Send>,
     clear_network_block_urls: C,
     observe_network: Box<dyn FnMut(u64) -> Result<Option<NetworkResponseInfo>, String> + Send>,
     observe_network_trace: Box<dyn FnMut(u64) -> Result<Option<NetworkTraceInfo>, String> + Send>,
@@ -650,6 +651,9 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
             write_dom,
             register_network_intercept,
             register_network_block_url,
+            register_network_block_host: Box::new(|_| {
+                Err("network:intercept v4 needs a core-backed host rule store".to_string())
+            }),
             clear_network_block_urls,
             observe_network: Box::new(|_| {
                 Err("network:observe needs a core-backed response reader".to_string())
@@ -698,6 +702,15 @@ impl<R, W, N, B, C> ExtensionActionDelegates<R, W, N, B, C> {
         observer: impl FnMut(u64) -> Result<Option<NetworkTraceInfo>, String> + Send + 'static,
     ) -> Self {
         self.observe_network_trace = Box::new(observer);
+        self
+    }
+
+    /// Binds v4 declarative host blocking to core's connection-owned rules.
+    pub fn with_network_block_host(
+        mut self,
+        blocker: impl FnMut(String) -> Result<(), String> + Send + 'static,
+    ) -> Self {
+        self.register_network_block_host = Box::new(blocker);
         self
     }
 
@@ -899,6 +912,7 @@ where
         mut write_dom,
         mut register_network_intercept,
         mut register_network_block_url,
+        mut register_network_block_host,
         mut clear_network_block_urls,
         mut observe_network,
         mut observe_network_trace,
@@ -1796,6 +1810,75 @@ where
                     "action=register-exact-navigation-block".to_string(),
                 ) {
                     Ok(GatekeeperReply::Cleared) => match register_network_block_url(url) {
+                        Ok(()) => {
+                            write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?
+                        }
+                        Err(reason) => write_extension_reply(
+                            stream,
+                            &ExtensionReply::OperationUnavailable {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                            },
+                        )?,
+                    },
+                    Ok(GatekeeperReply::Rejected { reason, category }) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                                category,
+                            },
+                        )?;
+                    }
+                    Err(reason) => {
+                        write_extension_reply(
+                            stream,
+                            &ExtensionReply::GatekeeperBlocked {
+                                capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                                reason,
+                                category: "gatekeeper-unavailable".to_string(),
+                            },
+                        )?;
+                    }
+                }
+            }
+            ExtensionRequest::RegisterNetworkBlockHost { host } => {
+                if let Some(reason) =
+                    capability_denial_reason(registry, &identity, CAPABILITY_NETWORK_INTERCEPT, 4)
+                {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::CapabilityDenied {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                            reason,
+                        },
+                    )?;
+                    continue;
+                }
+                if host.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_HOST_BYTES {
+                    write_extension_reply(
+                        stream,
+                        &ExtensionReply::OperationUnavailable {
+                            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+                            reason: format!(
+                                "navigation-block hosts cannot exceed {} bytes",
+                                blueice_ipc::extension::MAX_NETWORK_BLOCK_HOST_BYTES
+                            ),
+                        },
+                    )?;
+                    continue;
+                }
+                // The reviewer sees the operation class, never a guest-
+                // controlled host. Core independently validates and stores
+                // the ASCII host only after the review clears.
+                match check_extension_action(
+                    gatekeeper_socket,
+                    &identity.extension_id,
+                    CAPABILITY_NETWORK_INTERCEPT,
+                    "action=register-host-navigation-block".to_string(),
+                ) {
+                    Ok(GatekeeperReply::Cleared) => match register_network_block_host(host) {
                         Ok(()) => {
                             write_extension_reply(stream, &ExtensionReply::NetworkInterceptAck)?
                         }
@@ -3834,6 +3917,100 @@ mod tests {
             }
         );
         let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v4_network_block_host_is_reviewed_then_delegated_without_exposing_the_host() {
+        let registry = registry_with_network_intercept_granted();
+        let (gatekeeper_socket, gatekeeper) =
+            start_gatekeeper("clear-host-navigation-block", GatekeeperReply::Cleared);
+        let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let socket_for_handler = gatekeeper_socket.clone();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                &socket_for_handler,
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok("unused in this test".to_string()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_| panic!("a host request must not register an exact URL"),
+                    || Ok(()),
+                ).with_network_block_host(move |host| {
+                    seen_tx.send(host).unwrap();
+                    Ok(())
+                }),
+            )
+        });
+
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 4)],
+            ),
+        ).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::RegisterNetworkBlockHost { host: "Example.test".to_string() },
+        ).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), ExtensionReply::NetworkInterceptAck);
+        assert_eq!(seen_rx.recv_timeout(Duration::from_secs(1)).unwrap(), "Example.test");
+
+        drop(client);
+        handle.join().unwrap().unwrap();
+        assert_eq!(gatekeeper.join().unwrap(), GatekeeperRequest::CheckExtensionAction {
+            extension_id: MINIMAL_SLICE_EXTENSION_ID.to_string(),
+            capability: CAPABILITY_NETWORK_INTERCEPT.to_string(),
+            detail: "action=register-host-navigation-block".to_string(),
+        });
+        let _ = std::fs::remove_file(gatekeeper_socket);
+    }
+
+    #[test]
+    fn v4_host_registration_is_denied_after_a_v3_handshake() {
+        let registry = registry_with_network_intercept_granted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            handle_extension_connection_with_actions_and_authentication_and_network_rules(
+                &registry,
+                Path::new("/not-reached-for-v3-host-rule-version-denial.sock"),
+                &mut server,
+                ExtensionConnectionAuthentication::unauthenticated(),
+                ExtensionActionDelegates::new(
+                    |_| Ok("unused in this test".to_string()),
+                    unused_write_delegate,
+                    || Ok(()),
+                    |_| Ok(()),
+                    || Ok(()),
+                ).with_network_block_host(|_| panic!("a v3 connection must not reach core")),
+            )
+        });
+        write_extension_request(
+            &mut client,
+            &hello_with_capabilities(
+                MINIMAL_SLICE_EXTENSION_ID,
+                [(CAPABILITY_NETWORK_INTERCEPT, 3)],
+            ),
+        ).unwrap();
+        assert_eq!(read_extension_reply(&mut client).unwrap(), empty_hello_ack());
+        write_extension_request(
+            &mut client,
+            &ExtensionRequest::RegisterNetworkBlockHost { host: "example.test".to_string() },
+        ).unwrap();
+        match read_extension_reply(&mut client).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, reason } => {
+                assert_eq!(capability, CAPABILITY_NETWORK_INTERCEPT);
+                assert!(reason.contains("requires version 4"));
+            }
+            other => panic!("expected a v4 version denial, got {other:?}"),
+        }
+        drop(client);
+        handle.join().unwrap().unwrap();
     }
 
     #[test]

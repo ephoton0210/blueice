@@ -21,7 +21,7 @@
 //! compile-time effect: skipping the gate becomes a compile error, not
 //! a runtime convention a differently-written caller could omit.
 
-use crate::tabs::extension_navigation_rules_block_url;
+use crate::tabs::{extension_navigation_rules_block_url, ExtensionNavigationBlockRule};
 use crate::TabId;
 use blueice_ipc::gatekeeper::{
     read_gatekeeper_reply, write_gatekeeper_request, GatekeeperReply, GatekeeperRequest,
@@ -136,7 +136,7 @@ pub(crate) fn check_and_fetch_with_navigation_rules(
     tab_id: TabId,
     url: String,
     gatekeeper_socket: &Path,
-    navigation_rules: HashSet<String>,
+    navigation_rules: HashSet<ExtensionNavigationBlockRule>,
 ) -> NavOutcome {
     let request_url = url.clone();
     let mut current_url = url;
@@ -411,7 +411,7 @@ mod tests {
             TabId::from_u64(10),
             initial_url.clone(),
             &gatekeeper,
-            HashSet::from([blocked_url.clone()]),
+            HashSet::from([ExtensionNavigationBlockRule::ExactUrl(blocked_url.clone())]),
         ) {
             NavOutcome::ExtensionRuleBlocked { url } => assert_eq!(url, blocked_url),
             _ => panic!("the redirect target must be blocked before a second review or fetch"),

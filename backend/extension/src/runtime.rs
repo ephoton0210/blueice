@@ -20,7 +20,7 @@
 use crate::InstalledExtension;
 use blueice_ipc::extension::{
     read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
-    MAX_NETWORK_BLOCK_URL_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
+    MAX_NETWORK_BLOCK_URL_BYTES, MAX_NETWORK_BLOCK_HOST_BYTES, MAX_STORAGE_KEY_BYTES, MAX_STORAGE_VALUE_BYTES,
     MAX_TEXT_WRITE_BYTES, MAX_NETWORK_OBSERVATION_BYTES, MAX_NETWORK_TRACE_BYTES,
     MAX_EXTENSION_TOOLBAR_LABEL_BYTES,
     MAX_EXTENSION_POPUP_TITLE_BYTES, MAX_EXTENSION_POPUP_BODY_BYTES,
@@ -312,6 +312,17 @@ fn install_blueice_abi(linker: &mut Linker<RuntimeState>) -> Result<(), String> 
         )
         .map_err(|error| {
             format!("could not define the clear_network_block_urls ABI import: {error}")
+        })?;
+    linker
+        .func_wrap(
+            "blueice",
+            "register_network_block_host",
+            |mut caller: Caller<'_, RuntimeState>, host_ptr: i32, host_len: i32| {
+                register_network_block_host(&mut caller, host_ptr, host_len)
+            },
+        )
+        .map_err(|error| {
+            format!("could not define the register_network_block_host ABI import: {error}")
         })?;
     linker
         .func_wrap(
@@ -698,11 +709,34 @@ fn register_network_block_url(
     }
 }
 
-/// Removes only the caller connection's version-2 exact block rules. This
+/// Removes only the caller connection's declarative URL and host block rules. This
 /// version-3 operation supplies no URL or other extension-controlled policy
 /// input and therefore merely reduces the caller's own active rule set.
 fn clear_network_block_urls(caller: &mut Caller<'_, RuntimeState>) -> i32 {
     match request_core(caller, ExtensionRequest::ClearNetworkBlockUrls) {
+        Ok(ExtensionReply::NetworkInterceptAck) => RESULT_OK,
+        Ok(_) | Err(()) => RESULT_ERROR,
+    }
+}
+
+/// Registers one bounded version-4 host/subdomain rule through the ordinary
+/// capability, gatekeeper, and core-owned validation path.
+fn register_network_block_host(
+    caller: &mut Caller<'_, RuntimeState>,
+    host_ptr: i32,
+    host_len: i32,
+) -> i32 {
+    let Ok((host_ptr, host_len)) = guest_range(host_ptr, host_len, MAX_NETWORK_BLOCK_HOST_BYTES)
+    else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(host) = read_guest_bytes(caller, host_ptr, host_len) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    let Ok(host) = String::from_utf8(host) else {
+        return RESULT_INVALID_ARGUMENT;
+    };
+    match request_core(caller, ExtensionRequest::RegisterNetworkBlockHost { host }) {
         Ok(ExtensionReply::NetworkInterceptAck) => RESULT_OK,
         Ok(_) | Err(()) => RESULT_ERROR,
     }
@@ -1220,6 +1254,42 @@ mod tests {
                 blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
                 ExtensionRequest::RegisterNetworkBlockUrl {
                     url: url.to_string(),
+                }
+            );
+            blueice_ipc::extension::write_extension_reply(
+                &mut core,
+                &ExtensionReply::NetworkInterceptAck,
+            )
+            .unwrap();
+        });
+
+        execute_installed_extension(&extension, guest).unwrap();
+        core_thread.join().unwrap();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reactor_forwards_a_bounded_host_block_rule_to_core() {
+        let (root, extension) = installed_extension(
+            "network-block-host",
+            r#"(module
+                (import "blueice" "register_network_block_host" (func $block (param i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "example.test")
+                (func (export "blueice_start")
+                    i32.const 0
+                    i32.const 12
+                    call $block
+                    i32.const 0
+                    i32.ne
+                    if unreachable end))"#,
+        );
+        let (guest, mut core) = UnixStream::pair().unwrap();
+        let core_thread = thread::spawn(move || {
+            assert_eq!(
+                blueice_ipc::extension::read_extension_request(&mut core).unwrap(),
+                ExtensionRequest::RegisterNetworkBlockHost {
+                    host: "example.test".to_string(),
                 }
             );
             blueice_ipc::extension::write_extension_reply(

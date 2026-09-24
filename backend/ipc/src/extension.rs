@@ -44,6 +44,9 @@ pub const MAX_TEXT_WRITE_BYTES: usize = 4 * 1024;
 /// a route for large arbitrary payloads. Core also parses and canonicalizes it
 /// before it becomes active.
 pub const MAX_NETWORK_BLOCK_URL_BYTES: usize = 2 * 1024;
+/// A version-4 declarative host rule accepts one bounded ASCII host, never
+/// a URL, wildcard expression, or arbitrary routing script.
+pub const MAX_NETWORK_BLOCK_HOST_BYTES: usize = 253;
 
 /// Maximum serialized response metadata returned to an extension guest.
 pub const MAX_NETWORK_OBSERVATION_BYTES: usize = 4 * 1024;
@@ -264,8 +267,12 @@ pub enum ExtensionRequest {
     /// the extension disconnects. This is deliberately not a callback,
     /// redirector, header editor, or arbitrary request scripting API.
     RegisterNetworkBlockUrl { url: String },
-    /// Version 3 of `network:intercept`: remove every exact navigation-block
-    /// rule owned by this connection. This cannot affect rules installed by a
+    /// Version 4 of `network:intercept`: block a canonical ASCII host and
+    /// its subdomains at the initial navigation or any redirect target.
+    /// Core validates the host independently before installing the rule.
+    RegisterNetworkBlockHost { host: String },
+    /// Version 3 of `network:intercept`: remove every exact-URL or host
+    /// navigation-block rule owned by this connection. This cannot affect rules installed by a
     /// different extension connection and has no extension-controlled payload,
     /// so it needs no further gatekeeper action review. The same cleanup also
     /// runs automatically when the connection ends.
@@ -565,6 +572,9 @@ mod tests {
             },
             ExtensionRequest::RegisterNetworkBlockUrl {
                 url: "https://example.test/private".to_string(),
+            },
+            ExtensionRequest::RegisterNetworkBlockHost {
+                host: "example.test".to_string(),
             },
             ExtensionRequest::ClearNetworkBlockUrls,
             ExtensionRequest::StorageGet {

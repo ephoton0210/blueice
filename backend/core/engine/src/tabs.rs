@@ -28,6 +28,15 @@ use url::Url;
 /// from becoming a general purpose core-side routing database.
 const MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION: usize = 64;
 
+/// A small, connection-owned declarative rule. Keep URL and host matches
+/// distinct so neither kind can be mistaken for a guest-supplied pattern or
+/// an executable interception callback.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum ExtensionNavigationBlockRule {
+    ExactUrl(String),
+    Host(String),
+}
+
 /// Stable identity for a tab, assigned once at [`TabManager::open_tab`]
 /// (or at [`TabManager::new`] for the initial tab) and never reused --
 /// mirrors `blueice_dom::NodeId`'s own monotonic-counter, never-an-
@@ -216,11 +225,9 @@ pub struct TabManager {
     /// Whether leaving an entry retains a locally displayable page snapshot,
     /// rather than the default URL-only history record.
     history_snapshot_mode: HistorySnapshotMode,
-    /// Exact canonical initial HTTP(S) URLs an extension connection asked
-    /// core to block. The key is an opaque connection ID allocated by the
-    /// core binary, never an extension-supplied identity. Rules are removed
-    /// when that connection ends.
-    extension_navigation_block_rules: HashMap<u64, HashSet<String>>,
+    /// Canonical HTTP(S) URL and ASCII host rules, keyed by an opaque
+    /// core-allocated connection ID. Rules disappear on disconnect.
+    extension_navigation_block_rules: HashMap<u64, HashSet<ExtensionNavigationBlockRule>>,
 }
 
 impl TabManager {
@@ -280,19 +287,42 @@ impl TabManager {
         connection_id: u64,
         url: String,
     ) -> Result<(), String> {
-        let canonical_url = canonical_http_navigation_url(&url)?;
+        self.add_extension_navigation_rule(
+            connection_id,
+            ExtensionNavigationBlockRule::ExactUrl(canonical_http_navigation_url(&url)?),
+        )
+    }
+
+    /// Adds a canonical ASCII host rule. It matches that host and its DNS
+    /// subdomains before a navigation or redirect target opens a connection.
+    pub(crate) fn add_extension_navigation_block_host_rule(
+        &mut self,
+        connection_id: u64,
+        host: String,
+    ) -> Result<(), String> {
+        self.add_extension_navigation_rule(
+            connection_id,
+            ExtensionNavigationBlockRule::Host(canonical_navigation_block_host(&host)?),
+        )
+    }
+
+    fn add_extension_navigation_rule(
+        &mut self,
+        connection_id: u64,
+        rule: ExtensionNavigationBlockRule,
+    ) -> Result<(), String> {
         let rules = self
             .extension_navigation_block_rules
             .entry(connection_id)
             .or_default();
-        if !rules.contains(&canonical_url)
+        if !rules.contains(&rule)
             && rules.len() >= MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION
         {
             return Err(format!(
-                "an extension connection may register at most {MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION} exact navigation-block URLs"
+                "an extension connection may register at most {MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION} navigation-block rules"
             ));
         }
-        rules.insert(canonical_url);
+        rules.insert(rule);
         Ok(())
     }
 
@@ -307,7 +337,7 @@ impl TabManager {
     /// The background fetch worker receives this ordinary data rather than a
     /// reference to `TabManager`, keeping the session thread the sole owner of
     /// live tab state while still letting every redirect hop be evaluated.
-    pub(crate) fn extension_navigation_block_rule_snapshot(&self) -> HashSet<String> {
+    pub(crate) fn extension_navigation_block_rule_snapshot(&self) -> HashSet<ExtensionNavigationBlockRule> {
         self.extension_navigation_block_rules
             .values()
             .flat_map(|rules| rules.iter().cloned())
@@ -735,11 +765,53 @@ impl TabManager {
 /// Produces the sole representation used in declarative navigation rules.
 /// Fragments never cross HTTP, so they cannot make a different network rule;
 /// credentials are forbidden rather than retained in long-lived core state.
-pub(crate) fn extension_navigation_rules_block_url(rules: &HashSet<String>, url: &str) -> bool {
-    let Ok(canonical_url) = canonical_http_navigation_url(url) else {
+pub(crate) fn extension_navigation_rules_block_url(
+    rules: &HashSet<ExtensionNavigationBlockRule>,
+    url: &str,
+) -> bool {
+    let Ok(mut parsed) = Url::parse(url) else {
         return false;
     };
-    rules.contains(&canonical_url)
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return false;
+    }
+    let Some(host) = parsed.host_str().map(|host| host.trim_end_matches('.').to_ascii_lowercase()) else {
+        return false;
+    };
+    let has_credentials = !parsed.username().is_empty() || parsed.password().is_some();
+    parsed.set_fragment(None);
+    let canonical_url = parsed.to_string();
+    rules.iter().any(|rule| match rule {
+        ExtensionNavigationBlockRule::ExactUrl(blocked) => !has_credentials && blocked == &canonical_url,
+        ExtensionNavigationBlockRule::Host(blocked) => {
+            host == *blocked
+                || (blocked.parse::<std::net::Ipv4Addr>().is_err()
+                    && host.strip_suffix(blocked).is_some_and(|prefix| prefix.ends_with('.')))
+        }
+    })
+}
+
+fn canonical_navigation_block_host(input: &str) -> Result<String, String> {
+    if input.is_empty() || input.len() > blueice_ipc::extension::MAX_NETWORK_BLOCK_HOST_BYTES {
+        return Err("navigation-block hosts must be 1–253 ASCII bytes".to_string());
+    }
+    let host = input.strip_suffix('.').unwrap_or(input);
+    if host.split('.').any(|label| {
+        label.is_empty()
+            || label.len() > 63
+            || !label.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+            || !label.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
+            || !label.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    }) {
+        return Err("navigation-block hosts must use ASCII DNS labels without wildcards".to_string());
+    }
+    let canonical = host.to_ascii_lowercase();
+    let parsed = Url::parse(&format!("http://{canonical}/"))
+        .map_err(|_| "navigation-block host cannot be interpreted as a canonical HTTP host".to_string())?;
+    if parsed.host_str() != Some(canonical.as_str()) {
+        return Err("navigation-block host must already use canonical IPv4 or DNS spelling".to_string());
+    }
+    Ok(canonical)
 }
 
 fn canonical_http_navigation_url(input: &str) -> Result<String, String> {
@@ -794,6 +866,65 @@ mod tests {
             .add_extension_navigation_block_rule(1, "https://user:secret@example.test/".to_string())
             .is_err());
         assert!(!tabs.is_extension_navigation_blocked("about:blank"));
+    }
+
+    #[test]
+    fn extension_host_rules_match_exact_hosts_and_subdomains_but_not_suffix_tricks() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        tabs.add_extension_navigation_block_host_rule(41, "EXAMPLE.test.".to_string())
+            .unwrap();
+        assert!(tabs.is_extension_navigation_blocked("https://example.test/path"));
+        assert!(tabs.is_extension_navigation_blocked("http://sub.example.test/other"));
+        assert!(!tabs.is_extension_navigation_blocked("https://notexample.test/"));
+        assert!(!tabs.is_extension_navigation_blocked("https://example.test.evil/"));
+        assert!(!tabs.is_extension_navigation_blocked("about:blank"));
+        tabs.add_extension_navigation_block_host_rule(41, "127.0.0.1".to_string())
+            .unwrap();
+        assert!(tabs.is_extension_navigation_blocked("http://127.0.0.1/"));
+        assert!(!tabs.is_extension_navigation_blocked("http://sub.127.0.0.1/"));
+        tabs.clear_extension_navigation_block_rules(40);
+        assert!(tabs.is_extension_navigation_blocked("https://example.test/"));
+        tabs.clear_extension_navigation_block_rules(41);
+        assert!(!tabs.is_extension_navigation_blocked("https://example.test/"));
+    }
+
+    #[test]
+    fn extension_host_rules_reject_urls_wildcards_unicode_and_invalid_dns_labels() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        for host in [
+            "https://example.test",
+            "*.example.test",
+            "example..test",
+            "-example.test",
+            "example-.test",
+            "ex ample.test",
+            "exämple.test",
+            "example.test:443",
+            "127.000.000.001",
+        ] {
+            assert!(
+                tabs.add_extension_navigation_block_host_rule(7, host.to_string())
+                    .is_err(),
+                "accepted invalid host {host:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn extension_url_and_host_rules_share_a_quota_and_clear_together() {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        tabs.add_extension_navigation_block_rule(7, "https://exact.example/".to_string())
+            .unwrap();
+        for index in 1..MAX_EXTENSION_NAVIGATION_BLOCK_RULES_PER_CONNECTION {
+            tabs.add_extension_navigation_block_host_rule(7, format!("host{index}.example"))
+                .unwrap();
+        }
+        assert!(tabs.add_extension_navigation_block_host_rule(7, "overflow.example".to_string()).is_err());
+        assert!(tabs.is_extension_navigation_blocked("https://exact.example/"));
+        assert!(tabs.is_extension_navigation_blocked("https://host1.example/"));
+        tabs.clear_extension_navigation_block_rules(7);
+        assert!(!tabs.is_extension_navigation_blocked("https://exact.example/"));
+        assert!(!tabs.is_extension_navigation_blocked("https://host1.example/"));
     }
 
     #[test]
