@@ -33,10 +33,17 @@ impl Vm {
             return Ok(prototype);
         }
         let constructor = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(constructor)?.unwrap();
+        let function_prototype = self
+            .heap
+            .prototype(constructor)
+            .expect("the String constructor is live")
+            .unwrap();
         let object_prototype = self.object_prototype;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self
+            .heap
+            .root(prototype)
+            .expect("the prototype was just allocated");
         let result = (|| {
             self.install_symbol_native(
                 prototype,
@@ -95,7 +102,9 @@ impl Vm {
             self.install_iterator_to_string_tag_accessor(prototype, function_prototype)
         })();
         if let Err(error) = result {
-            self.heap.unroot(root)?;
+            self.heap
+                .unroot(root)
+                .expect("the prototype's root was just registered");
             return Err(error);
         }
         self.iterator_base = Some(prototype);
@@ -214,7 +223,10 @@ impl Vm {
         let function_prototype = self.function_prototype()?;
         let base = self.base_iterator_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self
+            .heap
+            .root(prototype)
+            .expect("the prototype was just allocated");
         let result = (|| {
             self.install_native(
                 prototype,
@@ -233,7 +245,9 @@ impl Vm {
             Ok(())
         })();
         if let Err(error) = result {
-            self.heap.unroot(root)?;
+            self.heap
+                .unroot(root)
+                .expect("the prototype's root was just registered");
             return Err(error);
         }
         self.iterator_wrapper_prototype = Some(prototype);
@@ -249,7 +263,10 @@ impl Vm {
         let function_prototype = self.function_prototype()?;
         let base = self.base_iterator_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self
+            .heap
+            .root(prototype)
+            .expect("the prototype was just allocated");
         let result = (|| {
             self.install_native(
                 prototype,
@@ -275,7 +292,9 @@ impl Vm {
             )
         })();
         if let Err(error) = result {
-            self.heap.unroot(root)?;
+            self.heap
+                .unroot(root)
+                .expect("the prototype's root was just registered");
             return Err(error);
         }
         self.iterator_helper_prototype = Some(prototype);
@@ -335,7 +354,11 @@ impl Vm {
                 "Iterator wrapper next requires an iterator wrapper".into(),
             ));
         };
-        let Some((iterator, next)) = self.heap.iterator_wrapper(*wrapper)? else {
+        let Some((iterator, next)) = self
+            .heap
+            .iterator_wrapper(*wrapper)
+            .expect("a receiver object is live")
+        else {
             return Err(RuntimeError::TypeError(
                 "Iterator wrapper next requires an iterator wrapper".into(),
             ));
@@ -357,7 +380,11 @@ impl Vm {
                 "Iterator wrapper return requires an iterator wrapper".into(),
             ));
         };
-        let Some((iterator, _)) = self.heap.iterator_wrapper(*wrapper)? else {
+        let Some((iterator, _)) = self
+            .heap
+            .iterator_wrapper(*wrapper)
+            .expect("a receiver object is live")
+        else {
             return Err(RuntimeError::TypeError(
                 "Iterator wrapper return requires an iterator wrapper".into(),
             ));
