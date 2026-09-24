@@ -10,6 +10,14 @@ and same-stream parent/symbol-ID receipt. It adds neither a new target nor a
 symbol-inventory disclosure; source text, spans, types, contracts, bytecode,
 VM objects, and values remain unavailable through this operation.
 
+**Compiler/MCP symbol export update:** Compiler IPC v7 carries that same
+checker-owned `exported` boolean in its existing exact-generation
+`GetStaticSymbol` reply. The v3 fixed query-only manifest is unchanged:
+the owner still registers the closed project, and MCP still requires a
+same-session symbol-ID inventory receipt before `debug_get_symbol` forwards
+the query. No source-read, project-update, build, or output-write authority
+is added. Real core/MCP coverage checks both local and exported declarations.
+
 **Compiler work-set pagination update:** Compiler IPC v6 and its v3 fixed
 query-only manifest add `ListWorkSet` as the tenth read-only operation.
 `bluetsc_list_work_set` exposes bounded pages of the four incremental check

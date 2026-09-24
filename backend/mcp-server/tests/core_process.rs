@@ -829,6 +829,8 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
 
     let mut symbol_source_ids = Vec::new();
     let mut symbol_contract_ids = Vec::new();
+    let mut saw_local_symbol = false;
+    let mut saw_exported_symbol = false;
     for symbol_id in &symbol_ids {
         let result = compiler_tool!(
             "debug_get_symbol",
@@ -845,11 +847,23 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
         else {
             panic!("discovered symbol ID must resolve through its exact query")
         };
+        match symbol.name.as_str() {
+            "CoreFixtureSettings" => {
+                assert!(!symbol.exported);
+                saw_local_symbol = true;
+            }
+            "coreFixtureSettings" | "coreRegisteredAnswer" => {
+                assert!(symbol.exported);
+                saw_exported_symbol = true;
+            }
+            _ => {}
+        }
         symbol_source_ids.push(symbol.source_id);
         if let Some(contract_id) = symbol.contract_id {
             symbol_contract_ids.push(contract_id);
         }
     }
+    assert!(saw_local_symbol && saw_exported_symbol);
     assert!(symbol_source_ids.iter().all(|id| source_ids.contains(id)));
     assert!(
         !symbol_contract_ids.is_empty(),

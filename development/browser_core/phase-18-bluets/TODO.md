@@ -1086,6 +1086,12 @@ or second module resolver to bypass them.
   closed fixture profile through an explicitly selected local endpoint; it
   does not provide general project catalog/distribution or project update.
   Explicit artifact-write elevation remains a separate required capability.
+  Compiler IPC v7 now includes the BlueTS checker's exported/not-exported
+  classification in the existing generation-bound `GetStaticSymbol` reply.
+  The v3 fixed query-only operation manifest is unchanged, and MCP still
+  requires an exact same-session symbol-ID inventory receipt before forwarding
+  `debug_get_symbol`. Real core/MCP coverage distinguishes a local interface
+  from exported declarations without reading source or granting a write path.
 
   Core lifecycle foundation delivered: a trusted core startup owner now builds
   `CoreCompilerProjectCatalog`, registers complete closed projects through its

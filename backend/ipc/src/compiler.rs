@@ -10,6 +10,9 @@
 //! path, or write capability. Callers can therefore only act on opaque
 //! project and generation handles minted by that owner.
 //!
+//! Version seven adds the checker's export classification to the existing
+//! generation-bound static-symbol query reply. It adds no operation or
+//! authority, so the fixed query-only capability manifest remains v3.
 //! Version six adds source-free, one-shot pages of incremental compiler
 //! work-set module identities for an exact checked generation. Version five
 //! added a core-minted, fixed query-only capability manifest to
@@ -35,7 +38,7 @@ use std::io::{self, Read, Write};
 
 /// Independent protocol version for registered-project compiler IPC. It does
 /// not share the browser frontend protocol's lifecycle.
-pub const COMPILER_PROTOCOL_VERSION: u32 = 6;
+pub const COMPILER_PROTOCOL_VERSION: u32 = 7;
 
 /// The maximum encoded request or reply accepted by this protocol. The engine
 /// adapter applies a smaller response budget before a reply reaches this
@@ -391,6 +394,8 @@ pub struct CompilerStaticSymbol {
     pub id: u32,
     pub name: String,
     pub kind: CompilerSymbolKind,
+    /// The BlueTS checker's exact module-export classification.
+    pub exported: bool,
     pub module: String,
     pub start: u64,
     pub end: u64,
@@ -802,6 +807,25 @@ mod tests {
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_compiler_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_compiler_reply(&mut receiver).unwrap(), reply);
+
+        for exported in [false, true] {
+            let symbol = CompilerReply::StaticSymbol(CompilerStaticSymbol {
+                generation: generation(),
+                id: 4,
+                name: "ProjectControlledName".to_string(),
+                kind: CompilerSymbolKind::Interface,
+                exported,
+                module: "project:///app/main.ts".to_string(),
+                start: 0,
+                end: 31,
+                static_type_id: None,
+                source_id: 0,
+                contract_id: Some(2),
+            });
+            let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+            write_compiler_reply(&mut sender, &symbol).unwrap();
+            assert_eq!(read_compiler_reply(&mut receiver).unwrap(), symbol);
+        }
 
         let diagnostic_page = CompilerReply::DiagnosticPage(CompilerDiagnosticPage {
             generation: generation(),

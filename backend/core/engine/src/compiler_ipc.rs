@@ -770,6 +770,7 @@ impl CompilerServiceIpcAdapter {
             id: symbol.id.0,
             name: symbol.name,
             kind: symbol_kind_to_wire(symbol.kind),
+            exported: symbol.exported,
             module: symbol.span.module,
             start,
             end,
@@ -1794,8 +1795,19 @@ mod tests {
         };
         assert_eq!(symbol.generation, check.generation);
         assert_eq!(symbol.kind, CompilerSymbolKind::Import);
+        assert!(!symbol.exported);
         assert_eq!(symbol.module, ENTRY);
         assert_ne!(symbol.module, "import { answer } from './math';");
+        let CompilerReply::StaticSymbol(exported) =
+            adapter.handle(CompilerRequest::GetStaticSymbol {
+                generation: check.generation,
+                symbol_id: 1,
+            })
+        else {
+            panic!("exported declaration must be generation-addressable")
+        };
+        assert_eq!(exported.name, "value");
+        assert!(exported.exported);
     }
 
     #[test]

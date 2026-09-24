@@ -611,7 +611,7 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
-        description = "Read one source-text-free static BlueTS symbol previously returned by debug_list_static_metadata with kind symbols, from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id and generation must come from bluetsc_check using that receipt. Guessed, wrong-category, stale, or unknown handles return a structured tool error before dereference. This never reads project source, exposes runtime values, alters a project, or writes artifacts."
+        description = "Read one source-text-free static BlueTS symbol, including its checker-owned export classification, previously returned by debug_list_static_metadata with kind symbols, from an exact compiler generation observed by this MCP session. session_id must be the receipt returned by bluetsc_session_capabilities; project_id and generation must come from bluetsc_check using that receipt. Guessed, wrong-category, stale, or unknown handles return a structured tool error before dereference. This never reads project source, exposes runtime values, alters a project, or writes artifacts."
     )]
     async fn debug_get_symbol(
         &self,
