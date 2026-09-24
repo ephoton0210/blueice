@@ -29,10 +29,14 @@ use blueice_extension_host::{
     ExtensionConnectionAuthentication, ExtensionRegistry, ExtensionStorage,
 };
 use blueice_ipc::extension::{ExtensionRuntimeEvent, NetworkResponseInfo, NetworkTraceInfo};
-use std::io::Read;
+use blueice_ipc::permission_control::{
+    read_permission_control_request, write_permission_control_reply, OptionalCapabilityInfo,
+    PermissionControlReply, PermissionControlRequest,
+};
+use std::io::{self, Read, Write};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitCode};
+use std::process::{Child, Command, ExitCode, Stdio};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     mpsc, Arc, Mutex,
@@ -79,6 +83,17 @@ struct Args {
     /// validated package. This enables a fresh child credential; without
     /// it, the explicit extension socket remains the legacy development mode.
     extension_host: Option<PathBuf>,
+    /// Explicitly enables a private, framed parent-to-core permission pipe on
+    /// stdin/stdout. It is never multiplexed over the public frontend socket.
+    permission_control_stdio: bool,
+}
+
+#[derive(Clone)]
+struct PermissionControlMetadata {
+    extension_id: String,
+    name: String,
+    version: String,
+    optional: Vec<OptionalCapabilityInfo>,
 }
 
 struct ExtensionService {
@@ -138,6 +153,10 @@ fn spawn_extension_host(
         .arg("--manifest")
         .arg(manifest)
         .env("BLUEICE_EXTENSION_AUTH_TOKEN", authentication)
+        // The parent's stdio may be the private permission-control pipe.
+        // Never let an extension child read commands or forge replies.
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
         .spawn()
         .map_err(|error| {
             format!(
@@ -162,6 +181,77 @@ fn stop_extension_host(mut child: Child) {
     let _ = child.wait();
 }
 
+fn permission_control_reply(
+    request: PermissionControlRequest,
+    metadata: &PermissionControlMetadata,
+    registry: &ExtensionRegistry,
+    session_requests: &mpsc::Sender<ExtensionPageRequest>,
+) -> PermissionControlReply {
+    match request {
+        PermissionControlRequest::Inspect => PermissionControlReply::State {
+            extension_id: metadata.extension_id.clone(),
+            name: metadata.name.clone(),
+            version: metadata.version.clone(),
+            optional: metadata.optional.iter().map(|entry| OptionalCapabilityInfo {
+                capability: entry.capability.clone(),
+                granted: registry.has_capability(&metadata.extension_id, &entry.capability),
+                origins: entry.origins.clone(),
+            }).collect(),
+        },
+        PermissionControlRequest::Grant { capability } => {
+            if !metadata.optional.iter().any(|entry| entry.capability == capability) {
+                return PermissionControlReply::Rejected {
+                    reason: "capability is not an installed optional declaration".into(),
+                };
+            }
+            match registry.grant_optional(&metadata.extension_id, &capability) {
+                Ok(changed) => PermissionControlReply::Updated { capability, granted: true, changed },
+                Err(reason) => PermissionControlReply::Rejected { reason },
+            }
+        }
+        PermissionControlRequest::Revoke { capability } => {
+            if !metadata.optional.iter().any(|entry| entry.capability == capability) {
+                return PermissionControlReply::Rejected {
+                    reason: "capability is not an installed optional declaration".into(),
+                };
+            }
+            match session::revoke_optional_and_wait_for_cleanup(
+                registry,
+                &metadata.extension_id,
+                &capability,
+                session_requests,
+            ) {
+                Ok(changed) => PermissionControlReply::Updated { capability, granted: false, changed },
+                Err(reason) => PermissionControlReply::Rejected { reason },
+            }
+        }
+    }
+}
+
+/// A private parent pipe, never the public frontend/extension wire. Any EOF,
+/// invalid frame, or broken reply pipe withdraws all grants this channel
+/// could have made. The session's existing idle poll retires their published
+/// effects even if the parent disappeared before receiving an acknowledgement.
+fn serve_permission_control<R: Read, W: Write>(
+    mut reader: R,
+    mut writer: W,
+    metadata: PermissionControlMetadata,
+    registry: Arc<ExtensionRegistry>,
+    session_requests: mpsc::Sender<ExtensionPageRequest>,
+) -> io::Result<()> {
+    let result = (|| {
+        while let Some(request) = read_permission_control_request(&mut reader)? {
+            let reply = permission_control_reply(request, &metadata, &registry, &session_requests);
+            write_permission_control_reply(&mut writer, &reply)?;
+        }
+        Ok(())
+    })();
+    for entry in &metadata.optional {
+        let _ = registry.revoke_optional(&metadata.extension_id, &entry.capability);
+    }
+    result
+}
+
 /// Takes an injectable argument iterator (rather than reading
 /// `std::env::args()` directly) so every flag-parsing branch is a
 /// plain unit test, not something only exercisable by actually
@@ -181,6 +271,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut extension_socket = None;
     let mut extension_manifest = None;
     let mut extension_host = None;
+    let mut permission_control_stdio = false;
 
     let mut it = args;
     while let Some(flag) = it.next() {
@@ -205,6 +296,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--extension-socket" => extension_socket = Some(PathBuf::from(value()?)),
             "--extension-manifest" => extension_manifest = Some(PathBuf::from(value()?)),
             "--extension-host" => extension_host = Some(PathBuf::from(value()?)),
+            "--permission-control-stdio" => permission_control_stdio = true,
             other => return Err(format!("unrecognized argument: {other}")),
         }
     }
@@ -220,6 +312,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--extension-host requires --extension-socket and --extension-manifest".to_string(),
         );
     }
+    if permission_control_stdio && extension_host.is_none() {
+        return Err("--permission-control-stdio requires an authenticated --extension-host".to_string());
+    }
     Ok(Args {
         socket,
         width,
@@ -232,6 +327,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         extension_socket,
         extension_manifest,
         extension_host,
+        permission_control_stdio,
     })
 }
 
@@ -814,6 +910,7 @@ fn main() -> ExitCode {
     // `--extension-host` is supplied, the listener additionally requires the
     // freshly generated credential from exactly that core-spawned child.
     let mut extension_capability_origins = Default::default();
+    let mut permission_metadata = None;
     let (extension_service, extension_runtime_start, extension_runtime_events) = match (
         args.extension_socket.as_ref(),
         args.extension_manifest.as_deref(),
@@ -830,6 +927,21 @@ fn main() -> ExitCode {
                 }
             };
             extension_capability_origins = installed.manifest().capability_origins().clone();
+            permission_metadata = Some(PermissionControlMetadata {
+                extension_id: installed.extension_id().to_string(),
+                name: installed.manifest().name().to_string(),
+                version: installed.manifest().version().to_string(),
+                optional: installed.manifest().capabilities().optional().iter().map(|capability| {
+                    OptionalCapabilityInfo {
+                        capability: capability.clone(),
+                        granted: false,
+                        origins: installed.manifest().capability_origins()
+                            .get(capability)
+                            .map(|origins| origins.iter().cloned().collect())
+                            .unwrap_or_default(),
+                    }
+                }).collect(),
+            });
             if let Some(parent) = socket.parent() {
                 if let Err(error) = blueice_ipc::local_socket::ensure_private_socket_dir(parent) {
                     eprintln!(
@@ -942,8 +1054,12 @@ fn main() -> ExitCode {
     let extension_permissions = extension_service.as_ref().map(|service| {
         (Arc::clone(&service.registry), service.extension_id.clone())
     });
+    let mut permission_session_requests = None;
     let (extension_requests, mut extension_host_child) = if let Some(service) = extension_service {
         let (tx, rx) = mpsc::channel();
+        if args.permission_control_stdio {
+            permission_session_requests = Some(tx.clone());
+        }
         let required_authentication = service.required_authentication.clone();
         let (authenticated_ready, ready_rx) = if args.extension_host.is_some() {
             let (ready_tx, ready_rx) = mpsc::channel();
@@ -997,6 +1113,20 @@ fn main() -> ExitCode {
     } else {
         (None, None)
     };
+
+    if args.permission_control_stdio {
+        let metadata = permission_metadata.take().expect("permission control requires a package");
+        let (registry, _) = extension_permissions.as_ref().expect("permission control requires a registry");
+        let registry = Arc::clone(registry);
+        let requests = permission_session_requests.take().expect("permission control requires a session channel");
+        thread::spawn(move || {
+            if let Err(error) = serve_permission_control(
+                io::stdin(), io::stdout(), metadata, registry, requests,
+            ) {
+                eprintln!("blueice-core: private permission control ended: {error}");
+            }
+        });
+    }
 
     // A stale socket file from a previous run (e.g. one that crashed
     // instead of exiting cleanly) makes bind() fail with AddrInUse
@@ -1154,6 +1284,7 @@ mod tests {
         assert_eq!(parsed.extension_socket, None);
         assert_eq!(parsed.extension_manifest, None);
         assert_eq!(parsed.extension_host, None);
+        assert!(!parsed.permission_control_stdio);
     }
 
     #[test]
@@ -1190,6 +1321,7 @@ mod tests {
                 extension_socket: None,
                 extension_manifest: None,
                 extension_host: None,
+                permission_control_stdio: false,
             }
         );
     }
@@ -1266,6 +1398,93 @@ mod tests {
             parsed.extension_host,
             Some(PathBuf::from("/tmp/blueice-extension-host"))
         );
+    }
+
+    #[test]
+    fn permission_control_requires_an_authenticated_core_owned_host() {
+        assert_eq!(
+            args(&["--socket", "/tmp/x.sock", "--permission-control-stdio"]),
+            Err("--permission-control-stdio requires an authenticated --extension-host".to_string())
+        );
+        let parsed = args(&[
+            "--socket", "/tmp/x.sock",
+            "--extension-socket", "/tmp/ext.sock",
+            "--extension-manifest", "/tmp/extension.json",
+            "--extension-host", "/tmp/blueice-extension-host",
+            "--permission-control-stdio",
+        ]).unwrap();
+        assert!(parsed.permission_control_stdio);
+    }
+
+    #[test]
+    fn private_parent_pipe_lists_only_installed_optional_grants_and_revokes_on_eof() {
+        use blueice_ipc::permission_control::{
+            read_permission_control_reply, write_permission_control_request,
+        };
+
+        let root = std::env::temp_dir().join(format!("blueice-permission-control-test-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let manifest = root.join("extension.json");
+        std::fs::write(&manifest, r#"{"name":"Consent test","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["storage"],"runtime_ephemeral":["dom:read"]}}"#).unwrap();
+        std::fs::write(root.join("extension.wasm"), b"\0asm\x01\0\0\0").unwrap();
+        let installed = load_installed_extension(&manifest).unwrap();
+        let id = installed.extension_id().to_string();
+        let registry = Arc::new(registry_for_installed_extension(&installed));
+        let metadata = PermissionControlMetadata {
+            extension_id: id.clone(),
+            name: installed.manifest().name().to_string(),
+            version: installed.manifest().version().to_string(),
+            optional: vec![OptionalCapabilityInfo {
+                capability: "storage".into(), granted: false, origins: Vec::new(),
+            }],
+        };
+        let malformed_metadata = metadata.clone();
+        let mut input = Vec::new();
+        for request in [
+            PermissionControlRequest::Inspect,
+            PermissionControlRequest::Grant { capability: "dom:read".into() },
+            PermissionControlRequest::Grant { capability: "storage".into() },
+            PermissionControlRequest::Inspect,
+            PermissionControlRequest::Revoke { capability: "storage".into() },
+            PermissionControlRequest::Inspect,
+            PermissionControlRequest::Grant { capability: "storage".into() },
+        ] {
+            write_permission_control_request(&mut input, &request).unwrap();
+        }
+        let (tx, rx) = mpsc::channel();
+        drop(rx); // revoke must fail closed when the session is unavailable
+        let mut output = Vec::new();
+        serve_permission_control(input.as_slice(), &mut output, metadata, Arc::clone(&registry), tx).unwrap();
+        let mut replies = output.as_slice();
+        assert!(matches!(read_permission_control_reply(&mut replies).unwrap(),
+            PermissionControlReply::State { optional, .. } if !optional[0].granted));
+        assert!(matches!(read_permission_control_reply(&mut replies).unwrap(),
+            PermissionControlReply::Rejected { .. }));
+        assert_eq!(read_permission_control_reply(&mut replies).unwrap(),
+            PermissionControlReply::Updated { capability: "storage".into(), granted: true, changed: true });
+        assert!(matches!(read_permission_control_reply(&mut replies).unwrap(),
+            PermissionControlReply::State { optional, .. } if optional[0].granted));
+        assert!(matches!(read_permission_control_reply(&mut replies).unwrap(),
+            PermissionControlReply::Rejected { .. }));
+        assert!(matches!(read_permission_control_reply(&mut replies).unwrap(),
+            PermissionControlReply::State { optional, .. } if !optional[0].granted));
+        assert_eq!(read_permission_control_reply(&mut replies).unwrap(),
+            PermissionControlReply::Updated { capability: "storage".into(), granted: true, changed: true });
+        assert!(!registry.has_capability(&id, "storage"), "parent-pipe EOF must withdraw even a newly granted permission");
+        assert!(!registry.has_capability(&id, "dom:read"), "ephemeral declarations are never optional grants");
+
+        let malformed_registry = Arc::new(registry_for_installed_extension(&installed));
+        let mut malformed_input = Vec::new();
+        write_permission_control_request(&mut malformed_input,
+            &PermissionControlRequest::Grant { capability: "storage".into() }).unwrap();
+        malformed_input.extend_from_slice(&u32::MAX.to_le_bytes());
+        let (tx, rx) = mpsc::channel();
+        drop(rx);
+        assert!(serve_permission_control(malformed_input.as_slice(), Vec::new(), malformed_metadata,
+            Arc::clone(&malformed_registry), tx).is_err());
+        assert!(!malformed_registry.has_capability(&id, "storage"),
+            "a malformed parent frame must withdraw an earlier grant");
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -62,19 +62,24 @@ A scoped grant denies `about:` pages. An omitted scope retains the
 pre-existing all-origin grant for backward compatibility; `ui:inject` and
 `storage` do not gain an origin scope from this field.
 
-Only `declared` grants a capability today. The core-spawned host negotiates
+Only `declared` grants a capability by default. The core-spawned host negotiates
 compatible API versions for every manifest tier at startup, including
-`optional` and `runtime_ephemeral`, but **neither can be exercised**: there is
-no user-consent or authenticated gesture flow yet. Version negotiation is not
-permission. Do not interpret their presence or negotiation as a grant. The
-internal, process-lifetime registry retains optional declarations and has a
-live transition that denies subsequent operations after revocation. Core
+`optional` and `runtime_ephemeral`; version negotiation is not permission.
+Normal launcher use has no user-consent or authenticated gesture flow, so
+neither tier is user-grantable there yet. An explicitly enabled, private
+core-parent stdio protocol can inspect, grant, and revoke installed `optional`
+declarations for integration and future trusted-parent wiring. It is not an
+extension API, public frontend/MCP message, or page action; it cannot grant
+`runtime_ephemeral` declarations. The process-lifetime registry denies
+subsequent operations after revocation. Core
 also checks the grant generation when evaluating declarative navigation rules,
 so old rules become inert on revoke and cannot revive on regrant. Stale rule
 registrations that crossed Gatekeeper review are denied if the grant generation
 changed; core rechecks the original generation at the actual rule write, even
 for a request processed after its caller timed out.
-Stale rule entries and already-published UI are not yet synchronously cleared. No
+The private revoke completion barrier retires stale rule entries and
+already-published UI before acknowledging a parent revoke; channel EOF
+withdraws grants and the session's idle poll retires their effects. No
 client, guest, or public core IPC path can invoke that transition. The
 shared launcher IPC accepts both human frontend
 and AI clients, so an ordinary client message or toolbar activation cannot by

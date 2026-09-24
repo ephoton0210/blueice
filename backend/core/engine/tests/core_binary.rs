@@ -169,6 +169,52 @@ fn extension_host_probe_child_authenticates_to_core() {
     );
 }
 
+/// This test-only host is the peer of the compiled-core parent-pipe test. It
+/// authenticates exactly like the installed child but has a separate private
+/// test socket for asking it to attempt an optional storage operation.
+#[test]
+fn extension_host_probe_child_observes_optional_grants() {
+    let _guard = core_process_test_guard();
+    let Ok(probe_socket) = std::env::var("BLUEICE_TEST_PROBE_SOCKET") else {
+        return;
+    };
+    use blueice_ipc::extension::{
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    };
+    use std::collections::BTreeMap;
+
+    let socket = std::env::var("BLUEICE_TEST_EXTENSION_SOCKET").unwrap();
+    let manifest = std::env::var("BLUEICE_TEST_EXTENSION_MANIFEST").unwrap();
+    let authentication = std::env::var("BLUEICE_EXTENSION_AUTH_TOKEN").unwrap();
+    let installed = blueice_extension_host::load_installed_extension(manifest).unwrap();
+    let mut extension = UnixStream::connect(socket).unwrap();
+    write_extension_request(&mut extension, &ExtensionRequest::HelloAuthenticated {
+        extension_id: installed.extension_id().to_string(),
+        capability_versions: BTreeMap::from([("storage".to_string(), 1)]),
+        authentication,
+    }).unwrap();
+    assert!(matches!(read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck { unsupported_capabilities } if unsupported_capabilities.is_empty()));
+    write_extension_request(&mut extension, &ExtensionRequest::RuntimeReady).unwrap();
+    assert_eq!(read_extension_reply(&mut extension).unwrap(), ExtensionReply::RuntimeStart);
+
+    let mut probe = UnixStream::connect(probe_socket).unwrap();
+    loop {
+        let mut command = [0_u8; 1];
+        if probe.read_exact(&mut command).is_err() || command[0] == b'q' {
+            break;
+        }
+        assert_eq!(command[0], b'g');
+        write_extension_request(&mut extension, &ExtensionRequest::StorageGet { key: "sample".into() }).unwrap();
+        let result = match read_extension_reply(&mut extension).unwrap() {
+            ExtensionReply::StorageGetResult { value: None } => b'A',
+            ExtensionReply::CapabilityDenied { capability, .. } if capability == "storage" => b'D',
+            other => panic!("unexpected optional storage result: {other:?}"),
+        };
+        probe.write_all(&[result]).unwrap();
+    }
+}
+
 #[test]
 fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
     let _guard = core_process_test_guard();
@@ -1760,6 +1806,115 @@ fn optional_and_ephemeral_manifest_entries_cannot_be_self_granted_over_core_ipc(
     blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
         .unwrap();
     assert!(core.wait().unwrap().success());
+    let _ = std::fs::remove_dir_all(package_root);
+}
+
+#[test]
+fn private_parent_pipe_grants_and_revokes_optional_capability_in_a_real_core() {
+    let _guard = core_process_test_guard();
+    use blueice_ipc::permission_control::{
+        read_permission_control_reply, write_permission_control_request,
+        PermissionControlReply, PermissionControlRequest,
+    };
+
+    let core_socket = unique_socket_path("perm-core");
+    let extension_socket = unique_private_extension_socket_path("perm");
+    let probe_socket = unique_socket_path("perm-probe");
+    let frame_dir = std::env::temp_dir().join(format!("blueice-permission-frames-{}", std::process::id()));
+    let (package_root, manifest, _) = extension_manifest_package("permission-parent", &[]);
+    std::fs::write(&manifest, r#"{"name":"Optional storage","version":"1","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["storage"],"runtime_ephemeral":["dom:read"]}}"#).unwrap();
+    let extension_id = blueice_extension_host::load_installed_extension(&manifest).unwrap().extension_id().to_string();
+    let host = core_extension_host_probe_script(&package_root, "extension_host_probe_child_observes_optional_grants");
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+    let _ = std::fs::remove_file(&probe_socket);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let probe_listener = UnixListener::bind(&probe_socket).unwrap();
+    probe_listener.set_nonblocking(true).unwrap();
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket", core_socket.to_str().unwrap(),
+            "--extension-socket", extension_socket.to_str().unwrap(),
+            "--extension-manifest", manifest.to_str().unwrap(),
+            "--extension-host", host.to_str().unwrap(),
+            "--permission-control-stdio",
+            "--frame-dir", frame_dir.to_str().unwrap(),
+        ])
+        .env("BLUEICE_TEST_PROBE_SOCKET", &probe_socket)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn core with a private parent permission pipe");
+    assert!(wait_for(&core_socket, Duration::from_secs(5)));
+    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut probe = loop {
+        match probe_listener.accept() {
+            Ok((stream, _)) => break stream,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(error) => panic!("authenticated host never reached its private probe socket: {error}"),
+        }
+    };
+    probe.set_nonblocking(false).unwrap();
+    probe.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let mut control_in = core.stdin.take().unwrap();
+    let mut control_out = core.stdout.take().unwrap();
+    let probe_get = |probe: &mut UnixStream| {
+        probe.write_all(b"g").unwrap();
+        let mut result = [0_u8; 1];
+        probe.read_exact(&mut result).unwrap();
+        result[0]
+    };
+    assert_eq!(probe_get(&mut probe), b'D', "optional declaration must not grant itself");
+
+    write_permission_control_request(&mut control_in, &PermissionControlRequest::Inspect).unwrap();
+    let state = read_permission_control_reply(&mut control_out).unwrap();
+    let PermissionControlReply::State { extension_id: observed_id, optional, .. } = state else {
+        panic!("expected the installed permission state, got {state:?}")
+    };
+    assert_eq!(observed_id, extension_id);
+    assert_eq!(optional.len(), 1, "runtime-ephemeral declarations are not optional grants");
+    assert_eq!(optional[0].capability, "storage");
+    assert!(!optional[0].granted);
+
+    write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant { capability: "dom:read".into() }).unwrap();
+    assert!(matches!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Rejected { .. }));
+    assert_eq!(probe_get(&mut probe), b'D');
+    write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant { capability: "storage".into() }).unwrap();
+    assert_eq!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated {
+        capability: "storage".into(), granted: true, changed: true,
+    });
+    assert_eq!(probe_get(&mut probe), b'A', "the same authenticated host connection must gain the optional capability");
+
+    write_permission_control_request(&mut control_in, &PermissionControlRequest::Revoke { capability: "storage".into() }).unwrap();
+    assert_eq!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated {
+        capability: "storage".into(), granted: false, changed: true,
+    });
+    assert_eq!(probe_get(&mut probe), b'D', "the completed revoke must deny the existing host connection");
+    write_permission_control_request(&mut control_in, &PermissionControlRequest::Grant { capability: "storage".into() }).unwrap();
+    assert!(matches!(read_permission_control_reply(&mut control_out).unwrap(), PermissionControlReply::Updated { granted: true, .. }));
+    assert_eq!(probe_get(&mut probe), b'A');
+    drop(control_in);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        if probe_get(&mut probe) == b'D' {
+            break;
+        }
+        assert!(Instant::now() < deadline, "parent pipe EOF must revoke its optional grants");
+        thread::sleep(Duration::from_millis(20));
+    }
+
+    probe.write_all(b"q").unwrap();
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown).unwrap();
+    assert!(core.wait().unwrap().success());
+    assert!(!core_socket.exists());
+    assert!(!extension_socket.exists());
+    let _ = std::fs::remove_file(probe_socket);
     let _ = std::fs::remove_dir_all(package_root);
 }
 

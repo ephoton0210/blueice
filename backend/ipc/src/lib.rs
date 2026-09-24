@@ -39,6 +39,7 @@ pub mod downloads;
 pub mod extension;
 pub mod gatekeeper;
 pub mod local_socket;
+pub mod permission_control;
 pub mod script;
 pub mod shm;
 
