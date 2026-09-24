@@ -29,6 +29,8 @@ use crate::script::javascript::{
     JavaScriptPageDebuggerProgram, JavaScriptPageDebuggerSafePoint,
     JavaScriptPageDebuggerStaticMetadata, JavaScriptPageDebuggerStaticMetadataContractDisplay,
     JavaScriptPageDebuggerStaticMetadataContractId,
+    JavaScriptPageDebuggerStaticMetadataContractLocation,
+    JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
     JavaScriptPageDebuggerStaticMetadataContractTarget,
     JavaScriptPageDebuggerStaticMetadataContractValidation,
     JavaScriptPageDebuggerStaticMetadataLoweringSummary,
@@ -282,6 +284,10 @@ pub trait PageHostClient {
         false
     }
 
+    fn debugger_bluets_metadata_contract_location_available(&self) -> bool {
+        false
+    }
+
     /// Whether this private peer can verify an exact symbol/type pair.
     fn debugger_bluets_metadata_symbol_type_available(&self) -> bool {
         false
@@ -472,6 +478,20 @@ pub trait PageHostClient {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "page-host child does not implement BlueTS debugger symbol locations",
+        ))
+    }
+
+    fn debugger_bluets_metadata_contract_location(
+        &mut self,
+        _tab_id: u64,
+        _document_generation: u64,
+        _program: PageHostDebuggerProgram,
+        _metadata: PageHostDebuggerMetadataHandle,
+        _contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "page-host child does not implement BlueTS debugger contract locations",
         ))
     }
 
@@ -690,6 +710,10 @@ impl PageHostClient for PageHostConnection {
     }
 
     fn debugger_bluets_metadata_symbol_location_available(&self) -> bool {
+        true
+    }
+
+    fn debugger_bluets_metadata_contract_location_available(&self) -> bool {
         true
     }
 
@@ -930,6 +954,25 @@ impl PageHostClient for PageHostConnection {
                 program,
                 metadata,
                 symbol_id,
+            },
+        )
+    }
+
+    fn debugger_bluets_metadata_contract_location(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+    ) -> io::Result<PageHostReply> {
+        self.request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                contract_id,
             },
         )
     }
@@ -1718,6 +1761,15 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
             && self
                 .child
                 .debugger_bluets_metadata_symbol_location_available()
+    }
+
+    fn debugger_static_metadata_contract_location_available(&self) -> bool {
+        self.child.debugger_bluets_metadata_available()
+            && self.child.debugger_bluets_metadata_sources_available()
+            && self.child.debugger_bluets_metadata_contracts_available()
+            && self
+                .child
+                .debugger_bluets_metadata_contract_location_available()
     }
 
     fn debugger_static_metadata_symbol_type_available(&self) -> bool {
@@ -2608,6 +2660,69 @@ impl<C: PageHostClient> PageJavaScriptDebuggerLocations for OutOfProcessJavaScri
         }
         Ok(JavaScriptPageDebuggerStaticMetadataSymbolLocation {
             symbol_id: location.symbol_id,
+            source_id: location.source_id,
+            start_byte: location.start_byte,
+            end_byte: location.end_byte,
+        })
+    }
+
+    fn debugger_static_metadata_contract_location(
+        &mut self,
+        tab_id: TabId,
+        document_generation: u64,
+        target: JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractLocation, JavaScriptPageDebuggerError>
+    {
+        if !self.debugger_static_metadata_contract_location_available() {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        let child_program = self.child_program_for_core(
+            tab_id,
+            document_generation,
+            target.program_handle,
+            target.program_generation,
+        )?;
+        let child_metadata = self.child_static_metadata_for_core(
+            tab_id,
+            document_generation,
+            child_program,
+            target.metadata_handle,
+            target.metadata_generation,
+        )?;
+        let reply = self
+            .child
+            .debugger_bluets_metadata_contract_location(
+                tab_id.as_u64(),
+                document_generation,
+                child_program,
+                child_metadata,
+                target.contract_id,
+            )
+            .map_err(|_| JavaScriptPageDebuggerError::NoLiveRealm)?;
+        let PageHostReply::DebuggerBlueTsMetadataContractLocation {
+            tab_id: reply_tab_id,
+            document_generation: reply_generation,
+            program,
+            metadata,
+            location,
+        } = reply
+        else {
+            return Err(child_debugger_reply_error(&reply));
+        };
+        if reply_tab_id != tab_id.as_u64()
+            || reply_generation != document_generation
+            || program != child_program
+            || metadata != child_metadata
+            || location.start_byte >= location.end_byte
+            || location.end_byte > DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+        {
+            return Err(JavaScriptPageDebuggerError::NoLiveRealm);
+        }
+        if location.contract_id != target.contract_id || location.source_id != target.source_id {
+            return Err(JavaScriptPageDebuggerError::UnknownProgram);
+        }
+        Ok(JavaScriptPageDebuggerStaticMetadataContractLocation {
+            contract_id: location.contract_id,
             source_id: location.source_id,
             start_byte: location.start_byte,
             end_byte: location.end_byte,

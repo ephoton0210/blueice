@@ -111,6 +111,9 @@ struct Args {
     /// separately inventoried symbol and source IDs. It exposes no source,
     /// module identity, line/column data, type, contract, or bytecode.
     debugger_static_metadata_symbol_location: bool,
+    /// Core-owner opt-in for a bounded contract declaration range under
+    /// separately receipted contract and source IDs; no plan or source text.
+    debugger_static_metadata_contract_location: bool,
     /// Core-owner opt-in for one compiler-verified symbol/type relation under
     /// separately inventoried IDs. It exposes no display or static record.
     debugger_static_metadata_symbol_type: bool,
@@ -176,6 +179,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_lowering_summary = false;
     let mut debugger_static_metadata_symbol_display = false;
     let mut debugger_static_metadata_symbol_location = false;
+    let mut debugger_static_metadata_contract_location = false;
     let mut debugger_static_metadata_symbol_type = false;
     let mut debugger_static_metadata_symbol_contract = false;
     let mut compiler_socket = None;
@@ -239,6 +243,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--debugger-static-metadata-symbol-location" => {
                 debugger_static_metadata_symbol_location = true
+            }
+            "--debugger-static-metadata-contract-location" => {
+                debugger_static_metadata_contract_location = true
             }
             "--debugger-static-metadata-symbol-type" => debugger_static_metadata_symbol_type = true,
             "--debugger-static-metadata-symbol-contract" => {
@@ -442,6 +449,20 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
                 .to_string(),
         );
     }
+    if debugger_static_metadata_contract_location && debugger_socket.is_none() {
+        return Err(
+            "--debugger-static-metadata-contract-location requires --debugger-socket".to_string(),
+        );
+    }
+    if debugger_static_metadata_contract_location && !debugger_static_metadata_inventory {
+        return Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-inventory".to_string());
+    }
+    if debugger_static_metadata_contract_location && !debugger_static_metadata_source_inventory {
+        return Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-source-inventory".to_string());
+    }
+    if debugger_static_metadata_contract_location && !debugger_static_metadata_contract_inventory {
+        return Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-contract-inventory".to_string());
+    }
     if debugger_static_metadata_symbol_type && debugger_socket.is_none() {
         return Err(
             "--debugger-static-metadata-symbol-type requires --debugger-socket".to_string(),
@@ -500,6 +521,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_lowering_summary,
         debugger_static_metadata_symbol_display,
         debugger_static_metadata_symbol_location,
+        debugger_static_metadata_contract_location,
         debugger_static_metadata_symbol_type,
         debugger_static_metadata_symbol_contract,
         compiler_socket,
@@ -825,6 +847,7 @@ fn main() -> ExitCode {
                 contract_validation: args.debugger_static_metadata_contract_validation,
                 lowering_summary: args.debugger_static_metadata_lowering_summary,
                 symbol_location: args.debugger_static_metadata_symbol_location,
+                contract_location: args.debugger_static_metadata_contract_location,
                 symbol_type: args.debugger_static_metadata_symbol_type,
                 symbol_contract: args.debugger_static_metadata_symbol_contract,
             },
@@ -1218,6 +1241,7 @@ mod tests {
                 debugger_static_metadata_lowering_summary: false,
                 debugger_static_metadata_symbol_display: false,
                 debugger_static_metadata_symbol_location: false,
+                debugger_static_metadata_contract_location: false,
                 debugger_static_metadata_symbol_type: false,
                 debugger_static_metadata_symbol_contract: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
@@ -1430,6 +1454,47 @@ mod tests {
         ])
         .unwrap();
         assert!(symbol_location.debugger_static_metadata_symbol_location);
+        assert_eq!(
+            args(&[
+                "--socket", "/tmp/x.sock",
+                "--debugger-socket", "/tmp/debugger.sock",
+                "--debugger-static-metadata-contract-location",
+            ]),
+            Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-inventory".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket", "/tmp/x.sock",
+                "--debugger-socket", "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-contract-location",
+            ]),
+            Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-source-inventory".to_string())
+        );
+        assert_eq!(
+            args(&[
+                "--socket", "/tmp/x.sock",
+                "--debugger-socket", "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-source-inventory",
+                "--debugger-static-metadata-contract-location",
+            ]),
+            Err("--debugger-static-metadata-contract-location requires --debugger-static-metadata-contract-inventory".to_string())
+        );
+        assert!(
+            args(&[
+                "--socket",
+                "/tmp/x.sock",
+                "--debugger-socket",
+                "/tmp/debugger.sock",
+                "--debugger-static-metadata-inventory",
+                "--debugger-static-metadata-source-inventory",
+                "--debugger-static-metadata-contract-inventory",
+                "--debugger-static-metadata-contract-location",
+            ])
+            .unwrap()
+            .debugger_static_metadata_contract_location
+        );
         assert_eq!(
             args(&[
                 "--socket",

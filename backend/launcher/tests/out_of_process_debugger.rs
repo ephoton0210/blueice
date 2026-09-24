@@ -81,6 +81,7 @@ struct StaticMetadataPolicy {
     contract_inventory: bool,
     symbol_display: bool,
     symbol_location: bool,
+    contract_location: bool,
     symbol_type: bool,
     symbol_contract: bool,
     contract_display: bool,
@@ -161,6 +162,9 @@ impl LauncherProcess {
         }
         if policy.symbol_location {
             command.arg("--debugger-static-metadata-symbol-location");
+        }
+        if policy.contract_location {
+            command.arg("--debugger-static-metadata-contract-location");
         }
         if policy.symbol_type {
             command.arg("--debugger-static-metadata-symbol-type");
@@ -608,6 +612,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             contract_inventory: true,
             symbol_display: true,
             symbol_location: true,
+            contract_location: true,
             symbol_type: true,
             symbol_contract: true,
             contract_display: true,
@@ -639,6 +644,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                             contract_inventory: true,
                             symbol_display: true,
                             symbol_location: true,
+                            contract_location: true,
                             symbol_type: true,
                             symbol_contract: true,
                             contract_display: true,
@@ -661,6 +667,7 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
                     contract_inventory: true,
                     symbol_display: true,
                     symbol_location: true,
+                    contract_location: true,
                     symbol_type: true,
                     symbol_contract: true,
                     contract_display: true,
@@ -690,6 +697,11 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
     }));
     assert!(capabilities.reports.iter().any(|report| {
         report.capability == blueice_ipc::debugger::DebuggerCapability::StaticMetadataSymbolLocation
+            && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
+    }));
+    assert!(capabilities.reports.iter().any(|report| {
+        report.capability
+            == blueice_ipc::debugger::DebuggerCapability::StaticMetadataContractLocation
             && report.state == blueice_ipc::debugger::DebuggerCapabilityState::Available
     }));
     assert!(capabilities.reports.iter().any(|report| {
@@ -1169,6 +1181,60 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
             && !format!("{sources:?}").contains("number"),
         "public source IDs must not contain source or compiler-record payload"
     );
+    let initial_contract_location_target =
+        blueice_ipc::debugger::DebuggerStaticMetadataContractLocationTarget {
+            contract: contracts[0],
+            source: sources[0],
+        };
+    let guessed_contract_source = debugger_request(
+        &mut debugger,
+        DebuggerRequest::DescribeStaticMetadataContractLocation {
+            target: blueice_ipc::debugger::DebuggerStaticMetadataContractLocationTarget {
+                source: blueice_ipc::debugger::DebuggerStaticMetadataSourceId {
+                    source_id: u32::MAX,
+                    ..sources[0]
+                },
+                ..initial_contract_location_target
+            },
+        },
+    );
+    assert!(matches!(
+        guessed_contract_source,
+        DebuggerReply::Unsupported { .. }
+    ));
+    let mut matching_contract_locations = Vec::new();
+    let mut wrong_source_count = 0;
+    for source in &sources {
+        let target = blueice_ipc::debugger::DebuggerStaticMetadataContractLocationTarget {
+            contract: contracts[0],
+            source: *source,
+        };
+        match debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataContractLocation { target },
+        ) {
+            DebuggerReply::StaticMetadataContractLocation(location) => {
+                matching_contract_locations.push((target, location));
+            }
+            DebuggerReply::Error {
+                code: DebuggerErrorCode::InvalidTarget,
+                ..
+            } => wrong_source_count += 1,
+            reply => panic!("unexpected contract/source location reply: {reply:?}"),
+        }
+    }
+    assert_eq!(matching_contract_locations.len(), 1);
+    assert_eq!(wrong_source_count + 1, sources.len());
+    let (contract_location_target, contract_location) = matching_contract_locations[0];
+    assert_eq!(contract_location.contract, contracts[0]);
+    assert_eq!(contract_location.source, contract_location_target.source);
+    assert!(contract_location.start_byte < contract_location.end_byte);
+    assert!(
+        contract_location.end_byte
+            <= blueice_ipc::debugger::DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+    );
+    assert!(!format!("{contract_location:?}").contains("PrivateContract"));
+    assert!(!format!("{contract_location:?}").contains("enabled"));
     for source in &sources {
         let provenance_reply = debugger_request(
             &mut debugger,
@@ -1402,6 +1468,18 @@ fn launcher_owner_policy_exposes_only_handle_bound_bluets_metadata_after_negotia
         debugger_request(
             &mut debugger,
             DebuggerRequest::DescribeStaticMetadataSymbol { symbol: symbols[0] },
+        ),
+        DebuggerReply::Error {
+            code: DebuggerErrorCode::StaleRealm,
+            ..
+        }
+    ));
+    assert!(matches!(
+        debugger_request(
+            &mut debugger,
+            DebuggerRequest::DescribeStaticMetadataContractLocation {
+                target: contract_location_target,
+            },
         ),
         DebuggerReply::Error {
             code: DebuggerErrorCode::StaleRealm,

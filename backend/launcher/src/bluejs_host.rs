@@ -44,6 +44,7 @@ use blueice_ipc::debugger::{
 };
 use blueice_ipc::page_host::{
     self, PageHostDebuggerBlueTsMetadataContractDisplay, PageHostDebuggerBlueTsMetadataContractId,
+    PageHostDebuggerBlueTsMetadataContractLocation,
     PageHostDebuggerBlueTsMetadataContractValidation,
     PageHostDebuggerBlueTsMetadataLoweringSummary, PageHostDebuggerBlueTsMetadataSourceId,
     PageHostDebuggerBlueTsMetadataSourceProvenance, PageHostDebuggerBlueTsMetadataSummary,
@@ -414,6 +415,19 @@ impl BlueJsChildHost {
                 program,
                 metadata,
                 symbol_id,
+            ),
+            PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                contract_id,
+            } => self.debugger_bluets_metadata_contract_location(
+                tab_id,
+                document_generation,
+                program,
+                metadata,
+                contract_id,
             ),
             PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolType {
                 tab_id,
@@ -1680,6 +1694,95 @@ impl BlueJsChildHost {
             }
         };
         PageHostReply::DebuggerBlueTsMetadataSymbolLocation {
+            tab_id,
+            document_generation,
+            program,
+            metadata,
+            location,
+        }
+    }
+
+    /// Returns only a retained contract declaration's source ID and bounded
+    /// byte range under one exact child-local metadata attachment.
+    fn debugger_bluets_metadata_contract_location(
+        &mut self,
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+    ) -> PageHostReply {
+        if !program.is_well_formed() || !metadata.is_well_formed() {
+            return invalid_request();
+        }
+        let runtime_handle = {
+            let document = match self.exact_document(tab_id, document_generation) {
+                Ok(document) => document,
+                Err(reply) => return reply,
+            };
+            let Some(record) = document.debugger_programs.get(&program.program_handle) else {
+                return invalid_request();
+            };
+            if record.program_generation != program.program_generation
+                || record.metadata != Some(metadata)
+            {
+                return invalid_request();
+            }
+            record.runtime_handle
+        };
+        let location = match self
+            .debug_registry
+            .get(self.runtime.program_registry(), runtime_handle)
+        {
+            Ok(retained) => {
+                let Some(contract) = retained
+                    .static_info()
+                    .contracts
+                    .iter()
+                    .find(|contract| contract.id.0 == contract_id)
+                else {
+                    return invalid_request();
+                };
+                let Some(source) = retained
+                    .static_info()
+                    .sources
+                    .iter()
+                    .find(|source| source.id == contract.source)
+                else {
+                    return invalid_request();
+                };
+                if contract.span.module != source.module
+                    || contract.span.start >= contract.span.end
+                    || contract.span.end
+                        > usize::try_from(DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES).unwrap()
+                {
+                    return invalid_request();
+                }
+                let Ok(start_byte) = u32::try_from(contract.span.start) else {
+                    return invalid_request();
+                };
+                let Ok(end_byte) = u32::try_from(contract.span.end) else {
+                    return invalid_request();
+                };
+                PageHostDebuggerBlueTsMetadataContractLocation {
+                    contract_id,
+                    source_id: source.id.0,
+                    start_byte,
+                    end_byte,
+                }
+            }
+            Err(_) => {
+                self.documents
+                    .get_mut(&tab_id)
+                    .expect("the exact child document remains live after registry validation")
+                    .debugger_programs
+                    .get_mut(&program.program_handle)
+                    .expect("the exact child program remains registered after registry validation")
+                    .metadata = None;
+                return invalid_request();
+            }
+        };
+        PageHostReply::DebuggerBlueTsMetadataContractLocation {
             tab_id,
             document_generation,
             program,
@@ -4631,6 +4734,51 @@ mod tests {
         let verified = verified.expect("the interface has one reifiable contract relation");
         assert!(!format!("{verified:?}").contains("PrivateContract"));
         assert!(!format!("{verified:?}").contains("enabled"));
+        let sources =
+            match host.handle_request(PageHostRequest::ListDebuggerBlueTsMetadataSources {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata,
+            }) {
+                PageHostReply::DebuggerBlueTsMetadataSources { sources, .. } => sources,
+                reply => panic!("expected child source IDs, got {reply:?}"),
+            };
+        let location = match host.handle_request(
+            PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+                tab_id: 7,
+                document_generation: 1,
+                program,
+                metadata,
+                contract_id: verified.contract_id,
+            },
+        ) {
+            PageHostReply::DebuggerBlueTsMetadataContractLocation { location, .. } => location,
+            reply => panic!("expected child contract location, got {reply:?}"),
+        };
+        assert_eq!(location.contract_id, verified.contract_id);
+        assert!(sources
+            .iter()
+            .any(|source| source.source_id == location.source_id));
+        assert!(location.start_byte < location.end_byte);
+        assert!(location.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES);
+        assert!(!format!("{location:?}").contains("PrivateContract"));
+        assert!(!format!("{location:?}").contains("enabled"));
+        assert!(matches!(
+            host.handle_request(
+                PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                    metadata,
+                    contract_id: u32::MAX,
+                }
+            ),
+            PageHostReply::Error {
+                code: PageHostErrorCode::InvalidRequest,
+                ..
+            }
+        ));
         assert!(matches!(
             host.handle_request(
                 PageHostRequest::DescribeDebuggerBlueTsMetadataSymbolContract {
@@ -4661,6 +4809,21 @@ mod tests {
                     program,
                     metadata,
                     symbol_id: verified.symbol_id,
+                    contract_id: verified.contract_id,
+                }
+            ),
+            PageHostReply::Error {
+                code: PageHostErrorCode::StaleDocument,
+                ..
+            }
+        ));
+        assert!(matches!(
+            host.handle_request(
+                PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+                    tab_id: 7,
+                    document_generation: 1,
+                    program,
+                    metadata,
                     contract_id: verified.contract_id,
                 }
             ),

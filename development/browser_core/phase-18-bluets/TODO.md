@@ -883,6 +883,18 @@ or second module resolver to bypass them.
   static type, contract plan, bytecode, VM object, or runtime value. The
   launcher-supervised test checks interface and variable kinds from a real
   BlueTS page while keeping guessed and stale symbol targets closed.
+  Page-host v23/debugger v22 add the fifteenth separately default-denied
+  `OpaqueContractLocation` capability and owner-only
+  `--debugger-static-metadata-contract-location` flag. It requires opaque
+  parent, source-ID, and contract-ID inventories plus exact same-stream
+  receipts for both IDs, a live realm/program/metadata tuple, and a child
+  capability report. The child validates the retained reifiable contract's
+  source ownership and declaration span; core rejects a changed child tuple,
+  unrequested source ID, empty range, or end offset above 1 MiB. Only the two
+  opaque IDs and half-open UTF-8 byte range cross the public boundary. The
+  private-child and launcher-supervised tests cover valid disclosure,
+  guessed targets, and reload staleness without exposing source text, module
+  identity, contract name/plan, validation result, or runtime values.
   Core now rejects page-host realm
   accounting with zero ownership fields, the child conversion sentinels, or
   more programs than the fixed 256-declaration × 8-module document envelope

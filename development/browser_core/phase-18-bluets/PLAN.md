@@ -2,11 +2,23 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**Contract location update:** Page-host v23 and debugger v22 add a fifteenth
+independently default-denied derived metadata capability,
+`OpaqueContractLocation`. The owner must select
+`--debugger-static-metadata-contract-location` together with the opaque
+parent, source-ID, and contract-ID inventory grants. The peer must negotiate
+that exact canonical set, receive both IDs on the same stream, and target a
+live child attachment whose capability report authorizes the operation.
+Only the echoed opaque contract/source IDs and a bounded half-open UTF-8 byte
+range are returned. Guessed or stale IDs fail closed; source text, module
+identity, contract name/plan/validation, bytecode, VM object, runtime value,
+and general metadata-record reads remain unavailable.
+
 **Metadata transport update:** Page-host v22 and debugger v21 extend the
 existing `OpaqueSymbolDisplay` capability with a closed compiler declaration-
 kind enum (`Import`, `TypeAlias`, `Interface`, `Variable`, or `Function`). The
 v21/v20 statement below records the preceding symbol-contract milestone; no
-fifteenth metadata capability is added. The owner opt-in, negotiated same-
+new metadata capability was added at v22/v21. The owner opt-in, negotiated same-
 stream symbol receipt, live attachment, and child report remain prerequisites.
 The display may now contain its authorized project identifier and this
 classification, but still cannot return a source/module identity, span,

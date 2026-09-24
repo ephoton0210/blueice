@@ -152,6 +152,27 @@ pub struct JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget {
     pub source_id: u32,
 }
 
+/// One child-validated contract declaration range with no source text,
+/// module identity, plan, or runtime value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataContractLocation {
+    pub contract_id: u32,
+    pub source_id: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
+/// The exact live attachment and independently receipted contract/source IDs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JavaScriptPageDebuggerStaticMetadataContractLocationTarget {
+    pub program_handle: u64,
+    pub program_generation: u64,
+    pub metadata_handle: u64,
+    pub metadata_generation: u64,
+    pub contract_id: u32,
+    pub source_id: u32,
+}
+
 /// One compiler-verified relation between separately inventoried symbol and
 /// type IDs. It carries no display, source, span, or static record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

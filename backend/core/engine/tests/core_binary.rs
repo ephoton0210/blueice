@@ -75,10 +75,9 @@ fn shutdown_private_bluejs_host(path: &std::path::Path, token: &str) {
 }
 
 fn unique_socket_path(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "blueice-core-binary-test-{label}-{}.sock",
-        std::process::id()
-    ))
+    // macOS may supply a long TMPDIR; keep the basename short enough for
+    // sockaddr_un while preserving the test label and process uniqueness.
+    std::env::temp_dir().join(format!("bicb-{label}-{}.sock", std::process::id()))
 }
 
 /// A gated `Navigate`/`OpenTab{url}` sent to the real subprocess needs

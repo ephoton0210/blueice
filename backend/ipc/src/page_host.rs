@@ -50,6 +50,8 @@
 //! core-proxied operation, not a general static-record read or source access.
 //! Version 16 adds one exact contract-ID display lookup; it remains an explicit
 //! core-proxied operation, not a general static-record read or source access.
+//! Version 23 adds an exact contract/source declaration range without a
+//! contract plan, source text, module identity, or runtime value.
 //! Version 22 adds the compiler declaration kind to the exact child-local
 //! symbol display. It does not add a target, source read, or runtime access.
 //! Version 21 adds an exact symbol-to-reifiable-contract verification under
@@ -76,7 +78,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
 /// Independent version for the private launcher-to-BlueJS-host channel.
-pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 22;
+pub const PAGE_HOST_PROTOCOL_VERSION: u32 = 23;
 
 /// Maximum private page-host request/reply frame. The child rejects a length
 /// above this cap before allocating a payload buffer or deserializing source.
@@ -240,6 +242,17 @@ pub struct PageHostDebuggerBlueTsMetadataSymbolDisplay {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PageHostDebuggerBlueTsMetadataSymbolLocation {
     pub symbol_id: u32,
+    pub source_id: u32,
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
+/// One child-local, source-text-free declaration range for a retained
+/// reifiable contract. Core must check the echoed contract/source IDs against
+/// the exact public stream's separate receipts before forwarding it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageHostDebuggerBlueTsMetadataContractLocation {
+    pub contract_id: u32,
     pub source_id: u32,
     pub start_byte: u32,
     pub end_byte: u32,
@@ -608,6 +621,15 @@ pub enum PageHostRequest {
         metadata: PageHostDebuggerMetadataHandle,
         symbol_id: u32,
     },
+    /// Describes one bounded contract declaration range under the exact
+    /// child-local program and metadata attachment; no plan or source bytes.
+    DescribeDebuggerBlueTsMetadataContractLocation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        contract_id: u32,
+    },
     /// Verifies exactly one symbol-to-static-type pair under the same private
     /// attachment. The reply does not return an unrequested type ID.
     DescribeDebuggerBlueTsMetadataSymbolType {
@@ -840,6 +862,14 @@ pub enum PageHostReply {
         program: PageHostDebuggerProgram,
         metadata: PageHostDebuggerMetadataHandle,
         location: PageHostDebuggerBlueTsMetadataSymbolLocation,
+    },
+    /// One exact child-local contract/source pair and bounded byte range.
+    DebuggerBlueTsMetadataContractLocation {
+        tab_id: u64,
+        document_generation: u64,
+        program: PageHostDebuggerProgram,
+        metadata: PageHostDebuggerMetadataHandle,
+        location: PageHostDebuggerBlueTsMetadataContractLocation,
     },
     /// A verified relation that repeats only the two requested opaque IDs.
     DebuggerBlueTsMetadataSymbolType {
@@ -1702,6 +1732,44 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn contract_location_round_trips_without_a_plan_or_source_record() {
+        let program = PageHostDebuggerProgram {
+            program_handle: 11,
+            program_generation: 13,
+        };
+        let metadata = PageHostDebuggerMetadataHandle {
+            metadata_handle: 17,
+            metadata_generation: 19,
+        };
+        let request = PageHostRequest::DescribeDebuggerBlueTsMetadataContractLocation {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            contract_id: 0,
+        };
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_request(&mut writer, &request).unwrap();
+        assert_eq!(read_page_host_request(&mut reader).unwrap(), request);
+        let reply = PageHostReply::DebuggerBlueTsMetadataContractLocation {
+            tab_id: 7,
+            document_generation: 3,
+            program,
+            metadata,
+            location: PageHostDebuggerBlueTsMetadataContractLocation {
+                contract_id: 0,
+                source_id: 0,
+                start_byte: 6,
+                end_byte: 31,
+            },
+        };
+        assert!(!format!("{reply:?}").contains("PrivateContract"));
+        let (mut writer, mut reader) = UnixStream::pair().unwrap();
+        write_page_host_reply(&mut writer, &reply).unwrap();
+        assert_eq!(read_page_host_reply(&mut reader).unwrap(), reply);
     }
 
     #[test]

@@ -149,6 +149,9 @@ mod unix {
         /// source text, line/column, names, types, contracts, and bytecode
         /// remain default-denied.
         debugger_static_metadata_symbol_location: bool,
+        /// Owner-only policy for a bounded contract declaration range under
+        /// separate contract and source receipts; no plan or source text.
+        debugger_static_metadata_contract_location: bool,
         /// Owner-only policy for a compiler-verified symbol/type relation
         /// under two separately inventoried opaque IDs. Displays and static
         /// records remain independently denied.
@@ -365,6 +368,17 @@ mod unix {
             self.debugger_static_metadata_source_inventory = true;
             self.debugger_static_metadata_symbol_inventory = true;
             self.debugger_static_metadata_symbol_location = true;
+            self
+        }
+
+        /// Enables one bounded contract/source location under the existing
+        /// opaque parent and separate ID inventories. The debugger peer must
+        /// still negotiate each grant and receive both IDs on its stream.
+        pub fn with_debugger_static_metadata_contract_location(mut self) -> Self {
+            self.debugger_static_metadata_inventory = true;
+            self.debugger_static_metadata_source_inventory = true;
+            self.debugger_static_metadata_contract_inventory = true;
+            self.debugger_static_metadata_contract_location = true;
             self
         }
 
@@ -1768,6 +1782,9 @@ mod unix {
                 }
                 if options.debugger_static_metadata_symbol_location {
                     command.arg("--debugger-static-metadata-symbol-location");
+                }
+                if options.debugger_static_metadata_contract_location {
+                    command.arg("--debugger-static-metadata-contract-location");
                 }
                 if options.debugger_static_metadata_symbol_type {
                     command.arg("--debugger-static-metadata-symbol-type");

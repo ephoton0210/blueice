@@ -9,7 +9,10 @@
 //! host one typed way to agree on a page realm, its generation, and executable
 //! program locations. It establishes framing, handshake, capability discovery,
 //! bounded opaque program-location operations, exact breakpoint configuration,
-//! and an opt-in root-code-unit pause/resume seam. Version twenty-one adds a
+//! and an opt-in root-code-unit pause/resume seam. Version twenty-two adds a
+//! separately default-denied contract declaration range under exact
+//! same-stream contract and source receipts; no plan or source text crosses.
+//! Version twenty-one adds a
 //! compiler-minted declaration kind to the already receipt-bound, opt-in
 //! symbol display. It carries no additional target or source-read authority.
 //! Version twenty adds an
@@ -40,7 +43,7 @@ use std::sync::{Arc, Mutex};
 /// Independent protocol version for the private core-to-BlueJS debugger
 /// channel. It does not share `crate::PROTOCOL_VERSION`, whose lifecycle is
 /// the frontend control-plane protocol.
-pub const DEBUGGER_PROTOCOL_VERSION: u32 = 21;
+pub const DEBUGGER_PROTOCOL_VERSION: u32 = 22;
 
 /// A core-owned page realm identity. The browser-context field is present from
 /// from the first protocol revision even while the current core exposes only
@@ -391,6 +394,42 @@ impl DebuggerStaticMetadataSymbolLocationTarget {
     }
 }
 
+/// One separately authorized declaration range for a compiler-minted
+/// contract. Both opaque IDs must have crossed this debugger stream's exact
+/// inventories; the range is neither source text nor contract-plan access.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataContractLocation {
+    pub contract: DebuggerStaticMetadataContractId,
+    pub source: DebuggerStaticMetadataSourceId,
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
+impl DebuggerStaticMetadataContractLocation {
+    pub fn is_well_formed(self) -> bool {
+        self.contract.is_well_formed()
+            && self.source.is_well_formed()
+            && self.contract.metadata == self.source.metadata
+            && self.start_byte < self.end_byte
+            && self.end_byte <= DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES
+    }
+}
+
+/// The exact contract/source receipt pair required to ask for its location.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebuggerStaticMetadataContractLocationTarget {
+    pub contract: DebuggerStaticMetadataContractId,
+    pub source: DebuggerStaticMetadataSourceId,
+}
+
+impl DebuggerStaticMetadataContractLocationTarget {
+    pub fn is_well_formed(self) -> bool {
+        self.contract.is_well_formed()
+            && self.source.is_well_formed()
+            && self.contract.metadata == self.source.metadata
+    }
+}
+
 /// One compiler-verified relation between a symbol and its static type. Both
 /// opaque IDs must have been returned by separate inventories on this stream.
 /// This exposes no type display, symbol name, source, span, or static record.
@@ -572,6 +611,9 @@ pub enum DebuggerCapability {
     /// One half-open byte range for a symbol and a separately receipted source
     /// ID. It contains no source/module/name/type/contract/bytecode payload.
     StaticMetadataSymbolLocation,
+    /// One half-open byte range for a contract and separately receipted source
+    /// ID. It contains no plan, name, source text, or runtime value.
+    StaticMetadataContractLocation,
     /// Verifies a symbol's compiler-minted static type using two separately
     /// receipted IDs. It contains no name, display, source, or record payload.
     StaticMetadataSymbolType,
@@ -668,6 +710,9 @@ pub enum DebuggerMetadataCapability {
     /// Verifies a symbol-to-contract relation only for IDs returned by
     /// separate same-stream inventories. This disclosure has its own grant.
     OpaqueSymbolContract,
+    /// Describes a contract declaration's bounded byte range only after
+    /// separate same-stream contract and source receipts and an owner grant.
+    OpaqueContractLocation,
     /// A newer metadata capability identifier. It makes the enclosing
     /// manifest invalid instead of silently narrowing the requested set.
     #[serde(other)]
@@ -696,6 +741,9 @@ impl DebuggerMetadataCapability {
             }
             Self::OpaqueLoweringSummary => Some(DebuggerCapability::StaticMetadataLoweringSummary),
             Self::OpaqueSymbolLocation => Some(DebuggerCapability::StaticMetadataSymbolLocation),
+            Self::OpaqueContractLocation => {
+                Some(DebuggerCapability::StaticMetadataContractLocation)
+            }
             Self::OpaqueSymbolType => Some(DebuggerCapability::StaticMetadataSymbolType),
             Self::OpaqueSymbolContract => Some(DebuggerCapability::StaticMetadataSymbolContract),
             Self::Unknown => None,
@@ -719,6 +767,7 @@ impl DebuggerMetadataCapability {
             Self::OpaqueSymbolLocation => Some(12),
             Self::OpaqueSymbolType => Some(13),
             Self::OpaqueSymbolContract => Some(14),
+            Self::OpaqueContractLocation => Some(15),
             Self::Unknown => None,
         }
     }
@@ -762,6 +811,7 @@ pub struct DebuggerMetadataCapabilitySelection {
     pub contract_validation: bool,
     pub lowering_summary: bool,
     pub symbol_location: bool,
+    pub contract_location: bool,
     pub symbol_type: bool,
     pub symbol_contract: bool,
 }
@@ -964,6 +1014,20 @@ impl DebuggerMetadataCapabilityManifest {
         }
     }
 
+    /// Grants one source-text-free contract location only with its required
+    /// parent, source, and contract inventory receipts.
+    pub fn opaque_contract_location() -> Self {
+        Self {
+            version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+            capabilities: vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSourceInventory,
+                DebuggerMetadataCapability::OpaqueContractInventory,
+                DebuggerMetadataCapability::OpaqueContractLocation,
+            ],
+        }
+    }
+
     /// Grants one symbol-to-static-type relation only with its parent,
     /// symbol, and type inventory prerequisites.
     pub fn opaque_symbol_type() -> Self {
@@ -1009,6 +1073,7 @@ impl DebuggerMetadataCapabilityManifest {
             contract_validation,
             lowering_summary,
             symbol_location,
+            contract_location,
             symbol_type,
             symbol_contract,
         } = selection;
@@ -1024,6 +1089,7 @@ impl DebuggerMetadataCapabilityManifest {
             || contract_validation
             || lowering_summary
             || symbol_location
+            || contract_location
             || symbol_type
             || symbol_contract;
         let mut capabilities = Vec::new();
@@ -1033,7 +1099,7 @@ impl DebuggerMetadataCapabilityManifest {
         if summary {
             capabilities.push(DebuggerMetadataCapability::OpaqueSummary);
         }
-        if source_inventory || symbol_location {
+        if source_inventory || symbol_location || contract_location {
             capabilities.push(DebuggerMetadataCapability::OpaqueSourceInventory);
         }
         if source_provenance {
@@ -1048,7 +1114,12 @@ impl DebuggerMetadataCapabilityManifest {
         if symbol_inventory || symbol_display || symbol_location || symbol_type || symbol_contract {
             capabilities.push(DebuggerMetadataCapability::OpaqueSymbolInventory);
         }
-        if contract_inventory || contract_display || contract_validation || symbol_contract {
+        if contract_inventory
+            || contract_display
+            || contract_validation
+            || symbol_contract
+            || contract_location
+        {
             capabilities.push(DebuggerMetadataCapability::OpaqueContractInventory);
         }
         if symbol_display {
@@ -1071,6 +1142,9 @@ impl DebuggerMetadataCapabilityManifest {
         }
         if symbol_contract {
             capabilities.push(DebuggerMetadataCapability::OpaqueSymbolContract);
+        }
+        if contract_location {
+            capabilities.push(DebuggerMetadataCapability::OpaqueContractLocation);
         }
         let manifest = Self {
             version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
@@ -1224,6 +1298,18 @@ impl DebuggerMetadataCapabilityManifest {
                     && self
                         .capabilities
                         .contains(&DebuggerMetadataCapability::OpaqueSymbolInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueContractInventory)))
+            && (!self
+                .capabilities
+                .contains(&DebuggerMetadataCapability::OpaqueContractLocation)
+                || (self
+                    .capabilities
+                    .contains(&DebuggerMetadataCapability::OpaqueInventory)
+                    && self
+                        .capabilities
+                        .contains(&DebuggerMetadataCapability::OpaqueSourceInventory)
                     && self
                         .capabilities
                         .contains(&DebuggerMetadataCapability::OpaqueContractInventory)))
@@ -1868,6 +1954,11 @@ pub enum DebuggerRequest {
     DescribeStaticMetadataSymbolLocation {
         target: DebuggerStaticMetadataSymbolLocationTarget,
     },
+    /// Describes one contract declaration range only after separate exact
+    /// contract and source inventory receipts on this debugger stream.
+    DescribeStaticMetadataContractLocation {
+        target: DebuggerStaticMetadataContractLocationTarget,
+    },
     /// Verifies one compiler-produced symbol-to-type relation. Both IDs must
     /// have crossed this debugger stream's separate opaque inventories.
     DescribeStaticMetadataSymbolType {
@@ -2004,6 +2095,9 @@ pub enum DebuggerReply {
     /// The location is parent-bound, receipted, source-text-free, and does
     /// not include a module identity or a bytecode/source-map translation.
     StaticMetadataSymbolLocation(DebuggerStaticMetadataSymbolLocation),
+    /// Reply to [`DebuggerRequest::DescribeStaticMetadataContractLocation`].
+    /// It contains only receipted IDs and a bounded byte range.
+    StaticMetadataContractLocation(DebuggerStaticMetadataContractLocation),
     /// Reply to [`DebuggerRequest::DescribeStaticMetadataSymbolType`]. It
     /// repeats only the two previously receipted opaque IDs.
     StaticMetadataSymbolType(DebuggerStaticMetadataSymbolType),
@@ -2118,6 +2212,7 @@ pub fn negotiate(
         | DebuggerRequest::ListStaticMetadataSymbols { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbol { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolLocation { .. }
+        | DebuggerRequest::DescribeStaticMetadataContractLocation { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolType { .. }
         | DebuggerRequest::DescribeStaticMetadataSymbolContract { .. }
         | DebuggerRequest::ListStaticMetadataContracts { .. }
@@ -3764,6 +3859,100 @@ mod tests {
         write_debugger_request(&mut sender, &request).unwrap();
         assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
         let reply = DebuggerReply::StaticMetadataSymbolContract(relation);
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_reply(&mut sender, &reply).unwrap();
+        assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);
+    }
+
+    #[test]
+    fn contract_location_requires_both_receipts_and_round_trips() {
+        let metadata = DebuggerStaticMetadataHandle {
+            program: DebuggerProgram {
+                realm: realm(),
+                program_handle: 12,
+                program_generation: 5,
+            },
+            metadata_handle: 41,
+            metadata_generation: 9,
+        };
+        let target = DebuggerStaticMetadataContractLocationTarget {
+            contract: DebuggerStaticMetadataContractId {
+                metadata,
+                contract_id: 0,
+            },
+            source: DebuggerStaticMetadataSourceId {
+                metadata,
+                source_id: 0,
+            },
+        };
+        assert!(target.is_well_formed());
+        assert!(!DebuggerStaticMetadataContractLocationTarget {
+            source: DebuggerStaticMetadataSourceId {
+                metadata: DebuggerStaticMetadataHandle {
+                    metadata_generation: 10,
+                    ..metadata
+                },
+                ..target.source
+            },
+            ..target
+        }
+        .is_well_formed());
+        let location = DebuggerStaticMetadataContractLocation {
+            contract: target.contract,
+            source: target.source,
+            start_byte: 6,
+            end_byte: 31,
+        };
+        assert!(location.is_well_formed());
+        assert!(!DebuggerStaticMetadataContractLocation {
+            end_byte: 6,
+            ..location
+        }
+        .is_well_formed());
+        assert!(!DebuggerStaticMetadataContractLocation {
+            end_byte: DEBUGGER_STATIC_METADATA_MAX_SOURCE_SPAN_BYTES + 1,
+            ..location
+        }
+        .is_well_formed());
+        let manifest = DebuggerMetadataCapabilityManifest::opaque_contract_location();
+        assert!(manifest.is_well_formed());
+        let hello = hello(manifest.clone());
+        let ack = negotiate(&hello, &manifest);
+        let session = metadata_session_authorization(&hello, &ack).unwrap();
+        assert!(session.permits(DebuggerMetadataCapability::OpaqueContractLocation));
+        assert!(!session.observed_source(target.source));
+        assert!(!session.observed_contract(target.contract));
+        assert!(session.observe_sources(&[target.source]));
+        assert!(session.observe_contracts(&[target.contract]));
+        assert!(session.observed_source(target.source));
+        assert!(session.observed_contract(target.contract));
+        let separate = metadata_session_authorization(&hello, &ack).unwrap();
+        assert!(!separate.observed_source(target.source));
+        assert!(!separate.observed_contract(target.contract));
+        for capabilities in [
+            vec![DebuggerMetadataCapability::OpaqueContractLocation],
+            vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueSourceInventory,
+                DebuggerMetadataCapability::OpaqueContractLocation,
+            ],
+            vec![
+                DebuggerMetadataCapability::OpaqueInventory,
+                DebuggerMetadataCapability::OpaqueContractInventory,
+                DebuggerMetadataCapability::OpaqueContractLocation,
+            ],
+        ] {
+            assert!(!DebuggerMetadataCapabilityManifest {
+                version: DEBUGGER_METADATA_CAPABILITY_MANIFEST_VERSION,
+                capabilities,
+            }
+            .is_well_formed());
+        }
+        let request = DebuggerRequest::DescribeStaticMetadataContractLocation { target };
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_debugger_request(&mut sender, &request).unwrap();
+        assert_eq!(read_debugger_request(&mut receiver).unwrap(), request);
+        let reply = DebuggerReply::StaticMetadataContractLocation(location);
         let (mut sender, mut receiver) = UnixStream::pair().unwrap();
         write_debugger_reply(&mut sender, &reply).unwrap();
         assert_eq!(read_debugger_reply(&mut receiver).unwrap(), reply);

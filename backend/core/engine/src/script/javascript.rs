@@ -40,6 +40,8 @@ pub use debugger_support::{
     JavaScriptPageDebuggerSafePoint, JavaScriptPageDebuggerStaticMetadata,
     JavaScriptPageDebuggerStaticMetadataContractDisplay,
     JavaScriptPageDebuggerStaticMetadataContractId,
+    JavaScriptPageDebuggerStaticMetadataContractLocation,
+    JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
     JavaScriptPageDebuggerStaticMetadataContractTarget,
     JavaScriptPageDebuggerStaticMetadataContractValidation,
     JavaScriptPageDebuggerStaticMetadataLoweringSummary,
@@ -151,6 +153,12 @@ pub trait PageJavaScriptDebuggerLocations {
     /// This is separate from symbol names and source provenance because it
     /// exposes source structure.
     fn debugger_static_metadata_symbol_location_available(&self) -> bool {
+        false
+    }
+
+    /// Whether this route can disclose a separately authorized contract
+    /// declaration range under receipted contract and source IDs.
+    fn debugger_static_metadata_contract_location_available(&self) -> bool {
         false
     }
 
@@ -384,6 +392,18 @@ pub trait PageJavaScriptDebuggerLocations {
         _document_generation: u64,
         _target: JavaScriptPageDebuggerStaticMetadataSymbolLocationTarget,
     ) -> Result<JavaScriptPageDebuggerStaticMetadataSymbolLocation, JavaScriptPageDebuggerError>
+    {
+        Err(JavaScriptPageDebuggerError::NoLiveRealm)
+    }
+
+    /// Describes only the source ID and bounded declaration range for one
+    /// exact contract. No name, plan, source text, or value may be inferred.
+    fn debugger_static_metadata_contract_location(
+        &mut self,
+        _tab_id: TabId,
+        _document_generation: u64,
+        _target: JavaScriptPageDebuggerStaticMetadataContractLocationTarget,
+    ) -> Result<JavaScriptPageDebuggerStaticMetadataContractLocation, JavaScriptPageDebuggerError>
     {
         Err(JavaScriptPageDebuggerError::NoLiveRealm)
     }
