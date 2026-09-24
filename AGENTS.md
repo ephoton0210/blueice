@@ -43,9 +43,9 @@ provenance and preserve the original Chromium notice verbatim.
 
 Develop test-first and add regression coverage at the relevant public boundary.
 CI requires at least 90% workspace line coverage. The current no-exclusion
-`blueice-bluejs` baseline is 88.38% line coverage (Rust 1.95, 2026-09-13),
-with an 88% CI floor while the remaining coverage debt is addressed. Run
-focused tests during development, e.g.
+`blueice-bluejs` baseline is 92.78% line coverage (Rust 1.95, 2026-09-24,
+commit `06724eed`), with an 88% CI floor while the remaining coverage debt is
+addressed. Run focused tests during development, e.g.
 `cargo test -p blueice-bluejs --test strings`, then the workspace suite before
 opening a PR.
 
