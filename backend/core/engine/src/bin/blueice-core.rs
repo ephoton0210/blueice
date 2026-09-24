@@ -134,6 +134,9 @@ struct Args {
     /// owner. This is a startup-only test/integration seam, not a project
     /// file/path argument and never crosses compiler IPC.
     compiler_project_profile: Option<String>,
+    /// One bounded, owner-only catalog is read from inherited stdin before
+    /// listeners are created; no public request can supply another catalog.
+    compiler_catalog_stdin: bool,
     /// An explicitly selected, core-owned host typing profile for executing
     /// discovered inline BlueTS page declarations. Omission preserves the
     /// default no-inline-execution process mode; page content cannot select a
@@ -192,6 +195,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut debugger_static_metadata_symbol_contract = false;
     let mut compiler_socket = None;
     let mut compiler_project_profile = None;
+    let mut compiler_catalog_stdin = false;
     let mut inline_bluets_profile = None;
     let mut inline_bluejs = false;
     let mut out_of_process_bluejs_socket = None;
@@ -267,6 +271,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--compiler-socket" => compiler_socket = Some(PathBuf::from(value()?)),
             "--compiler-project-profile" => compiler_project_profile = Some(value()?),
+            "--compiler-catalog-stdin" => compiler_catalog_stdin = true,
             "--inline-bluets-profile" => inline_bluets_profile = Some(value()?),
             "--inline-bluejs" => inline_bluejs = true,
             "--out-of-process-bluejs-socket" => {
@@ -530,9 +535,11 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if debugger_static_metadata_symbol_contract && !debugger_static_metadata_contract_inventory {
         return Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-contract-inventory".to_string());
     }
-    if compiler_socket.is_some() != compiler_project_profile.is_some() {
+    if compiler_socket.is_some() != (compiler_project_profile.is_some() || compiler_catalog_stdin)
+        || (compiler_project_profile.is_some() && compiler_catalog_stdin)
+    {
         return Err(
-            "--compiler-socket and --compiler-project-profile must be provided together"
+            "--compiler-socket requires exactly one of --compiler-project-profile or --compiler-catalog-stdin"
                 .to_string(),
         );
     }
@@ -564,6 +571,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         debugger_static_metadata_symbol_contract,
         compiler_socket,
         compiler_project_profile,
+        compiler_catalog_stdin,
         inline_bluets_profile,
         inline_bluejs,
         out_of_process_bluejs_socket,
@@ -624,6 +632,74 @@ fn register_compiler_startup_profile(
             "unsupported compiler project profile: {profile}; only core-owned compiled-in profiles are accepted"
         )),
     }
+}
+
+/// Consumes the trusted launcher's already-selected closed graph. This runs
+/// before any core, compiler, debugger, or script listener is bound. Loader
+/// construction and catalog registration reject invalid graphs atomically.
+#[cfg(unix)]
+fn register_owner_compiler_catalog(
+    catalog: &mut CoreCompilerProjectCatalog,
+    bootstrap: blueice_ipc::compiler_catalog::CompilerCatalogBootstrap,
+) -> Result<(), String> {
+    use blueice_bluets::{
+        AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleResolution, CompilerOptions,
+        EcmaTarget, ModuleSource, RuntimePolicy,
+    };
+    use blueice_ipc::compiler_catalog::{CompilerCatalogRuntimePolicy, CompilerCatalogTarget};
+
+    bootstrap.validate().map_err(|error| error.to_string())?;
+    for project in bootstrap.projects {
+        let loader = AuthorizedModuleLoader::new(
+            project
+                .modules
+                .into_iter()
+                .map(|module| AuthorizedModule::new(module.canonical_id, module.text)),
+            project.resolutions.into_iter().map(|edge| {
+                AuthorizedModuleResolution::new(
+                    edge.from_module,
+                    edge.specifier,
+                    edge.target_module,
+                )
+            }),
+        )
+        .map_err(|error| format!("invalid owner compiler graph: {error}"))?;
+        let compiler_options = CompilerOptions {
+            target: match project.options.target {
+                CompilerCatalogTarget::Es2020 => EcmaTarget::Es2020,
+                CompilerCatalogTarget::Es2022 => EcmaTarget::Es2022,
+            },
+            runtime_policy: match project.options.runtime_policy {
+                CompilerCatalogRuntimePolicy::TranspileOnly => RuntimePolicy::TranspileOnly,
+                CompilerCatalogRuntimePolicy::Checked => RuntimePolicy::Checked,
+                CompilerCatalogRuntimePolicy::StrictRuntime => RuntimePolicy::StrictRuntime,
+            },
+            source_map: project.options.source_map,
+            declaration: project.options.declaration,
+            resolver_fingerprint: project.options.resolver_fingerprint,
+            ambient_declaration_modules: project
+                .options
+                .ambient_declaration_modules
+                .into_iter()
+                .map(|module| ModuleSource::new(module.canonical_id, module.text))
+                .collect(),
+            require_declared_global_calls: project.options.require_declared_global_calls,
+            ..CompilerOptions::default()
+        };
+        catalog
+            .register_startup_project(
+                blueice_engine::compiler_service::RegisteredProjectRegistration {
+                    canonical_project_root: project.canonical_project_root,
+                    canonical_config_root: project.canonical_config_root,
+                    canonical_output_root: project.canonical_output_root,
+                    entry_module: project.entry_module,
+                    loader,
+                    compiler_options,
+                },
+            )
+            .map_err(|error| format!("failed to register owner compiler project: {error}"))?;
+    }
+    Ok(())
 }
 
 /// Serves one long-lived BlueJS script connection. Frame parsing lives at the
@@ -914,6 +990,23 @@ fn main() -> ExitCode {
             .as_mut()
             .expect("argument validation requires a compiler socket for a profile");
         if let Err(error) = register_compiler_startup_profile(catalog, profile) {
+            eprintln!("blueice-core: {error}");
+            return ExitCode::FAILURE;
+        }
+    }
+    if args.compiler_catalog_stdin {
+        let bootstrap =
+            match blueice_ipc::compiler_catalog::read_compiler_catalog(&mut io::stdin().lock()) {
+                Ok(bootstrap) => bootstrap,
+                Err(error) => {
+                    eprintln!("blueice-core: invalid owner compiler catalog: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+        let catalog = compiler_catalog
+            .as_mut()
+            .expect("argument validation requires a compiler socket for a catalog");
+        if let Err(error) = register_owner_compiler_catalog(catalog, bootstrap) {
             eprintln!("blueice-core: {error}");
             return ExitCode::FAILURE;
         }
@@ -1289,6 +1382,7 @@ mod tests {
                 debugger_static_metadata_symbol_contract: false,
                 compiler_socket: Some(PathBuf::from("/tmp/compiler.sock")),
                 compiler_project_profile: Some("core-closed-fixture-v1".to_string()),
+                compiler_catalog_stdin: false,
                 inline_bluets_profile: Some("core-script-document-text-v1".to_string()),
                 inline_bluejs: false,
                 out_of_process_bluejs_socket: None,
@@ -1762,7 +1856,7 @@ mod tests {
                 "core-closed-fixture-v1",
             ]),
             Err(
-                "--compiler-socket and --compiler-project-profile must be provided together"
+                "--compiler-socket requires exactly one of --compiler-project-profile or --compiler-catalog-stdin"
                     .to_string()
             )
         );
@@ -1774,7 +1868,7 @@ mod tests {
                 "/tmp/compiler.sock",
             ]),
             Err(
-                "--compiler-socket and --compiler-project-profile must be provided together"
+                "--compiler-socket requires exactly one of --compiler-project-profile or --compiler-catalog-stdin"
                     .to_string()
             )
         );
@@ -1791,6 +1885,25 @@ mod tests {
             parsed.compiler_project_profile.as_deref(),
             Some("core-closed-fixture-v1")
         );
+        let parsed = args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--compiler-socket",
+            "/tmp/compiler.sock",
+            "--compiler-catalog-stdin",
+        ])
+        .unwrap();
+        assert!(parsed.compiler_catalog_stdin);
+        assert!(args(&[
+            "--socket",
+            "/tmp/x.sock",
+            "--compiler-socket",
+            "/tmp/compiler.sock",
+            "--compiler-catalog-stdin",
+            "--compiler-project-profile",
+            "core-closed-fixture-v1",
+        ])
+        .is_err());
     }
 
     #[test]

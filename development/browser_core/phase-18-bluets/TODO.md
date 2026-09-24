@@ -1180,9 +1180,9 @@ or second module resolver to bypass them.
   decoded requests over the bounded channel; the adapter owner alone mutates
   the incremental compiler cache. There is no IPC registration/update request,
   filesystem loader, resolver/plugin/options extension or output write. At
-  this adapter layer the launcher can distribute only its one compiled-in
-  closed fixture profile through an explicitly selected local endpoint; it
-  does not provide general project catalog/distribution or project update.
+  this adapter layer the launcher originally distributed only its compiled-in
+  closed fixture profile; the later owner-only startup catalog bootstrap below
+  now supports multiple complete sealed projects without adding an IPC write.
   Explicit artifact-write elevation remains a separate required capability.
   Compiler IPC v7 now includes the BlueTS checker's exported/not-exported
   classification in the existing generation-bound `GetStaticSymbol` reply.
@@ -1198,10 +1198,12 @@ or second module resolver to bypass them.
   `CoreCompilerServiceSession` has no registration/update API; its bounded
   request receiver is the only route from an independently handshaken
   `blueice-core --compiler-socket` worker to the mutable adapter/cache on the
-  core session thread. The reference process admits only the compiled-in
-  `core-closed-fixture-v1` integration profile, rather than accepting a
-  project path, source text, source graph, resolver, plugin, compiler option,
-  output root, or write flag from its command line or socket. Real-process
+  core session thread. The reference process originally admitted only the
+  compiled-in `core-closed-fixture-v1` integration profile; it now also
+  accepts one bounded private stdin catalog from the trusted launcher before
+  listeners are bound. Neither its public compiler socket nor MCP accepts a
+  project path, source text, graph, resolver, plugin, option, output root, or
+  write flag. Real-process
   coverage proves rejected pre-`Hello` traffic cannot reach the catalog and a
   handshaken opaque `DescribeProject`/`Check` receives source-free,
   generation-bound metadata from the core-registered closed fixture. Its v5
@@ -1211,8 +1213,9 @@ or second module resolver to bypass them.
   provenance/contract lookup and redacted invalid-data validation. The
   launcher now has one explicit `--compiler-mcp-socket <absolute-path>` seam:
   it validates and owns that stable public `0600` endpoint before spawning a
-  child, passes only the fixed `core-closed-fixture-v1` profile and a fresh
-  launcher-generated private compiler socket to each core, and reaps
+  child, passes the fixed `core-closed-fixture-v1` profile by default or an
+  owner-selected bounded catalog via private stdin, gives each core a fresh
+  launcher-generated private compiler socket, and reaps
   socket-only state on final shutdown. A live/non-socket public endpoint fails
   closed. During cutover it starts and health-checks v2's private sealed
   listener before changing the public relay for future accepts. Each accepted
@@ -1225,8 +1228,9 @@ or second module resolver to bypass them.
   IDs. Each accepted stream must receive this inventory before any project
   query; core records the exact IDs returned to that stream and revokes them
   on disconnect. A guessed ID or a receipt from another stream fails before
-  the compiler cache. General catalog distribution/authorization and all
-  update/write capabilities remain deliberately open.
+  the compiler cache. Owner-only catalog distribution is now available as
+  described below; independent input authorization and all update/write
+  capabilities remain deliberately open.
 
   MCP read foundation delivered: `blueice-mcp-server` now has a distinct
   `CompilerConnection` client and explicit
@@ -1321,17 +1325,32 @@ or second module resolver to bypass them.
   evidence before refreshing the inventory and accepts only a structurally
   valid, core-authored bounded response. Real core, launcher relay, and MCP
   `tools/call` tests cover denied pre-inventory queries and successful
-  same-stream inventory-to-check routing. The launcher still distributes
-  only its one fixed closed profile.
+  same-stream inventory-to-check routing. The launcher now supports a
+  bounded owner-selected sealed catalog as a separate startup path.
   There is still
-  no general launcher-owned catalog distribution or authorization beyond the
-  one fixed closed profile, no remote registration/update/source/filesystem/
+  no independently verified project-input authorization, no remote
+  registration/update/source/filesystem/
   resolver/plugin/options authority, no `bluetsc_build`, no artifact/
   declaration/source-map/source response, and no output write or elevation.
   The delivered `bluetsc_session_capabilities` receipt/generation gate covers
   this adapter's current connection lifecycle, including core-side
   per-accepted-stream attestation and exact capability manifest. Lowering/bytecode provenance, broader MCP
   negotiation, and the full MCP tool set remain open.
+
+  Owner-only multi-project startup distribution delivered: the trusted
+  launcher may read one absolute, regular, non-symlink JSON catalog file via
+  `--compiler-catalog-file` alongside `--compiler-mcp-socket`, or receive the
+  same typed catalog through its embedding API. The versioned private format
+  caps frame, project, module, import-edge, identity, ambient, and source
+  sizes and rejects duplicate/missing graph records. The launcher sends it
+  once through the new core generation's inherited stdin pipe, then closes
+  the pipe; the core validates and registers every project before any listener
+  is bound and seals registration for that generation. The public compiler
+  socket remains query-only and exposes only inventoried opaque IDs. Real
+  launcher/core coverage checks two independently compilable projects and a
+  denied guessed third ID. This does not independently canonicalize or audit
+  owner-selected identities/sources, enable dynamic project updates, grant
+  compiler peers path/source access, or confer build/artifact-write authority.
 
   Acceptance: `check` performs no writes; `build` keeps BlueTSC's atomic
   no-emit-on-error guarantee; responses are generation/fingerprint bound,

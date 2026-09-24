@@ -14,6 +14,8 @@
 //! `UnixListener` to that already-tested logic.
 
 #[cfg(unix)]
+use blueice_ipc::compiler_catalog::{CompilerCatalogBootstrap, MAX_COMPILER_CATALOG_FRAME_BYTES};
+#[cfg(unix)]
 use blueice_launcher::memory_pressure::{self, SystemMemorySource};
 #[cfg(unix)]
 use blueice_launcher::supervisor::{ProcessPolicy, ProcessRegistry};
@@ -22,6 +24,10 @@ use blueice_launcher::{
     default_control_socket_path, default_rendezvous_socket_path, run_broker, CoreLaunchOptions,
     SpawnedCore,
 };
+#[cfg(unix)]
+use std::io::Read;
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 #[cfg(unix)]
 use std::os::unix::net::UnixListener;
 #[cfg(unix)]
@@ -54,11 +60,12 @@ struct Args {
     /// BlueJS page-host child for each core generation. The endpoint/token
     /// are generated internally and are never CLI values.
     out_of_process_bluejs: bool,
-    /// Explicit opt-in compiler MCP attachment endpoint.  The caller chooses
-    /// only this Unix socket path; the launcher passes its one fixed,
-    /// core-owned closed project profile and never accepts a profile, source,
-    /// resolver, compiler option, or write/build input from the CLI.
+    /// Explicit opt-in compiler MCP attachment endpoint. Without an owner
+    /// catalog file, the launcher passes its fixed core-owned fixture.
     compiler_mcp_socket: Option<PathBuf>,
+    /// Trusted owner configuration read once before spawning any children.
+    /// This path is never sent to core or exposed through compiler IPC.
+    compiler_catalog_file: Option<PathBuf>,
     /// Explicit opt-in stable debugger endpoint. The caller selects only its
     /// Unix socket path; the launcher owns the public owner-only listener and
     /// supplies each core generation a fresh private listener. Debugger
@@ -148,6 +155,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut gatekeeper_socket = None;
     let mut out_of_process_bluejs = false;
     let mut compiler_mcp_socket = None;
+    let mut compiler_catalog_file = None;
     let mut debugger_socket = None;
     let mut debugger_static_metadata_inventory = false;
     let mut debugger_static_metadata_summary = false;
@@ -190,6 +198,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
             "--gatekeeper-socket" => gatekeeper_socket = Some(PathBuf::from(value()?)),
             "--out-of-process-bluejs" => out_of_process_bluejs = true,
             "--compiler-mcp-socket" => compiler_mcp_socket = Some(PathBuf::from(value()?)),
+            "--compiler-catalog-file" => compiler_catalog_file = Some(PathBuf::from(value()?)),
             "--debugger-socket" => debugger_socket = Some(PathBuf::from(value()?)),
             "--debugger-static-metadata-inventory" => debugger_static_metadata_inventory = true,
             "--debugger-static-metadata-summary" => debugger_static_metadata_summary = true,
@@ -464,6 +473,9 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     if debugger_static_metadata_symbol_contract && !debugger_static_metadata_contract_inventory {
         return Err("--debugger-static-metadata-symbol-contract requires --debugger-static-metadata-contract-inventory".to_string());
     }
+    if compiler_catalog_file.is_some() && compiler_mcp_socket.is_none() {
+        return Err("--compiler-catalog-file requires --compiler-mcp-socket".to_string());
+    }
     Ok(Args {
         rendezvous_socket,
         control_socket,
@@ -473,6 +485,7 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
         gatekeeper_socket,
         out_of_process_bluejs,
         compiler_mcp_socket,
+        compiler_catalog_file,
         debugger_socket,
         debugger_static_metadata_inventory,
         debugger_static_metadata_summary,
@@ -519,7 +532,26 @@ fn main() -> ExitCode {
         core_options = core_options.supervise_out_of_process_bluejs();
     }
     if let Some(compiler_mcp_socket) = args.compiler_mcp_socket.clone() {
-        core_options = core_options.with_core_closed_compiler_mcp_endpoint(compiler_mcp_socket);
+        core_options = if let Some(path) = args.compiler_catalog_file.as_deref() {
+            let catalog = match read_owner_compiler_catalog_file(path) {
+                Ok(catalog) => catalog,
+                Err(error) => {
+                    eprintln!("blueice-launcher: invalid owner compiler catalog: {error}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            match core_options
+                .with_owner_compiler_catalog_mcp_endpoint(compiler_mcp_socket, catalog)
+            {
+                Ok(options) => options,
+                Err(error) => {
+                    eprintln!("blueice-launcher: invalid owner compiler catalog: {error}");
+                    return ExitCode::FAILURE;
+                }
+            }
+        } else {
+            core_options.with_core_closed_compiler_mcp_endpoint(compiler_mcp_socket)
+        };
     }
     if let Some(debugger_socket) = args.debugger_socket.clone() {
         core_options = core_options.with_debugger_endpoint(debugger_socket);
@@ -677,6 +709,42 @@ fn main() -> ExitCode {
     }
 }
 
+#[cfg(unix)]
+fn read_owner_compiler_catalog_file(
+    path: &std::path::Path,
+) -> std::io::Result<CompilerCatalogBootstrap> {
+    use std::io::{self, ErrorKind};
+
+    if !path.is_absolute() {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "owner catalog path must be absolute",
+        ));
+    }
+    let before = std::fs::symlink_metadata(path)?;
+    if !before.file_type().is_file()
+        || before.len() == 0
+        || before.len() > MAX_COMPILER_CATALOG_FRAME_BYTES as u64
+    {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "owner catalog must be a bounded regular file, not a symlink",
+        ));
+    }
+    let file = std::fs::File::open(path)?;
+    let after = file.metadata()?;
+    if before.dev() != after.dev() || before.ino() != after.ino() || before.len() != after.len() {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "owner catalog changed while opening",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(before.len() as usize);
+    file.take((MAX_COMPILER_CATALOG_FRAME_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    CompilerCatalogBootstrap::from_json_slice(&bytes)
+}
+
 #[cfg(not(unix))]
 fn main() {
     eprintln!("blueice-launcher is currently supported only on Unix platforms");
@@ -692,6 +760,42 @@ mod tests {
     }
 
     #[test]
+    fn owner_catalog_requires_a_compiler_endpoint() {
+        assert!(args(&["--compiler-catalog-file", "/tmp/catalog.json"]).is_err());
+        let parsed = args(&[
+            "--compiler-mcp-socket",
+            "/tmp/compiler.sock",
+            "--compiler-catalog-file",
+            "/tmp/catalog.json",
+        ])
+        .unwrap();
+        assert_eq!(
+            parsed.compiler_catalog_file,
+            Some(PathBuf::from("/tmp/catalog.json"))
+        );
+        assert!(read_owner_compiler_catalog_file(std::path::Path::new("relative.json")).is_err());
+    }
+
+    #[test]
+    fn owner_catalog_file_rejects_symlink_and_malformed_content() {
+        use std::os::unix::fs::symlink;
+
+        let base = std::env::temp_dir().join(format!(
+            "blueice-owner-catalog-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let file = base.with_extension("json");
+        let link = base.with_extension("link");
+        std::fs::write(&file, b"not JSON").unwrap();
+        symlink(&file, &link).unwrap();
+        assert!(read_owner_compiler_catalog_file(&file).is_err());
+        assert!(read_owner_compiler_catalog_file(&link).is_err());
+        let _ = std::fs::remove_file(&link);
+        let _ = std::fs::remove_file(&file);
+    }
+
+    #[test]
     fn no_flags_uses_the_default_rendezvous_socket_and_default_size() {
         let parsed = args(&[]).unwrap();
         assert_eq!(parsed.rendezvous_socket, default_rendezvous_socket_path());
@@ -702,6 +806,7 @@ mod tests {
         assert_eq!(parsed.gatekeeper_socket, None);
         assert!(!parsed.out_of_process_bluejs);
         assert_eq!(parsed.compiler_mcp_socket, None);
+        assert_eq!(parsed.compiler_catalog_file, None);
         assert_eq!(parsed.debugger_socket, None);
         assert!(!parsed.debugger_static_metadata_inventory);
         assert!(!parsed.debugger_static_metadata_summary);
@@ -779,6 +884,7 @@ mod tests {
                 gatekeeper_socket: Some(PathBuf::from("/tmp/gatekeeper.sock")),
                 out_of_process_bluejs: true,
                 compiler_mcp_socket: Some(PathBuf::from("/tmp/compiler-mcp.sock")),
+                compiler_catalog_file: None,
                 debugger_socket: Some(PathBuf::from("/tmp/debugger.sock")),
                 debugger_static_metadata_inventory: true,
                 debugger_static_metadata_summary: true,

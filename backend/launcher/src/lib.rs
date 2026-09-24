@@ -52,6 +52,7 @@ mod unix {
 
     pub use super::control::default_control_socket_path;
 
+    use blueice_ipc::compiler_catalog::{write_compiler_catalog, CompilerCatalogBootstrap};
     use blueice_ipc::{
         read_client_message_with_ids, read_server_message_with_id, read_server_message_with_ids,
         write_client_message_with_id, write_client_message_with_ids, write_server_message_with_ids,
@@ -63,7 +64,7 @@ mod unix {
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Path, PathBuf};
-    use std::process::{Child, Command};
+    use std::process::{Child, Command, Stdio};
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::mpsc::{self, Sender};
     use std::sync::{Arc, Mutex};
@@ -91,11 +92,13 @@ mod unix {
         /// resource-policy carrier: callers cannot supply URLs, manifests,
         /// resolvers, paths, sources, or fetch settings.
         core_http_page_script_fixture: bool,
-        /// A caller-selected Unix endpoint for the one fixed, core-owned
-        /// compiler project profile.  The profile is deliberately not an API
-        /// field: neither a launcher caller nor its CLI can choose a source,
-        /// resolver, compiler option, or alternate profile.
+        /// A caller-selected Unix endpoint for a sealed core compiler catalog.
+        /// The default builder selects the fixed compiled-in fixture; the
+        /// separate trusted-owner builder may supply a complete closed graph.
         compiler_mcp_socket: Option<PathBuf>,
+        /// Owner-supplied, bounded, closed graph for one core generation.
+        /// Source text goes only to the new core's inherited stdin pipe.
+        compiler_catalog: Option<CompilerCatalogBootstrap>,
         /// A caller-selected Unix endpoint for the core's bounded debugger
         /// protocol.  The endpoint is only a transport location: debugger
         /// protocol versioning and every target-bound operation remain
@@ -233,7 +236,22 @@ mod unix {
         /// ever retargeting an existing compiler/MCP connection.
         pub fn with_core_closed_compiler_mcp_endpoint(mut self, path: PathBuf) -> Self {
             self.compiler_mcp_socket = Some(path);
+            self.compiler_catalog = None;
             self
+        }
+
+        /// Supplies a complete, owner-authorized sealed catalog for startup.
+        /// The compiler socket remains query-only; this never enables dynamic
+        /// registration, filesystem lookup, build, or write operations.
+        pub fn with_owner_compiler_catalog_mcp_endpoint(
+            mut self,
+            path: PathBuf,
+            catalog: CompilerCatalogBootstrap,
+        ) -> io::Result<Self> {
+            catalog.validate()?;
+            self.compiler_mcp_socket = Some(path);
+            self.compiler_catalog = Some(catalog);
+            Ok(self)
         }
 
         /// Selects the launcher-owned stable endpoint for the core debugger
@@ -1760,11 +1778,16 @@ mod unix {
                     .arg("core-page-http-fixture-v1");
             }
             if let Some(compiler_socket) = &compiler_private_socket_path {
-                command
-                    .arg("--compiler-socket")
-                    .arg(compiler_socket)
-                    .arg("--compiler-project-profile")
-                    .arg(CORE_CLOSED_COMPILER_PROJECT_PROFILE);
+                command.arg("--compiler-socket").arg(compiler_socket);
+                if options.compiler_catalog.is_some() {
+                    command
+                        .arg("--compiler-catalog-stdin")
+                        .stdin(Stdio::piped());
+                } else {
+                    command
+                        .arg("--compiler-project-profile")
+                        .arg(CORE_CLOSED_COMPILER_PROJECT_PROFILE);
+                }
             }
             if let Some(debugger_socket) = &debugger_private_socket_path {
                 command.arg("--debugger-socket").arg(debugger_socket);
@@ -1824,6 +1847,25 @@ mod unix {
                 }
             }
             let mut child = command.spawn()?;
+            if let Some(catalog) = options.compiler_catalog.as_ref() {
+                let send_result = child
+                    .stdin
+                    .take()
+                    .ok_or_else(|| io::Error::other("core catalog bootstrap pipe is missing"))
+                    .and_then(|mut pipe| write_compiler_catalog(&mut pipe, catalog));
+                if let Err(error) = send_result {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_file(&internal_socket_path);
+                    if let Some(compiler_socket) = &compiler_private_socket_path {
+                        remove_compiler_mcp_socket_if_owned(compiler_socket);
+                    }
+                    if let Some(debugger_socket) = &debugger_private_socket_path {
+                        remove_owned_socket_if_owned(debugger_socket);
+                    }
+                    return Err(error);
+                }
+            }
 
             if !wait_for_socket(&internal_socket_path, Duration::from_secs(5)) {
                 let _ = child.kill();

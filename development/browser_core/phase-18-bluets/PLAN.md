@@ -2,6 +2,20 @@
 
 [← Back to plan](../BROWSER_CORE_PLAN.md)
 
+**Owner-only compiler catalog bootstrap update:** A trusted launcher owner
+may now supply a complete versioned, bounded, closed project catalog from an
+absolute regular JSON file or its typed embedding API. The launcher passes it
+to each new core through a one-shot inherited stdin pipe, not compiler IPC or
+MCP. Core validates the graph and seals all registrations before binding any
+listener. The fixed compiled-in profile remains the default when no catalog
+is supplied. Public compiler peers only inventory opaque project IDs and use
+the existing read-only query operations; they cannot register, update, load
+files, build, or write outputs. Input authorization/canonicalization remains
+the trusted owner's responsibility. The chosen entry-module identity is still
+visible through the separately authorized `DescribeProject` query, so an owner
+must not put a sensitive filesystem path there. Output-write elevation is
+still open.
+
 **Atomic source-position arm update:** Debugger v29 adds
 `ArmStaticMetadataSourceBreakpoint` without changing the child-private
 page-host v29 protocol or metadata manifest v3. One core session turn requires
@@ -22,9 +36,9 @@ the exact IDs returned to each accepted compiler stream and rejects all
 project queries before that stream receives its inventory or after it ends.
 MCP exposes `bluetsc_list_projects`, validates the inventory, and requires an
 observed ID before description or check. Real core, launcher, and MCP
-`tools/call` regressions cover the boundary. This is not remote registration,
-general launcher catalog distribution, source/path access, build, or write
-authority.
+`tools/call` regressions cover the boundary. A subsequent owner-only startup
+bootstrap adds multi-project distribution; this inventory still grants no
+remote registration, source/path access, build, or write authority.
 
 **Native debugger step foundation:** BlueJS retains the same paused
 classic-root continuation across a one-instruction step and reports the actual
