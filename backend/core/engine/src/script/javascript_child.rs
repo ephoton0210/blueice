@@ -1536,7 +1536,9 @@ impl<C> OutOfProcessJavaScriptPageExecutor<C> {
 
 impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
     /// Reads the authenticated child's actual live-realm usage as one
-    /// core-only snapshot. It does not replace the owner's conservative
+    /// core-only snapshot. Only realms with a validated per-realm accounting
+    /// receipt count as live: the document table also retains failed attempts
+    /// to prevent retries. This does not replace the owner's conservative
     /// reservation policy or expose accounting through public IPC.
     pub fn child_stats(&mut self) -> io::Result<PageHostChildStats> {
         let reply = self.child.child_stats()?;
@@ -1547,7 +1549,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             ));
         };
         if !stats.is_well_formed()
-            || usize::try_from(stats.realm_count).ok() != Some(self.live_documents.len())
+            || usize::try_from(stats.realm_count).ok() != Some(self.realm_stats.len())
         {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -1609,6 +1611,24 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
         self.realm_stats.remove(&tab_id);
         self.debugger_programs.remove(&tab_id);
         self.debugger_static_metadata.remove(&tab_id);
+    }
+
+    /// A failed synchronization may still have installed the candidate realm
+    /// before the child sent a malformed acknowledgement. Close both the
+    /// previously trusted generation and the attempted successor: a child
+    /// with exact-generation close semantics will reject the stale request
+    /// and discard whichever generation is actually live.
+    fn close_failed_document(&mut self, tab_id: TabId, candidate_generation: u64) {
+        let predecessor_generation = self
+            .live_documents
+            .get(&tab_id)
+            .map(|document| document.document_generation);
+        self.close_page(tab_id);
+        if predecessor_generation != Some(candidate_generation) {
+            let _ = self
+                .child
+                .close_realm(tab_id.as_u64(), candidate_generation);
+        }
     }
 
     fn synchronize_document(&mut self, tab_id: TabId, page: &Page, identity: LiveDocument) {
@@ -1677,10 +1697,10 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             }
             Ok(PageHostReply::Error { code, .. }) => {
                 // A child-side request rejection must not leave an old realm
-                // runnable under a replaced core document. Best-effort close
-                // uses the old generation, which the child rejects if a
-                // successor did in fact activate.
-                self.close_page(tab_id);
+                // runnable under a replaced core document. The child may
+                // also have activated the successor before returning an
+                // error, so both exact generations must be attempted.
+                self.close_failed_document(tab_id, identity.document_generation);
                 let category = child_error_category(code);
                 for (ordinal, language, kind) in inline_scripts {
                     push_child_failure_report(
@@ -1699,7 +1719,7 @@ impl<C: PageHostClient> OutOfProcessJavaScriptPageExecutor<C> {
             // debugger deferral budget or retain a public/private program
             // mapping that could later be mistaken for this replacement.
             Ok(_) | Err(_) => {
-                self.close_page(tab_id);
+                self.close_failed_document(tab_id, identity.document_generation);
                 for (ordinal, language, kind) in inline_scripts {
                     push_child_failure_report(
                         (&mut local_reports, &mut local_blue_ts_reports),
@@ -5159,6 +5179,114 @@ mod tests {
                 executor.into_child().closes,
                 vec![(tab_id.as_u64(), 1)],
                 "an untrustworthy accounting record must close the newly acknowledged realm"
+            );
+        }
+    }
+
+    #[derive(Default)]
+    struct WrongSuccessorAckChild {
+        active_generation: Option<u64>,
+        closes: Vec<(u64, u64)>,
+        return_error: bool,
+    }
+
+    impl PageHostClient for WrongSuccessorAckChild {
+        fn synchronize_document(
+            &mut self,
+            document: PageHostDocument,
+        ) -> io::Result<PageHostReply> {
+            self.active_generation = Some(document.document_generation);
+            if document.document_generation == 2 && self.return_error {
+                return Ok(PageHostReply::Error {
+                    code: PageHostErrorCode::HostFailure,
+                    message: "child failed after admission".to_string(),
+                });
+            }
+            Ok(PageHostReply::Synchronized {
+                tab_id: document.tab_id + u64::from(document.document_generation == 2),
+                document_generation: document.document_generation,
+                already_current: false,
+                reports: Vec::new(),
+            })
+        }
+
+        fn close_realm(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            self.closes.push((tab_id, document_generation));
+            if self.active_generation == Some(document_generation) {
+                self.active_generation = None;
+                Ok(PageHostReply::RealmClosed {
+                    tab_id,
+                    document_generation,
+                })
+            } else {
+                Ok(PageHostReply::Error {
+                    code: PageHostErrorCode::StaleDocument,
+                    message: "stale document".to_string(),
+                })
+            }
+        }
+
+        fn debugger_realm_stats(
+            &mut self,
+            tab_id: u64,
+            document_generation: u64,
+        ) -> io::Result<PageHostReply> {
+            if self.active_generation != Some(document_generation) {
+                return Ok(PageHostReply::Error {
+                    code: PageHostErrorCode::StaleDocument,
+                    message: "stale document".to_string(),
+                });
+            }
+            Ok(PageHostReply::RealmStats(PageHostRealmStats {
+                tab_id,
+                document_generation,
+                program_count: 1,
+                bytecode_bytes: 64,
+                heap_bytes: 128,
+            }))
+        }
+
+        fn child_stats(&mut self) -> io::Result<PageHostReply> {
+            let has_realm = self.active_generation.is_some();
+            Ok(PageHostReply::ChildStats(PageHostChildStats {
+                realm_count: u32::from(has_realm),
+                program_count: u64::from(has_realm),
+                bytecode_bytes: if has_realm { 64 } else { 0 },
+                heap_bytes: if has_realm { 128 } else { 0 },
+            }))
+        }
+    }
+
+    #[test]
+    fn untrusted_successor_ack_closes_the_generation_the_child_may_have_admitted() {
+        for return_error in [false, true] {
+            let (mut tabs, tab_id) = loaded_tabs(
+                "<script>let previous = 1;</script>",
+                "https://example.test/previous.html",
+            );
+            let mut executor = OutOfProcessJavaScriptPageExecutor::new(WrongSuccessorAckChild {
+                return_error,
+                ..WrongSuccessorAckChild::default()
+            });
+            executor.synchronize_and_execute(&tabs).unwrap();
+            assert_eq!(executor.child.active_generation, Some(1));
+            assert_eq!(executor.child_stats().unwrap().realm_count, 1);
+
+            tabs.get_mut(tab_id).unwrap().load_html_str(
+                "<script>let successor = 2;</script>",
+                Some("https://example.test/successor.html".to_string()),
+            );
+            executor.synchronize_and_execute(&tabs).unwrap();
+            assert_eq!(executor.child_stats().unwrap().realm_count, 0);
+            let child = executor.into_child();
+            assert_eq!(child.active_generation, None);
+            assert_eq!(
+                child.closes,
+                vec![(tab_id.as_u64(), 1), (tab_id.as_u64(), 2)]
             );
         }
     }

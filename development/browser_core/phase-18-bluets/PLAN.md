@@ -6,12 +6,16 @@
 authenticated child-wide snapshot of currently live realm count, retained
 programs/root bytecode, and VM-managed heap. The child recomputes checked
 totals from exact live realms and rejects impossible or owner-envelope-exceeding
-results; core accepts only a well-formed reply matching its live realm count.
+results; core accepts only a well-formed reply matching its validated
+per-realm accounting receipts, not its retry-suppression document table.
 Replacement and close drop the predecessor charge. This is core-only and
 complements conservative child-wide reservations; it is not a source/cache,
 allocator, process-RSS, or fleet budget and is not exposed to page, frontend,
 debugger, or MCP peers. The public BlueTS source-span step now also accepts
 compiler-minted source ID zero, which is valid when separately receipted.
+If a child admits a successor but returns an error or mismatched acknowledgement,
+core best-effort closes both exact generations so the successor cannot remain
+runnable solely because the predecessor close was rejected as stale.
 
 **Public BlueTS source-span stepping:** Page-host protocol
 v30 adds an authenticated child request bound to one paused classic-root

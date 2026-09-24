@@ -288,7 +288,11 @@ or second module resolver to bypass them.
   widen the envelope. Page-host v31 now adds an authenticated core-only query
   for actual program/root-bytecode/VM-managed-heap totals across the live
   child realms; the child recomputes checked sums under the owner envelope,
-  and core validates the source-free reply against its live realm count.
+  and core validates the source-free reply against its validated per-realm
+  receipts rather than the table of attempted documents retained to suppress
+  retries. If a successor admission returns an error or malformed acknowledgement,
+  core best-effort closes both old and candidate generations: the child's
+  exact-generation rule rejects the stale close and removes the live one.
   Replacement and close remove predecessor usage, while a malformed reply
   fails closed. This remains neither an RSS cap nor a fleet budget: VM heap
   accounting excludes allocator/Rust/source/registry/OS overhead, and
