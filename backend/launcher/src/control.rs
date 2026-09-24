@@ -70,7 +70,14 @@ pub enum ControlReply {
     /// request made no change and callers may retry after it finishes.
     CutoverBusy,
     /// `None` means this launcher has no installed extension package.
-    ExtensionPermissions { installed: Option<InstalledExtensionPermissions> },
+    /// `core_generation` identifies the exact active core whose private pipe
+    /// produced `installed`, so a future native consent action cannot reuse
+    /// a decision made before a cutover merely because the package hash stayed
+    /// the same. This reply itself remains read-only.
+    ExtensionPermissions {
+        core_generation: u64,
+        installed: Option<InstalledExtensionPermissions>,
+    },
     /// Inspection failed or timed out; no permission mutation is attempted.
     ExtensionPermissionsUnavailable { reason: String },
 }
@@ -163,7 +170,7 @@ mod tests {
                 reason: "boom".to_string(),
             },
             ControlReply::CutoverBusy,
-            ControlReply::ExtensionPermissions { installed: None },
+            ControlReply::ExtensionPermissions { core_generation: 7, installed: None },
             ControlReply::ExtensionPermissionsUnavailable { reason: "timed out".into() },
         ] {
             let mut buf = Vec::new();

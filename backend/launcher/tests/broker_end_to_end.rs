@@ -157,11 +157,11 @@ impl Launcher {
             .expect("failed to connect to the launcher's control socket")
     }
 
-    fn inspect_extension_permissions(&self) -> Option<blueice_launcher::control::InstalledExtensionPermissions> {
+    fn inspect_extension_permissions(&self) -> (u64, Option<blueice_launcher::control::InstalledExtensionPermissions>) {
         let mut control = self.connect_control();
         write_control_request(&mut control, &ControlRequest::InspectExtensionPermissions).unwrap();
         match read_control_reply(&mut control).unwrap() {
-            ControlReply::ExtensionPermissions { installed } => installed,
+            ControlReply::ExtensionPermissions { core_generation, installed } => (core_generation, installed),
             other => panic!("expected a read-only extension inspection, got {other:?}"),
         }
     }
@@ -240,7 +240,7 @@ fn an_unrecognized_argument_exits_with_failure_and_creates_no_socket() {
 #[test]
 fn permission_inspection_reports_no_package_without_creating_grant_authority() {
     let mut launcher = Launcher::spawn();
-    assert_eq!(launcher.inspect_extension_permissions(), None);
+    assert_eq!(launcher.inspect_extension_permissions(), (0, None));
     let mut client = launcher.connect();
     write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
     launcher.wait_or_kill(Duration::from_secs(5));
@@ -492,6 +492,8 @@ fn a_client_survives_a_cutover_and_sees_v2s_replayed_state() {
         panic!("expected CutoverDone, got {reply:?}")
     };
     assert_eq!(tabs_migrated, 2);
+    assert_eq!(launcher.inspect_extension_permissions(), (1, None),
+        "a package-free cutover must still publish the new core generation");
 
     // (c) v1's process is actually dead: `SpawnedCore::Drop` removes
     // its internal socket file only after the child has been reaped.
@@ -654,7 +656,9 @@ fn an_installed_extension_survives_cutover_with_a_fresh_authenticated_host() {
         !v2_extension_socket.exists(),
         "v2's private extension socket must not predate the cutover"
     );
-    let before = launcher.inspect_extension_permissions()
+    let (before_generation, before) = launcher.inspect_extension_permissions();
+    assert_eq!(before_generation, 0);
+    let before = before
         .expect("v1 must answer through its private parent pipe");
     assert_eq!(before.name, "Launcher cutover test");
     assert_eq!(before.version, "1.0.0");
@@ -693,7 +697,9 @@ fn an_installed_extension_survives_cutover_with_a_fresh_authenticated_host() {
         v2_extension_socket.exists(),
         "v2 must revalidate the same package and start a fresh authenticated host"
     );
-    let after = launcher.inspect_extension_permissions()
+    let (after_generation, after) = launcher.inspect_extension_permissions();
+    assert_eq!(after_generation, 1, "the inspected state must belong to cutover v2");
+    let after = after
         .expect("v2 must own a new responsive private parent pipe");
     assert_eq!(after, before, "cutover must keep package identity and declared-only grants");
 
@@ -725,6 +731,8 @@ fn an_invalidated_extension_package_aborts_cutover_without_losing_v1() {
     let v1_extension_socket = launcher.extension_socket_path(0);
     let v2_extension_socket = launcher.extension_socket_path(1);
     assert!(v1_core_socket.exists() && v1_extension_socket.exists());
+    let original_permissions = launcher.inspect_extension_permissions();
+    assert_eq!(original_permissions.0, 0);
 
     let mut client = launcher.connect();
     write_client_message(
@@ -755,6 +763,8 @@ fn an_invalidated_extension_package_aborts_cutover_without_losing_v1() {
     );
     assert!(v1_core_socket.exists() && v1_extension_socket.exists());
     assert!(!v2_extension_socket.exists());
+    assert_eq!(launcher.inspect_extension_permissions(), original_permissions,
+        "a failed cutover must keep v1's identity, grants, and generation");
 
     // The already-connected client must still reach v1 after this failure.
     write_client_message_with_id(&mut client, Some(901), &ClientMessage::ListTabs).unwrap();

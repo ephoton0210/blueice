@@ -668,14 +668,17 @@ fn perform_swap(
         .core_writer
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    broker.generation.store(target_generation, Ordering::SeqCst);
-    *writer = v2_writer_stream;
-
-    let v1 = broker
+    let mut active = broker
         .active_core
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .replace(v2);
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Publish the new writer, process, and generation while holding both
+    // locks. A concurrent permission inspection cannot pair v1's private
+    // pipe with v2's generation (or vice versa) during this transition.
+    broker.generation.store(target_generation, Ordering::SeqCst);
+    *writer = v2_writer_stream;
+    let v1 = active.replace(v2);
+    drop(active);
     if let Some(v1) = v1.as_ref() {
         // Unblocks v1's old broadcast thread's blocked read (shutdown
         // affects every fd sharing this socket's underlying open file
@@ -761,8 +764,12 @@ fn handle_control_connection(mut conn: UnixStream, broker: &Arc<Broker>) -> io::
         control::ControlRequest::Cutover => cutover(broker),
         control::ControlRequest::InspectExtensionPermissions => {
             let active = broker.active_core.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let core_generation = broker.generation.load(Ordering::SeqCst);
             match active.as_ref().map(SpawnedCore::inspect_installed_extension) {
-                Some(Ok(installed)) => control::ControlReply::ExtensionPermissions { installed },
+                Some(Ok(installed)) => control::ControlReply::ExtensionPermissions {
+                    core_generation,
+                    installed,
+                },
                 Some(Err(error)) => control::ControlReply::ExtensionPermissionsUnavailable {
                     reason: error.to_string(),
                 },
