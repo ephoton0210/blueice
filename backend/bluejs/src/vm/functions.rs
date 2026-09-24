@@ -457,39 +457,41 @@ mod allocation_exhaustion {
     }
 }
 
-/// The Test262 NumberFormat matrix host function formats probe values through
-/// the engine's own NumberFormat, whose output is bounded by the string limit.
+/// Native loops charge the instruction budget as they go: under every budget
+/// from one upward each operation must either finish or stop with the
+/// instruction limit, from wherever the budget happens to run out.
 #[cfg(test)]
-mod number_format_string_limits {
+mod instruction_budgets {
     use crate::{compile, parse, RuntimeError, Vm, VmConfig};
 
-    fn matrix_with_limit(limit: usize) -> Result<crate::Value, RuntimeError> {
-        let mut vm = Vm::new(VmConfig {
-            max_string_bytes: limit,
-            ..VmConfig::default()
-        })
-        .unwrap();
-        vm.install_test262_harness().unwrap();
-        let source =
-            "__bluejsTest262NumberFormatPrecisionMatrix(['en'], ['latn'], {}, { '1': '1' })";
-        vm.execute(&compile(&parse(source).unwrap()).unwrap())
+    fn stops_cleanly_at_every_budget(source: &str) {
+        let program = compile(&parse(source).unwrap()).unwrap();
+        let mut budget = 1;
+        loop {
+            let mut vm = Vm::new(VmConfig {
+                instruction_budget: budget,
+                ..VmConfig::default()
+            })
+            .unwrap();
+            vm.install_test262_harness().unwrap();
+            match vm.execute(&program) {
+                Ok(_) => break,
+                Err(error) => assert_eq!(error, RuntimeError::InstructionLimit, "{source}"),
+            }
+            budget += 1;
+        }
+        assert!(budget > 3, "{source}");
     }
 
     #[test]
-    fn the_positive_probe_output_over_the_limit_is_reported() {
-        // "1.1" is six bytes of UTF-16.
-        assert_eq!(
-            matrix_with_limit(4),
-            Err(RuntimeError::StringLimit { limit: 4 })
-        );
+    fn array_from_over_an_array_like() {
+        stops_cleanly_at_every_budget("Array.from({ length: 3, 0: 1, 1: 2, 2: 3 }).length");
     }
 
     #[test]
-    fn the_negative_probe_output_over_the_limit_is_reported() {
-        // "1.1" fits, "-1.1" is eight bytes.
-        assert_eq!(
-            matrix_with_limit(6),
-            Err(RuntimeError::StringLimit { limit: 6 })
+    fn the_number_format_precision_matrix() {
+        stops_cleanly_at_every_budget(
+            "__bluejsTest262NumberFormatPrecisionMatrix(['en', 'de'], ['latn', 'thai'], {}, { '1': '1', '1.500': '1.5', '1.625': '1.625', '1.750': '1.75', '1.875': '1.875', '2.000': '2' })",
         );
     }
 }

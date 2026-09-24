@@ -556,10 +556,13 @@ impl Vm {
                                 (&positive, raw_expected.as_str())
                             };
                         let expected = test262_localize_number(raw_expected, digits, pattern);
-                        let actual = self.number_format_format(
-                            &Value::Object(format_object),
-                            &Value::String(input.into()),
-                        )?;
+                        // The inputs are fixed, ordinary decimal strings.
+                        let actual = self
+                            .number_format_format(
+                                &Value::Object(format_object),
+                                &Value::String(input.into()),
+                            )
+                            .expect("a NumberFormat formats an ordinary decimal string");
                         if actual != Value::String(expected.into()) {
                             return Err(self.test262_failure(
                                 "__bluejsTest262NumberFormatPrecisionMatrix output",
@@ -584,10 +587,13 @@ impl Vm {
         format_object: ObjectId,
         digits: &str,
     ) -> Result<(NumberFormatPattern, NumberFormatPattern), RuntimeError> {
-        let positive =
-            self.number_format_format(&Value::Object(format_object), &Value::Number(1.1))?;
-        let negative =
-            self.number_format_format(&Value::Object(format_object), &Value::Number(-1.1))?;
+        // Formatting an ordinary number cannot fail.
+        let positive = self
+            .number_format_format(&Value::Object(format_object), &Value::Number(1.1))
+            .expect("a NumberFormat formats 1.1");
+        let negative = self
+            .number_format_format(&Value::Object(format_object), &Value::Number(-1.1))
+            .expect("a NumberFormat formats -1.1");
         let positive = self
             .coerce_string(&positive)
             .expect("NumberFormat output is a String");

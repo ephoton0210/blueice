@@ -105,4 +105,8 @@ const CASES: &[(&str, &str)] = &[
         r#"new ArrayBuffer(8).sliceToImmutable(0, { valueOf() { throw new EvalError('e') } })"#,
         r#"throws EvalError: e"#,
     ),
+    (
+        r#"new ArrayBuffer(8).transferToImmutable(2 ** 40)"#,
+        r#"throws RangeError: immutable ArrayBuffer length is too large"#,
+    ),
 ];

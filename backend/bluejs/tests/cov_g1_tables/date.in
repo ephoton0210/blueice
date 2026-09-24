@@ -1,6 +1,7 @@
 // Expected results shared by the integration test of the same name and the
 // in-crate `vm::functions::reference_tables` test.
 const DATE_CASES: &[(&str, &str)] = &[
+    ("typeof new Date().getTime()", "number"),
     ("Date.parse('2020')", "1577836800000"),
     ("Date.parse('2020-03-04')", "1583280000000"),
     ("Date.parse('2020-03-04T05:06')", "1583298360000"),
