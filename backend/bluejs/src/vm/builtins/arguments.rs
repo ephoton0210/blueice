@@ -4,7 +4,32 @@
 
 use super::*;
 
+/// The number an internal list's `length` holds; every array's does.
+pub(super) fn number_or_zero(value: &Value) -> f64 {
+    if let Value::Number(number) = value {
+        *number
+    } else {
+        0.0
+    }
+}
+
 impl Vm {
+    /// Roots an object this module has just allocated while it goes on to
+    /// build the rest of an intrinsic; released again by [`Self::release_root`].
+    pub(in super::super) fn root_new_object(&mut self, object: ObjectId) -> crate::heap::RootId {
+        self.heap
+            .root(object)
+            .expect("a freshly allocated object can be rooted")
+    }
+
+    /// Releases a root registered by [`Self::root_new_object`] (or by another
+    /// caller that registered exactly one root for it).
+    pub(in super::super) fn release_root(&mut self, root: crate::heap::RootId) {
+        self.heap
+            .unroot(root)
+            .expect("the root is still registered");
+    }
+
     /// Materializes the per-invocation arguments binding after the function
     /// environment has entered. Mapped indices point at the same heap cells
     /// as simple sloppy parameter bindings; every other index remains an
@@ -49,7 +74,9 @@ impl Vm {
                 self.define_data(object, index.to_string(), value, true, true, true)?;
             }
             let array = self.global("Array")?;
-            let array_prototype = self.get_property(&array, &"prototype".into())?;
+            let array_prototype = self
+                .get_property(&array, &"prototype".into())
+                .expect("Array.prototype is a plain data property");
             let iterator =
                 self.get_property(&array_prototype, &JsSymbol::well_known("iterator").into())?;
             self.define_data(
@@ -88,12 +115,13 @@ impl Vm {
         let constructor = self.string_intrinsics()?.0;
         let prototype = self
             .heap
-            .prototype(constructor)?
+            .prototype(constructor)
+            .expect("the String constructor is a live object")
             .expect("String constructor has Function.prototype");
         let function = self.with_roots(|heap| {
             heap.alloc_native_function(NativeFunction::ThrowTypeError, "", prototype)
         })?;
-        let root = self.heap.root(function)?;
+        let root = self.root_new_object(function);
         let result = (|| {
             // %ThrowTypeError% is frozen: `length` then `name`, both
             // non-configurable, and the function is not extensible.
@@ -106,7 +134,9 @@ impl Vm {
                 false,
                 false,
             )?;
-            self.heap.prevent_extensions(function)?;
+            self.heap
+                .prevent_extensions(function)
+                .expect("%ThrowTypeError% was just allocated");
             Ok(function)
         })();
         match result {
@@ -115,7 +145,7 @@ impl Vm {
                 Ok(function)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.release_root(root);
                 Err(error)
             }
         }
@@ -141,11 +171,7 @@ impl Vm {
             };
             let defined =
                 self.with_roots(|heap| heap.define_own_property(function, name, descriptor))?;
-            if !defined {
-                return Err(RuntimeError::TypeError(
-                    "cannot define a legacy function property".into(),
-                ));
-            }
+            assert!(defined, "a new function accepts its legacy properties");
         }
         Ok(())
     }
@@ -157,7 +183,8 @@ impl Vm {
         let constructor = self.string_intrinsics()?.0;
         let prototype = self
             .heap
-            .prototype(constructor)?
+            .prototype(constructor)
+            .expect("the String constructor is a live object")
             .expect("String constructor has Function.prototype");
         let mut created = Vec::new();
         let result = (|| {
@@ -167,7 +194,7 @@ impl Vm {
             ] {
                 let function =
                     self.with_roots(|heap| heap.alloc_native_function(native, "", prototype))?;
-                created.push((function, self.heap.root(function)?));
+                created.push((function, self.root_new_object(function)));
                 self.define_data(
                     function,
                     "name",
@@ -187,7 +214,7 @@ impl Vm {
             }
             Err(error) => {
                 for (_, root) in created {
-                    self.heap.unroot(root)?;
+                    self.release_root(root);
                 }
                 Err(error)
             }
@@ -214,9 +241,12 @@ impl Vm {
         else {
             return Ok(Value::Null);
         };
-        let Some((code, ..)) = self.heap.closure(caller)? else {
-            return Ok(Value::Null);
-        };
+        // Only closures are pushed on the call stack.
+        let (code, ..) = self
+            .heap
+            .closure(caller)
+            .expect("a function on the call stack is a live object")
+            .expect("a function on the call stack is a closure");
         if code.strict || code.generator || code.async_function || code.class_constructor {
             return Ok(Value::Null);
         }
@@ -254,8 +284,7 @@ impl Vm {
             for (index, value) in self.arguments.clone().into_iter().enumerate() {
                 self.define_data(object, index.to_string(), value, true, true, true)?;
             }
-            let array = self.global("Array")?;
-            let array_prototype = self.get_property(&array, &"prototype".into())?;
+            let array_prototype = Value::Object(self.array_prototype);
             let iterator =
                 self.get_property(&array_prototype, &JsSymbol::well_known("iterator").into())?;
             self.define_data(
@@ -351,7 +380,9 @@ impl Vm {
         // script has not observed it yet, and publish `var` bindings there.
         // Strict eval always receives its own VariableEnvironment.
         if global_execution && self.this == Value::Undefined {
-            self.this = self.global("globalThis")?;
+            self.this = self
+                .global("globalThis")
+                .expect("the global object exists once code is running");
         }
         let global_var_environment = !code.strict && global_execution;
         self.execute_eval(&code, captures, global_var_environment)
@@ -374,7 +405,9 @@ impl Vm {
             crate::compiler::EvalContext::default(),
         )
         .map_err(|error| RuntimeError::SyntaxError(error.to_string()))?;
-        let global_this = self.global("globalThis")?;
+        let global_this = self
+            .global("globalThis")
+            .expect("the global object exists once code is running");
         let this = std::mem::replace(&mut self.this, global_this);
         let dynamic_eval_bindings = std::mem::take(&mut self.dynamic_eval_bindings);
         let dynamic_eval_outer_bindings = std::mem::take(&mut self.dynamic_eval_outer_bindings);
@@ -391,7 +424,11 @@ impl Vm {
         let Some(object) = value.object_id() else {
             return Ok(false);
         };
-        Ok(self.heap.native_function(object)? == Some(NativeFunction::Eval))
+        Ok(self
+            .heap
+            .native_function(object)
+            .expect("an object handed to a call is live")
+            == Some(NativeFunction::Eval))
     }
 
     pub(in super::super) fn array_push(
@@ -410,15 +447,19 @@ impl Vm {
             }
             self.stack.pop();
         } else {
-            let Value::Number(length) = self.heap.get(id, "length")? else {
-                unreachable!()
-            };
-            if kind == 1 {
-                self.with_roots(|heap| heap.set(id, "length", Value::Number(length + 1.0)))?;
-            } else {
+            let length = number_or_zero(
+                &self
+                    .heap
+                    .get(id, "length")
+                    .expect("an array being appended to is a live object"),
+            );
+            if kind == 0 {
                 self.with_roots(|heap| heap.set(id, (length as u32).to_string(), value.clone()))?;
-                self.with_roots(|heap| heap.set(id, "length", Value::Number(length + 1.0)))?;
             }
+            // Replacing an array's Number length with another Number needs no
+            // new room, and the array is a fresh, extensible one.
+            self.with_roots(|heap| heap.set(id, "length", Value::Number(length + 1.0)))
+                .expect("a fresh array's length accepts the next Number");
         }
         Ok(())
     }
@@ -428,10 +469,14 @@ impl Vm {
             return Ok(prototype);
         }
         let constructor = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(constructor)?.unwrap();
+        let function_prototype = self
+            .heap
+            .prototype(constructor)
+            .expect("the String constructor is a live object")
+            .unwrap();
         let base = self.base_iterator_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self.root_new_object(prototype);
         let result = (|| {
             self.install_native(
                 prototype,
@@ -451,7 +496,7 @@ impl Vm {
             Ok(prototype)
         })();
         if result.is_err() {
-            self.heap.unroot(root)?;
+            self.release_root(root);
         } else {
             self.array_iterator_prototype = Some(prototype);
         }
@@ -486,7 +531,7 @@ impl Vm {
         let (generator_side, generator_root) = match self.build_generator_prototype() {
             Ok(built) => built,
             Err(error) => {
-                self.heap.unroot(function_root)?;
+                self.release_root(function_root);
                 return Err(error);
             }
         };
@@ -519,8 +564,8 @@ impl Vm {
                 Ok(())
             }
             Err(error) => {
-                self.heap.unroot(function_root)?;
-                self.heap.unroot(generator_root)?;
+                self.release_root(function_root);
+                self.release_root(generator_root);
                 Err(error)
             }
         }
@@ -535,9 +580,12 @@ impl Vm {
             .global("Function")?
             .object_id()
             .expect("Function is callable");
-        let function_prototype = self.function_prototype()?;
+        // `global` built the String intrinsics before answering.
+        let function_prototype = self
+            .function_prototype()
+            .expect("the String intrinsics exist");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self.root_new_object(prototype);
         let base = self.stack.len();
         self.stack.push(Value::Object(prototype));
         let result = (|| {
@@ -594,7 +642,7 @@ impl Vm {
         match result {
             Ok(()) => Ok((prototype, root)),
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.release_root(root);
                 Err(error)
             }
         }
@@ -612,11 +660,20 @@ impl Vm {
     fn build_generator_prototype(
         &mut self,
     ) -> Result<(ObjectId, crate::heap::RootId), RuntimeError> {
-        let constructor = self.string_intrinsics()?.0;
-        let function_prototype = self.heap.prototype(constructor)?.unwrap();
+        // The function prototype was built just before, by
+        // `build_generator_function_prototype`.
+        let constructor = self
+            .string_intrinsics()
+            .expect("the String intrinsics exist")
+            .0;
+        let function_prototype = self
+            .heap
+            .prototype(constructor)
+            .expect("the String constructor is a live object")
+            .unwrap();
         let base = self.base_iterator_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self.root_new_object(prototype);
         let result = (|| {
             self.install_native(
                 prototype,
@@ -652,7 +709,7 @@ impl Vm {
         match result {
             Ok(()) => Ok((prototype, root)),
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.release_root(root);
                 Err(error)
             }
         }
@@ -668,7 +725,7 @@ impl Vm {
         let object_prototype = self.object_prototype;
         let function_prototype = self.function_prototype()?;
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(object_prototype)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self.root_new_object(prototype);
         let result = self
             .install_symbol_native(
                 prototype,
@@ -687,7 +744,7 @@ impl Vm {
                 )
             });
         if let Err(error) = result {
-            self.heap.unroot(root)?;
+            self.release_root(root);
             Err(error)
         } else {
             self.async_iterator_base = Some(prototype);
@@ -703,9 +760,11 @@ impl Vm {
             return Ok(prototype);
         }
         let base = self.async_iterator_prototype()?;
-        let function_prototype = self.function_prototype()?;
+        let function_prototype = self
+            .function_prototype()
+            .expect("the String intrinsics exist");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(base)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self.root_new_object(prototype);
         let result = (|| {
             self.install_native(
                 prototype,
@@ -738,7 +797,7 @@ impl Vm {
             )
         })();
         if let Err(error) = result {
-            self.heap.unroot(root)?;
+            self.release_root(root);
             Err(error)
         } else {
             self.async_generator_prototype = Some(prototype);
@@ -759,13 +818,15 @@ impl Vm {
             return Ok(prototype);
         }
         let generator_side = self.async_generator_prototype()?;
-        let function_prototype = self.function_prototype()?;
+        let function_prototype = self
+            .function_prototype()
+            .expect("the String intrinsics exist");
         let function_constructor = self
             .global("Function")?
             .object_id()
             .expect("Function is callable");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self.root_new_object(prototype);
         let base = self.stack.len();
         self.stack.push(Value::Object(prototype));
         let result: Result<(), RuntimeError> = (|| {
@@ -841,7 +902,7 @@ impl Vm {
                 Ok(prototype)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.release_root(root);
                 Err(error)
             }
         }
@@ -861,9 +922,12 @@ impl Vm {
             .global("Function")?
             .object_id()
             .expect("Function is callable");
-        let function_prototype = self.function_prototype()?;
+        // `global` built the String intrinsics before answering.
+        let function_prototype = self
+            .function_prototype()
+            .expect("the String intrinsics exist");
         let prototype = self.with_roots(|heap| heap.alloc_object(Some(function_prototype)))?;
-        let root = self.heap.root(prototype)?;
+        let root = self.root_new_object(prototype);
         let base = self.stack.len();
         self.stack.push(Value::Object(prototype));
         let result: Result<(), RuntimeError> = (|| {
@@ -923,9 +987,54 @@ impl Vm {
                 Ok(prototype)
             }
             Err(error) => {
-                self.heap.unroot(root)?;
+                self.release_root(root);
                 Err(error)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::math::fault_injection::heap_limit_failures;
+    use super::*;
+
+    #[test]
+    fn a_list_length_is_read_as_a_number_and_anything_else_as_zero() {
+        assert_eq!(number_or_zero(&Value::Number(3.0)), 3.0);
+        assert_eq!(number_or_zero(&Value::Undefined), 0.0);
+    }
+
+    /// Builds one lazily created intrinsic (twice: the second call finds it
+    /// cached) on VMs that run out of heap at each allocation in turn, so the
+    /// partly built intrinsic is released and the next attempt starts afresh.
+    /// The first sweep fails inside the String intrinsics every builder starts
+    /// from; the second starts after them and covers the builder itself.
+    fn intrinsic_survives_every_allocation_failure(
+        build: fn(&mut Vm) -> Result<ObjectId, RuntimeError>,
+    ) {
+        let mut operation = |vm: &mut Vm| {
+            let first = build(vm)?;
+            assert_eq!(build(vm), Ok(first));
+            Ok(())
+        };
+        assert!(heap_limit_failures(&|_| Ok(()), 512, &mut operation) > 0);
+        let strings = |vm: &mut Vm| vm.function_prototype().map(|_| ());
+        heap_limit_failures(&strings, usize::MAX, &mut operation);
+    }
+
+    #[test]
+    fn lazily_built_intrinsics_survive_running_out_of_heap() {
+        intrinsic_survives_every_allocation_failure(Vm::throw_type_error);
+        intrinsic_survives_every_allocation_failure(Vm::array_iterator_prototype);
+        intrinsic_survives_every_allocation_failure(Vm::generator_function_prototype);
+        intrinsic_survives_every_allocation_failure(Vm::generator_prototype);
+        intrinsic_survives_every_allocation_failure(Vm::async_iterator_prototype);
+        intrinsic_survives_every_allocation_failure(Vm::async_generator_prototype);
+        intrinsic_survives_every_allocation_failure(Vm::async_generator_function_prototype);
+        intrinsic_survives_every_allocation_failure(Vm::async_function_prototype);
+        intrinsic_survives_every_allocation_failure(|vm| {
+            vm.legacy_function_getters().map(|(caller, _)| caller)
+        });
     }
 }

@@ -72,7 +72,9 @@ impl<'a> Cursor<'a> {
         if digits.is_empty() || digits.len() > 9 {
             return None;
         }
-        let mut nanoseconds: u32 = digits.parse().ok()?;
+        let mut nanoseconds: u32 = digits
+            .parse()
+            .expect("at most nine ASCII digits fit in a u32");
         for _ in digits.len()..9 {
             nanoseconds *= 10;
         }
@@ -82,7 +84,9 @@ impl<'a> Cursor<'a> {
     /// Reads the body of the bracketed annotation at the cursor without
     /// consuming it.
     pub(super) fn peek_bracket(&self) -> Option<&'a str> {
-        let rest = self.source.get(self.index..)?.strip_prefix('[')?;
+        // The cursor only ever advances over ASCII, so `index` is always a
+        // character boundary no greater than the source's length.
+        let rest = self.source[self.index..].strip_prefix('[')?;
         rest.find(']').map(|end| &rest[..end])
     }
 
@@ -191,18 +195,17 @@ pub(super) fn parse_time_spec(source: &str) -> Option<(u8, u8, u8, u32)> {
         Some((body, fraction)) => (body, Some(fraction)),
         None => (source, None),
     };
-    let (hour, minute, second) = if body.contains(':') {
-        let mut fields = body.split(':');
-        let hour = two_digit_field(fields.next()?)?;
-        let minute = two_digit_field(fields.next()?)?;
-        let second = match fields.next() {
+    let (hour, minute, second) = if let Some((hour, rest)) = body.split_once(':') {
+        // A third `:` leaves a `second` field that is not two digits.
+        let (minute, second) = match rest.split_once(':') {
+            Some((minute, second)) => (minute, Some(second)),
+            None => (rest, None),
+        };
+        let second = match second {
             Some(field) => Some(two_digit_field(field)?),
             None => None,
         };
-        if fields.next().is_some() {
-            return None;
-        }
-        (hour, minute, second)
+        (two_digit_field(hour)?, two_digit_field(minute)?, second)
     } else {
         match body.len() {
             2 => (two_digit_field(body)?, 0, None),
@@ -273,7 +276,7 @@ pub(crate) fn parse_iso_date_prefix(source: &str) -> Option<(CivilDate, &str)> {
         Some(sign @ (b'+' | b'-')) => {
             let negative = *sign == b'-';
             let (digits, rest) = split_digits(&source[1..], 6)?;
-            let value: i32 = digits.parse().ok()?;
+            let value: i32 = digits.parse().expect("six ASCII digits fit in an i32");
             if negative && value == 0 {
                 return None;
             }
@@ -281,7 +284,10 @@ pub(crate) fn parse_iso_date_prefix(source: &str) -> Option<(CivilDate, &str)> {
         }
         _ => {
             let (digits, rest) = split_digits(source, 4)?;
-            (digits.parse().ok()?, rest)
+            (
+                digits.parse().expect("four ASCII digits fit in an i32"),
+                rest,
+            )
         }
     };
     let (month, day, rest) = match rest.strip_prefix('-') {
@@ -296,8 +302,8 @@ pub(crate) fn parse_iso_date_prefix(source: &str) -> Option<(CivilDate, &str)> {
             (month, day, rest)
         }
     };
-    let month: u8 = month.parse().ok()?;
-    let day: u8 = day.parse().ok()?;
+    let month: u8 = month.parse().expect("two ASCII digits fit in a u8");
+    let day: u8 = day.parse().expect("two ASCII digits fit in a u8");
     ((-271_821..=275_760).contains(&year)
         && day >= 1
         && days_in_month(year, month).is_some_and(|last| day <= last))
@@ -329,4 +335,141 @@ pub(crate) fn parse_iso_time_prefix(source: &str) -> Option<(CivilTime, &str)> {
         ),
         &source[end..],
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bracket_annotations_are_peeked_and_taken_only_when_closed() {
+        assert_eq!(Cursor::new("x[UTC]").peek_bracket(), None);
+        assert_eq!(Cursor::new("").peek_bracket(), None);
+        assert_eq!(Cursor::new("[UTC").peek_bracket(), None);
+        assert_eq!(Cursor::new("[UTC").take_bracket(), None);
+        let mut cursor = Cursor::new("[UTC]Z");
+        assert_eq!(cursor.peek_bracket(), Some("UTC"));
+        assert_eq!(cursor.take_bracket(), Some("UTC"));
+        assert_eq!(cursor.peek(), Some(b'Z'));
+    }
+
+    #[test]
+    fn fractions_hold_one_to_nine_digits_scaled_to_nanoseconds() {
+        assert_eq!(Cursor::new("5").fraction_nanoseconds(), Some(500_000_000));
+        assert_eq!(
+            Cursor::new("123456789").fraction_nanoseconds(),
+            Some(123_456_789)
+        );
+        assert_eq!(Cursor::new("1234567890").fraction_nanoseconds(), None);
+        assert_eq!(Cursor::new("x").fraction_nanoseconds(), None);
+    }
+
+    #[test]
+    fn scan_time_reads_optional_minutes_seconds_and_fractions() {
+        let scan = |source| scan_time(&mut Cursor::new(source));
+        assert_eq!(scan("12"), Some((12, 0, 0, 0, 0, 0)));
+        assert_eq!(scan("12:30"), Some((12, 30, 0, 0, 0, 0)));
+        assert_eq!(scan("1230"), Some((12, 30, 0, 0, 0, 0)));
+        assert_eq!(scan("12:30:45,5"), Some((12, 30, 45, 500, 0, 0)));
+        assert_eq!(scan("123045.000000123"), Some((12, 30, 45, 0, 0, 123)));
+        // A leap second is read as the last second of the minute.
+        assert_eq!(scan("12:30:60"), Some((12, 30, 59, 0, 0, 0)));
+        for source in [
+            "24",
+            "1",
+            "12:3",
+            "12:60",
+            "12:30:6",
+            "12:30:61",
+            "12:30:45.",
+            "12:30:45.1234567890",
+            "",
+        ] {
+            assert_eq!(scan(source), None, "{source:?}");
+        }
+    }
+
+    #[test]
+    fn time_specs_need_consistent_separators_and_two_digit_fields() {
+        assert_eq!(parse_time_spec("12"), Some((12, 0, 0, 0)));
+        assert_eq!(parse_time_spec("1230"), Some((12, 30, 0, 0)));
+        assert_eq!(parse_time_spec("123045"), Some((12, 30, 45, 0)));
+        assert_eq!(parse_time_spec("12:30"), Some((12, 30, 0, 0)));
+        assert_eq!(
+            parse_time_spec("12:30:45.25"),
+            Some((12, 30, 45, 250_000_000))
+        );
+        assert_eq!(parse_time_spec("123045,000000001"), Some((12, 30, 45, 1)));
+        for source in [
+            "1",
+            "123",
+            "12345",
+            "1234567",
+            "ab",
+            "ab30",
+            "12cd",
+            "ab3045",
+            "12cd45",
+            "1230cd",
+            "12:",
+            ":30",
+            "ab:30",
+            "12:cd",
+            "12:30:",
+            "12:30:4",
+            "12:30:cd",
+            "12:30:45:10",
+            "00:0000",
+            "12.5",
+            "12:30.5",
+            "12:30:45.",
+            "12:30:45.1234567890",
+            "12:30:45.5x",
+            "24:00",
+            "12:60",
+        ] {
+            assert_eq!(parse_time_spec(source), None, "{source:?}");
+        }
+        assert_eq!(two_digit_field("07"), Some(7));
+        assert_eq!(two_digit_field("7"), None);
+        assert_eq!(two_digit_field("+7"), None);
+    }
+
+    #[test]
+    fn date_prefixes_accept_basic_and_extended_forms_and_return_the_rest() {
+        assert_eq!(
+            parse_iso_date_prefix("2000-02-29T00"),
+            Some(((2000, 2, 29), "T00"))
+        );
+        assert_eq!(
+            parse_iso_date_prefix("20000229Z"),
+            Some(((2000, 2, 29), "Z"))
+        );
+        assert_eq!(
+            parse_iso_date_prefix("+275760-09-13"),
+            Some(((275_760, 9, 13), ""))
+        );
+        assert_eq!(
+            parse_iso_date_prefix("-271821-04-19"),
+            Some(((-271_821, 4, 19), ""))
+        );
+        for source in [
+            "-000000-01-01",
+            "+275761-01-01",
+            "1900-02-29",
+            "2000-13-01",
+            "2000-01-00",
+            "2000-0115",
+            "200001",
+            "2000-01",
+            "2000",
+            "20",
+            "x000-01-01",
+            "+12345-01-01",
+            "2000-01-1",
+            "2000-01-ab",
+        ] {
+            assert_eq!(parse_iso_date_prefix(source), None, "{source:?}");
+        }
+    }
 }

@@ -132,10 +132,11 @@ impl Vm {
             };
         let compact_display =
             (notation == "compact").then(|| compact_display.unwrap_or_else(|| "short".into()));
-        let rule_type = match rule_type.as_str() {
-            "cardinal" => blueice_ecma402::PluralRuleType::Cardinal,
-            "ordinal" => blueice_ecma402::PluralRuleType::Ordinal,
-            _ => unreachable!("string_option validates PluralRules type"),
+        // `string_option` has already limited `type` to these two spellings.
+        let rule_type = if rule_type == "ordinal" {
+            blueice_ecma402::PluralRuleType::Ordinal
+        } else {
+            blueice_ecma402::PluralRuleType::Cardinal
         };
         let data = blueice_ecma402::PluralRules::try_new(
             &locales,
@@ -144,7 +145,7 @@ impl Vm {
                 rule_type,
             },
         )
-        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        .expect("locale negotiation only selects locales with bundled plural rules");
         Ok(Rc::new(intl::PluralRules {
             data,
             rule_type,
@@ -188,11 +189,12 @@ impl Vm {
                 "Intl.PluralRules must be called with new".into(),
             ));
         }
-        self.intl_global()?;
+        // This native only exists once the Intl namespace has been built.
         let constructor = self.globals["%Intl.PluralRules%"];
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("Intl.PluralRules is a live constructor")
             .object_id()
             .expect("Intl.PluralRules.prototype is an object");
         let prototype = self.constructor_prototype(default)?;
@@ -208,7 +210,11 @@ impl Vm {
         value: &Value,
     ) -> Result<Rc<intl::PluralRules>, RuntimeError> {
         if let Value::Object(id) = value {
-            if let Some(data) = self.heap.plural_rules(*id)? {
+            if let Some(data) = self
+                .heap
+                .plural_rules(*id)
+                .expect("a receiver is a live object")
+            {
                 return Ok(data);
             }
         }
@@ -233,17 +239,19 @@ impl Vm {
     pub(in super::super) fn plural_rules_categories(&self, data: &intl::PluralRules) -> Vec<Value> {
         let mut seen = [false; 6];
         let mut record = |value: f64| {
-            if let Ok(category) = data.data.select_f64(value) {
-                let index = match category {
-                    blueice_ecma402::PluralCategory::Zero => 0,
-                    blueice_ecma402::PluralCategory::One => 1,
-                    blueice_ecma402::PluralCategory::Two => 2,
-                    blueice_ecma402::PluralCategory::Few => 3,
-                    blueice_ecma402::PluralCategory::Many => 4,
-                    blueice_ecma402::PluralCategory::Other => 5,
-                };
-                seen[index] = true;
-            }
+            let category = data
+                .data
+                .select_f64(value)
+                .expect("the probe values are finite");
+            let index = match category {
+                blueice_ecma402::PluralCategory::Zero => 0,
+                blueice_ecma402::PluralCategory::One => 1,
+                blueice_ecma402::PluralCategory::Two => 2,
+                blueice_ecma402::PluralCategory::Few => 3,
+                blueice_ecma402::PluralCategory::Many => 4,
+                blueice_ecma402::PluralCategory::Other => 5,
+            };
+            seen[index] = true;
         };
         for value in 0..=10_000 {
             record(f64::from(value));
@@ -269,16 +277,21 @@ impl Vm {
         if !value.is_finite() {
             return Ok(Value::String("other".into()));
         }
+        let category = Self::plural_category_of(&data, value);
+        Ok(Value::String(Self::plural_category_name(category).into()))
+    }
+
+    /// The plural category of a finite `value`, honoring compact notation.
+    /// Bundled plural data answers every finite number, so the only error
+    /// the underlying service has (a non-finite input) cannot occur here.
+    fn plural_category_of(data: &intl::PluralRules, value: f64) -> blueice_ecma402::PluralCategory {
         let category = if data.notation == "compact" {
             data.data
                 .select_compact_f64(value, data.compact_display.as_deref() == Some("long"))
         } else {
             data.data.select_f64(value)
         };
-        category
-            .map(Self::plural_category_name)
-            .map(|category| Value::String(category.into()))
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+        category.expect("finite numbers always have a plural category")
     }
 
     pub(in super::super) fn plural_rules_select_range(
@@ -300,24 +313,14 @@ impl Vm {
                 "Intl.PluralRules selectRange arguments must be finite".into(),
             ));
         }
-        let category_for = |value: f64| {
-            if data.notation == "compact" {
-                data.data
-                    .select_compact_f64(value, data.compact_display.as_deref() == Some("long"))
-            } else {
-                data.data.select_f64(value)
-            }
-        };
+        let start_category = Self::plural_category_of(&data, start);
         let category = if start == end {
-            category_for(start)
+            start_category
         } else {
-            category_for(start)
-                .and_then(|start| category_for(end).map(|end| data.data.select_range(start, end)))
+            data.data
+                .select_range(start_category, Self::plural_category_of(&data, end))
         };
-        category
-            .map(Self::plural_category_name)
-            .map(|category| Value::String(category.into()))
-            .map_err(|error| RuntimeError::RangeError(error.to_string()))
+        Ok(Value::String(Self::plural_category_name(category).into()))
     }
 
     pub(in super::super) fn plural_rules_resolved_options(
@@ -410,15 +413,17 @@ impl Vm {
         &mut self,
         options: &Value,
     ) -> Result<blueice_ecma402::SegmenterGranularity, RuntimeError> {
-        match self
-            .string_option(options, "granularity", &["grapheme", "word", "sentence"])?
-            .as_deref()
-        {
-            None | Some("grapheme") => Ok(blueice_ecma402::SegmenterGranularity::Grapheme),
-            Some("word") => Ok(blueice_ecma402::SegmenterGranularity::Word),
-            Some("sentence") => Ok(blueice_ecma402::SegmenterGranularity::Sentence),
-            Some(_) => unreachable!("string_option validates Segmenter granularity"),
-        }
+        // `string_option` has already limited the value to the three spellings.
+        Ok(
+            match self
+                .string_option(options, "granularity", &["grapheme", "word", "sentence"])?
+                .as_deref()
+            {
+                Some("word") => blueice_ecma402::SegmenterGranularity::Word,
+                Some("sentence") => blueice_ecma402::SegmenterGranularity::Sentence,
+                _ => blueice_ecma402::SegmenterGranularity::Grapheme,
+            },
+        )
     }
 
     pub(in super::super) fn resolve_segmenter(
@@ -435,7 +440,7 @@ impl Vm {
                 granularity: self.segmenter_granularity(&options)?,
             },
         )
-        .map_err(|error| RuntimeError::RangeError(error.to_string()))?;
+        .expect("locale negotiation only selects locales with bundled segmenter data");
         Ok(Rc::new(data))
     }
 
@@ -465,11 +470,12 @@ impl Vm {
                 "Intl.Segmenter must be called with new".into(),
             ));
         }
-        self.intl_global()?;
+        // This native only exists once the Intl namespace has been built.
         let constructor = self.globals["%Intl.Segmenter%"];
         let default = self
             .heap
-            .get(constructor, "prototype")?
+            .get(constructor, "prototype")
+            .expect("Intl.Segmenter is a live constructor")
             .object_id()
             .expect("Intl.Segmenter.prototype is an object");
         let prototype = self.constructor_prototype(default)?;
@@ -484,7 +490,11 @@ impl Vm {
         value: &Value,
     ) -> Result<Rc<intl::Segmenter>, RuntimeError> {
         if let Value::Object(id) = value {
-            if let Some(data) = self.heap.segmenter(*id)? {
+            if let Some(data) = self
+                .heap
+                .segmenter(*id)
+                .expect("a receiver is a live object")
+            {
                 return Ok(data);
             }
         }
@@ -511,7 +521,11 @@ impl Vm {
         value: &Value,
     ) -> Result<Rc<intl::Segments>, RuntimeError> {
         if let Value::Object(id) = value {
-            if let Some(data) = self.heap.segments(*id)? {
+            if let Some(data) = self
+                .heap
+                .segments(*id)
+                .expect("a receiver is a live object")
+            {
                 return Ok(data);
             }
         }
@@ -576,10 +590,11 @@ impl Vm {
         if !index.is_finite() || index < 0.0 || index >= data.input.as_code_units().len() as f64 {
             return Ok(Value::Undefined);
         }
-        data.containing(index as usize)
-            .map(|record| self.segment_record(&data, record))
-            .transpose()?
-            .map_or(Ok(Value::Undefined), Ok)
+        // The records partition the whole input, and `index` is inside it.
+        let record = data
+            .containing(index as usize)
+            .expect("every index of the input lies in one segment");
+        self.segment_record(&data, record)
     }
 
     pub(in super::super) fn segments_iterator(
@@ -587,7 +602,8 @@ impl Vm {
         receiver: &Value,
     ) -> Result<Value, RuntimeError> {
         let data = self.segments_data(receiver)?;
-        let (_, prototype) = self.segmenter_internal_prototypes()?;
+        // A Segments object only exists once `segment` built the prototypes.
+        let prototype = self.globals["%Intl.SegmentIteratorPrototype%"];
         self.with_roots(|heap| heap.alloc_segment_iterator(data, prototype))
             .map(Value::Object)
     }
@@ -601,8 +617,16 @@ impl Vm {
                 "Segmenter iterator next requires an iterator".into(),
             ));
         };
-        let next = self.heap.segment_iterator_next(*iterator)?;
-        if next.is_none() && !self.heap.is_segment_iterator(*iterator)? {
+        let next = self
+            .heap
+            .segment_iterator_next(*iterator)
+            .expect("a receiver is a live object");
+        if next.is_none()
+            && !self
+                .heap
+                .is_segment_iterator(*iterator)
+                .expect("the object was just read successfully")
+        {
             return Err(RuntimeError::TypeError(
                 "Segmenter iterator next requires a Segmenter iterator".into(),
             ));
