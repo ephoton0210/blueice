@@ -102,10 +102,10 @@ fn compiler_session_id(result: &rmcp::model::CallToolResult) -> String {
         .get("operation_ids")
         .and_then(serde_json::Value::as_array)
         .expect("capability manifest must expose its complete query vocabulary");
-    assert_eq!(operation_ids.len(), 12);
+    assert_eq!(operation_ids.len(), 13);
     assert_eq!(
         operation_ids.first(),
-        Some(&serde_json::json!("describe-project"))
+        Some(&serde_json::json!("list-projects"))
     );
     assert_eq!(
         operation_ids.last(),
@@ -424,6 +424,30 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
                 .expect("MCP compiler tool must round-trip")
         }};
     }
+
+    let unobserved_project = compiler_tool!(
+        "bluetsc_describe_project",
+        serde_json::json!({ "project_id": 1 })
+    );
+    assert!(matches!(
+        compiler_tool_reply(&unobserved_project),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::UnobservedProject,
+            ..
+        }
+    ));
+    let inventory_result = compiler_tool!("bluetsc_list_projects", serde_json::json!({}));
+    assert_eq!(inventory_result.is_error, Some(false));
+    assert_source_free_compiler_tool_result(&inventory_result);
+    let blueice_ipc::compiler::CompilerReply::Projects(inventory) =
+        compiler_tool_reply(&inventory_result)
+    else {
+        panic!("sealed core catalog must return an opaque project inventory")
+    };
+    assert_eq!(
+        inventory.projects,
+        vec![blueice_ipc::compiler::CompilerProject { id: 1 }]
+    );
 
     let project_result = compiler_tool!(
         "bluetsc_describe_project",
@@ -1212,6 +1236,22 @@ async fn launcher_managed_core_keeps_mcp_browser_and_fixed_compiler_adapters_pai
             .expect("paired MCP compiler session capability must round-trip"),
     );
 
+    let inventory = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_list_projects").with_arguments(
+                serde_json::json!({ "session_id": compiler_session })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("paired project inventory must round-trip");
+    assert!(matches!(
+        compiler_tool_reply(&inventory),
+        blueice_ipc::compiler::CompilerReply::Projects(_)
+    ));
+
     let navigate = client
         .call_tool(
             CallToolRequestParams::new("navigate").with_arguments(
@@ -1285,6 +1325,22 @@ async fn launcher_cutover_keeps_mcp_compiler_connections_generation_pinned() {
             .await
             .expect("v1 MCP compiler session capability must round-trip"),
     );
+
+    let v1_inventory = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_list_projects").with_arguments(
+                serde_json::json!({ "session_id": v1_session })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("v1 project inventory must round-trip");
+    assert!(matches!(
+        compiler_tool_reply(&v1_inventory),
+        blueice_ipc::compiler::CompilerReply::Projects(_)
+    ));
 
     let v1_check_result = client
         .call_tool(
@@ -1385,6 +1441,21 @@ async fn launcher_cutover_keeps_mcp_compiler_connections_generation_pinned() {
             .await
             .expect("v2 MCP compiler session capability must round-trip"),
     );
+    let v2_inventory = client
+        .call_tool(
+            CallToolRequestParams::new("bluetsc_list_projects").with_arguments(
+                serde_json::json!({ "session_id": v2_session })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("v2 project inventory must round-trip");
+    assert!(matches!(
+        compiler_tool_reply(&v2_inventory),
+        blueice_ipc::compiler::CompilerReply::Projects(_)
+    ));
     assert_ne!(
         v1_session, v2_session,
         "a newly accepted relay connection must receive a fresh MCP session receipt"

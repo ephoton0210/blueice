@@ -173,6 +173,11 @@ fn open_fixed_core_profile(
     assert_eq!(protocol_version, COMPILER_PROTOCOL_VERSION);
     assert!(session_attestation.is_well_formed());
     assert!(capability_manifest.is_well_formed());
+    write_compiler_request(&mut stream, &CompilerRequest::ListProjects).unwrap();
+    let CompilerReply::Projects(inventory) = read_compiler_reply(&mut stream).unwrap() else {
+        panic!("fixed core profile must disclose only opaque project IDs")
+    };
+    assert_eq!(inventory.projects, vec![CompilerProject { id: 1 }]);
     write_compiler_request(
         &mut stream,
         &CompilerRequest::Check {

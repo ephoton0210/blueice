@@ -553,6 +553,12 @@ impl RegisteredProjectCompilerService {
         self.limits.contract_validation
     }
 
+    /// Opaque identities already registered by the core owner before this
+    /// service is wrapped by a query-only IPC adapter.
+    pub fn registered_project_ids(&self) -> impl Iterator<Item = RegisteredProjectId> + '_ {
+        self.projects.keys().copied()
+    }
+
     /// Registers a complete project exactly once. No subsequent operation can
     /// alter its source graph, roots, resolver, or compiler options.
     pub fn register(

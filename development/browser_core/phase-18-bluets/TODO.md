@@ -1210,7 +1210,12 @@ or second module resolver to bypass them.
   accept time; after v1 ends it fails closed rather than being retargeted to
   v2, so opaque cursors cannot cross catalog generations. Real launcher/core
   and paired MCP `tools/call` coverage verifies those lifetime rules as well
-  as the fixed profile. General catalog distribution/authorization and all
+  as the fixed profile. Compiler IPC v10 now provides a source-free, capped
+  `ListProjects` response containing only the sealed catalog's sorted opaque
+  IDs. Each accepted stream must receive this inventory before any project
+  query; core records the exact IDs returned to that stream and revokes them
+  on disconnect. A guessed ID or a receipt from another stream fails before
+  the compiler cache. General catalog distribution/authorization and all
   update/write capabilities remain deliberately open.
 
   MCP read foundation delivered: `blueice-mcp-server` now has a distinct
@@ -1223,15 +1228,16 @@ or second module resolver to bypass them.
   ECMA-402 report modules, keeping the former below the 1,500-line maintenance
   boundary without widening any internal or public capability surface. After
   the separate compiler `Hello` negotiation,
-  `bluetsc_describe_project`, `bluetsc_check`,
+  `bluetsc_list_projects`, `bluetsc_describe_project`, `bluetsc_check`,
   `bluetsc_list_diagnostics`, `debug_list_static_metadata`, `debug_get_type`, `debug_get_symbol`,
   `debug_get_symbol_location`, `debug_get_provenance`, `debug_get_contract`,
   `debug_get_contract_location`, and
   `debug_validate_contract` forward only opaque project/generation/metadata
   handles to the core service. `bluetsc_describe_project` accepts only a
-  previously known opaque project handle and returns that handle plus its
-  canonical entry-module identity; it cannot enumerate a catalog or reveal
-  source/project/config/output roots. Contract validation accepts only bounded JSON
+  same-session `bluetsc_list_projects` receipt and returns that handle plus its
+  canonical entry-module identity. The inventory contains only sorted opaque
+  IDs, never source/project/config/output roots, and MCP rejects guessed IDs
+  locally before forwarding. Contract validation accepts only bounded JSON
   data (not JavaScript values or JSON-inexpressible `undefined`) and never
   echoes it. Their JSON output is source-text-free and wraps project-controlled
   diagnostic prose, identifiers, and static displays as untrusted data. The
@@ -1247,7 +1253,7 @@ or second module resolver to bypass them.
   `bluetsc_session_capabilities` truthfully reports whether the compiler
   adapter is attached and, when it is, returns the exact opaque receipt minted
   by the core listener for that accepted relay stream together with the complete
-  core-authored fixed query-only manifest (v4 now contains twelve operations).
+  core-authored fixed query-only manifest (v5 now contains thirteen operations).
   MCP accepts neither
   a missing, malformed, subset, reordered, nor locally derived manifest. Every
   compiler tool echoes and requires that receipt;
@@ -1300,6 +1306,13 @@ or second module resolver to bypass them.
   guessed-ID, stale-generation, and malformed-location cases fail closed;
   there is no arbitrary offset query, source read, source-map read, runtime
   inspection, project mutation, build, or output write.
+  Compiler query-only capability manifest v5 declares `ListProjects` as its
+  thirteenth operation. The MCP adapter clears prior project/generation/ID
+  evidence before refreshing the inventory and accepts only a structurally
+  valid, core-authored bounded response. Real core, launcher relay, and MCP
+  `tools/call` tests cover denied pre-inventory queries and successful
+  same-stream inventory-to-check routing. The launcher still distributes
+  only its one fixed closed profile.
   There is still
   no general launcher-owned catalog distribution or authorization beyond the
   one fixed closed profile, no remote registration/update/source/filesystem/

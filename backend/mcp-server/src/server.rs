@@ -389,14 +389,59 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
-        description = "Report whether this MCP server has an explicitly attached query-only compiler adapter, its opaque MCP session receipt, and its core-authored fixed source-free capability manifest. If available, pass the returned session.id unchanged to every compiler tool and call bluetsc_check before static metadata queries. The receipt identifies this one accepted compiler IPC stream; it grants no project registration, source/path/resolver/options/update/build/artifact/output-write authority."
+        description = "Report whether this MCP server has an explicitly attached query-only compiler adapter, its opaque MCP session receipt, and its core-authored fixed source-free capability manifest. If available, pass the returned session.id unchanged to every compiler tool, call bluetsc_list_projects before project queries, and call bluetsc_check before static metadata queries. The receipt identifies this one accepted compiler IPC stream; it grants no project registration, source/path/resolver/options/update/build/artifact/output-write authority."
     )]
     async fn bluetsc_session_capabilities(&self) -> Result<CallToolResult, ErrorData> {
         Ok(compiler_session_capabilities_result(self.compiler.as_ref()))
     }
 
     #[tool(
-        description = "Describe an already core-registered BlueTS/BlueTSC project through the negotiated compiler service. session_id must be the opaque receipt returned by bluetsc_session_capabilities for this exact MCP adapter; project_id is an opaque owner-minted handle, not a path. This may be called before bluetsc_check and returns only the same opaque project handle plus its canonical entry-module identity. It cannot enumerate registrations, read source, reveal project/config/output roots, change compiler configuration, build, or write output."
+        description = "List the bounded source-free opaque project IDs in the core owner's sealed startup catalog. Pass this adapter's bluetsc_session_capabilities receipt. Only IDs returned here can be used by subsequent compiler queries on this session; this does not expose project roots, paths, source text, registration, options, build, artifacts, or output writes."
+    )]
+    async fn bluetsc_list_projects(
+        &self,
+        Parameters(CompilerProjectInventoryParams { session_id }): Parameters<
+            CompilerProjectInventoryParams,
+        >,
+    ) -> Result<CallToolResult, ErrorData> {
+        let Some(compiler) = self.compiler_conn() else {
+            return Ok(compiler_unavailable_result());
+        };
+        if !compiler.accepts_session(session_id.as_deref()) {
+            return Ok(compiler_session_mismatch_result());
+        }
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                session_state.revoke_project_inventory();
+                let reply = connection.list_projects()?;
+                Ok(match &reply {
+                    blueice_ipc::compiler::CompilerReply::Projects(inventory)
+                        if session_state.observe_projects(inventory) =>
+                    {
+                        reply
+                    }
+                    blueice_ipc::compiler::CompilerReply::Projects(_) => {
+                        blueice_ipc::compiler::CompilerReply::Error {
+                            code: blueice_ipc::compiler::CompilerErrorCode::InvalidProjectInventory,
+                            message: "core returned a malformed project inventory".to_string(),
+                        }
+                    }
+                    blueice_ipc::compiler::CompilerReply::Error { .. }
+                    | blueice_ipc::compiler::CompilerReply::Unsupported { .. } => reply,
+                    _ => blueice_ipc::compiler::CompilerReply::Error {
+                        code: blueice_ipc::compiler::CompilerErrorCode::InvalidProjectInventory,
+                        message:
+                            "core returned a non-inventory reply to a project inventory request"
+                                .to_string(),
+                    },
+                })
+            })
+            .await?;
+        Ok(compiler_reply_to_result(&compiler.receipt, reply))
+    }
+
+    #[tool(
+        description = "Describe an already core-registered BlueTS/BlueTSC project through the negotiated compiler service. Call bluetsc_list_projects on this session first; project_id must be one of its returned opaque handles, not a path. This may be called before bluetsc_check and returns only the same handle plus its canonical entry-module identity. It cannot register a project, read source, reveal project/config/output roots, change compiler configuration, build, or write output."
     )]
     async fn bluetsc_describe_project(
         &self,
@@ -411,15 +456,19 @@ impl BlueIceMcpServer {
         if !compiler.accepts_session(session_id.as_deref()) {
             return Ok(compiler_session_mismatch_result());
         }
-        let reply = blocking_compiler_session(compiler.clone(), move |connection, _| {
-            connection.describe_project(project_id)
-        })
-        .await?;
+        let reply =
+            blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                if let Some(error) = compiler_project_is_observed(session_state, project_id) {
+                    return Ok(error);
+                }
+                connection.describe_project(project_id)
+            })
+            .await?;
         Ok(compiler_reply_to_result(&compiler.receipt, reply))
     }
 
     #[tool(
-        description = "Check an already core-registered BlueTS/BlueTSC project through the negotiated compiler service. session_id must be the opaque receipt returned by bluetsc_session_capabilities for this exact MCP adapter; project_id is an opaque owner-minted handle, not a path. A new check revokes that project's previous metadata-ID and generation receipts even if its reply fails; only a structurally valid reply for this exact project records a replacement generation. Later static queries must repeat it and first receive their individual ID from debug_list_static_metadata. The result is source-text-free and read-only: it can include capped diagnostics with optional original-source zero-based UTF-16 coordinates, work-set summaries, fingerprints and metadata counts, but never source, emitted artifacts, output paths, resolver/compiler options, or filesystem writes. A build/output operation is intentionally unsupported in this slice."
+        description = "Check an already core-registered BlueTS/BlueTSC project through the negotiated compiler service. Call bluetsc_list_projects on this session first; project_id must be one of its returned opaque handles, not a path. A new check revokes that project's previous metadata-ID and generation receipts even if its reply fails; only a structurally valid reply for this exact project records a replacement generation. Later static queries must repeat it and first receive their individual ID from debug_list_static_metadata. The result is source-text-free and read-only: it can include capped diagnostics with optional original-source zero-based UTF-16 coordinates, work-set summaries, fingerprints and metadata counts, but never source, emitted artifacts, output paths, resolver/compiler options, or filesystem writes. A build/output operation is intentionally unsupported in this slice."
     )]
     async fn bluetsc_check(
         &self,
@@ -436,6 +485,9 @@ impl BlueIceMcpServer {
         }
         let reply =
             blocking_compiler_session(compiler.clone(), move |connection, session_state| {
+                if let Some(error) = compiler_project_is_observed(session_state, project_id) {
+                    return Ok(error);
+                }
                 session_state.revoke_project(project_id);
                 let reply = connection.check(project_id)?;
                 Ok(accept_compiler_check_reply(
@@ -951,7 +1003,8 @@ impl ServerHandler for BlueIceMcpServer {
                  locale data. All are read-only and never execute JavaScript or access page state. \
                  Use bluetsc_session_capabilities first to learn whether this server was explicitly connected to a \
                  core-owned registered-project compiler endpoint. When available, repeat its opaque session receipt on \
-                 bluetsc_describe_project, bluetsc_check, bluetsc_list_diagnostics, bluetsc_list_work_set, debug_list_static_metadata, debug_get_type, debug_get_symbol, debug_get_symbol_location, debug_get_provenance, \
+                 bluetsc_list_projects to receive that stream's bounded opaque project IDs before any project query. Repeat the receipt on \
+                 bluetsc_list_projects, bluetsc_describe_project, bluetsc_check, bluetsc_list_diagnostics, bluetsc_list_work_set, debug_list_static_metadata, debug_get_type, debug_get_symbol, debug_get_symbol_location, debug_get_provenance, \
                  debug_get_contract, debug_get_contract_location and debug_validate_contract. A successful check records an exact generation for that \
                  one accepted compiler stream. Its receipt includes the complete core-authored capability manifest; MCP \
                  neither derives nor narrows that vocabulary. Static queries reject a different receipt, a generation not observed by \

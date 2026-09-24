@@ -14,6 +14,13 @@ use std::io;
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 
+/// Source-free inventory for this exact accepted compiler stream.
+#[derive(Deserialize, schemars::JsonSchema)]
+pub(super) struct CompilerProjectInventoryParams {
+    /// Opaque receipt returned by `bluetsc_session_capabilities`.
+    pub(super) session_id: Option<String>,
+}
+
 /// An opaque project handle minted by a core-owned registered-project
 /// catalog. It is not a filesystem path and cannot create a registration.
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -23,8 +30,7 @@ pub(super) struct CompilerProjectParams {
     /// connection instead of letting an exact-generation handle drift across
     /// relay/core lifetimes.
     pub(super) session_id: Option<String>,
-    /// Opaque project_id supplied by a core owner or a prior source-free
-    /// compiler result. Arbitrary values are rejected by the core service.
+    /// Opaque project_id returned by `bluetsc_list_projects` on this session.
     pub(super) project_id: u64,
 }
 
@@ -272,6 +278,7 @@ impl From<blueice_ipc::compiler::CompilerStaticMetadataKind>
 /// project revokes that project's old inventory evidence.
 #[derive(Default)]
 pub(super) struct CompilerMcpSessionState {
+    observed_projects: BTreeSet<u64>,
     observed_generations: BTreeMap<u64, u64>,
     observed_static_metadata: BTreeMap<u64, BTreeSet<(ObservedCompilerStaticMetadataKind, u32)>>,
 }
@@ -283,6 +290,31 @@ pub(super) enum CompilerMetadataReceiptError {
 }
 
 impl CompilerMcpSessionState {
+    pub(super) fn revoke_project_inventory(&mut self) {
+        self.observed_projects.clear();
+        self.observed_generations.clear();
+        self.observed_static_metadata.clear();
+    }
+
+    pub(super) fn observe_projects(
+        &mut self,
+        inventory: &blueice_ipc::compiler::CompilerProjectInventory,
+    ) -> bool {
+        if !inventory.is_well_formed() {
+            return false;
+        }
+        self.observed_projects = inventory
+            .projects
+            .iter()
+            .map(|project| project.id)
+            .collect();
+        true
+    }
+
+    pub(super) fn project_is_observed(&self, project_id: u64) -> bool {
+        self.observed_projects.contains(&project_id)
+    }
+
     /// A check may replace the core generation even if its reply is lost or
     /// malformed. Drop prior evidence before issuing it, then admit only a
     /// validated replacement generation.
@@ -380,6 +412,18 @@ impl CompilerMcpSessionState {
             .extend(received);
         Ok(())
     }
+}
+
+pub(super) fn compiler_project_is_observed(
+    state: &CompilerMcpSessionState,
+    project_id: u64,
+) -> Option<blueice_ipc::compiler::CompilerReply> {
+    (!state.project_is_observed(project_id)).then(|| {
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::UnobservedProject,
+            message: "compiler project was not inventoried on this MCP session; call bluetsc_list_projects first".to_string(),
+        }
+    })
 }
 
 fn compiler_check_reply_is_well_formed(
@@ -784,4 +828,31 @@ pub(super) fn compiler_contract_value_from_json(
 
     let mut nodes = 0;
     convert(value, 0, &mut nodes)
+}
+
+#[cfg(test)]
+mod project_inventory_tests {
+    use super::*;
+    use blueice_ipc::compiler::{CompilerProject, CompilerProjectInventory};
+
+    #[test]
+    fn mcp_project_receipts_require_valid_inventory_and_revoke_on_refresh() {
+        let mut state = CompilerMcpSessionState::default();
+        assert!(!state.project_is_observed(1));
+        assert!(!state.observe_projects(&CompilerProjectInventory {
+            projects: vec![CompilerProject { id: 2 }, CompilerProject { id: 1 }],
+        }));
+        assert!(!state.project_is_observed(1));
+
+        assert!(state.observe_projects(&CompilerProjectInventory {
+            projects: vec![CompilerProject { id: 1 }],
+        }));
+        state.observe_generation(1, 4);
+        assert!(state.project_is_observed(1));
+        assert!(compiler_project_is_observed(&state, 2).is_some());
+
+        state.revoke_project_inventory();
+        assert!(!state.project_is_observed(1));
+        assert!(compiler_generation_is_observed(&state, 1, 4).is_some());
+    }
 }

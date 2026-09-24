@@ -10,6 +10,10 @@
 //! path, or write capability. Callers can therefore only act on opaque
 //! project and generation handles minted by that owner.
 //!
+//! Version ten adds a bounded, source-free inventory of startup-registered
+//! project IDs. A core listener grants subsequent project queries only after
+//! that exact accepted stream received the inventory; guessed IDs cannot
+//! reach the compiler cache. It adds no registration, source, or write path.
 //! Version nine adds optional original-source UTF-16 coordinates to the
 //! existing bounded diagnostic records. They are derived only from exact
 //! authorized source bytes, carry no source text or read authority, and do
@@ -46,7 +50,11 @@ use std::io::{self, Read, Write};
 
 /// Independent protocol version for registered-project compiler IPC. It does
 /// not share the browser frontend protocol's lifecycle.
-pub const COMPILER_PROTOCOL_VERSION: u32 = 9;
+pub const COMPILER_PROTOCOL_VERSION: u32 = 10;
+
+/// A sealed catalog contains at most this many project identities on one
+/// compiler stream. Inventory is a single bounded source-free response.
+pub const COMPILER_MAX_PROJECT_INVENTORY: usize = 128;
 
 /// The code is a fixed compiler vocabulary, not project-controlled prose.
 /// Keep its wire budget separate from the bounded module and message fields.
@@ -88,7 +96,7 @@ impl CompilerSessionAttestation {
 /// expose. Its version is independent of the transport version so a client
 /// can validate the fixed query-only operation set explicitly rather than
 /// inferring authority from a protocol number.
-pub const COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION: u32 = 4;
+pub const COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION: u32 = 5;
 
 /// Stable, source-free identifiers for the exact read-only compiler queries
 /// available over this transport. The protocol deliberately has no variants
@@ -97,6 +105,7 @@ pub const COMPILER_QUERY_CAPABILITY_MANIFEST_VERSION: u32 = 4;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CompilerQueryOperationId {
+    ListProjects,
     DescribeProject,
     Check,
     ListDiagnostics,
@@ -142,6 +151,7 @@ impl CompilerSessionCapabilityManifest {
 
     fn fixed_query_operation_ids() -> &'static [CompilerQueryOperationId] {
         const OPERATIONS: &[CompilerQueryOperationId] = &[
+            CompilerQueryOperationId::ListProjects,
             CompilerQueryOperationId::DescribeProject,
             CompilerQueryOperationId::Check,
             CompilerQueryOperationId::ListDiagnostics,
@@ -186,6 +196,23 @@ pub struct CompilerProject {
 impl CompilerProject {
     pub fn is_well_formed(self) -> bool {
         self.id != 0
+    }
+}
+
+/// Bounded, ordered IDs selected by the sealed core startup catalog. The
+/// response contains no entry module, root, source, configuration, artifact,
+/// resolver, option, or write target. On a real accepted stream these IDs
+/// become project receipts only after this exact response was delivered.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilerProjectInventory {
+    pub projects: Vec<CompilerProject>,
+}
+
+impl CompilerProjectInventory {
+    pub fn is_well_formed(&self) -> bool {
+        self.projects.len() <= COMPILER_MAX_PROJECT_INVENTORY
+            && self.projects.iter().all(|project| project.is_well_formed())
+            && self.projects.windows(2).all(|pair| pair[0].id < pair[1].id)
     }
 }
 
@@ -601,6 +628,9 @@ pub enum CompilerRequest {
     Hello {
         protocol_version: u32,
     },
+    /// Lists only the sealed startup catalog's opaque project IDs. No caller
+    /// can register or modify a project through this query.
+    ListProjects,
     DescribeProject {
         project: CompilerProject,
     },
@@ -687,6 +717,10 @@ pub enum CompilerRequest {
 pub enum CompilerErrorCode {
     ProtocolVersion,
     InvalidProject,
+    InvalidProjectInventory,
+    /// A project ID was not returned to this accepted compiler stream by
+    /// `ListProjects`, even if another stream knows the same numeric ID.
+    UnobservedProject,
     StaleGeneration,
     NoStaticMetadata,
     UnknownType,
@@ -718,6 +752,7 @@ pub enum CompilerReply {
         session_attestation: CompilerSessionAttestation,
         capability_manifest: CompilerSessionCapabilityManifest,
     },
+    Projects(CompilerProjectInventory),
     Project(CompilerProjectIdentity),
     Check(CompilerCheck),
     DiagnosticPage(CompilerDiagnosticPage),
@@ -770,7 +805,8 @@ pub fn negotiate(
             message: "unsupported compiler protocol version".to_string(),
         },
         (
-            CompilerRequest::DescribeProject { .. }
+            CompilerRequest::ListProjects
+            | CompilerRequest::DescribeProject { .. }
             | CompilerRequest::Check { .. }
             | CompilerRequest::ListDiagnostics { .. }
             | CompilerRequest::ListWorkSet { .. }
@@ -861,6 +897,7 @@ mod tests {
             CompilerRequest::Hello {
                 protocol_version: COMPILER_PROTOCOL_VERSION,
             },
+            CompilerRequest::ListProjects,
             CompilerRequest::DescribeProject { project: project() },
             CompilerRequest::Check { project: project() },
             CompilerRequest::ListDiagnostics {
@@ -1057,6 +1094,13 @@ mod tests {
         write_compiler_reply(&mut sender, &hello_ack).unwrap();
         assert_eq!(read_compiler_reply(&mut receiver).unwrap(), hello_ack);
 
+        let projects = CompilerReply::Projects(CompilerProjectInventory {
+            projects: vec![CompilerProject { id: 1 }, CompilerProject { id: 2 }],
+        });
+        let (mut sender, mut receiver) = UnixStream::pair().unwrap();
+        write_compiler_reply(&mut sender, &projects).unwrap();
+        assert_eq!(read_compiler_reply(&mut receiver).unwrap(), projects);
+
         let page = CompilerReply::StaticMetadataPage(CompilerStaticMetadataPage {
             generation: generation(),
             kind: CompilerStaticMetadataKind::Symbols,
@@ -1208,6 +1252,7 @@ mod tests {
         assert_eq!(
             manifest.operation_ids,
             vec![
+                CompilerQueryOperationId::ListProjects,
                 CompilerQueryOperationId::DescribeProject,
                 CompilerQueryOperationId::Check,
                 CompilerQueryOperationId::ListDiagnostics,
@@ -1240,6 +1285,22 @@ mod tests {
         let mut unknown_version = manifest;
         unknown_version.version += 1;
         assert!(!unknown_version.is_well_formed());
+    }
+
+    #[test]
+    fn project_inventory_rejects_guessed_zero_duplicate_and_unsorted_ids() {
+        let valid = CompilerProjectInventory {
+            projects: vec![CompilerProject { id: 1 }, CompilerProject { id: 2 }],
+        };
+        assert!(valid.is_well_formed());
+        for projects in [
+            vec![CompilerProject { id: 0 }],
+            vec![CompilerProject { id: 2 }, CompilerProject { id: 1 }],
+            vec![CompilerProject { id: 1 }, CompilerProject { id: 1 }],
+            vec![CompilerProject { id: 1 }; COMPILER_MAX_PROJECT_INVENTORY + 1],
+        ] {
+            assert!(!CompilerProjectInventory { projects }.is_well_formed());
+        }
     }
 
     #[test]

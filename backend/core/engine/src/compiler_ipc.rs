@@ -30,13 +30,13 @@ use blueice_ipc::compiler::{
     CompilerCheck, CompilerContractValidation, CompilerContractValidationFailure,
     CompilerContractValue, CompilerDiagnostic, CompilerDiagnosticCursor, CompilerDiagnosticPage,
     CompilerDiagnosticSeverity, CompilerDiagnostics, CompilerErrorCode, CompilerGeneration,
-    CompilerModuleList, CompilerProject, CompilerProjectIdentity, CompilerReply, CompilerRequest,
-    CompilerSessionAttestation, CompilerSourceCoordinates, CompilerStaticContract,
-    CompilerStaticContractLocation, CompilerStaticMetadataCursor, CompilerStaticMetadataKind,
-    CompilerStaticMetadataPage, CompilerStaticMetadataSummary, CompilerStaticProvenance,
-    CompilerStaticSymbol, CompilerStaticSymbolLocation, CompilerStaticType, CompilerSymbolKind,
-    CompilerWorkSetCursor, CompilerWorkSetKind, CompilerWorkSetPage,
-    COMPILER_DIAGNOSTIC_MAX_CODE_BYTES,
+    CompilerModuleList, CompilerProject, CompilerProjectIdentity, CompilerProjectInventory,
+    CompilerReply, CompilerRequest, CompilerSessionAttestation, CompilerSourceCoordinates,
+    CompilerStaticContract, CompilerStaticContractLocation, CompilerStaticMetadataCursor,
+    CompilerStaticMetadataKind, CompilerStaticMetadataPage, CompilerStaticMetadataSummary,
+    CompilerStaticProvenance, CompilerStaticSymbol, CompilerStaticSymbolLocation,
+    CompilerStaticType, CompilerSymbolKind, CompilerWorkSetCursor, CompilerWorkSetKind,
+    CompilerWorkSetPage, COMPILER_DIAGNOSTIC_MAX_CODE_BYTES, COMPILER_MAX_PROJECT_INVENTORY,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -101,6 +101,7 @@ pub enum CompilerServiceIpcConfigurationError {
     ZeroWorkSetPageEntries,
     ZeroStaticMetadataPageEntries,
     ZeroStreamCursorReceipts,
+    TooManyRegisteredProjects,
 }
 
 impl fmt::Display for CompilerServiceIpcConfigurationError {
@@ -126,6 +127,9 @@ impl fmt::Display for CompilerServiceIpcConfigurationError {
             Self::ZeroStreamCursorReceipts => {
                 formatter.write_str("compiler IPC stream cursor receipt cap must be nonzero")
             }
+            Self::TooManyRegisteredProjects => {
+                formatter.write_str("compiler IPC project inventory exceeds its fixed cap")
+            }
         }
     }
 }
@@ -138,11 +142,19 @@ impl std::error::Error for CompilerServiceIpcConfigurationError {}
 pub struct CompilerServiceIpcAdapter {
     service: RegisteredProjectCompilerService,
     limits: CompilerServiceIpcLimits,
+    /// Only owner-registered project IDs can enter a stream inventory. A
+    /// project number supplied by a peer is never registration authority.
+    registered_projects: BTreeSet<u64>,
+    /// A successful inventory belongs to one accepted core-attested stream;
+    /// another stream cannot substitute a known or guessed numeric ID.
+    project_inventory_streams: BTreeMap<String, BTreeSet<u64>>,
     /// Cursor receipts belong to the accepted compiler stream that saw the
     /// preceding page. Numeric cursor IDs alone cannot grant a second stream
     /// continuation authority, even when it knows the project/generation.
     session_cursors: BTreeMap<String, BTreeSet<CompilerSessionCursorReceipt>>,
 }
+
+const MAX_PROJECT_INVENTORY_STREAMS: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum CompilerSessionCursorKind {
@@ -203,9 +215,18 @@ impl CompilerServiceIpcAdapter {
         limits: CompilerServiceIpcLimits,
     ) -> Result<Self, CompilerServiceIpcConfigurationError> {
         validate_limits(limits)?;
+        let registered_projects = service
+            .registered_project_ids()
+            .map(RegisteredProjectId::as_u64)
+            .collect::<BTreeSet<_>>();
+        if registered_projects.len() > COMPILER_MAX_PROJECT_INVENTORY {
+            return Err(CompilerServiceIpcConfigurationError::TooManyRegisteredProjects);
+        }
         Ok(Self {
             service,
             limits,
+            registered_projects,
+            project_inventory_streams: BTreeMap::new(),
             session_cursors: BTreeMap::new(),
         })
     }
@@ -231,7 +252,14 @@ impl CompilerServiceIpcAdapter {
         &mut self,
         registration: RegisteredProjectRegistration,
     ) -> Result<CompilerProject, CompilerServiceError> {
-        self.service.register(registration).map(project_to_wire)
+        if self.registered_projects.len() >= COMPILER_MAX_PROJECT_INVENTORY {
+            return Err(CompilerServiceError::ProjectLimit {
+                limit: COMPILER_MAX_PROJECT_INVENTORY,
+            });
+        }
+        let project = project_to_wire(self.service.register(registration)?);
+        self.registered_projects.insert(project.id);
+        Ok(project)
     }
 
     /// Handles one request after the transport has successfully negotiated
@@ -239,6 +267,7 @@ impl CompilerServiceIpcAdapter {
     /// an in-band `Hello` is rejected rather than renegotiating state.
     pub fn handle(&mut self, request: CompilerRequest) -> CompilerReply {
         match request {
+            CompilerRequest::ListProjects => self.project_inventory(),
             CompilerRequest::DescribeProject { project } => self.describe_project(project),
             CompilerRequest::Check { project } => self.check(project),
             CompilerRequest::ListDiagnostics {
@@ -311,6 +340,40 @@ impl CompilerServiceIpcAdapter {
         session_id: &str,
         request: CompilerRequest,
     ) -> CompilerReply {
+        if matches!(request, CompilerRequest::ListProjects) {
+            if !self.project_inventory_streams.contains_key(session_id)
+                && self.project_inventory_streams.len() >= MAX_PROJECT_INVENTORY_STREAMS
+            {
+                return CompilerReply::Error {
+                    code: CompilerErrorCode::ResourceLimit,
+                    message: "compiler project inventory stream limit exceeded".to_string(),
+                };
+            }
+            let reply = self.project_inventory();
+            if let CompilerReply::Projects(inventory) = &reply {
+                self.project_inventory_streams.insert(
+                    session_id.to_string(),
+                    inventory
+                        .projects
+                        .iter()
+                        .map(|project| project.id)
+                        .collect(),
+                );
+            }
+            return reply;
+        }
+        if let Some(project_id) = compiler_request_project_id(&request) {
+            if !self
+                .project_inventory_streams
+                .get(session_id)
+                .is_some_and(|projects| projects.contains(&project_id))
+            {
+                return CompilerReply::Error {
+                    code: CompilerErrorCode::UnobservedProject,
+                    message: "compiler project was not inventoried on this stream".to_string(),
+                };
+            }
+        }
         let pagination = match &request {
             CompilerRequest::ListDiagnostics {
                 generation, cursor, ..
@@ -462,10 +525,28 @@ impl CompilerServiceIpcAdapter {
     /// prevents a client from exhausting the core's fixed cursor budget by
     /// repeatedly abandoning first pages and reconnecting.
     fn end_session(&mut self, session_id: &str) {
+        self.project_inventory_streams.remove(session_id);
         let Some(receipts) = self.session_cursors.remove(session_id) else {
             return;
         };
         self.release_session_cursors(receipts);
+    }
+
+    fn project_inventory(&self) -> CompilerReply {
+        let projects = self
+            .registered_projects
+            .iter()
+            .map(|id| CompilerProject { id: *id })
+            .collect::<Vec<_>>();
+        let inventory = CompilerProjectInventory { projects };
+        if !inventory.is_well_formed() {
+            return response_limit_reply();
+        }
+        let mut budget = ResponseBudget::new(self.limits.max_response_bytes);
+        if !budget.reserve_fixed(128 + 32 * inventory.projects.len()) {
+            return response_limit_reply();
+        }
+        CompilerReply::Projects(inventory)
     }
 
     fn revoke_project_session_cursors(&mut self, project_id: u64) {
@@ -1145,6 +1226,27 @@ impl CompilerServiceIpcAdapter {
             artifact_fingerprint,
             static_metadata,
         })
+    }
+}
+
+fn compiler_request_project_id(request: &CompilerRequest) -> Option<u64> {
+    match request {
+        CompilerRequest::DescribeProject { project } | CompilerRequest::Check { project } => {
+            Some(project.id)
+        }
+        CompilerRequest::ListDiagnostics { generation, .. }
+        | CompilerRequest::ListWorkSet { generation, .. }
+        | CompilerRequest::GetStaticType { generation, .. }
+        | CompilerRequest::GetStaticSymbol { generation, .. }
+        | CompilerRequest::GetStaticSymbolLocation { generation, .. }
+        | CompilerRequest::ListStaticMetadata { generation, .. }
+        | CompilerRequest::GetStaticProvenance { generation, .. }
+        | CompilerRequest::GetStaticContract { generation, .. }
+        | CompilerRequest::GetStaticContractLocation { generation, .. }
+        | CompilerRequest::ValidateStaticContract { generation, .. } => Some(generation.project.id),
+        CompilerRequest::Hello { .. }
+        | CompilerRequest::ListProjects
+        | CompilerRequest::Unknown => None,
     }
 }
 
@@ -1907,6 +2009,97 @@ mod tests {
         (adapter, project)
     }
 
+    fn inventory_on_stream(
+        adapter: &mut CompilerServiceIpcAdapter,
+        stream: &str,
+        project: CompilerProject,
+    ) {
+        let CompilerReply::Projects(inventory) =
+            adapter.handle_session_request(stream, CompilerRequest::ListProjects)
+        else {
+            panic!("accepted stream must receive sealed project inventory")
+        };
+        assert!(inventory.is_well_formed());
+        assert!(inventory.projects.contains(&project));
+    }
+
+    #[test]
+    fn sealed_project_inventory_is_bounded_and_stream_local() {
+        let (mut adapter, first) = adapter();
+        let mut second_registration = registration("export const next: number = answer;");
+        second_registration.canonical_project_root = "project:///next".to_string();
+        second_registration.canonical_config_root = "project:///next/blue-ts.json".to_string();
+        let second = adapter.register_core_project(second_registration).unwrap();
+        let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
+        let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
+        for (stream, project) in [(&first_stream, first), (&second_stream, second)] {
+            assert!(matches!(
+                adapter
+                    .handle_session_request(stream, CompilerRequest::DescribeProject { project }),
+                CompilerReply::Error {
+                    code: CompilerErrorCode::UnobservedProject,
+                    ..
+                }
+            ));
+        }
+        let CompilerReply::Projects(inventory) =
+            adapter.handle_session_request(&first_stream, CompilerRequest::ListProjects)
+        else {
+            panic!("sealed project inventory must be available")
+        };
+        assert_eq!(inventory.projects, vec![first, second]);
+        let mut later_registration = registration("export const later: number = answer;");
+        later_registration.canonical_project_root = "project:///later".to_string();
+        later_registration.canonical_config_root = "project:///later/blue-ts.json".to_string();
+        let later = adapter.register_core_project(later_registration).unwrap();
+        assert!(matches!(
+            adapter.handle_session_request(
+                &first_stream,
+                CompilerRequest::DescribeProject { project: later }
+            ),
+            CompilerReply::Error {
+                code: CompilerErrorCode::UnobservedProject,
+                ..
+            }
+        ));
+        assert!(matches!(
+            adapter.handle_session_request(
+                &first_stream,
+                CompilerRequest::DescribeProject { project: first }
+            ),
+            CompilerReply::Project(_)
+        ));
+        assert!(matches!(
+            adapter
+                .handle_session_request(&second_stream, CompilerRequest::Check { project: first }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::UnobservedProject,
+                ..
+            }
+        ));
+        assert!(matches!(
+            adapter.handle_session_request(
+                &first_stream,
+                CompilerRequest::Check {
+                    project: CompilerProject { id: u64::MAX }
+                }
+            ),
+            CompilerReply::Error {
+                code: CompilerErrorCode::UnobservedProject,
+                ..
+            }
+        ));
+        adapter.end_session(&first_stream);
+        assert!(matches!(
+            adapter
+                .handle_session_request(&first_stream, CompilerRequest::Check { project: first }),
+            CompilerReply::Error {
+                code: CompilerErrorCode::UnobservedProject,
+                ..
+            }
+        ));
+    }
+
     #[test]
     fn opaque_project_queries_return_generation_bound_source_free_metadata() {
         let (mut adapter, project) = adapter();
@@ -2374,6 +2567,8 @@ mod tests {
             .unwrap();
         let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
         let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
+        inventory_on_stream(&mut adapter, &first_stream, project);
+        inventory_on_stream(&mut adapter, &second_stream, project);
         let CompilerReply::Check(check) =
             adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
         else {
@@ -2419,6 +2614,7 @@ mod tests {
             }
         ));
         adapter.end_session(&first_stream);
+        inventory_on_stream(&mut adapter, &first_stream, project);
         assert!(matches!(
             adapter.handle_session_request(&second_stream, continuation),
             CompilerReply::Error {
@@ -2479,6 +2675,8 @@ mod tests {
             .unwrap();
         let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
         let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
+        inventory_on_stream(&mut adapter, &first_stream, project);
+        inventory_on_stream(&mut adapter, &second_stream, project);
         let CompilerReply::Check(check) =
             adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
         else {
@@ -2594,6 +2792,8 @@ mod tests {
             .unwrap();
         let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
         let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
+        inventory_on_stream(&mut adapter, &first_stream, project);
+        inventory_on_stream(&mut adapter, &second_stream, project);
         let CompilerReply::Check(check) =
             adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
         else {
@@ -2676,6 +2876,11 @@ mod tests {
     #[test]
     fn queued_requests_are_applied_only_by_the_adapter_owner() {
         let (mut adapter, project) = adapter();
+        inventory_on_stream(
+            &mut adapter,
+            &"a".repeat(CompilerSessionAttestation::ID_LENGTH),
+            project,
+        );
         let (sender, receiver) = compiler_service_ipc_request_channel();
         assert!(sender
             .bind_session(CompilerSessionAttestation {
@@ -2709,6 +2914,11 @@ mod tests {
         // resulting service exposes only this bounded query dispatch API.
         let mut session = catalog.seal();
         assert_eq!(session.registered_project_count(), 1);
+        inventory_on_stream(
+            &mut session.adapter,
+            &"b".repeat(CompilerSessionAttestation::ID_LENGTH),
+            project,
+        );
         let (sender, receiver) = compiler_service_ipc_request_channel();
         let bound = sender
             .bind_session(CompilerSessionAttestation {

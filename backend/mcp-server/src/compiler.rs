@@ -73,7 +73,7 @@ impl<S: Read + Write> CompilerConnection<S> {
     }
 
     /// Returns the source-free core evidence minted for this exact accepted
-    /// transport stream. It is available only after a successful v6
+    /// transport stream. It is available only after a successful compiler
     /// handshake, and it grants no authority beyond the stream itself.
     pub fn session_attestation(
         &self,
@@ -89,6 +89,11 @@ impl<S: Read + Write> CompilerConnection<S> {
         &self,
     ) -> Option<&blueice_ipc::compiler::CompilerSessionCapabilityManifest> {
         self.capability_manifest.as_ref()
+    }
+
+    /// Lists only opaque IDs from the core owner's sealed startup catalog.
+    pub fn list_projects(&mut self) -> io::Result<blueice_ipc::compiler::CompilerReply> {
+        self.request(blueice_ipc::compiler::CompilerRequest::ListProjects)
     }
 
     /// Returns the source-text-free description selected by the core for an
@@ -363,8 +368,8 @@ mod tests {
 
     #[test]
     fn compiler_connection_checks_a_sealed_core_catalog_through_the_session_owner() {
-        // The MCP client gets only the owner-minted opaque project ID. The
-        // registration happens before `seal`, and the core session later owns
+        // The MCP client discovers only an owner-minted opaque project ID.
+        // Registration happens before `seal`, and the core session later owns
         // the mutable adapter/cache while a listener worker has framing only.
         let mut catalog = CoreCompilerProjectCatalog::default();
         let project = catalog
@@ -384,18 +389,28 @@ mod tests {
                 &blueice_ipc::compiler::negotiate(&hello, Some(evidence)),
             )
             .unwrap();
-            let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
-            let reply = bound.request(request).unwrap();
-            blueice_ipc::compiler::write_compiler_reply(&mut server, &reply).unwrap();
+            for _ in 0..2 {
+                let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
+                let reply = bound.request(request).unwrap();
+                blueice_ipc::compiler::write_compiler_reply(&mut server, &reply).unwrap();
+            }
         });
 
         let mcp_client = thread::spawn(move || {
             let mut connection = CompilerConnection::new(client);
             connection.handshake().unwrap();
+            let blueice_ipc::compiler::CompilerReply::Projects(inventory) =
+                connection.list_projects().unwrap()
+            else {
+                panic!("MCP client must receive the sealed project inventory")
+            };
+            assert_eq!(inventory.projects, vec![project]);
             connection.check(project.id).unwrap()
         });
-        while core_session.dispatch_pending(&request_receiver) == 0 {
-            thread::yield_now();
+        while !mcp_client.is_finished() {
+            if core_session.dispatch_pending(&request_receiver) == 0 {
+                thread::yield_now();
+            }
         }
         let blueice_ipc::compiler::CompilerReply::Check(check) = mcp_client.join().unwrap() else {
             panic!("the MCP client must receive a source-free core check reply")
@@ -448,7 +463,7 @@ mod tests {
                 &blueice_ipc::compiler::negotiate(&hello, Some(evidence)),
             )
             .unwrap();
-            for _ in 0..8 {
+            for _ in 0..9 {
                 let request = blueice_ipc::compiler::read_compiler_request(&mut server).unwrap();
                 let reply = bound.request(request).unwrap();
                 blueice_ipc::compiler::write_compiler_reply(&mut server, &reply).unwrap();
@@ -458,6 +473,12 @@ mod tests {
         let mcp_client = thread::spawn(move || {
             let mut connection = CompilerConnection::new(client);
             connection.handshake().unwrap();
+            let blueice_ipc::compiler::CompilerReply::Projects(inventory) =
+                connection.list_projects().unwrap()
+            else {
+                panic!("MCP client must receive the sealed project inventory")
+            };
+            assert_eq!(inventory.projects, vec![project]);
             let blueice_ipc::compiler::CompilerReply::Check(check) =
                 connection.check(project.id).unwrap()
             else {

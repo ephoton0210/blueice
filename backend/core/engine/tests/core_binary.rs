@@ -449,6 +449,34 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
         },
     )
     .unwrap();
+    assert!(matches!(
+        blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap(),
+        blueice_ipc::compiler::CompilerReply::Error {
+            code: blueice_ipc::compiler::CompilerErrorCode::UnobservedProject,
+            ..
+        }
+    ));
+    blueice_ipc::compiler::write_compiler_request(
+        &mut compiler,
+        &blueice_ipc::compiler::CompilerRequest::ListProjects,
+    )
+    .unwrap();
+    let blueice_ipc::compiler::CompilerReply::Projects(projects) =
+        blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap()
+    else {
+        panic!("accepted compiler stream must receive sealed project inventory")
+    };
+    assert_eq!(
+        projects.projects,
+        vec![blueice_ipc::compiler::CompilerProject { id: 1 }]
+    );
+    blueice_ipc::compiler::write_compiler_request(
+        &mut compiler,
+        &blueice_ipc::compiler::CompilerRequest::DescribeProject {
+            project: blueice_ipc::compiler::CompilerProject { id: 1 },
+        },
+    )
+    .unwrap();
     assert_eq!(
         blueice_ipc::compiler::read_compiler_reply(&mut compiler).unwrap(),
         blueice_ipc::compiler::CompilerReply::Project(
@@ -608,6 +636,15 @@ fn real_subprocess_serves_only_core_registered_compiler_queries_through_its_sess
         panic!("the successor stream must receive its own core attestation")
     };
     assert_ne!(successor_attestation, session_attestation);
+    blueice_ipc::compiler::write_compiler_request(
+        &mut successor,
+        &blueice_ipc::compiler::CompilerRequest::ListProjects,
+    )
+    .unwrap();
+    assert!(matches!(
+        blueice_ipc::compiler::read_compiler_reply(&mut successor).unwrap(),
+        blueice_ipc::compiler::CompilerReply::Projects(_)
+    ));
     blueice_ipc::compiler::write_compiler_request(
         &mut successor,
         &blueice_ipc::compiler::CompilerRequest::ListStaticMetadata {

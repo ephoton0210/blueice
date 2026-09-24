@@ -99,6 +99,8 @@ fn compiler_stream_receipts_reject_cross_stream_cursors_and_release_abandoned_sl
         .unwrap();
     let first_stream = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
     let second_stream = "b".repeat(CompilerSessionAttestation::ID_LENGTH);
+    inventory_on_stream(&mut adapter, &first_stream, project);
+    inventory_on_stream(&mut adapter, &second_stream, project);
     let CompilerReply::Check(check) =
         adapter.handle_session_request(&first_stream, CompilerRequest::Check { project })
     else {
@@ -217,6 +219,7 @@ fn compiler_stream_cursor_receipt_budget_releases_an_undisclosed_new_cursor() {
         .register_core_project(registration("export const value: number = answer;"))
         .unwrap();
     let session = "a".repeat(CompilerSessionAttestation::ID_LENGTH);
+    inventory_on_stream(&mut adapter, &session, project);
     let CompilerReply::Check(check) =
         adapter.handle_session_request(&session, CompilerRequest::Check { project })
     else {
