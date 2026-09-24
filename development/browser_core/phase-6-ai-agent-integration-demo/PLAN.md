@@ -147,4 +147,4 @@ Ollama or TGI server, nor the still-open human-observer evidence requirement.
 - [x] Run a real local vision/tool model through the shared core — Qwen3.5-4B GGUF via llama.cpp completed the first-party scenario, with a matched highlighted MCP PNG and transcript; see [RESULTS.md](RESULTS.md)
 - [ ] Demonstrate human + agent observing the same page/state simultaneously
 - [x] Record results (what worked, what broke, what surprised) — [RESULTS.md](RESULTS.md) records the real-model task, evidence identities/hashes, provider-label correction, viewport change, and missing human-window capture
-- [ ] Feed findings back into earlier phases' plans as needed
+- [x] Feed findings back into earlier phases' plans — Phase 5 now records the live common-frame evidence boundary and the missing cross-cutover core-incarnation identity; Phase 8 records the human-frontend viewport change and why evidence must be compared after observer attachment. These notes do not substitute for the still-missing human-window screenshot.

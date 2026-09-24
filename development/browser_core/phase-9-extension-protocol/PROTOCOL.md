@@ -37,7 +37,10 @@ capability name may appear once in exactly one tier. The accepted names are
 Only `declared` grants a capability today. `optional` and
 `runtime_ephemeral` are parsed, but **neither can be requested or exercised**:
 there is no user-consent or authenticated gesture flow yet. Do not interpret
-their presence as a grant. The host derives an ID from the exact manifest and
+their presence as a grant. The shared launcher IPC accepts both human frontend
+and AI clients, so an ordinary client message or toolbar activation cannot by
+itself prove human approval; see the [Phase 9 plan](PLAN.md) before designing
+an optional-grant flow. The host derives an ID from the exact manifest and
 module bytes; the package cannot choose its identity. In production, core
 starts the host and authenticates that child with a fresh environment-only
 credential before accepting the derived ID. The manual development socket's

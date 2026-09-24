@@ -24,6 +24,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -76,6 +77,17 @@ fn wait_for(path: &std::path::Path, timeout: Duration) -> bool {
     false
 }
 
+/// These tests start real core processes with short readiness deadlines.
+/// Launching every case at once can saturate a development machine and turn
+/// an otherwise healthy core startup into a spurious timeout. The guard is
+/// process-local: a probe child running this test binary has its own lock.
+fn core_process_test_guard() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 fn sibling_bluejs_binary() -> PathBuf {
     let core = PathBuf::from(env!("CARGO_BIN_EXE_blueice-core"));
     core.parent().unwrap().join("bluejs")
@@ -109,6 +121,7 @@ fn core_extension_host_probe_script(root: &Path, test_name: &str) -> PathBuf {
 /// own binary integration test.
 #[test]
 fn extension_host_probe_child_authenticates_to_core() {
+    let _guard = core_process_test_guard();
     let Ok(socket) = std::env::var("BLUEICE_TEST_EXTENSION_SOCKET") else {
         return;
     };
@@ -158,6 +171,7 @@ fn extension_host_probe_child_authenticates_to_core() {
 
 #[test]
 fn extension_host_probe_child_publishes_toolbar_and_handles_activation() {
+    let _guard = core_process_test_guard();
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
         ExtensionRuntimeEvent,
@@ -260,6 +274,7 @@ fn extension_manifest_package(
 
 #[test]
 fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
+    let _guard = core_process_test_guard();
     let output = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
         .output()
         .expect("failed to run blueice-core");
@@ -269,6 +284,7 @@ fn missing_socket_flag_exits_with_failure_and_no_socket_is_created() {
 
 #[test]
 fn an_invalid_installed_extension_never_publishes_core_or_extension_sockets() {
+    let _guard = core_process_test_guard();
     let core_socket = unique_socket_path("invalid-extension-core");
     let extension_socket = unique_socket_path("invalid-extension-protocol");
     let root = std::env::temp_dir().join(format!(
@@ -302,6 +318,7 @@ fn an_invalid_installed_extension_never_publishes_core_or_extension_sockets() {
 
 #[test]
 fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
+    let _guard = core_process_test_guard();
     let socket_path = unique_socket_path("full-session");
     let frame_dir = std::env::temp_dir().join(format!(
         "blueice-core-binary-test-frames-{}",
@@ -423,6 +440,7 @@ fn real_subprocess_serves_navigate_resize_and_shutdown_over_a_real_socket() {
 
 #[test]
 fn installed_extension_reads_a_real_core_owned_representation_over_private_sockets() {
+    let _guard = core_process_test_guard();
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
@@ -514,6 +532,7 @@ fn installed_extension_reads_a_real_core_owned_representation_over_private_socke
 
 #[test]
 fn installed_extension_v2_observes_only_a_committed_redirect_trace() {
+    let _guard = core_process_test_guard();
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
@@ -619,6 +638,7 @@ fn installed_extension_v2_observes_only_a_committed_redirect_trace() {
 
 #[test]
 fn installed_extension_v3_network_rule_clear_restores_navigation_after_a_redirect_block() {
+    let _guard = core_process_test_guard();
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
@@ -766,6 +786,7 @@ fn installed_extension_v3_network_rule_clear_restores_navigation_after_a_redirec
 
 #[test]
 fn installed_extension_v4_host_rule_blocks_redirect_before_target_connection() {
+    let _guard = core_process_test_guard();
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
@@ -852,6 +873,7 @@ fn installed_extension_v4_host_rule_blocks_redirect_before_target_connection() {
 
 #[test]
 fn installed_extension_v5_path_prefix_blocks_redirect_before_target_connection() {
+    let _guard = core_process_test_guard();
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
@@ -941,6 +963,7 @@ fn installed_extension_v5_path_prefix_blocks_redirect_before_target_connection()
 
 #[test]
 fn installed_extension_storage_v1_survives_reconnect_and_v2_survives_core_restart() {
+    let _guard = core_process_test_guard();
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
@@ -1134,7 +1157,109 @@ fn installed_extension_storage_v1_survives_reconnect_and_v2_survives_core_restar
 }
 
 #[test]
+fn optional_and_ephemeral_manifest_entries_cannot_be_self_granted_over_core_ipc() {
+    let _guard = core_process_test_guard();
+    use blueice_ipc::extension::{
+        read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
+    };
+    use std::collections::BTreeMap;
+
+    let core_socket = unique_socket_path("opt-tier");
+    let extension_socket = unique_private_extension_socket_path("opt");
+    let frame_dir = std::env::temp_dir().join(format!(
+        "blueice-core-ungranted-frames-{}",
+        std::process::id()
+    ));
+    let data_dir = std::env::temp_dir().join(format!(
+        "blueice-core-ungranted-data-{}",
+        std::process::id()
+    ));
+    let (package_root, manifest, _) = extension_manifest_package("ungranted", &[]);
+    std::fs::write(
+        &manifest,
+        r#"{"name":"Ungrantable tiers","version":"1.0.0","blueice_api_version":1,"entry_point":"extension.wasm","capabilities":{"optional":["storage"],"runtime_ephemeral":["dom:read"]}}"#,
+    )
+    .unwrap();
+    let extension_id = blueice_extension_host::load_installed_extension(&manifest)
+        .unwrap()
+        .extension_id()
+        .to_string();
+    let _ = std::fs::remove_file(&core_socket);
+    let _ = std::fs::remove_file(&extension_socket);
+    let _ = std::fs::remove_dir_all(&frame_dir);
+    let _ = std::fs::remove_dir_all(&data_dir);
+
+    let mut core = Command::new(env!("CARGO_BIN_EXE_blueice-core"))
+        .args([
+            "--socket",
+            core_socket.to_str().unwrap(),
+            "--extension-socket",
+            extension_socket.to_str().unwrap(),
+            "--extension-manifest",
+            manifest.to_str().unwrap(),
+            "--frame-dir",
+            frame_dir.to_str().unwrap(),
+        ])
+        .env("XDG_DATA_HOME", &data_dir)
+        .spawn()
+        .expect("failed to spawn core with an optional-only extension");
+    assert!(wait_for(&core_socket, Duration::from_secs(5)));
+    assert!(wait_for(&extension_socket, Duration::from_secs(5)));
+    let mut frontend = UnixStream::connect(&core_socket).unwrap();
+    blueice_ipc::client_handshake(&mut frontend).unwrap();
+    let mut extension = UnixStream::connect(&extension_socket).unwrap();
+    write_extension_request(
+        &mut extension,
+        &ExtensionRequest::Hello {
+            extension_id,
+            capability_versions: BTreeMap::from([
+                ("storage".to_string(), 2),
+                ("dom:read".to_string(), 2),
+            ]),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        read_extension_reply(&mut extension).unwrap(),
+        ExtensionReply::HelloAck {
+            unsupported_capabilities: BTreeMap::new(),
+        }
+    );
+    for (request, expected_capability) in [
+        (
+            ExtensionRequest::DurableStorageSet {
+                key: "key".into(),
+                value: "never-persist".into(),
+            },
+            "storage",
+        ),
+        (
+            ExtensionRequest::StorageSet {
+                key: "key".into(),
+                value: "never-store".into(),
+            },
+            "storage",
+        ),
+        (ExtensionRequest::DomReadTab { tab_id: 1 }, "dom:read"),
+    ] {
+        write_extension_request(&mut extension, &request).unwrap();
+        match read_extension_reply(&mut extension).unwrap() {
+            ExtensionReply::CapabilityDenied { capability, .. } => {
+                assert_eq!(capability, expected_capability)
+            }
+            other => panic!("{expected_capability} must remain ungranted, got {other:?}"),
+        }
+    }
+    assert!(!data_dir.exists(), "denied durable writes must not create a data directory");
+    blueice_ipc::write_client_message(&mut frontend, &blueice_ipc::ClientMessage::Shutdown)
+        .unwrap();
+    assert!(core.wait().unwrap().success());
+    let _ = std::fs::remove_dir_all(package_root);
+}
+
+#[test]
 fn core_waits_for_its_spawned_extension_host_and_rejects_a_bearer_claim_peer() {
+    let _guard = core_process_test_guard();
     use blueice_ipc::extension::{read_extension_reply, write_extension_request, ExtensionRequest};
     use std::collections::BTreeMap;
 
@@ -1224,6 +1349,7 @@ fn core_waits_for_its_spawned_extension_host_and_rejects_a_bearer_claim_peer() {
 
 #[test]
 fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
+    let _guard = core_process_test_guard();
     let core_socket = unique_socket_path("uit");
     let extension_socket = unique_private_extension_socket_path("ui");
     let frame_dir = std::env::temp_dir().join(format!(
@@ -1307,6 +1433,7 @@ fn core_spawned_extension_toolbar_reaches_client_and_activation_reaches_host() {
 
 #[test]
 fn installed_extension_v6_writes_explicit_form_controls_after_gatekeeper_review() {
+    let _guard = core_process_test_guard();
     use blueice_ipc::extension::{
         read_extension_reply, write_extension_request, ExtensionReply, ExtensionRequest,
     };
@@ -1703,6 +1830,7 @@ fn installed_extension_v6_writes_explicit_form_controls_after_gatekeeper_review(
 
 #[test]
 fn subprocess_navigation_runs_bluejs_before_its_first_frame() {
+    let _guard = core_process_test_guard();
     let socket_path = unique_socket_path("bluejs-session");
     let script_path = unique_socket_path("bluejs-script");
     let frame_dir = std::env::temp_dir().join(format!(
@@ -1789,6 +1917,7 @@ fn subprocess_navigation_runs_bluejs_before_its_first_frame() {
 
 #[test]
 fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contamination() {
+    let _guard = core_process_test_guard();
     // `phase-16-multi-tab-and-tab-groups/PLAN.md`'s minimal-first-slice
     // proof, one layer up from `session.rs`'s own in-process tests: the
     // real compiled `blueice-core` binary, driven over a real socket,
@@ -1958,6 +2087,7 @@ fn real_subprocess_serves_two_independently_addressed_tabs_without_cross_contami
 
 #[test]
 fn a_client_disconnecting_without_shutdown_still_lets_the_subprocess_exit_cleanly() {
+    let _guard = core_process_test_guard();
     let socket_path = unique_socket_path("disconnect");
     let frame_dir = std::env::temp_dir().join(format!(
         "blueice-core-binary-test-frames-disconnect-{}",
@@ -2049,6 +2179,7 @@ impl WaitTimeoutOrKill for std::process::Child {
 /// page updates itself without being reloaded.
 #[test]
 fn opening_about_downloads_starts_the_downloads_process_and_the_open_page_follows_it() {
+    let _guard = core_process_test_guard();
     use blueice_ipc::downloads::{
         read_downloads_reply, write_downloads_request, DownloadsClient, DownloadsRequest,
         DOWNLOADS_PROTOCOL_VERSION,
@@ -2087,8 +2218,11 @@ fn opening_about_downloads_starts_the_downloads_process_and_the_open_page_follow
         "core never bound its socket"
     );
     let mut client = UnixStream::connect(&core_socket).unwrap();
+    // Starting the separate downloads binary can take longer after the
+    // compiled-core suite has exercised several real processes. Keep this
+    // deadline above that cold-start interval while still bounding a hang.
     client
-        .set_read_timeout(Some(Duration::from_secs(20)))
+        .set_read_timeout(Some(Duration::from_secs(45)))
         .unwrap();
     blueice_ipc::client_handshake(&mut client).unwrap();
 
